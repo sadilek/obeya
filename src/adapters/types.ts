@@ -41,6 +41,9 @@ export interface RepoAdapter {
    */
   demo?: { required: boolean; howToRun: string };
 
+  /** Accounts whose pull request comments are not review feedback (deploy bots and the like). */
+  prNoise?: string[];
+
   /** How a worker brings up the app in its workspace and finds the frontend. */
   stack?: {
     start: string;

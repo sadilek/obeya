@@ -9,6 +9,19 @@ import type { PlanDoc } from '../core/plan-doc';
 import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Item, type NewCard, STATES } from '../core/types';
 import type { CardRow, NewRow, RowUpdate, Store } from './db';
 
+/** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
+export interface PrState {
+  url: string | null;
+  number?: number;
+  /** Comments already passed to the worker. */
+  seen: string[];
+  /** `check@commit` of failures already passed to the worker. */
+  reported: string[];
+  /** The commit a conflict was last reported for. */
+  conflictHead?: string;
+  checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
+}
+
 /** A request the server refuses: a stable code for the UI's text, and an English detail. */
 /** How long an untitled card of the owner's may exist before Obeya drops it on start. */
 const UNTITLED_GRACE_MS = 10 * 60_000;
@@ -345,9 +358,11 @@ function work(r: CardRow): Partial<Item> {
   const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; demo?: Item['demo'] & { dir: string } }) : {};
   const demo = detail.demo && r.need === 'demo' ? (({ dir: _, ...d }) => d)(detail.demo) : undefined;
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
+  const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
+    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     ...(detail.summary && (r.need === 'review' || r.need === 'demo') ? { summary: detail.summary } : {}),

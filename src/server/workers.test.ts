@@ -251,7 +251,7 @@ describe('landing through a pull request', () => {
     setup({ ...generic, land: 'pr', workspaces: 'clones' });
   });
 
-  test('approval keeps the branch in the clone and leaves main alone', async () => {
+  test('approval starts the PR phase: the branch stays in the clone, main is left alone', async () => {
     const c = manual();
     workers.start(c.id);
     const clone = board.row(c.id).workspace!;
@@ -260,7 +260,7 @@ describe('landing through a pull request', () => {
     git(clone, 'commit', '--quiet', '-m', 'X');
     runtime.last.call('ready_for_review', { summary: 'S' });
     await workers.approve(c.id);
-    expect(state(c.id)).toBe('approved');
+    expect(state(c.id)).toBe('inPr');
     expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
     expect(board.row(c.id).branch).toBeTruthy();
   });

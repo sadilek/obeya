@@ -14,6 +14,7 @@ export const oke: RepoAdapter = {
     urls: { file: '.apphost.urls', frontendKey: 'FRONTEND' },
   },
   checks: ['scripts/ci.ts'],
+  prNoise: ['cloudflare-workers-and-pages'],
   demo: {
     required: true,
     howToRun:

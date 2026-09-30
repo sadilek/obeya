@@ -11,7 +11,9 @@ import { parseArgs } from 'node:util';
 import { pickAdapter } from '../adapters';
 import { Board } from './board';
 import { Store } from './db';
+import { ghForge } from './forge';
 import { Koordinator } from './koordinator';
+import { PrWatcher } from './pr-watcher';
 import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import { sdkRuntime } from './runtime';
@@ -81,6 +83,7 @@ const workers = new Workers({
 workers.resumeAll();
 koordinator = new Koordinator({ board, runtime: sdkRuntime, workers, workspaces, adapter, repoPath: repo.path, preferences });
 koordinator.resume();
+if (adapter.land === 'pr') new PrWatcher(board, workers, ghForge, (id) => board.row(id).workspace ?? repo.path, adapter.prNoise).start();
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.on(sig, () => {
     workers.shutdown();

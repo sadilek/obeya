@@ -35,6 +35,8 @@ export interface CardRow {
   scope: string | null;
   /** JSON: set while the Koordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`). */
   queue: string | null;
+  /** JSON: the card's pull request once approval opened the PR phase (`PrState`). */
+  pr: string | null;
 }
 
 export interface DecisionRow {
@@ -119,6 +121,7 @@ const MIGRATIONS = [
      deleted_at TEXT
    );`,
   `ALTER TABLE events ADD COLUMN code TEXT;`,
+  `ALTER TABLE cards ADD COLUMN pr TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -127,7 +130,22 @@ export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
 export type RowUpdate = Partial<
   Pick<
     CardRow,
-    'x' | 'y' | 'kind' | 'title' | 'body' | 'state' | 'need' | 'deleted_at' | 'session_id' | 'workspace' | 'branch' | 'status_line' | 'detail' | 'scope' | 'queue'
+    | 'x'
+    | 'y'
+    | 'kind'
+    | 'title'
+    | 'body'
+    | 'state'
+    | 'need'
+    | 'deleted_at'
+    | 'session_id'
+    | 'workspace'
+    | 'branch'
+    | 'status_line'
+    | 'detail'
+    | 'scope'
+    | 'queue'
+    | 'pr'
   >
 >;
 
