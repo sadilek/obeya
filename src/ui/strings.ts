@@ -115,7 +115,7 @@ export const t = {
     short: (n: number, failed: number, conflict: boolean) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
   },
-  demo: { question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–' },
+  demo: { question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.' },
   koordinator: {
     button: 'Koordinator',
     kind: 'Koordinator',

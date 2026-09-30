@@ -39,6 +39,8 @@ export interface CardRow {
   pr: string | null;
   /** The owner's card's repository on a canvas with several; null is the home repository. */
   repo: string | null;
+  /** JSON: the card's latest demo (`{ dir, chapters, shown, notShown, findings, question? }`). */
+  demo: string | null;
 }
 
 export interface DecisionRow {
@@ -127,6 +129,9 @@ const MIGRATIONS = [
   // a canvas may span several repositories; null is the canvas's home repository
   `ALTER TABLE cards ADD COLUMN repo TEXT;
    ALTER TABLE workspaces ADD COLUMN repo TEXT;`,
+  // the demo outlives the review it was made for; a card waiting with one moves it out of `detail`
+  `ALTER TABLE cards ADD COLUMN demo TEXT;
+   UPDATE cards SET demo = json_extract(detail, '$.demo') WHERE need = 'demo' AND json_extract(detail, '$.demo') IS NOT NULL;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -151,6 +156,7 @@ export type RowUpdate = Partial<
     | 'scope'
     | 'queue'
     | 'pr'
+    | 'demo'
   >
 >;
 

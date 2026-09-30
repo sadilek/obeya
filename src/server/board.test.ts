@@ -69,6 +69,16 @@ describe('plan docs', () => {
     expect(board.snapshot().items[0]).toMatchObject({ id: p.id, x: -500, y: 42 });
   });
 
+  test('work in progress wins over a ticked-off workstream until it has landed', () => {
+    const w2 = board.snapshot().items.find((i) => i.label === 'W2')!;
+    board.work(w2.id, { state: 'inPr' });
+    docs = [{ ...docA, workstreams: [ws('W1', true), { ...ws('W2'), done: true }, ws('W3')] }];
+    board.docsChanged();
+    expect(board.item(w2.id)!.state).toBe('inPr');
+    board.work(w2.id, { state: 'live' });
+    expect(board.item(w2.id)!.state).toBe('live');
+  });
+
   test('plan cards are read-only apart from placement and state', () => {
     const [p, w1] = board.snapshot().items;
     expect(() => board.patch(w1!.id, { title: 'x' })).toThrow(BadRequest);

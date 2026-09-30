@@ -283,6 +283,9 @@ describe('handing over with a demo', () => {
     workers.message(c.id, 'Bitte mit Kopfzeile.');
     expect(state(c.id)).toBe('working');
     expect(runtime.last.inbox.at(-1)).toContain('render the demo again');
+    // the demo stays with the card while it is reworked and after it is done
+    expect(board.demoDir(c.id)).toBe(d);
+    expect(board.item(c.id)!.demo!.chapters).toHaveLength(2);
   });
 
   test('a broken demo or a missing required one is refused, and the worker keeps the card', () => {
