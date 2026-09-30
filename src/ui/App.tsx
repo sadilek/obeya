@@ -103,6 +103,14 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
   const [popId, setPopId] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>()).current;
   const panelRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  // the panel follows its content from the unfold until it starts to fold
+  const unfolded = useRef(false);
+  const fitPanel = (i: Item) => {
+    const panel = panelRef.current;
+    const inner = innerRef.current;
+    if (panel && inner) Object.assign(panel.style, panelRect(i, inner));
+  };
 
   // edits of the open card, saved shortly after typing stops
   const edit = useRef<{ id: string; patch: CardPatch; timer?: ReturnType<typeof setTimeout> } | null>(null);
@@ -145,7 +153,9 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     Object.assign(panel.style, rect(r), { display: 'block', borderRadius: '14px' });
     panel.getBoundingClientRect();
     panel.classList.add('anim');
-    Object.assign(panel.style, panelRect(i), { borderRadius: '18px' });
+    panel.style.borderRadius = '18px';
+    fitPanel(i);
+    unfolded.current = true;
     setDim(true);
     setSheetOn(false);
     await sleep(450);
@@ -154,16 +164,27 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     if (title && !title.value) title.focus();
   }
 
-  // a card that starts or finishes work while open changes its content: resize in place
+  // a card that starts or finishes work while open changes its width and colour: resize in place
   const openItem = openId ? items.find((i) => i.id === openId) : undefined;
   const openState = openItem && `${openItem.state}:${openItem.need ?? ''}`;
   useEffect(() => {
     const panel = panelRef.current;
     const i = openId ? byId(openId) : undefined;
-    if (!panel || !i || !panel.classList.contains('ready')) return;
+    if (!panel || !i || !unfolded.current) return;
     panel.style.setProperty('--c', `var(--${i.state})`);
-    Object.assign(panel.style, panelRect(i));
+    fitPanel(i);
   }, [openState]);
+  // content that grows or shrinks (a log loading, a question arriving, a resized text box) resizes it too
+  useEffect(() => {
+    const content = innerRef.current?.firstElementChild;
+    if (!openId || !content) return;
+    const ro = new ResizeObserver(() => {
+      const i = byId(openId);
+      if (i && unfolded.current) fitPanel(i);
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [openId]);
 
   function onDone(d: ActDone) {
     if (!d.close) return;
@@ -178,6 +199,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     flushEdit();
     const i = byId(f.id);
     const el = els.get(f.id);
+    unfolded.current = false;
     panel.classList.remove('ready');
     if (el) Object.assign(panel.style, rect(el.getBoundingClientRect()), { borderRadius: '14px' });
     setDim(false);
@@ -425,18 +447,20 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
         <button className="close" title={t.close} onClick={() => closeCard()}>
           ✕
         </button>
-        <div className="inner">
-          {openItem && (
-            <Detail
-              key={openItem.id}
-              item={openItem}
-              parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
-              from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
-              onEdit={onEdit}
-              onDelete={deleteOpen}
-              onDone={onDone}
-            />
-          )}
+        <div className="inner" ref={innerRef}>
+          <div className="content">
+            {openItem && (
+              <Detail
+                key={openItem.id}
+                item={openItem}
+                parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
+                from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
+                onEdit={onEdit}
+                onDelete={deleteOpen}
+                onDone={onDone}
+              />
+            )}
+          </div>
         </div>
       </div>
       <Sheet project={sheetProject} kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []} on={sheetOn} onOpen={open} />
@@ -457,11 +481,17 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
   );
 }
 
-/** Where the unfolded card sits: centred, as large as its content needs. */
-function panelRect(i: Item) {
+/**
+ * Where the unfolded card sits: centred, as tall as its content needs up to a limit, beyond which it
+ * scrolls. Lays the content out at the final width to measure it, so call it with the content rendered.
+ */
+function panelRect(i: Item, inner: HTMLElement) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
   const W = Math.min(tall ? 980 : 900, innerWidth - 80);
-  const H = Math.min(tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
+  inner.style.width = `${W}px`;
+  const pad = getComputedStyle(inner);
+  const need = (inner.firstElementChild as HTMLElement).offsetHeight + parseFloat(pad.paddingTop) + parseFloat(pad.paddingBottom);
+  const H = Math.min(Math.ceil(need), tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
   return { left: `${(innerWidth - W) / 2}px`, top: `${Math.max(64, (innerHeight - H) / 2)}px`, width: `${W}px`, height: `${H}px` };
 }
 
