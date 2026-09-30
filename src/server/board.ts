@@ -41,6 +41,7 @@ export class BadRequest extends Error {
 export class Board {
   private listeners = new Set<() => void>();
   private docs: PlanDoc[] | null = null;
+  private cache: CanvasSnapshot | null = null;
   private eventListeners = new Set<(e: CardEvent) => void>();
 
   constructor(
@@ -70,6 +71,7 @@ export class Board {
 
   /** A card changed. */
   changed() {
+    this.cache = null;
     for (const fn of this.listeners) fn();
   }
 
@@ -192,11 +194,14 @@ export class Board {
     this.changed();
   }
 
+  /** The canvas as the UI sees it; built once per change (every write here ends in `changed`). */
   snapshot(): CanvasSnapshot {
+    if (this.cache) return this.cache;
     const docs = (this.docs ??= this.readDocs());
     let items = toItems(this.store.cards(this.canvas.id), docs, this.home);
     if (this.placeNew(docs, items)) items = toItems(this.store.cards(this.canvas.id), docs, this.home);
-    return { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id) };
+    this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id) };
+    return this.cache;
   }
 
   // ---------------------------------------------------------------- preferences
