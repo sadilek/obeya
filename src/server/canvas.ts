@@ -9,6 +9,7 @@ import type { CardAction, Item, RepoRef } from '../core/types';
 import { BadRequest, Board } from './board';
 import { type Command, Commander } from './commands';
 import type { Store } from './db';
+import { Explorers } from './explorers';
 import type { Forge } from './forge';
 import { Koordinator } from './koordinator';
 import { PrWatcher } from './pr-watcher';
@@ -59,6 +60,7 @@ export class CanvasRuntime {
   readonly board: Board;
   readonly koordinator: Koordinator;
   readonly commander: Commander;
+  readonly explorers: Explorers;
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];
 
@@ -123,6 +125,7 @@ export class CanvasRuntime {
             ? { by: 'project', ask: (q) => projectAgents.ask(project, card, q) }
             : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
         },
+        onSpike: (spike, summary, demo) => this.spikeReady(spike, summary, demo),
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       });
       this.repos.push({ ref, info, adapter, workspaces, workers, projectAgents });
@@ -146,6 +149,14 @@ export class CanvasRuntime {
       },
     });
     koordinator.resume();
+    this.explorers = new Explorers({
+      board,
+      runtime: deps.runtime,
+      preferences,
+      pathFor: (card) => this.repoOf(card).info.path,
+      onOwnerInput: (card, text) => koordinator.learn(card, 'idea', text),
+    });
+    this.explorers.resumeAll();
     this.commander = new Commander({
       board,
       runtime: deps.runtime,
@@ -168,8 +179,10 @@ export class CanvasRuntime {
 
   /** An owner action from the card's panel. */
   act(cardId: string, a: CardAction) {
-    const text = 'text' in a ? a.text : '';
-    if ('text' in a && (typeof text !== 'string' || !text.trim() || text.length > 20000)) throw new BadRequest('emptyText', 'text must be a non-empty string');
+    const text = 'text' in a ? (a.text ?? '') : '';
+    // a spike may leave it to the idea's brief what the prototype shows
+    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'spike') || text.length > 20000))
+      throw new BadRequest('emptyText', 'text must be a non-empty string');
     switch (a.action) {
       case 'start':
         return this.koordinator.request(cardId);
@@ -192,6 +205,17 @@ export class CanvasRuntime {
       case 'dismiss':
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return this.board.remove(cardId);
+      case 'discuss':
+        return this.explorers.discuss(cardId, text.trim(), !!a.spoken);
+      case 'build':
+        return this.build(cardId);
+      case 'planDoc':
+        return this.planDoc(cardId);
+      case 'park':
+      case 'drop':
+        return this.shelve(cardId, a.action);
+      case 'spike':
+        return this.spike(cardId, text.trim());
       default:
         throw new BadRequest('invalid', 'unknown action');
     }
@@ -201,7 +225,81 @@ export class CanvasRuntime {
   remove(cardId: string) {
     const { state } = this.board.row(cardId);
     if (state === 'working' || state === 'waiting') this.repoOf(cardId).workers.stop(cardId);
+    if (state === 'idea') this.explorers.close(cardId);
     this.board.remove(cardId);
+  }
+
+  // ---------------------------------------------------------------- ideas
+
+  /** The idea is built as it stands: its brief becomes the task of a planned card. */
+  private build(cardId: string) {
+    const card = this.ideaCard(cardId);
+    const { brief } = this.board.idea(cardId);
+    this.explorers.close(cardId);
+    this.board.work(cardId, { state: 'planned', ...(brief.trim() ? { body: brief.trim() } : {}) });
+    this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'So bauen, wie der Stand der Idee sagt.', by: 'owner' });
+    this.board.log(cardId, 'state', 'owner', 'So bauen: Der Stand der Idee ist der Auftrag.');
+  }
+
+  /** A big idea becomes a project: a worker writes its plan doc, which lands like any change. */
+  private planDoc(cardId: string) {
+    const card = this.ideaCard(cardId);
+    const { brief } = this.board.idea(cardId);
+    const dir = this.repoOf(card).adapter.planDocs.dir;
+    this.explorers.close(cardId);
+    this.board.work(cardId, {
+      state: 'planned',
+      title: `Plan-Doc: ${card.title}`.slice(0, 200),
+      body: [
+        `Schreibe aus dem Stand dieser Idee ein Plan-Doc in \`${dir}/\`, nach den Konventionen des Repositorys (vorhandene Plan-Docs als Vorbild). Es braucht ein \`## Ziel\` (oder \`## Goal\`) und eine Checkliste unter \`## Workstreams\` (\`- [ ] **W1:** Titel. Details\`), in Pakete geschnitten, die einzeln landen können; dann zeigt Obeya es als Projekt. Baue nichts davon; nur das Plan-Doc (und ein Verweis darauf, wo das Repository Plan-Docs verlinkt).`,
+        `Idee: „${card.title}“`,
+        brief.trim() || card.body.trim(),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+    });
+    this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'Als Projekt: erst ein Plan-Doc mit Workstreams.', by: 'owner' });
+    this.board.log(cardId, 'state', 'owner', 'Als Projekt: Ein Agent schreibt das Plan-Doc.');
+  }
+
+  /** Parked or dropped, the idea stays on the canvas with its brief. */
+  private shelve(cardId: string, how: 'park' | 'drop') {
+    const card = this.ideaCard(cardId);
+    this.explorers.close(cardId);
+    this.board.setIdea(cardId, { status: how === 'park' ? 'parked' : 'dropped' });
+    if (how === 'drop') this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'Verworfen.', by: 'owner' });
+    this.board.log(cardId, 'state', 'owner', how === 'park' ? 'Geparkt.' : 'Verworfen.');
+  }
+
+  /** A worker builds a throwaway prototype for the idea, in its own workspace; it never lands. */
+  private spike(cardId: string, what: string) {
+    const card = this.ideaCard(cardId);
+    if (this.board.snapshot().items.some((i) => i.spikeOf === cardId && ['working', 'waiting'].includes(i.state)))
+      throw new BadRequest('spikeRunning', 'a spike for this idea is still running');
+    const spike = this.board.addSpike(cardId, `Spike: ${card.title}`, what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.');
+    try {
+      this.repoOf(spike).workers.start(spike.id);
+    } catch (e) {
+      this.board.remove(spike.id);
+      throw e;
+    }
+    this.board.log(cardId, 'state', 'owner', `Spike gestartet: ${what || 'die Idee, wie sie steht'}.`);
+  }
+
+  /** A spike handed over: its demo shows on the idea, and the idea's agent hears what it found. */
+  private spikeReady(spike: Item, summary: string, demo: string | undefined) {
+    const idea = this.board.item(spike.spikeOf!);
+    if (!idea) return;
+    if (demo) this.board.work(idea.id, { demo });
+    this.board.log(idea.id, 'state', 'worker', `Spike „${spike.title}“ fertig${demo ? '; die Demo liegt auf dieser Karte' : ''}.`);
+    if (idea.state === 'idea') this.explorers.tell(idea.id, `A worker built a throwaway prototype (spike) for this idea. Its summary:\n\n${summary}\n\nTake what it showed into the brief, then reply to the owner briefly with what it means for the idea.`);
+  }
+
+  private ideaCard(cardId: string): Item {
+    const card = this.board.item(cardId);
+    if (!card) throw new BadRequest('unknownCard', 'unknown card');
+    if (card.state !== 'idea') throw new BadRequest('notIdea', 'the card is not an idea');
+    return card;
   }
 
   /** A voice (or typed) command, once its undo window has passed. */
@@ -213,6 +311,22 @@ export class CanvasRuntime {
         if (c.start) this.koordinator.request(card.id);
         return;
       }
+      case 'newIdea': {
+        const card = this.board.create({ kind: 'feature', idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot() });
+        this.board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
+        // the agent opens the discussion with what the owner said
+        this.explorers.discuss(card.id, c.body.trim() || c.title, true);
+        return;
+      }
+      case 'discuss':
+        return this.act(c.card, { action: 'discuss', text: c.text, spoken: true });
+      case 'spike':
+        return this.act(c.card, { action: 'spike', text: c.text });
+      case 'build':
+      case 'planDoc':
+      case 'park':
+      case 'drop':
+        return this.act(c.card, { action: c.do });
       case 'start':
         return this.act(c.card, { action: 'start' });
       case 'note':
@@ -232,6 +346,7 @@ export class CanvasRuntime {
   shutdown() {
     for (const stop of this.stops) stop();
     for (const r of this.repos) r.workers.shutdown();
+    this.explorers.shutdown();
   }
 }
 

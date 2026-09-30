@@ -9,6 +9,13 @@ import { stateLabel, t } from './strings';
 
 export const needsYou = (i: Item) => i.state === 'waiting' || i.state === 'proposal';
 
+/** The first line of an idea's brief that says something (not a bare "Ziel" label). */
+const firstLine = (md: string) =>
+  plain(md)
+    .split('\n')
+    .map((l) => l.replace(/^\s*[-*]\s+/, '').replace(/^(Ziel|Goal)\s*:?\s*/i, '').trim())
+    .find(Boolean) ?? '';
+
 // ------------------------------------------------------------------ cards
 
 interface CardProps {
@@ -27,15 +34,26 @@ const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w =
 export const CardView = memo(
   function CardView({ item, b, lifted, dragging, pop, showRepo, els }: CardProps) {
     const shape = shapeOf(item);
-    const kind = item.label ?? (item.parent ? t.kind.workstream : t.kind[item.kind]);
+    const kind = item.label ?? (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.spikeOf ? t.kind.spike : t.kind[item.kind]);
     const status =
       item.state === 'working'
         ? item.statusLine
         : item.state === 'inPr' && item.pr
           ? t.pr.short(item.pr.number, item.pr.checks.filter((c) => c.state === 'failure').length, item.pr.conflict)
           : undefined;
-    const meta = item.question?.text ?? (item.queue && 'behind' in item.queue ? item.queue.reason : undefined) ?? status ?? plain(item.body).split('\n')[0];
-    const cls = ['item', 'card', shape, `s-${item.state}`, item.queue && 'queued', lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
+    const meta =
+      item.question?.text ??
+      (item.queue && 'behind' in item.queue ? item.queue.reason : undefined) ??
+      status ??
+      (item.idea ? firstLine(item.idea.brief) || firstLine(item.body) : plain(item.body).split('\n')[0]);
+    const cls = [
+      'item',
+      'card',
+      shape,
+      `s-${item.state}`,
+      item.idea && `idea-${item.idea.status}`,
+      item.idea?.thinking && 'thinking',
+      item.queue && 'queued', lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (
       <div
         className={cls}
@@ -112,11 +130,11 @@ export const ProjectView = memo(
   (a, b) => a.item === b.item && sameBounds(a.b, b.b) && a.kids.length === b.kids.length && a.kids.every((k, i) => k === b.kids[i]),
 );
 
-/** A dashed line from each proposal to the card it came from. */
+/** A dashed line from each proposal to the card it came from, and from each spike to its idea. */
 export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   const byId = new Map(placed.map((p) => [p.item.id, p]));
   const paths = placed.flatMap(({ item, b }) => {
-    const src = item.state === 'proposal' && item.from ? byId.get(item.from) : undefined;
+    const src = (item.state === 'proposal' || item.spikeOf) && item.from ? byId.get(item.from) : undefined;
     if (!src) return [];
     const x1 = src.b.x + src.b.w / 2;
     const y1 = src.b.y + src.b.h;

@@ -23,6 +23,15 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
   const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string }>>>(canvases.map((c) => [c.id, new Set()]));
+  /** Spoken texts by id, rendered while the owner already reads them. */
+  const speech = new Map<string, Promise<Uint8Array<ArrayBuffer> | null>>();
+  /** Starts speaking `text` and returns where the browser fetches it. */
+  const voice = (c: CanvasRuntime, text: string) => {
+    const id = crypto.randomUUID();
+    speech.set(id, speaker.speak(text));
+    setTimeout(() => speech.delete(id), 60_000);
+    return `/api/c/${encodeURIComponent(c.id)}/voice/speech/${id}`;
+  };
   for (const c of canvases) {
     const send = (msg: ServerMessage) => {
       const text = JSON.stringify(msg);
@@ -30,6 +39,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     };
     c.board.onChange(() => send({ type: 'snapshot', snapshot: c.board.snapshot() }));
     c.board.onEvent((event) => send({ type: 'event', event }));
+    c.board.onSpeak((cardId, text) => send({ type: 'speak', cardId, audio: voice(c, text) }));
   }
 
   const handle = async (fn: () => unknown | Promise<unknown>) => {
@@ -64,18 +74,14 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       rmSync(dir, { recursive: true, force: true });
     }
   };
-  /** Spoken confirmations by id, rendered while the owner already reads them. */
-  const speech = new Map<string, Promise<Uint8Array<ArrayBuffer> | null>>();
   const heard = async (c: CanvasRuntime, text: string, focus: Focus) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
     console.log(`heard on ${c.id}: ${text || '(nothing)'}`);
     const h: Heard = text ? await c.commander.hear(text, focus) : { confirm: 'Ich habe nichts gehört.' };
     // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
-    const id = crypto.randomUUID();
-    speech.set(id, speaker.speak(h.confirm));
-    setTimeout(() => speech.delete(id), 60_000);
-    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), audio: `/api/c/${encodeURIComponent(c.id)}/voice/speech/${id}` };
+    if (h.quiet) return h;
+    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), audio: voice(c, h.confirm) };
   };
 
   return Bun.serve({

@@ -19,6 +19,9 @@ interface Package {
 }
 type Cut = { packages: Package[]; reason: string } | { keep: string };
 
+/** What the owner said that may hold a lasting preference. */
+export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea';
+
 export interface Scope {
   files: string[];
   /** Cards in progress the Koordinator judges to collide, beyond overlapping files. */
@@ -200,14 +203,14 @@ export class Koordinator {
    * The owner answered, sent a note or gave feedback: if it states a lasting preference, keep it
    * as a rule for every agent. Runs in the background, one at a time.
    */
-  learn(card: Item, kind: 'answer' | 'note' | 'feedback', text: string, question?: string) {
+  learn(card: Item, kind: OwnerInput, text: string, question?: string) {
     this.learning = this.learning
       .catch(() => {})
       .then(() => this.distill(card, kind, text, question))
       .catch((e) => console.error('Koordinator (learning):', e));
   }
 
-  private distill(card: Item, kind: 'answer' | 'note' | 'feedback', text: string, question?: string): Promise<void> {
+  private distill(card: Item, kind: OwnerInput, text: string, question?: string): Promise<void> {
     const rules = this.o.board.preferences();
     return new Promise((resolve) => {
       let done = false;
@@ -250,7 +253,7 @@ export class Koordinator {
         [
           `Card: ${card.kind} "${card.title}".`,
           question ? `The worker asked: ${question}` : '',
-          `The owner's ${kind === 'answer' ? 'answer' : kind === 'note' ? 'note to the worker' : 'feedback on the finished work'}: ${text}`,
+          `The owner's ${{ answer: 'answer', note: 'note to the worker', feedback: 'feedback on the finished work', idea: 'words in the discussion of an idea' }[kind]}: ${text}`,
           rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
         ]
           .filter(Boolean)
@@ -264,7 +267,8 @@ export class Koordinator {
     return this.o.board
       .snapshot()
       // approved work counts until it has landed: a PR not yet merged still holds its files
-      .items.filter((i) => ['working', 'waiting', 'inPr', 'approved'].includes(i.state) && i.kind !== 'project' && (!repo || i.repo === repo));
+      // a spike never lands, so its prototype collides with nothing
+      .items.filter((i) => ['working', 'waiting', 'inPr', 'approved'].includes(i.state) && i.kind !== 'project' && !i.spikeOf && (!repo || i.repo === repo));
   }
 
   private async decide(cardId: string) {

@@ -41,7 +41,7 @@ export function setCanvas(id: string) {
 export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
 
 type Where = { card: string } | { project: string } | null;
-type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string };
+type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string; quiet?: boolean };
 
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
@@ -82,6 +82,13 @@ export function onCardEvent(fn: (e: CardEvent) => void): () => void {
   return () => eventListeners.delete(fn);
 }
 
+// Short spoken summaries of agents (an idea's replies); whoever has the card open plays them.
+const speakListeners = new Set<(cardId: string, audio: string) => void>();
+export function onSpeak(fn: (cardId: string, audio: string) => void): () => void {
+  speakListeners.add(fn);
+  return () => speakListeners.delete(fn);
+}
+
 /** The live canvas: the server pushes a snapshot on connect and after every change. */
 export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean } {
   const [snapshot, setSnapshot] = useState<CanvasSnapshot | null>(null);
@@ -106,6 +113,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
           server = msg.server;
         } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
+        else if (msg.type === 'speak') for (const fn of speakListeners) fn(msg.cardId, msg.audio);
       };
       ws.onclose = () => {
         if (closed) return;

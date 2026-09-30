@@ -2,7 +2,7 @@
 
 export type CardKind = 'bugfix' | 'feature' | 'project';
 
-export const STATES = ['proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live'] as const;
+export const STATES = ['idea', 'proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live'] as const;
 export type CardState = (typeof STATES)[number];
 
 /** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M4). */
@@ -53,6 +53,22 @@ export interface Item {
   pr?: PullRequest;
   /** When the owner archived the card; archived cards are not on the canvas but in its archive. */
   archivedAt?: string;
+  /** Ideas only: what the discussion has settled so far. */
+  idea?: Idea;
+  /** A spike's idea: the throwaway prototype is built for it and never lands. */
+  spikeOf?: string;
+}
+
+/**
+ * An idea under discussion with its exploration agent. `open` while it is discussed; parked or
+ * dropped ideas stay on the canvas with their state, and talking to them opens them again.
+ */
+export interface Idea {
+  status: 'open' | 'parked' | 'dropped';
+  /** The state of the idea as the agent keeps it (markdown): goal, variants, decisions, open questions. */
+  brief: string;
+  /** The exploration agent is working on a reply. */
+  thinking: boolean;
 }
 
 export interface PullRequest {
@@ -80,8 +96,9 @@ export interface CardEvent {
   id: number;
   cardId: string;
   at: string;
-  kind: 'report' | 'activity' | 'say' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error';
-  author: 'worker' | 'owner' | 'project' | 'koordinator' | 'obeya';
+  /** `talk` is the discussion of an idea: the owner's messages and the exploration agent's replies. */
+  kind: 'report' | 'activity' | 'say' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error' | 'talk';
+  author: 'worker' | 'owner' | 'project' | 'koordinator' | 'obeya' | 'explorer';
   text: string;
   /** Set on an error the UI words itself; `text` then holds the server's technical detail. */
   code?: ErrorCode;
@@ -123,6 +140,8 @@ export interface NewCard {
   y: number;
   /** A repository of the canvas; its home repository when left out. */
   repo?: string;
+  /** An idea to discuss before anything is planned. */
+  idea?: boolean;
 }
 
 export interface CardPatch {
@@ -150,7 +169,17 @@ export type CardAction =
   /** Let the Koordinator cut the card into packages that can run in parallel. */
   | { action: 'split' }
   | { action: 'accept' }
-  | { action: 'dismiss' };
+  | { action: 'dismiss' }
+  /** Ideas: talk to the exploration agent; `spoken` gets a short spoken summary back. */
+  | { action: 'discuss'; text: string; spoken?: boolean }
+  /** Ideas: the brief becomes the card's task and the card is planned. */
+  | { action: 'build' }
+  /** Ideas: a planned card whose worker writes a plan doc from the brief. */
+  | { action: 'planDoc' }
+  | { action: 'park' }
+  | { action: 'drop' }
+  /** Ideas: a worker builds a throwaway prototype and shows it as a demo on the idea. */
+  | { action: 'spike'; text?: string };
 
 /**
  * Why the server refused a request. The server sends the code and an English detail
@@ -176,6 +205,9 @@ export type ErrorCode =
   /** Only a finished card of the owner's goes into the archive. */
   | 'notDone'
   | 'notArchived'
+  | 'notIdea'
+  /** A spike for the idea is still running. */
+  | 'spikeRunning'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'
@@ -191,4 +223,6 @@ export type ServerMessage =
   | { type: 'snapshot'; snapshot: CanvasSnapshot }
   | { type: 'event'; event: CardEvent }
   /** First on every connection: which server process this is, so a page from an earlier one reloads. */
-  | { type: 'hello'; server: string };
+  | { type: 'hello'; server: string }
+  /** A short spoken summary of a card's agent (an idea's reply), to play while the card is open. */
+  | { type: 'speak'; cardId: string; audio: string };

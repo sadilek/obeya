@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import type { CanvasInfo, CanvasSnapshot, CardPatch, Item } from '../core/types';
-import { api, setCanvas, useCanvas } from './api';
+import { api, onSpeak, setCanvas, useCanvas } from './api';
 import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
@@ -327,6 +327,8 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   // a command that makes a card: when it appears, the camera goes there
   const newCardWatch = useRef<{ known: Set<string>; until: number } | null>(null);
   function onHeard(h: Heard) {
+    // said to the open idea: the conversation shows it
+    if (h.quiet) return;
     showAck(
       h.confirm,
       h.token
@@ -348,8 +350,19 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     if (!made || focusRef.current) return;
     newCardWatch.current = null;
     setPopId(made.id);
-    fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8)), 700);
+    // a new idea opens, so the owner sees the discussion begin
+    if (made.state === 'idea') open(made);
+    else fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8)), 700);
   }, [snapshot]);
+  // an idea's agent sums up its reply aloud, for the owner who has the idea open
+  useEffect(
+    () =>
+      onSpeak((cardId, audio) => {
+        const f = focusRef.current;
+        if (f?.type === 'card' && f.id === cardId) play(audio);
+      }),
+    [],
+  );
   const ptt = usePushToTalk(where, onHeard);
   const pttRef = useRef(ptt);
   pttRef.current = ptt;
@@ -363,11 +376,12 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       removeEventListener('pointerup', release);
     };
   }, []);
+  const focusItem = focus ? (items.find((i) => i.id === focus.id) ?? archived.find((i) => i.id === focus.id)) : undefined;
   const target =
     focus?.type === 'card'
-      ? t.voice.agent(plain((items.find((i) => i.id === focus.id) ?? archived.find((i) => i.id === focus.id))?.title ?? ''))
+      ? (focusItem?.state === 'idea' ? t.voice.idea : t.voice.agent)(plain(focusItem?.title ?? ''))
       : focus?.type === 'project'
-        ? t.voice.project(plain(items.find((i) => i.id === focus.id)?.title ?? ''))
+        ? t.voice.project(plain(focusItem?.title ?? ''))
         : t.voice.koordinator;
 
   // ---------------------------------------------------------------- pointer: pan, drag, click

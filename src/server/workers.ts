@@ -31,6 +31,8 @@ export interface WorkerOptions {
   repo?: string;
   /** Who answers the card's questions on the owner's behalf, if anyone. */
   advisor?: (card: Item) => Advisor | null;
+  /** A spike handed over its prototype: the idea gets the demo and the summary. */
+  onSpike?: (spike: Item, summary: string, demo: string | undefined) => void;
 }
 
 interface Live {
@@ -108,6 +110,7 @@ export class Workers {
     const card = this.card(cardId);
     if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
     const row = this.o.board.row(cardId);
+    if (card.spikeOf) return this.discard(card);
     if (this.o.adapter.land === 'main') {
       const problem = this.o.workspaces.landOnMain(cardId, row.branch!);
       if (problem && !problem.worker) throw new BadRequest(problem.code, problem.detail);
@@ -137,6 +140,20 @@ export class Workers {
     this.bump(cardId);
     this.o.board.work(cardId, { state: 'live', need: null, detail: null, workspace: null });
     this.o.board.log(cardId, 'state', 'owner', 'Freigegeben und auf main.');
+  }
+
+  /** A spike has served its purpose: its prototype is thrown away with the card; the idea keeps the demo. */
+  private discard(card: Item) {
+    this.end(card.id);
+    this.bump(card.id);
+    try {
+      this.o.workspaces.discard(card.id, this.o.board.row(card.id).branch ?? '');
+    } catch (e) {
+      // the card goes anyway; a leftover worktree does no harm
+      console.error('discarding a spike:', e);
+    }
+    this.o.board.remove(card.id);
+    if (this.o.board.item(card.spikeOf!)) this.o.board.log(card.spikeOf!, 'state', 'owner', `Prototyp „${card.title}“ verworfen; die Demo bleibt hier.`);
   }
 
   /** The card's pull request was merged: the work is live, the workspace free. */
@@ -374,6 +391,8 @@ export class Workers {
             ...(demoJson ? { demo: demoJson } : {}),
           });
           this.o.board.log(cardId, 'review', 'worker', s);
+          const card = this.o.board.item(cardId);
+          if (card?.spikeOf) this.o.onSpike?.(card, s, demoJson);
           return END_TURN;
         },
       },
@@ -440,6 +459,19 @@ Rules:
 
   private briefing(card: Item, branch: string, resumed = false): string {
     const parts = [`Your card: ${card.kind === 'bugfix' ? 'bugfix' : 'feature'} “${card.title}”.`];
+    const idea = card.spikeOf ? this.o.board.item(card.spikeOf) : undefined;
+    if (card.spikeOf)
+      parts.push(
+        [
+          `This card is a spike for the idea “${idea?.title ?? ''}”: a throwaway prototype, so the owner can see the idea before deciding on it. It never lands; approving it throws it away.`,
+          'So build only what the demo needs to show, as quickly as you can: no tests, no polish, no docs or plan changes, and do not run the checks. Commit it on your branch anyway, so the demo can be reproduced. The demo only needs to make the idea visible (30–60 s).',
+          idea?.idea?.brief ? `The idea as discussed so far:
+
+${idea.idea.brief}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+      );
     if (card.body.trim()) parts.push(card.body.trim());
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
@@ -449,7 +481,7 @@ Rules:
         : `You are on branch ${branch}, fresh from the default branch.`,
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
-    if (this.o.adapter.checks?.length) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
+    if (this.o.adapter.checks?.length && !card.spikeOf) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
     if (this.o.adapter.demo)
       parts.push(
         `${this.o.adapter.demo.required ? 'Then record' : 'Where it helps the owner, record'} a demo of the change with the demo skill, as its instructions say, and hand it over with ready_for_review (directory, chapter titles, report). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card. How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,

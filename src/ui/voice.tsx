@@ -12,6 +12,8 @@ export interface Heard {
   undoMs?: number;
   /** Where the spoken confirmation plays from; it may still be rendering. */
   audio?: string;
+  /** Said to the open idea: its conversation shows it, so there is nothing to confirm. */
+  quiet?: boolean;
 }
 
 export type Where = { card: string } | { project: string } | null;

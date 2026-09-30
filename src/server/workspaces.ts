@@ -160,6 +160,28 @@ export class Workspaces {
     }
   }
 
+  /**
+   * Throws the card's work away: a spike's prototype never lands. A worktree and its branch are
+   * removed; a clone goes back to its default branch, without the card's branch, and is free again.
+   */
+  discard(cardId: string, branch: string) {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return;
+    if (this.o.mode === 'worktrees') {
+      this.store.removeWorkspace(ws);
+      if (existsSync(ws)) git(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+      if (git(this.o.repoPath, 'branch', '--list', branch)) git(this.o.repoPath, 'branch', '--quiet', '-D', branch);
+      return;
+    }
+    if (existsSync(ws)) {
+      git(ws, 'reset', '--quiet', '--hard');
+      git(ws, 'clean', '--quiet', '-fd');
+      git(ws, 'checkout', '--quiet', '--detach', `origin/${defaultBranch(ws)}`);
+      if (git(ws, 'branch', '--list', branch)) git(ws, 'branch', '--quiet', '-D', branch);
+    }
+    this.release(cardId);
+  }
+
   /** Files the card's branch changes so far, committed or not, relative to the repository root. */
   changedFiles(cardId: string): string[] {
     const ws = this.leasedBy(cardId);

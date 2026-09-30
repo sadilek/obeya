@@ -1,10 +1,11 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, ErrorCode, Need, Queue } from '../core/types';
+import type { CardState, ErrorCode, Idea, Need, Queue } from '../core/types';
 
 export const t = {
-  kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream' },
+  kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', spike: 'Spike' },
   state: {
+    idea: 'Idee',
     proposal: 'Vorschlag eines Agenten',
     planned: 'Geplant',
     working: 'Agent arbeitet',
@@ -50,7 +51,7 @@ export const t = {
   log: 'Verlauf',
   logEmpty: 'Noch nichts passiert.',
   lastFailure: (at: string) => `Zuletzt gescheitert (${at})`,
-  author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', koordinator: 'Koordinator', obeya: 'Obeya' },
+  author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', koordinator: 'Koordinator', obeya: 'Obeya', explorer: 'Explorations-Agent' },
   branch: 'Branch',
   started: (title: string) => `Agent arbeitet an „${title}“.`,
   answered: 'Antwort ist beim Agenten.',
@@ -90,6 +91,8 @@ export const t = {
     unknownPreference: 'Diese Präferenz gibt es nicht mehr.',
     notDone: 'Archivieren lässt sich nur eine eigene Karte, die live ist.',
     notArchived: 'Die Karte liegt nicht mehr im Archiv.',
+    notIdea: 'Die Karte ist keine Idee (mehr).',
+    spikeRunning: 'Für diese Idee läuft schon ein Spike.',
     landDirty: 'Nicht gelandet: Im Workspace liegen noch nicht committete Änderungen. Der Agent kümmert sich darum.',
     landConflict: 'Nicht gelandet: Beim Rebase auf main gab es Konflikte. Der Agent löst sie.',
     landEmpty: 'Nicht gelandet: Der Branch enthält keine Commits. Der Agent sieht nach.',
@@ -104,6 +107,7 @@ export const t = {
     hold: 'Halten zum Sprechen (Leertaste)',
     koordinator: 'Koordinator',
     agent: (title: string) => `Agent: ${title}`,
+    idea: (title: string) => `Idee: ${title}`,
     project: (title: string) => `Projekt: ${title}`,
     noMic: 'Kein Mikrofon: der Browser hat den Zugriff nicht erlaubt.',
     failed: 'Das hat nicht geklappt; bitte noch einmal.',
@@ -161,13 +165,44 @@ export const t = {
     time: (d: Date) => `archiviert ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`,
   },
   split: 'Aufteilen',
+  idea: {
+    status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
+    brief: 'Stand der Idee',
+    briefEmpty: 'Noch leer. Der Explorations-Agent hält hier fest, was das Gespräch ergibt: Ziel, Varianten, Entscheidungen, offene Fragen.',
+    seed: 'Ausgangspunkt',
+    talk: 'Gespräch',
+    talkEmpty: 'Erzähl, worum es geht. Der Explorations-Agent liest Code und Pläne mit, fragt nach und zeigt Varianten.',
+    thinking: 'denkt nach …',
+    compose: 'Frag nach, widersprich, entscheide – oder halte die Leertaste',
+    build: 'So bauen',
+    planDoc: 'Als Projekt planen',
+    spike: 'Spike bauen lassen',
+    spikePlaceholder: 'Was soll der Prototyp zeigen? (leer: die Idee, wie sie steht)',
+    spikeGo: 'Spike starten',
+    park: 'Parken',
+    drop: 'Verwerfen',
+    built: 'Die Idee ist eingeplant; der Stand der Idee ist ihr Auftrag.',
+    planned: 'Eingeplant: Ein Agent schreibt das Plan-Doc.',
+    parked: 'Idee geparkt.',
+    dropped: 'Idee verworfen. Die Karte bleibt mit ihrem Stand liegen.',
+    spiked: 'Spike läuft: Ein Agent baut einen Wegwerf-Prototyp.',
+    spikeDemo: 'Spike',
+    spikeKept: 'Der Prototyp landet nie; die Demo dient nur der Entscheidung.',
+    reopen: 'Wer weiterredet, nimmt die Idee wieder auf.',
+    makeIdea: 'Erst besprechen',
+    spikeOf: (title: string) => `Wegwerf-Prototyp für die Idee „${title}“. Er landet nie.`,
+    discard: 'Prototyp verwerfen',
+    discarded: 'Prototyp verworfen; die Demo bleibt bei der Idee.',
+  },
   empty: 'Noch keine Karten. Doppelklick auf die Fläche legt eine an.',
 };
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue }) =>
-  i.queue
+export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea }) =>
+  i.idea
+    ? t.idea.status[i.idea.status]
+    : i.queue
     ? 'checking' in i.queue
       ? t.queue.checking
       : 'cutting' in i.queue
