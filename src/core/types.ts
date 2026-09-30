@@ -47,6 +47,16 @@ export interface Item {
   scope?: string[];
   /** A planned card the Koordinator is deciding on, or that waits for cards in progress. */
   queue?: Queue;
+  /** The pull request, once the worker opened it after approval. */
+  pr?: PullRequest;
+}
+
+export interface PullRequest {
+  url: string;
+  number: number;
+  /** Checks on the PR's latest commit, as last seen. */
+  checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
+  conflict: boolean;
 }
 
 export type Queue = { checking: true } | { cutting: true } | { behind: string[]; reason: string };

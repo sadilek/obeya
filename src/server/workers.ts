@@ -10,6 +10,8 @@ import type { Reply } from './advisor';
 import { readChapters } from './demo';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { branchName, WorkspaceError, type Workspaces } from './workspaces';
+import type { PrState } from './board';
+import { parsePrUrl } from './forge';
 
 /** Who answers a worker's question before the owner does, and how. */
 export type Advisor = { by: Adviser; ask: (q: Question) => Promise<Reply> };
@@ -74,7 +76,7 @@ export class Workers {
         cardId,
         `Feedback from the owner on your work. Address it${card.need === 'demo' ? ', render the demo again' : ''}, then call ready_for_review again:\n\n${text}`,
       );
-    } else if (card.state === 'working' || (card.state === 'waiting' && card.need === 'question')) {
+    } else if (card.state === 'working' || card.state === 'inPr' || (card.state === 'waiting' && card.need === 'question')) {
       this.o.board.log(cardId, 'hint', 'owner', text);
       this.o.onOwnerInput?.(card, 'note', text);
       this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything):\n\n${text}`);
@@ -87,7 +89,7 @@ export class Workers {
     const row = this.o.board.row(cardId);
     const question = row.detail ? (JSON.parse(row.detail).question as Question | undefined) : undefined;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
-    this.o.board.work(cardId, { state: 'working', need: null, detail: null });
+    this.o.board.work(cardId, { state: row.pr ? 'inPr' : 'working', need: null, detail: null });
     this.o.board.log(cardId, 'answer', by, text);
     this.recordDecision(card, q, text, by);
     if (by === 'owner') this.o.onOwnerInput?.(card, 'answer', text, q);
@@ -109,11 +111,47 @@ export class Workers {
         return;
       }
     }
+    if (this.o.adapter.land === 'pr') {
+      // the worker opens the PR the way the repository does it, then Obeya watches it
+      const pr: PrState = { url: null, seen: [], reported: [] };
+      this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, pr: JSON.stringify(pr) });
+      this.o.board.log(cardId, 'state', 'owner', 'Freigegeben. Der Agent öffnet den Pull Request.');
+      this.deliver(
+        cardId,
+        [
+          'The owner approved your work. Now push your branch and open the pull request the way this repository does it (its own skills and conventions; the description must stand on its own: no local paths, no plan-doc workstream labels).',
+          'Then call pr_opened with the pull request URL and end your turn.',
+          'From now on you may push this branch; after a rebase push with --force-with-lease. Obeya watches the pull request and sends you review comments, failed checks and conflicts; handle each, push, and end your turn. Use ask when a comment questions a decision or a conflict needs a product call. Do not call ready_for_review again.',
+        ].join('\n\n'),
+      );
+      return;
+    }
     this.end(cardId);
-    if (this.o.adapter.land !== 'main') this.o.workspaces.release(cardId);
-    const state = this.o.adapter.land === 'main' ? 'live' : 'approved';
-    this.o.board.work(cardId, { state, need: null, detail: null, ...(this.o.adapter.land === 'main' ? { workspace: null } : {}) });
-    this.o.board.log(cardId, 'state', 'owner', this.o.adapter.land === 'main' ? 'Freigegeben und auf main.' : 'Freigegeben.');
+    this.o.board.work(cardId, { state: 'live', need: null, detail: null, workspace: null });
+    this.o.board.log(cardId, 'state', 'owner', 'Freigegeben und auf main.');
+  }
+
+  /** The card's pull request was merged: the work is live, the workspace free. */
+  merged(cardId: string) {
+    this.end(cardId);
+    this.o.workspaces.release(cardId);
+    this.o.board.work(cardId, { state: 'live', need: null, detail: null, workspace: null });
+    this.o.board.log(cardId, 'state', 'obeya', 'Pull Request gemergt. Live.');
+  }
+
+  /** Passes what happened on the pull request to the worker; the owner's log gets `note`. */
+  prEvent(cardId: string, note: string, message: string) {
+    this.o.board.log(cardId, 'state', 'obeya', note);
+    this.deliver(cardId, message);
+  }
+
+  /** The pull request was closed without a merge: the owner decides what happens. */
+  prClosed(cardId: string) {
+    this.o.board.log(cardId, 'state', 'obeya', 'Pull Request ohne Merge geschlossen.');
+    this.toOwner(cardId, {
+      text: 'Der Pull Request wurde geschlossen, ohne gemergt zu werden. Wie geht es weiter?',
+      options: ['Neu eröffnen', 'Die Arbeit verwerfen'],
+    });
   }
 
   stop(cardId: string) {
@@ -203,11 +241,16 @@ export class Workers {
     const handedOver = live.handedOver;
     live.handedOver = false;
     const card = this.o.board.item(cardId);
-    if (!card || card.state !== 'working' || handedOver) return;
+    if (!card || handedOver) return;
+    // in the PR phase a turn ends normally once the PR is open
+    if (card.state === 'inPr' && card.pr) return;
+    if (card.state !== 'working' && card.state !== 'inPr') return;
     if (!live.nudged) {
       live.nudged = true;
       live.session.send(
-        'You ended your turn without handing over. If the work is done and the checks pass, call ready_for_review. If you need a decision, call ask. Otherwise continue.',
+        card.state === 'inPr'
+          ? 'You ended your turn without reporting the pull request. Open it, then call pr_opened with its URL.'
+          : 'You ended your turn without handing over. If the work is done and the checks pass, call ready_for_review. If you need a decision, call ask. Otherwise continue.',
       );
       return;
     }
@@ -255,6 +298,22 @@ export class Workers {
           const p = this.o.board.propose(cardId, a as { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string });
           this.o.board.log(cardId, 'activity', 'worker', `Karte vorgeschlagen: ${p.title}`);
           return 'Proposed; the owner decides. Continue with your task.';
+        },
+      },
+      {
+        name: 'pr_opened',
+        description: 'After the owner approved: report the pull request you opened for this card (its GitHub URL). Then end your turn; Obeya watches it.',
+        schema: { url: z.string() },
+        run: ({ url }) => {
+          const row = this.o.board.row(cardId);
+          if (!row.pr) return 'Not recorded: the owner has not approved this card yet. Do not open a pull request before that.';
+          const ref = parsePrUrl(String(url));
+          if (!ref) return 'Not recorded: that is not a GitHub pull request URL (https://github.com/<owner>/<repo>/pull/<number>).';
+          handOver();
+          const pr = { ...(JSON.parse(row.pr) as PrState), url: String(url).trim(), number: ref.number };
+          this.o.board.work(cardId, { pr: JSON.stringify(pr) });
+          this.o.board.log(cardId, 'state', 'worker', `Pull Request #${ref.number} geöffnet.`);
+          return 'Recorded. End your turn now; Obeya watches the pull request.';
         },
       },
       {
