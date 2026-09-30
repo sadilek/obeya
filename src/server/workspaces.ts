@@ -108,6 +108,21 @@ export class Workspaces {
     }
   }
 
+  /** Files the card's branch changes so far, committed or not, relative to the repository root. */
+  changedFiles(cardId: string): string[] {
+    const ws = this.leasedBy(cardId);
+    if (!ws || !existsSync(ws)) return [];
+    try {
+      const base = this.o.mode === 'worktrees' ? defaultBranch(this.o.repoPath) : `origin/${defaultBranch(ws)}`;
+      const committed = git(ws, 'diff', '--name-only', `${git(ws, 'merge-base', 'HEAD', base)}..HEAD`);
+      const changed = git(ws, 'diff', '--name-only', 'HEAD');
+      const untracked = git(ws, 'ls-files', '--others', '--exclude-standard');
+      return [...new Set([committed, changed, untracked].flatMap((s) => s.split('\n')).filter(Boolean))];
+    } catch {
+      return [];
+    }
+  }
+
   private leaseClone(cardId: string, branch: string): string {
     const free = this.list().filter((w) => !w.card_id);
     if (!free.length) throw new WorkspaceError('no workspace registered or all are leased');

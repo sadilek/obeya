@@ -31,6 +31,10 @@ export interface CardRow {
   detail: string | null;
   /** A proposal's source card. */
   from_id: string | null;
+  /** JSON: the Koordinator's estimate of the files the card changes (`{ files, reason }`). */
+  scope: string | null;
+  /** JSON: set while the Koordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`). */
+  queue: string | null;
 }
 
 export interface DecisionRow {
@@ -98,13 +102,18 @@ const MIGRATIONS = [
      by TEXT NOT NULL,
      at TEXT NOT NULL
    );`,
+  `ALTER TABLE cards ADD COLUMN scope TEXT;
+   ALTER TABLE cards ADD COLUMN queue TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
   Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id'>>;
 
 export type RowUpdate = Partial<
-  Pick<CardRow, 'x' | 'y' | 'kind' | 'title' | 'body' | 'state' | 'need' | 'deleted_at' | 'session_id' | 'workspace' | 'branch' | 'status_line' | 'detail'>
+  Pick<
+    CardRow,
+    'x' | 'y' | 'kind' | 'title' | 'body' | 'state' | 'need' | 'deleted_at' | 'session_id' | 'workspace' | 'branch' | 'status_line' | 'detail' | 'scope' | 'queue'
+  >
 >;
 
 export class Store {

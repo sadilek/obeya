@@ -12,4 +12,5 @@ export const obeya: RepoAdapter = {
   checks: ['bun test', 'bun run typecheck'],
   land: 'main',
   workspaces: 'worktrees',
+  softPaths: ['docs/'],
 };

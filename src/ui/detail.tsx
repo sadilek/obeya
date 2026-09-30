@@ -11,6 +11,8 @@ export type ActDone = { close: true; ack: string } | { close: false };
 
 interface Props {
   item: Item;
+  /** Every item on the canvas, to name the cards a queued card waits for. */
+  all: Item[];
   parent?: Item;
   /** A proposal's source card. */
   from?: Item;
@@ -22,6 +24,7 @@ interface Props {
 export function Detail(p: Props) {
   const { item, parent } = p;
   const [error, setError] = useState('');
+  const all = p.all;
   const act = async (a: CardAction, done: ActDone) => {
     setError('');
     try {
@@ -32,7 +35,7 @@ export function Detail(p: Props) {
     }
   };
   const kind = parent ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}` : t.kind[item.kind];
-  const editable = item.source === 'manual' && item.state === 'planned';
+  const editable = item.source === 'manual' && item.state === 'planned' && !item.queue;
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
 
   return (
@@ -59,21 +62,60 @@ export function Detail(p: Props) {
         </>
       )}
 
+      {item.state === 'planned' && item.queue && (
+        <div className="question queue">
+          {'checking' in item.queue ? (
+            <div className="q-text">{t.queue.checkingLong}</div>
+          ) : (
+            <>
+              <div className="q-text">
+                {t.queue.behind(item.queue.behind.map((id) => plain(all.find((x) => x.id === id)?.title ?? id)))} {item.queue.reason}
+              </div>
+              <div className="actions">
+                <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: t.queue.forced })}>
+                  {t.queue.force}
+                </button>
+                <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>
+                  {t.queue.dequeue}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {item.state === 'planned' && (
         <>
           {editable ? <ManualFields item={item} onEdit={p.onEdit} /> : <Body md={item.body} />}
           {parent?.plan && <PlanSource file={parent.plan.file} />}
-          <div className="actions">
-            <button className="btn primary" onClick={() => act({ action: 'start' }, { close: false })}>
-              {t.start}
-            </button>
-            {item.source === 'manual' && (
-              <button className="btn danger" onClick={p.onDelete}>
-                {t.delete}
+          {!item.queue && (
+            <div className="actions">
+              <button className="btn primary" onClick={() => act({ action: 'start' }, { close: false })}>
+                {t.start}
               </button>
-            )}
-          </div>
+              {item.source === 'manual' && (
+                <button className="btn danger" onClick={p.onDelete}>
+                  {t.delete}
+                </button>
+              )}
+            </div>
+          )}
         </>
+      )}
+
+      {item.scope && item.scope.length > 0 && (item.state === 'planned' || item.state === 'working' || item.state === 'waiting') && (
+        <details className="p-task">
+          <summary>
+            {t.scope} ({item.scope.length})
+          </summary>
+          <ul className="p-files">
+            {item.scope.map((f) => (
+              <li key={f}>
+                <code>{f}</code>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       {item.state === 'waiting' && item.need === 'question' && item.question && (

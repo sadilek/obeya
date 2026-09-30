@@ -453,6 +453,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
               <Detail
                 key={openItem.id}
                 item={openItem}
+                all={items}
                 parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
                 from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
                 onEdit={onEdit}

@@ -27,6 +27,11 @@ export interface RepoAdapter {
    * request (M5) and clones come from `origin`.
    */
   land: 'main' | 'pr';
+  /**
+   * Paths (a trailing `/` covers a directory) whose overlapping edits do not keep two cards from
+   * running at once: they are resolved when a branch is rebased (docs, plan docs).
+   */
+  softPaths: string[];
   /** Workers get full clones from a pool, or a worktree of the Obeya checkout per card. */
   workspaces: 'clones' | 'worktrees';
 

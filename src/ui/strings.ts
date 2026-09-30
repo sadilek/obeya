@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, Need } from '../core/types';
+import type { CardState, Need, Queue } from '../core/types';
 
 export const t = {
   kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream' },
@@ -54,7 +54,19 @@ export const t = {
   accepted: 'Vorschlag übernommen und eingeplant.',
   dismissed: 'Vorschlag verworfen.',
   stopped: 'Agent angehalten.',
+  queue: {
+    checking: 'Koordinator prüft',
+    waiting: 'In der Warteschlange',
+    checkingLong: 'Der Koordinator prüft, ob die Karte mit laufender Arbeit kollidiert.',
+    behind: (titles: string[]) => `Wartet auf ${titles.map((x) => `„${x}“`).join(', ')}.`,
+    force: 'Trotzdem starten',
+    dequeue: 'Aus der Warteschlange nehmen',
+    forced: 'Gestartet, trotz Überschneidung.',
+    dequeued: 'Aus der Warteschlange genommen.',
+  },
+  scope: 'Voraussichtlich betroffen',
   empty: 'Noch keine Karten. Doppelklick auf die Fläche legt eine an.',
 };
 
-export const stateLabel = (i: { state: CardState; need?: Need }) => (i.state === 'waiting' && i.need ? t.need[i.need] : t.state[i.state]);
+export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue }) =>
+  i.queue ? ('checking' in i.queue ? t.queue.checking : t.queue.waiting) : i.state === 'waiting' && i.need ? t.need[i.need] : t.state[i.state];

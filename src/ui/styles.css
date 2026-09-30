@@ -160,6 +160,12 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 12px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
 .question.review { border-color: var(--approved); background: color-mix(in srgb, var(--approved) 7%, transparent); }
+.question.queue { border-color: var(--planned); background: var(--chip); }
+.question.queue .actions { margin-top: 10px; }
+.question.queue .btn { background: var(--card); border: 1px solid var(--line); }
+.p-files { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
+.card.queued .state { font-style: italic; }
+.card.queued::before { background: repeating-linear-gradient(180deg, var(--c) 0 6px, transparent 6px 10px); }
 .question h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .question .q-text { white-space: pre-wrap; }
 .question .p-lead { margin-top: 6px; font-size: 14.5px; }
