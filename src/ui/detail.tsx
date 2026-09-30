@@ -19,6 +19,8 @@ interface Props {
   /** A proposal's source card. */
   from?: Item;
   onEdit: (p: CardPatch) => void;
+  /** Saves pending edits; actions wait for it, so the worker sees the card as typed. */
+  flush: () => Promise<void>;
   onDelete: () => void;
   onDone: (d: ActDone) => void;
 }
@@ -30,6 +32,7 @@ export function Detail(p: Props) {
   const act = async (a: CardAction, done: ActDone) => {
     setError('');
     try {
+      await p.flush();
       await api.act(item.id, a);
       p.onDone(done);
     } catch (e) {

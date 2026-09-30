@@ -136,12 +136,13 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
 
   // edits of the open card, saved shortly after typing stops
   const edit = useRef<{ id: string; patch: CardPatch; timer?: ReturnType<typeof setTimeout> } | null>(null);
-  const flushEdit = () => {
+  /** Saves what was typed into the open card; actions on it wait for this. */
+  const flushEdit = (): Promise<void> => {
     const e = edit.current;
-    if (!e) return;
+    if (!e) return Promise.resolve();
     clearTimeout(e.timer);
     edit.current = null;
-    if (Object.keys(e.patch).length) api.patch(e.id, e.patch).catch(console.error);
+    return Object.keys(e.patch).length ? api.patch(e.id, e.patch) : Promise.resolve();
   };
   // the open card's title as typed, which the snapshot may not carry yet
   const openTitle = useRef('');
@@ -149,11 +150,11 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     const id = focusRef.current?.id;
     if (!id) return;
     if (p.title !== undefined) openTitle.current = p.title;
-    if (edit.current?.id !== id) flushEdit();
+    if (edit.current?.id !== id) flushEdit().catch(console.error);
     const e = (edit.current ??= { id, patch: {} });
     Object.assign(e.patch, p);
     clearTimeout(e.timer);
-    e.timer = setTimeout(flushEdit, 400);
+    e.timer = setTimeout(() => flushEdit().catch(console.error), 400);
   };
 
   async function open(i: Item) {
@@ -223,7 +224,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     const f = focusRef.current;
     const panel = panelRef.current;
     if (f?.type !== 'card' || !panel) return;
-    flushEdit();
+    flushEdit().catch(console.error);
     panel.querySelector('video')?.pause();
     const i = byId(f.id);
     const el = els.get(f.id);
@@ -287,10 +288,14 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   const [ack, setAck] = useState<{ text: string; undo?: () => unknown } | null>(null);
   const [ackOn, setAckOn] = useState(false);
   const ackTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  function showAck(text: string, undo?: () => unknown) {
+  const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  /** A confirmation; with `undo`, "Rückgängig" shows for `undoMs` (while the server still waits). */
+  function showAck(text: string, undo?: () => unknown, undoMs = 7000) {
     setAck({ text, undo });
     setAckOn(true);
     clearTimeout(ackTimer.current);
+    clearTimeout(undoTimer.current);
+    if (undo) undoTimer.current = setTimeout(() => setAck((a) => (a && a.text === text ? { text } : a)), Math.max(0, undoMs - 400));
     ackTimer.current = setTimeout(() => setAckOn(false), 7000);
   }
 
@@ -302,7 +307,16 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   // a command that makes a card: when it appears, the camera goes there
   const newCardWatch = useRef<{ known: Set<string>; until: number } | null>(null);
   function onHeard(h: Heard) {
-    showAck(h.confirm, h.token ? () => api.undo(h.token!) : undefined);
+    showAck(
+      h.confirm,
+      h.token
+        ? async () => {
+            const { undone } = await api.undo(h.token!);
+            if (!undone) showAck(t.voice.tooLate);
+          }
+        : undefined,
+      h.undoMs,
+    );
     play(h.audio);
     if (h.token && !focusRef.current) newCardWatch.current = { known: new Set(itemsRef.current.map((i) => i.id)), until: Date.now() + 20_000 };
   }
@@ -550,6 +564,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
                 parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
                 from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
                 onEdit={onEdit}
+                flush={flushEdit}
                 onDelete={deleteOpen}
                 onDone={onDone}
               />

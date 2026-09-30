@@ -106,6 +106,7 @@ export const t = {
     noMic: 'Kein Mikrofon: der Browser hat den Zugriff nicht erlaubt.',
     failed: 'Das hat nicht geklappt; bitte noch einmal.',
     typePlaceholder: 'Dem Koordinator schreiben, z. B. „Neue Karte: …“',
+    tooLate: 'Zu spät: das ist schon passiert.',
   },
   pr: {
     title: (n: number) => `Pull Request #${n}`,
