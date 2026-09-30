@@ -1,0 +1,311 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { generic } from '../adapters/generic';
+import type { RepoAdapter } from '../adapters/types';
+import type { PlanDoc } from '../core/plan-doc';
+import { BadRequest, Board } from './board';
+import { Store } from './db';
+import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec } from './runtime';
+import { type ProjectReply, Workers } from './workers';
+import { git, Workspaces } from './workspaces';
+
+class FakeSession implements AgentSession {
+  inbox: string[] = [];
+  closed = false;
+  done: Promise<void>;
+  private finish!: () => void;
+  constructor(
+    readonly spec: AgentSpec,
+    first: string,
+  ) {
+    this.inbox.push(first);
+    this.done = new Promise((r) => (this.finish = r));
+  }
+  send(text: string) {
+    this.inbox.push(text);
+  }
+  close() {
+    this.closed = true;
+    this.finish();
+  }
+  call(name: string, args: Record<string, unknown>) {
+    return this.spec.tools.find((t) => t.name === name)!.run(args);
+  }
+  emit(e: AgentEvent) {
+    this.spec.onEvent(e);
+  }
+}
+
+class FakeRuntime implements AgentRuntime {
+  sessions: FakeSession[] = [];
+  start(spec: AgentSpec, first: string) {
+    const s = new FakeSession(spec, first);
+    this.sessions.push(s);
+    return s;
+  }
+  get last() {
+    return this.sessions.at(-1)!;
+  }
+}
+
+const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
+const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')] };
+
+let dir: string;
+let main: string;
+let board: Board;
+let runtime: FakeRuntime;
+let workers: Workers;
+let projectReply: ProjectReply | null;
+
+function setup(adapter: RepoAdapter) {
+  dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
+  main = join(dir, 'main');
+  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', main]);
+  git(main, 'config', 'user.email', 't@example.com');
+  git(main, 'config', 'user.name', 'T');
+  writeFileSync(join(main, 'README.md'), 'hello\n');
+  git(main, 'add', '.');
+  git(main, 'commit', '--quiet', '-m', 'init');
+  const store = new Store(':memory:');
+  board = new Board(store, { id: 'c', name: 'C', repoPath: main, branch: 'main' }, () => [doc]);
+  const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
+  if (adapter.workspaces === 'clones') {
+    workspaces.ensureClones(main, 1);
+    for (const w of workspaces.list()) {
+      git(w.path, 'config', 'user.email', 't@example.com');
+      git(w.path, 'config', 'user.name', 'T');
+    }
+  }
+  runtime = new FakeRuntime();
+  projectReply = null;
+  workers = new Workers({
+    board,
+    runtime,
+    workspaces,
+    adapter,
+    askProject: async () => projectReply!,
+  });
+}
+
+beforeEach(() => setup({ ...generic, land: 'main', workspaces: 'clones', setup: 'bun install', checks: ['bun test'] }));
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+const manual = () => board.create({ kind: 'feature', title: 'Zählerstände exportieren', x: 0, y: 0 });
+const state = (id: string) => {
+  const i = board.item(id)!;
+  return i.need ? `${i.state}:${i.need}` : i.state;
+};
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+describe('workers', () => {
+  test('start leases a clean clone, branches and briefs the worker', () => {
+    const c = manual();
+    workers.start(c.id);
+    const row = board.row(c.id);
+    expect(state(c.id)).toBe('working');
+    expect(row.branch).toMatch(/^obeya\/zahlerstande-exportieren-/);
+    expect(git(row.workspace!, 'branch', '--show-current')).toBe(row.branch!);
+    expect(runtime.last.spec.cwd).toBe(row.workspace!);
+    expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
+    expect(runtime.last.inbox[0]).toContain('`bun install`');
+    // the only clone is taken
+    const d = manual();
+    expect(() => workers.start(d.id)).toThrow(BadRequest);
+  });
+
+  test('report shows on the card and in the log', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('report', { status: 'Tests grün' });
+    expect(board.item(c.id)!.statusLine).toBe('Tests grün');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'report', text: 'Tests grün' });
+  });
+
+  test('a standalone card asks the owner; the answer goes back to the worker', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'CSV oder Excel?', options: ['CSV', 'Excel'] });
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.question).toEqual({ text: 'CSV oder Excel?', options: ['CSV', 'Excel'] });
+    workers.answer(c.id, 'CSV');
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last.inbox.at(-1)).toContain('CSV');
+  });
+
+  test('a workstream asks its project agent first', async () => {
+    const w = board.snapshot().items.find((i) => i.label === 'W1')!;
+    workers.start(w.id);
+    projectReply = { answer: 'Laut Plan: CSV.' };
+    runtime.last.call('ask', { question: 'CSV oder Excel?' });
+    await flush();
+    expect(state(w.id)).toBe('working');
+    expect(board.events(w.id).at(-1)).toMatchObject({ kind: 'answer', author: 'project', text: 'Laut Plan: CSV.' });
+    expect(runtime.last.inbox.at(-1)).toContain('project agent');
+
+    projectReply = { escalate: { text: 'Budget freigeben?', options: ['Ja', 'Nein'] } };
+    runtime.last.call('ask', { question: 'Darf ich den Dienst X buchen?' });
+    await flush();
+    expect(state(w.id)).toBe('waiting:question');
+    expect(board.item(w.id)!.question!.text).toBe('Budget freigeben?');
+  });
+
+  test('a turn that ends without handing over is nudged once, then goes to the owner', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'text', text: 'Ich komme nicht an die Datenbank.' });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last.inbox.at(-1)).toContain('ready_for_review');
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.question!.text).toBe('Ich komme nicht an die Datenbank.');
+  });
+
+  test('handing over ends the turn without a nudge', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'Q?' });
+    const before = runtime.last.inbox.length;
+    runtime.last.emit({ type: 'idle' });
+    expect(runtime.last.inbox.length).toBe(before);
+  });
+
+  test('review, feedback, approval: the work lands on main and the clone is free again', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const clone = board.row(c.id).workspace!;
+    writeFileSync(join(clone, 'export.ts'), 'export {}\n');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Export');
+    runtime.last.call('ready_for_review', { summary: 'Export gebaut.' });
+    expect(state(c.id)).toBe('waiting:review');
+    expect(board.item(c.id)!.summary).toBe('Export gebaut.');
+
+    workers.message(c.id, 'Bitte mit Kopfzeile.');
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last.inbox.at(-1)).toContain('Bitte mit Kopfzeile.');
+
+    runtime.last.call('ready_for_review', { summary: 'Mit Kopfzeile.' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(main, 'log', '--format=%s', '-1')).toBe('Export');
+    expect(runtime.last.closed).toBe(true);
+    const d = manual();
+    workers.start(d.id);
+    expect(board.row(d.id).workspace).toBe(clone);
+  });
+
+  test('approval with uncommitted work sends the worker back', async () => {
+    const c = manual();
+    workers.start(c.id);
+    writeFileSync(join(board.row(c.id).workspace!, 'loose.ts'), '');
+    runtime.last.call('ready_for_review', { summary: 'Fertig.' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last.inbox.at(-1)).toContain('uncommitted changes');
+  });
+
+  test('stop releases the clone and plans the card again', () => {
+    const c = manual();
+    workers.start(c.id);
+    workers.stop(c.id);
+    expect(state(c.id)).toBe('planned');
+    expect(runtime.last.closed).toBe(true);
+    const d = manual();
+    expect(() => workers.start(d.id)).not.toThrow();
+  });
+
+  test('a proposal lands below its source card', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('propose_card', { kind: 'bugfix', title: 'Falsches Label', reason: 'Gesehen beim Testen.', suggestion: 'Umbenennen.' });
+    const p = board.snapshot().items.find((i) => i.state === 'proposal')!;
+    expect(p).toMatchObject({ kind: 'bugfix', title: 'Falsches Label', from: c.id });
+    expect(p.y).toBeGreaterThan(c.y);
+    board.accept(p.id);
+    expect(state(p.id)).toBe('planned');
+  });
+
+  test('after a restart a working card resumes its session; a delivery to an ended session resumes it', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'session', id: 'sess-1' });
+    workers.shutdown();
+    workers.resumeAll();
+    expect(runtime.last.spec.resume).toBe('sess-1');
+    runtime.last.call('ask', { question: 'Q?' });
+    workers.shutdown();
+    workers.answer(c.id, 'A');
+    expect(runtime.last.spec.resume).toBe('sess-1');
+    expect(runtime.last.inbox[0]).toContain('A');
+  });
+});
+
+describe('landing through a pull request', () => {
+  beforeEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+  });
+
+  test('approval keeps the branch in the clone and leaves main alone', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const clone = board.row(c.id).workspace!;
+    writeFileSync(join(clone, 'x.ts'), '');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'X');
+    runtime.last.call('ready_for_review', { summary: 'S' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('approved');
+    expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
+    expect(board.row(c.id).branch).toBeTruthy();
+  });
+});
+
+describe('a worktree per card', () => {
+  beforeEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'worktrees' });
+  });
+
+  const commitIn = (path: string, file: string, msg: string) => {
+    writeFileSync(join(path, file), msg);
+    git(path, 'add', '.');
+    git(path, 'commit', '--quiet', '-m', msg);
+  };
+
+  test('cards work in parallel and land one after the other on main', async () => {
+    const a = manual();
+    const b = board.create({ kind: 'bugfix', title: 'Zweite Karte', x: 0, y: 0 });
+    workers.start(a.id);
+    workers.start(b.id);
+    const wa = board.row(a.id).workspace!;
+    const wb = board.row(b.id).workspace!;
+    expect(wa).not.toBe(wb);
+    commitIn(wa, 'a.ts', 'A');
+    commitIn(wb, 'b.ts', 'B');
+    for (const c of [a, b]) {
+      runtime.sessions.find((s) => s.spec.cwd === board.row(c.id).workspace)!.call('ready_for_review', { summary: 'S' });
+      await workers.approve(c.id);
+      expect(state(c.id)).toBe('live');
+    }
+    // B was rebased onto A before the fast-forward
+    expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['B', 'A', 'init']);
+    expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
+    expect(git(main, 'branch', '--list', 'obeya/*')).toBe('');
+  });
+
+  test('a stopped card keeps its worktree and picks it up again', () => {
+    const a = manual();
+    workers.start(a.id);
+    const wa = board.row(a.id).workspace!;
+    writeFileSync(join(wa, 'draft.ts'), 'draft');
+    workers.stop(a.id);
+    workers.start(a.id);
+    expect(board.row(a.id).workspace).toBe(wa);
+    expect(git(wa, 'status', '--porcelain')).toContain('draft.ts');
+  });
+});

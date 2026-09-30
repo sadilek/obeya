@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasSnapshot, CardPatch, Item, NewCard, ServerMessage } from '../core/types';
+import type { CanvasSnapshot, CardAction, CardEvent, CardPatch, Item, NewCard, ServerMessage } from '../core/types';
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -7,7 +7,14 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    let message = body;
+    try {
+      message = JSON.parse(body).error ?? body;
+    } catch {}
+    throw new Error(message);
+  }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
@@ -16,7 +23,16 @@ export const api = {
   patch: (id: string, p: CardPatch) => call<void>('PATCH', `/api/cards/${id}`, p),
   remove: (id: string) => call<void>('DELETE', `/api/cards/${id}`),
   restore: (id: string) => call<void>('POST', `/api/cards/${id}/restore`),
+  act: (id: string, a: CardAction) => call<void>('POST', `/api/cards/${id}/act`, a),
+  events: (id: string) => call<CardEvent[]>('GET', `/api/cards/${id}/events`),
 };
+
+// Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.
+const eventListeners = new Set<(e: CardEvent) => void>();
+export function onCardEvent(fn: (e: CardEvent) => void): () => void {
+  eventListeners.add(fn);
+  return () => eventListeners.delete(fn);
+}
 
 /** The live canvas: the server pushes a snapshot on connect and after every change. */
 export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean } {
@@ -36,6 +52,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data) as ServerMessage;
         if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
+        else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
       };
       ws.onclose = () => {
         if (closed) return;

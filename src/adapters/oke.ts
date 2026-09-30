@@ -14,4 +14,7 @@ export const oke: RepoAdapter = {
     urls: { file: '.apphost.urls', frontendKey: 'FRONTEND' },
   },
   checks: ['scripts/ci.ts'],
+  land: 'pr',
+  // csharpier finds no files inside a worktree, and each clone runs its own app stack
+  workspaces: 'clones',
 };

@@ -17,9 +17,20 @@ export interface RepoAdapter {
   /** Where plan docs live, relative to the repository root. */
   planDocs: { dir: string; exclude: string[] };
 
-  // Filled in by later milestones; unused in M1.
+  /** Command a worker runs first in a fresh clone (dependencies). */
+  setup?: string;
+  /** Checks a worker runs before it reports the card ready for review. */
+  checks?: string[];
+  /**
+   * How approved work lands: `main` fast-forwards the checkout Obeya runs on to the worker's
+   * branch (created clones then come from that checkout); `pr` leaves the branch for a pull
+   * request (M4) and clones come from `origin`.
+   */
+  land: 'main' | 'pr';
+  /** Workers get full clones from a pool, or a worktree of the Obeya checkout per card. */
+  workspaces: 'clones' | 'worktrees';
 
-  /** How a worker brings up the app in its workspace and finds the frontend (M2, M3). */
+  /** How a worker brings up the app in its workspace and finds the frontend (M3). */
   stack?: {
     start: string;
     /** After a backend change, without restarting everything. */
@@ -27,6 +38,4 @@ export interface RepoAdapter {
     /** `KEY=value` file the running stack writes, and the key holding the frontend URL. */
     urls: { file: string; frontendKey: string };
   };
-  /** Checks a worker runs before a card goes to `waiting` (M2). */
-  checks?: string[];
 }

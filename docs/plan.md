@@ -39,8 +39,10 @@ decisions are made in front of the wall.
   - *Worker*, one per card while it is worked on: implementation, local reviews, demo.
   - *Project agent*, one per project, long-lived: knows the plan doc and the history of every
     workstream.
-  - *Chief of Staff*, one per canvas: takes voice input on the open canvas, creates and assigns
-    cards, runs the workspace pool, and keeps the preference memory.
+  - *Chief of Staff* (in the UI: *Koordinator*), one per canvas: takes voice input on the open
+    canvas, creates and assigns cards, runs the workspace pool, and keeps the preference memory.
+    It also schedules the work: it cuts work packages so they can run in parallel, detects cards
+    whose changes are likely to collide, and does not run those at the same time but queues them.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
   ("billing changes always get the Codex review", "labels: precise over short"). Shared by all
   agents, maintained by the Chief of Staff.
@@ -77,12 +79,11 @@ feeds the preference memory.
   `~/.obeya/`.
 - **UI** — browser app, React + TypeScript. Custom canvas grown from `design/mock/`: camera with
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap.
-- **Agents** — Claude on the owner's subscription, no API billing. Headless `claude` CLI is
-  proven on the subscription; the Agent SDK is used if it can run on the same login (settled in
-  M2).
-- **Workspaces** — a pool of full clones per repository, leased by a card while it is worked on.
-  Clones, not worktrees: in OKE, csharpier finds no files inside a worktree, and parallel
-  AppHosts per clone are proven.
+- **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
+  on the Claude Code login of the machine (tested without an API key: `apiKeySource: none`).
+- **Workspaces** — per adapter. A pool of full clones leased by a card while it is worked on
+  (OKE: csharpier finds no files inside a worktree, and parallel AppHosts per clone are proven),
+  or a worktree per card (Obeya itself: any number in parallel).
 - **Voice in** — local Whisper (MLX) sidecar with a domain vocabulary; the agent prompt states
   that input is speech and may carry recognition errors.
 - **Voice out** — macOS `say` with the default system voice, streamed sentence by sentence.
@@ -106,7 +107,8 @@ the repository).
   plan docs (read-only), OKE adapter skeleton. Voice and the proposal links of the mock wait for
   M5 and M2.
 - [ ] **M2 Agents.** Worker sessions per card on the clone pool; status and log streamed to the
-  card; `ask` / `report`; project agents; subscription auth settled.
+  card; `ask` / `report`; project agents; subscription auth settled. In progress:
+  [`docs/plan/agents.md`](plan/agents.md).
 - [ ] **M3 Demo loop.** Worker records the demo; the card waits; approve or feedback.
 - [ ] **M4 PR loop.** Approval opens the PR; monitoring through review bot, CI and conflicts to
   the merge; judgement questions routed to the card.
@@ -124,6 +126,7 @@ the repository).
 - Agents may propose cards.
 - Approval triggers the PR and its monitoring to the merge, not the merge itself.
 - Spoken output uses `say` with the default voice.
+- Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
 - Plan docs as projects: a doc in the adapter's plan directory is a project when its
   `## Workstreams` section has a checklist; each top-level item is a workstream (`**W3:** Title.
   Details`). Checked means `live`, `(in review)` after the label means `in PR`, anything else
@@ -141,6 +144,10 @@ the repository).
   a new card closed without a title is dropped. Deleting offers undo.
 
 ## Open questions
+
+- Pull the scheduling part of the Chief of Staff (conflict detection, queueing, cutting work
+  packages) forward to right after M2, without voice? With worktrees several workers run at once
+  on Obeya itself, and until then the owner starts cards by hand without a conflict check.
 
 - Agent SDK on subscription auth, or headless CLI sessions (M2).
 - Plan-doc sync: read-only in M1; writing workstream progress back through the project agent
