@@ -19,7 +19,7 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
 
   const act = (id: string, a: CardAction) => {
     const text = 'text' in a ? a.text : '';
-    if ('text' in a && (typeof text !== 'string' || !text.trim() || text.length > 20000)) throw new BadRequest('text must be a non-empty string');
+    if ('text' in a && (typeof text !== 'string' || !text.trim() || text.length > 20000)) throw new BadRequest('emptyText', 'text must be a non-empty string');
     switch (a.action) {
       case 'start':
         return koordinator.request(id);
@@ -40,10 +40,10 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
       case 'accept':
         return board.accept(id);
       case 'dismiss':
-        if (board.row(id).state !== 'proposal') throw new BadRequest('not a proposal');
+        if (board.row(id).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return board.remove(id);
       default:
-        throw new BadRequest('unknown action');
+        throw new BadRequest('invalid', 'unknown action');
     }
   };
 
@@ -52,8 +52,8 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
       const out = await fn();
       return out === undefined || out === null ? new Response(null, { status: 204 }) : Response.json(out);
     } catch (e) {
-      if (e instanceof BadRequest) return Response.json({ error: e.message }, { status: 400 });
-      if (e instanceof SyntaxError) return Response.json({ error: 'invalid JSON' }, { status: 400 });
+      if (e instanceof BadRequest) return Response.json({ code: e.code, error: e.message }, { status: 400 });
+      if (e instanceof SyntaxError) return Response.json({ code: 'invalid', error: 'invalid JSON' }, { status: 400 });
       throw e;
     }
   };

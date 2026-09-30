@@ -58,9 +58,9 @@ export class Koordinator {
   /** The owner wants the card worked on. */
   request(cardId: string) {
     const card = this.card(cardId);
-    if (card.kind === 'project') throw new BadRequest('a project is worked on through its workstreams');
-    if (card.state !== 'planned') throw new BadRequest('only a planned card can be started');
-    if (card.queue) throw new BadRequest('the card is already with the Koordinator');
+    if (card.kind === 'project') throw new BadRequest('project', 'a project is worked on through its workstreams');
+    if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
+    if (card.queue) throw new BadRequest('queued', 'the card is already with the Koordinator');
     this.setQueue(cardId, { checking: true });
     this.serial(() => this.decide(cardId));
   }
@@ -68,7 +68,7 @@ export class Koordinator {
   /** The owner wants the card cut into packages that can run in parallel. */
   split(cardId: string) {
     const card = this.card(cardId);
-    if (card.source !== 'manual' || card.state !== 'planned' || card.queue) throw new BadRequest('only a planned card of your own can be split');
+    if (card.source !== 'manual' || card.state !== 'planned' || card.queue) throw new BadRequest('notSplittable', 'only a planned card of your own can be split');
     this.setQueue(cardId, { cutting: true });
     this.serial(() => this.cut(cardId));
   }
@@ -146,14 +146,14 @@ export class Koordinator {
   /** Start a queued card anyway. */
   force(cardId: string) {
     const card = this.card(cardId);
-    if (!card.queue || !('behind' in card.queue)) throw new BadRequest('the card is not waiting');
+    if (!card.queue || !('behind' in card.queue)) throw new BadRequest('notQueued', 'the card is not waiting');
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', 'Trotz Überschneidung gestartet.');
     this.o.workers.start(cardId);
   }
 
   dequeue(cardId: string) {
-    if (!this.card(cardId).queue) throw new BadRequest('the card is not waiting');
+    if (!this.card(cardId).queue) throw new BadRequest('notQueued', 'the card is not waiting');
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', 'Aus der Warteschlange genommen.');
   }
@@ -219,7 +219,7 @@ export class Koordinator {
     try {
       this.o.workers.start(cardId);
     } catch (e) {
-      this.o.board.log(cardId, 'error', 'obeya', e instanceof Error ? e.message : String(e));
+      this.o.board.log(cardId, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
     }
   }
 
@@ -350,7 +350,7 @@ export class Koordinator {
 
   private card(id: string): Item {
     const i = this.o.board.item(id);
-    if (!i) throw new BadRequest('unknown card');
+    if (!i) throw new BadRequest('unknownCard', 'unknown card');
     return i;
   }
 }

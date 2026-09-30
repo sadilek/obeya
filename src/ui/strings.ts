@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, Need, Queue } from '../core/types';
+import type { CardState, ErrorCode, Need, Queue } from '../core/types';
 
 export const t = {
   kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream' },
@@ -66,6 +66,26 @@ export const t = {
     forced: 'Gestartet, trotz Überschneidung.',
     dequeued: 'Aus der Warteschlange genommen.',
   },
+  /** Why the server refused an action; `invalid` is also the text for anything unknown. */
+  error: {
+    unknownCard: 'Diese Karte gibt es nicht mehr.',
+    project: 'Ein Projekt wird über seine Workstreams bearbeitet, nicht als Ganzes.',
+    notPlanned: 'Nur eine geplante Karte kann gestartet werden.',
+    queued: 'Die Karte liegt schon beim Koordinator.',
+    notQueued: 'Die Karte wartet nicht in der Warteschlange.',
+    notSplittable: 'Aufteilen lässt sich nur eine eigene, geplante Karte, die nicht beim Koordinator liegt.',
+    noAgent: 'An dieser Karte arbeitet gerade kein Agent.',
+    noQuestion: 'Die Karte hat keine offene Frage mehr.',
+    notReady: 'Die Karte ist nicht bereit zur Abnahme.',
+    notProposal: 'Die Karte ist kein Vorschlag mehr.',
+    planCard: 'Die Karte kommt aus dem Plan-Dokument; geändert wird sie dort.',
+    noWorkspace: 'Kein Workspace frei: Alle sind belegt oder es ist keiner eingerichtet.',
+    dirtyWorkspaces: 'Kein Workspace frei: Jeder freie hat noch nicht committete Änderungen.',
+    workspace: 'Der Workspace für den Agenten ließ sich nicht vorbereiten (git-Fehler).',
+    emptyText: 'Bitte zuerst einen Text eingeben.',
+    invalid: 'Das hat nicht geklappt. Der Server hat die Aktion abgelehnt.',
+  } satisfies Record<ErrorCode, string>,
+  offlineError: 'Der Server ist nicht erreichbar.',
   scope: 'Voraussichtlich betroffen',
   split: 'Aufteilen',
   empty: 'Noch keine Karten. Doppelklick auf die Fläche legt eine an.',
@@ -81,3 +101,6 @@ export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue }) 
     : i.state === 'waiting' && i.need
       ? t.need[i.need]
       : t.state[i.state];
+
+/** The owner's text for a refused request or a logged error code; the generic one for anything unknown. */
+export const errorText = (code: string | undefined) => (code && Object.hasOwn(t.error, code) ? t.error[code as ErrorCode] : t.error.invalid);
