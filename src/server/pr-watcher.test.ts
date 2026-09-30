@@ -29,7 +29,7 @@ beforeEach(() => {
   git(main, 'add', '.');
   git(main, 'commit', '--quiet', '-m', 'init');
   const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repoPath: main, branch: 'main' }, () => []);
+  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => []);
   const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
   workspaces.ensureClones(main, 1);
   runtime = new FakeRuntime();

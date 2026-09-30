@@ -27,12 +27,12 @@ beforeEach(() => {
   git(main, 'add', '.');
   git(main, 'commit', '--quiet', '-m', 'init');
   const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repoPath: main, branch: 'main' }, () => []);
+  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => []);
   const adapter = { ...generic, land: 'main' as const, workspaces: 'worktrees' as const, softPaths: ['docs/'] };
   workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
   workers = new Workers({ board, runtime, workspaces, adapter });
-  k = new Koordinator({ board, runtime, workers, workspaces, adapter, repoPath: main });
+  k = new Koordinator({ board, runtime, repoFor: () => ({ workers, workspaces, adapter, path: main }) });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

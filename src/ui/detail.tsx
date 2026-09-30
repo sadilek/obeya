@@ -1,8 +1,8 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import type { CardAction, CardEvent, CardPatch, Demo, Item } from '../core/types';
-import { ApiError, api, onCardEvent } from './api';
+import type { CardAction, CardEvent, CardPatch, Demo, Item, RepoRef } from '../core/types';
+import { ApiError, api, at, onCardEvent } from './api';
 import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
 
@@ -13,6 +13,8 @@ interface Props {
   item: Item;
   /** Every item on the canvas, to name the cards a queued card waits for. */
   all: Item[];
+  /** The canvas's repositories; with several, the card names its own and a planned one can move. */
+  repos: RepoRef[];
   parent?: Item;
   /** A proposal's source card. */
   from?: Item;
@@ -35,7 +37,8 @@ export function Detail(p: Props) {
       setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
     }
   };
-  const kind = parent ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}` : t.kind[item.kind];
+  const repoPrefix = p.repos.length > 1 ? `${p.repos.find((r) => r.id === item.repo)?.name ?? item.repo} · ` : '';
+  const kind = repoPrefix + (parent ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}` : t.kind[item.kind]);
   const editable = item.source === 'manual' && item.state === 'planned' && !item.queue;
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
 
@@ -89,7 +92,7 @@ export function Detail(p: Props) {
 
       {item.state === 'planned' && (
         <>
-          {editable ? <ManualFields item={item} onEdit={p.onEdit} /> : <Body md={item.body} />}
+          {editable ? <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} /> : <Body md={item.body} />}
           {parent?.plan && <PlanSource file={parent.plan.file} />}
           {!item.queue && (
             <div className="actions">
@@ -253,7 +256,7 @@ export function Detail(p: Props) {
 function DemoView({ cardId, summary, demo, children }: { cardId: string; summary: string; demo: Demo; children: ReactNode }) {
   const video = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
-  const src = (f: string) => `/api/cards/${cardId}/demo/${f}`;
+  const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
   useEffect(() => {
     // start once the card has unfolded, like the mock
     const h = setTimeout(() => video.current?.play().catch(() => {}), 500);
@@ -352,12 +355,29 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
   );
 }
 
-function ManualFields({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => void }) {
+function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; onEdit: (p: CardPatch) => void }) {
   const [body, setBody] = useState(item.body);
   const [kind, setKind] = useState(item.kind as 'feature' | 'bugfix');
+  const [repo, setRepo] = useState(item.repo);
   return (
     <>
-      <div>
+      <div className="segs">
+        {repos.length > 1 && (
+          <div className="seg">
+            {repos.map((r) => (
+              <button
+                key={r.id}
+                className={r.id === repo ? 'on' : ''}
+                onClick={() => {
+                  setRepo(r.id);
+                  onEdit({ repo: r.id });
+                }}
+              >
+                {r.name}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="seg">
           {(['feature', 'bugfix'] as const).map((k) => (
             <button

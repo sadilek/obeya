@@ -7,7 +7,7 @@ import { BadRequest, type Board } from './board';
 import type { AgentRuntime, AgentTool } from './runtime';
 
 export type Command =
-  | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean }
+  | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string }
   | { do: 'start' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop'; card: string }
   | { do: 'note' | 'answer' | 'feedback'; card: string; text: string };
 
@@ -83,6 +83,7 @@ export class Commander {
 
   private interpret(transcript: string, focus: Focus): Promise<{ command: Command | null; confirm: string }> {
     const items = this.o.board.snapshot().items;
+    const repos = this.o.board.canvas.repos;
     const relevant = items.filter((i) => i.kind !== 'project' && (i.state !== 'live' || i.id === focus.card));
     const tags = new Map(relevant.map((i, n) => [`K${n + 1}`, i.id]));
     const tagOf = new Map([...tags].map(([t, id]) => [id, t]));
@@ -122,10 +123,15 @@ export class Commander {
           tools: [
             {
               name: 'new_card',
-              description: 'A new card. Title short and precise; body what the owner asked for, in their words. start: whether the owner wants work to begin right away.',
-              schema: { kind: z.enum(['bugfix', 'feature']), title: z.string(), body: z.string(), start: z.boolean(), confirm: z.string() },
-              run: (a) =>
-                finish({ do: 'newCard', kind: a.kind as 'bugfix' | 'feature', title: String(a.title), body: String(a.body), start: Boolean(a.start) }, String(a.confirm)),
+              description: `A new card. Title short and precise; body what the owner asked for, in their words. start: whether the owner wants work to begin right away.${repos.length > 1 ? ' repo: the repository it belongs to (an id from the list).' : ''}`,
+              schema: { kind: z.enum(['bugfix', 'feature']), title: z.string(), body: z.string(), start: z.boolean(), repo: z.string().optional(), confirm: z.string() },
+              run: (a) => {
+                const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? String(a.repo) : undefined;
+                return finish(
+                  { do: 'newCard', kind: a.kind as 'bugfix' | 'feature', title: String(a.title), body: String(a.body), start: Boolean(a.start), ...(repo ? { repo } : {}) },
+                  String(a.confirm),
+                );
+              },
             },
             onCard('start', 'Start work on a planned card.'),
             withText('note', "A note to the agent working on a card; it doesn't stop it."),
@@ -163,7 +169,8 @@ export class Commander {
     const describe = (i: Item) => {
       const project = i.parent ? items.find((p) => p.id === i.parent) : undefined;
       const state = i.queue ? 'queued' : i.need ? `${i.state}: ${i.need}` : i.state;
-      return `${tagOf.get(i.id)} [${state}] ${i.kind} "${i.title}"${project ? ` (project "${project.title}")` : ''}${i.question ? ` — open question: ${i.question.text}` : ''}`;
+      const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
+      return `${tagOf.get(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.question ? ` — open question: ${i.question.text}` : ''}`;
     };
     const focused = focus.card ? relevant.find((i) => i.id === focus.card) : undefined;
     const project = focus.project ? items.find((i) => i.id === focus.project) : undefined;
@@ -171,6 +178,9 @@ export class Commander {
       `The owner said (speech recognition, may contain errors): "${transcript}"`,
       focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}` : project ? `The owner is looking at the project "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
       `Cards on the canvas:\n${relevant.map(describe).join('\n') || '(none)'}`,
+      ...(this.o.board.canvas.repos.length > 1
+        ? [`Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name})`).join(', ')}`]
+        : []),
     ].join('\n\n');
   }
 }

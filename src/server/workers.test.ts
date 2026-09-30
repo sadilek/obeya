@@ -32,7 +32,7 @@ function setup(adapter: RepoAdapter) {
   git(main, 'add', '.');
   git(main, 'commit', '--quiet', '-m', 'init');
   const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repoPath: main, branch: 'main' }, () => [doc]);
+  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => [doc]);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   if (adapter.workspaces === 'clones') {
     workspaces.ensureClones(main, 1);
