@@ -46,7 +46,7 @@ export const t = {
   task: 'Auftrag',
   log: 'Verlauf',
   logEmpty: 'Noch nichts passiert.',
-  author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', obeya: 'Obeya' },
+  author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', koordinator: 'Koordinator', obeya: 'Obeya' },
   branch: 'Branch',
   started: (title: string) => `Agent arbeitet an „${title}“.`,
   answered: 'Antwort ist beim Agenten.',

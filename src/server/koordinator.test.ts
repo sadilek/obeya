@@ -160,6 +160,40 @@ describe('Koordinator', () => {
   });
 });
 
+describe('Koordinator answers questions of cards without a project', () => {
+  test('from the decisions on such cards, in one resumed session', async () => {
+    const a = card('Export');
+    board.decide({ project_id: null, card_id: a.id, question: 'Trennzeichen?', answer: 'Semikolon', by: 'owner' });
+    const r1 = k.ask(item(a.id), { text: 'Kopfzeile?', options: [] });
+    await settle();
+    const s = runtime.last;
+    expect(s.spec.readOnly).toBe(true);
+    expect(s.inbox[0]).toContain('Trennzeichen? → Semikolon (owner)');
+    s.emit({ type: 'session', id: 'k-1' });
+    s.call('answer', { text: 'Ja.' });
+    s.emit({ type: 'idle' });
+    expect(await r1).toEqual({ answer: 'Ja.' });
+    const r2 = k.ask(item(a.id), { text: 'Budget?', options: [] });
+    await settle();
+    expect(runtime.last.spec.resume).toBe('k-1');
+    runtime.last.call('escalate', { question: 'Darf das Geld kosten?' });
+    expect(await r2).toEqual({ escalate: { text: 'Darf das Geld kosten?', options: [] } });
+  });
+
+  test('its answer reaches the worker and is marked as the Koordinator\u2019s', async () => {
+    const w = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees', softPaths: [] }, advisor: (c) => ({ by: 'koordinator', ask: (q) => k.ask(c, q) }) });
+    const a = card('A');
+    w.start(a.id);
+    workerOf(a.id).call('ask', { question: 'Farbe?' });
+    await settle();
+    runtime.last.call('answer', { text: 'Blau, wie bisher.' });
+    await settle();
+    expect(item(a.id).state).toBe('working');
+    expect(board.events(a.id).at(-1)).toMatchObject({ kind: 'answer', author: 'koordinator' });
+    expect(workerOf(a.id).inbox.at(-1)).toContain('from the Koordinator');
+  });
+});
+
 test('overlaps', () => {
   expect(overlaps('src/a.ts', 'src/a.ts')).toBe(true);
   expect(overlaps('src/', 'src/a.ts')).toBe(true);

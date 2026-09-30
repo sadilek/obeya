@@ -94,12 +94,21 @@ export class Board {
     return toItems([row!], [])[0]!;
   }
 
-  decide(d: { project_id: string | null; card_id: string; question: string; answer: string; by: 'owner' | 'project' }) {
+  decide(d: { project_id: string | null; card_id: string; question: string; answer: string; by: 'owner' | 'project' | 'koordinator' }) {
     this.store.addDecision({ canvas_id: this.canvas.id, ...d });
   }
 
-  decisions(projectId: string) {
-    return this.store.decisions(projectId);
+  /** A project's decisions, or with `null` those of standalone cards. */
+  decisions(projectId: string | null) {
+    return this.store.decisions(this.canvas.id, projectId);
+  }
+
+  setting(key: string): string | null {
+    return this.store.setting(this.canvas.id, key);
+  }
+
+  setSetting(key: string, value: string) {
+    this.store.setSetting(this.canvas.id, key, value);
   }
 
   accept(id: string) {

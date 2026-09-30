@@ -38,6 +38,6 @@ answers the questions of standalone cards, and learns the owner's preferences.
 - [x] **W1:** Scope and queue. Scope estimate, collision check, queue, start when free, force
   start and dequeue; card and panel show the waiting state.
 - [ ] **W2:** Cutting. "Aufteilen" replaces a card by parallel packages.
-- [ ] **W3:** Questions of standalone cards through the Koordinator.
+- [x] **W3:** Questions of standalone cards through the Koordinator.
 - [ ] **W4:** Preference memory. Rules learned from answers, notes and feedback; used by every
   agent; the Koordinator sheet shows rules and queue.

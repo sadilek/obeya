@@ -8,7 +8,8 @@ import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { FakeRuntime } from './testing';
-import { type ProjectReply, Workers } from './workers';
+import type { Reply } from './advisor';
+import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
 const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
@@ -19,7 +20,7 @@ let main: string;
 let board: Board;
 let runtime: FakeRuntime;
 let workers: Workers;
-let projectReply: ProjectReply | null;
+let projectReply: Reply | null;
 
 function setup(adapter: RepoAdapter) {
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
@@ -47,7 +48,7 @@ function setup(adapter: RepoAdapter) {
     runtime,
     workspaces,
     adapter,
-    askProject: async () => projectReply!,
+    advisor: (card) => (card.parent ? { by: 'project', ask: async () => projectReply! } : null),
   });
 }
 

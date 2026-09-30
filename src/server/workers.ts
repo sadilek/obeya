@@ -6,11 +6,13 @@ import type { RepoAdapter } from '../adapters/types';
 import { OWNER_LANGUAGE } from '../core/locale';
 import type { Item, Question } from '../core/types';
 import { BadRequest, type Board } from './board';
+import type { Reply } from './advisor';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { branchName, WorkspaceError, type Workspaces } from './workspaces';
 
-/** A project agent's reply to a worker's question. */
-export type ProjectReply = { answer: string } | { escalate: Question };
+/** Who answers a worker's question before the owner does, and how. */
+export type Advisor = { by: Adviser; ask: (q: Question) => Promise<Reply> };
+export type Adviser = 'project' | 'koordinator';
 
 export interface WorkerOptions {
   board: Board;
@@ -18,8 +20,8 @@ export interface WorkerOptions {
   workspaces: Workspaces;
   adapter: RepoAdapter;
   permissionMode?: 'auto' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk' | 'default';
-  /** Answers a workstream's question on the owner's behalf, or escalates it. */
-  askProject?: (project: Item, card: Item, q: Question) => Promise<ProjectReply>;
+  /** Who answers the card's questions on the owner's behalf, if anyone. */
+  advisor?: (card: Item) => Advisor | null;
 }
 
 interface Live {
@@ -69,7 +71,7 @@ export class Workers {
     } else throw new BadRequest('no agent works on this card');
   }
 
-  answer(cardId: string, text: string, by: 'owner' | 'project' = 'owner') {
+  answer(cardId: string, text: string, by: 'owner' | Adviser = 'owner') {
     const card = this.card(cardId);
     if (!(card.state === 'waiting' && card.need === 'question') && by === 'owner') throw new BadRequest('the card has no open question');
     const row = this.o.board.row(cardId);
@@ -78,7 +80,8 @@ export class Workers {
     this.o.board.work(cardId, { state: 'working', need: null, detail: null });
     this.o.board.log(cardId, 'answer', by, text);
     this.recordDecision(card, q, text, by);
-    this.deliver(cardId, `Answer to your question${by === 'project' ? ' (from the project agent, on the owner’s behalf)' : ' (from the owner)'}:\n\n${text}`);
+    const from = { owner: 'from the owner', project: 'from the project agent, on the owner\u2019s behalf', koordinator: 'from the Koordinator, on the owner\u2019s behalf' }[by];
+    this.deliver(cardId, `Answer to your question (${from}):\n\n${text}`);
   }
 
   async approve(cardId: string) {
@@ -260,17 +263,18 @@ export class Workers {
   private routeQuestion(cardId: string, q: Question) {
     const card = this.card(cardId);
     this.o.board.log(cardId, 'question', 'worker', formatQuestion(q));
-    const project = card.parent ? this.o.board.item(card.parent) : undefined;
-    if (!project || !this.o.askProject) return this.toOwner(cardId, q);
-    this.o.board.work(cardId, { status_line: 'Frage beim Projekt-Agenten' });
-    this.o
-      .askProject(project, card, q)
+    const advisor = this.o.advisor?.(card);
+    if (!advisor) return this.toOwner(cardId, q);
+    const name = advisor.by === 'project' ? 'Projekt-Agent' : 'Koordinator';
+    this.o.board.work(cardId, { status_line: advisor.by === 'project' ? 'Frage beim Projekt-Agenten' : 'Frage beim Koordinator' });
+    advisor
+      .ask(q)
       .then((reply) => {
-        if ('answer' in reply) this.answer(cardId, reply.answer, 'project');
+        if ('answer' in reply) this.answer(cardId, reply.answer, advisor.by);
         else this.toOwner(cardId, reply.escalate);
       })
       .catch((e) => {
-        this.o.board.log(cardId, 'error', 'obeya', `Projekt-Agent: ${e instanceof Error ? e.message : String(e)}`);
+        this.o.board.log(cardId, 'error', 'obeya', `${name}: ${e instanceof Error ? e.message : String(e)}`);
         this.toOwner(cardId, q);
       });
   }
@@ -286,7 +290,7 @@ export class Workers {
       .at(-1)?.text;
   }
 
-  private recordDecision(card: Item, question: string, answer: string, by: 'owner' | 'project') {
+  private recordDecision(card: Item, question: string, answer: string, by: 'owner' | Adviser) {
     this.o.board.decide({ project_id: card.parent ?? null, card_id: card.id, question, answer, by });
   }
 
@@ -305,7 +309,7 @@ The owner does not watch you work and does not read code. They see your card: st
 Rules:
 - Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.
 - Follow the repository's own instructions (CLAUDE.md and docs).
-- Owner-facing text (report, ask, propose_card, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete.
+- Owner-facing text (report, ask, propose_card, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete. What you write between tool calls also shows in the card's log for the owner: keep it brief and in ${OWNER_LANGUAGE} too.
 `.trim();
   }
 
