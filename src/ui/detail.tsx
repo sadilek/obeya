@@ -314,20 +314,27 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
         ● {stateLabel(item)}
         {idea.thinking && <span className="p-status"> · {t.author.explorer} {t.idea.thinking}</span>}
       </div>
-      <div className="question brief">
-        <h4>{t.idea.brief}</h4>
-        {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
+      {/* the brief is what stays; the conversation beside it is how it came about */}
+      <div className="idea-grid">
+        <div className="idea-brief">
+          <div className="question brief">
+            <h4>{t.idea.brief}</h4>
+            {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
+          </div>
+          {item.demo && (
+            <>
+              <h4 className="p-h">{t.idea.spikeDemo}</h4>
+              <DemoView cardId={item.id} summary="" demo={item.demo} autoplay={false}>
+                <p className="hint">{t.idea.spikeKept}</p>
+              </DemoView>
+            </>
+          )}
+        </div>
+        <div className="idea-talk">
+          <Conversation item={item} />
+          <Composer placeholder={t.idea.compose} onSend={(text) => act({ action: 'discuss', text }, { close: false })} />
+        </div>
       </div>
-      {item.demo && (
-        <>
-          <h4 className="p-h">{t.idea.spikeDemo}</h4>
-          <DemoView cardId={item.id} summary="" demo={item.demo} autoplay={false}>
-            <p className="hint">{t.idea.spikeKept}</p>
-          </DemoView>
-        </>
-      )}
-      <Conversation item={item} />
-      <Composer placeholder={t.idea.compose} onSend={(text) => act({ action: 'discuss', text }, { close: false })} />
       {idea.status !== 'open' && <p className="hint">{t.idea.reopen}</p>}
       {spiking ? (
         <Composer
