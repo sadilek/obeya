@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obeya Mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f4f2ee; --dot: #d9d5cc; --card: #ffffff; --ink: #1d1c1a; --muted: #75716a; --line: #e6e2da;
+  --shadow: 0 1px 2px rgba(30,25,15,.06), 0 6px 18px rgba(30,25,15,.07);
+  --lift: 0 2px 4px rgba(30,25,15,.08), 0 18px 40px rgba(30,25,15,.16);
+  --planned: #a9a49a; --working: #3b82f6; --waiting: #f59e0b; --approved: #16a34a; --live: #b8b3a9; --proposal: #8b5cf6;
+  --container: rgba(255,255,255,.42); --container-line: rgba(120,110,95,.18);
+  --dim: rgba(28,24,18,.34); --panel: #ffffff; --chip: #f1eee8; --badge: #ef4444;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151412; --dot: #2b2925; --card: #1f1e1b; --ink: #eeeae3; --muted: #a39e94; --line: #34312c;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.35); --lift: 0 18px 44px rgba(0,0,0,.6);
+  --container: rgba(255,255,255,.035); --container-line: rgba(255,255,255,.09);
+  --dim: rgba(0,0,0,.5); --panel: #1c1b18; --chip: #2a2825; --live: #5d5953; --planned: #6f6a62;
+} }
+:root[data-theme="dark"] {
+  --bg: #151412; --dot: #2b2925; --card: #1f1e1b; --ink: #eeeae3; --muted: #a39e94; --line: #34312c;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.35); --lift: 0 18px 44px rgba(0,0,0,.6);
+  --container: rgba(255,255,255,.035); --container-line: rgba(255,255,255,.09);
+  --dim: rgba(0,0,0,.5); --panel: #1c1b18; --chip: #2a2825; --live: #5d5953; --planned: #6f6a62;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; }
+
+/* ---------- canvas ---------- */
+#viewport { position: fixed; inset: 0; cursor: grab; touch-action: none;
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px); }
+#viewport.panning { cursor: grabbing; }
+#world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+
+.item { position: absolute; }
+.project { border-radius: 26px; background: var(--container); border: 1.5px solid var(--container-line);
+  backdrop-filter: blur(2px); }
+.project > .head { position: absolute; left: 0; right: 0; top: 0; height: 58px; padding: 16px 22px;
+  display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.project > .head .ttl { font-weight: 700; letter-spacing: -.01em;
+  font-size: 17px; white-space: nowrap; }
+.project > .head .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.project > .head .progress { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+.card { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 14px 12px 18px;
+  cursor: pointer; overflow: visible; transition: box-shadow .2s, transform .2s, opacity .25s; user-select: none; }
+.card:hover { box-shadow: var(--lift); }
+.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); border-radius: 14px 0 0 14px; }
+.card .kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.card .ttl { font-weight: 600; margin-top: 3px; letter-spacing: -.005em;
+  font-size: 15px; line-height: 1.22; }
+.card .meta { margin-top: 6px; color: var(--muted); font-size: 12.5px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card .ttl { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card .state { position: absolute; left: 18px; bottom: 11px; font-size: 11.5px; font-weight: 600; color: var(--c); display: flex; align-items: center; gap: 6px; }
+.card.feature { width: 300px; height: 136px; }
+.card.bugfix { width: 230px; height: 104px; }
+.card.bugfix .meta { display: none; }
+.card.chip { width: 196px; height: 64px; padding-top: 10px; }
+.card.chip .meta, .card.chip .state, .card.chip .kind { display: none; }
+.card.chip .ttl { font-size: 13px; font-weight: 500; }
+
+.s-planned { --c: var(--planned); } .s-working { --c: var(--working); } .s-waiting { --c: var(--waiting); }
+.s-approved { --c: var(--approved); } .s-live { --c: var(--live); } .s-proposal { --c: var(--proposal); }
+.card.s-live { opacity: .72; }
+.card.s-live .ttl { font-weight: 500; }
+.card.s-proposal { background: transparent; box-shadow: none; border: 2px dashed var(--proposal); }
+.card.s-proposal::before { display: none; }
+.card.s-waiting { box-shadow: 0 0 0 2px var(--waiting), var(--shadow); }
+.card.s-working .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--working), transparent); background-size: 200% 100%;
+  animation: flow 1.4s linear infinite; }
+@keyframes flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+.badge { position: absolute; top: -9px; right: -9px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px;
+  background: var(--waiting); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center;
+  box-shadow: 0 0 0 3px var(--bg); transform: scale(max(1, calc(.9 / var(--s)))); transform-origin: 70% 30%; }
+.badge.pulse { animation: pulse 1.8s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 3px var(--bg), 0 0 0 3px rgba(245,158,11,.55); }
+  70% { box-shadow: 0 0 0 3px var(--bg), 0 0 0 16px rgba(245,158,11,0); } 100% { box-shadow: 0 0 0 3px var(--bg), 0 0 0 16px rgba(245,158,11,0); } }
+.card.lifted { opacity: 0; }
+.card.pop { animation: pop .55s cubic-bezier(.2,1.4,.4,1); }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.card.flash { animation: flash 1.2s ease-out 2; }
+@keyframes flash { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 45%, transparent), var(--lift); } }
+
+/* semantic zoom */
+body.z-far .card .meta, body.z-far .card .kind, body.z-far .card .state, body.z-far .project .progress { display: none; }
+body.z-far .card { padding-top: 16px; }
+body.z-far .card.chip { opacity: .45; }
+
+#links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+#links path { fill: none; stroke: var(--proposal); stroke-width: 2; stroke-dasharray: 5 6; opacity: .7; }
+
+/* ---------- chrome ---------- */
+#bar { position: fixed; top: 14px; left: 14px; right: 14px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 20; }
+#bar > * { pointer-events: auto; }
+.pill { background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.pill b { font-weight: 600; }
+#attention { margin-left: auto; cursor: pointer; border: 0; }
+#attention .n { background: var(--waiting); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; }
+.mock { font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+#edges { position: fixed; inset: 0; pointer-events: none; z-index: 15; }
+.edge { position: absolute; pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 5px 11px 5px 7px; font-size: 12px; font-weight: 500;
+  transform: translate(-50%, -50%); white-space: nowrap; transition: opacity .2s; }
+.edge .arr { width: 20px; height: 20px; border-radius: 50%; background: var(--c); color: #fff; display: grid; place-items: center; font-size: 12px; }
+
+#minimap { position: fixed; right: 14px; bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 12px;
+  box-shadow: var(--shadow); z-index: 20; cursor: pointer; overflow: hidden; }
+#minimap svg { width: 100%; height: 100%; display: block; }
+
+/* ---------- focus: dim + panel + plan sheet ---------- */
+#dim { position: fixed; inset: 0; background: var(--dim); opacity: 0; pointer-events: none; transition: opacity .35s; z-index: 30; }
+#dim.on { opacity: 1; pointer-events: auto; }
+#panel { position: fixed; z-index: 40; background: var(--panel); border-radius: 14px; box-shadow: var(--lift); overflow: hidden; display: none; }
+#panel.anim { transition: left .42s cubic-bezier(.3,.9,.3,1), top .42s cubic-bezier(.3,.9,.3,1), width .42s cubic-bezier(.3,.9,.3,1),
+  height .42s cubic-bezier(.3,.9,.3,1), border-radius .42s; }
+#panel .inner { position: absolute; inset: 0; overflow: auto; padding: 26px 30px 90px; opacity: 0; transition: opacity .2s; }
+#panel.ready .inner { opacity: 1; transition-delay: .08s; }
+#panel .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; z-index: 2; }
+#panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); z-index: 1; }
+.p-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.p-title { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 2px 0 6px; }
+.p-state { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; font-weight: 600; color: var(--c); }
+.p-lead { font-size: 16px; max-width: 72ch; margin: 12px 0 18px; }
+.p-grid { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; align-items: start; }
+.p-grid video { width: 100%; border-radius: 10px; background: #000; display: block; }
+.chapters { list-style: none; margin: 0; padding: 6px; background: var(--chip); border-radius: 10px; }
+.chapters button { all: unset; cursor: pointer; display: flex; gap: 10px; width: 100%; padding: 6px 8px; border-radius: 7px; font-size: 13px; box-sizing: border-box; }
+.chapters button:hover, .chapters button.on { background: var(--card); }
+.chapters .t { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 32px; }
+.question { margin: 18px 0; padding: 14px 18px; border-radius: 12px; border: 1.5px solid var(--waiting);
+  background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
+.question h4, .cols h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.cols section { background: var(--chip); border-radius: 12px; padding: 12px 16px; font-size: 13px; }
+.cols ul { margin: 0; padding-left: 18px; } .cols li { margin: 3px 0; }
+.say { margin-top: 18px; color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.say kbd { font: 600 11px Inter, sans-serif; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--ink); background: var(--card); }
+.log { font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--chip); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+.log div { opacity: .85; } .log div:last-child { opacity: 1; font-weight: 600; }
+.log div:last-child::after { content: "▍"; animation: blink 1s steps(1) infinite; margin-left: 2px; }
+@keyframes blink { 50% { opacity: 0; } }
+.opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.opts button { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.opts button:hover { border-color: var(--ink); }
+.actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+.btn { border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; cursor: pointer; background: var(--chip); }
+.btn.primary { background: var(--ink); color: var(--bg); }
+.btn:hover { filter: brightness(1.08); }
+
+#sheet { position: fixed; top: 64px; right: 14px; bottom: 158px; width: 380px; background: var(--panel); border-radius: 16px; box-shadow: var(--lift);
+  z-index: 25; transform: translateX(calc(100% + 30px)); transition: transform .45s cubic-bezier(.3,.9,.3,1); overflow: auto; padding: 22px 22px 30px; }
+#sheet.on { transform: none; }
+#sheet h2 { margin: 2px 0 8px; font-size: 20px; letter-spacing: -.01em; }
+#sheet .goal { font-size: 13.5px; color: var(--ink); opacity: .9; }
+#sheet .src { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 8px; }
+#sheet ol { list-style: none; padding: 0; margin: 16px 0 0; }
+#sheet li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+#sheet li:hover { background: var(--chip); }
+#sheet li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
+#sheet li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
+
+/* ---------- push to talk ---------- */
+#ptt { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#mic { width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--card); box-shadow: var(--lift); cursor: pointer; display: grid; place-items: center; position: relative; }
+#mic svg { width: 24px; height: 24px; }
+#mic .ring { position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--waiting); opacity: 0; transform: scale(var(--lvl, 1)); transition: transform .08s linear, opacity .2s; }
+#ptt.listening #mic { background: var(--waiting); color: #fff; }
+#ptt.listening #mic .ring { opacity: .8; }
+#ptt.thinking #mic::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--working); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
+#target b { color: var(--ink); font-weight: 600; }
+#ack { position: fixed; left: 50%; bottom: 128px; transform: translate(-50%, 12px); z-index: 60; background: var(--ink); color: var(--bg);
+  border-radius: 14px; padding: 12px 16px; max-width: min(560px, calc(100vw - 32px)); font-size: 14px; opacity: 0; pointer-events: none;
+  transition: opacity .25s, transform .25s; display: flex; gap: 14px; align-items: center; }
+#ack.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+#ack button { background: transparent; border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent); color: var(--bg); border-radius: 8px; padding: 3px 10px; cursor: pointer; flex: none; }
+@media (max-width: 760px) { #minimap { display: none; } .p-grid, .cols { grid-template-columns: 1fr; } #sheet { width: auto; left: 14px; } }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="world"><svg id="links" width="1" height="1"></svg></div></div>
+<div id="edges"></div>
+<header id="bar">
+  <div class="pill"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-10 6"/></svg><b>oke5</b><span class="hint">main</span></div>
+  <div class="pill"><b>Obeya</b><span class="mock">Mock</span></div>
+  <span class="hint" id="keys">Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Tab: nächste offene Karte · Leertaste halten: sprechen</span>
+  <button class="pill" id="attention"><span class="n" id="attn-n">0</span> brauchen dich</button>
+</header>
+<div id="minimap"><svg id="mm"></svg></div>
+<div id="dim"></div>
+<div id="panel"><button class="close" title="Schließen (Esc)">✕</button><div class="inner"></div></div>
+<aside id="sheet"></aside>
+<div id="ack"><span id="ack-text"></span><button id="undo">Rückgängig</button></div>
+<div id="ptt">
+  <button id="mic" title="Halten zum Sprechen (Leertaste)"><span class="ring"></span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+  <div id="target">→ <b>Koordinator</b></div>
+</div>
+
+<script src="acks.js"></script>
+<script>
+// ------------------------------------------------------------------ data
+// The demo video stays local: it is narrated in a cloned voice and does not belong in git.
+const DEMO = 'file:///Users/sadilek/demos/oke5-rabatt/';
+const items = [
+  // project: billing cadence
+  { id: 'cadence', kind: 'project', title: 'Abrechnungskadenz & Jahresabrechnung', x: 0, y: 0, w: 1000, h: 590,
+    plan: { file: 'docs/plan/billing-cadence.md',
+      goal: 'Die fallweise Rechnungsterminierung durch eine regelgetriebene Kadenz ersetzen: je Marktlokation ableiten, ob monatlich oder quartalsweise abgerechnet wird und wann das fällig ist, und sauber gerechnete Zwischenrechnungen automatisch ausstellen. Die Jahresabrechnung gibt immer eine Person frei.' } },
+  { id: 'c9', parent: 'cadence', w: 'W9', kind: 'feature', title: 'Prüflauf', meta: 'Täglich 05:00 und „Jetzt prüfen“; blockierte Pflichten im Dashboard', state: 'live', x: 30, y: 90 },
+  { id: 'c10', parent: 'cadence', w: 'W10', kind: 'feature', title: 'Perioden im Composer', meta: 'Mehrmonats-Perioden aus Monatsläufen, Überlappungsprüfung', state: 'working', x: 350, y: 90,
+    log: ['Plan gelesen, Regel 13 und N1 zusammengefasst', 'MonthRunAggregator: 14 Tests grün', 'Überlappungsprüfung im Composer eingebaut', 'Migration AddBillingPeriodSpans erzeugt', 'Codex-Review läuft (Geld/Abrechnung)'] },
+  { id: 'c13', parent: 'cadence', w: 'W13', kind: 'feature', title: 'Jahresabrechnung', meta: 'Composer-Pfad, Lieferende-Auslöser, Freigabe auf dem Entwurf · wartet auf W10', state: 'planned', x: 670, y: 90 },
+  { id: 'c8', parent: 'cadence', w: 'W8', kind: 'feature', title: 'Eskalation ins Alerts-Modul', meta: 'Vor dem ersten Kunden mit Automatisierung', state: 'planned', x: 30, y: 260 },
+  { id: 'c11', parent: 'cadence', w: 'W11', kind: 'feature', title: 'Zahlungen', meta: 'Zuordnung, Auszahlung, Zahlungsavis-Seite', state: 'planned', x: 350, y: 260 },
+  { id: 'c12', parent: 'cadence', w: 'W12', kind: 'feature', title: 'Abschlagszahlungen bestätigen', meta: 'Zahlungseingänge neben dem Abschlagsplan', state: 'planned', x: 670, y: 260 },
+  { id: 'c19', parent: 'cadence', w: 'W19', kind: 'feature', title: 'Automatische Ausstellung', meta: 'Schalter je Kunde, zuerst Zwischenrechnungen', state: 'planned', x: 350, y: 430 },
+
+  // standalone billing features next to it
+  { id: 'rabatt', kind: 'feature', title: 'Rabatt auf der Stromrechnung', meta: 'Netto-Rabatt je Lieferstelle, eigene Position, USt. auf reduziertes Netto', state: 'waiting', need: 'demo', x: 1060, y: 40 },
+  { id: 'gutschrift', kind: 'bugfix', title: 'Gesperrter Fall heißt „Gutschriftbetrag“', state: 'proposal', from: 'rabatt', x: 1095, y: 245,
+    reason: 'Beim Aufnehmen der Rabatt-Demo gefunden: Ist der Rabatt größer als das Netto, zeigen Zeile und Zahlungskasten „Ihr Gutschriftbetrag 270,28 €“. Die Lieferstelle ist korrekt gesperrt, aber eine negative Rechnung als Gutschrift zu beschriften ist irreführend.',
+    suggestion: 'Den Betrag negativ als Rechnungsbetrag zeigen; Aufwand klein, nur Frontend.' },
+  { id: 'una', kind: 'bugfix', title: 'EDIFACT-Zahlen mit dem Dezimalzeichen aus UNA', state: 'live', x: 1095, y: 400 },
+
+  // project: water heater
+  { id: 'ww', kind: 'project', title: 'Warmwasserbereiter-Steuerung', x: 1500, y: -60, w: 1000, h: 600,
+    plan: { file: 'docs/plan/water-heater-control.md',
+      goal: 'Warmwasserspeicher unter Optimizer-Kontrolle: in den günstigsten Viertelstunden heizen statt dann, wenn der Thermostat anspringt. Erster Standort: Judith-Resnik-Straße 5–9 in Aschersleben, fünf Speicher hinter einem Zähler.' } },
+  { id: 'w1', parent: 'ww', w: 'W1', kind: 'chip', title: 'Asset-Typ water_heater', state: 'live', x: 30, y: 78 },
+  { id: 'w2', parent: 'ww', w: 'W2', kind: 'chip', title: 'FC-2-Polling in der Firmware', state: 'live', x: 240, y: 78 },
+  { id: 'w4', parent: 'ww', w: 'W4', kind: 'chip', title: 'Portal: Tankzustand', state: 'live', x: 450, y: 78 },
+  { id: 'w3', parent: 'ww', w: 'W3', kind: 'feature', title: 'Gateway-Konfiguration & Inbetriebnahme', meta: 'Fünf Controller, Test gegen echte Hardware', state: 'waiting', need: 'question', x: 30, y: 170,
+    question: 'Für die Inbetriebnahme muss jemand vor Ort die fünf Controller einschalten, während ich die Gateway-Konfiguration ausrolle. Wann ist der Termin in der Resnikstraße, und wer ist dort?',
+    options: ['Donnerstag 9 Uhr, Hausmeister', 'Nächste Woche', 'Erst Konfiguration ohne Hardware testen'] },
+  { id: 'w6', parent: 'ww', w: 'W6', kind: 'feature', title: 'Dispatch: günstigster Block', meta: 'Kanaltyp-eigene Baseline-Zeilen im BaselineScheduleWriter', state: 'working', x: 350, y: 170,
+    log: ['Implementierung fertig, 38 Tests grün', 'Grok-Review: keine Befunde', 'Stack neu gestartet, Migrationen aktuell', 'Demo: 6 Szenen geplant', 'Demo wird aufgenommen …'] },
+  { id: 'w7', parent: 'ww', w: 'W7', kind: 'feature', title: 'Optimizer übernimmt water_heater', meta: 'Thermischer Speicher im Loader, Stufenmodell', state: 'planned', x: 670, y: 170 },
+  { id: 'w5', parent: 'ww', w: 'W5', kind: 'feature', title: 'Zählerstände je Eingang', meta: 'Periodenexport; abrechnungsnah → Codex-Review', state: 'planned', x: 30, y: 340 },
+  { id: 'w8', parent: 'ww', w: 'W8', kind: 'feature', title: 'Online-Schätzung', meta: 'Nächtliches UA, Zapfprofil je Viertelstunde', state: 'planned', x: 350, y: 340 },
+  { id: 'w9', parent: 'ww', w: 'W9', kind: 'feature', title: 'Standort-Preiskurve', meta: 'Als Optimizer-Eingang', state: 'planned', x: 670, y: 340 },
+
+  // project: invoice compliance
+  { id: 'comp', kind: 'project', title: 'Rechnungs-Compliance', x: 0, y: 690, w: 1000, h: 250,
+    plan: { file: 'docs/plan/invoice-compliance-remediation.md',
+      goal: 'Die Befunde der Rechnungsprüfung vom Juli 2026 beheben: Mehrere Fehler können nicht konforme oder falsch bepreiste Rechnungen ausstellen. Die Rechenlogik ist sauber, aber Teile der Spezifikation und der Preiseingabe waren falsch.' } },
+  { id: 'k1', parent: 'comp', w: 'W1', kind: 'feature', title: 'Ausstellungssperre', meta: 'Fehlende Pflichtwerte sperren statt warnen', state: 'planned', x: 30, y: 84 },
+  { id: 'k6', parent: 'comp', w: 'W6', kind: 'feature', title: 'KAV je Marktlokation', meta: 'Stichtagsbezogene Konzessionsabgabe; Slice 1 fertig', state: 'approved', x: 350, y: 84 },
+  { id: 'k9', parent: 'comp', w: 'W9', kind: 'feature', title: 'E-Rechnung (EN 16931)', meta: 'XRechnung oder ZUGFeRD, vor 2027', state: 'planned', x: 670, y: 84 },
+
+  // market data
+  { id: 'entsoe', kind: 'feature', title: 'ENTSO-E als Day-Ahead-Quelle', meta: 'ENTSO-E zuerst, SMARD als Rückfall', state: 'waiting', need: 'question', x: 1520, y: 700,
+    question: 'Die ENTSO-E-Nutzungsbedingungen verlangen einen Quellenhinweis, wo wir die Preise anzeigen. Wo soll er stehen?',
+    options: ['Unter jeder Preisgrafik', 'Einmal im Portal-Footer', 'Nur in der Dokumentation'] },
+  { id: 'gaps', kind: 'bugfix', title: 'Phantom-Lücken in der Lückenerkennung', state: 'live', x: 1860, y: 720 },
+  { id: 'mabis', kind: 'feature', title: 'MaBiS-Summenprüfung', meta: 'Summenbaum abschnittsweise aus MSCONS nachgerechnet', state: 'live', x: 2160, y: 700 },
+];
+const REPORT = {
+  summary: 'Auf einer Stromrechnung lässt sich ein vereinbarter Nachlass als Netto-Rabatt pro Lieferstelle eintragen, optional mit Bezeichnung. Er erscheint als eigene negative Position vor der Nettosumme; die Umsatzsteuer sinkt mit, Stromsteuer, Konzessionsabgabe und Umlagen bleiben unverändert. Ein Rabatt über dem Nettobetrag sperrt das Festschreiben.',
+  chapters: [[0, 'Ausgangslage'], [16.88, 'Rabatt eintragen'], [31.51, 'Eigene Position, USt. auf das reduzierte Netto'], [47.1, 'Steuern und Umlagen bleiben'], [55.77, 'Ohne Bezeichnung'], [65.08, 'Rabatt über dem Nettobetrag'], [78.11, 'Nicht in der Sammelaktion'], [91.15, 'Vorschau-PDF'], [103.22, 'Festschreiben'], [113.3, 'Freigabe']],
+  shown: ['Rabatt und Bezeichnung eintragen', 'Eigene Position, zuletzt, ohne Menge und Preis', 'Netto −500 €, USt. auf reduziertes Netto, Brutto −595 €', 'Steuern und Umlagen unverändert', 'Ohne Bezeichnung heißt die Position „Rabatt“', 'Rabatt über Netto sperrt das Festschreiben', 'Fällt aus der Sammelaktion', 'Vorschau-PDF mit Rabattzeile', 'Bestätigung nennt den Rabatt'],
+  notShown: ['Festschreiben und Storno selbst (Tests decken das Storno ab)', 'Gutschrift: hat kein Rabattfeld', 'Seite „Abrechnung (alt)“: dieselben Felder', 'Ungültige Eingaben über die API (HTTP 400)'],
+  findings: ['Im gesperrten Fall heißt der negative Betrag „Gutschriftbetrag“ – als Bugfix vorgeschlagen, liegt neben dieser Karte.'],
+  question: 'Die Beschriftung im gesperrten Fall: mit diesem Release anpassen oder separat?',
+};
+const STATE = { planned: 'Geplant', working: 'Agent arbeitet', waiting: 'Wartet auf dich', approved: 'Freigegeben', live: 'Live', proposal: 'Vorschlag eines Agenten' };
+const NEED = { demo: 'Demo bereit', question: 'Frage an dich' };
+const byId = Object.fromEntries(items.map((i) => [i.id, i]));
+const needsYou = (i) => i.state === 'waiting' || i.state === 'proposal';
+
+// children are stored relative to their project
+for (const i of items) if (i.parent) { i.rx = i.x; i.ry = i.y; }
+const pos = (i) => (i.parent ? { x: byId[i.parent].x + i.rx, y: byId[i.parent].y + i.ry } : { x: i.x, y: i.y });
+const size = (i) => ({ project: [i.w, i.h], feature: [300, 136], bugfix: [230, 104], chip: [196, 64] })[i.kind];
+
+try { const saved = JSON.parse(localStorage.getItem('obeya-mock-pos') || '{}');
+  for (const [id, p] of Object.entries(saved)) if (byId[id]) Object.assign(byId[id], p); } catch {}
+function savePositions() { try { localStorage.setItem('obeya-mock-pos', JSON.stringify(Object.fromEntries(items.map((i) =>
+  [i.id, i.parent ? { rx: i.rx, ry: i.ry } : { x: i.x, y: i.y }])))); } catch {} }
+
+// ------------------------------------------------------------------ render
+const world = document.getElementById('world');
+const viewport = document.getElementById('viewport');
+const els = {};
+function cardHTML(i) {
+  if (i.kind === 'project') {
+    const kids = items.filter((k) => k.parent === i.id);
+    const done = kids.filter((k) => k.state === 'live').length;
+    return `<div class="head"><span class="ttl">${i.title}</span><span class="kind">Projekt</span><span class="progress">${done} von ${kids.length} live</span></div>`;
+  }
+  const kindLabel = { feature: 'Feature', bugfix: 'Bugfix', chip: '' }[i.kind];
+  const w = i.w ? `<span>${i.w}</span>·` : '';
+  const state = i.state === 'waiting' ? NEED[i.need] : STATE[i.state];
+  return `<div class="kind">${w}<span>${i.state === 'proposal' ? '✦ Vorschlag · ' : ''}${kindLabel}</span></div>
+    <div class="ttl">${i.title}</div>${i.meta ? `<div class="meta">${i.meta}</div>` : ''}
+    <div class="state">${state}</div>`;
+}
+function render() {
+  for (const i of items) {
+    let el = els[i.id];
+    if (!el) { el = els[i.id] = document.createElement('div'); el.dataset.id = i.id; world.appendChild(el); }
+    const [w, h] = size(i); const p = pos(i);
+    el.className = `item ${i.kind === 'project' ? 'project' : `card ${i.kind}`} s-${i.state || 'planned'}` + (el.classList.contains('lifted') ? ' lifted' : '');
+    Object.assign(el.style, { left: p.x + 'px', top: p.y + 'px', width: w + 'px', height: h + 'px', zIndex: i.kind === 'project' ? 0 : 2 });
+    el.innerHTML = cardHTML(i);
+    const n = i.kind === 'project' ? items.filter((k) => k.parent === i.id && needsYou(k)).length : needsYou(i) ? 1 : 0;
+    if (n) { const b = document.createElement('div'); b.className = 'badge' + (i.kind !== 'project' ? ' pulse' : '');
+      b.textContent = i.kind === 'project' ? n : i.state === 'proposal' ? '✦' : '!'; el.appendChild(b); }
+  }
+  // dashed link from a proposal to the card it came from
+  const svg = document.getElementById('links'); svg.innerHTML = '';
+  for (const i of items.filter((k) => k.from && k.state === 'proposal')) {
+    const a = pos(byId[i.from]), sa = size(byId[i.from]), b = pos(i), sb = size(i);
+    const x1 = a.x + sa[0] / 2, y1 = a.y + sa[1], x2 = b.x + sb[0] / 2, y2 = b.y;
+    svg.insertAdjacentHTML('beforeend', `<path d="M${x1},${y1} C${x1},${(y1 + y2) / 2} ${x2},${(y1 + y2) / 2} ${x2},${y2}"/>`);
+  }
+  const attn = items.filter(needsYou);
+  document.getElementById('attn-n').textContent = attn.length;
+  drawOverlays();
+}
+
+// ------------------------------------------------------------------ camera
+let cam = { x: 0, y: 0, s: 1 };
+// Cards keep a readable size; zooming out stops here, and a screen too small for everything shows a section.
+const MIN_ZOOM = 0.55;
+let saveCamTimer = null;
+function saveCam() { clearTimeout(saveCamTimer); saveCamTimer = setTimeout(() => { try { if (!focus) localStorage.setItem('obeya-mock-cam', JSON.stringify(cam)); } catch {} }, 300); }
+function applyCam() {
+  world.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${cam.s})`;
+  document.documentElement.style.setProperty('--s', cam.s);
+  viewport.style.backgroundSize = `${22 * cam.s}px ${22 * cam.s}px`;
+  viewport.style.backgroundPosition = `${cam.x}px ${cam.y}px`;
+  document.body.classList.toggle('z-far', cam.s < 0.72);
+  drawOverlays();
+  saveCam();
+}
+let camAnim = null;
+function flyTo(to, ms = 650) {
+  return new Promise((resolve) => {
+    cancelAnimationFrame(camAnim);
+    const from = { ...cam }, t0 = performance.now();
+    const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+    // zoom out a little on long flights, so the eye keeps the map
+    const dist = Math.hypot((to.x - from.x) / from.s, (to.y - from.y) / from.s);
+    const bump = Math.min(0.35, dist / 6000);
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / ms), e = ease(t);
+      const s = from.s + (to.s - from.s) * e;
+      const sb = s * (1 - bump * Math.sin(Math.PI * t));
+      // interpolate the world point at the screen centre, so the path looks like a camera move
+      const cx = innerWidth / 2, cy = innerHeight / 2;
+      const wf = { x: (cx - from.x) / from.s, y: (cy - from.y) / from.s };
+      const wt = { x: (cx - to.x) / to.s, y: (cy - to.y) / to.s };
+      const wx = wf.x + (wt.x - wf.x) * e, wy = wf.y + (wt.y - wf.y) * e;
+      cam = { s: sb, x: cx - wx * sb, y: cy - wy * sb };
+      applyCam();
+      if (t < 1) camAnim = requestAnimationFrame(step); else { cam = { ...to }; applyCam(); resolve(); }
+    };
+    camAnim = requestAnimationFrame(step);
+  });
+}
+function camFor(bounds, pad = 60, reserveRight = 0, reserveBottom = 150) {
+  const vw = innerWidth - reserveRight, vh = innerHeight - 70 - reserveBottom;
+  const s = Math.min(1.6, (vw - 2 * pad) / bounds.w, (vh - 2 * pad) / bounds.h);
+  return { s, x: (vw - bounds.w * s) / 2 - bounds.x * s, y: 70 + (vh - bounds.h * s) / 2 - bounds.y * s };
+}
+function allBounds() {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const i of items) { const p = pos(i), [w, h] = size(i); x1 = Math.min(x1, p.x); y1 = Math.min(y1, p.y); x2 = Math.max(x2, p.x + w); y2 = Math.max(y2, p.y + h); }
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+/** Everything if it fits at a readable size; otherwise the middle of it at that size. */
+function overviewCam(maxScale = 1.6) {
+  const b = allBounds(), fit = camFor(b, 40, 0, 110);
+  const s = Math.min(maxScale, Math.max(MIN_ZOOM, fit.s));
+  return { s, x: innerWidth / 2 - (b.x + b.w / 2) * s, y: 70 + (innerHeight - 180) / 2 - (b.y + b.h / 2) * s };
+}
+const itemBounds = (i) => { const p = pos(i), [w, h] = size(i); return { x: p.x, y: p.y, w, h }; };
+
+// pan & zoom
+let pan = null;
+viewport.addEventListener('pointerdown', (e) => {
+  if (focus?.type === 'card') return;
+  const el = e.target.closest('.item');
+  // a project moves by its header; its body is canvas, so dragging there pans
+  if (el && (!el.classList.contains('project') || e.target.closest('.head'))) { startDrag(e, byId[el.dataset.id]); return; }
+  pan = { x: e.clientX, y: e.clientY, cx: cam.x, cy: cam.y }; viewport.classList.add('panning'); viewport.setPointerCapture(e.pointerId);
+});
+viewport.addEventListener('pointermove', (e) => {
+  if (drag) return moveDrag(e);
+  if (!pan) return;
+  cam.x = pan.cx + e.clientX - pan.x; cam.y = pan.cy + e.clientY - pan.y; applyCam();
+});
+viewport.addEventListener('pointerup', (e) => { if (drag) return endDrag(e); pan = null; viewport.classList.remove('panning'); });
+viewport.addEventListener('wheel', (e) => {
+  e.preventDefault(); if (focus?.type === 'card') return; cancelAnimationFrame(camAnim);
+  if (e.ctrlKey || e.metaKey) {
+    const k = Math.exp(-e.deltaY * 0.012), s = Math.min(2, Math.max(MIN_ZOOM, cam.s * k));
+    cam.x = e.clientX - (e.clientX - cam.x) * (s / cam.s); cam.y = e.clientY - (e.clientY - cam.y) * (s / cam.s); cam.s = s;
+  } else { cam.x -= e.deltaX; cam.y -= e.deltaY; }
+  applyCam();
+}, { passive: false });
+
+// drag cards and projects
+let drag = null;
+function startDrag(e, target) {
+  drag = { i: target, x: e.clientX, y: e.clientY, moved: false, start: target.parent ? { x: target.rx, y: target.ry } : { x: target.x, y: target.y } };
+  viewport.setPointerCapture(e.pointerId);
+}
+function moveDrag(e) {
+  const dx = (e.clientX - drag.x) / cam.s, dy = (e.clientY - drag.y) / cam.s;
+  if (!drag.moved && Math.hypot(dx * cam.s, dy * cam.s) < 5) return;
+  drag.moved = true;
+  const i = drag.i;
+  if (i.parent) { i.rx = drag.start.x + dx; i.ry = drag.start.y + dy; } else { i.x = drag.start.x + dx; i.y = drag.start.y + dy; }
+  const el = els[i.id]; el.style.zIndex = 5; render();
+}
+function endDrag() {
+  const d = drag; drag = null;
+  if (d.moved) { savePositions(); render(); return; }
+  open(d.i);
+}
+
+// ------------------------------------------------------------------ edge indicators + minimap
+function drawOverlays() {
+  const box = document.getElementById('edges'); box.innerHTML = '';
+  if (!focus || focus.type === 'project') {
+    const m = 30, top = 64, bottom = innerHeight - 110;
+    for (const i of items.filter(needsYou)) {
+      if (focus && i.parent !== focus.id) continue;
+      const b = itemBounds(i);
+      const cx = cam.x + (b.x + b.w / 2) * cam.s, cy = cam.y + (b.y + b.h / 2) * cam.s;
+      const right = innerWidth - (focus ? 410 : 0) - m;
+      if (cx > m && cx < right && cy > top && cy < bottom) continue;
+      const x = Math.min(right - 60, Math.max(m + 60, cx)), y = Math.min(bottom, Math.max(top + 10, cy));
+      const ang = Math.atan2(cy - y, cx - x) * 180 / Math.PI;
+      const tag = document.createElement('div'); tag.className = `edge s-${i.state}`;
+      tag.style.left = x + 'px'; tag.style.top = y + 'px';
+      tag.innerHTML = `<span class="arr" style="transform:rotate(${ang}deg)">➜</span>${i.title.length > 30 ? i.title.slice(0, 28) + '…' : i.title}`;
+      tag.onclick = () => open(i);
+      box.appendChild(tag);
+    }
+  }
+  const all = allBounds(), mm = document.getElementById('mm'), W = 210, H = 130, pad = 10;
+  const k = Math.min((W - 2 * pad) / all.w, (H - 2 * pad) / all.h);
+  const ox = (W - all.w * k) / 2 - all.x * k, oy = (H - all.h * k) / 2 - all.y * k;
+  const css = getComputedStyle(document.documentElement);
+  let s = '';
+  for (const i of items) {
+    const b = itemBounds(i);
+    const fill = i.kind === 'project' ? css.getPropertyValue('--container-line') : css.getPropertyValue(`--${i.state}`);
+    s += `<rect x="${ox + b.x * k}" y="${oy + b.y * k}" width="${b.w * k}" height="${b.h * k}" rx="${i.kind === 'project' ? 4 : 1.5}" fill="${fill}" opacity="${i.kind === 'project' ? 1 : needsYou(i) ? 1 : .55}"/>`;
+  }
+  const vx = (-cam.x / cam.s), vy = (-cam.y / cam.s), vw = innerWidth / cam.s, vh = innerHeight / cam.s;
+  s += `<rect x="${ox + vx * k}" y="${oy + vy * k}" width="${vw * k}" height="${vh * k}" fill="none" stroke="${css.getPropertyValue('--ink')}" stroke-width="1.2" rx="3" opacity=".5"/>`;
+  mm.setAttribute('viewBox', `0 0 ${W} ${H}`); mm.innerHTML = s;
+  mm.dataset.k = k; mm.dataset.ox = ox; mm.dataset.oy = oy;
+}
+document.getElementById('minimap').addEventListener('click', (e) => {
+  if (focus) return;
+  const mm = document.getElementById('mm'), r = mm.getBoundingClientRect();
+  const k = +mm.dataset.k, wx = (e.clientX - r.left - +mm.dataset.ox) / k, wy = (e.clientY - r.top - +mm.dataset.oy) / k;
+  flyTo({ s: cam.s, x: innerWidth / 2 - wx * cam.s, y: innerHeight / 2 - wy * cam.s }, 500);
+});
+
+// ------------------------------------------------------------------ focus: unfold a card, zoom into a project
+let focus = null;           // { type: 'card' | 'project', id, prevCam, project? }
+const panel = document.getElementById('panel'), dim = document.getElementById('dim'), sheet = document.getElementById('sheet');
+
+async function open(i) {
+  if (focus && focus.type === 'card') return;
+  if (i.kind === 'project') return openProject(i);
+  const prevCam = { ...cam };
+  const inProject = focus && focus.type === 'project' ? focus : null;
+  focus = { type: 'card', id: i.id, prevCam, project: inProject };
+  updateTarget();
+  // bring the card to the middle of the view first, at a readable scale, so the unfold starts where the eye is
+  const b = itemBounds(i);
+  const s = Math.max(cam.s, 0.85);
+  await flyTo({ s, x: innerWidth / 2 - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s }, 520);
+  const r = els[i.id].getBoundingClientRect();
+  els[i.id].classList.add('lifted');
+  panel.style.setProperty('--c', getComputedStyle(els[i.id]).getPropertyValue('--c'));
+  panel.querySelector('.inner').innerHTML = detailHTML(i);
+  wireDetail(i);
+  panel.className = ''; panel.style.display = 'block';
+  Object.assign(panel.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: '14px' });
+  panel.getBoundingClientRect();
+  panel.classList.add('anim');
+  const W = Math.min(1120, innerWidth - 80), H = Math.min(i.need === 'demo' ? 820 : 520, innerHeight - 190);
+  Object.assign(panel.style, { left: (innerWidth - W) / 2 + 'px', top: Math.max(70, (innerHeight - 110 - H) / 2) + 'px', width: W + 'px', height: H + 'px', borderRadius: '18px' });
+  dim.classList.add('on');
+  sheet.classList.remove('on');
+  setTimeout(() => { panel.classList.add('ready'); const v = panel.querySelector('video'); if (v) v.play().catch(() => {}); }, 450);
+  drawOverlays();
+}
+async function closeCard() {
+  const i = byId[focus.id]; const video = panel.querySelector('video'); if (video) video.pause();
+  panel.classList.remove('ready');
+  const r = els[i.id].getBoundingClientRect();
+  Object.assign(panel.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: '14px' });
+  dim.classList.remove('on');
+  await new Promise((res) => setTimeout(res, 430));
+  panel.style.display = 'none'; panel.className = '';
+  els[i.id].classList.remove('lifted');
+  const { prevCam, project } = focus;
+  focus = project; updateTarget();
+  if (project) sheet.classList.add('on');
+  await flyTo(prevCam, 480);
+}
+async function openProject(p) {
+  const prevCam = focus && focus.type === 'project' ? focus.prevCam : { ...cam };
+  focus = { type: 'project', id: p.id, prevCam };
+  updateTarget();
+  sheet.innerHTML = sheetHTML(p);
+  sheet.querySelectorAll('li').forEach((li) => (li.onclick = () => open(byId[li.dataset.id])));
+  sheet.classList.add('on');
+  await flyTo(camFor(itemBounds(p), 40, 410, 110), 700);
+}
+async function closeProject() {
+  const { prevCam } = focus; focus = null; updateTarget();
+  sheet.classList.remove('on');
+  await flyTo(prevCam, 600);
+}
+function sheetHTML(p) {
+  const kids = items.filter((k) => k.parent === p.id).sort((a, b) => parseInt(a.w.slice(1)) - parseInt(b.w.slice(1)));
+  return `<div class="p-kind">Projekt · Plan</div><h2>${p.title}</h2><div class="goal">${p.plan.goal}</div><div class="src">${p.plan.file}</div>
+    <ol>${kids.map((k) => `<li class="s-${k.state}" data-id="${k.id}"><span class="dot"></span><span class="w">${k.w}</span><span>${k.title}<br><span class="hint">${k.state === 'waiting' ? NEED[k.need] : STATE[k.state]}</span></span></li>`).join('')}</ol>`;
+}
+function detailHTML(i) {
+  const state = i.state === 'waiting' ? NEED[i.need] : STATE[i.state];
+  const kind = { feature: 'Feature', bugfix: 'Bugfix', chip: 'Workstream' }[i.kind];
+  const head = `<div class="p-kind">${i.parent ? `${byId[i.parent].title} · ${i.w} · ` : ''}${kind}</div><div class="p-title">${i.title}</div><div class="p-state">● ${state}</div>`;
+  const say = (text) => `<div class="say"><kbd>Leertaste</kbd> halten und sprechen – ${text}</div>`;
+  if (i.need === 'demo') {
+    const R = REPORT;
+    return `${head}<p class="p-lead">${R.summary}</p>
+      <div class="p-grid"><video id="v" controls preload="metadata" poster="${DEMO}poster.jpg" src="${DEMO}demo.mp4"></video>
+      <div><ol class="chapters">${R.chapters.map(([t, c]) => `<li><button data-t="${t}"><span class="t">${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}</span>${c}</button></li>`).join('')}</ol>
+      <div class="question"><h4>Offene Frage</h4>${R.question}</div></div></div>
+      <div class="cols"><section><h4>Gezeigt</h4><ul>${R.shown.map((x) => `<li>${x}</li>`).join('')}</ul></section>
+      <section><h4>Nicht gezeigt</h4><ul>${R.notShown.map((x) => `<li>${x}</li>`).join('')}</ul></section>
+      <section><h4>Auffälligkeiten</h4><ul>${R.findings.map((x) => `<li>${x}</li>`).join('')}</ul></section></div>
+      <div class="actions"><button class="btn primary" data-act="approve">Freigeben</button></div>
+      ${say('Feedback geben, die offene Frage beantworten oder freigeben.')}`;
+  }
+  if (i.need === 'question') return `${head}<p class="p-lead">${i.meta || ''}</p><div class="question"><h4>Frage des Agenten</h4>${i.question}
+      <div class="opts">${i.options.map((o) => `<button data-answer="${o}">${o}</button>`).join('')}</div></div>${say('oder in eigenen Worten antworten.')}`;
+  if (i.state === 'proposal') return `${head}<p class="p-lead">${i.reason}</p><div class="question"><h4>Vorschlag</h4>${i.suggestion}</div>
+      <p class="hint">Vorgeschlagen vom Agenten der Karte „${byId[i.from].title}“.</p>
+      <div class="actions"><button class="btn primary" data-act="accept">Übernehmen</button><button class="btn" data-act="dismiss">Verwerfen</button></div>
+      ${say('oder den Vorschlag anpassen.')}`;
+  if (i.state === 'working') return `${head}<p class="p-lead">${i.meta || ''}</p><div class="log">${i.log.map((l) => `<div>${l}</div>`).join('')}</div>${say('Hinweise an den Agenten, ohne ihn anzuhalten.')}`;
+  return `${head}<p class="p-lead">${i.meta || ''}</p>${i.state === 'live' ? '<p class="hint">Ausgeliefert. Die Demo bleibt hier abrufbar.</p>' : ''}${say('Auftrag erteilen, umplanen, Fragen stellen.')}`;
+}
+function wireDetail(i) {
+  panel.querySelector('.close').onclick = closeCard;
+  panel.querySelectorAll('[data-act]').forEach((b) => (b.onclick = () => respond({ act: b.dataset.act })));
+  panel.querySelectorAll('[data-answer]').forEach((b) => (b.onclick = () => respond({ answer: b.dataset.answer })));
+  const v = panel.querySelector('video');
+  if (!v) return;
+  const btns = [...panel.querySelectorAll('.chapters button')];
+  btns.forEach((b) => (b.onclick = () => { v.currentTime = +b.dataset.t; v.play(); }));
+  v.ontimeupdate = () => { let cur = btns[0]; for (const b of btns) if (+b.dataset.t <= v.currentTime + 0.05) cur = b; btns.forEach((b) => b.classList.toggle('on', b === cur)); };
+}
+dim.onclick = () => focus && focus.type === 'card' && closeCard();
+
+// ------------------------------------------------------------------ voice (scripted in the mock)
+const ptt = document.getElementById('ptt'), ack = document.getElementById('ack');
+let listening = null, audio = null, undoStack = null, ackTimer = null, newCards = 0;
+function updateTarget() {
+  const t = !focus ? 'Koordinator' : focus.type === 'project' ? `Projekt: ${byId[focus.id].title}` : `Agent: ${byId[focus.id].title}`;
+  document.getElementById('target').innerHTML = `→ <b>${t}</b>`;
+}
+async function startListening() {
+  if (listening) return;
+  listening = { t0: performance.now() };
+  ptt.classList.add('listening'); ptt.classList.remove('thinking');
+  const v = panel.querySelector('video'); if (v && !v.paused) { v.pause(); listening.resume = v; }
+  try {
+    if (!audio) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext(), an = ctx.createAnalyser(); an.fftSize = 512;
+      ctx.createMediaStreamSource(stream).connect(an); audio = { an, buf: new Uint8Array(512) };
+    }
+  } catch { audio = { fake: true }; }
+  const meter = () => {
+    if (!listening) return;
+    let lvl;
+    if (audio.fake) lvl = 0.3 + 0.25 * Math.abs(Math.sin(performance.now() / 140));
+    else { audio.an.getByteTimeDomainData(audio.buf); let s = 0; for (const x of audio.buf) s += ((x - 128) / 128) ** 2; lvl = Math.min(1, Math.sqrt(s / audio.buf.length) * 6); }
+    document.getElementById('mic').style.setProperty('--lvl', 1 + lvl * 0.45);
+    requestAnimationFrame(meter);
+  };
+  meter();
+}
+function stopListening() {
+  if (!listening) return;
+  const held = performance.now() - listening.t0; listening = null;
+  ptt.classList.remove('listening');
+  if (held < 300) return;
+  ptt.classList.add('thinking');
+  setTimeout(() => { ptt.classList.remove('thinking'); respond(); }, 950);
+}
+function snapshot() { return items.map((i) => ({ ...i })); }
+function restore(snap) {
+  for (const s of snap) Object.assign(byId[s.id] || {}, s);
+  for (const id of Object.keys(byId)) if (!snap.find((s) => s.id === id)) { items.splice(items.indexOf(byId[id]), 1); els[id].remove(); delete els[id]; delete byId[id]; }
+  render();
+}
+function showAck(text, snap) {
+  document.getElementById('ack-text').textContent = text;
+  undoStack = snap; ack.classList.add('on'); clearTimeout(ackTimer);
+  speak(text);
+  ackTimer = setTimeout(() => ack.classList.remove('on'), 7000);
+}
+// Spoken confirmation: the default macOS voice via `say` (pre-rendered in acks/), the browser voice as fallback.
+let voice = null;
+function pickVoice() {
+  const de = speechSynthesis.getVoices().filter((v) => v.lang.startsWith('de'));
+  const novelty = /Eddy|Flo|Grandma|Grandpa|Reed|Rocko|Sandy|Shelley/;
+  voice = de.find((v) => /Premium|Enhanced|Siri/.test(v.name)) || de.find((v) => !novelty.test(v.name)) || de[0] || null;
+}
+speechSynthesis.onvoiceschanged = pickVoice; pickVoice();
+let ackAudio = null;
+function speak(text) {
+  const plain = text.replace(/^Verstanden: /, '');
+  speechSynthesis.cancel(); if (ackAudio) ackAudio.pause();
+  // the confirmations the mock can produce are pre-rendered with `say`; anything else falls back to the browser voice
+  if (typeof ACK_AUDIO !== 'undefined' && ACK_AUDIO[plain]) { ackAudio = new Audio(ACK_AUDIO[plain]); ackAudio.play().catch(() => {}); return; }
+  const u = new SpeechSynthesisUtterance(plain);
+  u.lang = 'de-DE'; if (voice) u.voice = voice; u.rate = 1.08;
+  speechSynthesis.speak(u);
+}
+document.getElementById('undo').onclick = () => { if (undoStack) restore(undoStack); undoStack = null; ack.classList.remove('on'); };
+async function respond(input = {}) {
+  const snap = snapshot();
+  const cur = focus && byId[focus.id];
+  if (!focus) {
+    const n = ++newCards, p = byId.ww;
+    const card = { id: 'new' + n, parent: 'ww', w: 'W' + (9 + n), kind: 'feature', title: n === 1 ? 'Zählerstände als CSV exportieren' : 'Neuer Auftrag ' + n,
+      meta: 'Aus deiner Spracheingabe angelegt', state: 'working', rx: 30 + ((n - 1) % 3) * 320, ry: 510, log: ['Auftrag verstanden', 'Plan-Dokument ergänzt', 'Implementierung beginnt …'] };
+    p.h = Math.max(p.h, 680); items.push(card); byId[card.id] = card; render();
+    els[card.id].classList.add('pop');
+    showAck(`Verstanden: neue Karte „${card.title}“ im Projekt Warmwasser, ein Agent fängt an.`, snap);
+    const b = itemBounds(card);
+    await flyTo({ s: Math.max(cam.s, 0.7), x: innerWidth / 2 - (b.x + b.w / 2) * Math.max(cam.s, 0.7), y: innerHeight / 2 - (b.y + b.h / 2) * Math.max(cam.s, 0.7) }, 700);
+    els[card.id].classList.add('flash');
+    return;
+  }
+  if (focus.type === 'project') { showAck(`Verstanden: im Plan „${cur.title}“ vermerkt – W13 vor W11.`, snap); return; }
+  if (cur.need === 'demo') {
+    cur.state = 'approved'; delete cur.need;
+    const g = byId.gutschrift; if (g.state === 'proposal') { g.state = 'planned'; g.meta = 'Aus dem Vorschlag übernommen'; }
+    await closeCard(); render();
+    els.rabatt.classList.add('flash'); els.gutschrift.classList.add('flash');
+    showAck('Verstanden: Rabatt freigegeben. Die Gutschrift-Beschriftung kommt als eigener Bugfix.', snap);
+    return;
+  }
+  if (cur.need === 'question') {
+    const text = input.answer ? `„${input.answer}“. Der Agent macht weiter.`
+      : cur.id === 'entsoe' ? 'Quellenhinweis unter jeder Preisgrafik. Der Agent macht weiter.' : 'Termin Donnerstag, 9 Uhr, mit dem Hausmeister. Der Agent bereitet die Konfiguration vor.';
+    cur.state = 'working'; delete cur.need; cur.log = ['Antwort erhalten: ' + text.split('.')[0], 'Arbeit wird fortgesetzt …'];
+    await closeCard(); render(); els[cur.id].classList.add('flash');
+    showAck('Verstanden: ' + text, snap); return;
+  }
+  if (cur.state === 'proposal' && input.act === 'dismiss') {
+    await closeCard();
+    items.splice(items.indexOf(cur), 1); els[cur.id].remove(); delete els[cur.id]; delete byId[cur.id]; render();
+    showAck('Verstanden: Vorschlag verworfen.', snap); return;
+  }
+  if (cur.state === 'proposal') {
+    cur.state = 'planned'; cur.meta = 'Aus dem Vorschlag übernommen';
+    await closeCard(); render(); els[cur.id].classList.add('flash');
+    showAck('Verstanden: Vorschlag übernommen und eingeplant.', snap); return;
+  }
+  showAck(`Verstanden: an den Agenten von „${cur.title}“ weitergegeben.`, snap);
+}
+const mic = document.getElementById('mic');
+mic.addEventListener('pointerdown', (e) => { e.preventDefault(); startListening(); });
+addEventListener('pointerup', stopListening);
+
+// ------------------------------------------------------------------ keys
+let attnIdx = -1;
+function nextAttention() {
+  const list = items.filter(needsYou); if (!list.length) return;
+  attnIdx = (attnIdx + 1) % list.length; open(list[attnIdx]);
+}
+document.getElementById('attention').onclick = () => { if (focus && focus.type === 'card') return; nextAttention(); };
+addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) startListening(); return; }
+  if (e.key === 'Escape') { if (focus?.type === 'card') closeCard(); else if (focus?.type === 'project') closeProject(); }
+  if (focus?.type === 'card') return;
+  if (e.key === '0') { focus = null; sheet.classList.remove('on'); updateTarget(); flyTo(overviewCam(), 700); }
+  if (e.key === 'Tab') { e.preventDefault(); nextAttention(); }
+}, true);
+addEventListener('keyup', (e) => { if (e.code === 'Space') { e.preventDefault(); stopListening(); } }, true);
+addEventListener('resize', () => drawOverlays());
+
+// ------------------------------------------------------------------ start
+render();
+// Start at full size on the middle of the map; zooming out to the overview is a deliberate step (key 0).
+{ const b = allBounds(); cam = { s: 1, x: innerWidth / 2 - (b.x + b.w / 2), y: 70 + (innerHeight - 180) / 2 - (b.y + b.h / 2) }; }
+try { const saved = JSON.parse(localStorage.getItem('obeya-mock-cam') || 'null'); if (saved) cam = saved; } catch {}
+applyCam();
+</script>
+</body>
+</html>
