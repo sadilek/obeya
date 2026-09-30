@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
+import { OWNER_LANGUAGE } from '../core/locale';
 import type { Item, Question } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
@@ -29,7 +30,6 @@ interface Live {
   lastText: string;
 }
 
-const OWNER_LANGUAGE = 'German';
 const END_TURN = 'Recorded. End your turn now without further work; the reply arrives as your next message.';
 
 export class Workers {

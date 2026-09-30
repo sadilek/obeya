@@ -7,8 +7,9 @@ finished work, without reading code or cycling through terminals.
 
 The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls.
 
-**Status:** M1 — the canvas with manual cards and projects read from plan docs. See
-[`docs/plan.md`](docs/plan.md); the interaction reference is the mock in
+**Status:** M2 — the canvas, and agents that work on its cards: a worker per card in its own
+clone or worktree, questions routed through a project agent, review and approval on the card.
+See [`docs/plan.md`](docs/plan.md); the interaction reference is the mock in
 [`design/mock/`](design/mock/index.html).
 
 ## Running
@@ -21,4 +22,6 @@ bun test && bun run typecheck
 ```
 
 Options: `--port <n>` (or `OBEYA_PORT`), `--adapter <name>` to override the one picked from the
-`origin` URL. Data lives in `~/.obeya/obeya.db` (`OBEYA_HOME` to move it).
+`origin` URL, `--workspace <path>` (repeatable) or `--clones <n>` for adapters whose workers use
+clones, `--permission-mode <mode>` for workers (default `auto`). Data and worktrees live in
+`~/.obeya/` (`OBEYA_HOME` to move it). Workers run on the Claude Code login of the machine.

@@ -24,13 +24,13 @@ export interface RepoAdapter {
   /**
    * How approved work lands: `main` fast-forwards the checkout Obeya runs on to the worker's
    * branch (created clones then come from that checkout); `pr` leaves the branch for a pull
-   * request (M4) and clones come from `origin`.
+   * request (M5) and clones come from `origin`.
    */
   land: 'main' | 'pr';
   /** Workers get full clones from a pool, or a worktree of the Obeya checkout per card. */
   workspaces: 'clones' | 'worktrees';
 
-  /** How a worker brings up the app in its workspace and finds the frontend (M3). */
+  /** How a worker brings up the app in its workspace and finds the frontend (M4). */
   stack?: {
     start: string;
     /** After a backend change, without restarting everything. */

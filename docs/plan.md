@@ -34,7 +34,8 @@ decisions are made in front of the wall.
 - **Cards** — `bugfix`, `feature`, `project`. A project is a container backed by a plan doc; its
   workstreams are its child cards.
 - **States** — `proposal` → `planned` → `working` → `waiting` (demo ready | question) →
-  `approved` → `in PR` → `live`.
+  `approved` → `in PR` → `live`. Until workers record demos (M4), `waiting: review` with the
+  worker's written summary stands in for `waiting: demo`.
 - **Agents**
   - *Worker*, one per card while it is worked on: implementation, local reviews, demo.
   - *Project agent*, one per project, long-lived: knows the plan doc and the history of every
@@ -64,14 +65,19 @@ decisions are made in front of the wall.
 ## Communication
 
 Agents never talk to each other directly; the Obeya server is the mailbox, so every exchange is
-visible on a card. Each agent gets a few tools: `ask` (question upward), `report` (status),
-`propose_card`, `ready_for_review`.
+visible on a card. A worker has four tools, served in-process: `report(status)`, a status line
+on the card; `ask(question, options)`, which returns at once — the worker ends its turn and the
+answer arrives as its next message; `propose_card(kind, title, reason, suggestion)`; and
+`ready_for_review(summary)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
+then its last words become a question to the owner. The owner can send a note at any time; it
+reaches the worker without stopping it.
 
-A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff),
-which answers from the plan doc, the decision log and the preference memory. Only what needs the
-owner reaches the owner: product decisions, trade-offs, anything irreversible or external. An
-answer given on the owner's behalf stays visible on the card and can be overruled; overruling
-feeds the preference memory.
+A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff,
+until then to the owner), which answers from the plan doc, the decision log and the preference
+memory. Only what needs the owner reaches the owner: product decisions, trade-offs, anything
+irreversible or external. An answer given on the owner's behalf stays visible on the card and
+can be overruled; overruling feeds the preference memory. Owner-facing text from agents is in
+the owner's language (`src/core/locale.ts`).
 
 ## Architecture
 
@@ -81,9 +87,19 @@ feeds the preference memory.
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
   on the Claude Code login of the machine (tested without an API key: `apiKeySource: none`).
+  A worker is one SDK session per card with streaming input, the repo's own settings and
+  CLAUDE.md, and permission mode `auto` (`--permission-mode`); after a restart it resumes by
+  session id. A project agent is one read-only session per project (Read, Grep, Glob on the Obeya
+  checkout), resumed for each question, answering one question at a time. The SDK sits behind a
+  small runtime interface, so the orchestration is tested against a fake.
 - **Workspaces** — per adapter. A pool of full clones leased by a card while it is worked on
   (OKE: csharpier finds no files inside a worktree, and parallel AppHosts per clone are proven),
-  or a worktree per card (Obeya itself: any number in parallel).
+  or a worktree per card (Obeya itself: any number in parallel), kept across stop and restart
+  until the card's work has landed. Clones come from `--workspace <path>` or `--clones <n>`.
+- **Landing** — per adapter. `pr` (OKE): approval leaves the branch for the PR loop. `main`
+  (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
+  is `live`, worktree and branch are removed. Uncommitted work or a failed rebase sends the card
+  back to its worker.
 - **Voice in** — local Whisper (MLX) sidecar with a domain vocabulary; the agent prompt states
   that input is speech and may carry recognition errors.
 - **Voice out** — macOS `say` with the default system voice, streamed sentence by sentence.
@@ -95,8 +111,9 @@ feeds the preference memory.
 
 ## Data
 
-Persistent (SQLite): canvases, cards (kind, state, position, size, parent), links card ↔ branch /
-PR / agent session / workspace, messages, decision log, preference memory.
+Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
+branch, status line, open question or review summary, proposal source), card events (the log),
+workspaces and their leases, decision log; later PR links and preference memory.
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository).
@@ -104,17 +121,19 @@ the repository).
 ## Milestones
 
 - [x] **M1 Canvas.** Bun server, UI from the mock, persistence, manual cards, projects read from
-  plan docs (read-only), OKE adapter skeleton. Voice and the proposal links of the mock wait for
-  M5 and M2.
-- [ ] **M2 Agents.** Worker sessions per card on the clone pool; status and log streamed to the
-  card; `ask` / `report`; project agents; subscription auth settled. In progress:
-  [`docs/plan/agents.md`](plan/agents.md).
-- [ ] **M3 Demo loop.** Worker records the demo; the card waits; approve or feedback.
-- [ ] **M4 PR loop.** Approval opens the PR; monitoring through review bot, CI and conflicts to
+  plan docs (read-only), OKE adapter skeleton.
+- [x] **M2 Agents.** Workers per card in clones or worktrees; status, log, questions, review and
+  proposals on the card; project agents; subscription auth settled. Acceptance met: Obeya is
+  developed on its own canvas, and the first worker-built change landed on `main`.
+- [ ] **M3 Koordinator.** The Chief of Staff without voice: schedules cards so that likely
+  collisions do not run at the same time (queued instead), cuts work packages for parallel work,
+  answers standalone cards' questions, keeps the preference memory.
+- [ ] **M4 Demo loop.** Worker records the demo; the card waits; approve or feedback.
+- [ ] **M5 PR loop.** Approval opens the PR; monitoring through review bot, CI and conflicts to
   the merge; judgement questions routed to the card.
-- [ ] **M5 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
-  with undo; Chief of Staff with preference memory.
-- [ ] **M6 Beyond one repo.** Several repositories per canvas, several canvases.
+- [ ] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
+  with undo; the Koordinator takes voice input.
+- [ ] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
 
 ## Decisions
 
@@ -144,18 +163,16 @@ the repository).
   follows its content while open.
 - Manual cards are created by double-click, the button or `n`, and edited in the unfolded card;
   a new card closed without a title is dropped. Deleting offers undo.
+- The scheduling Chief of Staff comes before demos and PRs (M3): with worktrees several workers
+  run at once on Obeya itself.
 
 ## Open questions
 
-- Pull the scheduling part of the Chief of Staff (conflict detection, queueing, cutting work
-  packages) forward to right after M2, without voice? With worktrees several workers run at once
-  on Obeya itself, and until then the owner starts cards by hand without a conflict check.
-
-- Agent SDK on subscription auth, or headless CLI sessions (M2).
-- Plan-doc sync: read-only in M1; writing workstream progress back through the project agent
-  later.
-- Plan docs are read from the working tree of the checkout Obeya is started on. Once workers lease
-  clones (M2), read them from `origin/main` instead?
+- Plan-doc sync: Obeya reads plan docs and never writes them; workers tick off their workstream
+  in the doc as part of their change. Should the project agent keep the doc's progress instead?
+- Plan docs are read from the working tree of the checkout Obeya is started on. Fine for Obeya,
+  where work lands there; for OKE, whose work lands through PRs, read them from `origin/main`?
+- Which OKE clones may workers lease: the existing `~/dev/oke2`–`oke5`, or fresh ones?
 - A plan doc without a `## Workstreams` checklist is not shown (in OKE: `utilmd-parsed-view.md`,
   whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
 - UI language: German first, all strings in one place for an English release.

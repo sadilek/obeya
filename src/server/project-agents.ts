@@ -2,12 +2,12 @@
 // questions from the plan doc, the decision log and the repository, or passes them on to the owner.
 
 import { z } from 'zod';
+import { OWNER_LANGUAGE } from '../core/locale';
 import type { Item, Question } from '../core/types';
 import type { Board } from './board';
 import type { AgentRuntime } from './runtime';
 import type { ProjectReply } from './workers';
 
-const OWNER_LANGUAGE = 'German';
 
 export class ProjectAgents {
   /** Questions to one project are answered one after the other, in one session. */
@@ -46,7 +46,7 @@ export class ProjectAgents {
           tools: [
             {
               name: 'answer',
-              description: 'Answer the worker yourself. Say which source the answer rests on (plan doc section, earlier decision, code).',
+              description: `Answer the worker yourself, in ${OWNER_LANGUAGE} (the owner reads it too), briefly. Say which source the answer rests on (plan doc section, earlier decision, code).`,
               schema: { text: z.string() },
               run: ({ text }) => settle({ answer: String(text) }),
             },
