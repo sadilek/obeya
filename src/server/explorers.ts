@@ -117,7 +117,8 @@ export class Explorers {
         live.lastText = e.text;
         break;
       case 'tool':
-        if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input));
+        // its own tools show in the conversation and the brief, not as reading
+        if (!e.name.startsWith('mcp__') && !OWN_TOOLS.includes(e.name)) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input));
         break;
       case 'error':
         this.o.board.log(cardId, 'error', 'obeya', e.message);
@@ -206,13 +207,15 @@ How to talk:
 - Ground what you say in the code and the plan; say when you are guessing.
 - Be brief. The owner reads your reply on the card and hears only a short spoken summary.
 
-Tools:
-- reply: your answer to the message, and spoken, its summary for the ear. Exactly once per message, then end your turn.
+Tools, within a turn in this order:
+- record_decision: when the owner decided something in the message. General preferences (how they like to work) are not decisions; Obeya learns those on its own.
 - update_brief: keep the brief ("Stand der Idee") current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
-- record_decision: when the owner decides something in the conversation. General preferences (how they like to work) are not decisions; Obeya learns those on its own.
+- reply, last: your answer to the message, and spoken, its summary for the ear. Exactly once per message, then end your turn.
 
 The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype (spike) built, park it or drop it. You may suggest one of these when the time has come.
 Owner-facing text is in ${OWNER_LANGUAGE}.
 `.trim();
+
+const OWN_TOOLS = ['reply', 'update_brief', 'record_decision'];
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
