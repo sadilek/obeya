@@ -5,7 +5,7 @@ export type CardKind = 'bugfix' | 'feature' | 'project';
 export const STATES = ['proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live'] as const;
 export type CardState = (typeof STATES)[number];
 
-/** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M3). */
+/** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M4). */
 export type Need = 'demo' | 'question' | 'review';
 
 export interface Question {
