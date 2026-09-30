@@ -6,13 +6,15 @@
 
 import { boundsOf, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type Item, type NewCard, STATES } from '../core/types';
-import type { CardRow, NewRow, Store } from './db';
+import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type Item, type NewCard, STATES } from '../core/types';
+import type { CardRow, NewRow, RowUpdate, Store } from './db';
 
 export class BadRequest extends Error {}
 
 export class Board {
   private listeners = new Set<() => void>();
+  private docs: PlanDoc[] | null = null;
+  private eventListeners = new Set<(e: CardEvent) => void>();
 
   constructor(
     private store: Store,
@@ -27,13 +29,83 @@ export class Board {
     return () => this.listeners.delete(fn);
   }
 
-  /** Plan docs changed on disk, or a card changed. */
+  onEvent(fn: (e: CardEvent) => void): () => void {
+    this.eventListeners.add(fn);
+    return () => this.eventListeners.delete(fn);
+  }
+
+  /** A card changed. */
   changed() {
     for (const fn of this.listeners) fn();
   }
 
+  /** Plan docs changed on disk: read them again. */
+  docsChanged() {
+    this.docs = null;
+    this.changed();
+  }
+
+  /** Appends a line to the card's log. */
+  log(cardId: string, kind: CardEvent['kind'], author: CardEvent['author'], text: string): CardEvent {
+    const e = this.store.addEvent({ cardId, kind, author, text });
+    for (const fn of this.eventListeners) fn(e);
+    return e;
+  }
+
+  events(cardId: string): CardEvent[] {
+    this.own(cardId);
+    return this.store.events(cardId);
+  }
+
+  row(id: string): CardRow {
+    return this.own(id);
+  }
+
+  /** The card as the UI sees it. */
+  item(id: string): Item | undefined {
+    return this.snapshot().items.find((i) => i.id === id);
+  }
+
+  /** Changes a card's work fields (state, session, workspace …); for the agents, not the owner. */
+  work(id: string, fields: RowUpdate) {
+    this.own(id);
+    this.store.update(id, fields);
+    this.changed();
+  }
+
+  /** A card an agent proposes, placed below the card it came from. */
+  propose(fromId: string, p: { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string }): Item {
+    const items = this.snapshot().items;
+    const from = items.find((i) => i.id === fromId);
+    const b = from ? boundsOf(from, items) : { x: 0, y: 0, w: 0, h: 0 };
+    const [row] = this.store.insert([
+      {
+        canvas_id: this.canvas.id,
+        kind: p.kind,
+        state: 'proposal',
+        title: p.title.slice(0, 200),
+        body: `${p.reason}\n\n${p.suggestion}`.slice(0, 20000),
+        x: b.x + 35,
+        y: b.y + b.h + 60,
+        from_id: fromId,
+      },
+    ]);
+    this.changed();
+    return toItems([row!], [])[0]!;
+  }
+
+  decide(d: { project_id: string | null; card_id: string; question: string; answer: string; by: 'owner' | 'project' }) {
+    this.store.addDecision({ canvas_id: this.canvas.id, ...d });
+  }
+
+  accept(id: string) {
+    if (this.own(id).state !== 'proposal') throw new BadRequest('not a proposal');
+    this.store.update(id, { state: 'planned' });
+    this.changed();
+  }
+
   snapshot(): CanvasSnapshot {
-    const docs = this.readDocs();
+    const docs = (this.docs ??= this.readDocs());
     let items = toItems(this.store.cards(this.canvas.id), docs);
     if (this.placeNew(docs, items)) items = toItems(this.store.cards(this.canvas.id), docs);
     return { canvas: this.canvas, items };
@@ -145,6 +217,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
         x: r.x,
         y: r.y,
         source: 'manual',
+        ...work(r),
       });
       continue;
     }
@@ -174,6 +247,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
         parent: r.parent_id,
         source: 'plan',
         ...(w.label ? { label: w.label } : {}),
+        ...work(r),
       },
     });
   }
@@ -186,6 +260,18 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
       .map((k) => k.item),
   );
   return [...projects, ...ordered, ...manual];
+}
+
+/** The fields a worker adds to a card. */
+function work(r: CardRow): Partial<Item> {
+  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string }) : {};
+  return {
+    ...(r.status_line ? { statusLine: r.status_line } : {}),
+    ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
+    ...(detail.summary && r.need === 'review' ? { summary: detail.summary } : {}),
+    ...(r.from_id ? { from: r.from_id } : {}),
+    ...(r.branch ? { branch: r.branch } : {}),
+  };
 }
 
 function checkText(v: unknown, name: string, max: number) {

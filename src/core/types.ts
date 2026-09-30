@@ -5,8 +5,13 @@ export type CardKind = 'bugfix' | 'feature' | 'project';
 export const STATES = ['proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live'] as const;
 export type CardState = (typeof STATES)[number];
 
-/** What a `waiting` card waits for. */
-export type Need = 'demo' | 'question';
+/** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M3). */
+export type Need = 'demo' | 'question' | 'review';
+
+export interface Question {
+  text: string;
+  options: string[];
+}
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 export interface Item {
@@ -27,6 +32,25 @@ export interface Item {
   label?: string;
   /** Projects only. */
   plan?: { file: string; goal: string };
+  /** The worker's latest `report`. */
+  statusLine?: string;
+  /** Open question, when `need` is `question`. */
+  question?: Question;
+  /** The worker's summary, when `need` is `review`. */
+  summary?: string;
+  /** A proposal's source card. */
+  from?: string;
+  branch?: string;
+}
+
+/** One line in a card's log. */
+export interface CardEvent {
+  id: number;
+  cardId: string;
+  at: string;
+  kind: 'report' | 'activity' | 'say' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error';
+  author: 'worker' | 'owner' | 'project' | 'obeya';
+  text: string;
 }
 
 export interface CanvasInfo {
@@ -59,5 +83,15 @@ export interface CardPatch {
   need?: Need | null;
 }
 
+/** Owner actions on a card's work, posted to `/api/cards/:id/act`. */
+export type CardAction =
+  | { action: 'start' }
+  | { action: 'stop' }
+  | { action: 'message'; text: string }
+  | { action: 'answer'; text: string }
+  | { action: 'approve' }
+  | { action: 'accept' }
+  | { action: 'dismiss' };
+
 /** Server → UI over the WebSocket. */
-export type ServerMessage = { type: 'snapshot'; snapshot: CanvasSnapshot };
+export type ServerMessage = { type: 'snapshot'; snapshot: CanvasSnapshot } | { type: 'event'; event: CardEvent };

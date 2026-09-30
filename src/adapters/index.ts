@@ -1,9 +1,10 @@
 import { generic } from './generic';
+import { obeya } from './obeya';
 import { acme } from './acme';
 import type { RepoAdapter, RepoInfo } from './types';
 
 /** Specific adapters first; the generic one matches every repository. */
-const ADAPTERS: RepoAdapter[] = [acme, generic];
+const ADAPTERS: RepoAdapter[] = [acme, obeya, generic];
 
 export function pickAdapter(repo: RepoInfo, name?: string): RepoAdapter {
   if (name) {

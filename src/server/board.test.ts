@@ -34,6 +34,7 @@ describe('plan docs', () => {
     const w2 = board.snapshot().items.find((i) => i.label === 'W2')!;
     board.patch(w2.id, { x: 700, y: 400 });
     docs = [{ ...docA, workstreams: [ws('W1', true), { ...ws('W2', true), title: 'Renamed' }, ws('W3')] }];
+    board.docsChanged();
     expect(board.snapshot().items.find((i) => i.id === w2.id)).toMatchObject({ x: 700, y: 400, title: 'Renamed', state: 'live' });
   });
 
@@ -41,6 +42,7 @@ describe('plan docs', () => {
     const before = board.snapshot().items;
     const lowest = Math.max(...before.filter((i) => i.parent).map((i) => i.y));
     docs = [{ ...docA, workstreams: [...docA.workstreams, ws('W4')] }];
+    board.docsChanged();
     const w4 = board.snapshot().items.find((i) => i.label === 'W4')!;
     expect(w4.y).toBeGreaterThan(lowest);
   });
@@ -48,6 +50,7 @@ describe('plan docs', () => {
   test('a new project is placed clear of everything on the canvas', () => {
     const first = board.snapshot().items;
     docs = [docA, docB];
+    board.docsChanged();
     const items = board.snapshot().items;
     const a = boundsOf(items.find((i) => i.title === 'A')!, items);
     const b = boundsOf(items.find((i) => i.title === 'B')!, items);
@@ -59,8 +62,10 @@ describe('plan docs', () => {
     const p = board.snapshot().items[0]!;
     board.patch(p.id, { x: -500, y: 42 });
     docs = [];
+    board.docsChanged();
     expect(board.snapshot().items).toEqual([]);
     docs = [docA];
+    board.docsChanged();
     expect(board.snapshot().items[0]).toMatchObject({ id: p.id, x: -500, y: 42 });
   });
 
