@@ -36,6 +36,10 @@ export const api = {
   restore: (id: string) => call<void>('POST', `/api/cards/${id}/restore`),
   act: (id: string, a: CardAction) => call<void>('POST', `/api/cards/${id}/act`, a),
   events: (id: string) => call<CardEvent[]>('GET', `/api/cards/${id}/events`),
+  addPreference: (text: string) => call<{ id: number }>('POST', '/api/preferences', { text }),
+  /** Changes a preference, or deletes it with `null`. */
+  setPreference: (id: number, text: string | null) =>
+    text === null ? call<void>('DELETE', `/api/preferences/${id}`) : call<void>('PATCH', `/api/preferences/${id}`, { text }),
 };
 
 // Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.

@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { CardEvent, CardKind, CardState, Need } from '../core/types';
+import type { CardEvent, CardKind, CardState, Need, Preference } from '../core/types';
 
 export interface CardRow {
   id: string;
@@ -248,6 +248,35 @@ export class Store {
         .query('SELECT * FROM decisions WHERE canvas_id = $c AND project_id IS $p ORDER BY id DESC LIMIT $limit')
         .all({ c: canvasId, p: projectId, limit }) as DecisionRow[]
     ).reverse();
+  }
+
+  // ---------------------------------------------------------------- preferences
+
+  preferences(canvasId: string): Preference[] {
+    return (
+      this.db.query('SELECT id, text, card_id FROM preferences WHERE canvas_id = $c AND deleted_at IS NULL ORDER BY id').all({ c: canvasId }) as {
+        id: number;
+        text: string;
+        card_id: string | null;
+      }[]
+    ).map((r) => ({ id: r.id, text: r.text, ...(r.card_id ? { cardId: r.card_id } : {}) }));
+  }
+
+  addPreference(canvasId: string, text: string, cardId: string | null): number {
+    return (
+      this.db
+        .query('INSERT INTO preferences (canvas_id, text, card_id, created_at) VALUES ($c, $text, $cardId, $now) RETURNING id')
+        .get({ c: canvasId, text, cardId, now: now() }) as { id: number }
+    ).id;
+  }
+
+  /** Changes or (with `null`) deletes a preference of the canvas; returns whether it existed. */
+  setPreference(canvasId: string, id: number, text: string | null): boolean {
+    const r =
+      text === null
+        ? this.db.query('UPDATE preferences SET deleted_at = $now WHERE id = $id AND canvas_id = $c AND deleted_at IS NULL').run({ id, c: canvasId, now: now() })
+        : this.db.query('UPDATE preferences SET text = $text WHERE id = $id AND canvas_id = $c AND deleted_at IS NULL').run({ id, c: canvasId, text });
+    return r.changes > 0;
   }
 
   // ---------------------------------------------------------------- settings

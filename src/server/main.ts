@@ -59,7 +59,8 @@ if (values.clones) {
   // landing on main needs the clones to see the local main; otherwise they track the remote
   workspaces.ensureClones(adapter.land === 'main' || !repo.remote ? repo.path : repo.remote, Number(values.clones));
 }
-const projectAgents = new ProjectAgents(board, sdkRuntime, repo.path);
+const preferences = () => board.preferencesText();
+const projectAgents = new ProjectAgents(board, sdkRuntime, repo.path, preferences);
 // the Koordinator needs the workers and answers their questions: created right after them
 let koordinator!: Koordinator;
 const workers = new Workers({
@@ -67,6 +68,8 @@ const workers = new Workers({
   runtime: sdkRuntime,
   workspaces,
   adapter,
+  preferences,
+  onOwnerInput: (card, kind, text, question) => koordinator.learn(card, kind, text, question),
   advisor: (card) => {
     const project = card.parent ? board.item(card.parent) : undefined;
     return project
@@ -76,7 +79,7 @@ const workers = new Workers({
   permissionMode: values['permission-mode'] as 'auto',
 });
 workers.resumeAll();
-koordinator = new Koordinator({ board, runtime: sdkRuntime, workers, workspaces, adapter, repoPath: repo.path });
+koordinator = new Koordinator({ board, runtime: sdkRuntime, workers, workspaces, adapter, repoPath: repo.path, preferences });
 koordinator.resume();
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.on(sig, () => {

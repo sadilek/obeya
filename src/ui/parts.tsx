@@ -93,7 +93,7 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
 
 export function Sheet({ project, kids, on, onOpen }: { project?: Item; kids: Item[]; on: boolean; onOpen: (i: Item) => void }) {
   return (
-    <aside id="sheet" className={on ? 'on' : ''}>
+    <aside id="sheet" className={on ? 'sheet on' : 'sheet'}>
       {project?.plan && (
         <>
           <div className="p-kind">{t.planSheet}</div>
