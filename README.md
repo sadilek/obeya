@@ -7,8 +7,10 @@ finished work, without reading code or cycling through terminals.
 
 The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls.
 
-**Status:** M2 — the canvas, and agents that work on its cards: a worker per card in its own
-clone or worktree, questions routed through a project agent, review and approval on the card.
+**Status:** M3 — the canvas, agents that work on its cards (a worker per card in its own clone or
+worktree, questions routed through a project agent or the Koordinator, review and approval on
+the card), and a Koordinator that queues colliding cards, cuts large ones and learns the owner's
+preferences.
 See [`docs/plan.md`](docs/plan.md); the interaction reference is the mock in
 [`design/mock/`](design/mock/index.html).
 
