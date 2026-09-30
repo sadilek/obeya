@@ -1,0 +1,21 @@
+{
+  "name": "obeya",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/server/main.ts",
+    "dev": "bun --hot src/server/main.ts --dev",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}
