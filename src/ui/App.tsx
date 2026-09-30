@@ -8,6 +8,7 @@ import { api, useCanvas } from './api';
 import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
+import { KoordinatorSheet } from './koordinator';
 import { CardView, Edges, Links, Minimap, needsYou, ProjectView, Sheet } from './parts';
 import { t } from './strings';
 
@@ -100,6 +101,11 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
   const [dim, setDim] = useState(false);
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sheetOn, setSheetOn] = useState(false);
+  const [kOn, setKOn] = useState(false);
+  const toggleKoordinator = () => {
+    if (!kOn && focusRef.current?.type === 'project') closeProject();
+    setKOn(!kOn);
+  };
   const [popId, setPopId] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>()).current;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -224,6 +230,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     setFocus({ type: 'project', id: p.id, prevCam: f?.type === 'project' ? f.prevCam : camRef.current });
     setSheetId(p.id);
     setSheetOn(true);
+    setKOn(false);
     await fly(camFor(bounds(p), 40, SHEET_W, 60), 700);
   }
 
@@ -356,6 +363,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
 
   // ---------------------------------------------------------------- keys
   const attention = items.filter(needsYou);
+  const queuedCount = items.filter((i) => i.state === 'planned' && i.queue).length;
   const attnIdx = useRef(-1);
   function nextAttention() {
     const list = itemsRef.current.filter(needsYou);
@@ -382,6 +390,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
       e.preventDefault();
       nextAttention();
     } else if (e.key === 'n') createAtCentre();
+    else if (e.key === 'k') toggleKoordinator();
   };
   useEffect(() => {
     const h = (e: KeyboardEvent) => keys.current(e);
@@ -418,7 +427,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
         </div>
       </div>
       {!items.length && <div className="empty">{t.empty}</div>}
-      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus ? SHEET_W : 0} onOpen={open} />}
+      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn ? SHEET_W : 0} onOpen={open} />}
       <header id="bar">
         <div className="pill">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -439,12 +448,18 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
         <span className="hint" id="keys">
           {t.keys}
         </span>
-        {!online && <div className="pill offline">{t.offline}</div>}
-        {attention.length > 0 && (
-          <button className="pill" id="attention" onClick={nextAttention}>
-            <span className="n">{attention.length}</span> {t.needsYou}
+        <div className="right">
+          {!online && <div className="pill offline">{t.offline}</div>}
+          <button className={kOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleKoordinator}>
+            {t.koordinator.button}
+            {queuedCount > 0 && <span className="n">{queuedCount}</span>}
           </button>
-        )}
+          {attention.length > 0 && (
+            <button className="pill" id="attention" onClick={nextAttention}>
+              <span className="n">{attention.length}</span> {t.needsYou}
+            </button>
+          )}
+        </div>
       </header>
       <Minimap cam={cam} all={all} placed={placed} onJump={(wx, wy) => !focusRef.current && fly({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s }, 500)} />
       <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
@@ -469,6 +484,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
           </div>
         </div>
       </div>
+      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} onOpen={open} />
       <Sheet project={sheetProject} kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []} on={sheetOn} onOpen={open} />
       <div id="ack" className={ackOn ? 'on' : undefined}>
         <span>{ack?.text}</span>

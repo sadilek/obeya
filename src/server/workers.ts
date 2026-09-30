@@ -20,6 +20,10 @@ export interface WorkerOptions {
   workspaces: Workspaces;
   adapter: RepoAdapter;
   permissionMode?: 'auto' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk' | 'default';
+  /** The owner's preferences, added to every worker's instructions. */
+  preferences?: () => string;
+  /** Called with everything the owner tells a worker, so lasting preferences can be learned. */
+  onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, question?: string) => void;
   /** Who answers the card's questions on the owner's behalf, if anyone. */
   advisor?: (card: Item) => Advisor | null;
 }
@@ -64,9 +68,11 @@ export class Workers {
     if (card.state === 'waiting' && card.need === 'review') {
       this.o.board.work(cardId, { state: 'working', need: null, detail: null });
       this.o.board.log(cardId, 'hint', 'owner', text);
+      this.o.onOwnerInput?.(card, 'feedback', text);
       this.deliver(cardId, `Feedback from the owner on your work. Address it, then call ready_for_review again:\n\n${text}`);
     } else if (card.state === 'working' || (card.state === 'waiting' && card.need === 'question')) {
       this.o.board.log(cardId, 'hint', 'owner', text);
+      this.o.onOwnerInput?.(card, 'note', text);
       this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything):\n\n${text}`);
     } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
@@ -80,6 +86,7 @@ export class Workers {
     this.o.board.work(cardId, { state: 'working', need: null, detail: null });
     this.o.board.log(cardId, 'answer', by, text);
     this.recordDecision(card, q, text, by);
+    if (by === 'owner') this.o.onOwnerInput?.(card, 'answer', text, q);
     const from = { owner: 'from the owner', project: 'from the project agent, on the owner\u2019s behalf', koordinator: 'from the Koordinator, on the owner\u2019s behalf' }[by];
     this.deliver(cardId, `Answer to your question (${from}):\n\n${text}`);
   }
@@ -311,7 +318,7 @@ Rules:
 - Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.
 - Follow the repository's own instructions (CLAUDE.md and docs).
 - Owner-facing text (report, ask, propose_card, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete. What you write between tool calls also shows in the card's log for the owner: keep it brief and in ${OWNER_LANGUAGE} too.
-`.trim();
+`.trim() + (this.o.preferences?.() ? `\n\n${this.o.preferences()}` : '');
   }
 
   private briefing(card: Item, branch: string): string {

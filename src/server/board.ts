@@ -150,7 +150,32 @@ export class Board {
     const docs = (this.docs ??= this.readDocs());
     let items = toItems(this.store.cards(this.canvas.id), docs);
     if (this.placeNew(docs, items)) items = toItems(this.store.cards(this.canvas.id), docs);
-    return { canvas: this.canvas, items };
+    return { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id) };
+  }
+
+  // ---------------------------------------------------------------- preferences
+
+  preferences() {
+    return this.store.preferences(this.canvas.id);
+  }
+
+  /** The owner's preferences as agents read them; empty when there are none. */
+  preferencesText(): string {
+    const p = this.preferences();
+    return p.length ? `The owner's standing preferences (follow them unless the card says otherwise):\n${p.map((x) => `- ${x.text}`).join('\n')}` : '';
+  }
+
+  addPreference(text: string, cardId: string | null = null): number {
+    const clean = checkPreference(text);
+    const id = this.store.addPreference(this.canvas.id, clean, cardId);
+    this.changed();
+    return id;
+  }
+
+  setPreference(id: number, text: string | null) {
+    if (!this.store.setPreference(this.canvas.id, id, text === null ? null : checkPreference(text)))
+      throw new BadRequest('unknownPreference', 'unknown preference');
+    this.changed();
   }
 
   create(n: NewCard): Item {
@@ -317,6 +342,11 @@ function work(r: CardRow): Partial<Item> {
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),
   };
+}
+
+function checkPreference(v: unknown): string {
+  if (typeof v !== 'string' || !v.trim() || v.length > 500) throw new BadRequest('emptyText', 'a preference is a non-empty string of at most 500 characters');
+  return v.trim();
 }
 
 function checkText(v: unknown, name: string, max: number) {

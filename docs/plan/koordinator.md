@@ -41,5 +41,5 @@ answers the questions of standalone cards, and learns the owner's preferences.
   start and dequeue; card and panel show the waiting state.
 - [x] **W2:** Cutting. "Aufteilen" replaces a card by parallel packages.
 - [x] **W3:** Questions of standalone cards through the Koordinator.
-- [ ] **W4:** Preference memory. Rules learned from answers, notes and feedback; used by every
+- [x] **W4:** Preference memory. Rules learned from answers, notes and feedback; used by every
   agent; the Koordinator sheet shows rules and queue.

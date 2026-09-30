@@ -71,6 +71,15 @@ export interface CanvasInfo {
 export interface CanvasSnapshot {
   canvas: CanvasInfo;
   items: Item[];
+  preferences: Preference[];
+}
+
+/** A lasting preference of the owner, learned by the Koordinator or written by the owner. */
+export interface Preference {
+  id: number;
+  text: string;
+  /** The card whose exchange it was learned from. */
+  cardId?: string;
 }
 
 export interface NewCard {
@@ -126,6 +135,7 @@ export type ErrorCode =
   | 'dirtyWorkspaces'
   | 'workspace'
   | 'emptyText'
+  | 'unknownPreference'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'

@@ -234,6 +234,61 @@ describe('Koordinator answers questions of cards without a project', () => {
   });
 });
 
+describe('preference memory', () => {
+  const learnSession = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'remember')).at(-1)!;
+
+  test('a lasting preference becomes a rule; a refinement replaces it; a one-off does not', async () => {
+    const a = card('Labels');
+    k.learn(item(a.id), 'answer', 'Präzise, auch wenn es länger wird. Das gilt immer.', 'Kurz oder präzise?');
+    await settle();
+    expect(learnSession().inbox[0]).toContain('Kurz oder präzise?');
+    learnSession().call('remember', { rule: 'Beschriftungen: präzise vor kurz.' });
+    learnSession().emit({ type: 'idle' });
+    await settle();
+    expect(board.preferences().map((p) => p.text)).toEqual(['Beschriftungen: präzise vor kurz.']);
+    expect(board.events(a.id).at(-1)!.text).toBe('Merkt sich: „Beschriftungen: präzise vor kurz.“');
+
+    k.learn(item(a.id), 'feedback', 'Und immer mit Einheit.');
+    await settle();
+    expect(learnSession().inbox[0]).toContain('1. Beschriftungen: präzise vor kurz.');
+    learnSession().call('remember', { rule: 'Beschriftungen: präzise vor kurz, immer mit Einheit.', replaces: 1 });
+    learnSession().emit({ type: 'idle' });
+    await settle();
+    expect(board.preferences().map((p) => p.text)).toEqual(['Beschriftungen: präzise vor kurz, immer mit Einheit.']);
+
+    k.learn(item(a.id), 'answer', 'Donnerstag.', 'Wann ist der Termin?');
+    await settle();
+    learnSession().call('nothing', {});
+    learnSession().emit({ type: 'idle' });
+    await settle();
+    expect(board.preferences()).toHaveLength(1);
+    expect(board.preferencesText()).toContain('- Beschriftungen: präzise vor kurz, immer mit Einheit.');
+  });
+
+  test('workers get the rules, and what the owner tells them is offered for learning', async () => {
+    board.addPreference('Tests immer auf Deutsch benennen.');
+    const heard: string[] = [];
+    const w = new Workers({
+      board,
+      runtime,
+      workspaces,
+      adapter: { ...generic, land: 'main', workspaces: 'worktrees', softPaths: [] },
+      preferences: () => board.preferencesText(),
+      onOwnerInput: (_c, kind, text) => heard.push(`${kind}:${text}`),
+    });
+    const a = card('A');
+    w.start(a.id);
+    const s = workerOf(a.id);
+    expect(s.spec.system).toContain('Tests immer auf Deutsch benennen.');
+    s.call('ask', { question: 'Q?' });
+    w.answer(a.id, 'Ja.');
+    w.message(a.id, 'Bitte kleiner schneiden.');
+    s.call('ready_for_review', { summary: 'S' });
+    w.message(a.id, 'Noch die Einheit.');
+    expect(heard).toEqual(['answer:Ja.', 'note:Bitte kleiner schneiden.', 'feedback:Noch die Einheit.']);
+  });
+});
+
 test('overlaps', () => {
   expect(overlaps('src/a.ts', 'src/a.ts')).toBe(true);
   expect(overlaps('src/', 'src/a.ts')).toBe(true);

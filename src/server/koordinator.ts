@@ -42,6 +42,7 @@ export class Koordinator {
   /** Decisions to start are taken one at a time, so two colliding cards cannot both slip through. */
   private chain: Promise<unknown> = Promise.resolve();
   private answers: Promise<unknown> = Promise.resolve();
+  private learning: Promise<unknown> = Promise.resolve();
   private draining = false;
 
   constructor(private o: KoordinatorOptions) {
@@ -184,6 +185,69 @@ export class Koordinator {
       );
     this.answers = next;
     return next;
+  }
+
+  /**
+   * The owner answered, sent a note or gave feedback: if it states a lasting preference, keep it
+   * as a rule for every agent. Runs in the background, one at a time.
+   */
+  learn(card: Item, kind: 'answer' | 'note' | 'feedback', text: string, question?: string) {
+    this.learning = this.learning
+      .catch(() => {})
+      .then(() => this.distill(card, kind, text, question))
+      .catch((e) => console.error('Koordinator (learning):', e));
+  }
+
+  private distill(card: Item, kind: 'answer' | 'note' | 'feedback', text: string, question?: string): Promise<void> {
+    const rules = this.o.board.preferences();
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (r: string) => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+        return r;
+      };
+      const session = this.o.runtime.start(
+        {
+          cwd: this.o.repoPath,
+          readOnly: true,
+          system: LEARN_SYSTEM,
+          tools: [
+            {
+              name: 'remember',
+              description: 'Record a lasting preference as one short rule in German. Pass replaces with the number of an existing rule it refines or contradicts.',
+              schema: { rule: z.string(), replaces: z.number().int().optional() },
+              run: ({ rule, replaces }) => {
+                const r = String(rule).trim().slice(0, 500);
+                if (!r) return finish('Empty rule ignored.');
+                const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
+                if (old) this.o.board.setPreference(old.id, r);
+                else this.o.board.addPreference(r, card.id);
+                this.o.board.log(card.id, 'state', 'koordinator', `Merkt sich: „${r}“`);
+                return finish('Recorded. End your turn now.');
+              },
+            },
+            { name: 'nothing', description: 'Nothing lasting to record.', schema: {}, run: () => finish('Fine. End your turn now.') },
+          ],
+          onEvent: (e) => {
+            if (e.type === 'idle' || e.type === 'error') {
+              session.close();
+              finish('');
+            }
+          },
+        },
+        [
+          `Card: ${card.kind} "${card.title}".`,
+          question ? `The worker asked: ${question}` : '',
+          `The owner's ${kind === 'answer' ? 'answer' : kind === 'note' ? 'note to the worker' : 'feedback on the finished work'}: ${text}`,
+          rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+      );
+    });
   }
 
   /** Cards that a card in progress may collide with. */
@@ -363,6 +427,13 @@ Read what you need in the repository (you cannot change files), then call scope 
 - collides_with: the tags of cards in progress it collides with beyond plain file overlap (same feature, same data model, same UI flow); empty when none.
 - reason: one sentence in German for the owner, naming the overlap if there is one. The owner does not know the tags: name cards by their title.
 Keep it quick: this runs every time a card starts.
+`.trim();
+
+const LEARN_SYSTEM = `
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's preference memory: short rules every agent follows, so the owner never has to say the same thing twice.
+
+You get one thing the owner said about a card. Decide whether it states a lasting preference that should guide future work on other cards too — about how to work, what to ask and what not, style, wording, testing, tools. Most answers only decide the case at hand: then call nothing.
+If it does state one, call remember with a short, general rule in German ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."). If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not record what is already covered.
 `.trim();
 
 const CUT_SYSTEM = `
