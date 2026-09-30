@@ -1,8 +1,8 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import type { CardPatch, Item } from '../core/types';
+import type { Item } from '../core/types';
 import type { Cam } from './camera';
 import { Inline, plain } from './markdown';
 import { stateLabel, t } from './strings';
@@ -26,7 +26,7 @@ export const CardView = memo(
   function CardView({ item, b, lifted, dragging, pop, els }: CardProps) {
     const shape = shapeOf(item);
     const kind = item.label ?? (item.parent ? t.kind.workstream : t.kind[item.kind]);
-    const meta = plain(item.body).split('\n')[0];
+    const meta = item.question?.text ?? item.statusLine ?? plain(item.body).split('\n')[0];
     const cls = ['item', 'card', shape, `s-${item.state}`, lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (
       <div
@@ -69,112 +69,23 @@ export const ProjectView = memo(
   (a, b) => a.item === b.item && sameBounds(a.b, b.b) && a.kids.length === b.kids.length && a.kids.every((k, i) => k === b.kids[i]),
 );
 
-// ------------------------------------------------------------------ unfolded card
-
-export function Detail({ item, parent, onEdit, onDelete }: { item: Item; parent?: Item; onEdit: (p: CardPatch) => void; onDelete: () => void }) {
-  const kind = parent ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}` : t.kind[item.kind];
-  if (item.source === 'manual') return <ManualDetail item={item} onEdit={onEdit} onDelete={onDelete} />;
+/** A dashed line from each proposal to the card it came from. */
+export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
+  const byId = new Map(placed.map((p) => [p.item.id, p]));
+  const paths = placed.flatMap(({ item, b }) => {
+    const src = item.state === 'proposal' && item.from ? byId.get(item.from) : undefined;
+    if (!src) return [];
+    const x1 = src.b.x + src.b.w / 2;
+    const y1 = src.b.y + src.b.h;
+    const x2 = b.x + b.w / 2;
+    const y2 = b.y;
+    const my = (y1 + y2) / 2;
+    return [<path key={item.id} d={`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`} />];
+  });
   return (
-    <>
-      <div className="p-kind">{kind}</div>
-      <div className="p-title">
-        <Inline md={item.title} />
-      </div>
-      <div className="p-state">● {stateLabel(item)}</div>
-      <Body md={item.body} />
-      {parent?.plan && (
-        <p className="p-src">
-          {t.fromPlan} <code>{parent.plan.file}</code>
-        </p>
-      )}
-    </>
-  );
-}
-
-function ManualDetail({ item, onEdit, onDelete }: { item: Item; onEdit: (p: CardPatch) => void; onDelete: () => void }) {
-  // local drafts: the server echo must not overwrite what is being typed
-  const [title, setTitle] = useState(item.title);
-  const [body, setBody] = useState(item.body);
-  const [kind, setKind] = useState(item.kind as 'feature' | 'bugfix');
-  return (
-    <>
-      <div className="p-kind">{t.kind[kind]}</div>
-      <input
-        className="p-title"
-        value={title}
-        placeholder={t.titlePlaceholder}
-        maxLength={200}
-        onChange={(e) => {
-          setTitle(e.target.value);
-          onEdit({ title: e.target.value });
-        }}
-      />
-      <div className="p-state">● {stateLabel(item)}</div>
-      <div>
-        <div className="seg">
-          {(['feature', 'bugfix'] as const).map((k) => (
-            <button
-              key={k}
-              className={k === kind ? 'on' : ''}
-              onClick={() => {
-                setKind(k);
-                onEdit({ kind: k });
-              }}
-            >
-              {t.kind[k]}
-            </button>
-          ))}
-        </div>
-      </div>
-      <textarea
-        className="p-body"
-        value={body}
-        placeholder={t.bodyPlaceholder}
-        maxLength={20000}
-        onChange={(e) => {
-          setBody(e.target.value);
-          onEdit({ body: e.target.value });
-        }}
-      />
-      <div className="actions">
-        <button className="btn danger" onClick={onDelete}>
-          {t.delete}
-        </button>
-      </div>
-    </>
-  );
-}
-
-/** A workstream's text: paragraphs, and its sub-items as a checklist. */
-function Body({ md }: { md: string }) {
-  const blocks: ({ list: { text: string; mark: string }[] } | { para: string })[] = [];
-  for (const line of md.split('\n')) {
-    const m = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.*)$/.exec(line);
-    if (m) {
-      const last = blocks.at(-1);
-      const li = { text: m[2]!, mark: m[1] === undefined ? '' : m[1] === ' ' ? 'open' : 'done' };
-      if (last && 'list' in last) last.list.push(li);
-      else blocks.push({ list: [li] });
-    } else if (line.trim()) blocks.push({ para: line.trim() });
-  }
-  return (
-    <>
-      {blocks.map((bl, i) =>
-        'para' in bl ? (
-          <p key={i} className="p-lead">
-            <Inline md={bl.para} />
-          </p>
-        ) : (
-          <ul key={i} className="p-list">
-            {bl.list.map((li, j) => (
-              <li key={j} className={li.mark}>
-                <Inline md={li.text} />
-              </li>
-            ))}
-          </ul>
-        ),
-      )}
-    </>
+    <svg id="links" width="1" height="1">
+      {paths}
+    </svg>
   );
 }
 

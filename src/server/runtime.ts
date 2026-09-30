@@ -57,6 +57,8 @@ export const sdkRuntime: AgentRuntime = {
     const obeya = createSdkMcpServer({
       name: 'obeya',
       version: '1.0.0',
+      // the agent needs these from the first step, not behind a tool search
+      alwaysLoad: true,
       tools: spec.tools.map((t) =>
         tool(t.name, t.description, t.schema, async (args) => ({ content: [{ type: 'text' as const, text: await t.run(args as Record<string, unknown>) }] })),
       ),

@@ -52,7 +52,7 @@ export class Workers {
       throw e;
     }
     this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null });
-    this.o.board.log(card.id, 'state', 'obeya', `Agent gestartet: ${branch} in ${path}`);
+    this.o.board.log(card.id, 'state', 'obeya', `Agent gestartet auf ${branch}.`);
     this.launch(card.id, this.briefing(card, branch));
   }
 
@@ -168,7 +168,8 @@ export class Workers {
         break;
       case 'text':
         live.lastText = e.text;
-        this.o.board.log(cardId, 'say', 'worker', clip(e.text, 600));
+        // after handing over, the worker's closing words repeat what the card already shows
+        if (!live.handedOver) this.o.board.log(cardId, 'say', 'worker', clip(e.text, 600));
         break;
       case 'tool':
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input));
