@@ -11,6 +11,7 @@ import { parseArgs } from 'node:util';
 import { pickAdapter } from '../adapters';
 import { Board } from './board';
 import { Store } from './db';
+import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import { sdkRuntime } from './runtime';
 import { serve } from './server';
@@ -57,11 +58,13 @@ if (values.clones) {
   // landing on main needs the clones to see the local main; otherwise they track the remote
   workspaces.ensureClones(adapter.land === 'main' || !repo.remote ? repo.path : repo.remote, Number(values.clones));
 }
+const projectAgents = new ProjectAgents(board, sdkRuntime, repo.path);
 const workers = new Workers({
   board,
   runtime: sdkRuntime,
   workspaces,
   adapter,
+  askProject: (project, card, q) => projectAgents.ask(project, card, q),
   permissionMode: values['permission-mode'] as 'auto',
 });
 workers.resumeAll();

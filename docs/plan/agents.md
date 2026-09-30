@@ -48,7 +48,7 @@ developed on its own canvas — a card started there comes back as a reviewed br
 - [x] **W4:** Card UI for work. Start and stop, log, hints, questions with options, review,
   proposals with their link to the source card.
 - [ ] **W5:** Obeya on Obeya. Adapter for this repo; a real card worked through end to end.
-- [ ] **W6:** Project agents. One read-only session per project answering from plan doc and
+- [x] **W6:** Project agents. One read-only session per project answering from plan doc and
   decision log, escalating to the owner.
 
 ## Open questions
