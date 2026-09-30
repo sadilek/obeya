@@ -9,7 +9,7 @@ import { stateLabel, t } from './strings';
 
 export const needsYou = (i: Item) => i.state === 'waiting' || i.state === 'proposal';
 
-/** The first line of an idea's brief that says something (not a bare "Ziel" label). */
+/** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
 const firstLine = (md: string) =>
   plain(md)
     .split('\n')
@@ -45,7 +45,7 @@ export const CardView = memo(
       item.question?.text ??
       (item.queue && 'behind' in item.queue ? item.queue.reason : undefined) ??
       status ??
-      (item.idea ? firstLine(item.idea.brief) || firstLine(item.body) : plain(item.body).split('\n')[0]);
+      (item.idea ? firstLine(item.idea.brief) || firstLine(item.body) : firstLine(item.body));
     const cls = [
       'item',
       'card',
