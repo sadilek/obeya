@@ -140,6 +140,8 @@ the repository).
 - Card sizes are fixed per kind; a delivered workstream shrinks to a chip, a project wraps its
   children, and a workstream cannot be dragged out of its project. New projects are placed in a
   grid below the existing ones.
+- An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
+  follows its content while open.
 - Manual cards are created by double-click, the button or `n`, and edited in the unfolded card;
   a new card closed without a title is dropped. Deleting offers undo.
 
