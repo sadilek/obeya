@@ -194,6 +194,41 @@ export class Board {
     this.changed();
   }
 
+  // ---------------------------------------------------------------- archive
+
+  /** Takes finished cards of the owner's off the canvas into its archive. */
+  archive(ids: string[]) {
+    for (const id of ids) {
+      const row = this.own(id);
+      if (row.plan_ref) throw new BadRequest('planCard', 'a workstream stays with its project');
+      if (row.state !== 'live') throw new BadRequest('notDone', 'only a live card can be archived');
+    }
+    const at = new Date().toISOString();
+    this.store.db.transaction(() => ids.forEach((id) => this.store.update(id, { archived_at: at })))();
+    this.changed();
+  }
+
+  /** Archives every finished card of the owner's on the canvas; returns their ids. */
+  archiveDone(): string[] {
+    const ids = this.snapshot()
+      .items.filter((i) => i.source === 'manual' && i.state === 'live')
+      .map((i) => i.id);
+    if (ids.length) this.archive(ids);
+    return ids;
+  }
+
+  /** Puts an archived card back where it was on the canvas. */
+  unarchive(id: string) {
+    if (!this.own(id).archived_at) throw new BadRequest('notArchived', 'the card is not archived');
+    this.store.update(id, { archived_at: null });
+    this.changed();
+  }
+
+  /** The archive, the most recently archived first. */
+  archived(): Item[] {
+    return this.store.archived(this.canvas.id).map((r) => ({ ...toItems([r], [], this.home)[0]!, archivedAt: r.archived_at! }));
+  }
+
   /** The canvas as the UI sees it; built once per change (every write here ends in `changed`). */
   snapshot(): CanvasSnapshot {
     if (this.cache) return this.cache;

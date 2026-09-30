@@ -49,6 +49,13 @@ export const api = {
   patch: (id: string, p: CardPatch) => call<void>('PATCH', at(`/cards/${id}`), p),
   remove: (id: string) => call<void>('DELETE', at(`/cards/${id}`)),
   restore: (id: string) => call<void>('POST', at(`/cards/${id}/restore`)),
+  /** Takes a finished card off the canvas into the archive. */
+  archive: (id: string) => call<void>('POST', at(`/cards/${id}/archive`)),
+  unarchive: (id: string) => call<void>('POST', at(`/cards/${id}/unarchive`)),
+  /** The archive, the most recently archived first. */
+  archived: () => call<Item[]>('GET', at('/archive')),
+  /** Archives every finished card of the owner's on the canvas. */
+  archiveDone: () => call<{ ids: string[] }>('POST', at('/archive')),
   act: (id: string, a: CardAction) => call<void>('POST', at(`/cards/${id}/act`), a),
   events: (id: string) => call<CardEvent[]>('GET', at(`/cards/${id}/events`)),
   /** What the owner said about the card or project in view. */

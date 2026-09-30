@@ -91,6 +91,10 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         DELETE: on((c, req) => c.remove(req.params.id!)),
       },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.board.restore(req.params.id!)) },
+      '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
+      '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },
+      // the archive, newest first; posting archives every finished card of the owner's
+      '/api/c/:canvas/archive': { GET: on((c) => c.board.archived()), POST: on((c) => ({ ids: c.board.archiveDone() })) },
       '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.act(req.params.id!, (await req.json()) as CardAction)) },
       '/api/c/:canvas/cards/:id/events': { GET: on((c, req) => c.board.events(req.params.id!)) },
       '/api/c/:canvas/cards/:id/demo/:file': {

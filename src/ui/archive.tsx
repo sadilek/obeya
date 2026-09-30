@@ -1,0 +1,64 @@
+// The archive: finished cards taken off the canvas, the most recently archived first.
+
+import type { Item } from '../core/types';
+import { plain } from './markdown';
+import { t } from './strings';
+
+interface Props {
+  on: boolean;
+  /** The archive as the server sends it, newest first. */
+  archived: Item[];
+  /** Finished cards of the owner's still on the canvas. */
+  done: number;
+  onOpen: (i: Item) => void;
+  onArchiveDone: () => void;
+  /** Where an archived card unfolds from and folds back to. */
+  els: Map<string, HTMLElement>;
+}
+
+export function ArchiveSheet({ on, archived, done, onOpen, onArchiveDone, els }: Props) {
+  // one heading per day, in the server's order
+  const days: { day: string; items: Item[] }[] = [];
+  for (const i of archived) {
+    const day = t.archive.day(new Date(i.archivedAt!));
+    if (days.at(-1)?.day === day) days.at(-1)!.items.push(i);
+    else days.push({ day, items: [i] });
+  }
+  return (
+    <aside id="asheet" className={on ? 'sheet on' : 'sheet'}>
+      <div className="p-kind">{t.archive.kind}</div>
+      <h2>{t.archive.title}</h2>
+      {done > 0 && (
+        <button className="btn" onClick={onArchiveDone}>
+          {t.archive.archiveDone(done)}
+        </button>
+      )}
+      {archived.length === 0 ? (
+        <p className="hint">{t.archive.empty}</p>
+      ) : (
+        <>
+          <p className="hint">{t.archive.hint}</p>
+          {days.map(({ day, items }) => (
+            <section key={day}>
+              <h4 className="p-h">{day}</h4>
+              <ol>
+                {items.map((i) => (
+                  <li key={i.id} className="s-live" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
+                    <span className="dot" />
+                    <span>
+                      {plain(i.title)}
+                      <br />
+                      <span className="hint">
+                        {t.kind[i.kind]} · {t.archive.time(new Date(i.archivedAt!))}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+        </>
+      )}
+    </aside>
+  );
+}

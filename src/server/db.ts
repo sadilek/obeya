@@ -41,6 +41,8 @@ export interface CardRow {
   repo: string | null;
   /** JSON: the card's latest demo (`{ dir, chapters, shown, notShown, findings, question? }`). */
   demo: string | null;
+  /** When the owner took the finished card off the canvas into the archive. */
+  archived_at: string | null;
 }
 
 export interface DecisionRow {
@@ -132,6 +134,7 @@ const MIGRATIONS = [
   // the demo outlives the review it was made for; a card waiting with one moves it out of `detail`
   `ALTER TABLE cards ADD COLUMN demo TEXT;
    UPDATE cards SET demo = json_extract(detail, '$.demo') WHERE need = 'demo' AND json_extract(detail, '$.demo') IS NOT NULL;`,
+  `ALTER TABLE cards ADD COLUMN archived_at TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -157,6 +160,7 @@ export type RowUpdate = Partial<
     | 'queue'
     | 'pr'
     | 'demo'
+    | 'archived_at'
   >
 >;
 
@@ -183,9 +187,16 @@ export class Store {
       .run({ id, name, now: now() });
   }
 
-  /** Every card of the canvas that is not deleted. */
+  /** Every card on the canvas: not deleted, not archived. */
   cards(canvasId: string): CardRow[] {
-    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL').all({ c: canvasId }) as CardRow[];
+    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL').all({ c: canvasId }) as CardRow[];
+  }
+
+  /** The canvas's archive, the most recently archived first. */
+  archived(canvasId: string): CardRow[] {
+    return this.db
+      .query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC, created_at DESC')
+      .all({ c: canvasId }) as CardRow[];
   }
 
   /** Deletes the owner's cards that never got a title, created before `before`; returns how many. */

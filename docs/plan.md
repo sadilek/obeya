@@ -61,6 +61,10 @@ decisions are made in front of the wall.
    what needs judgement — a review comment that questions a decision, a conflict with product
    meaning — comes back to the owner as a question on the card.
 5. Merged → `live`. The demo stays on the card.
+6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card, or
+   all finished ones at once in the archive). The archive (button or `A`) lists archived cards
+   by day, the most recently archived first; one unfolds from its row as on the canvas and can go
+   back to the place it had.
 
 ## Communication
 
@@ -152,7 +156,8 @@ the owner's language (`src/core/locale.ts`).
 ## Data
 
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
-branch, status line, open question or review summary, proposal source, estimated scope, queue),
+branch, status line, open question or review summary, proposal source, estimated scope, queue,
+when archived),
 card events (the log, with an error code where the UI words it), workspaces and their leases,
 decision log, preferences, per-canvas settings (the Koordinator's session); later PR links.
 
@@ -221,6 +226,8 @@ the repository).
   to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
 - Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
   for developers.
+- Only the owner's cards are archived, and only once `live`; a workstream stays with its project,
+  where a delivered one is already a chip. Archiving keeps the card's position, demo and log.
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back.
 

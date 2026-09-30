@@ -90,6 +90,21 @@ describe('refused requests', () => {
   });
 });
 
+describe('archive', () => {
+  test('a finished card goes into the archive and back', async () => {
+    const c = card();
+    expect(await codeOf(post(api(`/cards/${c.id}/archive`), ''))).toBe('notDone');
+    board.patch(c.id, { state: 'live' });
+    expect((await post(api(`/cards/${c.id}/archive`), '')).status).toBe(204);
+    const archive = (await (await fetch(new URL(api('/archive'), server.url))).json()) as { id: string; archivedAt: string }[];
+    expect(archive.map((i) => i.id)).toEqual([c.id]);
+    expect(board.item(c.id)).toBeUndefined();
+    expect((await post(api(`/cards/${c.id}/unarchive`), '')).status).toBe(204);
+    expect(board.item(c.id)!.state).toBe('live');
+    expect(await (await post(api('/archive'), '')).json()).toEqual({ ids: [c.id] });
+  });
+});
+
 describe('voice', () => {
   const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'new_card')).at(-1)!;
 

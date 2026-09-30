@@ -18,7 +18,7 @@ export const t = {
   progress: (live: number, all: number) => `${live} von ${all} live`,
   needsYou: 'brauchen dich',
   newCard: 'Neue Karte',
-  keys: 'Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Doppelklick: neue Karte · K: Koordinator · Leertaste halten: sprechen',
+  keys: 'Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Doppelklick: neue Karte · K: Koordinator · A: Archiv · Leertaste halten: sprechen',
   close: 'Schließen (Esc)',
   planSheet: 'Projekt · Plan',
   fromPlan: 'Aus dem Plan-Dokument; geändert wird es dort:',
@@ -88,6 +88,8 @@ export const t = {
     workspace: 'Der Workspace für den Agenten ließ sich nicht vorbereiten (git-Fehler).',
     emptyText: 'Bitte zuerst einen Text eingeben.',
     unknownPreference: 'Diese Präferenz gibt es nicht mehr.',
+    notDone: 'Archivieren lässt sich nur eine eigene Karte, die live ist.',
+    notArchived: 'Die Karte liegt nicht mehr im Archiv.',
     landDirty: 'Nicht gelandet: Im Workspace liegen noch nicht committete Änderungen. Der Agent kümmert sich darum.',
     landConflict: 'Nicht gelandet: Beim Rebase auf main gab es Konflikte. Der Agent löst sie.',
     landEmpty: 'Nicht gelandet: Der Branch enthält keine Commits. Der Agent sieht nach.',
@@ -132,9 +134,37 @@ export const t = {
     add: 'Hinzufügen',
     addPlaceholder: 'Neue Präferenz',
   },
+  archive: {
+    button: 'Archiv',
+    kind: 'Archiv',
+    title: 'Erledigte Karten',
+    hint: 'Zuletzt archivierte oben. Ein Klick öffnet die Karte.',
+    empty: 'Noch nichts archiviert.',
+    archive: 'Archivieren',
+    archiveDone: (n: number) => (n === 1 ? '1 erledigte Karte archivieren' : `${n} erledigte Karten archivieren`),
+    unarchive: 'Zurück auf die Leinwand',
+    archived: (title: string) => `„${title}“ archiviert.`,
+    archivedMany: (n: number) => (n === 1 ? '1 Karte archiviert.' : `${n} Karten archiviert.`),
+    unarchived: (title: string) => `„${title}“ ist zurück auf der Leinwand.`,
+    /** The heading over the cards archived on one day. */
+    day: (d: Date, today = new Date()) => {
+      const days = Math.round((startOfDay(today) - startOfDay(d)) / 86_400_000);
+      if (days === 0) return 'Heute';
+      if (days === 1) return 'Gestern';
+      return d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', ...(d.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }) });
+    },
+    /** When an archived card went into the archive, on the unfolded card. */
+    when: (d: Date) => {
+      const day = t.archive.day(d);
+      return `archiviert ${day === 'Heute' || day === 'Gestern' ? day.toLowerCase() : `am ${day}`}, ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+    },
+    time: (d: Date) => `archiviert ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`,
+  },
   split: 'Aufteilen',
   empty: 'Noch keine Karten. Doppelklick auf die Fläche legt eine an.',
 };
+
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
 export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue }) =>
   i.queue
