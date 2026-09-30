@@ -102,6 +102,7 @@ describe('voice', () => {
     const body = (await (await res).json()) as { confirm: string; token: string; audio?: string };
     expect(body.confirm).toBe('Neue Karte „Export“, der Agent fängt an.');
     expect(body.token).toBeTruthy();
+    expect((body as { undoMs?: number }).undoMs).toBe(30);
     expect(body.audio?.startsWith('data:audio/wav;base64,')).toBe(true);
     expect(executed).toEqual([]);
     await new Promise((r) => setTimeout(r, 60));

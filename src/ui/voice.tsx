@@ -8,6 +8,8 @@ import { t } from './strings';
 export interface Heard {
   confirm: string;
   token?: string;
+  /** How long the command still waits for "Rückgängig". */
+  undoMs?: number;
   audio?: string;
 }
 

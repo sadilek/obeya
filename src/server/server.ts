@@ -64,7 +64,11 @@ export function serve(canvases: CanvasRuntime[], transcriber: Transcriber, port:
     const h: Heard = text ? await c.commander.hear(text, focus) : { confirm: 'Ich habe nichts gehört.' };
     const audio = speak(h.confirm);
     if (h.token) c.commander.arm(h.token);
-    return { ...h, ...(audio ? { audio: `data:audio/wav;base64,${Buffer.from(audio).toString('base64')}` } : {}) };
+    return {
+      ...h,
+      ...(h.token ? { undoMs: c.commander.delayMs } : {}),
+      ...(audio ? { audio: `data:audio/wav;base64,${Buffer.from(audio).toString('base64')}` } : {}),
+    };
   };
 
   return Bun.serve({

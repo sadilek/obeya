@@ -48,6 +48,11 @@ export class Commander {
     return { confirm, token };
   }
 
+  /** How long a command waits for undo once armed. */
+  get delayMs(): number {
+    return this.o.delayMs ?? 5000;
+  }
+
   arm(token: string) {
     const w = this.waiting.get(token);
     if (!w || w.timer) return;
@@ -60,7 +65,7 @@ export class Commander {
         if (card) this.o.board.log(card, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
         else console.error('voice command:', e);
       }
-    }, this.o.delayMs ?? 5000);
+    }, this.delayMs);
   }
 
   /** Takes a waiting command back; false when it already ran. */

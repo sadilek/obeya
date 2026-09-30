@@ -41,7 +41,7 @@ export function setCanvas(id: string) {
 export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
 
 type Where = { card: string } | { project: string } | null;
-type HeardReply = { confirm: string; token?: string; audio?: string };
+type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string };
 
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
