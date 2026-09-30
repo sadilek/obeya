@@ -31,7 +31,7 @@ needs judgement comes back to the owner.
 
 - [x] **W1:** PR phase: approval hands the worker the PR, `pr_opened`, `in PR` with its link.
 - [x] **W2:** Watching: comments, checks, conflicts to the worker; merge and close.
-- [ ] **W3:** Card UI: PR link, checks, what the worker does about them.
+- [x] **W3:** Card UI: PR link, checks, what the worker does about them.
 - [ ] **W4:** Live on OKE, with the owner's go.
 
 ## Open questions

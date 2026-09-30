@@ -45,7 +45,7 @@ export function Detail(p: Props) {
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div>}
       <div className="p-state">
         ● {stateLabel(item)}
-        {item.statusLine && item.state === 'working' && <span className="p-status"> · {item.statusLine}</span>}
+        {item.statusLine && (item.state === 'working' || item.state === 'inPr') && <span className="p-status"> · {item.statusLine}</span>}
       </div>
 
       {item.state === 'proposal' && (
@@ -168,7 +168,36 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {(item.state === 'working' || (item.state === 'waiting' && item.need !== 'demo')) && (
+      {item.pr && (item.state === 'inPr' || item.state === 'waiting') && (
+        <div className="question pr">
+          <h4>
+            <a href={item.pr.url} target="_blank" rel="noreferrer">
+              {t.pr.title(item.pr.number)} ↗
+            </a>
+          </h4>
+          {item.pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
+          {item.pr.checks.length > 0 ? (
+            <ul className="checks">
+              {item.pr.checks.map((c) => (
+                <li key={c.name} className={c.state}>
+                  {c.url ? (
+                    <a href={c.url} target="_blank" rel="noreferrer">
+                      {c.name}
+                    </a>
+                  ) : (
+                    c.name
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="hint">{t.pr.noChecks}</div>
+          )}
+        </div>
+      )}
+      {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
+
+      {(item.state === 'working' || item.state === 'inPr' || (item.state === 'waiting' && item.need !== 'demo')) && (
         <Composer
           key={`${item.state}:${item.need ?? ''}`}
           placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' ? t.compose.review : t.compose.working}
