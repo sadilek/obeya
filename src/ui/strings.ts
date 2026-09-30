@@ -95,6 +95,7 @@ export const t = {
   } satisfies Record<ErrorCode, string>,
   offlineError: 'Der Server ist nicht erreichbar.',
   scope: 'Voraussichtlich betroffen',
+  demo: { question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–' },
   koordinator: {
     button: 'Koordinator',
     kind: 'Koordinator',

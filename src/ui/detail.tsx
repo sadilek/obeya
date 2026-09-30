@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { useEffect, useRef, useState } from 'react';
-import type { CardAction, CardEvent, CardPatch, Item } from '../core/types';
+import type { CardAction, CardEvent, CardPatch, Demo, Item } from '../core/types';
 import { ApiError, api, onCardEvent } from './api';
 import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
@@ -142,6 +142,17 @@ export function Detail(p: Props) {
         </div>
       )}
 
+      {item.state === 'waiting' && item.need === 'demo' && item.demo && (
+        <>
+          <DemoView cardId={item.id} summary={item.summary ?? ''} demo={item.demo} />
+          <div className="actions">
+            <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
+              {t.approve}
+            </button>
+          </div>
+        </>
+      )}
+
       {item.state === 'waiting' && item.need === 'review' && (
         <>
           <div className="question review">
@@ -159,7 +170,7 @@ export function Detail(p: Props) {
       {(item.state === 'working' || item.state === 'waiting') && (
         <Composer
           key={`${item.state}:${item.need ?? ''}`}
-          placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' ? t.compose.review : t.compose.working}
+          placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' || item.need === 'demo' ? t.compose.review : t.compose.working}
           onSend={(text) =>
             item.need === 'question'
               ? act({ action: 'answer', text }, { close: true, ack: t.answered })
@@ -207,6 +218,81 @@ export function Detail(p: Props) {
     </>
   );
 }
+
+/** The narrated demo with its chapters and the report beside it. */
+function DemoView({ cardId, summary, demo }: { cardId: string; summary: string; demo: Demo }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [now, setNow] = useState(0);
+  const src = (f: string) => `/api/cards/${cardId}/demo/${f}`;
+  useEffect(() => {
+    // start once the card has unfolded, like the mock
+    const h = setTimeout(() => video.current?.play().catch(() => {}), 500);
+    return () => clearTimeout(h);
+  }, []);
+  const current = demo.chapters.reduce((cur, [at], i) => (at <= now + 0.05 ? i : cur), 0);
+  return (
+    <>
+      <Body md={summary} />
+      <div className="p-grid">
+        <video ref={video} controls preload="metadata" poster={src('poster.jpg')} src={src('demo.mp4')} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}>
+          <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
+        </video>
+        <div>
+          <ol className="chapters">
+            {demo.chapters.map(([at, title], i) => (
+              <li key={i}>
+                <button
+                  className={i === current ? 'on' : ''}
+                  onClick={() => {
+                    const v = video.current;
+                    if (!v) return;
+                    v.currentTime = at;
+                    v.play().catch(() => {});
+                  }}
+                >
+                  <span className="t">{mmss(at)}</span>
+                  {title}
+                </button>
+              </li>
+            ))}
+          </ol>
+          {demo.question && (
+            <div className="question">
+              <h4>{t.demo.question}</h4>
+              {demo.question}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="cols">
+        {(
+          [
+            [t.demo.shown, demo.shown],
+            [t.demo.notShown, demo.notShown],
+            [t.demo.findings, demo.findings],
+          ] as const
+        ).map(([h, list]) => (
+          <section key={h}>
+            <h4>{h}</h4>
+            {list.length ? (
+              <ul>
+                {list.map((x, i) => (
+                  <li key={i}>
+                    <Inline md={x} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="hint">{t.demo.none}</span>
+            )}
+          </section>
+        ))}
+      </div>
+    </>
+  );
+}
+
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 function PlanSource({ file }: { file: string }) {
   return (
