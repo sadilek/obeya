@@ -351,7 +351,10 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     newCardWatch.current = null;
     setPopId(made.id);
     // a new idea opens, so the owner sees the discussion begin
-    if (made.state === 'idea') open(made);
+    if (made.state === 'idea') {
+      setKOn(false);
+      open(made);
+    }
     else fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8)), 700);
   }, [snapshot]);
   // an idea's agent sums up its reply aloud, for the owner who has the idea open
