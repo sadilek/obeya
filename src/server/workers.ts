@@ -360,17 +360,19 @@ export class Workers {
           const s = clip(String(summary), 6000);
           const d = demo as { dir: string; chapters: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string } | undefined;
           if (!d && this.o.adapter.demo?.required) return 'Not handed over: this repository requires a demo. Record it with the demo skill, then call ready_for_review again with it.';
-          let detail: Record<string, unknown> = { summary: s };
+          let demoJson: string | undefined;
           if (d) {
             const chapters = readChapters(d.dir, d.chapters);
             if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
-            detail = {
-              summary: s,
-              demo: { dir: d.dir, chapters, shown: d.shown, notShown: d.not_shown, findings: d.findings, ...(d.question ? { question: d.question } : {}) },
-            };
+            demoJson = JSON.stringify({ dir: d.dir, chapters, shown: d.shown, notShown: d.not_shown, findings: d.findings, ...(d.question ? { question: d.question } : {}) });
           }
           handOver();
-          this.o.board.work(cardId, { state: 'waiting', need: d ? 'demo' : 'review', detail: JSON.stringify(detail) });
+          this.o.board.work(cardId, {
+            state: 'waiting',
+            need: d ? 'demo' : 'review',
+            detail: JSON.stringify({ summary: s }),
+            ...(demoJson ? { demo: demoJson } : {}),
+          });
           this.o.board.log(cardId, 'review', 'worker', s);
           return END_TURN;
         },

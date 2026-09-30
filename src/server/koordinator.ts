@@ -57,8 +57,11 @@ export class Koordinator {
 
   /** After a restart: decide again on cards the Koordinator was checking, and start what is free. */
   resume() {
-    for (const i of this.o.board.snapshot().items)
-      if (i.state === 'planned' && i.queue && 'checking' in i.queue) this.serial(() => this.decide(i.id));
+    for (const i of this.o.board.snapshot().items) {
+      if (i.state !== 'planned' || !i.queue) continue;
+      if ('checking' in i.queue) this.serial(() => this.decide(i.id));
+      else if ('cutting' in i.queue) this.serial(() => this.cut(i.id));
+    }
     this.scheduleDrain();
   }
 
@@ -260,7 +263,8 @@ export class Koordinator {
   inProgress(repo?: string): Item[] {
     return this.o.board
       .snapshot()
-      .items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project' && (!repo || i.repo === repo));
+      // approved work counts until it has landed: a PR not yet merged still holds its files
+      .items.filter((i) => ['working', 'waiting', 'inPr', 'approved'].includes(i.state) && i.kind !== 'project' && (!repo || i.repo === repo));
   }
 
   private async decide(cardId: string) {

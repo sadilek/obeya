@@ -100,6 +100,28 @@ describe('Koordinator', () => {
     expect(item(c.id).queue).toMatchObject({ behind: [a.id] });
   });
 
+  test('work approved into a pull request still holds its files until it is merged', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    board.work(a.id, { state: 'inPr' });
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/a.ts']);
+    expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+    board.work(a.id, { state: 'live' });
+    await settle();
+    expect(item(b.id).state).toBe('working');
+  });
+
+  test('an interrupted cut is taken up again after a restart', async () => {
+    const a = card('A');
+    board.work(a.id, { queue: JSON.stringify({ cutting: true }) });
+    k.resume();
+    await settle();
+    expect(runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'packages'))).toBe(true);
+  });
+
   test('the Koordinator may judge a collision without overlapping files', async () => {
     const a = card('A');
     k.request(a.id);

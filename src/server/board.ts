@@ -23,6 +23,9 @@ export interface PrState {
 }
 
 /** A request the server refuses: a stable code for the UI's text, and an English detail. */
+/** States a worker or the owner's decision is still part of. */
+const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
+
 /** How long an untitled card of the owner's may exist before Obeya drops it on start. */
 const UNTITLED_GRACE_MS = 10 * 60_000;
 
@@ -92,10 +95,10 @@ export class Board {
     return this.own(id);
   }
 
-  /** The directory of the card's demo, while it waits with one. */
+  /** The directory of the card's latest demo; it stays with the card after approval. */
   demoDir(id: string): string | null {
     const r = this.own(id);
-    return r.need === 'demo' && r.detail ? ((JSON.parse(r.detail) as { demo?: { dir: string } }).demo?.dir ?? null) : null;
+    return r.demo ? (JSON.parse(r.demo) as { dir: string }).dir : null;
   }
 
   /** The card as the UI sees it. */
@@ -385,7 +388,8 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
       item: {
         id: r.id,
         kind: r.kind,
-        state: derived === 'live' ? 'live' : (r.state ?? derived),
+        // work in progress wins over the doc: a ticked-off workstream may still wait for its merge
+        state: r.state && ACTIVE.includes(r.state) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived),
         ...(r.need ? { need: r.need } : {}),
         title: w.title,
         body: w.body,
@@ -412,8 +416,8 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow): Partial<Item> {
-  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; demo?: Item['demo'] & { dir: string } }) : {};
-  const demo = detail.demo && r.need === 'demo' ? (({ dir: _, ...d }) => d)(detail.demo) : undefined;
+  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string }) : {};
+  const demo = r.demo ? (({ dir: _, ...d }) => d)(JSON.parse(r.demo) as Item['demo'] & { dir: string }) : undefined;
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
   return {

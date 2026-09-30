@@ -157,6 +157,12 @@ export function Detail(p: Props) {
         </DemoView>
       )}
 
+      {item.demo && (item.state === 'inPr' || item.state === 'approved' || item.state === 'live') && (
+        <DemoView cardId={item.id} summary="" demo={item.demo} autoplay={false}>
+          <p className="hint">{t.demo.kept}</p>
+        </DemoView>
+      )}
+
       {item.state === 'waiting' && item.need === 'review' && (
         <>
           <div className="question review">
@@ -253,12 +259,13 @@ export function Detail(p: Props) {
 }
 
 /** The narrated demo with its chapters and the report beside it. */
-function DemoView({ cardId, summary, demo, children }: { cardId: string; summary: string; demo: Demo; children: ReactNode }) {
+function DemoView({ cardId, summary, demo, children, autoplay = true }: { cardId: string; summary: string; demo: Demo; children: ReactNode; autoplay?: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
   const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
   useEffect(() => {
-    // start once the card has unfolded, like the mock
+    // start once the card has unfolded, like the mock; a demo kept on a finished card waits to be played
+    if (!autoplay) return;
     const h = setTimeout(() => video.current?.play().catch(() => {}), 500);
     return () => clearTimeout(h);
   }, []);
