@@ -28,5 +28,5 @@ go. A short confirmation comes back, written and spoken, with undo. The transcri
 
 - [x] **W1:** Sidecar: Whisper (MLX) transcription with vocabulary; `say` for confirmations.
 - [x] **W2:** Meaning: the Koordinator turns a transcript into one action; deferred run with undo.
-- [ ] **W3:** Push-to-talk in the UI: Space and the mic button, level ring, target, confirmation.
+- [x] **W3:** Push-to-talk in the UI: Space and the mic button, level ring, target, confirmation.
 - [ ] **W4:** End to end with recorded speech on Obeya itself.

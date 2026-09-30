@@ -5,15 +5,17 @@ import type { Item, Preference } from '../core/types';
 import { api, ApiError } from './api';
 import { plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
+import type { Heard } from './voice';
 
 interface Props {
   on: boolean;
+  onHeard: (h: Heard) => void;
   items: Item[];
   preferences: Preference[];
   onOpen: (i: Item) => void;
 }
 
-export function KoordinatorSheet({ on, items, preferences, onOpen }: Props) {
+export function KoordinatorSheet({ on, items, preferences, onOpen, onHeard }: Props) {
   const queued = items.filter((i) => i.state === 'planned' && i.queue);
   const running = items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project');
   const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
@@ -21,6 +23,7 @@ export function KoordinatorSheet({ on, items, preferences, onOpen }: Props) {
     <aside id="ksheet" className={on ? 'sheet on' : 'sheet'}>
       <div className="p-kind">{t.koordinator.kind}</div>
       <h2>{t.koordinator.title}</h2>
+      <TellKoordinator onHeard={onHeard} />
 
       <h4 className="p-h">{t.koordinator.queue}</h4>
       {queued.length === 0 ? (
@@ -69,6 +72,42 @@ export function KoordinatorSheet({ on, items, preferences, onOpen }: Props) {
       </ul>
       <NewPreference />
     </aside>
+  );
+}
+
+/** A command in writing, for when speaking is not possible. */
+function TellKoordinator({ onHeard }: { onHeard: (h: Heard) => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      onHeard(await api.command(text.trim(), null));
+      setText('');
+    } catch (e) {
+      onHeard({ confirm: e instanceof ApiError ? errorText(e.code) : t.offlineError });
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="composer tell">
+      <textarea
+        value={text}
+        rows={2}
+        placeholder={t.voice.typePlaceholder}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            send();
+          }
+        }}
+      />
+      <button className="btn primary" disabled={!text.trim() || busy} onClick={send}>
+        {t.send}
+      </button>
+    </div>
   );
 }
 

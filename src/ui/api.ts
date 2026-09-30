@@ -29,6 +29,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
+const query = (where: { card: string } | { project: string } | null) =>
+  !where ? '' : 'card' in where ? `?card=${encodeURIComponent(where.card)}` : `?project=${encodeURIComponent(where.project)}`;
+
 export const api = {
   create: (c: NewCard) => call<Item>('POST', '/api/cards', c),
   patch: (id: string, p: CardPatch) => call<void>('PATCH', `/api/cards/${id}`, p),
@@ -36,6 +39,15 @@ export const api = {
   restore: (id: string) => call<void>('POST', `/api/cards/${id}/restore`),
   act: (id: string, a: CardAction) => call<void>('POST', `/api/cards/${id}/act`, a),
   events: (id: string) => call<CardEvent[]>('GET', `/api/cards/${id}/events`),
+  /** What the owner said, or typed, about the card or project in view. */
+  voice: async (audio: Blob, where: { card: string } | { project: string } | null) => {
+    const res = await fetch(`/api/voice${query(where)}`, { method: 'POST', body: audio });
+    if (!res.ok) throw new Error(`voice: ${res.status}`);
+    return (await res.json()) as { confirm: string; token?: string; audio?: string };
+  },
+  command: (text: string, where: { card: string } | { project: string } | null) =>
+    call<{ confirm: string; token?: string; audio?: string }>('POST', `/api/command${query(where)}`, { text }),
+  undo: (token: string) => call<{ undone: boolean }>('POST', '/api/command/undo', { token }),
   addPreference: (text: string) => call<{ id: number }>('POST', '/api/preferences', { text }),
   /** Changes a preference, or deletes it with `null`. */
   setPreference: (id: number, text: string | null) =>

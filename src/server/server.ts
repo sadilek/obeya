@@ -73,6 +73,8 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
     }
   };
   const heard = async (text: string, focus: Focus) => {
+    // the owner sees only the confirmation; the transcript is for whoever reads the server's log
+    console.log(`heard: ${text || '(nothing)'}`);
     const h: Heard = text ? await voice.commander.hear(text, focus) : { confirm: 'Ich habe nichts gehört.' };
     const audio = speak(h.confirm);
     if (h.token) voice.commander.arm(h.token);
