@@ -206,6 +206,45 @@ describe('workers', () => {
   });
 });
 
+describe('handing over with a demo', () => {
+  const demoDir = () => {
+    const d = join(dir, 'demo');
+    Bun.spawnSync(['mkdir', '-p', d]);
+    writeFileSync(join(d, 'demo.mp4'), 'x');
+    writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00:00.350 --> 00:00:05.000\nA.\n\n00:00:06.350 --> 00:00:09.000\nB.\n');
+    return d;
+  };
+  const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, shown: ['Export'], not_shown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
+
+  test('the card waits with the demo; its files are found; feedback asks for a new render', () => {
+    const c = manual();
+    workers.start(c.id);
+    const d = demoDir();
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: demo(d) })).toContain('End your turn');
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.demo).toEqual({ chapters: [[0, 'Vorher'], [6, 'Nachher']], shown: ['Export'], notShown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
+    expect(board.item(c.id)!.summary).toBe('S');
+    expect(board.demoDir(c.id)).toBe(d);
+    workers.message(c.id, 'Bitte mit Kopfzeile.');
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last.inbox.at(-1)).toContain('render the demo again');
+  });
+
+  test('a broken demo or a missing required one is refused, and the worker keeps the card', () => {
+    const c = manual();
+    workers.start(c.id);
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir(), ['Nur eins']) })).toContain('Not handed over');
+    expect(state(c.id)).toBe('working');
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start' } });
+    const d = manual();
+    workers.start(d.id);
+    expect(runtime.last.inbox[0]).toContain('How to run the app for the demo: bun start');
+    expect(runtime.last.call('ready_for_review', { summary: 'S' })).toContain('requires a demo');
+    expect(state(d.id)).toBe('working');
+  });
+});
+
 describe('landing through a pull request', () => {
   beforeEach(() => {
     rmSync(dir, { recursive: true, force: true });

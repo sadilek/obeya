@@ -2,6 +2,7 @@ import type { ServerWebSocket } from 'bun';
 import type { CardAction, CardPatch, NewCard, ServerMessage } from '../core/types';
 import index from '../ui/index.html';
 import { BadRequest, type Board } from './board';
+import { serveDemoFile } from './demo';
 import type { Koordinator } from './koordinator';
 import type { Workers } from './workers';
 
@@ -81,6 +82,16 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
       '/api/preferences/:id': {
         PATCH: (req) => handle(async () => board.setPreference(Number(req.params.id), ((await req.json()) as { text: string }).text)),
         DELETE: (req) => handle(() => board.setPreference(Number(req.params.id), null)),
+      },
+      '/api/cards/:id/demo/:file': {
+        GET: (req) => {
+          try {
+            const dir = board.demoDir(req.params.id);
+            return dir ? serveDemoFile(dir, req.params.file, req) : new Response('Not found', { status: 404 });
+          } catch {
+            return new Response('Not found', { status: 404 });
+          }
+        },
       },
       '/api/cards/:id/events': { GET: (req) => handle(() => board.events(req.params.id)) },
       '/api/ws': (req, server) => (server.upgrade(req) ? undefined : new Response('WebSocket expected', { status: 400 })),

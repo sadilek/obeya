@@ -7,6 +7,7 @@ import { OWNER_LANGUAGE } from '../core/locale';
 import type { Item, Question } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Reply } from './advisor';
+import { readChapters } from './demo';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { branchName, WorkspaceError, type Workspaces } from './workspaces';
 
@@ -65,11 +66,14 @@ export class Workers {
   /** A hint while the worker runs, or feedback on its review. */
   message(cardId: string, text: string) {
     const card = this.card(cardId);
-    if (card.state === 'waiting' && card.need === 'review') {
+    if (card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) {
       this.o.board.work(cardId, { state: 'working', need: null, detail: null });
       this.o.board.log(cardId, 'hint', 'owner', text);
       this.o.onOwnerInput?.(card, 'feedback', text);
-      this.deliver(cardId, `Feedback from the owner on your work. Address it, then call ready_for_review again:\n\n${text}`);
+      this.deliver(
+        cardId,
+        `Feedback from the owner on your work. Address it${card.need === 'demo' ? ', render the demo again' : ''}, then call ready_for_review again:\n\n${text}`,
+      );
     } else if (card.state === 'working' || (card.state === 'waiting' && card.need === 'question')) {
       this.o.board.log(cardId, 'hint', 'owner', text);
       this.o.onOwnerInput?.(card, 'note', text);
@@ -93,7 +97,7 @@ export class Workers {
 
   async approve(cardId: string) {
     const card = this.card(cardId);
-    if (!(card.state === 'waiting' && card.need === 'review')) throw new BadRequest('notReady', 'the card is not ready for review');
+    if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
     const row = this.o.board.row(cardId);
     if (this.o.adapter.land === 'main') {
       const problem = this.o.workspaces.landOnMain(cardId, row.branch!);
@@ -255,12 +259,35 @@ export class Workers {
       },
       {
         name: 'ready_for_review',
-        description: `Hand the finished work to the owner, after committing it and running the checks. The summary (in ${OWNER_LANGUAGE}) says what changed from the user's point of view, what you verified and how, and anything the owner should know. Then end your turn.`,
-        schema: { summary: z.string() },
-        run: ({ summary }) => {
-          handOver();
+        description: `Hand the finished work to the owner, after committing it, running the checks${this.o.adapter.demo ? ' and recording the demo' : ''}. The summary (in ${OWNER_LANGUAGE}) says what changed from the user's point of view, what you verified and how, and anything the owner should know. ${this.o.adapter.demo?.required ? 'The demo is required: ' : 'With a demo, pass '}its directory, the chapter titles in scene order and its report (in ${OWNER_LANGUAGE}). Then end your turn.`,
+        schema: {
+          summary: z.string(),
+          demo: z
+            .object({
+              dir: z.string().describe('absolute path of the rendered demo (holds demo.mp4 and captions.vtt)'),
+              chapters: z.array(z.string()).describe('scene titles, in order'),
+              shown: z.array(z.string()),
+              not_shown: z.array(z.string()).describe('behaviours not in the video, each with why'),
+              findings: z.array(z.string()),
+              question: z.string().optional().describe('only when something needs the owner beyond approve or feedback'),
+            })
+            .optional(),
+        },
+        run: ({ summary, demo }) => {
           const s = clip(String(summary), 6000);
-          this.o.board.work(cardId, { state: 'waiting', need: 'review', detail: JSON.stringify({ summary: s }) });
+          const d = demo as { dir: string; chapters: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string } | undefined;
+          if (!d && this.o.adapter.demo?.required) return 'Not handed over: this repository requires a demo. Record it with the demo skill, then call ready_for_review again with it.';
+          let detail: Record<string, unknown> = { summary: s };
+          if (d) {
+            const chapters = readChapters(d.dir, d.chapters);
+            if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
+            detail = {
+              summary: s,
+              demo: { dir: d.dir, chapters, shown: d.shown, notShown: d.not_shown, findings: d.findings, ...(d.question ? { question: d.question } : {}) },
+            };
+          }
+          handOver();
+          this.o.board.work(cardId, { state: 'waiting', need: d ? 'demo' : 'review', detail: JSON.stringify(detail) });
           this.o.board.log(cardId, 'review', 'worker', s);
           return END_TURN;
         },
@@ -329,6 +356,10 @@ Rules:
     parts.push(`You are on branch ${branch}, fresh from the default branch.`);
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
     if (this.o.adapter.checks?.length) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
+    if (this.o.adapter.demo)
+      parts.push(
+        `${this.o.adapter.demo.required ? 'Then record' : 'Where it helps the owner, record'} a demo of the change with the demo skill, as its instructions say, and hand it over with ready_for_review (directory, chapter titles, report). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card. How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+      );
     return parts.join('\n\n');
   }
 
