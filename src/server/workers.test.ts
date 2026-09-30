@@ -21,6 +21,7 @@ let board: Board;
 let runtime: FakeRuntime;
 let workers: Workers;
 let projectReply: Reply | null;
+let spaces: Workspaces;
 
 function setup(adapter: RepoAdapter) {
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
@@ -34,6 +35,7 @@ function setup(adapter: RepoAdapter) {
   const store = new Store(':memory:');
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => [doc]);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
+  spaces = workspaces;
   if (adapter.workspaces === 'clones') {
     workspaces.ensureClones(main, 1);
     for (const w of workspaces.list()) {
@@ -178,6 +180,48 @@ describe('workers', () => {
     expect(runtime.last.closed).toBe(true);
     const d = manual();
     expect(() => workers.start(d.id)).not.toThrow();
+  });
+
+  test('stopping keeps committed work: the clone stays with the card, starting again goes on on the same branch', () => {
+    const c = manual();
+    workers.start(c.id);
+    const { workspace, branch } = board.row(c.id);
+    writeFileSync(join(workspace!, 'work.ts'), 'x');
+    git(workspace!, 'add', '.');
+    git(workspace!, 'commit', '--quiet', '-m', 'Work');
+    workers.stop(c.id);
+    expect(board.row(c.id).workspace).toBe(workspace);
+    board.patch(c.id, { title: 'Neuer Titel' });
+    workers.start(c.id);
+    expect(board.row(c.id)).toMatchObject({ workspace, branch });
+    expect(git(workspace!, 'log', '--format=%s', '-1')).toBe('Work');
+    expect(runtime.last.inbox[0]).toContain('already holds earlier work');
+  });
+
+  test("a late advisor reply or a stopped session's tool call changes nothing", async () => {
+    const w = board.snapshot().items.find((i) => i.label === 'W1')!;
+    let reply!: (r: Reply) => void;
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, advisor: () => ({ by: 'project', ask: () => new Promise((r) => (reply = r)) }) });
+    workers.start(w.id);
+    const old = runtime.last;
+    old.call('ask', { question: 'Q?' });
+    workers.stop(w.id);
+    reply({ answer: 'Zu spät.' });
+    await flush();
+    expect(state(w.id)).toBe('planned');
+    expect(old.call('report', { status: 'noch da' })).toContain('session has ended');
+    expect(board.item(w.id)!.statusLine).not.toBe('noch da');
+  });
+
+  test('after a restart, a worker that never reported a session starts again with its card', () => {
+    const c = manual();
+    workers.start(c.id);
+    workers.shutdown();
+    const n = runtime.sessions.length;
+    workers.resumeAll();
+    expect(runtime.sessions.length).toBe(n + 1);
+    expect(runtime.last.spec.resume).toBeUndefined();
+    expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
   });
 
   test('a proposal lands below its source card', () => {

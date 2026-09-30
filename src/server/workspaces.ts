@@ -83,6 +83,19 @@ export class Workspaces {
     return this.o.mode === 'worktrees' ? this.leaseWorktree(cardId, branch) : this.leaseClone(cardId, branch);
   }
 
+  /** Whether the card's workspace holds work: uncommitted changes or commits beyond the base. */
+  hasWork(cardId: string): boolean {
+    const ws = this.leasedBy(cardId);
+    if (!ws || !existsSync(ws)) return false;
+    try {
+      if (git(ws, 'status', '--porcelain')) return true;
+      const base = this.o.mode === 'worktrees' ? defaultBranch(this.o.repoPath) : `origin/${defaultBranch(ws)}`;
+      return git(ws, 'rev-list', '--count', `${base}..HEAD`) !== '0';
+    } catch {
+      return true;
+    }
+  }
+
   /** Frees the workspace for other cards; a worktree stays until the card's work has landed. */
   release(cardId: string) {
     const path = this.leasedBy(cardId);
@@ -160,7 +173,9 @@ export class Workspaces {
     if (!clean) throw new WorkspaceError('every free workspace has uncommitted changes', 'dirtyWorkspaces');
     const base = defaultBranch(clean.path);
     git(clean.path, 'fetch', '--quiet', 'origin');
-    git(clean.path, 'checkout', '--quiet', '-B', branch, `origin/${base}`);
+    // a branch that already exists holds work: check it out, never reset it
+    if (git(clean.path, 'branch', '--list', branch)) git(clean.path, 'checkout', '--quiet', branch);
+    else git(clean.path, 'checkout', '--quiet', '-b', branch, `origin/${base}`);
     this.store.setLease(clean.path, cardId);
     return clean.path;
   }

@@ -128,6 +128,22 @@ describe('watching', () => {
     expect(runtime.last.inbox.at(-1)).toContain('Rename this.');
   });
 
+  test('stopping during a PR question detaches the PR; a new start is a fresh run', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.call('ask', { question: 'Q?' });
+    workers.stop(id);
+    expect(board.item(id)!.pr).toBeUndefined();
+    expect(board.events(id).at(-1)!.text).toContain('#42 bleibt auf GitHub offen');
+    workers.start(id);
+    runtime.last.call('ask', { question: 'Neu?' });
+    workers.answer(id, 'Ja.');
+    expect(state(id)).toBe('working');
+    status.state = 'MERGED';
+    watcher.poll();
+    expect(state(id)).toBe('working');
+  });
+
   test('a merge makes the card live and frees the clone; a close asks the owner', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });

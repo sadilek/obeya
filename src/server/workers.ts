@@ -45,6 +45,8 @@ const END_TURN = 'Recorded. End your turn now without further work; the reply ar
 
 export class Workers {
   private live = new Map<string, Live>();
+  /** Bumped whenever a card's work starts, stops or ends: replies and tool calls from before are stale. */
+  private generation = new Map<string, number>();
 
   constructor(private o: WorkerOptions) {}
 
@@ -54,7 +56,9 @@ export class Workers {
     const card = this.card(cardId);
     if (card.kind === 'project') throw new BadRequest('project', 'a project is worked on through its workstreams');
     if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
-    const branch = branchName(card.title, card.id);
+    // once work has begun the branch stays the card's, whatever the title says now
+    const row = this.o.board.row(card.id);
+    const branch = row.branch ?? branchName(card.title, card.id);
     let path: string;
     try {
       path = this.o.workspaces.lease(card.id, branch);
@@ -62,9 +66,10 @@ export class Workers {
       if (e instanceof WorkspaceError) throw new BadRequest(e.code, e.message);
       throw e;
     }
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null });
+    this.bump(card.id);
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr: null });
     this.o.board.log(card.id, 'state', 'obeya', `Agent gestartet auf ${branch}.`);
-    this.launch(card.id, this.briefing(card, branch));
+    this.launch(card.id, this.briefing(card, branch, !!row.branch));
   }
 
   /** A hint while the worker runs, or feedback on its review. */
@@ -129,6 +134,7 @@ export class Workers {
       return;
     }
     this.end(cardId);
+    this.bump(cardId);
     this.o.board.work(cardId, { state: 'live', need: null, detail: null, workspace: null });
     this.o.board.log(cardId, 'state', 'owner', 'Freigegeben und auf main.');
   }
@@ -136,6 +142,7 @@ export class Workers {
   /** The card's pull request was merged: the work is live, the workspace free. */
   merged(cardId: string) {
     this.end(cardId);
+    this.bump(cardId);
     this.o.workspaces.release(cardId);
     this.o.board.work(cardId, { state: 'live', need: null, detail: null, workspace: null });
     this.o.board.log(cardId, 'state', 'obeya', 'Pull Request gemergt. Live.');
@@ -160,17 +167,24 @@ export class Workers {
     const card = this.card(cardId);
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
     this.end(cardId);
-    this.o.workspaces.release(cardId);
-    this.o.board.work(cardId, { state: 'planned', need: null, detail: null, workspace: null });
-    this.o.board.log(cardId, 'state', 'owner', 'Angehalten.');
+    this.bump(cardId);
+    // work on the branch keeps its workspace, so starting again goes on from there
+    const keep = this.o.workspaces.hasWork(cardId);
+    if (!keep) this.o.workspaces.release(cardId);
+    this.o.board.work(cardId, { state: 'planned', need: null, detail: null, pr: null, ...(keep ? {} : { workspace: null }) });
+    this.o.board.log(cardId, 'state', 'owner', card.pr ? `Angehalten. Pull Request #${card.pr.number} bleibt auf GitHub offen.` : 'Angehalten.');
   }
 
   /** After a restart: resume every card whose worker was in the middle of a turn. */
   resumeAll() {
     for (const i of this.o.board.snapshot().items) {
       if (this.o.repo && i.repo !== this.o.repo) continue;
+      if (i.state !== 'working' && i.state !== 'inPr') continue;
       const row = this.o.board.row(i.id);
-      if (i.state === 'working' && row.session_id) this.launch(i.id, 'Obeya was restarted. Continue where you left off.', row.session_id);
+      if (!row.workspace) continue;
+      if (row.session_id) this.launch(i.id, 'Obeya was restarted. Continue where you left off.', row.session_id);
+      // it never reported a session: start one with the card
+      else if (i.state === 'working') this.launch(i.id, this.briefing(i, row.branch ?? '', true));
     }
   }
 
@@ -182,13 +196,14 @@ export class Workers {
 
   private launch(cardId: string, message: string, resume?: string) {
     const row = this.o.board.row(cardId);
+    if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
     const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '' };
     this.live.set(cardId, live);
     live.session = this.o.runtime.start(
       {
-        cwd: row.workspace!,
+        cwd: row.workspace,
         system: this.system(),
-        tools: this.tools(cardId),
+        tools: this.tools(cardId, live),
         ...(resume ? { resume } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         onEvent: (e) => this.onEvent(cardId, live, e),
@@ -209,7 +224,11 @@ export class Workers {
     const row = this.o.board.row(cardId);
     if (row.session_id) return this.launch(cardId, text, row.session_id);
     // no session to resume (it never reported one): a new one needs the card first
-    this.launch(cardId, `${this.briefing(this.card(cardId), row.branch ?? '')}\n\n${text}`);
+    this.launch(cardId, `${this.briefing(this.card(cardId), row.branch ?? '', true)}\n\n${text}`);
+  }
+
+  private bump(cardId: string) {
+    this.generation.set(cardId, (this.generation.get(cardId) ?? 0) + 1);
   }
 
   private end(cardId: string) {
@@ -265,15 +284,15 @@ export class Workers {
 
   // ---------------------------------------------------------------- the worker's tools
 
-  private tools(cardId: string): AgentTool[] {
+  private tools(cardId: string, live: Live): AgentTool[] {
     const handOver = () => {
-      const live = this.live.get(cardId);
-      if (live) {
-        live.handedOver = true;
-        live.nudged = false;
-      }
+      live.handedOver = true;
+      live.nudged = false;
     };
-    return [
+    // a session the owner stopped or replaced may still call its tools: those calls change nothing
+    const current = (tools: AgentTool[]): AgentTool[] =>
+      tools.map((t) => ({ ...t, run: (args) => (this.live.get(cardId) === live ? t.run(args) : 'This session has ended. Stop working and end your turn.') }));
+    return current([
       {
         name: 'report',
         description: `Show the owner one short status line on your card (in ${OWNER_LANGUAGE}, at most ~80 characters). Use it at milestones, not for every step.`,
@@ -356,7 +375,7 @@ export class Workers {
           return END_TURN;
         },
       },
-    ];
+    ]);
   }
 
   private routeQuestion(cardId: string, q: Question) {
@@ -365,14 +384,19 @@ export class Workers {
     const advisor = this.o.advisor?.(card);
     if (!advisor) return this.toOwner(cardId, q);
     const name = advisor.by === 'project' ? 'Projekt-Agent' : 'Koordinator';
+    // the owner may stop the card, or answer, before the advisor does
+    const asked = this.generation.get(cardId);
+    const stale = () => this.generation.get(cardId) !== asked || this.o.board.item(cardId)?.state === 'waiting';
     this.o.board.work(cardId, { status_line: advisor.by === 'project' ? 'Frage beim Projekt-Agenten' : 'Frage beim Koordinator' });
     advisor
       .ask(q)
       .then((reply) => {
+        if (stale()) return;
         if ('answer' in reply) this.answer(cardId, reply.answer, advisor.by);
         else this.toOwner(cardId, reply.escalate);
       })
       .catch((e) => {
+        if (stale()) return;
         this.o.board.log(cardId, 'error', 'obeya', `${name}: ${e instanceof Error ? e.message : String(e)}`);
         this.toOwner(cardId, q);
       });
@@ -412,12 +436,16 @@ Rules:
 `.trim() + (this.o.preferences?.() ? `\n\n${this.o.preferences()}` : '');
   }
 
-  private briefing(card: Item, branch: string): string {
+  private briefing(card: Item, branch: string, resumed = false): string {
     const parts = [`Your card: ${card.kind === 'bugfix' ? 'bugfix' : 'feature'} “${card.title}”.`];
     if (card.body.trim()) parts.push(card.body.trim());
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
-    parts.push(`You are on branch ${branch}, fresh from the default branch.`);
+    parts.push(
+      resumed
+        ? `You are on branch ${branch}, which already holds earlier work on this card: look at its log and diff first and go on from there.`
+        : `You are on branch ${branch}, fresh from the default branch.`,
+    );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
     if (this.o.adapter.checks?.length) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
     if (this.o.adapter.demo)
