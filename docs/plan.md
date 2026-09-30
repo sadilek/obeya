@@ -182,6 +182,21 @@ the repository).
 - [x] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
   with undo; the Koordinator takes voice input.
 - [x] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
+- [ ] **M8 Ideas.** Discuss and explore a feature before deciding to build it (proposed
+  2026-09-30; the owner builds it through Obeya itself):
+  - A card in a new state *Idee*, before `planned`; no worker runs on it.
+  - An exploration agent per idea with a lasting, resumed session, read-only (code, plan docs,
+    decisions, preferences). The owner talks to it by voice or text in the unfolded card; its
+    answers show as a conversation there, spoken only as a short summary.
+  - The agent keeps a "Stand der Idee" on the card: goal, variants kept and dropped, decisions,
+    open questions. The conversation is the means, that text the result.
+  - Optional spike: a worker builds a throwaway prototype in its own workspace and shows it as a
+    demo on the card; it never lands.
+  - Deciding: small → the card becomes `planned` with that text as its brief; large → the agent
+    writes a plan doc (landing like any change), which appears as a project for the Koordinator
+    to cut and schedule; or park/discard, keeping the text. Decisions go to the decision log.
+  - Separately: a short-term memory for commands to the Koordinator (follow-ups such as "und die
+    zweite auch"); today every command is read in a fresh session.
 
 ## Decisions
 
