@@ -1,31 +1,28 @@
-// obeya <repo> [--adapter <name>] [--port <n>] [--dev] [--workspace <path>]… [--clones <n>]
+// obeya <repo>… [--name <canvas>] [--adapter <name>] [--workspace <path>]… [--clones <n>]
+// obeya --config <canvases.json>
+//   [--port <n>] [--dev] [--permission-mode <mode>]
 //
-// Serves the canvas of one repository at http://127.0.0.1:<port>. Data lives in
-// $OBEYA_HOME/obeya.db (default ~/.obeya). Workers get a worktree per card, or lease clones from
-// a pool (per adapter): given with --workspace, or --clones n created under
-// $OBEYA_HOME/workspaces/<canvas>/.
+// Serves canvases at http://127.0.0.1:<port>. Without --config: one canvas with the given
+// repositories (the first is its home; --adapter, --workspace and --clones apply to it). With
+// --config: the canvases the JSON file lists, `[{ "name"?, "repos": [{ "path", "adapter"?,
+// "workspaces"?, "clones"? }] }]`. Data lives in $OBEYA_HOME/obeya.db (default ~/.obeya).
 
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { pickAdapter } from '../adapters';
-import { Board } from './board';
+import { type CanvasConfig, CanvasRuntime } from './canvas';
 import { Store } from './db';
-import { type Command, Commander } from './commands';
 import { ghForge } from './forge';
-import { Koordinator } from './koordinator';
-import { PrWatcher } from './pr-watcher';
-import { ProjectAgents } from './project-agents';
-import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import { sdkRuntime } from './runtime';
 import { serve } from './server';
 import { WhisperSidecar } from './voice';
-import { Workers } from './workers';
-import { Workspaces } from './workspaces';
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
+    config: { type: 'string' },
+    name: { type: 'string' },
     adapter: { type: 'string' },
     port: { type: 'string', default: process.env.OBEYA_PORT ?? '4417' },
     dev: { type: 'boolean', default: false },
@@ -36,96 +33,59 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
 });
 
-const repoPath = positionals[0];
-if (!repoPath) {
-  console.error('usage: obeya <repo> [--adapter <name>] [--port <n>] [--dev] [--workspace <path>]… [--clones <n>] [--permission-mode <mode>]');
+const expand = (p: string) => p.replace(/^~(?=$|\/)/, homedir());
+
+let configs: CanvasConfig[];
+if (values.config) {
+  configs = (JSON.parse(readFileSync(expand(values.config), 'utf8')) as CanvasConfig[]).map((c) => ({
+    ...c,
+    repos: c.repos.map((r) => ({ ...r, path: expand(r.path), ...(r.workspaces ? { workspaces: r.workspaces.map(expand) } : {}) })),
+  }));
+} else if (positionals.length) {
+  configs = [
+    {
+      ...(values.name ? { name: values.name } : {}),
+      repos: positionals.map((path, i) =>
+        i === 0
+          ? {
+              path,
+              ...(values.adapter ? { adapter: values.adapter } : {}),
+              ...(values.workspace.length ? { workspaces: values.workspace } : {}),
+              ...(values.clones ? { clones: Number(values.clones) } : {}),
+            }
+          : { path },
+      ),
+    },
+  ];
+} else {
+  console.error('usage: obeya <repo>… [--name <canvas>] [--adapter <name>] [--workspace <path>]… [--clones <n>] | --config <file>; [--port <n>] [--dev] [--permission-mode <mode>]');
   process.exit(2);
 }
 
-const repo = repoInfo(resolve(repoPath));
-const adapter = pickAdapter(repo, values.adapter);
 const home = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
 const store = new Store(join(home, 'obeya.db'));
-const board = new Board(
-  store,
-  { id: adapter.canvasId(repo), name: adapter.canvasName(repo), repoPath: repo.path, branch: repo.branch },
-  () => readPlanDocs(repo.path, adapter),
+const canvases = configs.map(
+  (c) => new CanvasRuntime(c, { store, home, runtime: sdkRuntime, forge: ghForge, permissionMode: values['permission-mode'] as 'auto', watch: true }),
 );
-watchPlanDocs(repo.path, adapter, () => board.docsChanged());
-
-const workspaces = new Workspaces(store, board.canvas.id, {
-  mode: adapter.workspaces,
-  repoPath: repo.path,
-  dir: join(home, 'workspaces', board.canvas.id),
-});
-for (const w of values.workspace) workspaces.register(resolve(w));
-if (values.clones) {
-  // landing on main needs the clones to see the local main; otherwise they track the remote
-  workspaces.ensureClones(adapter.land === 'main' || !repo.remote ? repo.path : repo.remote, Number(values.clones));
+const ids = canvases.map((c) => c.id);
+if (new Set(ids).size !== ids.length) {
+  console.error(`two canvases share an id: ${ids.join(', ')}; give them different names`);
+  process.exit(2);
 }
-const preferences = () => board.preferencesText();
-const projectAgents = new ProjectAgents(board, sdkRuntime, repo.path, preferences);
-// the Koordinator needs the workers and answers their questions: created right after them
-let koordinator!: Koordinator;
-const workers = new Workers({
-  board,
-  runtime: sdkRuntime,
-  workspaces,
-  adapter,
-  preferences,
-  onOwnerInput: (card, kind, text, question) => koordinator.learn(card, kind, text, question),
-  advisor: (card) => {
-    const project = card.parent ? board.item(card.parent) : undefined;
-    return project
-      ? { by: 'project', ask: (q) => projectAgents.ask(project, card, q) }
-      : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
-  },
-  permissionMode: values['permission-mode'] as 'auto',
-});
-workers.resumeAll();
-koordinator = new Koordinator({ board, runtime: sdkRuntime, workers, workspaces, adapter, repoPath: repo.path, preferences });
-koordinator.resume();
-if (adapter.land === 'pr') new PrWatcher(board, workers, ghForge, (id) => board.row(id).workspace ?? repo.path, adapter.prNoise).start();
+const transcriber = new WhisperSidecar();
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.on(sig, () => {
-    workers.shutdown();
+    for (const c of canvases) c.shutdown();
+    transcriber.stop();
     process.exit(0);
   });
 
-const run = (c: Command) => {
-  switch (c.do) {
-    case 'newCard': {
-      const card = board.create({ kind: c.kind, title: c.title, body: c.body, ...board.freeSpot() });
-      board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
-      if (c.start) koordinator.request(card.id);
-      return;
-    }
-    case 'start':
-      return koordinator.request(c.card);
-    case 'note':
-    case 'feedback':
-      return workers.message(c.card, c.text);
-    case 'answer':
-      return workers.answer(c.card, c.text);
-    case 'approve':
-      return workers.approve(c.card);
-    case 'accept':
-      return board.accept(c.card);
-    case 'dismiss':
-      return board.remove(c.card);
-    case 'split':
-      return koordinator.split(c.card);
-    case 'stop':
-      return workers.stop(c.card);
-  }
-};
-const transcriber = new WhisperSidecar();
-const commander = new Commander({ board, runtime: sdkRuntime, cwd: repo.path, execute: run });
-
-const server = serve(board, workers, koordinator, { commander, transcriber }, Number(values.port), values.dev);
-console.log(`Obeya: ${board.canvas.name} (${adapter.name} adapter, ${repo.path}) on ${server.url}`);
-console.log(
-  adapter.workspaces === 'worktrees'
-    ? `Workspaces: a worktree per card under ${join(home, 'workspaces', board.canvas.id)}`
-    : `Workspaces: ${workspaces.list().map((w) => w.path).join(', ') || 'none (--workspace or --clones)'}`,
-);
+const server = serve(canvases, transcriber, Number(values.port), values.dev);
+console.log(`Obeya on ${server.url}`);
+for (const c of canvases) {
+  console.log(`  ${c.board.canvas.name} (?c=${c.id})`);
+  for (const r of c.repos)
+    console.log(
+      `    ${r.ref.id}: ${r.info.path} (${r.adapter.name} adapter; ${r.adapter.workspaces === 'worktrees' ? 'a worktree per card' : `clones: ${r.workspaces.list().map((w) => w.path).join(', ') || 'none (--workspace or --clones)'}`})`,
+    );
+}

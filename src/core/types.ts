@@ -42,6 +42,8 @@ export interface Item {
   demo?: Demo;
   /** A proposal's source card. */
   from?: string;
+  /** The repository the card belongs to (an id from the canvas's `repos`). */
+  repo: string;
   branch?: string;
   /** Files the Koordinator expects the card to change. */
   scope?: string[];
@@ -86,7 +88,14 @@ export interface CardEvent {
 export interface CanvasInfo {
   id: string;
   name: string;
-  repoPath: string;
+  /** The repositories on the canvas; the first is its home. */
+  repos: RepoRef[];
+}
+
+export interface RepoRef {
+  id: string;
+  name: string;
+  path: string;
   branch: string;
 }
 
@@ -110,6 +119,8 @@ export interface NewCard {
   body?: string;
   x: number;
   y: number;
+  /** A repository of the canvas; its home repository when left out. */
+  repo?: string;
 }
 
 export interface CardPatch {
@@ -120,9 +131,11 @@ export interface CardPatch {
   body?: string;
   state?: CardState;
   need?: Need | null;
+  /** Another repository of the canvas, before work on the card has begun. */
+  repo?: string;
 }
 
-/** Owner actions on a card's work, posted to `/api/cards/:id/act`. */
+/** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
 export type CardAction =
   | { action: 'start' }
   | { action: 'stop' }

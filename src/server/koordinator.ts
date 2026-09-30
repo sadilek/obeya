@@ -26,14 +26,20 @@ export interface Scope {
   reason: string;
 }
 
-export interface KoordinatorOptions {
-  board: Board;
-  runtime: AgentRuntime;
+/** What the Koordinator needs of the repository a card belongs to. */
+export interface RepoHands {
   workers: Workers;
   workspaces: Workspaces;
   adapter: RepoAdapter;
-  /** The checkout the Koordinator reads to estimate scopes. */
-  repoPath: string;
+  /** The checkout the Koordinator reads (scopes, cutting, questions). */
+  path: string;
+}
+
+export interface KoordinatorOptions {
+  board: Board;
+  runtime: AgentRuntime;
+  /** The repository of a card; a canvas may span several. */
+  repoFor: (card: Item) => RepoHands;
   /** The owner's recorded preferences, as agents read them. */
   preferences?: () => string;
 }
@@ -105,7 +111,7 @@ export class Koordinator {
       };
       const session = this.o.runtime.start(
         {
-          cwd: this.o.repoPath,
+          cwd: this.o.repoFor(card).path,
           readOnly: true,
           system: CUT_SYSTEM,
           tools: [
@@ -150,7 +156,7 @@ export class Koordinator {
     if (!card.queue || !('behind' in card.queue)) throw new BadRequest('notQueued', 'the card is not waiting');
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', 'Trotz Überschneidung gestartet.');
-    this.o.workers.start(cardId);
+    this.o.repoFor(card).workers.start(cardId);
   }
 
   dequeue(cardId: string) {
@@ -166,7 +172,7 @@ export class Koordinator {
       .then(() =>
         consult({
           runtime: this.o.runtime,
-          cwd: this.o.repoPath,
+          cwd: this.o.repoFor(card).path,
           resume: this.o.board.setting('koordinator_session') ?? undefined,
           onSession: (id) => this.o.board.setSetting('koordinator_session', id),
           system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Workers on cards that belong to no project send you the questions they cannot decide themselves.\n\n${ADVICE_RULES}`,
@@ -211,7 +217,7 @@ export class Koordinator {
       };
       const session = this.o.runtime.start(
         {
-          cwd: this.o.repoPath,
+          cwd: this.o.repoFor(card).path,
           readOnly: true,
           system: LEARN_SYSTEM,
           tools: [
@@ -250,16 +256,18 @@ export class Koordinator {
     });
   }
 
-  /** Cards that a card in progress may collide with. */
-  inProgress(): Item[] {
-    return this.o.board.snapshot().items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project');
+  /** Cards in progress; with a repository, only those a card of it can collide with. */
+  inProgress(repo?: string): Item[] {
+    return this.o.board
+      .snapshot()
+      .items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project' && (!repo || i.repo === repo));
   }
 
   private async decide(cardId: string) {
     const card = this.o.board.item(cardId);
     // taken out of the queue or deleted while waiting for its turn
     if (!card || card.state !== 'planned' || !card.queue || !('checking' in card.queue)) return;
-    const active = this.inProgress();
+    const active = this.inProgress(card.repo);
     if (!active.length) {
       // nothing it could collide with: start at once, and estimate the scope for the cards after it
       this.startNow(cardId, 'Nichts läuft gerade; es geht sofort los.');
@@ -279,7 +287,7 @@ export class Koordinator {
     }
     if (!this.o.board.item(cardId)?.queue) return;
     this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
-    const behind = this.collisions(scope, active);
+    const behind = this.collisions(card, scope, active);
     if (!behind.length) return this.startNow(cardId, 'Keine Überschneidung mit laufender Arbeit.');
     const names = behind.map((id) => `„${active.find((a) => a.id === id)?.title ?? id}“`).join(', ');
     const reason = scope.reason || 'Überschneidung mit laufender Arbeit.';
@@ -291,26 +299,26 @@ export class Koordinator {
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'obeya', `Koordinator: ${why}`);
     try {
-      this.o.workers.start(cardId);
+      const card = this.o.board.item(cardId);
+      if (card) this.o.repoFor(card).workers.start(cardId);
     } catch (e) {
       this.o.board.log(cardId, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
     }
   }
 
-  /** In-progress cards the scope collides with: overlapping files, or the Koordinator's judgement. */
-  collisions(scope: Scope, active: Item[]): string[] {
-    const mine = this.hard(scope.files);
+  /** In-progress cards of the card's repository its scope collides with: overlapping files, or the Koordinator's judgement. */
+  collisions(card: Item, scope: Scope, active: Item[]): string[] {
+    const hands = this.o.repoFor(card);
+    const hard = (files: string[]) => files.map(normalize).filter((f) => f && !hands.adapter.softPaths.some((s) => overlaps(f, s)));
+    const mine = hard(scope.files);
     return active
       .filter((a) => {
+        if (a.repo !== card.repo) return false;
         if (scope.collidesWith.includes(a.id)) return true;
-        const theirs = this.hard([...(a.scope ?? []), ...this.o.workspaces.changedFiles(a.id)]);
+        const theirs = hard([...(a.scope ?? []), ...hands.workspaces.changedFiles(a.id)]);
         return mine.some((f) => theirs.some((g) => overlaps(f, g)));
       })
       .map((a) => a.id);
-  }
-
-  private hard(files: string[]): string[] {
-    return files.map(normalize).filter((f) => f && !this.o.adapter.softPaths.some((s) => overlaps(f, s)));
   }
 
   /** Queued cards start once nothing they wait for is in progress any more. */
@@ -337,7 +345,7 @@ export class Koordinator {
       }
       // what it waited for is done; check again against what runs now, with the estimate it has
       const scope: Scope = { files: w.scope ?? [], collidesWith: [], reason: q.reason };
-      const now = this.collisions(scope, this.inProgress());
+      const now = this.collisions(w, scope, this.inProgress(w.repo));
       if (now.length) this.setQueue(w.id, { behind: now, reason: q.reason });
       else {
         this.startNow(w.id, 'Die Überschneidung ist erledigt; es geht los.');
@@ -354,7 +362,7 @@ export class Koordinator {
       const tags = new Map(active.map((a, n) => [`K${n + 1}`, a.id]));
       const session = this.o.runtime.start(
         {
-          cwd: this.o.repoPath,
+          cwd: this.o.repoFor(card).path,
           readOnly: true,
           system: SYSTEM,
           tools: [
@@ -403,7 +411,7 @@ export class Koordinator {
         ? `Cards in progress:\n${[...tags]
             .map(([tag, id]) => {
               const a = active.find((x) => x.id === id)!;
-              const files = [...new Set([...(a.scope ?? []), ...this.o.workspaces.changedFiles(id)])];
+              const files = [...new Set([...(a.scope ?? []), ...this.o.repoFor(a).workspaces.changedFiles(id)])];
               return `- ${tag}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}\n  files: ${files.join(', ') || '(none known)'}`;
             })
             .join('\n')}`

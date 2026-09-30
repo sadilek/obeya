@@ -97,6 +97,12 @@ a { color: inherit; }
 button.pill { cursor: pointer; }
 button.pill:hover { box-shadow: var(--lift); }
 .pill.offline { background: var(--waiting); color: #fff; }
+.canvas-pill { position: relative; }
+.canvas-pill .switch { cursor: pointer; }
+.canvas-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 240px; list-style: none; margin: 0; padding: 6px; background: var(--panel);
+  border-radius: 12px; box-shadow: var(--lift); z-index: 30; }
+.canvas-menu a { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 8px; text-decoration: none; font-size: 13px; }
+.canvas-menu a:hover, .canvas-menu li.on a { background: var(--chip); }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .kpill .n { background: var(--planned); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
@@ -155,6 +161,7 @@ input.p-title::placeholder { color: var(--muted); font-weight: 500; }
 textarea.p-body { display: block; width: 100%; max-width: 76ch; min-height: 180px; margin-top: 16px; padding: 12px 14px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--card); resize: vertical; font-size: 15px; outline: none; }
 textarea.p-body:focus { border-color: var(--muted); }
+.segs { display: flex; gap: 10px; flex-wrap: wrap; }
 .seg { display: inline-flex; background: var(--chip); border-radius: 9px; padding: 3px; gap: 2px; margin-top: 12px; }
 .seg button { border: 0; background: transparent; border-radius: 7px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: var(--muted); }
 .seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }

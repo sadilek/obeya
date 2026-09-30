@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasSnapshot, CardAction, CardEvent, CardPatch, Item, NewCard, ServerMessage } from '../core/types';
+import type { CanvasInfo, CanvasSnapshot, CardAction, CardEvent, CardPatch, Item, NewCard, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -29,29 +29,41 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-const query = (where: { card: string } | { project: string } | null) =>
+const query = (where: Where) =>
   !where ? '' : 'card' in where ? `?card=${encodeURIComponent(where.card)}` : `?project=${encodeURIComponent(where.project)}`;
 
+/** The canvas this page shows; every call goes to its API. */
+let canvasId = '';
+export function setCanvas(id: string) {
+  canvasId = id;
+}
+/** A path in the shown canvas's API. */
+export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
+
+type Where = { card: string } | { project: string } | null;
+type HeardReply = { confirm: string; token?: string; audio?: string };
+
 export const api = {
-  create: (c: NewCard) => call<Item>('POST', '/api/cards', c),
-  patch: (id: string, p: CardPatch) => call<void>('PATCH', `/api/cards/${id}`, p),
-  remove: (id: string) => call<void>('DELETE', `/api/cards/${id}`),
-  restore: (id: string) => call<void>('POST', `/api/cards/${id}/restore`),
-  act: (id: string, a: CardAction) => call<void>('POST', `/api/cards/${id}/act`, a),
-  events: (id: string) => call<CardEvent[]>('GET', `/api/cards/${id}/events`),
-  /** What the owner said, or typed, about the card or project in view. */
-  voice: async (audio: Blob, where: { card: string } | { project: string } | null) => {
-    const res = await fetch(`/api/voice${query(where)}`, { method: 'POST', body: audio });
+  canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
+  create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
+  patch: (id: string, p: CardPatch) => call<void>('PATCH', at(`/cards/${id}`), p),
+  remove: (id: string) => call<void>('DELETE', at(`/cards/${id}`)),
+  restore: (id: string) => call<void>('POST', at(`/cards/${id}/restore`)),
+  act: (id: string, a: CardAction) => call<void>('POST', at(`/cards/${id}/act`), a),
+  events: (id: string) => call<CardEvent[]>('GET', at(`/cards/${id}/events`)),
+  /** What the owner said about the card or project in view. */
+  voice: async (audio: Blob, where: Where) => {
+    const res = await fetch(at(`/voice${query(where)}`), { method: 'POST', body: audio });
     if (!res.ok) throw new Error(`voice: ${res.status}`);
-    return (await res.json()) as { confirm: string; token?: string; audio?: string };
+    return (await res.json()) as HeardReply;
   },
-  command: (text: string, where: { card: string } | { project: string } | null) =>
-    call<{ confirm: string; token?: string; audio?: string }>('POST', `/api/command${query(where)}`, { text }),
-  undo: (token: string) => call<{ undone: boolean }>('POST', '/api/command/undo', { token }),
-  addPreference: (text: string) => call<{ id: number }>('POST', '/api/preferences', { text }),
+  /** The same, typed. */
+  command: (text: string, where: Where) => call<HeardReply>('POST', at(`/command${query(where)}`), { text }),
+  undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
+  addPreference: (text: string) => call<{ id: number }>('POST', at('/preferences'), { text }),
   /** Changes a preference, or deletes it with `null`. */
   setPreference: (id: number, text: string | null) =>
-    text === null ? call<void>('DELETE', `/api/preferences/${id}`) : call<void>('PATCH', `/api/preferences/${id}`, { text }),
+    text === null ? call<void>('DELETE', at(`/preferences/${id}`)) : call<void>('PATCH', at(`/preferences/${id}`), { text }),
 };
 
 // Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.
@@ -71,7 +83,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
     let delay = 500;
     let closed = false;
     const connect = () => {
-      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws`);
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${at('/ws')}`);
       ws.onopen = () => {
         setOnline(true);
         delay = 500;

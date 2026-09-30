@@ -30,7 +30,7 @@ decisions are made in front of the wall.
 
 ## Concepts
 
-- **Canvas** — one per repository in v1.
+- **Canvas** — a canvas spans one or more repositories; one Obeya serves several canvases.
 - **Cards** — `bugfix`, `feature`, `project`. A project is a container backed by a plan doc; its
   workstreams are its child cards.
 - **States** — `proposal` → `planned` → `working` → `waiting` (demo ready | question) →
@@ -81,8 +81,18 @@ the owner's language (`src/core/locale.ts`).
 
 ## Architecture
 
-- **Server** — Bun, TypeScript. HTTP + WebSocket to the UI; SQLite (`bun:sqlite`) under
-  `~/.obeya/`.
+- **Server** — Bun, TypeScript. HTTP + WebSocket to the UI, one API per canvas
+  (`/api/c/<canvas>/…`, `/api/canvases` lists them); SQLite (`bun:sqlite`) under `~/.obeya/`.
+  `obeya <repo>…` starts one canvas with the given repositories (`--name` names it);
+  `obeya --config <file>` starts the canvases a JSON file lists.
+- **Canvases and repositories** — each repository on a canvas has its adapter, workspaces,
+  workers, project agents and PR watcher; the canvas has one board and one Koordinator, whose
+  collision checks stay within a repository. The first repository is the canvas's home: its plan
+  references and workspace directory are the ones a single-repository canvas always had, so
+  canvases keep their data. The others' plan docs are referenced as `<repo>:<path>`; the owner's
+  cards carry their repository, chosen in the panel before work begins (home by default), and a
+  proposal or a cut package inherits it. The UI opens `?c=<canvas>`, the top-left pill switches,
+  and on a canvas with several repositories every card names its own.
 - **UI** — browser app, React + TypeScript. Custom canvas grown from `design/mock/`: camera with
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
@@ -159,7 +169,7 @@ the repository).
   ([`docs/plan/pr-loop.md`](plan/pr-loop.md)); the live run on Acme waits for the owner's go.
 - [x] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
   with undo; the Koordinator takes voice input.
-- [ ] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
+- [x] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
 
 ## Decisions
 
@@ -167,7 +177,8 @@ the repository).
 - Runtime: Bun; browser UI served locally; native shell (Tauri) only if global push-to-talk needs
   it.
 - Persistent local store, not ephemeral.
-- One canvas per repository to start.
+- One canvas per repository to start; since M7 a canvas may span several, and one Obeya serves
+  several canvases.
 - Agents may propose cards.
 - Approval triggers the PR and its monitoring to the merge, not the merge itself.
 - Spoken output uses `say` with the default voice.

@@ -2,16 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { generic } from '../adapters/generic';
 import type { CardAction } from '../core/types';
-import { Board } from './board';
+import type { Board } from './board';
+import { CanvasRuntime } from './canvas';
+import type { Command } from './commands';
 import { Store } from './db';
-import { type Command, Commander } from './commands';
-import { Koordinator } from './koordinator';
 import { serve } from './server';
-import { FakeRuntime, type FakeSession } from './testing';
-import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { FakeRuntime } from './testing';
+import { git } from './workspaces';
 
 let dir: string;
 let board: Board;
@@ -19,6 +17,7 @@ let runtime: FakeRuntime;
 let executed: Command[];
 let heardAudio: string[];
 let server: ReturnType<typeof serve>;
+let canvas: CanvasRuntime;
 
 // A canvas in clone mode without any clone registered: every start fails for want of a workspace.
 beforeEach(() => {
@@ -30,18 +29,15 @@ beforeEach(() => {
   writeFileSync(join(main, 'README.md'), 'hello\n');
   git(main, 'add', '.');
   git(main, 'commit', '--quiet', '-m', 'init');
-  const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repoPath: main, branch: 'main' }, () => []);
-  const adapter = { ...generic, workspaces: 'clones' as const };
-  const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
-  const workers = new Workers({ board, runtime, workspaces, adapter });
-  const koordinator = new Koordinator({ board, runtime, workers, workspaces, adapter, repoPath: main });
+  // the generic adapter: clones, none registered; the canvas is named after the directory
+  canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => { throw new Error('no forge'); } }, commandDelayMs: 30 });
+  board = canvas.board;
   executed = [];
   heardAudio = [];
-  const commander = new Commander({ board, runtime, cwd: main, execute: (c) => void executed.push(c), delayMs: 30 });
+  canvas.run = (c) => void executed.push(c);
   const transcriber = { transcribe: async (path: string) => (heardAudio.push(await Bun.file(path).text()), 'Neue Karte Export') };
-  server = serve(board, workers, koordinator, { commander, transcriber }, 0);
+  server = serve([canvas], transcriber, 0);
 });
 afterEach(() => {
   server.stop(true);
@@ -52,7 +48,8 @@ const settle = () => new Promise((r) => setTimeout(r, 5));
 const card = () => board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
 const post = (path: string, body: string) => fetch(new URL(path, server.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body });
 const codeOf = async (res: Promise<Response>) => ((await (await res).json()) as { code: string }).code;
-const act = (id: string, a: CardAction | { action: string; text?: unknown }) => post(`/api/cards/${id}/act`, JSON.stringify(a));
+const api = (path: string) => `/api/c/main${path}`;
+const act = (id: string, a: CardAction | { action: string; text?: unknown }) => post(api(`/cards/${id}/act`), JSON.stringify(a));
 
 describe('refused requests', () => {
   test('carry a stable code and an English detail', async () => {
@@ -70,8 +67,8 @@ describe('refused requests', () => {
     expect(await codeOf(act(c.id, { action: 'dismiss' }))).toBe('notProposal');
     expect(await codeOf(act('nope', { action: 'start' }))).toBe('unknownCard');
     expect(await codeOf(act(c.id, { action: 'fly' }))).toBe('invalid');
-    expect(await codeOf(post(`/api/cards/${c.id}/act`, '{'))).toBe('invalid');
-    expect(await codeOf(post('/api/cards', JSON.stringify({ kind: 'project', title: 'x', x: 0, y: 0 })))).toBe('invalid');
+    expect(await codeOf(post(api(`/cards/${c.id}/act`), '{'))).toBe('invalid');
+    expect(await codeOf(post(api('/cards'), JSON.stringify({ kind: 'project', title: 'x', x: 0, y: 0 })))).toBe('invalid');
   });
 
   test('a card already with the Koordinator cannot be started again', async () => {
@@ -84,7 +81,7 @@ describe('refused requests', () => {
     const c = card();
     expect((await act(c.id, { action: 'start' })).status).toBe(204);
     await settle();
-    const events = (await (await fetch(new URL(`/api/cards/${c.id}/events`, server.url))).json()) as { kind: string; code?: string; text: string }[];
+    const events = (await (await fetch(new URL(api(`/cards/${c.id}/events`), server.url))).json()) as { kind: string; code?: string; text: string }[];
     expect(events.at(-1)).toMatchObject({ kind: 'error', code: 'noWorkspace', text: 'no workspace registered or all are leased' });
     expect(board.item(c.id)!.state).toBe('planned');
   });
@@ -94,7 +91,7 @@ describe('voice', () => {
   const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'new_card')).at(-1)!;
 
   test('a recording is transcribed, read as one action, confirmed with speech, and runs after the delay', async () => {
-    const res = fetch(new URL('/api/voice', server.url), { method: 'POST', body: 'AUDIO' });
+    const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
     await settle();
     expect(heardAudio).toEqual(['AUDIO']);
     const s = interpretation();
@@ -113,21 +110,21 @@ describe('voice', () => {
 
   test('typed commands name cards by tag; undo takes one back before it runs', async () => {
     const c = card();
-    const res = fetch(new URL(`/api/command?card=${c.id}`, server.url), { method: 'POST', body: JSON.stringify({ text: 'gib das frei' }) });
+    const res = fetch(new URL(api(`/command?card=${c.id}`), server.url), { method: 'POST', body: JSON.stringify({ text: 'gib das frei' }) });
     await settle();
     const s = interpretation();
     expect(s.inbox[0]).toContain('The owner has this card open');
     s.call('approve', { card: 'K1', confirm: '„A“ freigegeben.' });
     s.emit({ type: 'idle' });
     const { token } = (await (await res).json()) as { token: string };
-    const undo = await (await fetch(new URL('/api/command/undo', server.url), { method: 'POST', body: JSON.stringify({ token }) })).json();
+    const undo = await (await fetch(new URL(api('/command/undo'), server.url), { method: 'POST', body: JSON.stringify({ token }) })).json();
     expect(undo).toEqual({ undone: true });
     await new Promise((r) => setTimeout(r, 60));
     expect(executed).toEqual([]);
   });
 
   test('nothing to do is just said', async () => {
-    const res = fetch(new URL('/api/command', server.url), { method: 'POST', body: JSON.stringify({ text: 'ähm' }) });
+    const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'ähm' }) });
     await settle();
     interpretation().call('reply', { confirm: 'Was genau soll ich tun?' });
     interpretation().emit({ type: 'idle' });

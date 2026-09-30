@@ -50,6 +50,11 @@ export class Board {
     store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
   }
 
+  /** The canvas's home repository: bare plan references and cards without a repository are its. */
+  get home(): string {
+    return this.canvas.repos[0]!.id;
+  }
+
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
@@ -118,6 +123,7 @@ export class Board {
         body: c.body.slice(0, 20000),
         x: row.x + (n % 3) * 330,
         y: row.y + Math.floor(n / 3) * 170,
+        repo: row.repo,
       })),
     );
     rows.forEach((r, n) => this.store.update(r.id, { scope: JSON.stringify({ files: cards[n]!.files, reason: '' }) }));
@@ -153,10 +159,11 @@ export class Board {
         x: b.x + 35,
         y: b.y + b.h + 60,
         from_id: fromId,
+        repo: from && from.repo !== this.home ? from.repo : null,
       },
     ]);
     this.changed();
-    return toItems([row!], [])[0]!;
+    return toItems([row!], [], this.home)[0]!;
   }
 
   decide(d: { project_id: string | null; card_id: string; question: string; answer: string; by: 'owner' | 'project' | 'koordinator' }) {
@@ -184,8 +191,8 @@ export class Board {
 
   snapshot(): CanvasSnapshot {
     const docs = (this.docs ??= this.readDocs());
-    let items = toItems(this.store.cards(this.canvas.id), docs);
-    if (this.placeNew(docs, items)) items = toItems(this.store.cards(this.canvas.id), docs);
+    let items = toItems(this.store.cards(this.canvas.id), docs, this.home);
+    if (this.placeNew(docs, items)) items = toItems(this.store.cards(this.canvas.id), docs, this.home);
     return { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id) };
   }
 
@@ -220,16 +227,26 @@ export class Board {
     if (n.body !== undefined) checkText(n.body, 'body', 20000);
     checkNumber(n.x, 'x');
     checkNumber(n.y, 'y');
+    if (n.repo !== undefined && !this.canvas.repos.some((r) => r.id === n.repo)) throw new BadRequest('invalid', 'unknown repository');
     const [row] = this.store.insert([
-      { canvas_id: this.canvas.id, kind: n.kind, state: 'planned', title: n.title, body: n.body ?? '', x: n.x, y: n.y },
+      {
+        canvas_id: this.canvas.id,
+        kind: n.kind,
+        state: 'planned',
+        title: n.title,
+        body: n.body ?? '',
+        x: n.x,
+        y: n.y,
+        repo: n.repo && n.repo !== this.home ? n.repo : null,
+      },
     ]);
     this.changed();
-    return toItems([row!], [])[0]!;
+    return toItems([row!], [], this.home)[0]!;
   }
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'kind', 'title', 'body', 'state', 'need'];
+    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'kind', 'title', 'body', 'state', 'need', 'repo'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
@@ -239,7 +256,13 @@ export class Board {
     if (p.body !== undefined) checkText(p.body, 'body', 20000);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
-    this.store.update(id, p);
+    const { repo, ...fields } = p;
+    if (repo !== undefined) {
+      if (!this.canvas.repos.some((r) => r.id === repo)) throw new BadRequest('invalid', 'unknown repository');
+      // its workspace and branch belong to the repository it started in
+      if ((row.state ?? 'planned') !== 'planned' || row.workspace) throw new BadRequest('invalid', 'a card changes repository only before work begins');
+    }
+    this.store.update(id, { ...fields, ...(repo !== undefined ? { repo: repo === this.home ? null : repo } : {}) });
     this.changed();
   }
 
@@ -303,7 +326,16 @@ export class Board {
 }
 
 /** Visible items: projects first, their workstreams in doc order, then manual cards. */
-export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
+/**
+ * The repository a plan reference belongs to: `<repo>:<path>` for the canvas's other repositories,
+ * a bare path for its home repository.
+ */
+export function repoOfRef(ref: string, home: string): string {
+  const m = /^([\w.-]+):(?!\/)/.exec(ref);
+  return m ? m[1]! : home;
+}
+
+export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] {
   const docByFile = new Map(docs.map((d) => [d.file, d]));
   const projects: Item[] = [];
   const workstreams: { item: Item; order: number }[] = [];
@@ -320,6 +352,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
         x: r.x,
         y: r.y,
         source: 'manual',
+        repo: r.repo ?? home,
         ...work(r),
       });
       continue;
@@ -328,7 +361,18 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
     const doc = docByFile.get(hash < 0 ? r.plan_ref : r.plan_ref.slice(0, hash));
     if (!doc) continue;
     if (hash < 0) {
-      projects.push({ id: r.id, kind: 'project', state: 'planned', title: doc.title, body: '', x: r.x, y: r.y, source: 'plan', plan: { file: doc.file, goal: doc.goal } });
+      projects.push({
+        id: r.id,
+        kind: 'project',
+        state: 'planned',
+        title: doc.title,
+        body: '',
+        x: r.x,
+        y: r.y,
+        source: 'plan',
+        repo: repoOfRef(doc.file, home),
+        plan: { file: doc.file, goal: doc.goal },
+      });
       continue;
     }
     const key = r.plan_ref.slice(hash + 1);
@@ -349,6 +393,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
         y: r.y,
         parent: r.parent_id,
         source: 'plan',
+        repo: repoOfRef(r.plan_ref, home),
         ...(w.label ? { label: w.label } : {}),
         ...work(r),
       },

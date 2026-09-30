@@ -3,20 +3,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import type { CanvasSnapshot, CardPatch, Item } from '../core/types';
-import { api, useCanvas } from './api';
+import type { CanvasInfo, CanvasSnapshot, CardPatch, Item } from '../core/types';
+import { api, setCanvas, useCanvas } from './api';
 import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { KoordinatorSheet } from './koordinator';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
-import { CardView, Edges, Links, Minimap, needsYou, ProjectView, Sheet } from './parts';
+import { CanvasPill, CardView, Edges, Links, Minimap, needsYou, ProjectView, Sheet } from './parts';
 import { t } from './strings';
 
 export function App() {
+  const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    api.canvases().then(setCanvases, () => setFailed(true));
+  }, []);
+  if (!canvases) return failed ? <div className="empty">{t.offline}</div> : null;
+  // the canvas in the address, else the first
+  const wanted = new URLSearchParams(location.search).get('c');
+  const current = canvases.find((c) => c.id === wanted) ?? canvases[0];
+  if (!current) return <div className="empty">{t.noCanvas}</div>;
+  setCanvas(current.id);
+  return <Live canvases={canvases} />;
+}
+
+function Live({ canvases }: { canvases: CanvasInfo[] }) {
   const { snapshot, online } = useCanvas();
   if (!snapshot) return online ? null : <div className="empty">{t.offline}</div>;
-  return <Canvas snapshot={snapshot} online={online} />;
+  return <Canvas snapshot={snapshot} online={online} canvases={canvases} />;
 }
 
 type Focus = { type: 'project'; id: string; prevCam: Cam } | { type: 'card'; id: string; prevCam: Cam; project: Focus | null };
@@ -26,7 +41,7 @@ const SHEET_W = 410;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const camKey = (canvasId: string) => `obeya-cam-${canvasId}`;
 
-function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolean }) {
+function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; online: boolean; canvases: CanvasInfo[] }) {
   // ---------------------------------------------------------------- items
   // Local positions win over the snapshot until the server echoes them back.
   const [moved, setMoved] = useState<Record<string, Pos>>({});
@@ -476,7 +491,16 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
             item.kind === 'project' ? (
               <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} />
             ) : (
-              <CardView key={item.id} item={item} b={b} lifted={item.id === openId} dragging={item.id === dragId} pop={item.id === popId} els={els} />
+              <CardView
+                key={item.id}
+                item={item}
+                b={b}
+                lifted={item.id === openId}
+                dragging={item.id === dragId}
+                pop={item.id === popId}
+                showRepo={snapshot.canvas.repos.length > 1}
+                els={els}
+              />
             ),
           )}
         </div>
@@ -484,16 +508,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
       {!items.length && <div className="empty">{t.empty}</div>}
       {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn ? SHEET_W : 0} onOpen={open} />}
       <header id="bar">
-        <div className="pill">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="6" cy="6" r="2.5" />
-            <circle cx="6" cy="18" r="2.5" />
-            <circle cx="18" cy="8" r="2.5" />
-            <path d="M6 8.5v7M18 10.5c0 4-6 3-10 6" />
-          </svg>
-          <b>{snapshot.canvas.name}</b>
-          <span className="hint">{snapshot.canvas.branch}</span>
-        </div>
+        <CanvasPill canvas={snapshot.canvas} canvases={canvases} />
         {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
           <div className="pill">
             <b>Obeya</b>
@@ -531,6 +546,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
                 key={openItem.id}
                 item={openItem}
                 all={items}
+                repos={snapshot.canvas.repos}
                 parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
                 from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
                 onEdit={onEdit}

@@ -15,7 +15,7 @@ let board: Board;
 beforeEach(() => {
   store = new Store(':memory:');
   docs = [docA];
-  board = new Board(store, { id: 'acme', name: 'Acme', repoPath: '/r', branch: 'main' }, () => docs);
+  board = new Board(store, { id: 'acme', name: 'Acme', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => docs);
 });
 
 describe('plan docs', () => {
@@ -105,7 +105,7 @@ describe('manual cards', () => {
     const old = board.create({ kind: 'feature', title: ' ', x: 0, y: 0 });
     const kept = board.create({ kind: 'feature', title: 'Echt', x: 0, y: 0 });
     store.db.query("UPDATE cards SET created_at = '2020-01-01T00:00:00.000Z' WHERE id IN ($a, $b)").run({ a: old.id, b: kept.id });
-    const again = new Board(store, { id: 'acme', name: 'Acme', repoPath: '/r', branch: 'main' }, () => docs);
+    const again = new Board(store, { id: 'acme', name: 'Acme', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => docs);
     const ids = again.snapshot().items.map((i) => i.id);
     expect(ids).toContain(fresh.id);
     expect(ids).toContain(kept.id);
@@ -114,7 +114,7 @@ describe('manual cards', () => {
 
   test('cards are persisted per canvas', () => {
     board.create({ kind: 'feature', title: 'mine', x: 0, y: 0 });
-    const other = new Board(store, { id: 'other', name: 'Other', repoPath: '/o', branch: 'main' }, () => []);
+    const other = new Board(store, { id: 'other', name: 'Other', repos: [{ id: 'home', name: 'Home', path: '/o', branch: 'main' }] }, () => []);
     expect(other.snapshot().items).toEqual([]);
   });
 });

@@ -38,6 +38,8 @@ export interface WorkspaceOptions {
   repoPath: string;
   /** Where worktrees and created clones go. */
   dir: string;
+  /** The repository on the canvas these workspaces belong to; null is its home repository. */
+  repo?: string | null;
 }
 
 export class Workspaces {
@@ -53,7 +55,7 @@ export class Workspaces {
 
   register(path: string) {
     git(path, 'rev-parse', '--git-dir');
-    this.store.addWorkspace(this.canvasId, path);
+    this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
   }
 
   /** Makes sure `n` clones of `source` exist and are registered. */
@@ -67,7 +69,7 @@ export class Workspaces {
   }
 
   list() {
-    return this.store.workspaces(this.canvasId);
+    return this.store.workspaces(this.canvasId, this.o.repo ?? null);
   }
 
   leasedBy(cardId: string): string | null {
@@ -171,7 +173,7 @@ export class Workspaces {
       if (exists) git(this.o.repoPath, 'worktree', 'add', '--quiet', path, branch);
       else git(this.o.repoPath, 'worktree', 'add', '--quiet', '-b', branch, path, defaultBranch(this.o.repoPath));
     }
-    this.store.addWorkspace(this.canvasId, path);
+    this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
     this.store.setLease(path, cardId);
     return path;
   }

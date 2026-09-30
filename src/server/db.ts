@@ -37,6 +37,8 @@ export interface CardRow {
   queue: string | null;
   /** JSON: the card's pull request once approval opened the PR phase (`PrState`). */
   pr: string | null;
+  /** The owner's card's repository on a canvas with several; null is the home repository. */
+  repo: string | null;
 }
 
 export interface DecisionRow {
@@ -122,10 +124,13 @@ const MIGRATIONS = [
    );`,
   `ALTER TABLE events ADD COLUMN code TEXT;`,
   `ALTER TABLE cards ADD COLUMN pr TEXT;`,
+  // a canvas may span several repositories; null is the canvas's home repository
+  `ALTER TABLE cards ADD COLUMN repo TEXT;
+   ALTER TABLE workspaces ADD COLUMN repo TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -194,8 +199,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -212,6 +217,7 @@ export class Store {
           parent_id: r.parent_id ?? null,
           plan_ref: r.plan_ref ?? null,
           from_id: r.from_id ?? null,
+          repo: r.repo ?? null,
           now: now(),
         });
         return id;
@@ -246,12 +252,15 @@ export class Store {
 
   // ---------------------------------------------------------------- workspaces
 
-  addWorkspace(canvasId: string, path: string) {
-    this.db.query('INSERT INTO workspaces (path, canvas_id) VALUES ($path, $c) ON CONFLICT(path) DO NOTHING').run({ path, c: canvasId });
+  addWorkspace(canvasId: string, path: string, repo: string | null = null) {
+    this.db.query('INSERT INTO workspaces (path, canvas_id, repo) VALUES ($path, $c, $repo) ON CONFLICT(path) DO NOTHING').run({ path, c: canvasId, repo });
   }
 
-  workspaces(canvasId: string): { path: string; card_id: string | null }[] {
-    return this.db.query('SELECT path, card_id FROM workspaces WHERE canvas_id = $c ORDER BY path').all({ c: canvasId }) as { path: string; card_id: string | null }[];
+  /** The workspaces of one repository on the canvas (`null`: its home repository). */
+  workspaces(canvasId: string, repo: string | null = null): { path: string; card_id: string | null }[] {
+    return this.db
+      .query('SELECT path, card_id FROM workspaces WHERE canvas_id = $c AND repo IS $repo ORDER BY path')
+      .all({ c: canvasId, repo }) as { path: string; card_id: string | null }[];
   }
 
   removeWorkspace(path: string) {

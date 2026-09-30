@@ -17,6 +17,8 @@ export class PrWatcher {
     private cwd: (cardId: string) => string,
     /** Accounts whose comments are not review feedback. */
     private noise: string[] = [],
+    /** On a canvas with several repositories: the one whose pull requests this watches. */
+    private repo?: string,
   ) {}
 
   start(everyMs = 120_000) {
@@ -34,6 +36,7 @@ export class PrWatcher {
     try {
       for (const item of this.board.snapshot().items) {
         if (item.state !== 'inPr' && item.state !== 'waiting') continue;
+        if (this.repo && item.repo !== this.repo) continue;
         const row = this.board.row(item.id);
         const pr = row.pr ? (JSON.parse(row.pr) as PrState) : null;
         if (!pr?.url) continue;

@@ -7,8 +7,8 @@ finished work, without reading code or cycling through terminals.
 
 The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls.
 
-**Status:** M6 (M5 built, its live run on Acme pending) — the canvas, agents that work on its
-cards (a worker per card in its own clone or worktree, questions routed through a project agent
+**Status:** M7 (M5 built, its live run on Acme pending) — canvases spanning one or more
+repositories, agents that work on their cards (a worker per card in its own clone or worktree, questions routed through a project agent
 or the Koordinator), a Koordinator that queues colliding cards, cuts large ones and learns the
 owner's preferences, every change coming back as a narrated demo on its card, pull requests
 carried to the merge, and push-to-talk for all of it.
@@ -20,6 +20,8 @@ See [`docs/plan.md`](docs/plan.md); the interaction reference is the mock in
 ```bash
 bun install
 bun start ~/dev/app5            # canvas of that repository on http://127.0.0.1:4417
+bun start ~/dev/app5 ~/dev/app-web --name Acme   # one canvas, two repositories
+bun start --config ~/.obeya/canvases.json       # several canvases (see src/server/main.ts)
 bun run dev ~/dev/app5          # same, with hot reload
 bun test && bun run typecheck
 ```

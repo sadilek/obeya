@@ -27,6 +27,8 @@ export interface WorkerOptions {
   preferences?: () => string;
   /** Called with everything the owner tells a worker, so lasting preferences can be learned. */
   onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, question?: string) => void;
+  /** On a canvas with several repositories: the one these workers work in. */
+  repo?: string;
   /** Who answers the card's questions on the owner's behalf, if anyone. */
   advisor?: (card: Item) => Advisor | null;
 }
@@ -166,6 +168,7 @@ export class Workers {
   /** After a restart: resume every card whose worker was in the middle of a turn. */
   resumeAll() {
     for (const i of this.o.board.snapshot().items) {
+      if (this.o.repo && i.repo !== this.o.repo) continue;
       const row = this.o.board.row(i.id);
       if (i.state === 'working' && row.session_id) this.launch(i.id, 'Obeya was restarted. Continue where you left off.', row.session_id);
     }

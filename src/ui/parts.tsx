@@ -1,8 +1,8 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import type { Item } from '../core/types';
+import type { CanvasInfo, Item } from '../core/types';
 import type { Cam } from './camera';
 import { Inline, plain } from './markdown';
 import { stateLabel, t } from './strings';
@@ -13,6 +13,8 @@ export const needsYou = (i: Item) => i.state === 'waiting' || i.state === 'propo
 
 interface CardProps {
   item: Item;
+  /** On a canvas with several repositories, cards name theirs. */
+  showRepo: boolean;
   b: Bounds;
   lifted: boolean;
   dragging: boolean;
@@ -23,7 +25,7 @@ interface CardProps {
 const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, els }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, showRepo, els }: CardProps) {
     const shape = shapeOf(item);
     const kind = item.label ?? (item.parent ? t.kind.workstream : t.kind[item.kind]);
     const status =
@@ -44,6 +46,7 @@ export const CardView = memo(
         <div className="kind">
           <span>
             {item.state === 'proposal' ? t.proposalMark : ''}
+            {showRepo ? `${item.repo} · ` : ''}
             {kind}
           </span>
         </div>
@@ -54,8 +57,42 @@ export const CardView = memo(
       </div>
     );
   },
-  (a, b) => a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop,
+  (a, b) => a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.showRepo === b.showRepo,
 );
+
+/** The canvas's name and home branch; with several canvases, a switcher. */
+export function CanvasPill({ canvas, canvases }: { canvas: CanvasInfo; canvases: CanvasInfo[] }) {
+  const [open, setOpen] = useState(false);
+  const home = canvas.repos[0];
+  const many = canvases.length > 1;
+  return (
+    <div className="canvas-pill">
+      <button className={many ? 'pill switch' : 'pill'} title={many ? t.switchCanvas : undefined} onClick={() => many && setOpen(!open)}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="6" cy="6" r="2.5" />
+          <circle cx="6" cy="18" r="2.5" />
+          <circle cx="18" cy="8" r="2.5" />
+          <path d="M6 8.5v7M18 10.5c0 4-6 3-10 6" />
+        </svg>
+        <b>{canvas.name}</b>
+        <span className="hint">{canvas.repos.length > 1 ? t.repos(canvas.repos.length) : home?.branch}</span>
+        {many && <span className="hint">▾</span>}
+      </button>
+      {open && (
+        <ul className="canvas-menu">
+          {canvases.map((c) => (
+            <li key={c.id} className={c.id === canvas.id ? 'on' : ''}>
+              <a href={`?c=${encodeURIComponent(c.id)}`}>
+                <b>{c.name}</b>
+                <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export const ProjectView = memo(
   function ProjectView({ item, b, kids }: { item: Item; b: Bounds; kids: Item[] }) {
