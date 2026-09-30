@@ -43,14 +43,14 @@ export class Workers {
 
   start(cardId: string) {
     const card = this.card(cardId);
-    if (card.kind === 'project') throw new BadRequest('a project is worked on through its workstreams');
-    if (card.state !== 'planned') throw new BadRequest('only a planned card can be started');
+    if (card.kind === 'project') throw new BadRequest('project', 'a project is worked on through its workstreams');
+    if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
     const branch = branchName(card.title, card.id);
     let path: string;
     try {
       path = this.o.workspaces.lease(card.id, branch);
     } catch (e) {
-      if (e instanceof WorkspaceError) throw new BadRequest(e.message);
+      if (e instanceof WorkspaceError) throw new BadRequest(e.code, e.message);
       throw e;
     }
     this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null });
@@ -68,12 +68,12 @@ export class Workers {
     } else if (card.state === 'working' || (card.state === 'waiting' && card.need === 'question')) {
       this.o.board.log(cardId, 'hint', 'owner', text);
       this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything):\n\n${text}`);
-    } else throw new BadRequest('no agent works on this card');
+    } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
 
   answer(cardId: string, text: string, by: 'owner' | Adviser = 'owner') {
     const card = this.card(cardId);
-    if (!(card.state === 'waiting' && card.need === 'question') && by === 'owner') throw new BadRequest('the card has no open question');
+    if (!(card.state === 'waiting' && card.need === 'question') && by === 'owner') throw new BadRequest('noQuestion', 'the card has no open question');
     const row = this.o.board.row(cardId);
     const question = row.detail ? (JSON.parse(row.detail).question as Question | undefined) : undefined;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
@@ -86,7 +86,7 @@ export class Workers {
 
   async approve(cardId: string) {
     const card = this.card(cardId);
-    if (!(card.state === 'waiting' && card.need === 'review')) throw new BadRequest('the card is not ready for review');
+    if (!(card.state === 'waiting' && card.need === 'review')) throw new BadRequest('notReady', 'the card is not ready for review');
     const row = this.o.board.row(cardId);
     if (this.o.adapter.land === 'main') {
       const problem = this.o.workspaces.landOnMain(cardId, row.branch!);
@@ -106,7 +106,7 @@ export class Workers {
 
   stop(cardId: string) {
     const card = this.card(cardId);
-    if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('no agent works on this card');
+    if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');
     this.end(cardId);
     this.o.workspaces.release(cardId);
     this.o.board.work(cardId, { state: 'planned', need: null, detail: null, workspace: null });
@@ -326,7 +326,7 @@ Rules:
 
   private card(id: string): Item {
     const i = this.o.board.item(id);
-    if (!i) throw new BadRequest('unknown card');
+    if (!i) throw new BadRequest('unknownCard', 'unknown card');
     return i;
   }
 }

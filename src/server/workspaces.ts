@@ -9,7 +9,14 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Store } from './db';
 
-export class WorkspaceError extends Error {}
+export class WorkspaceError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'noWorkspace' | 'dirtyWorkspaces' | 'workspace' = 'workspace',
+  ) {
+    super(message);
+  }
+}
 
 export function git(cwd: string, ...args: string[]): string {
   const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stderr: 'pipe' });
@@ -125,9 +132,9 @@ export class Workspaces {
 
   private leaseClone(cardId: string, branch: string): string {
     const free = this.list().filter((w) => !w.card_id);
-    if (!free.length) throw new WorkspaceError('no workspace registered or all are leased');
+    if (!free.length) throw new WorkspaceError('no workspace registered or all are leased', 'noWorkspace');
     const clean = free.find((w) => existsSync(w.path) && git(w.path, 'status', '--porcelain') === '');
-    if (!clean) throw new WorkspaceError('every free workspace has uncommitted changes');
+    if (!clean) throw new WorkspaceError('every free workspace has uncommitted changes', 'dirtyWorkspaces');
     const base = defaultBranch(clean.path);
     git(clean.path, 'fetch', '--quiet', 'origin');
     git(clean.path, 'checkout', '--quiet', '-B', branch, `origin/${base}`);

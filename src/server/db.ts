@@ -118,6 +118,7 @@ const MIGRATIONS = [
      created_at TEXT NOT NULL,
      deleted_at TEXT
    );`,
+  `ALTER TABLE events ADD COLUMN code TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -202,17 +203,16 @@ export class Store {
   addEvent(e: Omit<CardEvent, 'id' | 'at'>): CardEvent {
     const at = now();
     const { id } = this.db
-      .query('INSERT INTO events (card_id, at, kind, author, text) VALUES ($cardId, $at, $kind, $author, $text) RETURNING id')
-      .get({ ...e, at }) as { id: number };
+      .query('INSERT INTO events (card_id, at, kind, author, text, code) VALUES ($cardId, $at, $kind, $author, $text, $code) RETURNING id')
+      .get({ ...e, code: e.code ?? null, at }) as { id: number };
     return { ...e, id, at };
   }
 
   events(cardId: string, limit = 500): CardEvent[] {
-    return (
-      this.db
-        .query('SELECT id, card_id AS cardId, at, kind, author, text FROM events WHERE card_id = $c ORDER BY id DESC LIMIT $limit')
-        .all({ c: cardId, limit }) as CardEvent[]
-    ).reverse();
+    const rows = this.db
+      .query('SELECT id, card_id AS cardId, at, kind, author, text, code FROM events WHERE card_id = $c ORDER BY id DESC LIMIT $limit')
+      .all({ c: cardId, limit }) as (CardEvent & { code: CardEvent['code'] | null })[];
+    return rows.reverse().map(({ code, ...e }) => (code ? { ...e, code } : e));
   }
 
   // ---------------------------------------------------------------- workspaces

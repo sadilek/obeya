@@ -57,6 +57,8 @@ export interface CardEvent {
   kind: 'report' | 'activity' | 'say' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error';
   author: 'worker' | 'owner' | 'project' | 'koordinator' | 'obeya';
   text: string;
+  /** Set on an error the UI words itself; `text` then holds the server's technical detail. */
+  code?: ErrorCode;
 }
 
 export interface CanvasInfo {
@@ -103,6 +105,29 @@ export type CardAction =
   | { action: 'split' }
   | { action: 'accept' }
   | { action: 'dismiss' };
+
+/**
+ * Why the server refused a request. The server sends the code and an English detail
+ * (`{ code, error }`, status 400); the UI shows its own text for the code.
+ */
+export type ErrorCode =
+  | 'unknownCard'
+  | 'project'
+  | 'notPlanned'
+  | 'queued'
+  | 'notQueued'
+  | 'notSplittable'
+  | 'noAgent'
+  | 'noQuestion'
+  | 'notReady'
+  | 'notProposal'
+  | 'planCard'
+  | 'noWorkspace'
+  | 'dirtyWorkspaces'
+  | 'workspace'
+  | 'emptyText'
+  /** Malformed input: a bug in the UI rather than something the owner can fix. */
+  | 'invalid';
 
 /** Server → UI over the WebSocket. */
 export type ServerMessage = { type: 'snapshot'; snapshot: CanvasSnapshot } | { type: 'event'; event: CardEvent };

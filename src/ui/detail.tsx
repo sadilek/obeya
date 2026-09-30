@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CardAction, CardEvent, CardPatch, Item } from '../core/types';
-import { api, onCardEvent } from './api';
+import { ApiError, api, onCardEvent } from './api';
 import { Inline, plain } from './markdown';
-import { stateLabel, t } from './strings';
+import { errorText, stateLabel, t } from './strings';
 
 /** What the panel does after an action: fold the card and confirm, or stay open. */
 export type ActDone = { close: true; ack: string } | { close: false };
@@ -31,7 +31,8 @@ export function Detail(p: Props) {
       await api.act(item.id, a);
       p.onDone(done);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (!(e instanceof ApiError)) console.error(e);
+      setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
     }
   };
   const kind = parent ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}` : t.kind[item.kind];
@@ -339,7 +340,9 @@ function Log({ cardId }: { cardId: string }) {
           <div key={e.id} className={`ev ev-${e.kind} by-${e.author}`}>
             <span className="t">{time(e.at)}</span>
             {e.author !== 'worker' && <span className="who">{t.author[e.author]}</span>}
-            <span className="x">{e.text}</span>
+            <span className="x" title={e.code ? e.text : undefined}>
+              {e.code ? errorText(e.code) : e.text}
+            </span>
           </div>
         ))}
       </div>

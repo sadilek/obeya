@@ -163,6 +163,10 @@ the repository).
   follows its content while open.
 - Manual cards are created by double-click, the button or `n`, and edited in the unfolded card;
   a new card closed without a title is dropped. Deleting offers undo.
+- The server words no UI text for refusals: it answers `{ code, error }` with a stable code
+  (`ErrorCode` in `src/core/types.ts`) and an English detail, and log entries of a failed start
+  carry the code too. The UI shows its text for the code from `strings.ts`, a generic one for
+  anything else.
 - The scheduling Chief of Staff comes before demos and PRs (M3): with worktrees several workers
   run at once on Obeya itself.
 

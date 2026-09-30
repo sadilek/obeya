@@ -6,10 +6,18 @@
 
 import { boundsOf, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
-import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type Item, type NewCard, STATES } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Item, type NewCard, STATES } from '../core/types';
 import type { CardRow, NewRow, RowUpdate, Store } from './db';
 
-export class BadRequest extends Error {}
+/** A request the server refuses: a stable code for the UI's text, and an English detail. */
+export class BadRequest extends Error {
+  constructor(
+    readonly code: ErrorCode,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 export class Board {
   private listeners = new Set<() => void>();
@@ -46,8 +54,8 @@ export class Board {
   }
 
   /** Appends a line to the card's log. */
-  log(cardId: string, kind: CardEvent['kind'], author: CardEvent['author'], text: string): CardEvent {
-    const e = this.store.addEvent({ cardId, kind, author, text });
+  log(cardId: string, kind: CardEvent['kind'], author: CardEvent['author'], text: string, code?: ErrorCode): CardEvent {
+    const e = this.store.addEvent({ cardId, kind, author, text, ...(code ? { code } : {}) });
     for (const fn of this.eventListeners) fn(e);
     return e;
   }
@@ -76,7 +84,7 @@ export class Board {
   /** Cards that replace `id`, side by side where it was; they start planned, with their scope. */
   replace(id: string, cards: { kind: 'bugfix' | 'feature'; title: string; body: string; files: string[] }[]): Item[] {
     const row = this.own(id);
-    if (row.plan_ref) throw new BadRequest('plan cards are changed in the plan doc');
+    if (row.plan_ref) throw new BadRequest('planCard', 'plan cards are changed in the plan doc');
     const rows = this.store.insert(
       cards.map((c, n) => ({
         canvas_id: this.canvas.id,
@@ -133,7 +141,7 @@ export class Board {
   }
 
   accept(id: string) {
-    if (this.own(id).state !== 'proposal') throw new BadRequest('not a proposal');
+    if (this.own(id).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     this.store.update(id, { state: 'planned' });
     this.changed();
   }
@@ -146,7 +154,7 @@ export class Board {
   }
 
   create(n: NewCard): Item {
-    if (n.kind !== 'bugfix' && n.kind !== 'feature') throw new BadRequest('kind must be bugfix or feature');
+    if (n.kind !== 'bugfix' && n.kind !== 'feature') throw new BadRequest('invalid', 'kind must be bugfix or feature');
     checkText(n.title, 'title', 200);
     if (n.body !== undefined) checkText(n.body, 'body', 20000);
     checkNumber(n.x, 'x');
@@ -162,35 +170,35 @@ export class Board {
     const row = this.own(id);
     const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'kind', 'title', 'body', 'state', 'need'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
-    if (bad.length) throw new BadRequest(`cannot change ${bad.join(', ')} on this card`);
+    if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
     if (p.y !== undefined) checkNumber(p.y, 'y');
-    if (p.kind !== undefined && p.kind !== 'bugfix' && p.kind !== 'feature') throw new BadRequest('kind must be bugfix or feature');
+    if (p.kind !== undefined && p.kind !== 'bugfix' && p.kind !== 'feature') throw new BadRequest('invalid', 'kind must be bugfix or feature');
     if (p.title !== undefined) checkText(p.title, 'title', 200);
     if (p.body !== undefined) checkText(p.body, 'body', 20000);
-    if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest(`state must be one of ${STATES.join(', ')}`);
-    if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('need must be demo, question or null');
+    if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
+    if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
     this.store.update(id, p);
     this.changed();
   }
 
   /** Manual cards only; a plan card goes away with its workstream. */
   remove(id: string) {
-    if (this.own(id).plan_ref) throw new BadRequest('plan cards are removed in the plan doc');
+    if (this.own(id).plan_ref) throw new BadRequest('planCard', 'plan cards are removed in the plan doc');
     this.store.update(id, { deleted_at: new Date().toISOString() });
     this.changed();
   }
 
   restore(id: string) {
     const row = this.store.card(id);
-    if (!row || row.canvas_id !== this.canvas.id) throw new BadRequest('unknown card');
+    if (!row || row.canvas_id !== this.canvas.id) throw new BadRequest('unknownCard', 'unknown card');
     this.store.update(id, { deleted_at: null });
     this.changed();
   }
 
   private own(id: string): CardRow {
     const row = this.store.card(id);
-    if (!row || row.canvas_id !== this.canvas.id || row.deleted_at) throw new BadRequest('unknown card');
+    if (!row || row.canvas_id !== this.canvas.id || row.deleted_at) throw new BadRequest('unknownCard', 'unknown card');
     return row;
   }
 
@@ -312,9 +320,9 @@ function work(r: CardRow): Partial<Item> {
 }
 
 function checkText(v: unknown, name: string, max: number) {
-  if (typeof v !== 'string' || v.length > max) throw new BadRequest(`${name} must be a string of at most ${max} characters`);
+  if (typeof v !== 'string' || v.length > max) throw new BadRequest('invalid', `${name} must be a string of at most ${max} characters`);
 }
 
 function checkNumber(v: unknown, name: string) {
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw new BadRequest(`${name} must be a finite number`);
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new BadRequest('invalid', `${name} must be a finite number`);
 }

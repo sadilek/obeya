@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import type { CanvasSnapshot, CardAction, CardEvent, CardPatch, Item, NewCard, ServerMessage } from '../core/types';
 
+/** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
+export class ApiError extends Error {
+  constructor(
+    readonly code: string | undefined,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -9,11 +19,12 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   });
   if (!res.ok) {
     const body = await res.text();
-    let message = body;
+    let code: string | undefined;
+    let detail = body;
     try {
-      message = JSON.parse(body).error ?? body;
+      ({ code, error: detail = body } = JSON.parse(body));
     } catch {}
-    throw new Error(message);
+    throw new ApiError(code, detail || `HTTP ${res.status}`);
   }
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
