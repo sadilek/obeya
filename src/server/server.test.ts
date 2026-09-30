@@ -6,6 +6,7 @@ import { generic } from '../adapters/generic';
 import type { CardAction } from '../core/types';
 import { Board } from './board';
 import { Store } from './db';
+import { type Command, Commander } from './commands';
 import { Koordinator } from './koordinator';
 import { serve } from './server';
 import { FakeRuntime, type FakeSession } from './testing';
@@ -15,6 +16,8 @@ import { git, Workspaces } from './workspaces';
 let dir: string;
 let board: Board;
 let runtime: FakeRuntime;
+let executed: Command[];
+let heardAudio: string[];
 let server: ReturnType<typeof serve>;
 
 // A canvas in clone mode without any clone registered: every start fails for want of a workspace.
@@ -34,7 +37,11 @@ beforeEach(() => {
   runtime = new FakeRuntime();
   const workers = new Workers({ board, runtime, workspaces, adapter });
   const koordinator = new Koordinator({ board, runtime, workers, workspaces, adapter, repoPath: main });
-  server = serve(board, workers, koordinator, 0);
+  executed = [];
+  heardAudio = [];
+  const commander = new Commander({ board, runtime, cwd: main, execute: (c) => void executed.push(c), delayMs: 30 });
+  const transcriber = { transcribe: async (path: string) => (heardAudio.push(await Bun.file(path).text()), 'Neue Karte Export') };
+  server = serve(board, workers, koordinator, { commander, transcriber }, 0);
 });
 afterEach(() => {
   server.stop(true);
@@ -80,5 +87,52 @@ describe('refused requests', () => {
     const events = (await (await fetch(new URL(`/api/cards/${c.id}/events`, server.url))).json()) as { kind: string; code?: string; text: string }[];
     expect(events.at(-1)).toMatchObject({ kind: 'error', code: 'noWorkspace', text: 'no workspace registered or all are leased' });
     expect(board.item(c.id)!.state).toBe('planned');
+  });
+});
+
+describe('voice', () => {
+  const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'new_card')).at(-1)!;
+
+  test('a recording is transcribed, read as one action, confirmed with speech, and runs after the delay', async () => {
+    const res = fetch(new URL('/api/voice', server.url), { method: 'POST', body: 'AUDIO' });
+    await settle();
+    expect(heardAudio).toEqual(['AUDIO']);
+    const s = interpretation();
+    expect(s.inbox[0]).toContain('"Neue Karte Export"');
+    expect(s.spec).toMatchObject({ readOnly: true, effort: 'low' });
+    s.call('new_card', { kind: 'feature', title: 'Export', body: 'CSV', start: true, confirm: 'Neue Karte „Export“, der Agent fängt an.' });
+    s.emit({ type: 'idle' });
+    const body = (await (await res).json()) as { confirm: string; token: string; audio?: string };
+    expect(body.confirm).toBe('Neue Karte „Export“, der Agent fängt an.');
+    expect(body.token).toBeTruthy();
+    expect(body.audio?.startsWith('data:audio/wav;base64,')).toBe(true);
+    expect(executed).toEqual([]);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(executed).toEqual([{ do: 'newCard', kind: 'feature', title: 'Export', body: 'CSV', start: true }]);
+  });
+
+  test('typed commands name cards by tag; undo takes one back before it runs', async () => {
+    const c = card();
+    const res = fetch(new URL(`/api/command?card=${c.id}`, server.url), { method: 'POST', body: JSON.stringify({ text: 'gib das frei' }) });
+    await settle();
+    const s = interpretation();
+    expect(s.inbox[0]).toContain('The owner has this card open');
+    s.call('approve', { card: 'K1', confirm: '„A“ freigegeben.' });
+    s.emit({ type: 'idle' });
+    const { token } = (await (await res).json()) as { token: string };
+    const undo = await (await fetch(new URL('/api/command/undo', server.url), { method: 'POST', body: JSON.stringify({ token }) })).json();
+    expect(undo).toEqual({ undone: true });
+    await new Promise((r) => setTimeout(r, 60));
+    expect(executed).toEqual([]);
+  });
+
+  test('nothing to do is just said', async () => {
+    const res = fetch(new URL('/api/command', server.url), { method: 'POST', body: JSON.stringify({ text: 'ähm' }) });
+    await settle();
+    interpretation().call('reply', { confirm: 'Was genau soll ich tun?' });
+    interpretation().emit({ type: 'idle' });
+    const body = (await (await res).json()) as { confirm: string; token?: string };
+    expect(body).toMatchObject({ confirm: 'Was genau soll ich tun?' });
+    expect(body.token).toBeUndefined();
   });
 });

@@ -126,6 +126,18 @@ export class Board {
     return rows.map((r) => this.snapshot().items.find((i) => i.id === r.id)!);
   }
 
+  /** Where a card nobody placed goes: a column right of everything, below what is already there. */
+  freeSpot(): { x: number; y: number } {
+    const items = this.snapshot().items;
+    const top = items.filter((i) => !i.parent);
+    const all = unionBounds(top.map((i) => boundsOf(i, items)));
+    if (!all) return { x: 0, y: 0 };
+    const column = top.filter((i) => i.kind !== 'project' && i.x >= all.x + all.w - 400);
+    const x = column.length ? Math.min(...column.map((i) => i.x)) : all.x + all.w + 80;
+    const y = column.length ? Math.max(...column.map((i) => boundsOf(i, items).y + boundsOf(i, items).h)) + 30 : all.y;
+    return { x, y };
+  }
+
   /** A card an agent proposes, placed below the card it came from. */
   propose(fromId: string, p: { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string }): Item {
     const items = this.snapshot().items;

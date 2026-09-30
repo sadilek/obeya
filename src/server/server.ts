@@ -1,12 +1,22 @@
 import type { ServerWebSocket } from 'bun';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { CardAction, CardPatch, NewCard, ServerMessage } from '../core/types';
 import index from '../ui/index.html';
 import { BadRequest, type Board } from './board';
 import { serveDemoFile } from './demo';
+import type { Commander, Focus, Heard } from './commands';
 import type { Koordinator } from './koordinator';
+import { speak, type Transcriber } from './voice';
 import type { Workers } from './workers';
 
-export function serve(board: Board, workers: Workers, koordinator: Koordinator, port: number, development = false) {
+export interface Voice {
+  commander: Commander;
+  transcriber: Transcriber;
+}
+
+export function serve(board: Board, workers: Workers, koordinator: Koordinator, voice: Voice, port: number, development = false) {
   const sockets = new Set<ServerWebSocket<unknown>>();
   const push = () => {
     const msg = JSON.stringify({ type: 'snapshot', snapshot: board.snapshot() } satisfies ServerMessage);
@@ -48,6 +58,27 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
     }
   };
 
+  const focusOf = (req: Request): Focus => {
+    const q = new URL(req.url).searchParams;
+    return { ...(q.get('card') ? { card: q.get('card')! } : {}), ...(q.get('project') ? { project: q.get('project')! } : {}) };
+  };
+  const transcribe = async (req: Request) => {
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-voice-'));
+    const file = join(dir, 'speech.webm');
+    try {
+      await Bun.write(file, await req.arrayBuffer());
+      return (await voice.transcriber.transcribe(file, voice.commander.vocabulary())).trim();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const heard = async (text: string, focus: Focus) => {
+    const h: Heard = text ? await voice.commander.hear(text, focus) : { confirm: 'Ich habe nichts gehört.' };
+    const audio = speak(h.confirm);
+    if (h.token) voice.commander.arm(h.token);
+    return { ...h, ...(audio ? { audio: `data:audio/wav;base64,${Buffer.from(audio).toString('base64')}` } : {}) };
+  };
+
   const handle = async (fn: () => unknown | Promise<unknown>) => {
     try {
       const out = await fn();
@@ -78,6 +109,19 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
       },
       '/api/cards/:id/restore': { POST: (req) => handle(() => board.restore(req.params.id)) },
       '/api/cards/:id/act': { POST: (req) => handle(async () => act(req.params.id, (await req.json()) as CardAction)) },
+      // what the owner said (audio) or typed, read by the Koordinator as one action
+      '/api/voice': { POST: (req) => handle(async () => heard(await transcribe(req), focusOf(req))) },
+      '/api/command': {
+        POST: (req) =>
+          handle(async () => {
+            const { text } = (await req.json()) as { text: string };
+            if (typeof text !== 'string' || !text.trim()) throw new BadRequest('emptyText', 'text must be a non-empty string');
+            return heard(text.trim(), focusOf(req));
+          }),
+      },
+      '/api/command/undo': {
+        POST: (req) => handle(async () => ({ undone: voice.commander.undo(((await req.json()) as { token: string }).token) })),
+      },
       '/api/preferences': { POST: (req) => handle(async () => ({ id: board.addPreference(((await req.json()) as { text: string }).text) })) },
       '/api/preferences/:id': {
         PATCH: (req) => handle(async () => board.setPreference(Number(req.params.id), ((await req.json()) as { text: string }).text)),

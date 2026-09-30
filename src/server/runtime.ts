@@ -30,6 +30,8 @@ export interface AgentSpec {
   /** Read-only agents get no tools that change files or run commands. */
   readOnly?: boolean;
   permissionMode?: PermissionMode;
+  /** How much the model thinks; low for quick turns such as reading a spoken command. */
+  effort?: 'low' | 'medium' | 'high';
   onEvent: (e: AgentEvent) => void;
 }
 
@@ -75,6 +77,7 @@ export const sdkRuntime: AgentRuntime = {
           ? { tools: READ_ONLY_TOOLS, allowedTools: [...READ_ONLY_TOOLS, ...ownTools], permissionMode: 'dontAsk' as const }
           : { allowedTools: ownTools, permissionMode: spec.permissionMode ?? 'auto' }),
         ...(spec.resume ? { resume: spec.resume } : {}),
+        ...(spec.effort ? { effort: spec.effort } : {}),
         env: cleanEnv(),
       },
     });

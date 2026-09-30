@@ -11,6 +11,7 @@ import { parseArgs } from 'node:util';
 import { pickAdapter } from '../adapters';
 import { Board } from './board';
 import { Store } from './db';
+import { type Command, Commander } from './commands';
 import { ghForge } from './forge';
 import { Koordinator } from './koordinator';
 import { PrWatcher } from './pr-watcher';
@@ -18,6 +19,7 @@ import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import { sdkRuntime } from './runtime';
 import { serve } from './server';
+import { WhisperSidecar } from './voice';
 import { Workers } from './workers';
 import { Workspaces } from './workspaces';
 
@@ -90,7 +92,37 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const)
     process.exit(0);
   });
 
-const server = serve(board, workers, koordinator, Number(values.port), values.dev);
+const run = (c: Command) => {
+  switch (c.do) {
+    case 'newCard': {
+      const card = board.create({ kind: c.kind, title: c.title, body: c.body, ...board.freeSpot() });
+      board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
+      if (c.start) koordinator.request(card.id);
+      return;
+    }
+    case 'start':
+      return koordinator.request(c.card);
+    case 'note':
+    case 'feedback':
+      return workers.message(c.card, c.text);
+    case 'answer':
+      return workers.answer(c.card, c.text);
+    case 'approve':
+      return workers.approve(c.card);
+    case 'accept':
+      return board.accept(c.card);
+    case 'dismiss':
+      return board.remove(c.card);
+    case 'split':
+      return koordinator.split(c.card);
+    case 'stop':
+      return workers.stop(c.card);
+  }
+};
+const transcriber = new WhisperSidecar();
+const commander = new Commander({ board, runtime: sdkRuntime, cwd: repo.path, execute: run });
+
+const server = serve(board, workers, koordinator, { commander, transcriber }, Number(values.port), values.dev);
 console.log(`Obeya: ${board.canvas.name} (${adapter.name} adapter, ${repo.path}) on ${server.url}`);
 console.log(
   adapter.workspaces === 'worktrees'
