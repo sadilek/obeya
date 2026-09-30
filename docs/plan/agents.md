@@ -45,7 +45,7 @@ developed on its own canvas — a card started there comes back as a reviewed br
 - [x] **W2:** Workspaces. Clone pool (register or create, lease, release) and a worktree per card;
   landing on `main` by rebase and fast-forward.
 - [x] **W3:** Worker loop. Start, stream input, tools, nudge, stop, resume after restart.
-- [ ] **W4:** Card UI for work. Start and stop, log, hints, questions with options, review,
+- [x] **W4:** Card UI for work. Start and stop, log, hints, questions with options, review,
   proposals with their link to the source card.
 - [ ] **W5:** Obeya on Obeya. Adapter for this repo; a real card worked through end to end.
 - [ ] **W6:** Project agents. One read-only session per project answering from plan doc and

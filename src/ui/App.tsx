@@ -7,7 +7,8 @@ import type { CanvasSnapshot, CardPatch, Item } from '../core/types';
 import { api, useCanvas } from './api';
 import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, toWorld } from './camera';
 import { plain } from './markdown';
-import { CardView, Detail, Edges, Minimap, needsYou, ProjectView, Sheet } from './parts';
+import { type ActDone, Detail } from './detail';
+import { CardView, Edges, Links, Minimap, needsYou, ProjectView, Sheet } from './parts';
 import { t } from './strings';
 
 export function App() {
@@ -139,20 +140,35 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     if (!el || !panel) return;
     const r = el.getBoundingClientRect();
     flushSync(() => setOpenId(i.id));
-    panel.style.setProperty('--c', getComputedStyle(el).getPropertyValue('--c'));
+    panel.style.setProperty('--c', `var(--${i.state})`);
     panel.className = '';
     Object.assign(panel.style, rect(r), { display: 'block', borderRadius: '14px' });
     panel.getBoundingClientRect();
     panel.classList.add('anim');
-    const W = Math.min(900, innerWidth - 80);
-    const H = Math.min(i.source === 'manual' ? 480 : 560, innerHeight - 140);
-    Object.assign(panel.style, { left: `${(innerWidth - W) / 2}px`, top: `${Math.max(70, (innerHeight - H) / 2)}px`, width: `${W}px`, height: `${H}px`, borderRadius: '18px' });
+    Object.assign(panel.style, panelRect(i), { borderRadius: '18px' });
     setDim(true);
     setSheetOn(false);
     await sleep(450);
     panel.classList.add('ready');
     const title = panel.querySelector<HTMLInputElement>('input.p-title');
     if (title && !title.value) title.focus();
+  }
+
+  // a card that starts or finishes work while open changes its content: resize in place
+  const openItem = openId ? items.find((i) => i.id === openId) : undefined;
+  const openState = openItem && `${openItem.state}:${openItem.need ?? ''}`;
+  useEffect(() => {
+    const panel = panelRef.current;
+    const i = openId ? byId(openId) : undefined;
+    if (!panel || !i || !panel.classList.contains('ready')) return;
+    panel.style.setProperty('--c', `var(--${i.state})`);
+    Object.assign(panel.style, panelRect(i));
+  }, [openState]);
+
+  function onDone(d: ActDone) {
+    if (!d.close) return;
+    closeCard({ keepUntitled: true });
+    showAck(d.ack);
   }
 
   async function closeCard({ keepUntitled = false } = {}) {
@@ -347,7 +363,6 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
   }, []);
 
   // ---------------------------------------------------------------- render
-  const openItem = openId ? items.find((i) => i.id === openId) : undefined;
   const sheetProject = sheetId ? items.find((i) => i.id === sheetId) : undefined;
   const edgeTargets = placed.filter(({ item }) => needsYou(item) && (focus?.type !== 'project' || item.parent === focus.id));
 
@@ -365,6 +380,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
         onDoubleClick={onDoubleClick}
       >
         <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
+          <Links placed={placed} />
           {placed.map(({ item, b }) =>
             item.kind === 'project' ? (
               <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} />
@@ -415,8 +431,10 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
               key={openItem.id}
               item={openItem}
               parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
+              from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
               onEdit={onEdit}
               onDelete={deleteOpen}
+              onDone={onDone}
             />
           )}
         </div>
@@ -437,6 +455,14 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
       </div>
     </div>
   );
+}
+
+/** Where the unfolded card sits: centred, as large as its content needs. */
+function panelRect(i: Item) {
+  const tall = i.state !== 'planned' && i.state !== 'proposal';
+  const W = Math.min(tall ? 980 : 900, innerWidth - 80);
+  const H = Math.min(tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
+  return { left: `${(innerWidth - W) / 2}px`, top: `${Math.max(64, (innerHeight - H) / 2)}px`, width: `${W}px`, height: `${H}px` };
 }
 
 const rect = (r: DOMRect) => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
