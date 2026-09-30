@@ -34,8 +34,8 @@ decisions are made in front of the wall.
 - **Cards** — `bugfix`, `feature`, `project`. A project is a container backed by a plan doc; its
   workstreams are its child cards.
 - **States** — `proposal` → `planned` → `working` → `waiting` (demo ready | question) →
-  `approved` → `in PR` → `live`. Until workers record demos (M4), `waiting: review` with the
-  worker's written summary stands in for `waiting: demo`.
+  `approved` → `in PR` → `live`. An adapter that does not require demos lets a worker hand over
+  with a written summary alone: `waiting: review`.
 - **Agents**
   - *Worker*, one per card while it is worked on: implementation, local reviews, demo.
   - *Project agent*, one per project, long-lived: knows the plan doc and the history of every
@@ -112,9 +112,15 @@ the owner's language (`src/core/locale.ts`).
 - **Voice in** — local Whisper (MLX) sidecar with a domain vocabulary; the agent prompt states
   that input is speech and may carry recognition errors.
 - **Voice out** — macOS `say` with the default system voice, streamed sentence by sentence.
-- **Demos** — the `demo` skill's pipeline (scripted walkthrough, narrated video, report).
-  Artifacts on disk; shared through object storage behind the team's login and linked from the
-  PR. Never in git.
+- **Demos** — the `demo` skill's pipeline (scripted walkthrough, narrated video, report). The
+  worker records once the change is committed and checked, as the adapter says how to run the
+  app (Obeya: a scratch instance from the worktree on a scratch repository; Acme: the clone's
+  AppHost), and hands over the directory, chapter titles and report with `ready_for_review`.
+  Obeya takes the chapter times from the captions and serves the video, poster and captions of
+  the card's demo (range requests). The card shows it as in the mock, with approve and feedback
+  beside the video; feedback asks for a new render. Artifacts stay in `~/demos/`, never in git;
+  sharing them through object storage behind the team's login and linking them from the PR comes
+  with the PR loop.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   login recipe, where plan docs live, which reviews run, demo conventions.
 
@@ -138,7 +144,8 @@ the repository).
 - [x] **M3 Koordinator.** The Chief of Staff without voice: schedules cards so that likely
   collisions do not run at the same time (queued instead), cuts work packages for parallel work,
   answers standalone cards' questions, keeps the preference memory.
-- [ ] **M4 Demo loop.** Worker records the demo; the card waits; approve or feedback.
+- [x] **M4 Demo loop.** Worker records the demo; the card waits; approve or feedback. First
+  worker-recorded demo approved on Obeya itself.
 - [ ] **M5 PR loop.** Approval opens the PR; monitoring through review bot, CI and conflicts to
   the merge; judgement questions routed to the card.
 - [ ] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
