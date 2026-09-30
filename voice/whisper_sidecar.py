@@ -2,7 +2,8 @@
 
 Reads JSON lines on stdin: {"id": ..., "path": "<audio file>", "prompt": "<vocabulary>"}.
 Writes JSON lines on stdout: {"id": ..., "text": "..."} or {"id": ..., "error": "..."}.
-Audio is decoded by ffmpeg, so any format the browser records (webm/opus, wav) works.
+Audio is decoded by ffmpeg, so any format the browser records (webm/opus, wav) works. The model is
+loaded at start, before "ready".
 """
 
 import json
@@ -10,11 +11,14 @@ import os
 import sys
 
 import mlx_whisper
+import numpy as np
 
 MODEL = os.environ.get("OBEYA_WHISPER_MODEL", "mlx-community/whisper-large-v3-turbo")
 
 
 def main() -> None:
+    # load the model and warm it up on a second of silence, so the first recording is as quick as the rest
+    mlx_whisper.transcribe(np.zeros(16000, dtype=np.float32), path_or_hf_repo=MODEL, language="de")
     print(json.dumps({"ready": True}), flush=True)
     for line in sys.stdin:
         if not line.strip():

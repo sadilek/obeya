@@ -18,6 +18,8 @@ let executed: Command[];
 let heardAudio: string[];
 let server: ReturnType<typeof serve>;
 let canvas: CanvasRuntime;
+let warmed: number;
+const speaker = { speak: async (text: string) => new TextEncoder().encode(`WAV ${text}`) };
 
 // A canvas in clone mode without any clone registered: every start fails for want of a workspace.
 beforeEach(() => {
@@ -36,8 +38,9 @@ beforeEach(() => {
   executed = [];
   heardAudio = [];
   canvas.run = (c) => void executed.push(c);
-  const transcriber = { transcribe: async (path: string) => (heardAudio.push(await Bun.file(path).text()), 'Neue Karte Export') };
-  server = serve([canvas], transcriber, 0);
+  warmed = 0;
+  const transcriber = { transcribe: async (path: string) => (heardAudio.push(await Bun.file(path).text()), 'Neue Karte Export'), warm: () => void warmed++ };
+  server = serve([canvas], { transcriber, speaker }, 0);
 });
 afterEach(() => {
   server.stop(true);
@@ -103,7 +106,10 @@ describe('voice', () => {
     expect(body.confirm).toBe('Neue Karte „Export“, der Agent fängt an.');
     expect(body.token).toBeTruthy();
     expect((body as { undoMs?: number }).undoMs).toBe(30);
-    expect(body.audio?.startsWith('data:audio/wav;base64,')).toBe(true);
+    expect(body.audio).toStartWith(api('/voice/speech/'));
+    const speech = await fetch(new URL(body.audio!, server.url));
+    expect(speech.headers.get('content-type')).toBe('audio/wav');
+    expect(await speech.text()).toBe('WAV Neue Karte „Export“, der Agent fängt an.');
     expect(executed).toEqual([]);
     await new Promise((r) => setTimeout(r, 60));
     expect(executed).toEqual([{ do: 'newCard', kind: 'feature', title: 'Export', body: 'CSV', start: true }]);
@@ -122,6 +128,40 @@ describe('voice', () => {
     expect(undo).toEqual({ undone: true });
     await new Promise((r) => setTimeout(r, 60));
     expect(executed).toEqual([]);
+  });
+
+  test('pressing Space starts the agent for the command ahead; the command then only sends it the brief', async () => {
+    const c = card();
+    expect((await post(api('/voice/warm'), '')).status).toBe(204);
+    await post(api('/voice/warm'), '');
+    expect(warmed).toBe(2);
+    const spare = interpretation();
+    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'new_card'))).toHaveLength(1);
+    expect(spare.inbox).toEqual([]);
+    const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'starte A' }) });
+    await settle();
+    expect(interpretation()).toBe(spare);
+    expect(spare.inbox[0]).toContain('"starte A"');
+    spare.call('start', { card: 'K1', confirm: '„A“ startet.' });
+    await res;
+    // the next command's agent is already starting
+    expect(interpretation()).not.toBe(spare);
+    expect(interpretation().inbox).toEqual([]);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(executed).toEqual([{ do: 'start', card: c.id }]);
+  });
+
+  test('an agent that waited and then fails is replaced by a fresh one for the same command', async () => {
+    canvas.commander.warm();
+    const spare = interpretation();
+    const heard = canvas.commander.hear('ähm', {});
+    spare.emit({ type: 'error', message: 'stale' });
+    expect(spare.closed).toBe(true);
+    const fresh = interpretation();
+    expect(fresh).not.toBe(spare);
+    expect(fresh.inbox[0]).toContain('"ähm"');
+    fresh.call('reply', { confirm: 'Was genau soll ich tun?' });
+    expect(await heard).toEqual({ confirm: 'Was genau soll ich tun?' });
   });
 
   test('nothing to do is just said', async () => {

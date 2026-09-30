@@ -45,7 +45,8 @@ export interface AgentSession {
 }
 
 export interface AgentRuntime {
-  start(spec: AgentSpec, firstMessage: string): AgentSession;
+  /** Without a first message the agent starts up and waits, so a later `send` skips the start-up. */
+  start(spec: AgentSpec, firstMessage?: string): AgentSession;
 }
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
@@ -54,7 +55,7 @@ const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
 export const sdkRuntime: AgentRuntime = {
   start(spec, firstMessage) {
     const inbox = new Inbox();
-    inbox.push(firstMessage);
+    if (firstMessage !== undefined) inbox.push(firstMessage);
     const abort = new AbortController();
     const obeya = createSdkMcpServer({
       name: 'obeya',

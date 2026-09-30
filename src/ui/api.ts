@@ -57,6 +57,8 @@ export const api = {
     if (!res.ok) throw new Error(`voice: ${res.status}`);
     return (await res.json()) as HeardReply;
   },
+  /** The owner started speaking (or typing a command): Obeya gets ready to read it. */
+  warmVoice: () => fetch(at('/voice/warm'), { method: 'POST' }).catch(() => {}),
   /** The same, typed. */
   command: (text: string, where: Where) => call<HeardReply>('POST', at(`/command${query(where)}`), { text }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),

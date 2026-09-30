@@ -10,11 +10,16 @@ import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
 import type { Focus, Heard } from './commands';
 import { serveDemoFile } from './demo';
-import { speak, type Transcriber } from './voice';
+import type { Speaker, Transcriber } from './voice';
 
 type Req = Request & { params: Record<string, string> };
 
-export function serve(canvases: CanvasRuntime[], transcriber: Transcriber, port: number, development = false) {
+export interface Voice {
+  transcriber: Transcriber;
+  speaker: Speaker;
+}
+
+export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string }>>>(canvases.map((c) => [c.id, new Set()]));
   for (const c of canvases) {
@@ -58,17 +63,18 @@ export function serve(canvases: CanvasRuntime[], transcriber: Transcriber, port:
       rmSync(dir, { recursive: true, force: true });
     }
   };
+  /** Spoken confirmations by id, rendered while the owner already reads them. */
+  const speech = new Map<string, Promise<Uint8Array<ArrayBuffer> | null>>();
   const heard = async (c: CanvasRuntime, text: string, focus: Focus) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
     console.log(`heard on ${c.id}: ${text || '(nothing)'}`);
     const h: Heard = text ? await c.commander.hear(text, focus) : { confirm: 'Ich habe nichts gehört.' };
-    const audio = speak(h.confirm);
+    // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
-    return {
-      ...h,
-      ...(h.token ? { undoMs: c.commander.delayMs } : {}),
-      ...(audio ? { audio: `data:audio/wav;base64,${Buffer.from(audio).toString('base64')}` } : {}),
-    };
+    const id = crypto.randomUUID();
+    speech.set(id, speaker.speak(h.confirm));
+    setTimeout(() => speech.delete(id), 60_000);
+    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), audio: `/api/c/${encodeURIComponent(c.id)}/voice/speech/${id}` };
   };
 
   return Bun.serve({
@@ -99,6 +105,20 @@ export function serve(canvases: CanvasRuntime[], transcriber: Transcriber, port:
       },
       // what the owner said (audio) or typed, read by the Koordinator as one action
       '/api/c/:canvas/voice': { POST: on(async (c, req) => heard(c, await transcribe(c, req), focusOf(req))) },
+      // the owner started speaking: transcription, speech and the Koordinator get ready meanwhile
+      '/api/c/:canvas/voice/warm': {
+        POST: on((c) => {
+          transcriber.warm?.();
+          speaker.warm?.();
+          c.commander.warm();
+        }),
+      },
+      '/api/c/:canvas/voice/speech/:id': {
+        GET: async (req) => {
+          const audio = await speech.get(req.params.id);
+          return audio ? new Response(audio, { headers: { 'content-type': 'audio/wav' } }) : new Response('Not found', { status: 404 });
+        },
+      },
       '/api/c/:canvas/command': {
         POST: on(async (c, req) => {
           const { text } = (await req.json()) as { text: string };
