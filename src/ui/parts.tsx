@@ -26,7 +26,12 @@ export const CardView = memo(
   function CardView({ item, b, lifted, dragging, pop, els }: CardProps) {
     const shape = shapeOf(item);
     const kind = item.label ?? (item.parent ? t.kind.workstream : t.kind[item.kind]);
-    const status = item.state === 'working' ? item.statusLine : undefined;
+    const status =
+      item.state === 'working'
+        ? item.statusLine
+        : item.state === 'inPr' && item.pr
+          ? t.pr.short(item.pr.number, item.pr.checks.filter((c) => c.state === 'failure').length, item.pr.conflict)
+          : undefined;
     const meta = item.question?.text ?? (item.queue && 'behind' in item.queue ? item.queue.reason : undefined) ?? status ?? plain(item.body).split('\n')[0];
     const cls = ['item', 'card', shape, `s-${item.state}`, item.queue && 'queued', lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (

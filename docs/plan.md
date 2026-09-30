@@ -147,7 +147,8 @@ the repository).
 - [x] **M4 Demo loop.** Worker records the demo; the card waits; approve or feedback. First
   worker-recorded demo approved on Obeya itself.
 - [ ] **M5 PR loop.** Approval opens the PR; monitoring through review bot, CI and conflicts to
-  the merge; judgement questions routed to the card.
+  the merge; judgement questions routed to the card. Built and tested against a fake forge
+  ([`docs/plan/pr-loop.md`](plan/pr-loop.md)); the live run on Acme waits for the owner's go.
 - [ ] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
   with undo; the Koordinator takes voice input.
 - [ ] **M7 Beyond one repo.** Several repositories per canvas, several canvases.

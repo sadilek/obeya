@@ -188,6 +188,14 @@ textarea.p-body:focus { border-color: var(--muted); }
 .cols section { background: var(--chip); border-radius: 12px; padding: 12px 16px; font-size: 13px; }
 .cols h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .cols ul { margin: 0; padding-left: 18px; } .cols li { margin: 3px 0; }
+.question.pr { border-color: var(--inPr); background: color-mix(in srgb, var(--inPr) 7%, transparent); }
+.question.pr h4 a { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
+.checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+.checks li::before { margin-right: 5px; font-weight: 700; }
+.checks li.success::before { content: "✓"; color: var(--approved); }
+.checks li.failure::before { content: "✗"; color: #dc2626; }
+.checks li.pending::before { content: "○"; color: var(--muted); }
+.checks a { color: inherit; }
 .question.queue { border-color: var(--planned); background: var(--chip); }
 .question.failed { border-color: #dc2626; background: color-mix(in srgb, #dc2626 6%, transparent); }
 .question.queue .actions { margin-top: 10px; }

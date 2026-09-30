@@ -95,6 +95,14 @@ export const t = {
   } satisfies Record<ErrorCode, string>,
   offlineError: 'Der Server ist nicht erreichbar.',
   scope: 'Voraussichtlich betroffen',
+  pr: {
+    title: (n: number) => `Pull Request #${n}`,
+    conflict: 'Konflikt mit dem Zielbranch; der Agent rebased.',
+    noChecks: 'Noch keine Checks.',
+    opening: 'Der Agent öffnet den Pull Request.',
+    short: (n: number, failed: number, conflict: boolean) =>
+      [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
+  },
   demo: { question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–' },
   koordinator: {
     button: 'Koordinator',
