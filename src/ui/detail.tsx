@@ -85,6 +85,8 @@ export function Detail(p: Props) {
         </div>
       )}
 
+      {item.state === 'planned' && !item.queue && <LastFailure cardId={item.id} />}
+
       {item.state === 'planned' && (
         <>
           {editable ? <ManualFields item={item} onEdit={p.onEdit} /> : <Body md={item.body} />}
@@ -301,10 +303,9 @@ function Composer({ placeholder, onSend }: { placeholder: string; onSend: (text:
   );
 }
 
-/** The card's log, live. */
-function Log({ cardId }: { cardId: string }) {
+/** A card's log, live; null while the history loads. */
+function useEvents(cardId: string): CardEvent[] | null {
   const [events, setEvents] = useState<CardEvent[] | null>(null);
-  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let alive = true;
     let loaded = false;
@@ -326,6 +327,33 @@ function Log({ cardId }: { cardId: string }) {
       off();
     };
   }, [cardId]);
+  return events;
+}
+
+/** The owner's words for a logged error: the text for its code, else the server's text. */
+const eventText = (e: CardEvent) => (e.code ? errorText(e.code) : e.text);
+
+/**
+ * Why a planned card is not running: a start through the Koordinator that failed afterwards drops
+ * the card back to planned, and the reason is the last entry of its log.
+ */
+function LastFailure({ cardId }: { cardId: string }) {
+  const last = useEvents(cardId)?.at(-1);
+  if (last?.kind !== 'error') return null;
+  return (
+    <div className="question failed">
+      <h4>{t.lastFailure(time(last.at))}</h4>
+      <div className="q-text" title={last.code ? last.text : undefined}>
+        {eventText(last)}
+      </div>
+    </div>
+  );
+}
+
+/** The card's log, live. */
+function Log({ cardId }: { cardId: string }) {
+  const events = useEvents(cardId);
+  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -341,7 +369,7 @@ function Log({ cardId }: { cardId: string }) {
             <span className="t">{time(e.at)}</span>
             {e.author !== 'worker' && <span className="who">{t.author[e.author]}</span>}
             <span className="x" title={e.code ? e.text : undefined}>
-              {e.code ? errorText(e.code) : e.text}
+              {eventText(e)}
             </span>
           </div>
         ))}

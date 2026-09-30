@@ -167,6 +167,8 @@ the repository).
   (`ErrorCode` in `src/core/types.ts`) and an English detail, and log entries of a failed start
   carry the code too. The UI shows its text for the code from `strings.ts`, a generic one for
   anything else.
+- A start that fails after the Koordinator took it drops the card back to planned; the unfolded
+  planned card then shows the last log entry, when it is an error, as the reason.
 - The scheduling Chief of Staff comes before demos and PRs (M3): with worktrees several workers
   run at once on Obeya itself.
 

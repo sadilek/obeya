@@ -46,6 +46,7 @@ export const t = {
   task: 'Auftrag',
   log: 'Verlauf',
   logEmpty: 'Noch nichts passiert.',
+  lastFailure: (at: string) => `Zuletzt gescheitert (${at})`,
   author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', koordinator: 'Koordinator', obeya: 'Obeya' },
   branch: 'Branch',
   started: (title: string) => `Agent arbeitet an „${title}“.`,

@@ -161,6 +161,7 @@ textarea.p-body:focus { border-color: var(--muted); }
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
 .question.review { border-color: var(--approved); background: color-mix(in srgb, var(--approved) 7%, transparent); }
 .question.queue { border-color: var(--planned); background: var(--chip); }
+.question.failed { border-color: #dc2626; background: color-mix(in srgb, #dc2626 6%, transparent); }
 .question.queue .actions { margin-top: 10px; }
 .question.queue .btn { background: var(--card); border: 1px solid var(--line); }
 .p-files { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
