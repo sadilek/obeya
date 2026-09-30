@@ -442,9 +442,11 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
           <b>{snapshot.canvas.name}</b>
           <span className="hint">{snapshot.canvas.branch}</span>
         </div>
-        <div className="pill">
-          <b>Obeya</b>
-        </div>
+        {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
+          <div className="pill">
+            <b>Obeya</b>
+          </div>
+        )}
         <button className="pill" onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>
           + {t.newCard}
         </button>
