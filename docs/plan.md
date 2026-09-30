@@ -109,9 +109,17 @@ the owner's language (`src/core/locale.ts`).
   without a project, and after each owner answer, note or feedback it decides whether a lasting
   preference was stated and records it as a rule every agent gets. Its sheet (button or `K`)
   shows the queue, the cards in progress and the preferences.
-- **Voice in** — local Whisper (MLX) sidecar with a domain vocabulary; the agent prompt states
-  that input is speech and may carry recognition errors.
-- **Voice out** — macOS `say` with the default system voice, streamed sentence by sentence.
+- **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
+  audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
+  loaded and transcribes in German with the canvas's titles as vocabulary
+  (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). A quick, low-effort Koordinator turn reads
+  the transcript as speech that may be misheard and picks one action (new card, start, note,
+  answer, feedback, approve, accept, dismiss, cut, stop) or just replies; it writes the
+  confirmation. The action runs a few seconds after the confirmation reached the owner, so
+  "Rückgängig" takes back anything, even an approval. The same commands can be typed in the
+  Koordinator's sheet. The transcript goes to the server log only.
+- **Voice out** — macOS `say` with the default system voice renders the confirmation, which the
+  browser plays.
 - **Demos** — the `demo` skill's pipeline (scripted walkthrough, narrated video, report). The
   worker records once the change is committed and checked, as the adapter says how to run the
   app (Obeya: a scratch instance from the worktree on a scratch repository; OKE: the clone's
@@ -149,7 +157,7 @@ the repository).
 - [ ] **M5 PR loop.** Approval opens the PR; monitoring through review bot, CI and conflicts to
   the merge; judgement questions routed to the card. Built and tested against a fake forge
   ([`docs/plan/pr-loop.md`](plan/pr-loop.md)); the live run on OKE waits for the owner's go.
-- [ ] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
+- [x] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
   with undo; the Koordinator takes voice input.
 - [ ] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
 
@@ -195,8 +203,13 @@ the repository).
   to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
 - Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
   for developers.
+- Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
+  for undo; nothing spoken takes effect without a confirmation the owner could take back.
 
 ## Open questions
+
+- Voice latency: about ten seconds from letting go to the confirmation, mostly the Koordinator's
+  reading. A card on Obeya's own canvas tracks it.
 
 - Plan-doc sync: Obeya reads plan docs and never writes them; workers tick off their workstream
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
