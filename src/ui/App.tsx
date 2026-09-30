@@ -9,6 +9,7 @@ import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { KoordinatorSheet } from './koordinator';
+import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
 import { CardView, Edges, Links, Minimap, needsYou, ProjectView, Sheet } from './parts';
 import { t } from './strings';
 
@@ -278,6 +279,48 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     ackTimer.current = setTimeout(() => setAckOn(false), 7000);
   }
 
+  // ---------------------------------------------------------------- voice
+  const where = (): Where => {
+    const f = focusRef.current;
+    return f?.type === 'card' ? { card: f.id } : f?.type === 'project' ? { project: f.id } : null;
+  };
+  // a command that makes a card: when it appears, the camera goes there
+  const newCardWatch = useRef<{ known: Set<string>; until: number } | null>(null);
+  function onHeard(h: Heard) {
+    showAck(h.confirm, h.token ? () => api.undo(h.token!) : undefined);
+    play(h.audio);
+    if (h.token && !focusRef.current) newCardWatch.current = { known: new Set(itemsRef.current.map((i) => i.id)), until: Date.now() + 20_000 };
+  }
+  useEffect(() => {
+    const w = newCardWatch.current;
+    if (!w) return;
+    if (Date.now() > w.until) return void (newCardWatch.current = null);
+    const made = snapshot.items.find((i) => i.source === 'manual' && !w.known.has(i.id));
+    if (!made || focusRef.current) return;
+    newCardWatch.current = null;
+    setPopId(made.id);
+    fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8)), 700);
+  }, [snapshot]);
+  const ptt = usePushToTalk(where, onHeard);
+  const pttRef = useRef(ptt);
+  pttRef.current = ptt;
+  useEffect(() => {
+    const up = (e: KeyboardEvent) => e.code === 'Space' && pttRef.current.stop();
+    const release = () => pttRef.current.stop();
+    addEventListener('keyup', up, true);
+    addEventListener('pointerup', release);
+    return () => {
+      removeEventListener('keyup', up, true);
+      removeEventListener('pointerup', release);
+    };
+  }, []);
+  const target =
+    focus?.type === 'card'
+      ? t.voice.agent(plain(items.find((i) => i.id === focus.id)?.title ?? ''))
+      : focus?.type === 'project'
+        ? t.voice.project(plain(items.find((i) => i.id === focus.id)?.title ?? ''))
+        : t.voice.koordinator;
+
   // ---------------------------------------------------------------- pointer: pan, drag, click
   const viewportRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ x: number; y: number; cam: Cam } | null>(null);
@@ -378,6 +421,15 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     // text fields in a sheet handle their own keys (Esc cancels an edit there)
     if (typing && (e.target as Element).closest('.sheet')) return;
+    // hold Space anywhere but in a text field to speak; the demo pauses while the owner talks
+    if (e.code === 'Space' && !typing) {
+      e.preventDefault();
+      if (!e.repeat) {
+        panelRef.current?.querySelector('video')?.pause();
+        pttRef.current.start();
+      }
+      return;
+    }
     if (e.key === 'Escape') {
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();
@@ -489,7 +541,8 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
           </div>
         </div>
       </div>
-      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} onOpen={open} />
+      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} onOpen={open} onHeard={onHeard} />
+      <PushToTalk phase={ptt.phase} level={ptt.level} target={target} onDown={ptt.start} />
       <Sheet project={sheetProject} kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []} on={sheetOn} onOpen={open} />
       <div id="ack" className={ackOn ? 'on' : undefined}>
         <span>{ack?.text}</span>

@@ -243,7 +243,20 @@ textarea.p-body:focus { border-color: var(--muted); }
 .sheet li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .sheet li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
 
-#ack { position: fixed; left: 50%; bottom: 40px; transform: translate(-50%, 12px); z-index: 60; background: var(--ink); color: var(--bg);
+/* ---------- push to talk (from the mock) ---------- */
+#ptt { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#mic { width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--card); box-shadow: var(--lift); cursor: pointer; display: grid; place-items: center; position: relative; touch-action: none; }
+#mic svg { width: 24px; height: 24px; }
+#mic .ring { position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--waiting); opacity: 0; transform: scale(var(--lvl, 1)); transition: transform .08s linear, opacity .2s; }
+#ptt.listening #mic { background: var(--waiting); color: #fff; }
+#ptt.listening #mic .ring { opacity: .8; }
+#ptt.thinking #mic::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--working); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 4px 12px; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+#target b { color: var(--ink); font-weight: 600; }
+.tell { margin: 4px 0 6px; }
+
+#ack { position: fixed; left: 50%; bottom: 128px; transform: translate(-50%, 12px); z-index: 60; background: var(--ink); color: var(--bg);
   border-radius: 14px; padding: 12px 16px; max-width: min(560px, calc(100vw - 32px)); font-size: 14px; opacity: 0; pointer-events: none;
   transition: opacity .25s, transform .25s; display: flex; gap: 14px; align-items: center; }
 #ack.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
