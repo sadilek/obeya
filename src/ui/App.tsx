@@ -376,6 +376,8 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
   keys.current = (e: KeyboardEvent) => {
     const f = focusRef.current;
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+    // text fields in a sheet handle their own keys (Esc cancels an edit there)
+    if (typing && (e.target as Element).closest('.sheet')) return;
     if (e.key === 'Escape') {
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();

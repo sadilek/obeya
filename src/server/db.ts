@@ -159,6 +159,17 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL').all({ c: canvasId }) as CardRow[];
   }
 
+  /** Deletes the owner's cards that never got a title, created before `before`; returns how many. */
+  sweepUntitled(canvasId: string, before: string): number {
+    return this.db
+      .query(
+        `UPDATE cards SET deleted_at = $now
+         WHERE canvas_id = $c AND plan_ref IS NULL AND deleted_at IS NULL AND state = 'planned'
+           AND TRIM(COALESCE(title, '')) = '' AND created_at < $before`,
+      )
+      .run({ c: canvasId, before, now: now() }).changes;
+  }
+
   card(id: string): CardRow | null {
     return (this.db.query('SELECT * FROM cards WHERE id = $id').get({ id }) as CardRow | null) ?? null;
   }

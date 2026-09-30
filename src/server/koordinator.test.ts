@@ -52,10 +52,12 @@ async function scope(files: string[], collides: string[] = [], reason = 'Grund.'
 }
 
 describe('Koordinator', () => {
-  test('a card with nothing in progress starts, with its estimated scope stored', async () => {
+  test('a card with nothing in progress starts at once; its scope is estimated afterwards', async () => {
     const a = card('A');
     k.request(a.id);
     expect(item(a.id).queue).toEqual({ checking: true });
+    await settle();
+    expect(item(a.id).state).toBe('working');
     await scope(['src/a.ts']);
     expect(item(a.id)).toMatchObject({ state: 'working', scope: ['src/a.ts'] });
     expect(item(a.id).queue).toBeUndefined();
@@ -152,11 +154,14 @@ describe('Koordinator', () => {
   test('without an estimate the card still starts, and says why', async () => {
     const a = card('A');
     k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
     await settle();
-    estimates()[0]!.emit({ type: 'idle' });
+    estimates().at(-1)!.emit({ type: 'idle' });
     await settle();
-    expect(item(a.id).state).toBe('working');
-    expect(board.events(a.id).some((e) => e.kind === 'error' && e.text.includes('nicht schätzen'))).toBe(true);
+    expect(item(b.id).state).toBe('working');
+    expect(board.events(b.id).some((e) => e.kind === 'error' && e.text.includes('nicht schätzen'))).toBe(true);
   });
 });
 

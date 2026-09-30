@@ -67,14 +67,15 @@ describe('refused requests', () => {
     expect(await codeOf(post('/api/cards', JSON.stringify({ kind: 'project', title: 'x', x: 0, y: 0 })))).toBe('invalid');
   });
 
+  test('a card already with the Koordinator cannot be started again', async () => {
+    const c = card();
+    board.work(c.id, { queue: JSON.stringify({ checking: true }) });
+    expect(await codeOf(act(c.id, { action: 'start' }))).toBe('queued');
+  });
+
   test('a start that fails without a free workspace is logged with its code', async () => {
     const c = card();
     expect((await act(c.id, { action: 'start' })).status).toBe(204);
-    expect(await codeOf(act(c.id, { action: 'start' }))).toBe('queued');
-    await settle();
-    const estimate = runtime.last as FakeSession;
-    estimate.call('scope', { files: [], collides_with: [], reason: '' });
-    estimate.emit({ type: 'idle' });
     await settle();
     const events = (await (await fetch(new URL(`/api/cards/${c.id}/events`, server.url))).json()) as { kind: string; code?: string; text: string }[];
     expect(events.at(-1)).toMatchObject({ kind: 'error', code: 'noWorkspace', text: 'no workspace registered or all are leased' });
