@@ -7,10 +7,11 @@ finished work, without reading code or cycling through terminals.
 
 The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls.
 
-**Status:** M4 — the canvas, agents that work on its cards (a worker per card in its own clone or
-worktree, questions routed through a project agent or the Koordinator), a Koordinator that
-queues colliding cards, cuts large ones and learns the owner's preferences, and every change
-coming back as a narrated demo on its card to approve or send back.
+**Status:** M6 (M5 built, its live run on Acme pending) — the canvas, agents that work on its
+cards (a worker per card in its own clone or worktree, questions routed through a project agent
+or the Koordinator), a Koordinator that queues colliding cards, cuts large ones and learns the
+owner's preferences, every change coming back as a narrated demo on its card, pull requests
+carried to the merge, and push-to-talk for all of it.
 See [`docs/plan.md`](docs/plan.md); the interaction reference is the mock in
 [`design/mock/`](design/mock/index.html).
 
@@ -27,3 +28,6 @@ Options: `--port <n>` (or `OBEYA_PORT`), `--adapter <name>` to override the one 
 `origin` URL, `--workspace <path>` (repeatable) or `--clones <n>` for adapters whose workers use
 clones, `--permission-mode <mode>` for workers (default `auto`). Data and worktrees live in
 `~/.obeya/` (`OBEYA_HOME` to move it). Workers run on the Claude Code login of the machine.
+
+Voice needs a Python with `mlx_whisper` (`OBEYA_WHISPER_PYTHON=/path/to/python`); without it
+Obeya runs the sidecar through `uv run --with mlx-whisper`. Demos need the `demo` skill.
