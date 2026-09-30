@@ -269,7 +269,10 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
 /** The fields a worker adds to a card. */
 function work(r: CardRow): Partial<Item> {
   const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string }) : {};
+  const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   return {
+    ...(scope?.length ? { scope } : {}),
+    ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     ...(detail.summary && r.need === 'review' ? { summary: detail.summary } : {}),

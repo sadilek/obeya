@@ -11,6 +11,7 @@ import { parseArgs } from 'node:util';
 import { pickAdapter } from '../adapters';
 import { Board } from './board';
 import { Store } from './db';
+import { Koordinator } from './koordinator';
 import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import { sdkRuntime } from './runtime';
@@ -68,13 +69,15 @@ const workers = new Workers({
   permissionMode: values['permission-mode'] as 'auto',
 });
 workers.resumeAll();
+const koordinator = new Koordinator({ board, runtime: sdkRuntime, workers, workspaces, adapter, repoPath: repo.path });
+koordinator.resume();
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.on(sig, () => {
     workers.shutdown();
     process.exit(0);
   });
 
-const server = serve(board, workers, Number(values.port), values.dev);
+const server = serve(board, workers, koordinator, Number(values.port), values.dev);
 console.log(`Obeya: ${board.canvas.name} (${adapter.name} adapter, ${repo.path}) on ${server.url}`);
 console.log(
   adapter.workspaces === 'worktrees'

@@ -41,7 +41,13 @@ export interface Item {
   /** A proposal's source card. */
   from?: string;
   branch?: string;
+  /** Files the Koordinator expects the card to change. */
+  scope?: string[];
+  /** A planned card the Koordinator is deciding on, or that waits for cards in progress. */
+  queue?: Queue;
 }
+
+export type Queue = { checking: true } | { behind: string[]; reason: string };
 
 /** One line in a card's log. */
 export interface CardEvent {
@@ -90,6 +96,9 @@ export type CardAction =
   | { action: 'message'; text: string }
   | { action: 'answer'; text: string }
   | { action: 'approve' }
+  /** Start a queued card although it may collide. */
+  | { action: 'force' }
+  | { action: 'dequeue' }
   | { action: 'accept' }
   | { action: 'dismiss' };
 

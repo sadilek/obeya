@@ -2,9 +2,10 @@ import type { ServerWebSocket } from 'bun';
 import type { CardAction, CardPatch, NewCard, ServerMessage } from '../core/types';
 import index from '../ui/index.html';
 import { BadRequest, type Board } from './board';
+import type { Koordinator } from './koordinator';
 import type { Workers } from './workers';
 
-export function serve(board: Board, workers: Workers, port: number, development = false) {
+export function serve(board: Board, workers: Workers, koordinator: Koordinator, port: number, development = false) {
   const sockets = new Set<ServerWebSocket<unknown>>();
   const push = () => {
     const msg = JSON.stringify({ type: 'snapshot', snapshot: board.snapshot() } satisfies ServerMessage);
@@ -21,7 +22,11 @@ export function serve(board: Board, workers: Workers, port: number, development 
     if ('text' in a && (typeof text !== 'string' || !text.trim() || text.length > 20000)) throw new BadRequest('text must be a non-empty string');
     switch (a.action) {
       case 'start':
-        return workers.start(id);
+        return koordinator.request(id);
+      case 'force':
+        return koordinator.force(id);
+      case 'dequeue':
+        return koordinator.dequeue(id);
       case 'stop':
         return workers.stop(id);
       case 'message':
