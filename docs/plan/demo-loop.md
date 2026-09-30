@@ -28,5 +28,5 @@ report beside it, and approves or gives feedback, without reading code.
 
 - [x] **W1:** Handover with demo, chapters from captions, `waiting: demo`, media route.
 - [x] **W2:** Demo view on the card: player, chapters, report columns, approve and feedback.
-- [ ] **W3:** Adapters: demo requirement and how to run the app for a demo (Obeya, Acme).
+- [x] **W3:** Adapters: demo requirement and how to run the app for a demo (Obeya, Acme).
 - [ ] **W4:** Obeya on Obeya: a real card comes back with a demo and is approved from it.
