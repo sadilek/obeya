@@ -4,7 +4,8 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import type { Item, Queue } from '../core/types';
+import type { Item, Question, Queue } from '../core/types';
+import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { AgentRuntime } from './runtime';
 import type { Workers } from './workers';
@@ -25,11 +26,14 @@ export interface KoordinatorOptions {
   adapter: RepoAdapter;
   /** The checkout the Koordinator reads to estimate scopes. */
   repoPath: string;
+  /** The owner's recorded preferences, as agents read them. */
+  preferences?: () => string;
 }
 
 export class Koordinator {
   /** Decisions to start are taken one at a time, so two colliding cards cannot both slip through. */
   private chain: Promise<unknown> = Promise.resolve();
+  private answers: Promise<unknown> = Promise.resolve();
   private draining = false;
 
   constructor(private o: KoordinatorOptions) {
@@ -66,6 +70,34 @@ export class Koordinator {
     if (!this.card(cardId).queue) throw new BadRequest('the card is not waiting');
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', 'Aus der Warteschlange genommen.');
+  }
+
+  /** Answers the question of a card without a project, or escalates it. One question at a time. */
+  ask(card: Item, q: Question): Promise<Reply> {
+    const next = this.answers
+      .catch(() => {})
+      .then(() =>
+        consult({
+          runtime: this.o.runtime,
+          cwd: this.o.repoPath,
+          resume: this.o.board.setting('koordinator_session') ?? undefined,
+          onSession: (id) => this.o.board.setSetting('koordinator_session', id),
+          system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Workers on cards that belong to no project send you the questions they cannot decide themselves.\n\n${ADVICE_RULES}`,
+          message: [
+            `Question from the worker on the ${card.kind} "${card.title}":`,
+            card.body ? `The card: ${card.body.slice(0, 1500)}` : '',
+            q.text,
+            q.options.length ? `Options the worker suggests:\n${q.options.map((o) => `- ${o}`).join('\n')}` : '',
+            `Decisions on cards without a project so far:\n${decisionLog(this.o.board.decisions(null))}`,
+            this.o.preferences?.() ?? '',
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+          fallback: q,
+        }),
+      );
+    this.answers = next;
+    return next;
   }
 
   /** Cards that a card in progress may collide with. */

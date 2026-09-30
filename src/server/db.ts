@@ -44,7 +44,7 @@ export interface DecisionRow {
   card_id: string;
   question: string;
   answer: string;
-  by: 'owner' | 'project';
+  by: 'owner' | 'project' | 'koordinator';
   at: string;
 }
 
@@ -104,6 +104,20 @@ const MIGRATIONS = [
    );`,
   `ALTER TABLE cards ADD COLUMN scope TEXT;
    ALTER TABLE cards ADD COLUMN queue TEXT;`,
+  `CREATE TABLE settings (
+     canvas_id TEXT NOT NULL REFERENCES canvases(id),
+     key TEXT NOT NULL,
+     value TEXT NOT NULL,
+     PRIMARY KEY (canvas_id, key)
+   );
+   CREATE TABLE preferences (
+     id INTEGER PRIMARY KEY,
+     canvas_id TEXT NOT NULL REFERENCES canvases(id),
+     text TEXT NOT NULL,
+     card_id TEXT REFERENCES cards(id),
+     created_at TEXT NOT NULL,
+     deleted_at TEXT
+   );`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -227,8 +241,25 @@ export class Store {
       .run({ ...d, at: now() });
   }
 
-  decisions(projectId: string, limit = 40): DecisionRow[] {
-    return (this.db.query('SELECT * FROM decisions WHERE project_id = $p ORDER BY id DESC LIMIT $limit').all({ p: projectId, limit }) as DecisionRow[]).reverse();
+  /** A project's decisions, or with `null` those of the canvas's standalone cards. */
+  decisions(canvasId: string, projectId: string | null, limit = 40): DecisionRow[] {
+    return (
+      this.db
+        .query('SELECT * FROM decisions WHERE canvas_id = $c AND project_id IS $p ORDER BY id DESC LIMIT $limit')
+        .all({ c: canvasId, p: projectId, limit }) as DecisionRow[]
+    ).reverse();
+  }
+
+  // ---------------------------------------------------------------- settings
+
+  setting(canvasId: string, key: string): string | null {
+    return (this.db.query('SELECT value FROM settings WHERE canvas_id = $c AND key = $key').get({ c: canvasId, key }) as { value: string } | null)?.value ?? null;
+  }
+
+  setSetting(canvasId: string, key: string, value: string) {
+    this.db
+      .query('INSERT INTO settings (canvas_id, key, value) VALUES ($c, $key, $value) ON CONFLICT(canvas_id, key) DO UPDATE SET value = $value')
+      .run({ c: canvasId, key, value });
   }
 }
 

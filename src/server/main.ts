@@ -60,16 +60,23 @@ if (values.clones) {
   workspaces.ensureClones(adapter.land === 'main' || !repo.remote ? repo.path : repo.remote, Number(values.clones));
 }
 const projectAgents = new ProjectAgents(board, sdkRuntime, repo.path);
+// the Koordinator needs the workers and answers their questions: created right after them
+let koordinator!: Koordinator;
 const workers = new Workers({
   board,
   runtime: sdkRuntime,
   workspaces,
   adapter,
-  askProject: (project, card, q) => projectAgents.ask(project, card, q),
+  advisor: (card) => {
+    const project = card.parent ? board.item(card.parent) : undefined;
+    return project
+      ? { by: 'project', ask: (q) => projectAgents.ask(project, card, q) }
+      : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
+  },
   permissionMode: values['permission-mode'] as 'auto',
 });
 workers.resumeAll();
-const koordinator = new Koordinator({ board, runtime: sdkRuntime, workers, workspaces, adapter, repoPath: repo.path });
+koordinator = new Koordinator({ board, runtime: sdkRuntime, workers, workspaces, adapter, repoPath: repo.path });
 koordinator.resume();
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.on(sig, () => {

@@ -55,7 +55,7 @@ export interface CardEvent {
   cardId: string;
   at: string;
   kind: 'report' | 'activity' | 'say' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error';
-  author: 'worker' | 'owner' | 'project' | 'obeya';
+  author: 'worker' | 'owner' | 'project' | 'koordinator' | 'obeya';
   text: string;
 }
 
