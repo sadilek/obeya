@@ -10,6 +10,9 @@ import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, t
 import type { CardRow, NewRow, RowUpdate, Store } from './db';
 
 /** A request the server refuses: a stable code for the UI's text, and an English detail. */
+/** How long an untitled card of the owner's may exist before Obeya drops it on start. */
+const UNTITLED_GRACE_MS = 10 * 60_000;
+
 export class BadRequest extends Error {
   constructor(
     readonly code: ErrorCode,
@@ -30,6 +33,8 @@ export class Board {
     private readDocs: () => PlanDoc[],
   ) {
     store.ensureCanvas(canvas.id, canvas.name);
+    // a new card whose page closed before it got a title was never wanted
+    store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
   }
 
   onChange(fn: () => void): () => void {

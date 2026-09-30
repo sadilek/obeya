@@ -260,6 +260,16 @@ export class Koordinator {
     // taken out of the queue or deleted while waiting for its turn
     if (!card || card.state !== 'planned' || !card.queue || !('checking' in card.queue)) return;
     const active = this.inProgress();
+    if (!active.length) {
+      // nothing it could collide with: start at once, and estimate the scope for the cards after it
+      this.startNow(cardId, 'Nichts läuft gerade; es geht sofort los.');
+      if (this.o.board.item(cardId)?.state !== 'working') return;
+      try {
+        const scope = await this.estimate(card, []);
+        this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
+      } catch {}
+      return;
+    }
     let scope: Scope;
     try {
       scope = await this.estimate(card, active);
