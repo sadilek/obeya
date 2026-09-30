@@ -102,8 +102,9 @@ the repository).
 
 ## Milestones
 
-- [ ] **M1 Canvas.** Bun server, UI from the mock, persistence, manual cards, projects read from
-  plan docs (read-only), Acme adapter skeleton.
+- [x] **M1 Canvas.** Bun server, UI from the mock, persistence, manual cards, projects read from
+  plan docs (read-only), Acme adapter skeleton. Voice and the proposal links of the mock wait for
+  M5 and M2.
 - [ ] **M2 Agents.** Worker sessions per card on the clone pool; status and log streamed to the
   card; `ask` / `report`; project agents; subscription auth settled.
 - [ ] **M3 Demo loop.** Worker records the demo; the card waits; approve or feedback.
@@ -123,11 +124,30 @@ the repository).
 - Agents may propose cards.
 - Approval triggers the PR and its monitoring to the merge, not the merge itself.
 - Spoken output uses `say` with the default voice.
+- Plan docs as projects: a doc in the adapter's plan directory is a project when its
+  `## Workstreams` section has a checklist; each top-level item is a workstream (`**W3:** Title.
+  Details`). Checked means `live`, `(in review)` after the label means `in PR`, anything else
+  `planned`. The goal is the first paragraph under `## Goal` / `## Ziel`.
+- A plan card gets a stored row the first time it is seen, so the owner's placement persists; its
+  title, text and state always come from the doc. When a doc disappears its rows stay, hidden,
+  and its placement returns with it.
+- A canvas belongs to a repository, not a checkout: the adapter names it (Acme: `acme`), so the
+  clones share one. Adapters live in this repository (`src/adapters/`) and are picked by the
+  `origin` URL; the generic one covers any repo with `docs/plan/`.
+- Card sizes are fixed per kind; a delivered workstream shrinks to a chip, a project wraps its
+  children, and a workstream cannot be dragged out of its project. New projects are placed in a
+  grid below the existing ones.
+- Manual cards are created by double-click, the button or `n`, and edited in the unfolded card;
+  a new card closed without a title is dropped. Deleting offers undo.
 
 ## Open questions
 
 - Agent SDK on subscription auth, or headless CLI sessions (M2).
 - Plan-doc sync: read-only in M1; writing workstream progress back through the project agent
   later.
+- Plan docs are read from the working tree of the checkout Obeya is started on. Once workers lease
+  clones (M2), read them from `origin/main` instead?
+- A plan doc without a `## Workstreams` checklist is not shown (in Acme: `parsed-view.md`,
+  whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
 - UI language: German first, all strings in one place for an English release.
 - Demo sharing beyond the team: narration in a cloned voice.
