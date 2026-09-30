@@ -21,6 +21,7 @@ export interface Voice {
 
 export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
+  const started = crypto.randomUUID();
   const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string }>>>(canvases.map((c) => [c.id, new Set()]));
   for (const c of canvases) {
     const send = (msg: ServerMessage) => {
@@ -150,6 +151,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         const c = byId.get(ws.data.canvas);
         if (!c) return ws.close();
         sockets.get(c.id)!.add(ws);
+        ws.send(JSON.stringify({ type: 'hello', server: started } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
       },
       close: (ws) => void sockets.get(ws.data.canvas)?.delete(ws),

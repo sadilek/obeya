@@ -6,6 +6,9 @@
 // repositories (the first is its home; --adapter, --workspace and --clones apply to it). With
 // --config: the canvases the JSON file lists, `[{ "name"?, "repos": [{ "path", "adapter"?,
 // "workspaces"?, "clones"? }] }]`. Data lives in $OBEYA_HOME/obeya.db (default ~/.obeya).
+//
+// Without --dev the process supervises the server: it runs it as a child and starts it again
+// when the server exits to pick up new code on Obeya's own checkout (self-update.ts).
 
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -15,6 +18,7 @@ import { type CanvasConfig, CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ghForge } from './forge';
 import { sdkRuntime } from './runtime';
+import { ownCheckout, RESTART, watchOwnCode } from './self-update';
 import { serve } from './server';
 import { SpeechSidecar, WhisperSidecar } from './voice';
 
@@ -32,6 +36,20 @@ const { values, positionals } = parseArgs({
   },
   allowPositionals: true,
 });
+
+if (!values.dev && !process.env.OBEYA_SUPERVISED) {
+  let child: ReturnType<typeof Bun.spawn> | undefined;
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => child?.kill(sig));
+  for (;;) {
+    child = Bun.spawn([process.execPath, ...process.argv.slice(1)], {
+      env: { ...process.env, OBEYA_SUPERVISED: '1' },
+      stdio: ['inherit', 'inherit', 'inherit'],
+    });
+    const code = await child.exited;
+    if (code !== RESTART) process.exit(code);
+    console.log('Obeya: starting again with the new code');
+  }
+}
 
 const expand = (p: string) => p.replace(/^~(?=$|\/)/, homedir());
 
@@ -74,16 +92,24 @@ if (new Set(ids).size !== ids.length) {
 }
 const transcriber = new WhisperSidecar();
 const speaker = new SpeechSidecar();
-for (const sig of ['SIGINT', 'SIGTERM'] as const)
-  process.on(sig, () => {
-    for (const c of canvases) c.shutdown();
-    transcriber.stop();
-    speaker.stop();
-    process.exit(0);
-  });
+const shutdown = (code: number) => {
+  for (const c of canvases) c.shutdown();
+  transcriber.stop();
+  speaker.stop();
+  process.exit(code);
+};
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => shutdown(0));
 
 const server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev);
 console.log(`Obeya on ${server.url}`);
+// work landed on the checkout this code comes from: start again, so what is live is what runs
+const own = process.env.OBEYA_SUPERVISED ? ownCheckout() : null;
+if (own)
+  watchOwnCode(own, (from, to) => {
+    console.log(`Obeya: ${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}; restarting`);
+    server.stop(true);
+    shutdown(RESTART);
+  });
 for (const c of canvases) {
   console.log(`  ${c.board.canvas.name} (?c=${c.id})`);
   for (const r of c.repos)

@@ -187,4 +187,8 @@ export type ErrorCode =
   | 'invalid';
 
 /** Server → UI over the WebSocket. */
-export type ServerMessage = { type: 'snapshot'; snapshot: CanvasSnapshot } | { type: 'event'; event: CardEvent };
+export type ServerMessage =
+  | { type: 'snapshot'; snapshot: CanvasSnapshot }
+  | { type: 'event'; event: CardEvent }
+  /** First on every connection: which server process this is, so a page from an earlier one reloads. */
+  | { type: 'hello'; server: string };
