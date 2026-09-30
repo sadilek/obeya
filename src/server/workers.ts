@@ -90,10 +90,11 @@ export class Workers {
     const row = this.o.board.row(cardId);
     if (this.o.adapter.land === 'main') {
       const problem = this.o.workspaces.landOnMain(cardId, row.branch!);
+      if (problem && !problem.worker) throw new BadRequest(problem.code, problem.detail);
       if (problem) {
         this.o.board.work(cardId, { state: 'working', need: null, detail: null });
-        this.o.board.log(cardId, 'error', 'obeya', problem);
-        this.deliver(cardId, `Your work could not land on main: ${problem}\nFix this in your clone, then call ready_for_review again.`);
+        this.o.board.log(cardId, 'error', 'obeya', problem.detail, problem.code);
+        this.deliver(cardId, `Your work could not land on main: ${problem.detail}\nFix this in your workspace (rebase onto main and resolve conflicts, or commit), then call ready_for_review again.`);
         return;
       }
     }

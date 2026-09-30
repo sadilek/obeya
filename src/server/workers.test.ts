@@ -260,6 +260,34 @@ describe('a worktree per card', () => {
     expect(git(main, 'branch', '--list', 'obeya/*')).toBe('');
   });
 
+  test('a rebase conflict goes back to the worker with the files; a blocked checkout stays with the owner', async () => {
+    const a = manual();
+    const b = board.create({ kind: 'bugfix', title: 'Zweite Karte', x: 0, y: 0 });
+    workers.start(a.id);
+    workers.start(b.id);
+    commitIn(board.row(a.id).workspace!, 'same.ts', 'A');
+    commitIn(board.row(b.id).workspace!, 'same.ts', 'B');
+    const sa = runtime.sessions.find((s) => s.spec.cwd === board.row(a.id).workspace)!;
+    const sb = runtime.sessions.find((s) => s.spec.cwd === board.row(b.id).workspace)!;
+    sa.call('ready_for_review', { summary: 'S' });
+    await workers.approve(a.id);
+    sb.call('ready_for_review', { summary: 'S' });
+    await workers.approve(b.id);
+    expect(state(b.id)).toBe('working');
+    expect(board.events(b.id).at(-1)).toMatchObject({ kind: 'error', code: 'landConflict' });
+    expect(sb.inbox.at(-1)).toContain('conflicts in same.ts');
+
+    // the owner has local edits in the Obeya checkout on a file the card changes
+    const c = board.create({ kind: 'feature', title: 'Dritte', x: 0, y: 0 });
+    workers.start(c.id);
+    commitIn(board.row(c.id).workspace!, 'mine.ts', 'C');
+    writeFileSync(join(main, 'mine.ts'), 'local edit');
+    runtime.sessions.find((s) => s.spec.cwd === board.row(c.id).workspace)!.call('ready_for_review', { summary: 'S' });
+    const err = await workers.approve(c.id).catch((e) => e);
+    expect(err).toMatchObject({ code: 'landMerge' });
+    expect(state(c.id)).toBe('waiting:review');
+  });
+
   test('a stopped card keeps its worktree and picks it up again', () => {
     const a = manual();
     workers.start(a.id);

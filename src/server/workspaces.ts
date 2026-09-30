@@ -18,6 +18,14 @@ export class WorkspaceError extends Error {
   }
 }
 
+export interface LandProblem {
+  code: 'landDirty' | 'landConflict' | 'landEmpty' | 'landCheckout' | 'landMerge' | 'land';
+  /** Whether the worker can fix it in its workspace; otherwise it is the owner's (the Obeya checkout). */
+  worker: boolean;
+  detail: string;
+  files?: string[];
+}
+
 export function git(cwd: string, ...args: string[]): string {
   const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stderr: 'pipe' });
   if (r.exitCode !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${r.stderr.toString().trim()}`);
@@ -81,24 +89,36 @@ export class Workspaces {
 
   /**
    * Lands the card's committed branch on the Obeya checkout's default branch by rebasing and
-   * fast-forwarding; a worktree and its branch are removed afterwards. Returns what went wrong.
+   * fast-forwarding; a worktree and its branch are removed afterwards. Returns what went wrong:
+   * `worker` problems are the worker's to fix, the others stop at the Obeya checkout.
    */
-  landOnMain(cardId: string, branch: string): string | null {
+  landOnMain(cardId: string, branch: string): LandProblem | null {
     const ws = this.leasedBy(cardId);
-    if (!ws) return 'the card has no workspace';
+    if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
+    let base = 'main';
     try {
-      if (git(ws, 'status', '--porcelain')) return 'uncommitted changes in the workspace';
-      const base = defaultBranch(this.o.mode === 'worktrees' ? this.o.repoPath : ws);
+      if (git(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
+      base = defaultBranch(this.o.mode === 'worktrees' ? this.o.repoPath : ws);
       const upstream = this.o.mode === 'worktrees' ? base : `origin/${base}`;
       if (this.o.mode === 'clones') git(ws, 'fetch', '--quiet', 'origin');
       try {
         git(ws, 'rebase', '--quiet', upstream);
       } catch (e) {
+        const files = git(ws, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
         git(ws, 'rebase', '--abort');
-        return `rebase onto ${base} failed: ${e instanceof Error ? e.message : String(e)}`;
+        return {
+          code: 'landConflict',
+          worker: true,
+          files,
+          detail: `rebase onto ${base} failed${files.length ? `; conflicts in ${files.join(', ')}` : ''}: ${e instanceof Error ? e.message : String(e)}`,
+        };
       }
-      if (git(ws, 'rev-list', '--count', `${upstream}..HEAD`) === '0') return 'the branch has no commits';
-      if (git(this.o.repoPath, 'branch', '--show-current') !== base) return `the Obeya checkout is not on ${base}`;
+      if (git(ws, 'rev-list', '--count', `${upstream}..HEAD`) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
+      if (git(this.o.repoPath, 'branch', '--show-current') !== base) return { code: 'landCheckout', worker: false, detail: `the Obeya checkout is not on ${base}` };
+    } catch (e) {
+      return { code: 'land', worker: false, detail: e instanceof Error ? e.message : String(e) };
+    }
+    try {
       if (this.o.mode === 'worktrees') {
         git(this.o.repoPath, 'merge', '--ff-only', '--quiet', branch);
         this.store.removeWorkspace(ws);
@@ -111,7 +131,8 @@ export class Workspaces {
       }
       return null;
     } catch (e) {
-      return e instanceof Error ? e.message : String(e);
+      // typically local changes in the Obeya checkout that the fast-forward would overwrite
+      return { code: 'landMerge', worker: false, detail: e instanceof Error ? e.message : String(e) };
     }
   }
 
