@@ -6,8 +6,8 @@ import { ApiError, api, at, onCardEvent } from './api';
 import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
 
-/** What the panel does after an action: fold the card and confirm, or stay open. */
-export type ActDone = { close: true; ack: string } | { close: false };
+/** What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open. */
+export type ActDone = { close: true; ack: string; undo?: () => unknown } | { close: false };
 
 interface Props {
   item: Item;
@@ -29,17 +29,18 @@ export function Detail(p: Props) {
   const { item, parent } = p;
   const [error, setError] = useState('');
   const all = p.all;
-  const act = async (a: CardAction, done: ActDone) => {
+  const run = async (fn: () => Promise<void>, done: ActDone) => {
     setError('');
     try {
       await p.flush();
-      await api.act(item.id, a);
+      await fn();
       p.onDone(done);
     } catch (e) {
       if (!(e instanceof ApiError)) console.error(e);
       setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
     }
   };
+  const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
   const repoPrefix = p.repos.length > 1 ? `${p.repos.find((r) => r.id === item.repo)?.name ?? item.repo} · ` : '';
   const kind = repoPrefix + (parent ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}` : t.kind[item.kind]);
   const editable = item.source === 'manual' && item.state === 'planned' && !item.queue;
@@ -52,6 +53,7 @@ export function Detail(p: Props) {
       <div className="p-state">
         ● {stateLabel(item)}
         {item.statusLine && (item.state === 'working' || item.state === 'inPr') && <span className="p-status"> · {item.statusLine}</span>}
+        {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
       </div>
 
       {item.state === 'proposal' && (
@@ -221,6 +223,8 @@ export function Detail(p: Props) {
         />
       )}
 
+      {item.state === 'live' && item.source === 'manual' && <ArchiveButton item={item} run={run} />}
+
       {error && <p className="p-error">{error}</p>}
 
       {worked && (
@@ -333,6 +337,27 @@ function DemoView({ cardId, summary, demo, children, autoplay = true }: { cardId
         ))}
       </div>
     </>
+  );
+}
+
+/** Takes a finished card into the archive, or an archived one back onto the canvas. */
+function ArchiveButton({ item, run }: { item: Item; run: (fn: () => Promise<void>, done: ActDone) => Promise<void> }) {
+  const title = plain(item.title);
+  return (
+    <div className="actions">
+      {item.archivedAt ? (
+        <button className="btn" onClick={() => run(() => api.unarchive(item.id), { close: true, ack: t.archive.unarchived(title) })}>
+          {t.archive.unarchive}
+        </button>
+      ) : (
+        <button
+          className="btn"
+          onClick={() => run(() => api.archive(item.id), { close: true, ack: t.archive.archived(title), undo: () => api.unarchive(item.id) })}
+        >
+          {t.archive.archive}
+        </button>
+      )}
+    </div>
   );
 }
 

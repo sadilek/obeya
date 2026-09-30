@@ -51,6 +51,8 @@ export interface Item {
   queue?: Queue;
   /** The pull request, once the worker opened it after approval. */
   pr?: PullRequest;
+  /** When the owner archived the card; archived cards are not on the canvas but in its archive. */
+  archivedAt?: string;
 }
 
 export interface PullRequest {
@@ -171,6 +173,9 @@ export type ErrorCode =
   | 'workspace'
   | 'emptyText'
   | 'unknownPreference'
+  /** Only a finished card of the owner's goes into the archive. */
+  | 'notDone'
+  | 'notArchived'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'

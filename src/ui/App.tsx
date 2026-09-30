@@ -8,6 +8,7 @@ import { api, setCanvas, useCanvas } from './api';
 import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
+import { ArchiveSheet } from './archive';
 import { KoordinatorSheet } from './koordinator';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
 import { CanvasPill, CardView, Edges, Links, Minimap, needsYou, ProjectView, Sheet } from './parts';
@@ -121,7 +122,25 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   const toggleKoordinator = () => {
     if (!kOn && focusRef.current?.type === 'project') closeProject();
     setKOn(!kOn);
+    setAOn(false);
   };
+  const [aOn, setAOn] = useState(false);
+  const toggleArchive = () => {
+    if (!aOn && focusRef.current?.type === 'project') closeProject();
+    setAOn(!aOn);
+    setKOn(false);
+  };
+  // the archive, read while its sheet is open; archived cards unfold from their row there
+  const [archived, setArchived] = useState<Item[]>([]);
+  const archivedRef = useRef(archived);
+  archivedRef.current = archived;
+  const archiveEls = useRef(new Map<string, HTMLElement>()).current;
+  useEffect(() => {
+    if (!aOn) return;
+    let current = true;
+    api.archived().then((a) => current && setArchived(a), console.error);
+    return () => void (current = false);
+  }, [aOn, snapshot]);
   const [popId, setPopId] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>()).current;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -163,10 +182,10 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     if (i.kind === 'project') return openProject(i);
     setFocus({ type: 'card', id: i.id, prevCam: camRef.current, project: f });
     openTitle.current = i.title;
-    // bring the card to the middle at a readable scale first, so the unfold starts where the eye is
-    const b = bounds(i);
-    await fly(centreOnPoint(b, Math.max(camRef.current.s, 0.85)), 520);
-    const el = els.get(i.id);
+    // bring the card to the middle at a readable scale first, so the unfold starts where the eye is;
+    // an archived card is not on the canvas and unfolds from its row in the archive
+    if (!i.archivedAt) await fly(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), 520);
+    const el = i.archivedAt ? archiveEls.get(i.id) : els.get(i.id);
     const panel = panelRef.current;
     if (!el || !panel) return;
     const r = el.getBoundingClientRect();
@@ -188,11 +207,11 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   }
 
   // a card that starts or finishes work while open changes its width and colour: resize in place
-  const openItem = openId ? items.find((i) => i.id === openId) : undefined;
+  const openItem = openId ? (items.find((i) => i.id === openId) ?? archived.find((i) => i.id === openId)) : undefined;
   const openState = openItem && `${openItem.state}:${openItem.need ?? ''}`;
   useEffect(() => {
     const panel = panelRef.current;
-    const i = openId ? byId(openId) : undefined;
+    const i = openItem;
     if (!panel || !i || !unfolded.current) return;
     panel.style.setProperty('--c', `var(--${i.state})`);
     fitPanel(i);
@@ -202,7 +221,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     const content = innerRef.current?.firstElementChild;
     if (!openId || !content) return;
     const ro = new ResizeObserver(() => {
-      const i = byId(openId);
+      const i = byId(openId) ?? archivedRef.current.find((x) => x.id === openId);
       if (i && unfolded.current) fitPanel(i);
     });
     ro.observe(content);
@@ -217,7 +236,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   function onDone(d: ActDone) {
     if (!d.close) return;
     closeCard({ keepUntitled: true });
-    showAck(d.ack);
+    showAck(d.ack, d.undo);
   }
 
   async function closeCard({ keepUntitled = false } = {}) {
@@ -227,7 +246,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     flushEdit().catch(console.error);
     panel.querySelector('video')?.pause();
     const i = byId(f.id);
-    const el = els.get(f.id);
+    const el = els.get(f.id) ?? archiveEls.get(f.id);
     unfolded.current = false;
     panel.classList.remove('ready');
     if (el) Object.assign(panel.style, rect(el.getBoundingClientRect()), { borderRadius: '14px' });
@@ -249,6 +268,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     setSheetId(p.id);
     setSheetOn(true);
     setKOn(false);
+    setAOn(false);
     await fly(camFor(bounds(p), 40, SHEET_W, 60), 700);
   }
 
@@ -345,7 +365,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   }, []);
   const target =
     focus?.type === 'card'
-      ? t.voice.agent(plain(items.find((i) => i.id === focus.id)?.title ?? ''))
+      ? t.voice.agent(plain((items.find((i) => i.id === focus.id) ?? archived.find((i) => i.id === focus.id))?.title ?? ''))
       : focus?.type === 'project'
         ? t.voice.project(plain(items.find((i) => i.id === focus.id)?.title ?? ''))
         : t.voice.koordinator;
@@ -437,6 +457,11 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   // ---------------------------------------------------------------- keys
   const attention = items.filter(needsYou);
   const queuedCount = items.filter((i) => i.state === 'planned' && i.queue).length;
+  const doneCount = items.filter((i) => i.source === 'manual' && i.state === 'live').length;
+  async function archiveDone() {
+    const { ids } = await api.archiveDone();
+    if (ids.length) showAck(t.archive.archivedMany(ids.length), () => Promise.all(ids.map((id) => api.unarchive(id))));
+  }
   const attnIdx = useRef(-1);
   function nextAttention() {
     const list = itemsRef.current.filter(needsYou);
@@ -475,6 +500,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       nextAttention();
     } else if (e.key === 'n') createAtCentre();
     else if (e.key === 'k') toggleKoordinator();
+    else if (e.key === 'a') toggleArchive();
   };
   useEffect(() => {
     const h = (e: KeyboardEvent) => keys.current(e);
@@ -520,7 +546,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
         </div>
       </div>
       {!items.length && <div className="empty">{t.empty}</div>}
-      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn ? SHEET_W : 0} onOpen={open} />}
+      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn || aOn ? SHEET_W : 0} onOpen={open} />}
       <header id="bar">
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} />
         {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
@@ -536,6 +562,9 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
         </span>
         <div className="right">
           {!online && <div className="pill offline">{t.offline}</div>}
+          <button className={aOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleArchive}>
+            {t.archive.button}
+          </button>
           <button className={kOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleKoordinator}>
             {t.koordinator.button}
             {queuedCount > 0 && <span className="n">{queuedCount}</span>}
@@ -572,6 +601,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
           </div>
         </div>
       </div>
+      <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
       <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} onOpen={open} onHeard={onHeard} />
       <PushToTalk phase={ptt.phase} level={ptt.level} target={target} onDown={ptt.start} />
       <Sheet project={sheetProject} kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []} on={sheetOn} onOpen={open} />

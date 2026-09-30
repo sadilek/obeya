@@ -128,3 +128,46 @@ describe('manual cards', () => {
     expect(other.snapshot().items).toEqual([]);
   });
 });
+
+describe('archive', () => {
+  const done = (title: string) => {
+    const c = board.create({ kind: 'feature', title, x: 10, y: 20 });
+    board.patch(c.id, { state: 'live' });
+    return c;
+  };
+
+  test('an archived card leaves the canvas and heads the archive until it goes back', async () => {
+    const a = done('A');
+    const b = done('B');
+    board.archive([a.id]);
+    await Bun.sleep(2);
+    board.archive([b.id]);
+    expect(board.snapshot().items.some((i) => i.id === a.id || i.id === b.id)).toBe(false);
+    expect(board.archived().map((i) => [i.title, i.state, typeof i.archivedAt])).toEqual([
+      ['B', 'live', 'string'],
+      ['A', 'live', 'string'],
+    ]);
+    board.unarchive(b.id);
+    expect(board.snapshot().items.find((i) => i.id === b.id)).toMatchObject({ x: 10, y: 20, state: 'live' });
+    expect(board.archived().map((i) => i.title)).toEqual(['A']);
+  });
+
+  test('only finished cards of the owner go into the archive', () => {
+    const open = board.create({ kind: 'feature', title: 'Open', x: 0, y: 0 });
+    const w1 = board.snapshot().items.find((i) => i.label === 'W1')!;
+    expect(() => board.archive([open.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
+    expect(() => board.archive([w1.id])).toThrow(expect.objectContaining({ code: 'planCard' }));
+    expect(() => board.unarchive(open.id)).toThrow(expect.objectContaining({ code: 'notArchived' }));
+    expect(board.archived()).toEqual([]);
+  });
+
+  test('archiving everything finished leaves the rest on the canvas', () => {
+    const a = done('A');
+    const b = done('B');
+    const open = board.create({ kind: 'bugfix', title: 'Open', x: 0, y: 0 });
+    expect(board.archiveDone().sort()).toEqual([a.id, b.id].sort());
+    expect(board.snapshot().items.some((i) => i.id === open.id)).toBe(true);
+    expect(board.archived()).toHaveLength(2);
+    expect(board.archiveDone()).toEqual([]);
+  });
+});
