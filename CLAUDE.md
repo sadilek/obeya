@@ -11,4 +11,5 @@ Obeya: a spatial canvas for directing AI coding agents. Goal, design and milesto
 - No project-specific logic in the core: anything OKE-specific belongs in the OKE repo adapter.
 - UI strings live in one place, `src/ui/strings.ts` (German first, English later).
 - Demo videos and voice recordings never go into git.
-- Commit directly to `main`; this repo uses no feature branches or pull requests.
+- Commit directly to `main`; this repo uses no feature branches or pull requests. An Obeya worker
+  is the exception: it commits on its card's branch, and Obeya lands that branch on `main`.
