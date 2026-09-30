@@ -126,6 +126,13 @@ export type ErrorCode =
   | 'dirtyWorkspaces'
   | 'workspace'
   | 'emptyText'
+  /** Approval could not land the work on main. */
+  | 'landDirty'
+  | 'landConflict'
+  | 'landEmpty'
+  | 'landCheckout'
+  | 'landMerge'
+  | 'land'
   /** Malformed input: a bug in the UI rather than something the owner can fix. */
   | 'invalid';
 
