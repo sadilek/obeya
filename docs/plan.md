@@ -100,6 +100,15 @@ the owner's language (`src/core/locale.ts`).
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
   is `live`, worktree and branch are removed. Uncommitted work or a failed rebase sends the card
   back to its worker.
+- **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
+  card starts it estimates the files the card will change and judges collisions with cards in
+  progress (their estimated and actual changes); a card that overlaps or collides waits, with the
+  reason, and starts on its own once what it waits for has landed or stopped — the owner can start
+  it anyway. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
+  into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
+  without a project, and after each owner answer, note or feedback it decides whether a lasting
+  preference was stated and records it as a rule every agent gets. Its sheet (button or `K`)
+  shows the queue, the cards in progress and the preferences.
 - **Voice in** — local Whisper (MLX) sidecar with a domain vocabulary; the agent prompt states
   that input is speech and may carry recognition errors.
 - **Voice out** — macOS `say` with the default system voice, streamed sentence by sentence.
@@ -112,8 +121,9 @@ the owner's language (`src/core/locale.ts`).
 ## Data
 
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
-branch, status line, open question or review summary, proposal source), card events (the log),
-workspaces and their leases, decision log; later PR links and preference memory.
+branch, status line, open question or review summary, proposal source, estimated scope, queue),
+card events (the log, with an error code where the UI words it), workspaces and their leases,
+decision log, preferences, per-canvas settings (the Koordinator's session); later PR links.
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository).
@@ -125,7 +135,7 @@ the repository).
 - [x] **M2 Agents.** Workers per card in clones or worktrees; status, log, questions, review and
   proposals on the card; project agents; subscription auth settled. Acceptance met: Obeya is
   developed on its own canvas, and the first worker-built change landed on `main`.
-- [ ] **M3 Koordinator.** The Chief of Staff without voice: schedules cards so that likely
+- [x] **M3 Koordinator.** The Chief of Staff without voice: schedules cards so that likely
   collisions do not run at the same time (queued instead), cuts work packages for parallel work,
   answers standalone cards' questions, keeps the preference memory.
 - [ ] **M4 Demo loop.** Worker records the demo; the card waits; approve or feedback.
@@ -171,6 +181,12 @@ the repository).
   planned card then shows the last log entry, when it is an error, as the reason.
 - The scheduling Chief of Staff comes before demos and PRs (M3): with worktrees several workers
   run at once on Obeya itself.
+- A card waits rather than risking a collision; the Koordinator's estimate is taken once, before
+  the start, and a waiting card is checked again against what runs when its blockers finish.
+- Landing problems are classified: uncommitted work, rebase conflicts and empty branches go back
+  to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
+- Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
+  for developers.
 
 ## Open questions
 
