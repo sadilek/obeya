@@ -98,6 +98,10 @@ export class Board {
     this.store.addDecision({ canvas_id: this.canvas.id, ...d });
   }
 
+  decisions(projectId: string) {
+    return this.store.decisions(projectId);
+  }
+
   accept(id: string) {
     if (this.own(id).state !== 'proposal') throw new BadRequest('not a proposal');
     this.store.update(id, { state: 'planned' });

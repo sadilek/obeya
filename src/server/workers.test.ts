@@ -7,48 +7,9 @@ import type { RepoAdapter } from '../adapters/types';
 import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
-import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec } from './runtime';
+import { FakeRuntime } from './testing';
 import { type ProjectReply, Workers } from './workers';
 import { git, Workspaces } from './workspaces';
-
-class FakeSession implements AgentSession {
-  inbox: string[] = [];
-  closed = false;
-  done: Promise<void>;
-  private finish!: () => void;
-  constructor(
-    readonly spec: AgentSpec,
-    first: string,
-  ) {
-    this.inbox.push(first);
-    this.done = new Promise((r) => (this.finish = r));
-  }
-  send(text: string) {
-    this.inbox.push(text);
-  }
-  close() {
-    this.closed = true;
-    this.finish();
-  }
-  call(name: string, args: Record<string, unknown>) {
-    return this.spec.tools.find((t) => t.name === name)!.run(args);
-  }
-  emit(e: AgentEvent) {
-    this.spec.onEvent(e);
-  }
-}
-
-class FakeRuntime implements AgentRuntime {
-  sessions: FakeSession[] = [];
-  start(spec: AgentSpec, first: string) {
-    const s = new FakeSession(spec, first);
-    this.sessions.push(s);
-    return s;
-  }
-  get last() {
-    return this.sessions.at(-1)!;
-  }
-}
 
 const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
 const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')] };
