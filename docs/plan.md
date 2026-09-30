@@ -114,6 +114,10 @@ the owner's language (`src/core/locale.ts`).
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
   is `live`, worktree and branch are removed. Uncommitted work or a failed rebase sends the card
   back to its worker.
+- **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
+  Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
+  moves to commits that change code (not only docs), the server stops and starts again; workers
+  resume, and an open page reloads when it reconnects to a new server process.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges collisions with cards in
   progress (their estimated and actual changes); a card that overlaps or collides waits, with the
@@ -243,6 +247,9 @@ the repository).
   for developers.
 - Only the owner's cards are archived, and only once `live`; a workstream stays with its project,
   where a delivered one is already a chip. Archiving keeps the card's position, demo and log.
+- Obeya restarts itself for new code on its own checkout instead of hot reloading: a restart is a
+  path that already exists (workers resume by session id), hot reloading keeps old state alive
+  next to new code. It also restarts for commits made outside Obeya.
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back.
 

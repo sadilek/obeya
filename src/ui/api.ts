@@ -91,6 +91,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
     let retry: ReturnType<typeof setTimeout>;
     let delay = 500;
     let closed = false;
+    let server: string | undefined;
     const connect = () => {
       ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${at('/ws')}`);
       ws.onopen = () => {
@@ -99,7 +100,11 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
       };
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data) as ServerMessage;
-        if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
+        // a new server process may run new code: the page loads it
+        if (msg.type === 'hello') {
+          if (server && server !== msg.server) location.reload();
+          server = msg.server;
+        } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
       };
       ws.onclose = () => {

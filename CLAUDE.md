@@ -17,8 +17,9 @@ Obeya: a spatial canvas for directing AI coding agents. Goal, design and milesto
   finish there.
 - Voice on this machine: `OBEYA_WHISPER_PYTHON=/Users/sadilek/dev/stimmzwilling/.venv/bin/python`
   (has `mlx_whisper`; the model is cached).
-- The Obeya instance for this repo runs on port 4417 with `~/.obeya`; server code changes need a
-  restart (workers resume). Keep tests off it.
+- The Obeya instance for this repo runs on port 4417 with `~/.obeya`. It restarts itself once
+  `main` moves to commits that change code, a commit of yours included (workers resume, the page
+  reloads); docs-only commits leave it running. Keep tests off it.
 - `design/mock/` is the interaction reference (camera, unfold, voice). It is a design artifact,
   not code to import.
 - No project-specific logic in the core: anything Acme-specific belongs in the Acme repo adapter.
