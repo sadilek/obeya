@@ -14,6 +14,11 @@ export const oke: RepoAdapter = {
     urls: { file: '.apphost.urls', frontendKey: 'FRONTEND' },
   },
   checks: ['scripts/ci.ts'],
+  demo: {
+    required: true,
+    howToRun:
+      'use the AppHost of your clone: `.apphost.urls` names its FRONTEND; if none runs in this clone, start one with `./scripts/app-host.sh --background` (seeded, random ports). The demo skill has the OKE recipe (login, QA data, migrations).',
+  },
   land: 'pr',
   // csharpier finds no files inside a worktree, and each clone runs its own app stack
   workspaces: 'clones',
