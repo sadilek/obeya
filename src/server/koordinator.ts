@@ -11,6 +11,14 @@ import type { AgentRuntime } from './runtime';
 import type { Workers } from './workers';
 import type { Workspaces } from './workspaces';
 
+interface Package {
+  kind: 'bugfix' | 'feature';
+  title: string;
+  body: string;
+  files: string[];
+}
+type Cut = { packages: Package[]; reason: string } | { keep: string };
+
 export interface Scope {
   files: string[];
   /** Cards in progress the Koordinator judges to collide, beyond overlapping files. */
@@ -57,10 +65,88 @@ export class Koordinator {
     this.serial(() => this.decide(cardId));
   }
 
+  /** The owner wants the card cut into packages that can run in parallel. */
+  split(cardId: string) {
+    const card = this.card(cardId);
+    if (card.source !== 'manual' || card.state !== 'planned' || card.queue) throw new BadRequest('only a planned card of your own can be split');
+    this.setQueue(cardId, { cutting: true });
+    this.serial(() => this.cut(cardId));
+  }
+
+  private async cut(cardId: string) {
+    const card = this.o.board.item(cardId);
+    if (!card || !card.queue || !('cutting' in card.queue)) return;
+    let result: Cut;
+    try {
+      result = await this.plan(card);
+    } catch (e) {
+      this.setQueue(cardId, null);
+      this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte die Karte nicht aufteilen (${e instanceof Error ? e.message : String(e)}).`);
+      return;
+    }
+    if (!('packages' in result) || result.packages.length < 2) {
+      this.setQueue(cardId, null);
+      this.o.board.log(cardId, 'state', 'koordinator', `Nicht aufgeteilt: ${'keep' in result ? result.keep : 'ein Paket genügt.'}`);
+      return;
+    }
+    const made = this.o.board.replace(cardId, result.packages);
+    for (const m of made) this.o.board.log(m.id, 'state', 'koordinator', `Aus „${card.title}“ aufgeteilt. ${result.reason}`);
+  }
+
+  private plan(card: Item): Promise<Cut> {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const finish = (r: Cut) => {
+        if (done) return 'Already reported.';
+        done = true;
+        resolve(r);
+        return 'Recorded. End your turn now.';
+      };
+      const session = this.o.runtime.start(
+        {
+          cwd: this.o.repoPath,
+          readOnly: true,
+          system: CUT_SYSTEM,
+          tools: [
+            {
+              name: 'packages',
+              description: 'Replace the card by these packages (2 to 6). Titles and bodies in German; files as in scope estimates.',
+              schema: {
+                packages: z.array(z.object({ kind: z.enum(['bugfix', 'feature']), title: z.string(), body: z.string(), files: z.array(z.string()) })).min(2).max(6),
+                reason: z.string(),
+              },
+              run: (a) => finish({ packages: a.packages as Package[], reason: String(a.reason) }),
+            },
+            {
+              name: 'keep',
+              description: 'Leave the card whole, with a one-sentence reason in German.',
+              schema: { reason: z.string() },
+              run: (a) => finish({ keep: String(a.reason) }),
+            },
+          ],
+          onEvent: (e) => {
+            if (e.type === 'error' && !done) {
+              done = true;
+              session.close();
+              reject(new Error(e.message));
+            } else if (e.type === 'idle') {
+              session.close();
+              if (!done) {
+                done = true;
+                reject(new Error('keine Antwort'));
+              }
+            }
+          },
+        },
+        `The card: ${card.kind} "${card.title}".\n\n${card.body || '(no description)'}${this.o.preferences ? `\n\n${this.o.preferences()}` : ''}`,
+      );
+    });
+  }
+
   /** Start a queued card anyway. */
   force(cardId: string) {
     const card = this.card(cardId);
-    if (!card.queue || 'checking' in card.queue) throw new BadRequest('the card is not waiting');
+    if (!card.queue || !('behind' in card.queue)) throw new BadRequest('the card is not waiting');
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', 'Trotz Überschneidung gestartet.');
     this.o.workers.start(cardId);
@@ -277,6 +363,15 @@ Read what you need in the repository (you cannot change files), then call scope 
 - collides_with: the tags of cards in progress it collides with beyond plain file overlap (same feature, same data model, same UI flow); empty when none.
 - reason: one sentence in German for the owner, naming the overlap if there is one. The owner does not know the tags: name cards by their title.
 Keep it quick: this runs every time a card starts.
+`.trim();
+
+const CUT_SYSTEM = `
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers run at the same time, each on one card in its own workspace; cards that change the same files have to wait for each other. The owner asks you to cut a card into work packages that can run in parallel.
+
+Read what you need in the repository (you cannot change files). Then either call packages or keep:
+- packages: 2 to 6 cards that together do exactly what the card asks, each shippable and testable on its own, touching different files wherever possible. Each body says what to do and how to verify it, so a worker needs no other context. files: the repository-relative paths each will change ("dir/" for a directory). reason: one sentence in German on how you cut.
+- keep: when the card is small, or its parts cannot run apart without stepping on each other.
+Do not add scope the card does not ask for.
 `.trim();
 
 const normalize = (p: string) => p.trim().replace(/^\.\//, '').replace(/^\/+/, '');

@@ -27,6 +27,8 @@ export function serve(board: Board, workers: Workers, koordinator: Koordinator, 
         return koordinator.force(id);
       case 'dequeue':
         return koordinator.dequeue(id);
+      case 'split':
+        return koordinator.split(id);
       case 'stop':
         return workers.stop(id);
       case 'message':

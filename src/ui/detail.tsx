@@ -64,8 +64,8 @@ export function Detail(p: Props) {
 
       {item.state === 'planned' && item.queue && (
         <div className="question queue">
-          {'checking' in item.queue ? (
-            <div className="q-text">{t.queue.checkingLong}</div>
+          {'checking' in item.queue || 'cutting' in item.queue ? (
+            <div className="q-text">{'checking' in item.queue ? t.queue.checkingLong : t.queue.cuttingLong}</div>
           ) : (
             <>
               <div className="q-text">
@@ -94,9 +94,14 @@ export function Detail(p: Props) {
                 {t.start}
               </button>
               {item.source === 'manual' && (
-                <button className="btn danger" onClick={p.onDelete}>
-                  {t.delete}
-                </button>
+                <>
+                  <button className="btn" onClick={() => act({ action: 'split' }, { close: false })}>
+                    {t.split}
+                  </button>
+                  <button className="btn danger" onClick={p.onDelete}>
+                    {t.delete}
+                  </button>
+                </>
               )}
             </div>
           )}

@@ -24,8 +24,10 @@ answers the questions of standalone cards, and learns the owner's preferences.
   card waits, showing whom it waits for and why; it starts as soon as nothing it collides with is
   in progress any more (landed, approved or stopped). The owner can start it anyway or take it
   out of the queue. Starts are decided one at a time, so two cards cannot both slip through.
-- **Cutting.** "Aufteilen" on a planned card lets the Koordinator cut it into packages that touch
-  different files, each with its scope; they replace the card (with undo).
+- **Cutting.** "Aufteilen" on a planned card of the owner's lets the Koordinator cut it into 2–6
+  packages that touch different files, each with its scope and a body a worker can act on alone;
+  they replace the card where it stood. When the parts cannot run apart, it keeps the card and
+  says why. Workstreams are cut in their plan doc, not here.
 - **Questions.** A standalone card's question goes to the Koordinator, which answers from the
   preference memory and the canvas's decisions or escalates, like a project agent.
 - **Preference memory.** After an owner answer, note or review feedback, the Koordinator decides
@@ -37,7 +39,7 @@ answers the questions of standalone cards, and learns the owner's preferences.
 
 - [x] **W1:** Scope and queue. Scope estimate, collision check, queue, start when free, force
   start and dequeue; card and panel show the waiting state.
-- [ ] **W2:** Cutting. "Aufteilen" replaces a card by parallel packages.
+- [x] **W2:** Cutting. "Aufteilen" replaces a card by parallel packages.
 - [x] **W3:** Questions of standalone cards through the Koordinator.
 - [ ] **W4:** Preference memory. Rules learned from answers, notes and feedback; used by every
   agent; the Koordinator sheet shows rules and queue.

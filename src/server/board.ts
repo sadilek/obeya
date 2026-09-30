@@ -73,6 +73,27 @@ export class Board {
     this.changed();
   }
 
+  /** Cards that replace `id`, side by side where it was; they start planned, with their scope. */
+  replace(id: string, cards: { kind: 'bugfix' | 'feature'; title: string; body: string; files: string[] }[]): Item[] {
+    const row = this.own(id);
+    if (row.plan_ref) throw new BadRequest('plan cards are changed in the plan doc');
+    const rows = this.store.insert(
+      cards.map((c, n) => ({
+        canvas_id: this.canvas.id,
+        kind: c.kind,
+        state: 'planned' as const,
+        title: c.title.slice(0, 200),
+        body: c.body.slice(0, 20000),
+        x: row.x + (n % 3) * 330,
+        y: row.y + Math.floor(n / 3) * 170,
+      })),
+    );
+    rows.forEach((r, n) => this.store.update(r.id, { scope: JSON.stringify({ files: cards[n]!.files, reason: '' }) }));
+    this.store.update(id, { deleted_at: new Date().toISOString(), queue: null });
+    this.changed();
+    return rows.map((r) => this.snapshot().items.find((i) => i.id === r.id)!);
+  }
+
   /** A card an agent proposes, placed below the card it came from. */
   propose(fromId: string, p: { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string }): Item {
     const items = this.snapshot().items;

@@ -186,6 +186,11 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     return () => ro.disconnect();
   }, [openId]);
 
+  // the open card went away on the server (cut into packages, deleted elsewhere): fold the panel
+  useEffect(() => {
+    if (openId && !openItem && focusRef.current?.type === 'card') closeCard({ keepUntitled: true });
+  }, [openId, openItem]);
+
   function onDone(d: ActDone) {
     if (!d.close) return;
     closeCard({ keepUntitled: true });
