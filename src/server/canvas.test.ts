@@ -101,6 +101,34 @@ describe('a canvas with several repositories', () => {
   });
 });
 
+test('the home repository stays home when the configuration lists the repositories in another order', () => {
+  dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
+  const store = new Store(':memory:');
+  const web = repo('web', 'Web');
+  const api = repo('api', 'API');
+  const deps = { store, home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } };
+  const first = new CanvasRuntime({ name: 'P', repos: [{ path: web }, { path: api }] }, deps);
+  const card = first.board.create({ kind: 'feature', title: 'Home-Karte', x: 0, y: 0 });
+  first.shutdown();
+  const again = new CanvasRuntime({ name: 'P', repos: [{ path: api }, { path: web }] }, deps);
+  expect(again.board.canvas.repos.map((r) => r.id)).toEqual(['web', 'api']);
+  expect(again.board.item(card.id)!.repo).toBe('web');
+  again.shutdown();
+  expect(() => new CanvasRuntime({ name: 'P', repos: [{ path: api }] }, deps)).toThrow('home repository "web" is not configured');
+  canvas = new CanvasRuntime({ name: 'Q', repos: [{ path: web }] }, deps);
+});
+
+test('a clone registered for a repository must be one of it', () => {
+  dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
+  const web = repo('web', 'Web');
+  const api = repo('api', 'API');
+  Bun.spawnSync(['git', 'clone', '--quiet', api, join(dir, 'api-clone')]);
+  const deps = { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } };
+  expect(() => new CanvasRuntime({ repos: [{ path: web, workspaces: [join(dir, 'api-clone')] }] }, deps)).toThrow('is not a clone of');
+  canvas = new CanvasRuntime({ repos: [{ path: api, workspaces: [join(dir, 'api-clone')] }] }, deps);
+  expect(canvas.repos[0]!.workspaces.list()).toHaveLength(1);
+});
+
 test('canvas ids read well', () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
   const c = new CanvasRuntime({ name: 'Grüße & Maße', repos: [{ path: repo('g', 'G') }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } });

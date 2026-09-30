@@ -53,8 +53,17 @@ export class Workspaces {
     return this.o.mode;
   }
 
-  register(path: string) {
+  /** Registers a clone; with `origins`, only when its `origin` is one of them. */
+  register(path: string, origins?: string[]) {
     git(path, 'rev-parse', '--git-dir');
+    if (origins?.length) {
+      let origin = '';
+      try {
+        origin = git(path, 'remote', 'get-url', 'origin');
+      } catch {}
+      const norm = (u: string) => u.replace(/\.git$/, '').replace(/\/+$/, '').toLowerCase();
+      if (!origins.some((o) => norm(o) === norm(origin))) throw new WorkspaceError(`${path} is not a clone of ${origins.join(' or ')} (its origin is ${origin || 'unset'})`);
+    }
     this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
   }
 

@@ -64,10 +64,22 @@ export class CanvasRuntime {
 
   constructor(config: CanvasConfig, private deps: CanvasDeps) {
     if (!config.repos.length) throw new Error('a canvas needs at least one repository');
-    const infos = config.repos.map((r) => repoInfo(resolve(r.path)));
-    const adapters = config.repos.map((r, i) => pickAdapter(infos[i]!, r.adapter));
-    const refs = uniqueRefs(infos, adapters);
+    let infos = config.repos.map((r) => repoInfo(resolve(r.path)));
+    let adapters = config.repos.map((r, i) => pickAdapter(infos[i]!, r.adapter));
+    let refs = uniqueRefs(infos, adapters);
     const id = config.name ? slug(config.name) : adapters[0]!.canvasId(infos[0]!);
+    // the home repository is fixed when the canvas is first served: bare plan references, cards
+    // without a repository and the home workspace directory are its, whatever the order later
+    const stored = deps.store.setting(id, 'home_repo');
+    if (stored && stored !== refs[0]!.id) {
+      const at = refs.findIndex((r) => r.id === stored);
+      if (at < 0) throw new Error(`canvas ${id}: its home repository "${stored}" is not configured; list it (first or anywhere)`);
+      const order = [at, ...refs.map((_, i) => i).filter((i) => i !== at)];
+      config = { ...config, repos: order.map((i) => config.repos[i]!) };
+      infos = order.map((i) => infos[i]!);
+      adapters = order.map((i) => adapters[i]!);
+      refs = uniqueRefs(infos, adapters);
+    }
     const name = config.name ?? adapters[0]!.canvasName(infos[0]!);
     const home = refs[0]!.id;
     this.board = new Board(deps.store, { id, name, repos: refs }, () =>
@@ -76,6 +88,7 @@ export class CanvasRuntime {
       ),
     );
     const board = this.board;
+    if (!stored) deps.store.setSetting(id, 'home_repo', home);
     const preferences = () => board.preferencesText();
 
     // the Koordinator needs the workers, and the workers ask it: it is set right after them
@@ -91,7 +104,8 @@ export class CanvasRuntime {
         dir: isHome ? join(deps.home, 'workspaces', id) : join(deps.home, 'workspaces', id, ref.id),
         repo: isHome ? null : ref.id,
       });
-      for (const w of rc.workspaces ?? []) workspaces.register(resolve(w));
+      // a clone registered for this repository must be one of it
+      for (const w of rc.workspaces ?? []) workspaces.register(resolve(w), [info.remote, info.path].filter((x): x is string => !!x));
       // landing on main needs clones that see the local main; otherwise they track the remote
       if (rc.clones) workspaces.ensureClones(adapter.land === 'main' || !info.remote ? info.path : info.remote, rc.clones);
       const projectAgents = new ProjectAgents(board, deps.runtime, info.path, preferences);
