@@ -208,6 +208,7 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
     const panel = panelRef.current;
     if (f?.type !== 'card' || !panel) return;
     flushEdit();
+    panel.querySelector('video')?.pause();
     const i = byId(f.id);
     const el = els.get(f.id);
     unfolded.current = false;
@@ -509,11 +510,13 @@ function Canvas({ snapshot, online }: { snapshot: CanvasSnapshot; online: boolea
  */
 function panelRect(i: Item, inner: HTMLElement) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
-  const W = Math.min(tall ? 980 : 900, innerWidth - 80);
+  // a demo gets the room of the mock's demo panel
+  const demo = i.state === 'waiting' && i.need === 'demo';
+  const W = Math.min(demo ? 1120 : tall ? 980 : 900, innerWidth - 80);
   inner.style.width = `${W}px`;
   const pad = getComputedStyle(inner);
   const need = (inner.firstElementChild as HTMLElement).offsetHeight + parseFloat(pad.paddingTop) + parseFloat(pad.paddingBottom);
-  const H = Math.min(Math.ceil(need), tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
+  const H = Math.min(Math.ceil(need), demo ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
   return { left: `${(innerWidth - W) / 2}px`, top: `${Math.max(64, (innerHeight - H) / 2)}px`, width: `${W}px`, height: `${H}px` };
 }
 
