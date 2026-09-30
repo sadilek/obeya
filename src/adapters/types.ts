@@ -35,7 +35,13 @@ export interface RepoAdapter {
   /** Workers get full clones from a pool, or a worktree of the Obeya checkout per card. */
   workspaces: 'clones' | 'worktrees';
 
-  /** How a worker brings up the app in its workspace and finds the frontend (M4). */
+  /**
+   * Demos: whether a worker must hand over with one, and how it runs the app to record it (for
+   * the `demo` skill). Without it, a written summary is enough.
+   */
+  demo?: { required: boolean; howToRun: string };
+
+  /** How a worker brings up the app in its workspace and finds the frontend. */
   stack?: {
     start: string;
     /** After a backend change, without restarting everything. */

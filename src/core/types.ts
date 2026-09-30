@@ -36,8 +36,10 @@ export interface Item {
   statusLine?: string;
   /** Open question, when `need` is `question`. */
   question?: Question;
-  /** The worker's summary, when `need` is `review`. */
+  /** The worker's summary, when `need` is `review` or `demo`. */
   summary?: string;
+  /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
+  demo?: Demo;
   /** A proposal's source card. */
   from?: string;
   branch?: string;
@@ -48,6 +50,16 @@ export interface Item {
 }
 
 export type Queue = { checking: true } | { cutting: true } | { behind: string[]; reason: string };
+
+export interface Demo {
+  /** Seconds and title of each scene. */
+  chapters: [number, string][];
+  shown: string[];
+  notShown: string[];
+  findings: string[];
+  /** A question only the owner can answer, beyond "approve or give feedback". */
+  question?: string;
+}
 
 /** One line in a card's log. */
 export interface CardEvent {

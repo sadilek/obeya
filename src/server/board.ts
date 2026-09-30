@@ -69,6 +69,12 @@ export class Board {
     return this.own(id);
   }
 
+  /** The directory of the card's demo, while it waits with one. */
+  demoDir(id: string): string | null {
+    const r = this.own(id);
+    return r.need === 'demo' && r.detail ? ((JSON.parse(r.detail) as { demo?: { dir: string } }).demo?.dir ?? null) : null;
+  }
+
   /** The card as the UI sees it. */
   item(id: string): Item | undefined {
     return this.snapshot().items.find((i) => i.id === id);
@@ -331,14 +337,16 @@ export function toItems(rows: CardRow[], docs: PlanDoc[]): Item[] {
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow): Partial<Item> {
-  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string }) : {};
+  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; demo?: Item['demo'] & { dir: string } }) : {};
+  const demo = detail.demo && r.need === 'demo' ? (({ dir: _, ...d }) => d)(detail.demo) : undefined;
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
-    ...(detail.summary && r.need === 'review' ? { summary: detail.summary } : {}),
+    ...(detail.summary && (r.need === 'review' || r.need === 'demo') ? { summary: detail.summary } : {}),
+    ...(demo ? { demo } : {}),
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),
   };
