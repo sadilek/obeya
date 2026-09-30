@@ -1,6 +1,6 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { CardAction, CardEvent, CardPatch, Demo, Item } from '../core/types';
 import { ApiError, api, onCardEvent } from './api';
 import { Inline, plain } from './markdown';
@@ -45,7 +45,7 @@ export function Detail(p: Props) {
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div>}
       <div className="p-state">
         ● {stateLabel(item)}
-        {item.statusLine && (item.state === 'working' || item.state === 'waiting') && <span className="p-status"> · {item.statusLine}</span>}
+        {item.statusLine && item.state === 'working' && <span className="p-status"> · {item.statusLine}</span>}
       </div>
 
       {item.state === 'proposal' && (
@@ -111,7 +111,7 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {item.scope && item.scope.length > 0 && (item.state === 'planned' || item.state === 'working' || item.state === 'waiting') && (
+      {item.scope && item.scope.length > 0 && (item.state === 'planned' || item.state === 'working') && (
         <details className="p-task">
           <summary>
             {t.scope} ({item.scope.length})
@@ -143,14 +143,15 @@ export function Detail(p: Props) {
       )}
 
       {item.state === 'waiting' && item.need === 'demo' && item.demo && (
-        <>
-          <DemoView cardId={item.id} summary={item.summary ?? ''} demo={item.demo} />
+        <DemoView cardId={item.id} summary={item.summary ?? ''} demo={item.demo}>
+          {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
             <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
               {t.approve}
             </button>
           </div>
-        </>
+          <Composer placeholder={t.compose.review} onSend={(text) => act({ action: 'message', text }, { close: false })} />
+        </DemoView>
       )}
 
       {item.state === 'waiting' && item.need === 'review' && (
@@ -167,10 +168,10 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {(item.state === 'working' || item.state === 'waiting') && (
+      {(item.state === 'working' || (item.state === 'waiting' && item.need !== 'demo')) && (
         <Composer
           key={`${item.state}:${item.need ?? ''}`}
-          placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' || item.need === 'demo' ? t.compose.review : t.compose.working}
+          placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' ? t.compose.review : t.compose.working}
           onSend={(text) =>
             item.need === 'question'
               ? act({ action: 'answer', text }, { close: true, ack: t.answered })
@@ -220,7 +221,7 @@ export function Detail(p: Props) {
 }
 
 /** The narrated demo with its chapters and the report beside it. */
-function DemoView({ cardId, summary, demo }: { cardId: string; summary: string; demo: Demo }) {
+function DemoView({ cardId, summary, demo, children }: { cardId: string; summary: string; demo: Demo; children: ReactNode }) {
   const video = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
   const src = (f: string) => `/api/cards/${cardId}/demo/${f}`;
@@ -232,7 +233,6 @@ function DemoView({ cardId, summary, demo }: { cardId: string; summary: string; 
   const current = demo.chapters.reduce((cur, [at], i) => (at <= now + 0.05 ? i : cur), 0);
   return (
     <>
-      <Body md={summary} />
       <div className="p-grid">
         <video ref={video} controls preload="metadata" poster={src('poster.jpg')} src={src('demo.mp4')} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}>
           <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
@@ -262,8 +262,10 @@ function DemoView({ cardId, summary, demo }: { cardId: string; summary: string; 
               {demo.question}
             </div>
           )}
+          {children}
         </div>
       </div>
+      <Body md={summary} />
       <div className="cols">
         {(
           [
