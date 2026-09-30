@@ -96,6 +96,7 @@ function TellKoordinator({ onHeard }: { onHeard: (h: Heard) => void }) {
         value={text}
         rows={2}
         placeholder={t.voice.typePlaceholder}
+        onFocus={() => api.warmVoice()}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {

@@ -10,6 +10,7 @@ export interface Heard {
   token?: string;
   /** How long the command still waits for "Rückgängig". */
   undoMs?: number;
+  /** Where the spoken confirmation plays from; it may still be rendering. */
   audio?: string;
 }
 
@@ -27,6 +28,7 @@ export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void) {
 
   async function start() {
     if (rec.current || phase === 'thinking') return;
+    api.warmVoice();
     try {
       if (!mic.current) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

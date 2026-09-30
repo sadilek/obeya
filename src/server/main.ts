@@ -16,7 +16,7 @@ import { Store } from './db';
 import { ghForge } from './forge';
 import { sdkRuntime } from './runtime';
 import { serve } from './server';
-import { WhisperSidecar } from './voice';
+import { SpeechSidecar, WhisperSidecar } from './voice';
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -73,14 +73,16 @@ if (new Set(ids).size !== ids.length) {
   process.exit(2);
 }
 const transcriber = new WhisperSidecar();
+const speaker = new SpeechSidecar();
 for (const sig of ['SIGINT', 'SIGTERM'] as const)
   process.on(sig, () => {
     for (const c of canvases) c.shutdown();
     transcriber.stop();
+    speaker.stop();
     process.exit(0);
   });
 
-const server = serve(canvases, transcriber, Number(values.port), values.dev);
+const server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev);
 console.log(`Obeya on ${server.url}`);
 for (const c of canvases) {
   console.log(`  ${c.board.canvas.name} (?c=${c.id})`);

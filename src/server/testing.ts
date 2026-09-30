@@ -10,9 +10,9 @@ export class FakeSession implements AgentSession {
   private finish!: () => void;
   constructor(
     readonly spec: AgentSpec,
-    first: string,
+    first?: string,
   ) {
-    this.inbox.push(first);
+    if (first !== undefined) this.inbox.push(first);
     this.done = new Promise((r) => (this.finish = r));
   }
   send(text: string) {
@@ -32,7 +32,7 @@ export class FakeSession implements AgentSession {
 
 export class FakeRuntime implements AgentRuntime {
   sessions: FakeSession[] = [];
-  start(spec: AgentSpec, first: string) {
+  start(spec: AgentSpec, first?: string) {
     const s = new FakeSession(spec, first);
     this.sessions.push(s);
     return s;

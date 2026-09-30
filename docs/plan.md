@@ -128,8 +128,15 @@ the owner's language (`src/core/locale.ts`).
   confirmation. The action runs a few seconds after the confirmation reached the owner, so
   "Rückgängig" takes back anything, even an approval. The same commands can be typed in the
   Koordinator's sheet. The transcript goes to the server log only.
-- **Voice out** — macOS `say` with the default system voice renders the confirmation, which the
-  browser plays.
+- **Voice latency** — pressing Space (or focusing the typed command) gets everything ready while
+  the owner speaks: the Whisper sidecar starts and loads its model, the speech sidecar starts, and
+  the Koordinator's agent for the command starts up and waits (after each command the next one
+  waits; one that fails after waiting is replaced once). The written confirmation comes back as
+  soon as the Koordinator has decided, and the undo window starts with it; the spoken one follows
+  from its own URL.
+- **Voice out** — the default system voice speaks the confirmation, which the browser plays: a
+  JXA sidecar keeps the macOS synthesizer loaded (about half a second a sentence), with `say` as
+  the fallback.
 - **Demos** — the `demo` skill's pipeline (scripted walkthrough, narrated video, report). The
   worker records once the change is committed and checked, as the adapter says how to run the
   app (Obeya: a scratch instance from the worktree on a scratch repository; OKE: the clone's
@@ -181,7 +188,7 @@ the repository).
   several canvases.
 - Agents may propose cards.
 - Approval triggers the PR and its monitoring to the merge, not the merge itself.
-- Spoken output uses `say` with the default voice.
+- Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
 - Plan docs as projects: a doc in the adapter's plan directory is a project when its
   `## Workstreams` section has a checklist; each top-level item is a workstream (`**W3:** Title.
@@ -219,8 +226,11 @@ the repository).
 
 ## Open questions
 
-- Voice latency: about ten seconds from letting go to the confirmation, mostly the Koordinator's
-  reading. A card on Obeya's own canvas tracks it.
+- Voice latency: from letting go to the written confirmation about 2.8 s, to the spoken one about
+  3.3 s, the first command after a start included, measured on a small scratch canvas (before:
+  5.3 s, 7.2 s for the first command). Most of what is left is the Koordinator's model turn (about
+  2 s); Sonnet or Haiku, or a shorter system prompt, saved nothing reliable in measurements, so it
+  stays as it is.
 
 - Plan-doc sync: Obeya reads plan docs and never writes them; workers tick off their workstream
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
