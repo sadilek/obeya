@@ -8,14 +8,20 @@ import type { AgentRuntime, AgentSession, AgentTool } from './runtime';
 
 export type Command =
   | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string }
-  | { do: 'start' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop'; card: string }
-  | { do: 'note' | 'answer' | 'feedback'; card: string; text: string };
+  | { do: 'newIdea'; title: string; body: string; repo?: string }
+  | { do: 'start' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
+  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'; card: string; text: string };
 
 export interface Heard {
   /** What the owner hears and reads back. */
   confirm: string;
   /** Takes the command back while it waits; absent when there was nothing to do. */
   token?: string;
+  /**
+   * Said to the idea the owner has open: it is already part of the conversation there, which is
+   * confirmation enough, so nothing is spoken back.
+   */
+  quiet?: boolean;
 }
 
 export interface Focus {
@@ -54,6 +60,15 @@ export class Commander {
   async hear(transcript: string, focus: Focus): Promise<Heard> {
     const { command, confirm } = await this.interpret(transcript, focus);
     if (!command) return { confirm };
+    // talking about an idea changes nothing that would need taking back: it goes on at once
+    if (command.do === 'discuss') {
+      try {
+        await this.o.execute(command);
+      } catch (e) {
+        this.o.board.log(command.card, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
+      }
+      return { confirm, ...(command.card === focus.card ? { quiet: true } : {}) };
+    }
     const token = crypto.randomUUID();
     this.waiting.set(token, { command });
     return { confirm, token };
@@ -94,7 +109,7 @@ export class Commander {
       .snapshot()
       .items.filter((i) => i.state !== 'live')
       .map((i) => i.title.replace(/[`*_]/g, ''));
-    return ['Obeya, Koordinator, Karte, Workstream, Bugfix, Feature, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
+    return ['Obeya, Koordinator, Karte, Workstream, Bugfix, Feature, Idee, Spike, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
   }
 
   /**
@@ -113,7 +128,7 @@ export class Commander {
     const r: Reader = { session: null as unknown as AgentSession, ended: false };
     const tagged = (tag: unknown) => r.reading?.tags.get(String(tag)) ?? null;
     const finish = (command: Command | null, confirm: string) => (r.reading ? r.reading.finish(command, confirm) : 'No command to read.');
-    const onCard = (name: Exclude<Command['do'], 'newCard' | 'note' | 'answer' | 'feedback'>, what: string): AgentTool => ({
+    const onCard = (name: Exclude<Command['do'], 'newCard' | 'newIdea' | 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'>, what: string): AgentTool => ({
       name,
       description: `${what} Pass the card's tag and the confirmation.`,
       schema: { card: z.string(), confirm: z.string() },
@@ -122,7 +137,7 @@ export class Commander {
         return id ? finish({ do: name, card: id }, String(confirm)) : `Unknown tag ${String(tag)}.`;
       },
     });
-    const withText = (name: 'note' | 'answer' | 'feedback', what: string): AgentTool => ({
+    const withText = (name: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike', what: string): AgentTool => ({
       name,
       description: `${what} Pass the card's tag, the text as the owner meant it (fix obvious recognition errors), and the confirmation.`,
       schema: { card: z.string(), text: z.string(), confirm: z.string() },
@@ -150,6 +165,22 @@ export class Commander {
             );
           },
         },
+        {
+          name: 'new_idea',
+          description: `A new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). Title short and precise; body what the owner said about it, in their words.${this.o.board.canvas.repos.length > 1 ? ' repo: the repository it belongs to (an id from the list).' : ''}`,
+          schema: { title: z.string(), body: z.string(), repo: z.string().optional(), confirm: z.string() },
+          run: (a) => {
+            const repos = this.o.board.canvas.repos;
+            const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? String(a.repo) : undefined;
+            return finish({ do: 'newIdea', title: String(a.title), body: String(a.body), ...(repo ? { repo } : {}) }, String(a.confirm));
+          },
+        },
+        withText('discuss', "What the owner says in the discussion of an idea (a card in state idea): a thought, a question, an answer to the idea's agent."),
+        onCard('build', 'Build an idea as its brief stands: it becomes a planned card.'),
+        onCard('planDoc', 'Turn a big idea into a project: an agent writes its plan doc first.'),
+        withText('spike', 'Have a worker build a throwaway prototype for an idea, shown as a demo on it. text: what the prototype should show (may be empty).'),
+        onCard('park', 'Park an idea for later.'),
+        onCard('drop', 'Drop an idea; it stays on the canvas with its brief.'),
         onCard('start', 'Start work on a planned card.'),
         withText('note', "A note to the agent working on a card; it doesn't stop it."),
         withText('answer', "The answer to the card's open question."),
@@ -221,7 +252,7 @@ export class Commander {
   private brief(transcript: string, focus: Focus, items: Item[], relevant: Item[], tagOf: Map<string, string>): string {
     const describe = (i: Item) => {
       const project = i.parent ? items.find((p) => p.id === i.parent) : undefined;
-      const state = i.queue ? 'queued' : i.need ? `${i.state}: ${i.need}` : i.state;
+      const state = i.queue ? 'queued' : i.need ? `${i.state}: ${i.need}` : i.idea && i.idea.status !== 'open' ? `idea: ${i.idea.status}` : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
       return `${tagOf.get(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.question ? ` — open question: ${i.question.text}` : ''}`;
     };
@@ -242,7 +273,8 @@ const SYSTEM = `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents by voice. You get what the owner just said, transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary.
 
 Call exactly one tool, then end your turn:
-- the action the owner asked for, on the card they meant (the open card unless they name another), or new_card;
+- the action the owner asked for, on the card they meant (the open card unless they name another), or new_card or new_idea;
 - reply, when nothing fits or it is unclear which card or what is meant.
+When the open card is an idea, what the owner says is part of its discussion: use discuss with their words, unless they clearly ask for an action on it (build, plan doc, spike, park, drop). Wanting to think about something, rather than have it done, is new_idea.
 Every tool takes confirm: one short German sentence the owner hears back, saying what will happen, naming the card ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
 `.trim();

@@ -6,7 +6,7 @@
 
 import { boundsOf, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
-import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Item, type NewCard, STATES } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Idea, type Item, type NewCard, STATES } from '../core/types';
 import type { CardRow, NewRow, RowUpdate, Store } from './db';
 
 /** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
@@ -43,6 +43,7 @@ export class Board {
   private docs: PlanDoc[] | null = null;
   private cache: CanvasSnapshot | null = null;
   private eventListeners = new Set<(e: CardEvent) => void>();
+  private speakListeners = new Set<(cardId: string, text: string) => void>();
 
   constructor(
     private store: Store,
@@ -67,6 +68,17 @@ export class Board {
   onEvent(fn: (e: CardEvent) => void): () => void {
     this.eventListeners.add(fn);
     return () => this.eventListeners.delete(fn);
+  }
+
+  /** Whoever voices the canvas (the server) speaks what agents say aloud. */
+  onSpeak(fn: (cardId: string, text: string) => void): () => void {
+    this.speakListeners.add(fn);
+    return () => this.speakListeners.delete(fn);
+  }
+
+  /** A short text to speak to the owner, about a card. */
+  speak(cardId: string, text: string) {
+    for (const fn of this.speakListeners) fn(cardId, text);
   }
 
   /** A card changed. */
@@ -188,6 +200,41 @@ export class Board {
     this.store.setSetting(this.canvas.id, key, value);
   }
 
+  /** An idea's stored status and brief. */
+  idea(id: string): StoredIdea {
+    const r = this.own(id);
+    if (r.state !== 'idea') throw new BadRequest('notIdea', 'the card is not an idea');
+    return r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open', brief: '' };
+  }
+
+  setIdea(id: string, fields: Partial<StoredIdea>) {
+    this.work(id, { idea: JSON.stringify({ ...this.idea(id), ...fields }) });
+  }
+
+  /** A card whose worker builds a throwaway prototype for the idea; placed below it. */
+  addSpike(ideaId: string, title: string, body: string): Item {
+    const items = this.snapshot().items;
+    const idea = items.find((i) => i.id === ideaId);
+    const b = idea ? boundsOf(idea, items) : { x: 0, y: 0, w: 0, h: 0 };
+    const spikes = items.filter((i) => i.spikeOf === ideaId).length;
+    const [row] = this.store.insert([
+      {
+        canvas_id: this.canvas.id,
+        kind: 'feature',
+        state: 'planned',
+        title: title.slice(0, 200),
+        body: body.slice(0, 20000),
+        x: b.x + 35 + spikes * 30,
+        y: b.y + b.h + 60 + spikes * 30,
+        from_id: ideaId,
+        spike_of: ideaId,
+        repo: idea && idea.repo !== this.home ? idea.repo : null,
+      },
+    ]);
+    this.changed();
+    return toItems([row!], [], this.home)[0]!;
+  }
+
   accept(id: string) {
     if (this.own(id).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     this.store.update(id, { state: 'planned' });
@@ -275,12 +322,13 @@ export class Board {
       {
         canvas_id: this.canvas.id,
         kind: n.kind,
-        state: 'planned',
+        state: n.idea ? 'idea' : 'planned',
         title: n.title,
         body: n.body ?? '',
         x: n.x,
         y: n.y,
         repo: n.repo && n.repo !== this.home ? n.repo : null,
+        ...(n.idea ? { idea: JSON.stringify({ status: 'open', brief: '' } satisfies StoredIdea) } : {}),
       },
     ]);
     this.changed();
@@ -300,6 +348,9 @@ export class Board {
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
     const { repo, ...fields } = p;
+    // a planned card of the owner's may become an idea again, to be discussed first
+    if (p.state === 'idea' && row.state !== 'idea' && (row.plan_ref || (row.state ?? 'planned') !== 'planned' || row.workspace))
+      throw new BadRequest('invalid', 'only a planned card of your own that has not been worked on can become an idea');
     if (repo !== undefined) {
       if (!this.canvas.repos.some((r) => r.id === repo)) throw new BadRequest('invalid', 'unknown repository');
       // its workspace and branch belong to the repository it started in
@@ -397,6 +448,8 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         source: 'manual',
         repo: r.repo ?? home,
         ...work(r),
+        ...(r.state === 'idea' ? { idea: ideaOf(r) } : {}),
+        ...(r.spike_of ? { spikeOf: r.spike_of } : {}),
       });
       continue;
     }
@@ -471,6 +524,18 @@ function work(r: CardRow): Partial<Item> {
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),
   };
+}
+
+/** What is stored of an idea; `thinking` while its agent works on a reply. */
+export interface StoredIdea {
+  status: Idea['status'];
+  brief: string;
+  thinking?: boolean;
+}
+
+function ideaOf(r: CardRow): Idea {
+  const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
+  return { status: i.status, brief: i.brief, thinking: !!i.thinking };
 }
 
 function checkPreference(v: unknown): string {

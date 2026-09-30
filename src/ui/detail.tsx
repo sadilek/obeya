@@ -42,8 +42,25 @@ export function Detail(p: Props) {
   };
   const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
   const repoPrefix = p.repos.length > 1 ? `${p.repos.find((r) => r.id === item.repo)?.name ?? item.repo} · ` : '';
-  const kind = repoPrefix + (parent ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}` : t.kind[item.kind]);
-  const editable = item.source === 'manual' && item.state === 'planned' && !item.queue;
+  const kind =
+    repoPrefix +
+    (parent
+      ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}`
+      : item.state === 'idea'
+        ? t.kind.idea
+        : item.spikeOf
+          ? t.kind.spike
+          : t.kind[item.kind]);
+  const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea') && !item.queue;
+  if (item.state === 'idea' && item.idea)
+    return (
+      <>
+        <div className="p-kind">{kind}</div>
+        <ManualTitle item={item} onEdit={p.onEdit} />
+        <IdeaView item={item} act={act} onDelete={p.onDelete} />
+        {error && <p className="p-error">{error}</p>}
+      </>
+    );
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
 
   return (
@@ -93,6 +110,8 @@ export function Detail(p: Props) {
         </div>
       )}
 
+      {item.spikeOf && <p className="hint">{t.idea.spikeOf(plain(p.from?.title ?? ''))}</p>}
+
       {item.state === 'planned' && !item.queue && <LastFailure cardId={item.id} />}
 
       {item.state === 'planned' && (
@@ -109,6 +128,18 @@ export function Detail(p: Props) {
                   <button className="btn" onClick={() => act({ action: 'split' }, { close: false })}>
                     {t.split}
                   </button>
+                  {!item.spikeOf && !item.branch && (
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        await p.flush();
+                        p.onEdit({ state: 'idea' });
+                        await p.flush();
+                      }}
+                    >
+                      {t.idea.makeIdea}
+                    </button>
+                  )}
                   <button className="btn danger" onClick={p.onDelete}>
                     {t.delete}
                   </button>
@@ -154,8 +185,11 @@ export function Detail(p: Props) {
         <DemoView cardId={item.id} summary={item.summary ?? ''} demo={item.demo}>
           {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
-            <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
-              {t.approve}
+            <button
+              className="btn primary"
+              onClick={() => act({ action: 'approve' }, { close: true, ack: item.spikeOf ? t.idea.discarded : t.approved })}
+            >
+              {item.spikeOf ? t.idea.discard : t.approve}
             </button>
           </div>
           <Composer placeholder={t.compose.review} onSend={(text) => act({ action: 'message', text }, { close: false })} />
@@ -261,6 +295,122 @@ export function Detail(p: Props) {
           {parent?.plan && <PlanSource file={parent.plan.file} />}
         </>
       )}
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ ideas
+
+/**
+ * An idea under discussion: the brief its agent keeps on top, a spike's demo when there is one,
+ * then the conversation, and the owner's decisions.
+ */
+function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; onDelete: () => void }) {
+  const idea = item.idea!;
+  const [spiking, setSpiking] = useState(false);
+  return (
+    <>
+      <div className="p-state">
+        ● {stateLabel(item)}
+        {idea.thinking && <span className="p-status"> · {t.author.explorer} {t.idea.thinking}</span>}
+      </div>
+      <div className="question brief">
+        <h4>{t.idea.brief}</h4>
+        {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
+      </div>
+      {item.demo && (
+        <>
+          <h4 className="p-h">{t.idea.spikeDemo}</h4>
+          <DemoView cardId={item.id} summary="" demo={item.demo} autoplay={false}>
+            <p className="hint">{t.idea.spikeKept}</p>
+          </DemoView>
+        </>
+      )}
+      <Conversation item={item} />
+      <Composer placeholder={t.idea.compose} onSend={(text) => act({ action: 'discuss', text }, { close: false })} />
+      {idea.status !== 'open' && <p className="hint">{t.idea.reopen}</p>}
+      {spiking ? (
+        <Composer
+          placeholder={t.idea.spikePlaceholder}
+          button={t.idea.spikeGo}
+          allowEmpty
+          onSend={(text) => act({ action: 'spike', ...(text ? { text } : {}) }, { close: true, ack: t.idea.spiked })}
+        />
+      ) : (
+        <div className="actions">
+          <button className="btn primary" onClick={() => act({ action: 'build' }, { close: true, ack: t.idea.built })}>
+            {t.idea.build}
+          </button>
+          <button className="btn" onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
+            {t.idea.planDoc}
+          </button>
+          <button className="btn" onClick={() => setSpiking(true)}>
+            {t.idea.spike}
+          </button>
+          {idea.status !== 'parked' && (
+            <button className="btn" onClick={() => act({ action: 'park' }, { close: true, ack: t.idea.parked })}>
+              {t.idea.park}
+            </button>
+          )}
+          {idea.status !== 'dropped' && (
+            <button className="btn" onClick={() => act({ action: 'drop' }, { close: true, ack: t.idea.dropped })}>
+              {t.idea.drop}
+            </button>
+          )}
+          <button className="btn danger" onClick={onDelete}>
+            {t.delete}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The discussion of an idea, live; what the agent reads shows while it thinks. */
+function Conversation({ item }: { item: Item }) {
+  const events = useEvents(item.id);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [events, item.idea?.thinking]);
+  if (!events) return null;
+  const shown = events.filter((e) => e.kind === 'talk' || e.kind === 'error' || (e.kind === 'state' && e.author !== 'obeya'));
+  const reading = item.idea?.thinking ? events.filter((e) => e.kind === 'activity').at(-1) : undefined;
+  return (
+    <>
+      <h4 className="p-h">{t.idea.talk}</h4>
+      <div className="talk" ref={box}>
+        {shown.length === 0 && !item.idea?.thinking && <div className="hint">{t.idea.talkEmpty}</div>}
+        {item.body.trim() && !events.some((e) => e.kind === 'talk') && (
+          <div className="msg by-owner seed">
+            <div className="who">{t.idea.seed}</div>
+            <Body md={item.body} />
+          </div>
+        )}
+        {shown.map((e) =>
+          e.kind === 'talk' ? (
+            <div key={e.id} className={`msg by-${e.author}`}>
+              <div className="who">
+                {t.author[e.author]} <span className="t">{time(e.at)}</span>
+              </div>
+              <Body md={e.text} />
+            </div>
+          ) : (
+            <div key={e.id} className={`note ev-${e.kind}`} title={e.code ? e.text : undefined}>
+              {time(e.at)} · {eventText(e)}
+            </div>
+          ),
+        )}
+        {item.idea?.thinking && (
+          <div className="msg by-explorer thinking">
+            <div className="who">
+              {t.author.explorer} {t.idea.thinking}
+            </div>
+            {reading && <div className="hint">{reading.text}</div>}
+          </div>
+        )}
+      </div>
     </>
   );
 }
@@ -444,11 +594,11 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
 
 // ------------------------------------------------------------------ talking to the worker
 
-function Composer({ placeholder, onSend }: { placeholder: string; onSend: (text: string) => Promise<void> }) {
+function Composer({ placeholder, onSend, button = t.send, allowEmpty = false }: { placeholder: string; onSend: (text: string) => Promise<void>; button?: string; allowEmpty?: boolean }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const send = async () => {
-    if (!text.trim() || busy) return;
+    if ((!text.trim() && !allowEmpty) || busy) return;
     setBusy(true);
     await onSend(text.trim());
     setBusy(false);
@@ -468,8 +618,8 @@ function Composer({ placeholder, onSend }: { placeholder: string; onSend: (text:
           }
         }}
       />
-      <button className="btn primary" disabled={!text.trim() || busy} onClick={send}>
-        {t.send}
+      <button className="btn primary" disabled={(!text.trim() && !allowEmpty) || busy} onClick={send}>
+        {button}
       </button>
     </div>
   );

@@ -33,13 +33,16 @@ decisions are made in front of the wall.
 - **Canvas** — a canvas spans one or more repositories; one Obeya serves several canvases.
 - **Cards** — `bugfix`, `feature`, `project`. A project is a container backed by a plan doc; its
   workstreams are its child cards.
-- **States** — `proposal` → `planned` → `working` → `waiting` (demo ready | question) →
-  `approved` → `in PR` → `live`. An adapter that does not require demos lets a worker hand over
-  with a written summary alone: `waiting: review`.
+- **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) →
+  `approved` → `in PR` → `live`; an agent's `proposal` becomes `planned` when accepted. An
+  adapter that does not require demos lets a worker hand over with a written summary alone:
+  `waiting: review`. An idea is `open`, `parked` or `dropped`.
 - **Agents**
   - *Worker*, one per card while it is worked on: implementation, local reviews, demo.
   - *Project agent*, one per project, long-lived: knows the plan doc and the history of every
     workstream.
+  - *Exploration agent*, one per idea, long-lived and read-only: discusses the idea with the owner
+    and keeps its brief.
   - *Chief of Staff* (in the UI: *Koordinator*), one per canvas: takes voice input on the open
     canvas, creates and assigns cards, runs the workspace pool, and keeps the preference memory.
     It also schedules the work: it cuts work packages so they can run in parallel, detects cards
@@ -47,6 +50,29 @@ decisions are made in front of the wall.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
   ("billing changes always get the Codex review", "labels: precise over short"). Shared by all
   agents, maintained by the Chief of Staff.
+
+## Ideas
+
+An idea is thought through on its card before anything is planned; no worker runs.
+
+1. "Ich will über Export für Vermieter nachdenken" (voice or typed), or "Erst besprechen" on a
+   planned card of the owner's, makes a card in state `idea`.
+2. The unfolded idea is a conversation with its exploration agent: a read-only session (code, plan
+   docs, the decision log, the preferences) resumed for every message, days later too. It asks
+   back, shows variants with their trade-offs and says what they would cost. The owner types in the
+   panel or holds Space with the idea open; the reply stands in the panel, and only its short
+   summary is spoken, when the owner spoke.
+3. The agent keeps the brief ("Stand der Idee") on top of the card: goal, open and dropped
+   variants, decisions, open questions, effort. The conversation is the means, the brief the
+   result: whoever opens the card later reads the brief.
+4. A spike, when talking is not enough: a worker builds a throwaway prototype in its own workspace
+   and records a demo, which shows on the idea; the exploration agent hears what it found. The
+   spike never lands and does not count for collisions; approving it discards workspace and branch.
+5. Deciding: "So bauen" plans the card with the brief as its task. "Als Projekt planen" plans a
+   card whose worker writes a plan doc with workstreams, which lands like any change (OKE: a PR)
+   and then appears as a project. "Parken" and "Verwerfen" leave the card with its brief; talking
+   to it opens it again. Decisions from the conversation go into the decision log; lasting
+   preferences are learned by the Koordinator as before.
 
 ## Card lifecycle
 
@@ -131,10 +157,12 @@ the owner's language (`src/core/locale.ts`).
   audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
   loaded and transcribes in German with the canvas's titles as vocabulary
   (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). A quick, low-effort Koordinator turn reads
-  the transcript as speech that may be misheard and picks one action (new card, start, note,
-  answer, feedback, approve, accept, dismiss, cut, stop) or just replies; it writes the
-  confirmation. The action runs a few seconds after the confirmation reached the owner, so
-  "Rückgängig" takes back anything, even an approval. The same commands can be typed in the
+  the transcript as speech that may be misheard and picks one action (new card, new idea, start,
+  note, answer, feedback, approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc,
+  spike, park, drop) or just replies; it writes the confirmation. The action runs a few seconds
+  after the confirmation reached the owner, so "Rückgängig" takes back anything, even an approval.
+  Only talking to an idea goes on at once: it changes nothing, and said to the open idea it needs
+  no confirmation, since the conversation shows it. The same commands can be typed in the
   Koordinator's sheet. The transcript goes to the server log only.
 - **Voice latency** — pressing Space (or focusing the typed command) gets everything ready while
   the owner speaks: the Whisper sidecar starts and loads its model, the speech sidecar starts, and
@@ -161,7 +189,7 @@ the owner's language (`src/core/locale.ts`).
 
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
 branch, status line, open question or review summary, proposal source, estimated scope, queue,
-when archived),
+when archived, an idea's status and brief, a spike's idea),
 card events (the log, with an error code where the UI words it), workspaces and their leases,
 decision log, preferences, per-canvas settings (the Koordinator's session); later PR links.
 
@@ -187,19 +215,10 @@ the repository).
   with undo; the Koordinator takes voice input.
 - [x] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
 - [ ] **M8 Ideas.** Discuss and explore a feature before deciding to build it (proposed
-  2026-09-30; the owner builds it through Obeya itself):
-  - A card in a new state *Idee*, before `planned`; no worker runs on it.
-  - An exploration agent per idea with a lasting, resumed session, read-only (code, plan docs,
-    decisions, preferences). The owner talks to it by voice or text in the unfolded card; its
-    answers show as a conversation there, spoken only as a short summary.
-  - The agent keeps a "Stand der Idee" on the card: goal, variants kept and dropped, decisions,
-    open questions. The conversation is the means, that text the result.
-  - Optional spike: a worker builds a throwaway prototype in its own workspace and shows it as a
-    demo on the card; it never lands.
-  - Deciding: small → the card becomes `planned` with that text as its brief; large → the agent
-    writes a plan doc (landing like any change), which appears as a project for the Koordinator
-    to cut and schedule; or park/discard, keeping the text. Decisions go to the decision log.
-  - Separately: a short-term memory for commands to the Koordinator (follow-ups such as "und die
+  2026-09-30). Built as described under [Ideas](#ideas): the state `idea`, an exploration agent
+  per idea with a resumed read-only session, the brief it keeps, spikes that never land, and the
+  decisions build, plan doc (written by a worker), park and drop.
+  - Still open: a short-term memory for commands to the Koordinator (follow-ups such as "und die
     zweite auch"); today every command is read in a fresh session.
 
 ## Decisions
@@ -251,7 +270,12 @@ the repository).
   path that already exists (workers resume by session id), hot reloading keeps old state alive
   next to new code. It also restarts for commits made outside Obeya.
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
-  for undo; nothing spoken takes effect without a confirmation the owner could take back.
+  for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
+  to an idea is the exception: it only adds to a conversation.
+- A discussion lives on a card, not in a chat with the Koordinator: every command runs in a fresh
+  Koordinator session, and an exploration parked on the canvas is found there again with its
+  brief. A big idea becomes a project through a worker writing its plan doc, not through the
+  exploration agent, which stays read-only.
 
 ## Open questions
 

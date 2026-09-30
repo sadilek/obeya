@@ -43,6 +43,10 @@ export interface CardRow {
   demo: string | null;
   /** When the owner took the finished card off the canvas into the archive. */
   archived_at: string | null;
+  /** JSON: an idea's status and brief (`{ status, brief }`). */
+  idea: string | null;
+  /** A spike's idea. */
+  spike_of: string | null;
 }
 
 export interface DecisionRow {
@@ -135,10 +139,13 @@ const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN demo TEXT;
    UPDATE cards SET demo = json_extract(detail, '$.demo') WHERE need = 'demo' AND json_extract(detail, '$.demo') IS NOT NULL;`,
   `ALTER TABLE cards ADD COLUMN archived_at TEXT;`,
+  // ideas are discussed before they are planned; a spike prototypes one and never lands
+  `ALTER TABLE cards ADD COLUMN idea TEXT;
+   ALTER TABLE cards ADD COLUMN spike_of TEXT REFERENCES cards(id);`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'spike_of'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -161,6 +168,7 @@ export type RowUpdate = Partial<
     | 'pr'
     | 'demo'
     | 'archived_at'
+    | 'idea'
   >
 >;
 
@@ -216,8 +224,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, spike_of, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $spike_of, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -235,6 +243,8 @@ export class Store {
           plan_ref: r.plan_ref ?? null,
           from_id: r.from_id ?? null,
           repo: r.repo ?? null,
+          idea: r.idea ?? null,
+          spike_of: r.spike_of ?? null,
           now: now(),
         });
         return id;
