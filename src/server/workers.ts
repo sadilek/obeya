@@ -207,7 +207,9 @@ export class Workers {
       return;
     }
     const row = this.o.board.row(cardId);
-    this.launch(cardId, text, row.session_id ?? undefined);
+    if (row.session_id) return this.launch(cardId, text, row.session_id);
+    // no session to resume (it never reported one): a new one needs the card first
+    this.launch(cardId, `${this.briefing(this.card(cardId), row.branch ?? '')}\n\n${text}`);
   }
 
   private end(cardId: string) {

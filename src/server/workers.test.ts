@@ -191,6 +191,17 @@ describe('workers', () => {
     expect(state(p.id)).toBe('planned');
   });
 
+  test('a delivery to a worker that never reported a session starts one with the card', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'Q?' });
+    workers.shutdown();
+    workers.answer(c.id, 'A');
+    expect(runtime.last.spec.resume).toBeUndefined();
+    expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
+    expect(runtime.last.inbox[0]).toContain('Answer to your question');
+  });
+
   test('after a restart a working card resumes its session; a delivery to an ended session resumes it', () => {
     const c = manual();
     workers.start(c.id);
