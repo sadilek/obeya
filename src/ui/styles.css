@@ -202,12 +202,21 @@ textarea.p-body:focus { border-color: var(--muted); }
 .cols section { background: var(--chip); border-radius: 12px; padding: 12px 16px; font-size: 13px; }
 .cols h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .cols ul { margin: 0; padding-left: 18px; } .cols li { margin: 3px 0; }
-.question.brief { border-color: var(--idea); background: color-mix(in srgb, var(--idea) 6%, transparent); max-height: 300px; overflow: auto; }
+.idea-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; margin-top: 16px;
+  height: min(600px, calc(100vh - 370px)); }
+.idea-brief { overflow: auto; min-height: 0; padding-right: 4px; }
+.idea-brief .question.brief { margin-top: 0; max-width: none; }
+.idea-talk { display: flex; flex-direction: column; min-height: 0; }
+.idea-talk .p-h { margin-top: 0; }
+.idea-talk .talk { flex: 1; min-height: 0; max-height: none; max-width: none; }
+.idea-talk .composer { margin-top: 10px; max-width: none; }
+.question.brief { border-color: var(--idea); background: color-mix(in srgb, var(--idea) 6%, transparent); }
 .question.brief .p-lead { margin-top: 6px; font-size: 14px; }
 .question.brief .p-list { margin-top: 4px; }
-.talk { background: var(--chip); border-radius: 12px; padding: 12px 14px; max-width: 80ch; max-height: 360px; overflow: auto;
+.talk { background: var(--chip); border-radius: 12px; padding: 12px 14px; overflow: auto;
   display: flex; flex-direction: column; gap: 8px; }
-.talk .msg { background: var(--card); border-radius: 10px; padding: 8px 12px; max-width: 90%; box-shadow: var(--shadow); }
+.talk .msg { background: var(--card); border-radius: 10px; padding: 8px 12px; max-width: 92%; box-shadow: var(--shadow); flex: none; }
+.talk .msg .p-lead { overflow-wrap: anywhere; }
 .talk .msg .p-lead { margin-top: 2px; font-size: 14px; }
 .talk .msg .p-list { margin-top: 4px; font-size: 13.5px; }
 .talk .msg .who { font-size: 11px; font-weight: 600; color: var(--idea); }

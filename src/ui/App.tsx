@@ -642,8 +642,8 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
  */
 function panelRect(i: Item, inner: HTMLElement) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
-  // a demo gets the room of the mock's demo panel
-  const demo = i.state === 'waiting' && i.need === 'demo';
+  // a demo gets the room of the mock's demo panel, and so does an idea's brief beside its conversation
+  const demo = (i.state === 'waiting' && i.need === 'demo') || i.state === 'idea';
   const W = Math.min(demo ? 1120 : tall ? 980 : 900, innerWidth - 80);
   inner.style.width = `${W}px`;
   const pad = getComputedStyle(inner);
