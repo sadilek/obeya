@@ -56,6 +56,8 @@ export const t = {
   stopped: 'Agent angehalten.',
   queue: {
     checking: 'Koordinator prüft',
+    cutting: 'Koordinator teilt auf',
+    cuttingLong: 'Der Koordinator schneidet die Karte in Pakete, die parallel laufen können. Sie ersetzen die Karte.',
     waiting: 'In der Warteschlange',
     checkingLong: 'Der Koordinator prüft, ob die Karte mit laufender Arbeit kollidiert.',
     behind: (titles: string[]) => `Wartet auf ${titles.map((x) => `„${x}“`).join(', ')}.`,
@@ -65,8 +67,17 @@ export const t = {
     dequeued: 'Aus der Warteschlange genommen.',
   },
   scope: 'Voraussichtlich betroffen',
+  split: 'Aufteilen',
   empty: 'Noch keine Karten. Doppelklick auf die Fläche legt eine an.',
 };
 
 export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue }) =>
-  i.queue ? ('checking' in i.queue ? t.queue.checking : t.queue.waiting) : i.state === 'waiting' && i.need ? t.need[i.need] : t.state[i.state];
+  i.queue
+    ? 'checking' in i.queue
+      ? t.queue.checking
+      : 'cutting' in i.queue
+        ? t.queue.cutting
+        : t.queue.waiting
+    : i.state === 'waiting' && i.need
+      ? t.need[i.need]
+      : t.state[i.state];

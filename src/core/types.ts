@@ -47,7 +47,7 @@ export interface Item {
   queue?: Queue;
 }
 
-export type Queue = { checking: true } | { behind: string[]; reason: string };
+export type Queue = { checking: true } | { cutting: true } | { behind: string[]; reason: string };
 
 /** One line in a card's log. */
 export interface CardEvent {
@@ -99,6 +99,8 @@ export type CardAction =
   /** Start a queued card although it may collide. */
   | { action: 'force' }
   | { action: 'dequeue' }
+  /** Let the Koordinator cut the card into packages that can run in parallel. */
+  | { action: 'split' }
   | { action: 'accept' }
   | { action: 'dismiss' };
 
