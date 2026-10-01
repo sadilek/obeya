@@ -2,12 +2,14 @@
 // The owner and the agent talk on the card; the agent keeps the idea's brief, which is what
 // remains of the conversation: whoever opens the card later reads the brief, not the talk.
 
+import { basename } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
 import type { Item } from '../core/types';
 import { decisionLog } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
+import { imageNote } from './images';
 import { describeTool } from './workers';
 
 export interface ExplorerOptions {
@@ -24,7 +26,7 @@ export interface ExplorerOptions {
 interface Live {
   session: AgentSession;
   /** Messages that arrived during a turn; they go in together once it ends. */
-  queue: string[];
+  queue: { text: string; images: string[] }[];
   replied: boolean;
   lastText: string;
   /** The owner spoke: the reply is summed up aloud. */
@@ -36,18 +38,18 @@ export class Explorers {
 
   constructor(private o: ExplorerOptions) {}
 
-  /** The owner says something about the idea; a parked or dropped idea is open again. */
-  discuss(cardId: string, text: string, spoken = false) {
+  /** The owner says something about the idea, maybe with screenshot files; a parked or dropped idea is open again. */
+  discuss(cardId: string, text: string, spoken = false, images: string[] = []) {
     const card = this.idea(cardId);
     const idea = this.o.board.idea(cardId);
     if (idea.status !== 'open') {
       this.o.board.setIdea(cardId, { status: 'open' });
       this.o.board.log(cardId, 'state', 'owner', 'Idee wieder aufgenommen.');
     }
-    this.o.board.log(cardId, 'talk', 'owner', text);
+    this.o.board.log(cardId, 'talk', 'owner', text, undefined, images.map((f) => basename(f)));
     this.o.board.setIdea(cardId, { yourTurn: false });
-    this.o.onOwnerInput?.(card, text);
-    this.send(card, `The owner says:\n\n${text}`, spoken);
+    if (text) this.o.onOwnerInput?.(card, text);
+    this.send(card, `The owner says:\n\n${text}${imageNote(images)}`, spoken, images);
   }
 
   /** Obeya tells the agent something the owner did not say (a spike's result). */
@@ -80,19 +82,19 @@ export class Explorers {
     this.live.clear();
   }
 
-  private send(card: Item, message: string, spoken: boolean) {
+  private send(card: Item, message: string, spoken: boolean, images: string[] = []) {
     const live = this.live.get(card.id);
     if (live) {
-      live.queue.push(message);
+      live.queue.push({ text: message, images });
       live.speak ||= spoken;
       return;
     }
     const row = this.o.board.row(card.id);
     this.o.board.setIdea(card.id, { thinking: true });
-    this.launch(card, row.session_id ? message : `${this.briefing(card)}\n\n${message}`, row.session_id ?? undefined, spoken);
+    this.launch(card, row.session_id ? message : `${this.briefing(card)}\n\n${message}`, row.session_id ?? undefined, spoken, images);
   }
 
-  private launch(card: Item, message: string, resume: string | undefined, speak: boolean) {
+  private launch(card: Item, message: string, resume: string | undefined, speak: boolean, images: string[]) {
     const live: Live = { session: undefined!, queue: [], replied: false, lastText: '', speak };
     this.live.set(card.id, live);
     live.session = this.o.runtime.start(
@@ -105,6 +107,7 @@ export class Explorers {
         onEvent: (e) => this.onEvent(card.id, live, e),
       },
       message,
+      images,
     );
   }
 
@@ -131,7 +134,11 @@ export class Explorers {
         live.replied = false;
         live.lastText = '';
         if (live.queue.length) {
-          live.session.send(live.queue.splice(0).join('\n\n'));
+          const queued = live.queue.splice(0);
+          live.session.send(
+            queued.map((m) => m.text).join('\n\n'),
+            queued.flatMap((m) => m.images),
+          );
           return;
         }
         this.close(cardId);

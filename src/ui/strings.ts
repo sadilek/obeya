@@ -89,6 +89,8 @@ export const t = {
     workspace: 'Der Workspace für den Agenten ließ sich nicht vorbereiten (git-Fehler).',
     emptyText: 'Bitte zuerst einen Text eingeben.',
     unknownPreference: 'Diese Präferenz gibt es nicht mehr.',
+    imageType: 'Das ist kein Bild, das der Agent lesen kann (PNG, JPEG, GIF oder WebP).',
+    imageTooLarge: 'Das Bild ist zu groß, auch verkleinert.',
     notDone: 'Archivieren lässt sich nur eine eigene Karte, die live ist.',
     notArchived: 'Die Karte liegt nicht mehr im Archiv.',
     notIdea: 'Die Karte ist keine Idee (mehr).',
@@ -195,6 +197,14 @@ export const t = {
     spikeOf: (title: string) => `Wegwerf-Prototyp für die Idee „${title}“. Er landet nie.`,
     discard: 'Prototyp verwerfen',
     discarded: 'Prototyp verworfen; die Demo bleibt bei der Idee.',
+  },
+  shots: {
+    attach: 'Screenshot anhängen – oder mit ⌘V einfügen oder hineinziehen',
+    remove: 'Entfernen',
+    enlarge: 'Vergrößern',
+    close: 'Schließen (Esc)',
+    alt: 'Screenshot',
+    uploading: 'lädt …',
   },
   empty: 'Noch keine Karten. Doppelklick auf die Fläche legt eine an.',
 };

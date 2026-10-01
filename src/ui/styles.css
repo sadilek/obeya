@@ -252,6 +252,29 @@ textarea.p-body:focus { border-color: var(--muted); }
 .composer textarea { flex: 1; resize: vertical; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); outline: none; font-size: 14px; }
 .composer textarea:focus { border-color: var(--muted); }
+/* screenshots: thumbnails above the text, a button in its corner; dropping one marks the field */
+.composer { flex-wrap: wrap; }
+.composer .c-field { flex: 1; position: relative; display: flex; min-width: 0; }
+.composer .c-field textarea { padding-right: 38px; }
+.composer.dropping textarea { border-color: var(--working); border-style: dashed; background: color-mix(in srgb, var(--working) 6%, var(--card)); }
+.c-attach { position: absolute; right: 6px; bottom: 6px; border: 0; background: none; color: var(--muted); padding: 4px; border-radius: 6px; cursor: pointer; line-height: 0; }
+.c-attach:hover { color: var(--ink); background: var(--chip); }
+.c-shots { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+.c-shot { position: relative; height: 64px; min-width: 64px; border-radius: 8px; border: 1px solid var(--line); background: var(--chip);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); }
+.c-shot img { height: 100%; max-width: 160px; object-fit: cover; border-radius: 7px; display: block; }
+.c-shot button { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
+.c-shot.loading { padding: 0 10px; }
+.c-error { flex-basis: 100%; margin: 0; }
+.shots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.shot { border: 1px solid var(--line); border-radius: 8px; padding: 0; background: var(--card); cursor: zoom-in; line-height: 0; }
+.shot img { height: 88px; max-width: 240px; object-fit: cover; border-radius: 7px; display: block; }
+.talk .msg.by-owner .shots { justify-content: flex-end; }
+.lightbox { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 12, 8, .78); display: flex; align-items: center; justify-content: center;
+  padding: 4vh 4vw; cursor: zoom-out; animation: fade .15s ease-out; }
+.lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: var(--lift); background: #fff; }
+@keyframes fade { from { opacity: 0; } }
 .btn:disabled { opacity: .45; cursor: default; filter: none; }
 .log { font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--chip); border-radius: 10px; padding: 10px 14px;
   max-height: 300px; overflow: auto; }

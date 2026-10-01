@@ -1,7 +1,9 @@
 // Agent sessions behind a small interface, so the orchestration can be tested without a model.
 
 import { createSdkMcpServer, type PermissionMode, query, type SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk';
+import { readFileSync } from 'node:fs';
 import type { z } from 'zod';
+import { mediaType } from './images';
 
 export interface AgentTool {
   name: string;
@@ -36,8 +38,8 @@ export interface AgentSpec {
 }
 
 export interface AgentSession {
-  /** Sends a user message; the session takes it at the next opportunity. */
-  send(text: string): void;
+  /** Sends a user message, with images (files) after the text; the session takes it at the next opportunity. */
+  send(text: string, images?: string[]): void;
   /** Ends the session after the current step. */
   close(): void;
   /** Settles when the session has ended. */
@@ -46,16 +48,16 @@ export interface AgentSession {
 
 export interface AgentRuntime {
   /** Without a first message the agent starts up and waits, so a later `send` skips the start-up. */
-  start(spec: AgentSpec, firstMessage?: string): AgentSession;
+  start(spec: AgentSpec, firstMessage?: string, images?: string[]): AgentSession;
 }
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
 
 /** Runs agents through the Claude Agent SDK, on the Claude Code login of the machine. */
 export const sdkRuntime: AgentRuntime = {
-  start(spec, firstMessage) {
+  start(spec, firstMessage, images) {
     const inbox = new Inbox();
-    if (firstMessage !== undefined) inbox.push(firstMessage);
+    if (firstMessage !== undefined) inbox.push(firstMessage, images);
     const abort = new AbortController();
     const obeya = createSdkMcpServer({
       name: 'obeya',
@@ -101,7 +103,7 @@ export const sdkRuntime: AgentRuntime = {
       }
     })();
     return {
-      send: (text) => inbox.push(text),
+      send: (text, images) => inbox.push(text, images),
       close: () => {
         inbox.end();
         abort.abort();
@@ -118,12 +120,20 @@ function cleanEnv(): Record<string, string | undefined> {
 
 /** The session's input: an async stream of user messages that stays open until ended. */
 class Inbox implements AsyncIterable<SDKUserMessage> {
-  private queue: string[] = [];
+  private queue: SDKUserMessage['message']['content'][] = [];
   private wake: (() => void) | null = null;
   private ended = false;
 
-  push(text: string) {
-    this.queue.push(text);
+  push(text: string, images: string[] = []) {
+    // read now: the files may be gone by the time the session takes the message
+    this.queue.push(
+      images.length
+        ? [
+            { type: 'text', text },
+            ...images.map((f) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType(f), data: readFileSync(f).toString('base64') } })),
+          ]
+        : text,
+    );
     this.wake?.();
   }
 

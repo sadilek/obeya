@@ -104,6 +104,8 @@ export interface CardEvent {
   text: string;
   /** Set on an error the UI words itself; `text` then holds the server's technical detail. */
   code?: ErrorCode;
+  /** Screenshots the owner attached (ids under `/api/c/<canvas>/images/`). */
+  images?: string[];
 }
 
 export interface CanvasInfo {
@@ -177,8 +179,9 @@ export interface CardPatch {
 export type CardAction =
   | { action: 'start' }
   | { action: 'stop' }
-  | { action: 'message'; text: string }
-  | { action: 'answer'; text: string }
+  /** `images`: ids of screenshots uploaded before (`POST /api/c/<canvas>/images`); with them the text may be empty. */
+  | { action: 'message'; text: string; images?: string[] }
+  | { action: 'answer'; text: string; images?: string[] }
   | { action: 'approve' }
   /** Start a queued card although it may collide. */
   | { action: 'force' }
@@ -188,7 +191,7 @@ export type CardAction =
   | { action: 'accept' }
   | { action: 'dismiss' }
   /** Ideas: talk to the exploration agent; `spoken` gets a short spoken summary back. */
-  | { action: 'discuss'; text: string; spoken?: boolean }
+  | { action: 'discuss'; text: string; spoken?: boolean; images?: string[] }
   /** Ideas: the brief becomes the card's task and the card is planned. */
   | { action: 'build' }
   /** Ideas: a planned card whose worker writes a plan doc from the brief. */
@@ -219,6 +222,9 @@ export type ErrorCode =
   | 'workspace'
   | 'emptyText'
   | 'unknownPreference'
+  /** An uploaded screenshot is no image the agents read, or too large. */
+  | 'imageType'
+  | 'imageTooLarge'
   /** Only a finished card of the owner's goes into the archive. */
   | 'notDone'
   | 'notArchived'

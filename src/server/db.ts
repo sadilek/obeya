@@ -71,7 +71,7 @@ export interface DecisionRow {
 }
 
 // Append only; each entry runs once, tracked in `PRAGMA user_version`.
-const MIGRATIONS = [
+export const MIGRATIONS = [
   `CREATE TABLE canvases (
      id TEXT PRIMARY KEY,
      name TEXT NOT NULL,
@@ -166,6 +166,8 @@ const MIGRATIONS = [
   `UPDATE cards SET idea = json_set(idea, '$.yourTurn', json('true'))
    WHERE state = 'idea' AND idea IS NOT NULL
      AND (SELECT author FROM events WHERE card_id = cards.id AND kind = 'talk' ORDER BY id DESC LIMIT 1) = 'explorer';`,
+  // screenshots the owner attached to a message (a JSON list of image ids)
+  `ALTER TABLE events ADD COLUMN images TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -289,16 +291,16 @@ export class Store {
   addEvent(e: Omit<CardEvent, 'id' | 'at'>): CardEvent {
     const at = now();
     const { id } = this.db
-      .query('INSERT INTO events (card_id, at, kind, author, text, code) VALUES ($cardId, $at, $kind, $author, $text, $code) RETURNING id')
-      .get({ ...e, code: e.code ?? null, at }) as { id: number };
+      .query('INSERT INTO events (card_id, at, kind, author, text, code, images) VALUES ($cardId, $at, $kind, $author, $text, $code, $images) RETURNING id')
+      .get({ ...e, code: e.code ?? null, images: e.images?.length ? JSON.stringify(e.images) : null, at }) as { id: number };
     return { ...e, id, at };
   }
 
   events(cardId: string, limit = 500): CardEvent[] {
     const rows = this.db
-      .query('SELECT id, card_id AS cardId, at, kind, author, text, code FROM events WHERE card_id = $c ORDER BY id DESC LIMIT $limit')
-      .all({ c: cardId, limit }) as (CardEvent & { code: CardEvent['code'] | null })[];
-    return rows.reverse().map(({ code, ...e }) => (code ? { ...e, code } : e));
+      .query('SELECT id, card_id AS cardId, at, kind, author, text, code, images FROM events WHERE card_id = $c ORDER BY id DESC LIMIT $limit')
+      .all({ c: cardId, limit }) as (Omit<CardEvent, 'images'> & { code: CardEvent['code'] | null; images: string | null })[];
+    return rows.reverse().map(({ code, images, ...e }) => ({ ...e, ...(code ? { code } : {}), ...(images ? { images: JSON.parse(images) as string[] } : {}) }));
   }
 
   // ---------------------------------------------------------------- workspaces

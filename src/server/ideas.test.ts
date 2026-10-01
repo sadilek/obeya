@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
-import { Store } from './db';
+import { MIGRATIONS, Store } from './db';
 import { FakeRuntime, type FakeSession } from './testing';
 import { git } from './workspaces';
 
@@ -107,6 +107,20 @@ describe('an idea', () => {
     expect(later.inbox).toEqual(['The owner says:\n\nDrittens.']);
   });
 
+  test('screenshots the owner adds reach the agent and stay in the conversation', () => {
+    const i = idea();
+    const id = canvas.images.save(new Uint8Array([1, 2, 3]), 'image/png');
+    canvas.act(i.id, { action: 'discuss', text: 'So sieht die Seite heute aus', images: [id] });
+    const s = explorer();
+    expect(s.images[0]).toEqual([canvas.images.path(id)!]);
+    expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'talk', author: 'owner', images: [id] });
+    // a second one during the turn waits, with its screenshot, for the turn to end
+    const id2 = canvas.images.save(new Uint8Array([4]), 'image/png');
+    canvas.act(i.id, { action: 'discuss', text: '', images: [id2] });
+    turn(s, 'Verstehe.');
+    expect(s.images[1]).toEqual([canvas.images.path(id2)!]);
+  });
+
   test('a spoken message gets a spoken summary; a turn without reply still answers with its words', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Was kostet das?', spoken: true });
@@ -142,7 +156,7 @@ describe('an idea', () => {
 
   test('an idea whose agent had the last word before the update waits for the owner', () => {
     const path = join(dir, 'obeya.db');
-    let s = new Store(path);
+    const s = new Store(path);
     s.ensureCanvas('c', 'C');
     const idea = JSON.stringify({ status: 'open', brief: '' });
     const [answered, asked] = s.insert([0, 1].map((y) => ({ canvas_id: 'c', kind: 'feature' as const, state: 'idea' as const, idea, x: 0, y })));
@@ -151,10 +165,8 @@ describe('an idea', () => {
     say(answered!.id, 'explorer');
     say(asked!.id, 'explorer');
     say(asked!.id, 'owner');
-    const { user_version } = s.db.query('PRAGMA user_version').get() as { user_version: number };
-    s.db.run(`PRAGMA user_version = ${user_version - 1}`);
-    s.db.close();
-    s = new Store(path);
+    // the migration that came with it, as it ran on a store from before
+    s.db.run(MIGRATIONS.find((m) => m.includes('yourTurn'))!);
     const yourTurn = (id: string) => (JSON.parse(s.card(id)!.idea!) as { yourTurn?: boolean }).yourTurn;
     expect(yourTurn(answered!.id)).toBe(true);
     expect(yourTurn(asked!.id)).toBeUndefined();
