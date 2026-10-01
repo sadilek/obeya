@@ -140,6 +140,7 @@ export const t = {
     add: 'Hinzufügen',
     addPlaceholder: 'Neue Präferenz',
     undone: 'zurückgenommen',
+    lookingUp: 'schlägt nach …',
   },
   archive: {
     button: 'Archiv',

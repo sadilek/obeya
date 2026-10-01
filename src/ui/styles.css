@@ -319,7 +319,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 .tell { margin: 4px 0 6px; }
 .log.talk { max-height: 240px; margin: 4px 0 8px; }
 .log.talk .exchange + .exchange { margin-top: 6px; }
-.log.talk .by-koordinator .who { color: var(--working); }
+.log.talk .by-koordinator .who, .log.talk .by-project .who { color: var(--working); }
+.log.talk .t.later { visibility: hidden; }
 .log.talk .undone .by-koordinator .x { text-decoration: line-through; text-decoration-color: var(--muted); }
 .log.talk .undone .by-koordinator .x .hint { text-decoration: none; display: inline-block; }
 

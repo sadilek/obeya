@@ -357,12 +357,13 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     }
     else fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8)), 700);
   }, [snapshot]);
-  // an idea's agent sums up its reply aloud, for the owner who has the idea open
+  // an idea's agent sums up its reply aloud, for the owner who has the idea open; an answer the
+  // Koordinator looked up is heard wherever the owner is
   useEffect(
     () =>
       onSpeak((cardId, audio) => {
         const f = focusRef.current;
-        if (f?.type === 'card' && f.id === cardId) play(audio);
+        if (!cardId || (f?.type === 'card' && f.id === cardId)) play(audio);
       }),
     [],
   );

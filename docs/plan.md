@@ -172,13 +172,24 @@ the owner's language (`src/core/locale.ts`).
   accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, spike, park, drop), checked
   against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. A reply answers questions too
-  ("Was ist seit gestern passiert?"). One confirmation covers all actions; they run in order a few
+  ("Was ist seit gestern passiert?"), as far as the cards and their history answer them. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
   confirmation, since the conversation shows it. The same commands can be typed in the
   Koordinator's sheet. What the owner said and the Koordinator's confirmation go into the log of
   the card that was open, and "Zurückgenommen." when taken back; with no card open, the sheet
   shows the conversation. Talk to an open idea is the exception: its conversation already holds it.
+- **Looked-up questions** — a question that needs reading ("Was würde der Agent hier machen, wenn
+  ich starte?", what the plan says, how something works) the quick turn does not answer: it
+  acknowledges it ("Ich schaue im Plan nach.") and passes it on. A question about a project or one
+  of its workstreams goes to the project agent, in the project's session; any other to a thorough
+  read-only Koordinator turn (effort medium) on the card's repository. Both get the question, the
+  card's state and log, and the task its worker gets at the start (`Workers.startBrief`), from
+  which, the plan doc and the repository's instructions they derive the worker's steps. The answer
+  comes 10–30 s later: spoken in short wherever the owner is, in full in the log of the card that
+  was open, else in the Koordinator's sheet; what the agent reads shows on the open card meanwhile.
+  The Koordinator hears the answer with the next command, and it is part of its stored memory. A
+  question still open at a restart is looked up again.
 - **Voice latency** — pressing Space (or focusing the typed command) gets everything ready while
   the owner speaks: the Whisper sidecar starts and loads its model, the speech sidecar starts, and
   the Koordinator's session starts up if it is not running (one that fails is replaced once, for
@@ -215,7 +226,8 @@ branch, status line, open question or review summary, proposal source, estimated
 when archived, an idea's status and brief, a spike's idea),
 card events (the log, with an error code where the UI words it and the owner's screenshots), workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
-reply, the open card, whether it was taken back), per-canvas settings (the Koordinator's session for questions);
+reply, the open card, whether it was taken back; a looked-up question, the card it is about, its
+answer and who gave it), per-canvas settings (the Koordinator's session for questions);
 later PR links.
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`).

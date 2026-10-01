@@ -3,6 +3,7 @@
 
 import { join, resolve } from 'node:path';
 import { pickAdapter } from '../adapters';
+import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardAction, Item, RepoRef } from '../core/types';
@@ -64,6 +65,7 @@ export class CanvasRuntime {
   readonly explorers: Explorers;
   /** Screenshots the owner attaches to what they write. */
   readonly images: Images;
+  readonly answers: Answers;
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];
 
@@ -161,13 +163,24 @@ export class CanvasRuntime {
       onOwnerInput: (card, text) => koordinator.learn(card, 'idea', text),
     });
     this.explorers.resumeAll();
+    this.answers = new Answers({
+      board,
+      runtime: deps.runtime,
+      preferences,
+      pathFor: (card) => (card ? this.repoOf(card) : this.repos[0]!).info.path,
+      startBrief: (card) => this.repoOf(card).workers.startBrief(card),
+      projectAgent: (project) => this.repoOf(project).projectAgents,
+      onAnswer: (question, answer) => this.commander.tell(`The answer you looked up for the owner's question „${question}“ came in and was shown to them: ${answer.slice(0, 1500)}`),
+    });
     this.commander = new Commander({
       board,
       runtime: deps.runtime,
       cwd: this.repos[0]!.info.path,
       execute: (c) => this.run(c),
+      lookUp: (talk) => this.answers.lookUp(talk),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
+    this.answers.resume();
   }
 
   get id() {

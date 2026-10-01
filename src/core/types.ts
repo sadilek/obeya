@@ -141,6 +141,11 @@ export interface Talk {
   cardId?: string;
   /** The owner took the actions back. */
   undone?: boolean;
+  /** A question the Koordinator looks up; its answer comes later. */
+  question?: string;
+  answer?: string;
+  /** Who answered: the Koordinator, or the project agent of the workstream asked about. */
+  answerBy?: 'koordinator' | 'project';
 }
 
 /** A lasting preference of the owner, learned by the Koordinator or written by the owner. */
@@ -248,4 +253,4 @@ export type ServerMessage =
   /** First on every connection: which server process this is, so a page from an earlier one reloads. */
   | { type: 'hello'; server: string }
   /** A short spoken summary of a card's agent (an idea's reply), to play while the card is open. */
-  | { type: 'speak'; cardId: string; audio: string };
+  | { type: 'speak'; cardId?: string; audio: string };
