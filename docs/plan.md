@@ -172,10 +172,12 @@ the owner's language (`src/core/locale.ts`).
   loaded and transcribes in German with the canvas's titles as vocabulary
   (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). A quick, low-effort Koordinator turn reads
   the transcript as speech that may be misheard and either acts or replies. Acting takes one or
-  more actions from one sentence (new card, new idea, start, note, answer, feedback, approve,
-  accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, spike, park, drop), checked
-  against the cards' states in the turn, so an action that does not fit (a note to a card no agent
-  works on) goes back to the Koordinator, which may reply instead. A reply answers questions too
+  more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
+  approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, spike, park, drop),
+  checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
+  works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
+  others starts it now despite the overlap, like "Trotzdem starten"; it sees which cards a queued
+  one waits for, so "starte alle wartenden Karten" works. A reply answers questions too
   ("Was ist seit gestern passiert?"), as far as the cards and their history answer them. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no

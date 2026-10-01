@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import type { Item } from '../core/types';
+import type { Item, Queue } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Moment } from './db';
 import type { AgentRuntime, AgentSession } from './runtime';
@@ -10,7 +10,8 @@ import type { AgentRuntime, AgentSession } from './runtime';
 export type Command =
   | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string }
   | { do: 'newIdea'; title: string; body: string; repo?: string }
-  | { do: 'start' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
+  /** `force` starts a card that waits behind others now, despite the overlap. */
+  | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'; card: string; text: string };
 
 export interface Heard {
@@ -70,6 +71,9 @@ type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp };
 /** The actions `act` takes, as the Koordinator names them. */
 const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'spike', 'park', 'drop'] as const;
 type Action = (typeof ACTIONS)[number];
+
+/** Actions in one command, at most: "start all queued cards" may name many. */
+const MAX_ACTIONS = 20;
 
 /** How far back a fresh session's memory reaches. */
 const REMEMBERED_EXCHANGES = 20;
@@ -199,7 +203,7 @@ export class Commander {
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
             'Actions (card: the tag of the card, for all but new_card):',
             `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}.`,
-            '- start: start work on a planned card.',
+            "- start: start work on a planned card. On a queued card (waiting behind cards in progress) it starts it now, despite the overlap; a card the Koordinator is still checking starts by itself unless it collides.",
             "- note: text to the agent working on a card (working, in PR, or waiting); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
             "- answer: text as the answer to the card's open question.",
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
@@ -223,7 +227,7 @@ export class Commander {
                 }),
               )
               .min(1)
-              .max(6),
+              .max(MAX_ACTIONS),
             confirm: z.string(),
           },
           run: ({ actions, confirm }) => {
@@ -318,7 +322,9 @@ export class Commander {
         return { do: a.do, card: card.id, text: a.text.trim() };
       }
       case 'start':
-        if (card.state !== 'planned' || card.queue || card.kind === 'project') return `only a planned card that is not queued can be started (${is}${card.queue ? ', queued' : ''})`;
+        if (card.state !== 'planned' || card.kind === 'project') return `only a planned card can be started (${is})`;
+        if (card.queue && 'behind' in card.queue) return { do: 'force', card: card.id };
+        if (card.queue) return `the Koordinator is still ${'cutting' in card.queue ? 'splitting' : 'checking'} the card; it starts by itself unless it collides`;
         break;
       case 'approve':
         if (!reviewable) return `the card does not wait for review (${is})`;
@@ -392,7 +398,7 @@ export class Commander {
     };
     const describe = (i: Item) => {
       const project = i.parent ? items.find((p) => p.id === i.parent) : undefined;
-      const state = i.queue ? 'queued' : i.need ? `${i.state}: ${i.need}` : i.idea && i.idea.status !== 'open' ? `idea: ${i.idea.status}` : i.state;
+      const state = i.queue ? queued(i.queue, items) : i.need ? `${i.state}: ${i.need}` : i.idea && i.idea.status !== 'open' ? `idea: ${i.idea.status}` : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
       return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question: ${i.question.text}` : ''}`;
     };
@@ -470,6 +476,14 @@ const STEP: Partial<Record<Moment['kind'], string>> = {
   hint: "the owner's note: ",
   error: 'error: ',
 };
+
+/** A queued card's state as the Koordinator reads it. */
+function queued(q: Queue, items: Item[]): string {
+  if ('checking' in q) return 'queued: the Koordinator checks it for overlaps';
+  if ('cutting' in q) return 'queued: the Koordinator splits it';
+  const titles = q.behind.map((id) => `"${items.find((i) => i.id === id)?.title ?? id}"`).join(', ');
+  return `queued behind ${titles}`;
+}
 
 const clip = (text: string, n: number) => {
   const flat = text.replace(/\s+/g, ' ').trim();

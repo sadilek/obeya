@@ -101,6 +101,28 @@ describe('the Koordinator remembers', () => {
     expect(await heard).toEqual({ confirm: '„Export“ ist seit gestern auf main.' });
   });
 
+  test('starting a queued card starts it now despite the overlap; one still being checked starts by itself', async () => {
+    const running = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    board.work(running.id, { state: 'working' });
+    const behind = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
+    board.work(behind.id, { queue: JSON.stringify({ behind: [running.id], reason: 'beide ändern export.ts' }) });
+    const checking = board.create({ kind: 'bugfix', title: 'Login', x: 0, y: 0 });
+    board.work(checking.id, { queue: JSON.stringify({ checking: true }) });
+    const k = commander();
+    const heard = k.hear('starte alle wartenden Karten', {});
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain('K2 [queued behind "Export"] feature "Archiv"');
+    expect(s.inbox[0]).toContain('K1 [queued: the Koordinator checks it for overlaps] bugfix "Login"');
+    const refused = await s.call('act', { actions: [{ do: 'start', card: 'K2' }, { do: 'start', card: 'K1' }], confirm: 'Beide starten.' });
+    expect(refused).toContain('action 2 (start on K1): the Koordinator is still checking the card');
+    s.call('act', { actions: [{ do: 'start', card: 'K2' }], confirm: '„Archiv“ startet trotz Überschneidung.' });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'force', card: behind.id }]);
+  });
+
   test("the exchange goes into the open card's log; without an open card into the sheet", async () => {
     const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'working' });
