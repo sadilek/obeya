@@ -5,7 +5,7 @@ Writes JSON lines on stdout: {"id": ..., "text": "..."} or {"id": ..., "error": 
 Audio is decoded by ffmpeg, so any format the browser records (webm/opus, wav) works. The model is
 loaded at start, before "ready". Each recording's length and level go to stderr (the server's log), so
 a transcript that went wrong can be told from a recording without audible speech. A recording whose
-peak stays below QUIET_DBFS gives an empty text without Whisper.
+peak stays below QUIET_DBFS, or that holds no audio at all, gives an empty text without Whisper.
 """
 
 import json
@@ -31,7 +31,13 @@ def main() -> None:
             continue
         job = json.loads(line)
         try:
-            audio = np.array(load_audio(job["path"]))
+            try:
+                audio = np.array(load_audio(job["path"]))
+            except RuntimeError as e:
+                # ffmpeg's word for a recording without a single audio frame (a microphone that never started)
+                if "End of file" not in str(e):
+                    raise
+                audio = np.zeros(0, dtype=np.float32)
             peak = np.abs(audio).max(initial=0)
             quiet = peak < 10 ** (QUIET_DBFS / 20)
             print(f"whisper: {len(audio) / SAMPLE_RATE:.1f} s, peak {dbfs(peak)}, "

@@ -229,7 +229,7 @@ the owner's language (`src/core/locale.ts`).
   nichts gehört.“, a second loop „Das habe ich nicht verstanden.“; the Koordinator gets neither
   to guess from. The log has each recording's length and level next to the transcript. A
   recording whose peak stays below -60 dBFS (a microphone that delivers nothing; room noise is
-  about -40 to -55, speech far above) is „Ich habe nichts gehört.“ without Whisper. While the
+  about -40 to -55, speech far above), or that holds no audio frame at all, is „Ich habe nichts gehört.“ without Whisper. While the
   owner holds the key, a level that stays that flat for 1.5 s shows „Das Mikrofon liefert keinen
   Ton.“ under the mic. The first press after a page load opens the microphone (about 0.2–0.3 s;
   the real microphone delivers sound at once, after a reload too); let go before it is open,
