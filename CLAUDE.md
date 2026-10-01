@@ -23,8 +23,6 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
 - The Obeya instance for this repo runs on port 4417 with `~/.obeya`. It restarts itself once
   `main` moves to commits that change code, a commit of yours included (workers resume, the page
   reloads); docs-only commits leave it running. Keep tests off it.
-- `design/mock/` is the interaction reference (camera, unfold, voice). It is a design artifact,
-  not code to import.
 - No project-specific logic in the core: anything OKE-specific belongs in the OKE repo adapter.
 - UI strings live in one place, `src/ui/strings.ts` (German first, English later).
 - Demo videos and voice recordings never go into git.

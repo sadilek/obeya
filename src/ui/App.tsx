@@ -1,4 +1,4 @@
-// The canvas: camera, drag, unfold-in-place and the plan sheet, grown from design/mock/.
+// The canvas: camera, drag, unfold-in-place and the plan sheet.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
