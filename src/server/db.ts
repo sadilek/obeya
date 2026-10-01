@@ -33,7 +33,7 @@ export interface CardRow {
   from_id: string | null;
   /** JSON: the Koordinator's estimate of the files the card changes (`{ files, reason }`). */
   scope: string | null;
-  /** JSON: set while the Koordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`). */
+  /** JSON: set while the Koordinator decides (`{ checking: true }`) or the card waits (`{ behind, reason }`), with `since`. */
   queue: string | null;
   /** JSON: the card's pull request once approval opened the PR phase (`PrState`). */
   pr: string | null;

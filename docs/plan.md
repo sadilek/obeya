@@ -234,7 +234,8 @@ the owner's language (`src/core/locale.ts`).
   goes back to its worker on landing. A card likely to conflict waits, with the reason (one that
   starts says which files it shares and why that is fine); once what it waits for has landed or
   stopped it starts, or, while other work runs that may have started meanwhile, it is judged
-  again — the owner can start it anyway. On the canvas, a planned card and one waiting in the queue show a play button
+  again — the owner can start it anyway. Cards whose turn comes together go in the order they came
+  to the Koordinator, the one waiting longest first. On the canvas, a planned card and one waiting in the queue show a play button
   while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
   without a project, and after each owner answer, note or feedback it decides whether a lasting
