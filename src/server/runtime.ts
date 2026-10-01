@@ -118,7 +118,6 @@ export const sdkRuntime: AgentRuntime = {
   },
 };
 
-/** Obeya's own environment minus what belongs to a Claude Code session that may have started it. */
 /**
  * How many of the agent's background tasks wake it when they finish or fire: a render, a test run,
  * a watcher. The SDK marks watchers `ambient` (no activity to show), like its own housekeeping,
@@ -128,6 +127,7 @@ export function backgroundWork(tasks: { task_type: string; ambient?: boolean }[]
   return tasks.filter((t) => !t.ambient || t.task_type.startsWith('monitor')).length;
 }
 
+/** Obeya's own environment minus what belongs to a Claude Code session that may have started it. */
 function cleanEnv(): Record<string, string | undefined> {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$)/.test(k)));
 }
