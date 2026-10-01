@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { type Cam, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll } from './camera';
+import { type Cam, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView } from './camera';
 
 const view = { left: 0, top: 70, right: 1000, bottom: 800 };
 const cam: Cam = { x: 0, y: 0, s: 1 };
@@ -53,4 +53,50 @@ test('a view already beyond the limit stays put rather than jump back', () => {
   expect(edgeScroll(far, { x: 1000, y: 400 }, { x: 500, y: 400 }, view, limit, 16)).toEqual(far);
   // towards the content it scrolls as usual
   expect(edgeScroll(far, { x: 0, y: 400 }, { x: 500, y: 400 }, view, limit, 16).x).toBeGreaterThan(far.x);
+});
+
+// two cards far apart: x 0..300 and x 3000..3300, both at y 100..236
+const cards = [
+  { x: 0, y: 100, w: 300, h: 136 },
+  { x: 3000, y: 100, w: 300, h: 136 },
+];
+
+test('a view that shows some content stays where it is', () => {
+  expect(keepInView(cam, cards, view)).toEqual(cam);
+  // a corner of a card is enough
+  const corner: Cam = { x: 1000 - KEEP, y: 70 - 236 + KEEP, s: 1 };
+  expect(keepInView(corner, cards, view)).toEqual(corner);
+});
+
+test('a view panned off the content stops with a strip of the nearest card in sight', () => {
+  // far to the left of everything: the first card's left strip stays at the right edge
+  const left = keepInView({ x: 5000, y: 0, s: 1 }, cards, view);
+  expect(left.x).toBe(1000 - KEEP);
+  // far above: the cards' top strip stays at the bottom edge
+  const above = keepInView({ x: 0, y: 3000, s: 1 }, cards, view);
+  expect(above.x).toBe(0);
+  expect(above.y + 100).toBe(800 - KEEP);
+  // between the two cards, nearer the second one
+  const between = keepInView({ x: -2100, y: 0, s: 1 }, cards, view);
+  expect(between.x + 3000).toBe(1000 - KEEP);
+});
+
+test('in a corner off the content the view moves both ways, at any zoom', () => {
+  const c = keepInView({ x: 4000, y: 4000, s: 0.5 }, cards, view);
+  expect(c.s).toBe(0.5);
+  expect(c.x).toBe(1000 - KEEP);
+  // the card is 68 pixels tall at this zoom, less than the strip: all of it shows
+  expect(c.y + 100 * 0.5).toBe(800 - 68);
+});
+
+test('a card smaller than the strip is kept in whole', () => {
+  const chip = [{ x: 0, y: 0, w: 60, h: 30 }];
+  const c = keepInView({ x: -5000, y: 0, s: 1 }, chip, view);
+  expect(c.x).toBe(0);
+  expect(c.y + 30).toBe(70 + 30);
+});
+
+test('an empty canvas sets no limit', () => {
+  const far: Cam = { x: -5000, y: 9000, s: 1 };
+  expect(keepInView(far, [], view)).toEqual(far);
 });

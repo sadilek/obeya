@@ -82,6 +82,31 @@ export function edgeScroll(cam: Cam, pointer: { x: number; y: number }, from: { 
   };
 }
 
+/** Screen pixels of content the view keeps when panned or zoomed (all of a smaller card). */
+export const KEEP = 120;
+
+/**
+ * `cam`, moved by as little as it takes for `view` to show at least KEEP pixels of one of `boxes`
+ * in both directions, so panning and zooming never end on an empty view. No boxes, no limit.
+ */
+export function keepInView(cam: Cam, boxes: Bounds[], view: View): Cam {
+  // how far a box spanning lo..lo+size on screen has to move to show k of it between vlo and vhi
+  const shift = (lo: number, size: number, vlo: number, vhi: number) => {
+    const k = Math.min(KEEP, size, vhi - vlo);
+    if (lo + size < vlo + k) return vlo + k - lo - size;
+    if (lo > vhi - k) return vhi - k - lo;
+    return 0;
+  };
+  let best: { dx: number; dy: number } | null = null;
+  for (const b of boxes) {
+    const dx = shift(cam.x + b.x * cam.s, b.w * cam.s, view.left, view.right);
+    const dy = shift(cam.y + b.y * cam.s, b.h * cam.s, view.top, view.bottom);
+    if (!dx && !dy) return cam;
+    if (!best || Math.hypot(dx, dy) < Math.hypot(best.dx, best.dy)) best = { dx, dy };
+  }
+  return best ? { s: cam.s, x: cam.x + best.dx, y: cam.y + best.dy } : cam;
+}
+
 let frame = 0;
 let settle: (() => void) | null = null;
 
@@ -117,6 +142,9 @@ export function flyTo(from: Cam, to: Cam, set: (c: Cam) => void, ms = 650): Prom
     frame = requestAnimationFrame(step);
   });
 }
+
+/** Whether the camera is in a flight. */
+export const flying = () => settle !== null;
 
 /** Ends a running flight where it is; whoever awaits it continues. */
 export function stopFlight() {

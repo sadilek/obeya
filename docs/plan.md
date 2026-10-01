@@ -414,6 +414,11 @@ the repository; the copy on the project is only for the archive).
 - A card dragged to an edge of the view scrolls it that way, faster the nearer the edge, but only
   as far as the rest of the canvas reaches plus room to drop the card beside it; a card picked up
   at an edge scrolls only once the pointer moves towards it (2026-10-01).
+- Panning, scrolling and zooming stop where the view would show no card any more: a strip of the
+  nearest card (120 px, or all of a smaller one) stays in sight, so the owner never lands on an
+  empty view and pans back without the minimap. A gap between cards wider than the view is crossed
+  by the minimap. When cards go or the window shrinks and none is left in view, the camera flies
+  to the nearest; the minimap and the overview key land next to content too (2026-10-01).
 - An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
   follows its content while open.
 - Opening a card takes 300 ms: a 130 ms flight brings it to the middle, then it unfolds in 170 ms;

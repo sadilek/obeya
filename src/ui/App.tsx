@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import type { CanvasInfo, CanvasSnapshot, CardPatch, Item, PendingRestart } from '../core/types';
 import { api, ApiError, onSpeak, setCanvas, useCanvas } from './api';
-import { type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
+import { type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
@@ -78,6 +78,10 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
     return m;
   }, [items]);
   const all: Bounds = useMemo(() => unionBounds(placed.map((p) => p.b)) ?? { x: 0, y: 0, w: 1000, h: 600 }, [placed]);
+  // what the view keeps in sight: the cards, and a project only while it holds none
+  const content = useMemo(() => placed.filter(({ item }) => !kidsOf.has(item.id)).map((p) => p.b), [placed, kidsOf]);
+  const contentRef = useRef(content);
+  contentRef.current = content;
   const byId = (id: string) => itemsRef.current.find((i) => i.id === id);
   const bounds = (i: Item) => boundsOf(i, itemsRef.current);
 
@@ -85,7 +89,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
   const [cam, setCamState] = useState<Cam>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(camKey(snapshot.canvas.id)) ?? 'null');
-      if (saved && [saved.x, saved.y, saved.s].every(Number.isFinite)) return saved;
+      if (saved && [saved.x, saved.y, saved.s].every(Number.isFinite)) return keepInView(saved, content, { left: 0, top: TOP, right: innerWidth, bottom: innerHeight });
     } catch {}
     return centreOn(all, 1);
   });
@@ -105,7 +109,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
     }, 300);
     return () => clearTimeout(h);
   }, [cam, snapshot.canvas.id]);
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const onResize = () => setTick((n) => n + 1);
     addEventListener('resize', onResize);
@@ -467,7 +471,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
 
   // ---------------------------------------------------------------- pointer: pan, drag, click
   const viewportRef = useRef<HTMLDivElement>(null);
-  const panRef = useRef<{ x: number; y: number; cam: Cam } | null>(null);
+  const panRef = useRef<{ x: number; y: number } | null>(null);
   // a dragged card follows the world point it was picked up at, also while the view scrolls under it
   type Drag = { id: string; x: number; y: number; px: number; py: number; grab: Pos; start: Pos; limit: Bounds; moved: boolean; frame: number; last: number };
   const dragRef = useRef<Drag | null>(null);
@@ -477,6 +481,15 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
   const reserve = focus || kOn || aOn || cOn ? (reading && focus?.type === 'project' ? readingWidth() + 30 : SHEET_W) : 0;
   const reserveRef = useRef(reserve);
   reserveRef.current = reserve;
+  /** `c`, moved just far enough that the view outside the sheet shows some content. */
+  const kept = (c: Cam) => keepInView(c, contentRef.current, { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight });
+  // when cards go or the window shrinks so that none is in view any more, the view goes to the nearest
+  useEffect(() => {
+    if (focusRef.current?.type === 'card' || dragRef.current || panRef.current || flying()) return;
+    const c = camRef.current;
+    const k = kept(c);
+    if (k.x !== c.x || k.y !== c.y) fly(k, 400);
+  }, [content, tick]);
 
   function onPointerDown(e: React.PointerEvent) {
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
@@ -493,7 +506,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
       const grab = toWorld(camRef.current, e.clientX, e.clientY);
       dragRef.current = { id: i.id, x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, grab, start: { x: i.x, y: i.y }, limit: dragLimit(content, b), moved: false, frame: 0, last: 0 };
     } else {
-      panRef.current = { x: e.clientX, y: e.clientY, cam: camRef.current };
+      panRef.current = { x: e.clientX, y: e.clientY };
       setPanning(true);
     }
     viewportRef.current!.setPointerCapture(e.pointerId);
@@ -538,8 +551,13 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
       place(d);
       return;
     }
+    // the view follows the pointer step by step, so after a stop at the content's edge it turns back at once
     const p = panRef.current;
-    if (p) setCam({ ...p.cam, x: p.cam.x + e.clientX - p.x, y: p.cam.y + e.clientY - p.y });
+    if (!p) return;
+    const c = camRef.current;
+    setCam(kept({ ...c, x: c.x + e.clientX - p.x, y: c.y + e.clientY - p.y }));
+    p.x = e.clientX;
+    p.y = e.clientY;
   }
 
   function onPointerUp() {
@@ -577,8 +595,8 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
       const c = camRef.current;
       if (e.ctrlKey || e.metaKey) {
         const s = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, c.s * Math.exp(-e.deltaY * 0.012)));
-        setCam({ s, x: e.clientX - (e.clientX - c.x) * (s / c.s), y: e.clientY - (e.clientY - c.y) * (s / c.s) });
-      } else setCam({ ...c, x: c.x - e.deltaX, y: c.y - e.deltaY });
+        setCam(kept({ s, x: e.clientX - (e.clientX - c.x) * (s / c.s), y: e.clientY - (e.clientY - c.y) * (s / c.s) }));
+      } else setCam(kept({ ...c, x: c.x - e.deltaX, y: c.y - e.deltaY }));
     };
     vp.addEventListener('wheel', onWheel, { passive: false });
     return () => vp.removeEventListener('wheel', onWheel);
@@ -627,7 +645,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
     if (e.key === '0') {
       setFocus(null);
       setSheetOn(false);
-      fly(overviewCam(all), 700);
+      fly(kept(overviewCam(all)), 700);
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
@@ -715,7 +733,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
           )}
         </div>
       </header>
-      <Minimap cam={cam} all={all} placed={placed} onJump={(wx, wy) => !focusRef.current && fly({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s }, 500)} />
+      <Minimap cam={cam} all={all} placed={placed} onJump={(wx, wy) => !focusRef.current && fly(kept({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s }), 500)} />
       <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
       <div id="panel" ref={panelRef}>
         <button className="close" title={t.close} onClick={() => closeCard()}>
