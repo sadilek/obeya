@@ -6,6 +6,8 @@ import type { RepoAdapter, RepoInfo } from './types';
 /** Specific adapters first; the generic one matches every repository. */
 const ADAPTERS: RepoAdapter[] = [oke, obeya, generic];
 
+export const adapterNames = () => ADAPTERS.map((a) => a.name);
+
 export function pickAdapter(repo: RepoInfo, name?: string): RepoAdapter {
   if (name) {
     const a = ADAPTERS.find((x) => x.name === name);

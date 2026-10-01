@@ -9,6 +9,7 @@ import index from '../ui/index.html';
 import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
 import type { Focus, Heard } from './commands';
+import type { Config } from './config';
 import { serveDemoFile } from './demo';
 import { looping, silence, type Speaker, type Transcriber } from './voice';
 
@@ -19,7 +20,7 @@ export interface Voice {
   speaker: Speaker;
 }
 
-export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false) {
+export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false, config?: Config) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
   const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string }>>>(canvases.map((c) => [c.id, new Set()]));
@@ -106,6 +107,12 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     routes: {
       '/': index,
       '/api/canvases': { GET: () => Response.json(canvases.map((c) => c.board.canvas) satisfies CanvasInfo[]) },
+      // Obeya's configuration: read, checked while the owner edits it, and saved (Obeya then starts again)
+      '/api/config': {
+        GET: () => (config ? Response.json(config.view()) : new Response('Not found', { status: 404 })),
+        PUT: async (req) => (config ? handle(async () => config.save(await req.json())) : new Response('Not found', { status: 404 })),
+      },
+      '/api/config/check': { POST: async (req) => (config ? handle(async () => config.check(await req.json())) : new Response('Not found', { status: 404 })) },
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
       '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },
       '/api/c/:canvas/cards/:id': {

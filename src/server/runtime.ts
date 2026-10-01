@@ -127,9 +127,12 @@ export function backgroundWork(tasks: { task_type: string; ambient?: boolean }[]
   return tasks.filter((t) => !t.ambient || t.task_type.startsWith('monitor')).length;
 }
 
-/** Obeya's own environment minus what belongs to a Claude Code session that may have started it. */
+/**
+ * Obeya's own environment minus what belongs to a Claude Code session that may have started it, and
+ * minus the supervisor's mark: an Obeya an agent starts (a scratch one for a demo) supervises itself.
+ */
 function cleanEnv(): Record<string, string | undefined> {
-  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$)/.test(k)));
+  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$|OBEYA_SUPERVISED$)/.test(k)));
 }
 
 /** The session's input: an async stream of user messages that stays open until ended. */

@@ -9,6 +9,7 @@ import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
+import { ConfigSheet } from './config';
 import { KoordinatorSheet } from './koordinator';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
@@ -134,12 +135,21 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     if (!kOn && focusRef.current?.type === 'project') closeProject();
     setKOn(!kOn);
     setAOn(false);
+    setCOn(false);
   };
   const [aOn, setAOn] = useState(false);
   const toggleArchive = () => {
     if (!aOn && focusRef.current?.type === 'project') closeProject();
     setAOn(!aOn);
     setKOn(false);
+    setCOn(false);
+  };
+  const [cOn, setCOn] = useState(false);
+  const toggleConfig = () => {
+    if (!cOn && focusRef.current?.type === 'project') closeProject();
+    setCOn(!cOn);
+    setKOn(false);
+    setAOn(false);
   };
   // the archive, read while its sheet is open; archived cards unfold from their row there
   const [archived, setArchived] = useState<Item[]>([]);
@@ -292,6 +302,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     setSheetOn(true);
     setKOn(false);
     setAOn(false);
+    setCOn(false);
     // an archived project is not on the canvas: its sheet takes the archive's place
     if (!p.archivedAt) await fly(camFor(bounds(p), 40, SHEET_W, 60), 700);
   }
@@ -306,6 +317,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     setSheetOn(true);
     setKOn(false);
     setAOn(false);
+    setCOn(false);
     // the project stays in view beside the wider sheet
     await fly(camFor(bounds(p), 40, r ? readingWidth() + 30 : SHEET_W, 60), 700);
   }
@@ -634,7 +646,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
         </div>
       </div>
       {!items.length && <div className="empty">{t.empty}</div>}
-      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn || aOn ? (reading && focus?.type === 'project' ? readingWidth() + 30 : SHEET_W) : 0} onOpen={open} />}
+      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn || aOn || cOn ? (reading && focus?.type === 'project' ? readingWidth() + 30 : SHEET_W) : 0} onOpen={open} />}
       <header id="bar">
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} />
         {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
@@ -650,6 +662,9 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
         </span>
         <div className="right">
           {!online && <div className="pill offline">{t.offline}</div>}
+          <button className={cOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleConfig}>
+            {t.config.button}
+          </button>
           <button className={aOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleArchive}>
             {t.archive.button}
           </button>
@@ -691,6 +706,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
         </div>
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
+      <ConfigSheet on={cOn} />
       <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
       <PushToTalk phase={ptt.phase} level={ptt.level} flat={ptt.flat} target={target} shots={voiceShots} onDown={ptt.start} />
       <Sheet

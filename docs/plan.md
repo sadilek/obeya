@@ -166,7 +166,20 @@ the owner's language (`src/core/locale.ts`).
 - **Server** — Bun, TypeScript. HTTP + WebSocket to the UI, one API per canvas
   (`/api/c/<canvas>/…`, `/api/canvases` lists them); SQLite (`bun:sqlite`) under `~/.obeya/`.
   `obeya <repo>…` starts one canvas with the given repositories (`--name` names it);
-  `obeya --config <file>` starts the canvases a JSON file lists.
+  `obeya` starts the canvases `~/.obeya/canvases.json` lists, `obeya --config <file>` those of
+  another file.
+- **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
+  in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
+  adapter and whether workers use clones or worktrees; problems (no git repository, an unknown
+  adapter, two canvases with one id, a canvas's home repository left out) show at the field while
+  editing and keep it from being saved. Saving writes the file and restarts Obeya once no worker is
+  in the middle of a turn (as for new code); the page reloads. Started with repositories on the
+  command line, Obeya shows those, and saving makes the file the configuration it restarts with.
+  Renaming a running canvas keeps its id (`id` in the file), so its cards stay. The server's own
+  settings (port, data directory, the agents' permission mode) come from the command line and show
+  read-only. The Koordinator reads the configuration (`config` tool) to answer questions about it
+  and changes it on the owner's word (`configure`, the whole new list, checked like the sheet's),
+  with the usual confirmation and undo window.
 - **Canvases and repositories** — each repository on a canvas has its adapter, workspaces,
   workers, project agents and PR watcher; the canvas has one board and one Koordinator, whose
   collision checks stay within a repository. The first repository is the canvas's home: its plan
@@ -311,7 +324,8 @@ reply, the screenshots that came with it, the open card, whether it was taken ba
 question, the card it is about, its answer and who gave it), per-canvas settings (the Koordinator's session for questions);
 later PR links.
 
-Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`).
+Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
+(`canvases.json`).
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository; the copy on the project is only for the archive).
@@ -431,6 +445,11 @@ the repository; the copy on the project is only for the archive).
 - Landed work's worker keeps its workspace and session until it is done, instead of ending with
   the approval: what a change needs after it is on main (a migration against the running Obeya)
   is done by the agent that knows the change. A landing costs one short worker turn for it.
+- Obeya's configuration is the file `canvases.json`, edited in the UI or by the Koordinator; a
+  change takes effect through a restart rather than live (2026-10-01): a restart is a path that
+  already exists and waits for workers, and building canvases at runtime would keep half-old state.
+  Saving the configuration of a command-line start switches Obeya to the file, so what was edited is
+  what runs.
 - Screenshots reach agents as images in the message, not as files for them to read: an exploration
   agent may only read its checkout, and the agent sees the image without a step of its own.
 

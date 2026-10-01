@@ -21,7 +21,8 @@ See [`docs/plan.md`](docs/plan.md); the interaction reference is the mock in
 bun install
 bun start ~/dev/oke5            # canvas of that repository on http://127.0.0.1:4417
 bun start ~/dev/oke5 ~/dev/oke-web --name OKE   # one canvas, two repositories
-bun start --config ~/.obeya/canvases.json       # several canvases (see src/server/main.ts)
+bun start                       # the canvases in ~/.obeya/canvases.json (see src/server/main.ts)
+bun start --config other.json   # those of another file
 bun run dev ~/dev/oke5          # same, with hot reload
 bun test && bun run typecheck
 ```
@@ -30,6 +31,8 @@ Options: `--port <n>` (or `OBEYA_PORT`), `--adapter <name>` to override the one 
 `origin` URL, `--workspace <path>` (repeatable) or `--clones <n>` for adapters whose workers use
 clones, `--permission-mode <mode>` for workers (default `auto`). Data and worktrees live in
 `~/.obeya/` (`OBEYA_HOME` to move it). Workers run on the Claude Code login of the machine.
+The canvases and their repositories can be seen and changed in the app ("Konfiguration") or by
+telling the Koordinator; saving writes `canvases.json` and restarts Obeya with it.
 
 Voice needs a Python with `mlx_whisper` (`OBEYA_WHISPER_PYTHON=/path/to/python`); without it
 Obeya runs the sidecar through `uv run --with mlx-whisper`. Demos need the `demo` skill.

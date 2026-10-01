@@ -6,6 +6,8 @@ import { dirname } from 'node:path';
 
 /** The exit code that asks the supervisor for a fresh server. */
 export const RESTART = 75;
+/** The same, and from now on with the configuration file rather than the command line's repositories. */
+export const RESTART_FROM_FILE = 76;
 
 /** How long a restart waits for workers to finish their turns before it cuts them off. */
 export const RESTART_PATIENCE_MS = 15 * 60_000;
