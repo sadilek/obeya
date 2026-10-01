@@ -147,6 +147,53 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toBe('Ich komme nicht an die Datenbank.');
   });
 
+  test('a turn that ends while background work runs waits for it, not for the owner', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'text', text: 'Das Video rendert noch, ich warte darauf.' });
+    const before = runtime.last.inbox.length;
+    runtime.last.emit({ type: 'idle', background: 1 });
+    runtime.last.emit({ type: 'idle', background: 1 });
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last.inbox.length).toBe(before);
+    // a restart now would cut the render off
+    expect(workers.busy()).toBe(true);
+    // the render ends and wakes the worker, which hands over
+    runtime.last.emit({ type: 'text', text: 'Video fertig.' });
+    runtime.last.call('ready_for_review', { summary: 'Fertig.' });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:review');
+  });
+
+  test('background work that never wakes the worker counts as an ended turn after a while', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 });
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'text', text: 'Ich warte auf den Server.' });
+    runtime.last.emit({ type: 'idle', background: 1 });
+    await Bun.sleep(20);
+    expect(runtime.last.inbox.at(-1)).toContain('ready_for_review');
+    runtime.last.emit({ type: 'idle', background: 1 });
+    await Bun.sleep(20);
+    expect(state(c.id)).toBe('waiting:question');
+    expect(workers.busy()).toBe(false);
+    expect(board.item(c.id)!.question!.text).toBe('Ich warte auf den Server.');
+  });
+
+  test('a worker that stopped and then works on by itself takes its question back', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:question');
+    runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'ls' } });
+    expect(state(c.id)).toBe('working');
+    // a question it asks itself stays with the owner
+    runtime.last.call('ask', { question: 'CSV oder Excel?' });
+    runtime.last.emit({ type: 'text', text: 'Ich warte auf die Antwort.' });
+    expect(state(c.id)).toBe('waiting:question');
+  });
+
   test('handing over ends the turn without a nudge', () => {
     const c = manual();
     workers.start(c.id);

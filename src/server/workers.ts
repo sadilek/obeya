@@ -35,6 +35,8 @@ export interface WorkerOptions {
   advisor?: (card: Item) => Advisor | null;
   /** A spike handed over its prototype: the idea gets the demo and the summary. */
   onSpike?: (spike: Item, summary: string, demo: string | undefined) => void;
+  /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
+  backgroundGrace?: number;
 }
 
 interface Live {
@@ -45,7 +47,14 @@ interface Live {
   lastText: string;
   /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
   busy: boolean;
+  /** Set while an ended turn waits for the worker's background work to wake it. */
+  waiting?: ReturnType<typeof setTimeout>;
+  /** Whether the card's open question is the worker having stopped, not a question it asked. */
+  stalled: boolean;
 }
+
+/** A render or a test suite finishes well within this; a turn that waits longer counts as ended. */
+const BACKGROUND_GRACE = 10 * 60_000;
 
 const END_TURN = 'Recorded. End your turn now without further work; the reply arrives as your next message.';
 
@@ -229,7 +238,7 @@ export class Workers {
   private launch(cardId: string, message: string, resume?: string, images: string[] = []) {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
-    const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true };
+    const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true, stalled: false };
     this.live.set(cardId, live);
     live.session = this.o.runtime.start(
       {
@@ -268,6 +277,7 @@ export class Workers {
   private end(cardId: string) {
     const live = this.live.get(cardId);
     this.live.delete(cardId);
+    clearTimeout(live?.waiting);
     live?.session.close();
   }
 
@@ -275,6 +285,9 @@ export class Workers {
     if (this.live.get(cardId) !== live) return;
     // a turn may also start without a message from Obeya (a finished background command)
     live.busy = e.type !== 'idle';
+    clearTimeout(live.waiting);
+    live.waiting = undefined;
+    if (e.type === 'text' || e.type === 'tool') this.resumed(cardId, live);
     switch (e.type) {
       case 'session':
         this.o.board.work(cardId, { session_id: e.id });
@@ -291,13 +304,17 @@ export class Workers {
         this.o.board.log(cardId, 'error', 'obeya', e.message);
         break;
       case 'idle':
-        this.turnEnded(cardId, live);
+        this.turnEnded(cardId, live, e.background ?? 0);
         break;
     }
   }
 
-  /** A turn that ends without handing over gets one nudge; after that the owner is asked. */
-  private turnEnded(cardId: string, live: Live) {
+  /**
+   * A turn that ends without handing over gets one nudge; after that the owner is asked. A turn
+   * that ends while the worker's background work runs (a demo render, say) waits for that work
+   * to wake the worker instead, unless nothing happens for a long while.
+   */
+  private turnEnded(cardId: string, live: Live, background: number) {
     const handedOver = live.handedOver;
     live.handedOver = false;
     const card = this.o.board.item(cardId);
@@ -305,6 +322,16 @@ export class Workers {
     // in the PR phase a turn ends normally once the PR is open
     if (card.state === 'inPr' && card.pr) return;
     if (card.state !== 'working' && card.state !== 'inPr') return;
+    if (background > 0) {
+      // the background work still belongs to the turn: a restart now would cut it off
+      live.busy = true;
+      live.waiting = setTimeout(() => {
+        live.waiting = undefined;
+        live.busy = false;
+        if (this.live.get(cardId) === live) this.turnEnded(cardId, live, 0);
+      }, this.o.backgroundGrace ?? BACKGROUND_GRACE);
+      return;
+    }
     if (!live.nudged) {
       live.nudged = true;
       live.busy = true;
@@ -316,7 +343,16 @@ export class Workers {
       return;
     }
     live.nudged = false;
+    live.stalled = true;
     this.toOwner(cardId, { text: live.lastText ? clip(live.lastText, 1200) : 'Der Agent hat angehalten, ohne fertig zu sein.', options: [] });
+  }
+
+  /** A worker that went to the owner for having stopped and then works on by itself takes the question back. */
+  private resumed(cardId: string, live: Live) {
+    if (!live.stalled) return;
+    live.stalled = false;
+    const card = this.o.board.item(cardId);
+    if (card?.state === 'waiting' && card.need === 'question') this.o.board.work(cardId, { state: card.pr ? 'inPr' : 'working', need: null, detail: null });
   }
 
   // ---------------------------------------------------------------- the worker's tools

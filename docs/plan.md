@@ -103,8 +103,11 @@ visible on a card. A worker has four tools, served in-process: `report(status)`,
 on the card; `ask(question, options)`, which returns at once — the worker ends its turn and the
 answer arrives as its next message; `propose_card(kind, title, reason, suggestion)`; and
 `ready_for_review(summary)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
-then its last words become a question to the owner. The owner can send a note at any time; it
-reaches the worker without stopping it.
+then its last words become a question to the owner. A turn that ends while the worker's own
+background work runs (a demo render, a test suite) is no such turn: the work wakes the worker when
+it finishes, so Obeya waits, and only after ten minutes without a sign of life does it nudge. A
+worker that went to the owner for having stopped and then works on by itself takes that question
+back. The owner can send a note at any time; it reaches the worker without stopping it.
 
 What the owner writes on a card (a note, feedback, an answer, talk to an idea) may carry
 screenshots: pasted (⌘V), dropped or picked in the text field, scaled down in the browser to at
@@ -153,8 +156,8 @@ the owner's language (`src/core/locale.ts`).
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs), the server stops and starts again; workers
   resume, and an open page reloads when it reconnects to a new server process. The restart waits
-  until no worker is in the middle of a turn (at most 15 minutes), since it stops whatever a
-  worker runs; a resumed worker is told so.
+  until no worker is in the middle of a turn or waiting for its background work (at most 15
+  minutes), since it stops whatever a worker runs; a resumed worker is told so.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges collisions with cards in
   progress (their estimated and actual changes); a card that overlaps or collides waits, with the
