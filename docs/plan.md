@@ -149,7 +149,10 @@ exploration agent, when a planned card becomes an idea; building an idea adds th
 owner showed in its discussion; a cut card's packages inherit them). A command typed in the
 Koordinator's sheet may carry screenshots too: the Koordinator sees them, and they go with every
 action of the command that creates or concerns a card (new card or idea, start, note, answer,
-feedback, talk to an idea); said with a start, they join the card's task.
+feedback, talk to an idea); said with a start, they join the card's task. A spoken command carries
+screenshots the same way: picked with the small button to the right of the microphone, dropped on
+it, or pasted (⌘V) anywhere outside a text field, they show beside the microphone and go with the
+next recording; one in which nothing was heard or understood leaves them there.
 
 A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff,
 until then to the owner), which answers from the plan doc, the decision log and the preference

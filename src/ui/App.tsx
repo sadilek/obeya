@@ -10,6 +10,7 @@ import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
 import { KoordinatorSheet } from './koordinator';
+import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
 import { CanvasPill, CardView, Edges, Links, Minimap, needsYou, ProjectView, readingWidth, Sheet } from './parts';
 import { t } from './strings';
@@ -406,17 +407,31 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       }),
     [],
   );
-  const ptt = usePushToTalk(where, onHeard);
+  // screenshots for the next recording: picked beside the mic, dropped on it, or pasted (⌘V) anywhere but in a text field
+  const voiceShots = useShotInput();
+  const ptt = usePushToTalk(where, onHeard, voiceShots);
   const pttRef = useRef(ptt);
   pttRef.current = ptt;
+  const voiceShotsRef = useRef(voiceShots);
+  voiceShotsRef.current = voiceShots;
   useEffect(() => {
     const up = (e: KeyboardEvent) => e.code === 'Space' && pttRef.current.stop();
     const release = () => pttRef.current.stop();
+    const paste = (e: ClipboardEvent) => {
+      const el = e.target;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)) return;
+      const files = imageFiles(e.clipboardData?.files);
+      if (!files.length) return;
+      e.preventDefault();
+      voiceShotsRef.current.attach(files);
+    };
     addEventListener('keyup', up, true);
     addEventListener('pointerup', release);
+    addEventListener('paste', paste);
     return () => {
       removeEventListener('keyup', up, true);
       removeEventListener('pointerup', release);
+      removeEventListener('paste', paste);
     };
   }, []);
   const focusItem = focus ? (items.find((i) => i.id === focus.id) ?? archived.find((i) => i.id === focus.id)) : undefined;
@@ -665,7 +680,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
       <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
-      <PushToTalk phase={ptt.phase} level={ptt.level} target={target} onDown={ptt.start} />
+      <PushToTalk phase={ptt.phase} level={ptt.level} target={target} shots={voiceShots} onDown={ptt.start} />
       <Sheet
         project={sheetProject}
         kids={sheetKids}

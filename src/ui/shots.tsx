@@ -79,8 +79,8 @@ export function useShotInput({ initial = [], onChange, off = false }: { initial?
     picker,
     attach,
     remove: (id: string) => update((cur) => cur.filter((x) => x !== id)),
-    /** After sending: the field is empty again. */
-    clear: () => setImages([]),
+    /** After sending: the field is empty again, or without those sent while more were added. */
+    clear: (sent?: string[]) => setImages((cur) => (sent ? cur.filter((id) => !sent.includes(id)) : [])),
     /** For the element screenshots may be dropped on. */
     drop: {
       onDragOver: (e: DragEvent) => {
@@ -131,11 +131,11 @@ export function ShotStrip({ shots }: { shots: ShotInput }) {
 }
 
 /** The button in the text field's corner that picks screenshots from disk. */
-export function AttachButton({ shots }: { shots: ShotInput }) {
+export function AttachButton({ shots, title = t.shots.attach }: { shots: ShotInput; title?: string }) {
   if (shots.off) return null;
   return (
     <>
-      <button className="c-attach" title={t.shots.attach} aria-label={t.shots.attach} onClick={() => shots.picker.current?.click()}>
+      <button className="c-attach" title={title} aria-label={title} onClick={() => shots.picker.current?.click()}>
         <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
           <rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
           <circle cx="7" cy="8.5" r="1.5" fill="currentColor" />

@@ -41,7 +41,7 @@ export function setCanvas(id: string) {
 export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
 
 type Where = { card: string } | { project: string } | null;
-type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string; quiet?: boolean };
+type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string; quiet?: boolean; unheard?: boolean };
 
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
@@ -69,9 +69,10 @@ export const api = {
   planDoc: (id: string) => call<{ file: string; markdown: string }>('GET', at(`/cards/${id}/plan`)),
   /** A project's decisions and the idea it came from. */
   history: (id: string) => call<ProjectHistory>('GET', at(`/cards/${id}/history`)),
-  /** What the owner said about the card or project in view. */
-  voice: async (audio: Blob, where: Where) => {
-    const res = await fetch(at(`/voice${query(where)}`), { method: 'POST', body: audio });
+  /** What the owner said about the card or project in view, with the screenshots shown with it. */
+  voice: async (audio: Blob, where: Where, images: string[] = []) => {
+    const q = images.map((id) => `image=${encodeURIComponent(id)}`).join('&');
+    const res = await fetch(at(`/voice${query(where)}${q && (where ? '&' : '?')}${q}`), { method: 'POST', body: audio });
     if (!res.ok) throw new Error(`voice: ${res.status}`);
     return (await res.json()) as HeardReply;
   },
