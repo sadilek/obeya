@@ -118,8 +118,9 @@ and the answer arrives as its next message (the owner picks one option, several 
 or writes their own answer); `propose_card(kind, title, reason, suggestion)`; and
 `ready_for_review(summary)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner. A turn that ends while the worker's own
-background work runs (a demo render, a test suite) is no such turn: the work wakes the worker when
-it finishes, so Obeya waits, and only after ten minutes without a sign of life does it nudge. A
+background work runs (a demo render, a test suite, a watcher it started) is no such turn: the work
+wakes the worker when it finishes or fires, so Obeya waits, and only after ten minutes without a
+sign of life does it nudge. A
 worker that went to the owner for having stopped and then works on by itself takes that question
 back. The owner can send a note at any time; it reaches the worker without stopping it.
 
@@ -183,9 +184,10 @@ the owner's language (`src/core/locale.ts`).
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs), the server stops and starts again; workers
   resume, and an open page reloads when it reconnects to a new server process. The restart waits
-  until no worker is in the middle of a turn or waiting for its background work (at most 15
-  minutes), since it stops whatever a worker runs; a resumed worker is told so. A worker that
-  waits for the restart to finish its landed work is not in a turn and does not hold it up.
+  until no worker is in the middle of a turn or waiting for its background work, even one that has
+  asked or handed over meanwhile (at most 15 minutes), since it stops whatever a worker runs; a
+  resumed worker is told so. A worker that waits for the restart to finish its landed work is not
+  in a turn and does not hold it up.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges collisions with cards in
   progress (their estimated and actual changes); a card that overlaps or collides waits, with the

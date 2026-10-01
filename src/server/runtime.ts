@@ -87,13 +87,12 @@ export const sdkRuntime: AgentRuntime = {
         env: cleanEnv(),
       },
     });
-    // the agent's background tasks (a render, a test run); watchers that are no activity don't count
     let background = 0;
     const done = (async () => {
       try {
         for await (const m of q) {
           if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id });
-          else if (m.type === 'system' && m.subtype === 'background_tasks_changed') background = m.tasks.filter((t) => !t.ambient).length;
+          else if (m.type === 'system' && m.subtype === 'background_tasks_changed') background = backgroundWork(m.tasks);
           else if (m.type === 'assistant' && !m.parent_tool_use_id) {
             for (const block of m.message.content) {
               if (block.type === 'text' && block.text.trim()) spec.onEvent({ type: 'text', text: block.text });
@@ -120,6 +119,15 @@ export const sdkRuntime: AgentRuntime = {
 };
 
 /** Obeya's own environment minus what belongs to a Claude Code session that may have started it. */
+/**
+ * How many of the agent's background tasks wake it when they finish or fire: a render, a test run,
+ * a watcher. The SDK marks watchers `ambient` (no activity to show), like its own housekeeping,
+ * which wakes no one and does not count.
+ */
+export function backgroundWork(tasks: { task_type: string; ambient?: boolean }[]): number {
+  return tasks.filter((t) => !t.ambient || t.task_type.startsWith('monitor')).length;
+}
+
 function cleanEnv(): Record<string, string | undefined> {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$)/.test(k)));
 }

@@ -318,7 +318,7 @@ export class Workers {
     this.launch(card.id, l.restarts ? `Obeya has started again and runs main with your change now. ${RESTARTED}` : RESTARTED, session);
   }
 
-  /** Whether a worker is in the middle of a turn. */
+  /** Whether a worker is in the middle of a turn, or its ended turn waits for its background work. */
   busy(): boolean {
     return [...this.live.values()].some((l) => l.busy);
   }
@@ -354,6 +354,9 @@ export class Workers {
   private deliver(cardId: string, text: string, images: string[] = []) {
     const live = this.live.get(cardId);
     if (live) {
+      // the turn this starts reports the background work that is still running
+      clearTimeout(live.waiting);
+      live.waiting = undefined;
       live.busy = true;
       live.session.send(text, images);
       return;
@@ -425,6 +428,17 @@ export class Workers {
     const card = this.o.board.item(cardId);
     if (!card) return;
     const row = this.o.board.row(cardId);
+    if (background > 0) {
+      // the background work still belongs to the turn, whatever the card's state (a worker may ask
+      // while its render runs): a restart now would cut it off
+      live.busy = true;
+      live.waiting = setTimeout(() => {
+        live.waiting = undefined;
+        live.busy = false;
+        if (this.live.get(cardId) === live) this.turnEnded(cardId, live, 0);
+      }, this.o.backgroundGrace ?? BACKGROUND_GRACE);
+      if (!handedOver) return;
+    }
     if (handedOver) {
       // work the owner approved already lands once its worker handed over what stood in the way
       if (card.state === 'working' && row.approved_at) this.landApproved(cardId);
@@ -434,16 +448,6 @@ export class Workers {
     // in the PR phase a turn ends normally once the PR is open
     if (card.state === 'inPr' && card.pr) return;
     if (card.state !== 'working' && card.state !== 'inPr' && !landed) return;
-    if (background > 0) {
-      // the background work still belongs to the turn: a restart now would cut it off
-      live.busy = true;
-      live.waiting = setTimeout(() => {
-        live.waiting = undefined;
-        live.busy = false;
-        if (this.live.get(cardId) === live) this.turnEnded(cardId, live, 0);
-      }, this.o.backgroundGrace ?? BACKGROUND_GRACE);
-      return;
-    }
     if (landed) {
       // what remained after the landing is done, unless the worker waits for its question or the restart
       if (card.state !== 'waiting' && !landed.waits) this.finish(cardId);
