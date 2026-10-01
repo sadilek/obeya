@@ -45,7 +45,7 @@ export const t = {
   start: 'Agent starten',
   stop: 'Anhalten',
   approve: 'Freigeben',
-  accept: 'Übernehmen',
+  accept: 'Übernehmen und starten',
   dismiss: 'Verwerfen',
   send: 'Senden',
   compose: {
@@ -74,7 +74,7 @@ export const t = {
   started: (title: string) => `Agent arbeitet an „${title}“.`,
   answered: 'Antwort ist beim Agenten.',
   approved: 'Freigegeben.',
-  accepted: 'Vorschlag übernommen und eingeplant.',
+  accepted: 'Vorschlag übernommen und gestartet.',
   dismissed: 'Vorschlag verworfen.',
   stopped: 'Agent angehalten.',
   queue: {
