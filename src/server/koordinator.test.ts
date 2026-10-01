@@ -222,6 +222,78 @@ describe('Koordinator', () => {
     expect(item(later.id).state).toBe('working');
   });
 
+  test('a new card likely to conflict with a queued one waits behind it instead of overtaking it', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/a.ts', 'src/b.ts'], ['K1']);
+    const c = card('C');
+    k.request(c.id);
+    await settle();
+    const brief = estimates().at(-1)!.inbox[0]!;
+    expect(brief).toContain('Cards queued ahead of this one');
+    expect(brief).toContain('- K2: "B"\n  expected to change: src/a.ts, src/b.ts\n  waits for: "A"');
+    await scope(['src/b.ts'], ['K2'], 'Beide ändern render() in src/b.ts.');
+    expect(item(c.id).queue).toMatchObject({ behind: [b.id], reason: 'Beide ändern render() in src/b.ts.' });
+    expect(board.events(c.id).some((e) => e.text.includes('„B“ (wartet selbst und ist vorher dran)'))).toBe(true);
+
+    // B goes first; C waits for it to land, not only to start
+    workers.stop(a.id);
+    await settle();
+    expect(item(b.id).state).toBe('working');
+    expect(item(c.id).queue).toMatchObject({ behind: [b.id] });
+    workers.stop(b.id);
+    await settle();
+    expect(item(c.id).state).toBe('working');
+  });
+
+  test('a queued card judged again does not wait for cards queued after it', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/a.ts'], ['K1']);
+    const d = card('D');
+    k.request(d.id);
+    await scope(['src/d.ts']);
+    expect(item(d.id).state).toBe('working');
+    const c = card('C');
+    k.request(c.id);
+    await scope(['src/a.ts'], ['K3']);
+    expect(item(c.id).queue).toMatchObject({ behind: [b.id] });
+
+    workers.stop(a.id);
+    await settle();
+    expect(item(b.id).queue).toMatchObject({ checking: true });
+    const brief = estimates().at(-1)!.inbox[0]!;
+    expect(brief).toContain('"D"');
+    expect(brief).not.toContain('"C"');
+    await scope(['src/a.ts']);
+    expect(item(b.id).state).toBe('working');
+    expect(item(c.id).queue).toMatchObject({ behind: [b.id] });
+  });
+
+  test('a card queued behind a waiting one starts when that one is taken out of the queue', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/a.ts', 'src/b.ts'], ['K1']);
+    const c = card('C');
+    k.request(c.id);
+    await scope(['src/b.ts'], ['K2']);
+    expect(item(c.id).queue).toMatchObject({ behind: [b.id] });
+    k.dequeue(b.id);
+    await settle();
+    expect(item(c.id).queue).toMatchObject({ checking: true });
+    await scope(['src/b.ts']);
+    expect(item(c.id).state).toBe('working');
+  });
+
   test('a card keeps its place in the queue while what it waits for changes', async () => {
     const a = card('A');
     k.request(a.id);

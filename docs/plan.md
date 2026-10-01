@@ -227,7 +227,10 @@ the owner's language (`src/core/locale.ts`).
   starten" (`POST /api/restart`) has it go ahead at once, its hover text saying what that cuts off.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges whether running it next to
-  the cards in progress likely ends in merge conflicts. For each card in progress it sees the
+  the cards in progress likely ends in merge conflicts. Cards queued before it count too: a card
+  likely to conflict with one of them waits behind it rather than overtaking it, and once that one
+  has started, until it has landed (fairer, at the cost of some parallelism). A card judged again
+  sees only the cards queued before it, so no two cards wait for each other. For each card in progress it sees the
   estimated files and what the branch has changed so far: each file with the changed line ranges
   and git's function context. Sharing a file does not keep a card waiting (additions in different
   places merge cleanly); the same lines or function, or code that one card moves, renames or
@@ -423,6 +426,9 @@ the repository; the copy on the project is only for the archive).
   run at once on Obeya itself.
 - A card waits rather than risking a collision; the Koordinator's estimate is taken once, before
   the start, and a waiting card is checked again against what runs when its blockers finish.
+- A new card does not overtake a queued one it likely conflicts with: it queues behind it, also
+  when that one waits for something far from done. Fairness over parallelism; the owner can still
+  start it anyway.
 - Landing problems are classified: uncommitted work, rebase conflicts and empty branches go back
   to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
 - An approval holds through what the worker fixes to land it: main moving on is no reason to ask

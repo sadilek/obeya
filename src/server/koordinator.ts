@@ -24,7 +24,7 @@ export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea';
 
 export interface Scope {
   files: string[];
-  /** Cards in progress whose changes the Koordinator expects to conflict with this card's on merge. */
+  /** Cards in progress or queued ahead whose changes the Koordinator expects to conflict with this card's on merge. */
   conflictsWith: string[];
   reason: string;
 }
@@ -286,12 +286,26 @@ export class Koordinator {
       .items.filter((i) => ['working', 'waiting', 'inPr', 'approved'].includes(i.state) && i.kind !== 'project' && !i.spikeOf && (!repo || i.repo === repo));
   }
 
+  /**
+   * Cards of the card's repository queued before it and still waiting: they go first, so a card
+   * likely to conflict with one of them queues behind it instead of overtaking it.
+   */
+  ahead(card: Item): Item[] {
+    const since = card.queue?.since;
+    if (!since) return [];
+    return this.o.board
+      .snapshot()
+      .items.filter((i) => i.id !== card.id && i.repo === card.repo && waits(i) && (i.queue!.since ?? '') < since)
+      .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
+  }
+
   private async decide(cardId: string) {
     const card = this.o.board.item(cardId);
     // taken out of the queue or deleted while waiting for its turn
     if (!card || card.state !== 'planned' || !card.queue || !('checking' in card.queue)) return;
     const active = this.inProgress(card.repo);
-    if (!active.length) {
+    const ahead = this.ahead(card);
+    if (!active.length && !ahead.length) {
       // nothing it could collide with: start at once, and estimate the scope for the cards after it
       this.startNow(cardId, 'Nichts läuft gerade; es geht sofort los.');
       if (this.o.board.item(cardId)?.state !== 'working') return;
@@ -303,16 +317,21 @@ export class Koordinator {
     }
     let scope: Scope;
     try {
-      scope = await this.estimate(card, active);
+      scope = await this.estimate(card, active, ahead);
     } catch (e) {
       this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte den Umfang nicht schätzen (${e instanceof Error ? e.message : String(e)}); die Karte startet trotzdem.`);
       scope = { files: [], conflictsWith: [], reason: '' };
     }
     if (!this.o.board.item(cardId)?.queue) return;
     this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
-    const behind = this.collisions(card, scope, active);
+    const behind = this.collisions(card, scope, [...active, ...ahead]);
     if (!behind.length) return this.startNow(cardId, `Kein Merge-Konflikt mit laufender Arbeit zu erwarten.${scope.reason ? ` ${scope.reason}` : ''}`);
-    const names = behind.map((id) => `„${active.find((a) => a.id === id)?.title ?? id}“`).join(', ');
+    const names = behind
+      .map((id) => {
+        const a = ahead.find((x) => x.id === id);
+        return a ? `„${a.title}“ (wartet selbst und ist vorher dran)` : `„${active.find((x) => x.id === id)?.title ?? id}“`;
+      })
+      .join(', ');
     const reason = scope.reason || 'Wahrscheinlich Merge-Konflikte mit laufender Arbeit.';
     this.setQueue(cardId, { behind, reason });
     this.o.board.log(cardId, 'state', 'obeya', `Koordinator: wartet auf ${names}. ${reason}`);
@@ -329,12 +348,12 @@ export class Koordinator {
     }
   }
 
-  /** In-progress cards of the card's repository whose changes the Koordinator expects to conflict with the card's. */
-  collisions(card: Item, scope: Scope, active: Item[]): string[] {
-    return active.filter((a) => a.repo === card.repo && scope.conflictsWith.includes(a.id)).map((a) => a.id);
+  /** Cards of the card's repository (in progress or queued ahead) whose changes the Koordinator expects to conflict with the card's. */
+  collisions(card: Item, scope: Scope, others: Item[]): string[] {
+    return others.filter((a) => a.repo === card.repo && scope.conflictsWith.includes(a.id)).map((a) => a.id);
   }
 
-  /** Queued cards start once nothing they wait for is in progress any more. */
+  /** Queued cards start once nothing they wait for is in progress or queued any more. */
   private scheduleDrain() {
     if (this.draining) return;
     this.draining = true;
@@ -346,7 +365,9 @@ export class Koordinator {
 
   private drain() {
     const items = this.o.board.snapshot().items;
-    const active = new Set(this.inProgress().map((i) => i.id));
+    // a card queued behind another that waits itself holds on while that one waits, and once it
+    // has started, until it has landed: a card started or judged again here stays in this set
+    const active = new Set([...this.inProgress(), ...items.filter(waits)].map((i) => i.id));
     // the card waiting longest goes first: one queued later must not take its turn
     const waiting = items
       .filter((i) => i.state === 'planned' && i.queue && 'behind' in i.queue)
@@ -374,10 +395,10 @@ export class Koordinator {
 
   // ---------------------------------------------------------------- the estimate
 
-  private estimate(card: Item, active: Item[]): Promise<Scope> {
+  private estimate(card: Item, active: Item[], ahead: Item[] = []): Promise<Scope> {
     return new Promise((resolve, reject) => {
       let done = false;
-      const tags = new Map(active.map((a, n) => [`K${n + 1}`, a.id]));
+      const tags = new Map([...active, ...ahead].map((a, n) => [`K${n + 1}`, a.id]));
       const session = this.o.runtime.start(
         {
           cwd: this.o.repoFor(card).path,
@@ -386,7 +407,7 @@ export class Koordinator {
           tools: [
             {
               name: 'scope',
-              description: 'Report the files the card will change, the cards in progress whose changes are likely to conflict with it on merge (their tags), and a one-sentence reason in German.',
+              description: 'Report the files the card will change, the cards in progress or queued ahead whose changes are likely to conflict with it on merge (their tags), and a one-sentence reason in German.',
               schema: { files: z.array(z.string()), conflicts_with: z.array(z.string()), reason: z.string() },
               run: (a) => {
                 if (done) return 'Already reported.';
@@ -414,24 +435,25 @@ export class Koordinator {
             }
           },
         },
-        this.brief(card, active, tags),
+        this.brief(card, active, ahead, tags),
       );
     });
   }
 
-  private brief(card: Item, active: Item[], tags: Map<string, string>): string {
+  private brief(card: Item, active: Item[], ahead: Item[], tags: Map<string, string>): string {
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     const soft = this.o.repoFor(card).adapter.softPaths;
     const hard = (f: string) => !soft.some((s) => overlaps(normalize(f), s));
+    const tagOf = (id: string) => [...tags].find(([, x]) => x === id)![0];
     const lines = [
       `The card to start: ${card.kind} "${card.title}".`,
       card.body.trim(),
       project?.plan ? `It is workstream ${card.label ?? ''} of the project "${project.title}"; plan doc ${project.plan.file}.` : '',
       active.length
-        ? `Cards in progress:\n${[...tags]
-            .map(([tag, id]) => {
-              const a = active.find((x) => x.id === id)!;
-              const changed = this.o.repoFor(a).workspaces.changes(id).filter((c) => hard(c.file));
+        ? `Cards in progress:\n${active
+            .map((a) => {
+              const tag = tagOf(a.id);
+              const changed = this.o.repoFor(a).workspaces.changes(a.id).filter((c) => hard(c.file));
               return [
                 `- ${tag}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
                 `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
@@ -440,6 +462,19 @@ export class Koordinator {
             })
             .join('\n')}`
         : 'No cards are in progress.',
+      ahead.length
+        ? `Cards queued ahead of this one (they wait for others and start before this card):\n${ahead
+            .map((a) => {
+              const q = a.queue!;
+              const waitsFor = 'behind' in q ? q.behind.map((id) => `"${this.o.board.item(id)?.title ?? id}"`).join(', ') : '';
+              return [
+                `- ${tagOf(a.id)}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
+                `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+                `  waits for: ${waitsFor || 'the Koordinator\'s decision'}`,
+              ].join('\n');
+            })
+            .join('\n')}`
+        : '',
       soft.length ? `Changes under ${soft.join(', ')} never count: they are resolved when a branch lands.` : '',
     ];
     return lines.filter(Boolean).join('\n\n');
@@ -465,13 +500,13 @@ export class Koordinator {
 }
 
 const SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting; everything else should run in parallel.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to conflict with one of them waits behind it rather than overtaking it.
 
 Sharing a file is not a conflict. Git merges changes to different places of the same file cleanly: new strings, types, routes, tests or functions added next to others; edits in different functions. A conflict is likely when both cards change the same lines or the same function or block, when one rewrites, moves, renames or reformats code the other one edits, or when both change the same small, tightly packed section (one config entry, one signature that both extend). For a card in progress you see what it is expected to change and the places it has changed so far (line ranges in its branch, with the enclosing function); read the code there when you need to.
 
 Read what you need in the repository (you cannot change files), then call scope exactly once:
 - files: repository-relative paths the card will most likely change; a path ending in "/" stands for a directory. Be concrete; list new files where you expect them.
-- conflicts_with: the tags of cards in progress whose changes will likely conflict with this card's on merge; empty when none. When in doubt, leave a card out: a conflict that happens anyway goes back to its worker to resolve.
+- conflicts_with: the tags of cards in progress or queued ahead whose changes will likely conflict with this card's on merge; empty when none. When in doubt, leave a card out: a conflict that happens anyway goes back to its worker to resolve.
 - reason: one sentence in German for the owner: with a conflict, where the two cards change the same code; without one, which files they share, if any, and why that is fine. The owner does not know the tags: name cards by their title.
 Keep it quick: this runs every time a card starts.
 `.trim();
@@ -491,6 +526,9 @@ Read what you need in the repository (you cannot change files). Then either call
 - keep: when the card is small, or its parts cannot run apart without stepping on each other.
 Do not add scope the card does not ask for.
 `.trim();
+
+/** A card the Koordinator holds back or is judging, before it starts. */
+const waits = (i: Item) => i.state === 'planned' && !!i.queue && ('behind' in i.queue || 'checking' in i.queue);
 
 /** A changed file with the places changed in it: "src/a.ts (lines 12-20 in function f; 40)", or "(new)". */
 const describe = (c: Change) =>
