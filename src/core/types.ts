@@ -69,6 +69,8 @@ export interface Idea {
   brief: string;
   /** The exploration agent is working on a reply. */
   thinking: boolean;
+  /** The agent replied and the owner has not answered yet: an open idea then needs the owner. */
+  yourTurn: boolean;
 }
 
 export interface PullRequest {

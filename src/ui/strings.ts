@@ -168,6 +168,7 @@ export const t = {
   split: 'Aufteilen',
   idea: {
     status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
+    yourTurn: 'Idee · du bist dran',
     brief: 'Stand der Idee',
     briefEmpty: 'Noch leer. Der Explorations-Agent hält hier fest, was das Gespräch ergibt: Ziel, Varianten, Entscheidungen, offene Fragen.',
     seed: 'Ausgangspunkt',
@@ -202,7 +203,9 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 
 export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea }) =>
   i.idea
-    ? t.idea.status[i.idea.status]
+    ? i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking
+      ? t.idea.yourTurn
+      : t.idea.status[i.idea.status]
     : i.queue
     ? 'checking' in i.queue
       ? t.queue.checking

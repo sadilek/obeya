@@ -62,7 +62,9 @@ An idea is thought through on its card before anything is planned; no worker run
    docs, the decision log, the preferences) resumed for every message, days later too. It asks
    back, shows variants with their trade-offs and says what they would cost. The owner types in the
    panel or holds Space with the idea open; the reply stands in the panel, and only its short
-   summary is spoken, when the owner spoke.
+   summary is spoken, when the owner spoke. Once the agent has replied, the open idea needs the
+   owner like a waiting card ("Idee · du bist dran", badge, counted in "brauchen dich") until they
+   answer, park, drop or decide it.
 3. The agent keeps the brief ("Stand der Idee") on top of the card: goal, open and dropped
    variants, decisions, open questions, effort. The conversation is the means, the brief the
    result: whoever opens the card later reads the brief.
