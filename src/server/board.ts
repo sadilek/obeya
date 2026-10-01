@@ -661,7 +661,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         source: 'plan',
         repo: repoOfRef(doc.file, home),
         plan: { file: doc.file, goal: doc.goal },
-        ...(r.from_id ? { from: r.from_id } : {}),
+        ...(r.from_id ? { origin: r.from_id } : {}),
       });
       continue;
     }

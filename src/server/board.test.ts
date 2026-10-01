@@ -145,7 +145,7 @@ describe('the archive of projects', () => {
     docs = [docA, docB];
     board.docsChanged();
     const b = board.snapshot().items.find((i) => i.title === 'B')!;
-    expect(b.from).toBe(idea.id);
+    expect(b.origin).toBe(idea.id);
     const w1 = board.snapshot().items.find((i) => i.parent === b.id)!;
     board.decide({ project_id: b.id, card_id: w1.id, question: 'Welche Spalten?', answer: 'Alle.', by: 'project' });
     // the idea's card leaves the canvas; the project still finds it
@@ -159,7 +159,7 @@ describe('the archive of projects', () => {
     // and so does the archived project
     docs = [docA];
     board.docsChanged();
-    expect(board.archived().find((i) => i.id === b.id)!.from).toBe(idea.id);
+    expect(board.archived().find((i) => i.id === b.id)!.origin).toBe(idea.id);
     expect(board.projectHistory(b.id).decisions).toHaveLength(2);
     expect(board.projectHistory(board.snapshot().items[0]!.id)).toEqual({ decisions: [], origin: null });
   });
@@ -169,7 +169,7 @@ describe('the archive of projects', () => {
     board.planDocsLanded(plain.id, ['docs/plan/b.md']);
     docs = [docA, docB];
     board.docsChanged();
-    expect(board.snapshot().items.find((i) => i.title === 'B')!.from).toBeUndefined();
+    expect(board.snapshot().items.find((i) => i.title === 'B')!.origin).toBeUndefined();
   });
 });
 
