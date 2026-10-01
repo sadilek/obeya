@@ -115,7 +115,7 @@ export class CanvasRuntime {
             ? { by: 'project', ask: (q) => projectAgents.ask(project, card, q) }
             : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
         },
-        onSpike: (spike, summary, demo) => this.spikeReady(spike, summary, demo),
+        onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
         imageFiles,
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
@@ -187,8 +187,8 @@ export class CanvasRuntime {
   act(cardId: string, a: CardAction) {
     const text = 'text' in a ? (a.text ?? '') : '';
     const images = this.images.resolve('images' in a ? a.images : undefined);
-    // a spike may leave it to the idea's brief what the prototype shows; a screenshot may speak for itself
-    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'spike' && !images.length) || text.length > 20000))
+    // a prototype may leave it to the idea's brief what it shows; a screenshot may speak for itself
+    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'prototype' && !images.length) || text.length > 20000))
       throw new BadRequest('emptyText', 'text must be a non-empty string');
     switch (a.action) {
       case 'start':
@@ -225,8 +225,8 @@ export class CanvasRuntime {
       case 'park':
       case 'drop':
         return this.shelve(cardId, a.action);
-      case 'spike':
-        return this.spike(cardId, text.trim());
+      case 'prototype':
+        return this.prototype(cardId, text.trim());
       default:
         throw new BadRequest('invalid', 'unknown action');
     }
@@ -287,27 +287,27 @@ export class CanvasRuntime {
   }
 
   /** A worker builds a throwaway prototype for the idea, in its own workspace; it never lands. */
-  private spike(cardId: string, what: string) {
+  private prototype(cardId: string, what: string) {
     const card = this.ideaCard(cardId);
-    if (this.board.snapshot().items.some((i) => i.spikeOf === cardId && ['working', 'waiting'].includes(i.state)))
-      throw new BadRequest('spikeRunning', 'a spike for this idea is still running');
-    const spike = this.board.addSpike(cardId, `Spike: ${card.title}`, what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.');
+    if (this.board.snapshot().items.some((i) => i.prototypeOf === cardId && ['working', 'waiting'].includes(i.state)))
+      throw new BadRequest('prototypeRunning', 'a prototype for this idea is still running');
+    const prototype = this.board.addPrototype(cardId, `Prototyp: ${card.title}`, what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.');
     try {
-      this.repoOf(spike).workers.start(spike.id);
+      this.repoOf(prototype).workers.start(prototype.id);
     } catch (e) {
-      this.board.remove(spike.id);
+      this.board.remove(prototype.id);
       throw e;
     }
-    this.board.log(cardId, 'state', 'owner', `Spike gestartet: ${what || 'die Idee, wie sie steht'}.`);
+    this.board.log(cardId, 'state', 'owner', `Prototyp gestartet: ${what || 'die Idee, wie sie steht'}.`);
   }
 
-  /** A spike handed over: its demo shows on the idea, and the idea's agent hears what it found. */
-  private spikeReady(spike: Item, summary: string, demo: string | undefined) {
-    const idea = this.board.item(spike.spikeOf!);
+  /** A prototype handed over: its demo shows on the idea, and the idea's agent hears what it found. */
+  private prototypeReady(prototype: Item, summary: string, demo: string | undefined) {
+    const idea = this.board.item(prototype.prototypeOf!);
     if (!idea) return;
     if (demo) this.board.work(idea.id, { demo });
-    this.board.log(idea.id, 'state', 'worker', `Spike „${spike.title}“ fertig${demo ? '; die Demo liegt auf dieser Karte' : ''}.`);
-    if (idea.state === 'idea') this.explorers.tell(idea.id, `A worker built a throwaway prototype (spike) for this idea. Its summary:\n\n${summary}\n\nTake what it showed and what it means for the idea into the brief, then reply to the owner in a sentence or two.`);
+    this.board.log(idea.id, 'state', 'worker', `Prototyp „${prototype.title}“ fertig${demo ? '; die Demo liegt auf dieser Karte' : ''}.`);
+    if (idea.state === 'idea') this.explorers.tell(idea.id, `A worker built a throwaway prototype for this idea. Its summary:\n\n${summary}\n\nTake what it showed and what it means for the idea into the brief, then reply to the owner in a sentence or two.`);
   }
 
   private ideaCard(cardId: string): Item {
@@ -343,8 +343,8 @@ export class CanvasRuntime {
       }
       case 'discuss':
         return this.act(c.card, { action: 'discuss', text: c.text, spoken: true, ...(c.images ? { images: c.images } : {}) });
-      case 'spike':
-        return this.act(c.card, { action: 'spike', text: c.text });
+      case 'prototype':
+        return this.act(c.card, { action: 'prototype', text: c.text });
       case 'build':
       case 'planDoc':
       case 'park':

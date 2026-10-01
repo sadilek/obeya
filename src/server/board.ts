@@ -199,7 +199,7 @@ export class Board {
     // an archived card is not on the canvas: its follow-ups go where there is room
     if (!from) return this.freeSpot();
     const b = boundsOf(from, items);
-    const earlier = items.filter((i) => i.from === fromId && i.state !== 'proposal' && !i.spikeOf).length;
+    const earlier = items.filter((i) => i.from === fromId && i.state !== 'proposal' && !i.prototypeOf).length;
     return { x: b.x + 35 + earlier * (CARD_SIZE.feature[0] + GAP), y: b.y + b.h + 60 };
   }
 
@@ -260,11 +260,11 @@ export class Board {
   }
 
   /** A card whose worker builds a throwaway prototype for the idea; placed below it. */
-  addSpike(ideaId: string, title: string, body: string): Item {
+  addPrototype(ideaId: string, title: string, body: string): Item {
     const items = this.snapshot().items;
     const idea = items.find((i) => i.id === ideaId);
     const b = idea ? boundsOf(idea, items) : { x: 0, y: 0, w: 0, h: 0 };
-    const spikes = items.filter((i) => i.spikeOf === ideaId).length;
+    const prototypes = items.filter((i) => i.prototypeOf === ideaId).length;
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
@@ -272,10 +272,10 @@ export class Board {
         state: 'planned',
         title: title.slice(0, 200),
         body: body.slice(0, 20000),
-        x: b.x + 35 + spikes * 30,
-        y: b.y + b.h + 60 + spikes * 30,
+        x: b.x + 35 + prototypes * 30,
+        y: b.y + b.h + 60 + prototypes * 30,
         from_id: ideaId,
-        spike_of: ideaId,
+        prototype_of: ideaId,
         repo: idea && idea.repo !== this.home ? idea.repo : null,
       },
     ]);
@@ -641,7 +641,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         repo: r.repo ?? home,
         ...work(r),
         ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? { brief: ideaOf(r).brief } : {}),
-        ...(r.spike_of ? { spikeOf: r.spike_of } : {}),
+        ...(r.prototype_of ? { prototypeOf: r.prototype_of } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
       });
       continue;

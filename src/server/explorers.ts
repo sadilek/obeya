@@ -56,7 +56,7 @@ export class Explorers {
     this.send(card, `The owner says:\n\n${text}${imageNote(images)}`, spoken, images);
   }
 
-  /** Obeya tells the agent something the owner did not say (a spike's result). */
+  /** Obeya tells the agent something the owner did not say (a prototype's result). */
   tell(cardId: string, text: string) {
     const card = this.o.board.item(cardId);
     if (!card || card.state !== 'idea') return;
@@ -248,7 +248,7 @@ Tools, within a turn in this order:
 - update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Ist-Stand** (what the code does today, when it matters), **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
 - reply, last: your turn in the conversation, and spoken, its summary for the ear. Exactly once per message, then end your turn.
 
-The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype (spike) built, park it or drop it. You may suggest one of these when the time has come.
+The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype built, park it or drop it. You may suggest one of these when the time has come.
 Owner-facing text is in ${OWNER_LANGUAGE}.
 `.trim();
 

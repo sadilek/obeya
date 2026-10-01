@@ -75,9 +75,9 @@ An idea is thought through on its card before anything is planned; no worker run
    result: whoever opens the card later reads the brief. The two stand side by side and never say
    the same: findings, variants and questions go into the brief, and a reply only carries the
    turn (what changed in the brief, which open question is next).
-4. A spike, when talking is not enough: a worker builds a throwaway prototype in its own workspace
+4. A prototype ("Prototyp bauen lassen"), when talking is not enough: a worker builds a throwaway one in its own workspace
    and records a demo, which shows on the idea; the exploration agent hears what it found. The
-   spike never lands and does not count for collisions; approving it discards workspace and branch.
+   prototype never lands and does not count for collisions; approving it discards workspace and branch.
 5. Deciding: "So bauen" makes the brief the card's task and starts it at once, through the
    Koordinator like "Agent starten" (it waits only if it would likely conflict with running work). "Als Projekt planen" plans a
    card whose worker writes a plan doc with workstreams, which lands like any change (OKE: a PR)
@@ -269,7 +269,7 @@ the owner's language (`src/core/locale.ts`).
   Mikrofon war noch nicht bereit“. A quick, low-effort Koordinator turn reads
   the transcript as speech that may be misheard and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
-  approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, spike, park, drop),
+  approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, prototype, park, drop),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
@@ -332,7 +332,7 @@ the owner's language (`src/core/locale.ts`).
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
 branch, status line, open question or review summary, the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
-when archived, an idea's status, brief and open questions, a spike's idea, landed work whose worker still
+when archived, an idea's status, brief and open questions, a prototype's idea, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
 work added),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
@@ -368,7 +368,7 @@ the repository; the copy on the project is only for the archive).
 - [x] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
 - [ ] **M8 Ideas.** Discuss and explore a feature before deciding to build it (proposed
   2026-09-30). Built as described under [Ideas](#ideas): the state `idea`, an exploration agent
-  per idea with a resumed read-only session, the brief it keeps, spikes that never land, and the
+  per idea with a resumed read-only session, the brief it keeps, prototypes that never land, and the
   decisions build, plan doc (written by a worker), park and drop.
   - Still open: a short-term memory for commands to the Koordinator (follow-ups such as "und die
     zweite auch"); today every command is read in a fresh session.

@@ -282,8 +282,8 @@ export class Koordinator {
     return this.o.board
       .snapshot()
       // approved work counts until it has landed: a PR not yet merged still holds its files
-      // a spike never lands, so its prototype collides with nothing
-      .items.filter((i) => ['working', 'waiting', 'inPr', 'approved'].includes(i.state) && i.kind !== 'project' && !i.spikeOf && (!repo || i.repo === repo));
+      // a prototype never lands, so it collides with nothing
+      .items.filter((i) => ['working', 'waiting', 'inPr', 'approved'].includes(i.state) && i.kind !== 'project' && !i.prototypeOf && (!repo || i.repo === repo));
   }
 
   /**

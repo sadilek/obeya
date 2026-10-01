@@ -240,7 +240,7 @@ export class Workspaces {
   }
 
   /**
-   * Throws the card's work away: a spike's prototype never lands. A worktree and its branch are
+   * Throws the card's work away: a prototype never lands. A worktree and its branch are
    * removed; a clone goes back to its default branch, without the card's branch, and is free again.
    */
   discard(cardId: string, branch: string) {

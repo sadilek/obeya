@@ -48,7 +48,7 @@ export interface Item {
   summary?: string;
   /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
   demo?: Demo;
-  /** The card it comes from: a proposal's source, a spike's idea, or the card a follow-up follows up on. */
+  /** The card it comes from: a proposal's source, a prototype's idea, or the card a follow-up follows up on. */
   from?: string;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
   repo: string;
@@ -63,8 +63,8 @@ export interface Item {
   archivedAt?: string;
   /** Ideas only: what the discussion has settled so far. */
   idea?: Idea;
-  /** A spike's idea: the throwaway prototype is built for it and never lands. */
-  spikeOf?: string;
+  /** A prototype's idea: the throwaway prototype is built for it and never lands. */
+  prototypeOf?: string;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
   /** Screenshots the owner attached to the card's task; its worker gets them at the start. */
@@ -251,7 +251,7 @@ export type CardAction =
   | { action: 'park' }
   | { action: 'drop' }
   /** Ideas: a worker builds a throwaway prototype and shows it as a demo on the idea. */
-  | { action: 'spike'; text?: string };
+  | { action: 'prototype'; text?: string };
 
 /**
  * Why the server refused a request. The server sends the code and an English detail
@@ -281,8 +281,8 @@ export type ErrorCode =
   | 'notDone'
   | 'notArchived'
   | 'notIdea'
-  /** A spike for the idea is still running. */
-  | 'spikeRunning'
+  /** A prototype for the idea is still running. */
+  | 'prototypeRunning'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'

@@ -20,7 +20,7 @@ interface Props {
   /** The canvas's repositories; with several, the card names its own and a planned one can move. */
   repos: RepoRef[];
   parent?: Item;
-  /** The card it came from: a proposal's source, a spike's idea, a follow-up's card. */
+  /** The card it came from: a proposal's source, a prototype's idea, a follow-up's card. */
   from?: Item;
   onEdit: (p: CardPatch) => void;
   /** Saves pending edits; actions wait for it, so the worker sees the card as typed. */
@@ -54,8 +54,8 @@ export function Detail(p: Props) {
       ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}`
       : item.state === 'idea'
         ? t.kind.idea
-        : item.spikeOf
-          ? t.kind.spike
+        : item.prototypeOf
+          ? t.kind.prototype
           : t.kind[item.kind]);
   const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea' || item.state === 'proposal') && !item.queue;
   if (item.state === 'idea' && item.idea)
@@ -119,8 +119,8 @@ export function Detail(p: Props) {
         </div>
       )}
 
-      {item.spikeOf && <p className="hint">{t.idea.spikeOf(plain(p.from?.title ?? ''))}</p>}
-      {p.from && !item.spikeOf && item.state !== 'proposal' && <p className="hint">{t.followUpOf(plain(p.from.title))}</p>}
+      {item.prototypeOf && <p className="hint">{t.idea.prototypeOf(plain(p.from?.title ?? ''))}</p>}
+      {p.from && !item.prototypeOf && item.state !== 'proposal' && <p className="hint">{t.followUpOf(plain(p.from.title))}</p>}
 
       {item.state === 'planned' && !item.queue && <LastFailure cardId={item.id} />}
 
@@ -145,7 +145,7 @@ export function Detail(p: Props) {
                   <button className="btn" onClick={() => act({ action: 'split' }, { close: false })}>
                     {t.split}
                   </button>
-                  {!item.spikeOf && !item.branch && (
+                  {!item.prototypeOf && !item.branch && (
                     <button
                       className="btn"
                       onClick={async () => {
@@ -205,9 +205,9 @@ export function Detail(p: Props) {
           <div className="actions">
             <button
               className="btn primary"
-              onClick={() => act({ action: 'approve' }, { close: true, ack: item.spikeOf ? t.idea.discarded : t.approved })}
+              onClick={() => act({ action: 'approve' }, { close: true, ack: item.prototypeOf ? t.idea.discarded : t.approved })}
             >
-              {item.spikeOf ? t.idea.discard : t.approve}
+              {item.prototypeOf ? t.idea.discard : t.approve}
             </button>
           </div>
           <Composer placeholder={t.compose.review} onSend={(text, images) => act({ action: 'message', text, images }, { close: false })} />
@@ -342,12 +342,12 @@ export function Detail(p: Props) {
 // ------------------------------------------------------------------ ideas
 
 /**
- * An idea under discussion: the brief its agent keeps on top, a spike's demo when there is one,
+ * An idea under discussion: the brief its agent keeps on top, a prototype's demo when there is one,
  * then the conversation, and the owner's decisions.
  */
 function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; onDelete: () => void }) {
   const idea = item.idea!;
-  const [spiking, setSpiking] = useState(false);
+  const [prototyping, setPrototyping] = useState(false);
   const answer = usePicks(idea.questions);
   return (
     <>
@@ -364,9 +364,9 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
           </div>
           {item.demo && (
             <>
-              <h4 className="p-h">{t.idea.spikeDemo}</h4>
+              <h4 className="p-h">{t.idea.prototypeDemo}</h4>
               <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
-                <p className="hint">{t.idea.spikeKept}</p>
+                <p className="hint">{t.idea.prototypeKept}</p>
               </DemoView>
             </>
           )}
@@ -383,13 +383,13 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
         </div>
       </div>
       {idea.status !== 'open' && <p className="hint">{t.idea.reopen}</p>}
-      {spiking ? (
+      {prototyping ? (
         <Composer
-          placeholder={t.idea.spikePlaceholder}
-          button={t.idea.spikeGo}
+          placeholder={t.idea.prototypePlaceholder}
+          button={t.idea.prototypeGo}
           allowEmpty
           noImages
-          onSend={(text) => act({ action: 'spike', ...(text ? { text } : {}) }, { close: true, ack: t.idea.spiked })}
+          onSend={(text) => act({ action: 'prototype', ...(text ? { text } : {}) }, { close: true, ack: t.idea.prototyped })}
         />
       ) : (
         <div className="actions">
@@ -399,8 +399,8 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
           <button className="btn" onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
             {t.idea.planDoc}
           </button>
-          <button className="btn" onClick={() => setSpiking(true)}>
-            {t.idea.spike}
+          <button className="btn" onClick={() => setPrototyping(true)}>
+            {t.idea.prototype}
           </button>
           {idea.status !== 'parked' && (
             <button className="btn" onClick={() => act({ action: 'park' }, { close: true, ack: t.idea.parked })}>
@@ -618,7 +618,7 @@ function DemoView({
 /** Makes a finding of the demo a card of its own that comes from this one, or names the card it already became. */
 function FollowUp({ finding, item, all, run }: { finding: string; item: Item; all: Item[]; run: Run }) {
   const text = finding.trim();
-  const made = all.find((i) => i.from === item.id && i.state !== 'proposal' && !i.spikeOf && i.body.includes(text));
+  const made = all.find((i) => i.from === item.id && i.state !== 'proposal' && !i.prototypeOf && i.body.includes(text));
   if (made) return <div className="follow-up done">→ {t.demo.followedUp(plain(made.title))}</div>;
   return (
     <button
