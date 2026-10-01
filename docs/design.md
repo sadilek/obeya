@@ -81,7 +81,8 @@ An idea is thought through on its card before anything is planned; no worker run
    the same: findings, variants and questions go into the brief, and a reply only carries the
    turn (what changed in the brief, which open question is next).
 4. A prototype ("Prototyp bauen lassen"), when talking is not enough: a worker builds a throwaway one in its own workspace
-   and records a demo, which shows on the idea; the exploration agent hears what it found. The
+   and records a demo, which shows on the idea; the exploration agent hears what it found. While
+   it is built, the idea no longer needs the owner; the agent's reply to its result makes it their turn again. The
    prototype never lands and does not count for collisions; approving it discards workspace and branch.
 5. Deciding: "So bauen" makes the brief the card's task and starts it at once, through the
    Koordinator like "Agent starten" (it waits only if it would likely conflict with running work). "Als Projekt planen" plans a
