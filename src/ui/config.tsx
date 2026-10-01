@@ -70,8 +70,9 @@ export function ConfigSheet({ on }: { on: boolean }) {
     }
     setBusy(false);
   };
-  const ids = (checked?.resolved ?? []).flatMap((r) => (r ? [r.id] : []));
-  const gone = view.running.filter((id) => !ids.includes(id));
+  // a canvas with a problem has no id yet: which running canvas goes is only known once all resolve
+  const resolved = checked?.resolved ?? [];
+  const gone = resolved.every(Boolean) ? view.running.filter((id) => !resolved.some((r) => r?.id === id)) : [];
 
   return (
     <aside id="csheet" className={on ? 'sheet on' : 'sheet'}>
@@ -262,7 +263,7 @@ function RepoRow({ repo, home, resolved, adapters, problems, onChange }: RepoPro
         <>
           <label className="c-row">
             <span className="hint">{t.config.clones}</span>
-            <input type="number" min={0} max={20} value={repo.clones ?? 0} onChange={(e) => onChange(without('clones', Number(e.target.value) || undefined))} />
+            <input type="number" min={0} max={20} placeholder="0" value={repo.clones ?? ''} onChange={(e) => onChange(without('clones', Number(e.target.value) || undefined))} />
           </label>
           <label>
             <span className="hint">{t.config.workspaces}</span>
