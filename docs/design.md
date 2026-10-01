@@ -141,7 +141,15 @@ background work runs (a demo render, a test suite, a watcher it started) is no s
 wakes the worker when it finishes or fires, so Obeya waits, and only after ten minutes without a
 sign of life does it nudge. A
 worker that went to the owner for having stopped and then works on by itself takes that question
-back. The owner can send a note at any time; it reaches the worker without stopping it.
+back. The owner can send a note at any time; it reaches the worker without stopping it. The SDK
+hands a waiting message to the agent only after its running tool call, so a note never cuts a
+command off (tests and renders included), and workers keep their tool calls short instead: they
+wait for anything external (a deploy, a CI run, a point in time) in the background
+(`run_in_background`, Monitor) and end their turn, which a note starts again at once. A Bash
+command in the foreground that sleeps longer than 30 seconds (`sleep N`, a polling loop without a
+bound, counted from the command line by `foregroundSleep` in `src/server/runtime.ts`) is refused
+with that reason; a leading `timeout N` bounds it. A worker answers a note in its log, saying what
+it changes or why nothing, and asks when the note is unclear.
 
 Obeya's messages to a worker say what happened — feedback, an answer, a note, a landing that
 failed, the landing — not step by step what to do: workers are full agents. Whether a demo is
@@ -206,7 +214,12 @@ the owner's language (`src/core/locale.ts`).
   CLAUDE.md, and permission mode `auto` (`--permission-mode`); after a restart it resumes by
   session id. A project agent is one read-only session per project (Read, Grep, Glob on the Obeya
   checkout), resumed for each question, answering one question at a time. The SDK sits behind a
-  small runtime interface, so the orchestration is tested against a fake.
+  small runtime interface, so the orchestration is tested against a fake. Two SDK hooks ride on
+  every session: before a Bash call, the refusal of long foreground sleeps; after every tool call,
+  what changed since the session's instructions were built (`AgentSpec.contextUpdate`) goes to the
+  agent with that call's result. Workers use it for the owner's preferences: a preference learned
+  or changed while a worker runs reaches it once, at its next tool call, without a message or a
+  new turn.
 - **Workspaces** — per adapter. A pool of full clones leased by a card while it is worked on
   (OKE: csharpier finds no files inside a worktree, and parallel AppHosts per clone are proven),
   or a worktree per card (Obeya itself: any number in parallel), kept across stop and restart

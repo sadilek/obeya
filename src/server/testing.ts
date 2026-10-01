@@ -33,6 +33,10 @@ export class FakeSession implements AgentSession {
   call(name: string, args: Record<string, unknown>) {
     return this.spec.tools.find((t) => t.name === name)!.run(args);
   }
+  /** A tool step of the agent: what the session hands it with the step's result. */
+  toolStep(): string | undefined {
+    return this.spec.contextUpdate?.();
+  }
   emit(e: AgentEvent) {
     this.spec.onEvent(e);
   }
