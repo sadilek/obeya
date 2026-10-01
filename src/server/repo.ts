@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, watch } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, type FSWatcher, readdirSync, readFileSync, watch } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
 import { GIT } from './workspaces';
@@ -26,15 +26,47 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): PlanDoc[] 
     });
 }
 
-/** Calls `fn` (debounced) whenever a plan doc changes. */
+/**
+ * Calls `fn` (debounced) whenever a plan doc changes. Git removes the plan directory with its last
+ * doc, and the directory's own watch reports nothing then, so the nearest directory above it that
+ * exists is watched too: the plan directory going or coming re-arms the watches.
+ */
 export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => void): () => void {
   const dir = join(repoPath, adapter.planDocs.dir);
-  if (!existsSync(dir)) return () => {};
+  let watchers: FSWatcher[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const w = watch(dir, (_, file) => {
-    if (file && !String(file).endsWith('.md')) return;
+  const fire = () => {
     clearTimeout(timer);
-    timer = setTimeout(fn, 150);
-  });
-  return () => w.close();
+    timer = setTimeout(() => {
+      arm();
+      fn();
+    }, 150);
+  };
+  const arm = () => {
+    watchers.forEach((w) => w.close());
+    watchers = [];
+    if (existsSync(dir))
+      watchers.push(
+        watch(dir, (_, file) => {
+          if (file && !String(file).endsWith('.md')) return;
+          fire();
+        }),
+      );
+    // the nearest directory above, within the repository, for the next step down to the plan directory
+    let below = dir;
+    let above = dirname(dir);
+    while (!existsSync(above) && above.length > repoPath.length) [below, above] = [above, dirname(above)];
+    const name = basename(below);
+    watchers.push(
+      watch(above, (_, file) => {
+        if (file && String(file) !== name) return;
+        fire();
+      }),
+    );
+  };
+  arm();
+  return () => {
+    clearTimeout(timer);
+    watchers.forEach((w) => w.close());
+  };
 }
