@@ -180,6 +180,8 @@ export class Workers {
    */
   private land(cardId: string, by: 'owner' | 'obeya') {
     const row = this.o.board.row(cardId);
+    // read before landing: the landed branch adds nothing against main
+    const added = this.planDocsAdded(cardId);
     const result = this.o.workspaces.landOnMain(cardId, row.branch!);
     if ('code' in result && !result.worker) {
       this.o.board.work(cardId, { approved_at: null });
@@ -197,6 +199,7 @@ export class Workers {
       );
       return;
     }
+    this.o.board.planDocsLanded(cardId, added);
     this.bump(cardId);
     const restarts = this.o.restartsFor?.(result) ?? false;
     this.o.board.work(cardId, { state: 'live', need: null, detail: null, status_line: null, approved_at: null, landed: JSON.stringify({ commit: result.to, ...(restarts ? { restarts } : {}) } satisfies LandedState) });
@@ -239,6 +242,16 @@ export class Workers {
     this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, ...(row.state === 'waiting' ? { state: 'live', need: null, detail: null } : {}) });
   }
 
+  /** The plan docs the card's branch adds, as plan references of the canvas. */
+  private planDocsAdded(cardId: string): string[] {
+    if (!this.o.board.row(cardId).idea) return [];
+    const home = !this.o.repo || this.o.repo === this.o.board.home;
+    return this.o.workspaces
+      .addedFiles(cardId, this.o.adapter.planDocs.dir)
+      .filter((f) => f.endsWith('.md') && !this.o.adapter.planDocs.exclude.some((x) => f.endsWith(`/${x}`)))
+      .map((f) => (home ? f : `${this.o.repo}:${f}`));
+  }
+
   /** A spike has served its purpose: its prototype is thrown away with the card; the idea keeps the demo. */
   private discard(card: Item) {
     this.end(card.id);
@@ -256,6 +269,7 @@ export class Workers {
   /** The card's pull request was merged: the work is live, the workspace free. */
   merged(cardId: string) {
     this.bump(cardId);
+    this.o.board.planDocsLanded(cardId, this.planDocsAdded(cardId));
     this.o.board.work(cardId, { state: 'live', need: null, detail: null, status_line: null, landed: JSON.stringify({} satisfies LandedState) });
     this.o.board.log(cardId, 'state', 'obeya', 'Pull Request gemergt. Live.');
     this.afterLanding(cardId, `Your pull request was merged; the card is live.\n\n${AFTER_LANDING}`);

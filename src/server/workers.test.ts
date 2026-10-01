@@ -724,6 +724,20 @@ describe('a worktree per card', () => {
     expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
   });
 
+  test("an idea's plan doc that lands is remembered for the project it becomes", async () => {
+    const i = board.create({ kind: 'feature', idea: true, title: 'Groß', x: 0, y: 0 });
+    board.work(i.id, { state: 'planned' });
+    workers.start(i.id);
+    const wi = board.row(i.id).workspace!;
+    mkdirSync(join(wi, 'docs/plan'), { recursive: true });
+    writeFileSync(join(wi, 'docs/plan/README.md'), 'x');
+    commitIn(wi, 'docs/plan/gross.md', '# Groß');
+    runtime.last.call('ready_for_review', { summary: 'S' });
+    await workers.approve(i.id);
+    expect(state(i.id)).toBe('live');
+    expect(JSON.parse(board.row(i.id).plan_docs!)).toEqual(['docs/plan/README.md', 'docs/plan/gross.md']);
+  });
+
   test('a stopped card keeps its worktree and picks it up again', () => {
     const a = manual();
     workers.start(a.id);

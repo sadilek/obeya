@@ -46,7 +46,7 @@ export interface Item {
   summary?: string;
   /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
   demo?: Demo;
-  /** The card it comes from: a proposal's source, a spike's idea, or the card a follow-up follows up on. */
+  /** The card it comes from: a proposal's source, a spike's idea, the card a follow-up follows up on, or the idea a project's plan doc was written from. */
   from?: string;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
   repo: string;
@@ -67,6 +67,26 @@ export interface Item {
   finishing?: boolean;
   /** Screenshots the owner attached to the card's task; its worker gets them at the start. */
   images?: string[];
+  /** A card that was an idea and has been decided: the brief it was decided on. */
+  brief?: string;
+}
+
+/** A decision taken on a card: an answer to a worker's question, or the owner's call on an idea. */
+export interface Decision {
+  id: number;
+  cardId: string;
+  question: string;
+  answer: string;
+  by: 'owner' | 'project' | 'koordinator';
+  at: string;
+}
+
+/** What a project's sheet shows beyond the project: its decisions and the idea it came from. */
+export interface ProjectHistory {
+  /** The project's decisions and those of its idea, oldest first. */
+  decisions: Decision[];
+  /** The idea the plan doc was written from, wherever it is now (on the canvas or archived). */
+  origin: Item | null;
 }
 
 /**

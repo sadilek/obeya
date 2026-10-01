@@ -146,6 +146,19 @@ export class Workspaces {
     if (path) this.store.setLease(path, null);
   }
 
+  /** The files under `dir` that the card's branch adds, against the branch it lands on. */
+  addedFiles(cardId: string, dir: string): string[] {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return [];
+    try {
+      const base = defaultBranch(this.o.mode === 'worktrees' ? this.o.repoPath : ws);
+      const upstream = this.o.mode === 'worktrees' ? base : `origin/${base}`;
+      return git(ws, 'diff', '--name-only', '--diff-filter=A', `${upstream}...HEAD`, '--', dir).split('\n').filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
   /**
    * Lands the card's committed branch on the Obeya checkout's default branch by rebasing (or,
    * when only the replay conflicts, squashing) and fast-forwarding. The workspace stays with the
