@@ -10,6 +10,7 @@ const doc: PlanDoc = {
   title: 'Export',
   goal: 'G',
   workstreams: [{ key: 'W1', label: 'W1', title: 'CSV', body: '', done: false, inReview: false }],
+  markdown: '',
 };
 
 let board: Board;

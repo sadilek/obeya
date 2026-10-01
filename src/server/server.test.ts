@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CardAction } from '../core/types';
@@ -102,6 +102,20 @@ describe('archive', () => {
     expect((await post(api(`/cards/${c.id}/unarchive`), '')).status).toBe(204);
     expect(board.item(c.id)!.state).toBe('live');
     expect(await (await post(api('/archive'), '')).json()).toEqual({ ids: [c.id] });
+  });
+});
+
+describe('plan docs', () => {
+  test("a project's plan doc is read as written; other cards have none", async () => {
+    const md = '# Export\n\n## Goal\n\nCSV for landlords.\n\n## Workstreams\n\n- [ ] **W1:** CSV. Columns as in `docs/x.md`.\n\n## Notes\n\nMore.\n';
+    mkdirSync(join(dir, 'main', 'docs', 'plan'), { recursive: true });
+    writeFileSync(join(dir, 'main', 'docs', 'plan', 'export.md'), md);
+    board.docsChanged();
+    const project = board.snapshot().items.find((i) => i.kind === 'project')!;
+    const get = (id: string) => fetch(new URL(api(`/cards/${id}/plan`), server.url));
+    expect(await (await get(project.id)).json()).toEqual({ file: 'docs/plan/export.md', markdown: md });
+    expect(await codeOf(get(card().id))).toBe('invalid');
+    expect(await codeOf(get('nope'))).toBe('unknownCard');
   });
 });
 

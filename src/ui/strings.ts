@@ -22,6 +22,13 @@ export const t = {
   keys: 'Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Doppelklick: neue Karte · K: Koordinator · A: Archiv · Leertaste halten: sprechen',
   close: 'Schließen (Esc)',
   planSheet: 'Projekt · Plan',
+  plan: {
+    read: 'Plandokument lesen',
+    readAt: 'Im Plandokument lesen',
+    back: 'Workstreams',
+    loading: 'Plandokument wird geladen …',
+    failed: 'Das Plandokument ließ sich nicht laden.',
+  },
   fromPlan: 'Aus dem Plan-Dokument; geändert wird es dort:',
   titlePlaceholder: 'Worum geht es?',
   bodyPlaceholder: 'Beschreibung',

@@ -10,6 +10,8 @@ export interface PlanDoc {
   /** First paragraph of the goal section, inline markdown. */
   goal: string;
   workstreams: Workstream[];
+  /** The doc as written, for the owner to read. */
+  markdown: string;
 }
 
 export interface Workstream {
@@ -38,7 +40,7 @@ export function parsePlanDoc(file: string, markdown: string): PlanDoc | null {
   if (!wsSection) return null;
   const workstreams = parseWorkstreams(wsSection.lines);
   if (!workstreams.length) return null;
-  return { file, title, goal: goalSection ? firstParagraph(goalSection.lines) : '', workstreams };
+  return { file, title, goal: goalSection ? firstParagraph(goalSection.lines) : '', workstreams, markdown };
 }
 
 function splitSections(lines: string[]) {
