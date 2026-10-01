@@ -105,10 +105,12 @@ An idea is thought through on its card before anything is planned; no worker run
    hears which card it comes from and that card's summary. A question in the demo report is an
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
    the answer, and the demo keeps waiting for approval.
-4. Approval opens the PR (demo linked, report as description) and starts monitoring: review bot
-   comments (Greptile) are handled by the worker, CI is watched, conflicts are rebased. Only
-   what needs judgement — a review comment that questions a decision, a conflict with product
-   meaning — comes back to the owner as a question on the card.
+4. Where work lands through pull requests (OKE), approval puts the card `in PR`: its worker opens
+   the PR and Obeya carries it to the merge. Review comments, failed checks and conflicts go to the
+   worker; only what needs judgement — a review comment that questions a decision, a conflict with
+   product meaning — comes back to the owner as a question on the card, and the answer returns it
+   to the PR. A PR closed without a merge asks the owner whether to open it again or drop the work.
+   Where work lands on `main` (Obeya), approval lands it at once.
 5. Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its
    work is on main and may finish what was waiting for that (a data migration, say) before its
    session ends.
@@ -213,6 +215,25 @@ the owner's language (`src/core/locale.ts`).
   is `live`. Commits that conflict one by one but not as a whole land squashed into one commit.
   Uncommitted work or a real conflict sends the card back to its worker with the approval kept:
   its next handover (no new demo needed) lands on its own.
+- **PR loop** — on approval the worker hears that its work goes out as a pull request, opened the
+  way the repository does it (its own skills and conventions, a description for readers who have
+  not seen Obeya), and reports it with the tool `pr_opened(url)`. From then on it may push its
+  branch, never merges, and ends its turn after each round instead of handing over again. Per
+  repository a watcher polls every open PR through `gh` every two minutes (state, mergeability,
+  checks, conversation and review comments, inline comments), behind a small forge interface
+  (`src/server/forge.ts`) so the loop is tested against a fake. New comments, failed checks (once
+  per check and commit) and a conflict (once per commit) go to the worker as a message, which says
+  what happened and leaves the how to the repository's ways (OKE: its `address-reviews` skill,
+  which merges `main` instead of rebasing, replies on and resolves threads, and asks Greptile for a
+  re-review after each push); the owner's log gets a line for each. Comments by the PR's author
+  (the worker replying in the owner's name) and by accounts the adapter names as noise (OKE: the
+  Cloudflare deploy bot) are skipped; an app's inline comments come as `<name>[bot]`, its
+  conversation comments as `<name>`, and the watcher reads both as `<name>`. While the owner is
+  asked, news waits. A merge makes the card `live` (After landing, below). The card shows the PR
+  with its link, its checks (each linked to its run) and a conflict; folded, it reads
+  "PR #42 · 1 Check rot · Konflikt". Checked against real OKE pull requests (2026-10-01): `gh`
+  reads their state, checks and comments; the first OKE card carried through to the merge is still
+  to come.
 - **After landing** — the worker is told its work is on main (or that its PR was merged) and may
   finish what remains, in its workspace, which stays at what landed until then (the card is `live`,
   "Agent erledigt den Rest"; notes reach it, "Anhalten" ends it). Ending a turn with nothing to wait
@@ -331,9 +352,8 @@ the owner's language (`src/core/locale.ts`).
   scripts run in an origin of their own, away from Obeya's API. A handover with `no_demo` (the
   reason) instead is the exception the worker's brief names as such: the card waits for review
   with the summary and the reason, and a demo from an earlier handover leaves the card, since it
-  showed other work. Artifacts stay in `~/demos/`, never in git;
-  sharing them through object storage behind the team's login and linking them from the PR comes
-  with the PR loop.
+  showed other work. Artifacts stay in `~/demos/`, never in git, and are not linked from pull
+  requests yet.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   login recipe, where plan docs live, which reviews run, demo conventions.
 
@@ -342,7 +362,8 @@ the owner's language (`src/core/locale.ts`).
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
 branch, status line, open question or review summary (with the reason when there is no demo), the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
-when archived, the PR link, an idea's status, brief and open questions, a prototype's idea, landed work whose worker still
+when archived, the pull request (link, checks, the comments, failed checks and conflict already
+passed on), an idea's status, brief and open questions, a prototype's idea, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
 work added),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
@@ -367,6 +388,11 @@ the repository; the copy on the project is only for the archive).
   one canvas per repository).
 - Agents may propose cards.
 - Approval triggers the PR and its monitoring to the merge, not the merge itself.
+- The worker opens and tends its PR the way the repository does it, rather than Obeya scripting
+  the steps (2026-10-01): Obeya's first version told it to rebase and push with
+  `--force-with-lease`, while OKE merges `main` into a PR branch, never force-pushes, and has its
+  own skill for review comments. Obeya says what happened on the PR, the repository says how to
+  answer it.
 - Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
 - This page describes what is built; work in progress lives in plan docs, which the canvas shows as
@@ -496,4 +522,6 @@ the repository; the copy on the project is only for the archive).
 - Which OKE clones may workers lease: the existing `~/dev/oke2`–`oke5`, or fresh ones?
 - A plan doc without a `## Workstreams` checklist is not shown (in OKE: `utilmd-parsed-view.md`,
   whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
+- Demos in pull requests: link them from the PR through object storage behind the team's login.
+  Which storage?
 - Demo sharing beyond the team: narration in a cloned voice.
