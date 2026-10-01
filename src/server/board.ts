@@ -2,12 +2,27 @@
 //
 // Plan docs are read, never written. Their projects and workstreams get a stored row the first
 // time they appear, so the owner's placement survives; title, text and state always come from the
-// doc. A row whose doc or workstream is gone stays stored but is not shown.
+// doc. Each read keeps the doc's last state on its project: when the doc goes, the project goes
+// into the archive with it, and comes back to its place when the doc returns. A workstream that
+// leaves its doc stays stored but is not shown.
 
 import { boundsOf, CARD_SIZE, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
-import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Idea, type Item, type NewCard, type Question, STATES } from '../core/types';
-import type { CardRow, NewRow, RowUpdate, Store } from './db';
+import {
+  type CanvasInfo,
+  type CanvasSnapshot,
+  type CardEvent,
+  type CardPatch,
+  type Decision,
+  type ErrorCode,
+  type Idea,
+  type Item,
+  type NewCard,
+  type ProjectHistory,
+  type Question,
+  STATES,
+} from '../core/types';
+import type { CardRow, DecisionRow, NewRow, RowUpdate, Store } from './db';
 import type { Images } from './images';
 
 /** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
@@ -336,24 +351,74 @@ export class Board {
     return ids;
   }
 
-  /** Puts an archived card back where it was on the canvas. */
+  /** Puts an archived card back where it was on the canvas; a project comes back with its doc. */
   unarchive(id: string) {
-    if (!this.own(id).archived_at) throw new BadRequest('notArchived', 'the card is not archived');
+    const row = this.own(id);
+    if (row.plan_ref) throw new BadRequest('planCard', 'a project comes back when its plan doc does');
+    if (!row.archived_at) throw new BadRequest('notArchived', 'the card is not archived');
     this.store.update(id, { archived_at: null });
     this.changed();
   }
 
-  /** The archive, the most recently archived first. */
+  /**
+   * The archive, the most recently archived first. A project comes as its plan doc last stood,
+   * followed by its workstreams (with `parent`), which the archive lists under it, not on their own.
+   */
   archived(): Item[] {
-    return this.store.archived(this.canvas.id).map((r) => ({ ...toItems([r], [], this.home)[0]!, archivedAt: r.archived_at! }));
+    // the docs as they are now decide what is archived
+    this.snapshot();
+    const rows = this.store.archived(this.canvas.id).filter((r) => !r.plan_ref || r.plan);
+    const projects = rows.filter((r) => r.plan_ref);
+    const docs = projects.map((r) => JSON.parse(r.plan!) as PlanDoc);
+    const kids = this.store.children(projects.map((r) => r.id));
+    const items = toItems([...rows, ...kids], docs, this.home);
+    return rows.flatMap((r) => {
+      const at = { archivedAt: r.archived_at! };
+      const own = items.find((i) => i.id === r.id);
+      return own ? [{ ...own, ...at }, ...items.filter((i) => i.parent === r.id).map((i) => ({ ...i, ...at }))] : [];
+    });
+  }
+
+  /** Any card of the canvas as the UI sees it: on the canvas, or in the archive. */
+  card(id: string): Item | undefined {
+    this.own(id);
+    return this.item(id) ?? this.archived().find((i) => i.id === id);
+  }
+
+  /** What a project's sheet shows besides the doc: its decisions and those of the idea it came from. */
+  projectHistory(id: string): ProjectHistory {
+    const row = this.own(id);
+    if (row.kind !== 'project') throw new BadRequest('invalid', 'not a project');
+    const own = this.store.decisions(this.canvas.id, id, 500);
+    const origin = row.from_id ? this.store.card(row.from_id) : null;
+    const fromIdea = origin && !origin.deleted_at ? this.store.cardDecisions(this.canvas.id, origin.id) : [];
+    const decisions = [...fromIdea, ...own].sort((a, b) => a.at.localeCompare(b.at) || a.id - b.id).map(toDecision);
+    return { decisions, origin: origin && !origin.deleted_at ? (this.card(origin.id) ?? null) : null };
+  }
+
+  /** The plan docs (plan references) that a card's landed work added; its idea becomes their origin. */
+  planDocsLanded(cardId: string, refs: string[]) {
+    const row = this.own(cardId);
+    // only a card that was an idea is a project's origin
+    if (!row.idea || !refs.length) return;
+    this.store.update(cardId, { plan_docs: JSON.stringify(refs) });
+    this.changed();
   }
 
   /** The canvas as the UI sees it; built once per change (every write here ends in `changed`). */
   snapshot(): CanvasSnapshot {
     if (this.cache) return this.cache;
-    const docs = (this.docs ??= this.readDocs());
+    if (!this.docs) {
+      this.docs = this.readDocs();
+      this.keepDocs(this.docs);
+    }
+    const docs = this.docs;
     let items = toItems(this.store.cards(this.canvas.id), docs, this.home);
-    if (this.placeNew(docs, items)) items = toItems(this.store.cards(this.canvas.id), docs, this.home);
+    if (this.placeNew(docs, items)) {
+      // projects seen for the first time keep their doc too
+      this.keepDocs(docs);
+      items = toItems(this.store.cards(this.canvas.id), docs, this.home);
+    }
     this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id), talk: this.store.talk(this.canvas.id, SHEET_TALK, true) };
     return this.cache;
   }
@@ -471,6 +536,25 @@ export class Board {
     return row;
   }
 
+  /**
+   * Keeps each doc's last state on its project. A project whose doc is gone goes into the archive
+   * (rows from before Obeya kept the state have nothing to show there, and stay hidden); one whose
+   * doc is back returns to the canvas.
+   */
+  private keepDocs(docs: PlanDoc[]) {
+    const byFile = new Map(docs.map((d) => [d.file, d]));
+    const at = new Date().toISOString();
+    this.store.db.transaction(() => {
+      for (const r of this.store.projects(this.canvas.id)) {
+        const doc = byFile.get(r.plan_ref!);
+        if (doc) {
+          const plan = JSON.stringify(doc);
+          if (r.plan !== plan || r.archived_at) this.store.update(r.id, { plan, archived_at: null });
+        } else if (r.plan && !r.archived_at) this.store.update(r.id, { archived_at: at });
+      }
+    })();
+  }
+
   /** Stores a row for every project and workstream seen for the first time. Returns whether any were added. */
   private placeNew(docs: PlanDoc[], items: Item[]): boolean {
     const rows = this.store.cards(this.canvas.id);
@@ -490,9 +574,10 @@ export class Board {
       );
     }
     if (add.length) this.store.insert(add);
+    const linked = this.linkOrigins();
 
     const fresh = docs.filter((d) => !byRef.has(d.file));
-    if (!fresh.length) return add.length > 0;
+    if (!fresh.length) return add.length > 0 || linked;
     const layouts = fresh.map((d) => {
       const pos = placeWorkstreams(d.workstreams);
       const kids = pos.map((p, n) => ({ kind: 'feature' as const, state: d.workstreams[n]!.done ? ('live' as const) : ('planned' as const), parent: 'p', ...p }));
@@ -506,7 +591,23 @@ export class Board {
         doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'feature' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
       );
     });
+    this.linkOrigins();
     return true;
+  }
+
+  /** A project whose doc an idea's landed work added remembers that idea. Returns whether any did. */
+  private linkOrigins(): boolean {
+    const origin = new Map<string, string>();
+    for (const r of this.store.withPlanDocs(this.canvas.id)) for (const ref of JSON.parse(r.plan_docs!) as string[]) origin.set(ref, r.id);
+    if (!origin.size) return false;
+    let linked = false;
+    for (const r of this.store.projects(this.canvas.id)) {
+      const from = !r.from_id ? origin.get(r.plan_ref!) : undefined;
+      if (!from) continue;
+      this.store.update(r.id, { from_id: from });
+      linked = true;
+    }
+    return linked;
   }
 }
 
@@ -539,7 +640,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         source: 'manual',
         repo: r.repo ?? home,
         ...work(r),
-        ...(r.state === 'idea' ? { idea: ideaOf(r) } : {}),
+        ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? { brief: ideaOf(r).brief } : {}),
         ...(r.spike_of ? { spikeOf: r.spike_of } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
       });
@@ -560,6 +661,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         source: 'plan',
         repo: repoOfRef(doc.file, home),
         plan: { file: doc.file, goal: doc.goal },
+        ...(r.from_id ? { from: r.from_id } : {}),
       });
       continue;
     }
@@ -629,6 +731,8 @@ export interface StoredIdea {
   yourTurn?: boolean;
   questions?: Question[];
 }
+
+const toDecision = (d: DecisionRow): Decision => ({ id: d.id, cardId: d.card_id, question: d.question, answer: d.answer, by: d.by, at: d.at });
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };

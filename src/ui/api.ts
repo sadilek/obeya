@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasInfo, CanvasSnapshot, CardAction, CardEvent, CardPatch, Item, NewCard, ServerMessage } from '../core/types';
+import type { CanvasInfo, CanvasSnapshot, CardAction, CardEvent, CardPatch, Item, NewCard, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -67,6 +67,8 @@ export const api = {
   events: (id: string) => call<CardEvent[]>('GET', at(`/cards/${id}/events`)),
   /** A project's plan doc as written. */
   planDoc: (id: string) => call<{ file: string; markdown: string }>('GET', at(`/cards/${id}/plan`)),
+  /** A project's decisions and the idea it came from. */
+  history: (id: string) => call<ProjectHistory>('GET', at(`/cards/${id}/history`)),
   /** What the owner said about the card or project in view. */
   voice: async (audio: Blob, where: Where) => {
     const res = await fetch(at(`/voice${query(where)}`), { method: 'POST', body: audio });

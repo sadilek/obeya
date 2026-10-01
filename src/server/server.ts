@@ -115,6 +115,8 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         },
       },
       '/api/c/:canvas/cards/:id/plan': { GET: on((c, req) => c.board.planDoc(req.params.id!)) },
+      // a project's decisions and the idea it came from
+      '/api/c/:canvas/cards/:id/history': { GET: on((c, req) => c.board.projectHistory(req.params.id!)) },
       '/api/c/:canvas/cards/:id/demo/:file': {
         GET: (req) => {
           try {

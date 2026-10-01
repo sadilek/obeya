@@ -69,15 +69,22 @@ describe('plan docs', () => {
     expect(first.length + 2).toBe(items.length);
   });
 
-  test('a removed doc hides its cards; its return brings back their placement', () => {
+  test('a removed doc takes its project into the archive; its return brings it back to its place', () => {
     const p = board.snapshot().items[0]!;
     board.patch(p.id, { x: -500, y: 42 });
     docs = [];
     board.docsChanged();
     expect(board.snapshot().items).toEqual([]);
+    expect(board.archived().map((i) => [i.title, i.parent ?? null])).toEqual([
+      ['A', null],
+      ['Title W1', p.id],
+      ['Title W2', p.id],
+      ['Title W3', p.id],
+    ]);
     docs = [docA];
     board.docsChanged();
     expect(board.snapshot().items[0]).toMatchObject({ id: p.id, x: -500, y: 42 });
+    expect(board.archived()).toEqual([]);
   });
 
   test('work in progress wins over a ticked-off workstream until it has landed', () => {
@@ -95,6 +102,74 @@ describe('plan docs', () => {
     expect(() => board.patch(w1!.id, { title: 'x' })).toThrow(BadRequest);
     expect(() => board.patch(p!.id, { state: 'working' })).toThrow(BadRequest);
     expect(() => board.remove(w1!.id)).toThrow(BadRequest);
+  });
+});
+
+describe('the archive of projects', () => {
+  test('an archived project shows its doc as last read: goal, workstreams with text and state', () => {
+    const w2 = board.snapshot().items.find((i) => i.label === 'W2')!;
+    board.work(w2.id, { state: 'live', branch: 'obeya/w2' });
+    docs = [{ ...docA, goal: 'Neues Ziel', workstreams: [ws('W1', true), { ...ws('W2', true), body: 'Zuletzt so' }, ws('W3')] }];
+    board.docsChanged();
+    board.snapshot();
+    docs = [];
+    board.docsChanged();
+    board.snapshot();
+    const [p, ...kids] = board.archived();
+    expect(p).toMatchObject({ kind: 'project', title: 'A', plan: { file: 'docs/plan/a.md', goal: 'Neues Ziel' }, archivedAt: expect.any(String) });
+    expect(kids.map((k) => [k.label, k.state, k.body, k.archivedAt])).toEqual([
+      ['W1', 'live', 'Body W1', p!.archivedAt],
+      ['W2', 'live', 'Zuletzt so', p!.archivedAt],
+      ['W3', 'planned', 'Body W3', p!.archivedAt],
+    ]);
+    // a workstream of an archived project still opens, with its log
+    expect(board.card(w2.id)).toMatchObject({ id: w2.id, branch: 'obeya/w2', parent: p!.id });
+    expect(board.events(w2.id)).toEqual([]);
+    expect(() => board.unarchive(p!.id)).toThrow(expect.objectContaining({ code: 'planCard' }));
+  });
+
+  test('a project from before Obeya kept the doc stays hidden when its doc goes', () => {
+    const p = board.snapshot().items[0]!;
+    store.db.query('UPDATE cards SET plan = NULL WHERE id = $id').run({ id: p.id });
+    docs = [];
+    board.docsChanged();
+    expect(board.snapshot().items).toEqual([]);
+    expect(board.archived()).toEqual([]);
+  });
+
+  test('a project lists its decisions and those of the idea its doc was written from', () => {
+    const idea = board.create({ kind: 'feature', idea: true, title: 'Idee B', x: 0, y: 0 });
+    board.decide({ project_id: null, card_id: idea.id, question: 'Idee „Idee B“: wie weiter?', answer: 'Als Projekt.', by: 'owner' });
+    board.work(idea.id, { state: 'live' });
+    board.planDocsLanded(idea.id, ['docs/plan/b.md']);
+    docs = [docA, docB];
+    board.docsChanged();
+    const b = board.snapshot().items.find((i) => i.title === 'B')!;
+    expect(b.from).toBe(idea.id);
+    const w1 = board.snapshot().items.find((i) => i.parent === b.id)!;
+    board.decide({ project_id: b.id, card_id: w1.id, question: 'Welche Spalten?', answer: 'Alle.', by: 'project' });
+    // the idea's card leaves the canvas; the project still finds it
+    board.archive([idea.id]);
+    const h = board.projectHistory(b.id);
+    expect(h.decisions.map((d) => [d.cardId, d.answer, d.by])).toEqual([
+      [idea.id, 'Als Projekt.', 'owner'],
+      [w1.id, 'Alle.', 'project'],
+    ]);
+    expect(h.origin).toMatchObject({ id: idea.id, title: 'Idee B', archivedAt: expect.any(String), brief: '' });
+    // and so does the archived project
+    docs = [docA];
+    board.docsChanged();
+    expect(board.archived().find((i) => i.id === b.id)!.from).toBe(idea.id);
+    expect(board.projectHistory(b.id).decisions).toHaveLength(2);
+    expect(board.projectHistory(board.snapshot().items[0]!.id)).toEqual({ decisions: [], origin: null });
+  });
+
+  test('only a card that was an idea becomes the origin of a project', () => {
+    const plain = board.create({ kind: 'feature', title: 'Kein Idee', x: 0, y: 0 });
+    board.planDocsLanded(plain.id, ['docs/plan/b.md']);
+    docs = [docA, docB];
+    board.docsChanged();
+    expect(board.snapshot().items.find((i) => i.title === 'B')!.from).toBeUndefined();
   });
 });
 

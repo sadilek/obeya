@@ -56,6 +56,10 @@ export interface CardRow {
   landed: string | null;
   /** JSON: ids of the screenshots the owner attached to the card's task. */
   images: string | null;
+  /** JSON, projects only: the plan doc as last read (`PlanDoc`), kept for the archive once the doc is gone. */
+  plan: string | null;
+  /** JSON: the plan docs (plan references) the landed work of a card that was an idea added. */
+  plan_docs: string | null;
 }
 
 
@@ -189,6 +193,10 @@ export const MIGRATIONS = [
   // screenshots of a card's task, and of a command typed to the Koordinator (JSON lists of image ids)
   `ALTER TABLE cards ADD COLUMN images TEXT;
    ALTER TABLE talk ADD COLUMN images TEXT;`,
+  // a project keeps its plan doc's last state, so it can go into the archive when the doc goes;
+  // an idea's card remembers the plan docs its work added, so the project knows where it came from
+  `ALTER TABLE cards ADD COLUMN plan TEXT;
+   ALTER TABLE cards ADD COLUMN plan_docs TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -219,6 +227,9 @@ export type RowUpdate = Partial<
     | 'approved_at'
     | 'landed'
     | 'images'
+    | 'plan'
+    | 'plan_docs'
+    | 'from_id'
   >
 >;
 
@@ -255,6 +266,24 @@ export class Store {
     return this.db
       .query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC, created_at DESC')
       .all({ c: canvasId }) as CardRow[];
+  }
+
+  /** The canvas's projects, on the canvas or archived. */
+  projects(canvasId: string): CardRow[] {
+    return this.db.query("SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND kind = 'project' AND plan_ref IS NOT NULL").all({ c: canvasId }) as CardRow[];
+  }
+
+  /** The cards whose landed work added plan docs, on the canvas or archived. */
+  withPlanDocs(canvasId: string): CardRow[] {
+    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND plan_docs IS NOT NULL').all({ c: canvasId }) as CardRow[];
+  }
+
+  /** The workstreams of the given projects. */
+  children(parentIds: string[]): CardRow[] {
+    if (!parentIds.length) return [];
+    return this.db
+      .query(`SELECT * FROM cards WHERE deleted_at IS NULL AND parent_id IN (${parentIds.map((_, i) => `$p${i}`).join(', ')})`)
+      .all(Object.fromEntries(parentIds.map((id, i) => [`p${i}`, id]))) as CardRow[];
   }
 
   /** Deletes the owner's cards that never got a title, created before `before`; returns how many. */
@@ -355,6 +384,13 @@ export class Store {
     this.db
       .query('INSERT INTO decisions (canvas_id, project_id, card_id, question, answer, by, at) VALUES ($canvas_id, $project_id, $card_id, $question, $answer, $by, $at)')
       .run({ ...d, at: now() });
+  }
+
+  /** The decisions taken on one card outside any project (an idea's, say). */
+  cardDecisions(canvasId: string, cardId: string): DecisionRow[] {
+    return this.db
+      .query('SELECT * FROM decisions WHERE canvas_id = $c AND card_id = $card AND project_id IS NULL ORDER BY id')
+      .all({ c: canvasId, card: cardId }) as DecisionRow[];
   }
 
   /** A project's decisions, or with `null` those of the canvas's standalone cards. */
