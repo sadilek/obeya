@@ -455,6 +455,10 @@ the repository; the copy on the project is only for the archive).
   what runs.
 - Screenshots reach agents as images in the message, not as files for them to read: an exploration
   agent may only read its checkout, and the agent sees the image without a step of its own.
+- Obeya spawns git, a few thousand times in a test run: on macOS it calls the binary `xcrun --find
+  git` names, not the `/usr/bin/git` shim, which looks it up again on every call (10 ms a call
+  instead of 4). Test repositories are copies of a template committed once per set of files
+  (`gitRepo` in `src/server/testing.ts`). Together they halved the test suite.
 
 ## Open questions
 

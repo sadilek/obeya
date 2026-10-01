@@ -8,9 +8,8 @@ import { CanvasRuntime } from './canvas';
 import type { Command } from './commands';
 import { Store } from './db';
 import { serve } from './server';
-import { FakeRuntime } from './testing';
+import { FakeRuntime, gitRepo } from './testing';
 import type { Transcript } from './voice';
-import { git } from './workspaces';
 
 let dir: string;
 let board: Board;
@@ -30,12 +29,7 @@ const DELAY_MS = 200;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-server-'));
   const main = join(dir, 'main');
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', main]);
-  git(main, 'config', 'user.email', 't@example.com');
-  git(main, 'config', 'user.name', 'T');
-  writeFileSync(join(main, 'README.md'), 'hello\n');
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', 'init');
+  gitRepo(main);
   runtime = new FakeRuntime();
   // the generic adapter: clones, none registered; the canvas is named after the directory
   canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => { throw new Error('no forge'); } }, commandDelayMs: DELAY_MS });

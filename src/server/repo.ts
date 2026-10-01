@@ -2,10 +2,11 @@ import { existsSync, readdirSync, readFileSync, watch } from 'node:fs';
 import { join } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
+import { GIT } from './workspaces';
 
 export function repoInfo(path: string): RepoInfo {
   const git = (...args: string[]) => {
-    const r = Bun.spawnSync(['git', '-C', path, ...args], { stderr: 'ignore' });
+    const r = Bun.spawnSync([GIT, '-C', path, ...args], { stderr: 'ignore' });
     return r.exitCode === 0 ? r.stdout.toString().trim() : null;
   };
   if (git('rev-parse', '--git-dir') === null) throw new Error(`${path} is not a git repository`);

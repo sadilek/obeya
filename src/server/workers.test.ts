@@ -8,10 +8,10 @@ import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { Images } from './images';
-import { FakeRuntime } from './testing';
+import { FakeRuntime, gitRepo, identify } from './testing';
 import type { Reply } from './advisor';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { GIT, git, Workspaces } from './workspaces';
 
 const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
 const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')], markdown: '' };
@@ -28,22 +28,14 @@ let store: Store;
 function setup(adapter: RepoAdapter) {
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
   main = join(dir, 'main');
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', main]);
-  git(main, 'config', 'user.email', 't@example.com');
-  git(main, 'config', 'user.name', 'T');
-  writeFileSync(join(main, 'README.md'), 'hello\n');
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', 'init');
+  gitRepo(main);
   store = new Store(':memory:');
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => [doc]);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
   if (adapter.workspaces === 'clones') {
     workspaces.ensureClones(main, 1);
-    for (const w of workspaces.list()) {
-      git(w.path, 'config', 'user.email', 't@example.com');
-      git(w.path, 'config', 'user.name', 'T');
-    }
+    for (const w of workspaces.list()) identify(w.path);
   }
   runtime = new FakeRuntime();
   projectReply = null;
@@ -580,7 +572,7 @@ describe('a worktree per card', () => {
     expect(() => git(wb, 'rebase', '--quiet', 'main')).toThrow();
     writeFileSync(join(wb, 'same.ts'), 'A and B');
     git(wb, 'add', '.');
-    Bun.spawnSync(['git', '-C', wb, '-c', 'core.editor=true', 'rebase', '--continue']);
+    Bun.spawnSync([GIT, '-C', wb, '-c', 'core.editor=true', 'rebase', '--continue']);
     expect(sb.call('ready_for_review', { summary: 'Konflikt gelöst' })).toContain('lands your work');
     expect(state(b.id)).toBe('working');
     sb.emit({ type: 'idle' });

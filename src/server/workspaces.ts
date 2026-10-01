@@ -32,8 +32,21 @@ export interface Landed {
   to: string;
 }
 
+/**
+ * The git binary. On macOS `/usr/bin/git` is a shim that asks xcrun for the real one on every
+ * call, which more than doubles what a call costs; Obeya calls git often, so it asks once.
+ */
+export const GIT = gitBinary();
+
+function gitBinary(): string {
+  if (process.platform !== 'darwin' || Bun.which('git') !== '/usr/bin/git') return 'git';
+  const r = Bun.spawnSync(['xcrun', '--find', 'git'], { stderr: 'ignore' });
+  const path = r.exitCode === 0 ? r.stdout.toString().trim() : '';
+  return path && existsSync(path) ? path : 'git';
+}
+
 export function git(cwd: string, ...args: string[]): string {
-  const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stderr: 'pipe' });
+  const r = Bun.spawnSync([GIT, '-C', cwd, ...args], { stderr: 'pipe' });
   if (r.exitCode !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${r.stderr.toString().trim()}`);
   return r.stdout.toString().trim();
 }

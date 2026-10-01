@@ -1,6 +1,10 @@
-// Test doubles.
+// Test doubles, and git repositories for tests.
 
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec } from './runtime';
+import { git } from './workspaces';
 
 /** A session whose tools and events the test drives. */
 export class FakeSession implements AgentSession {
@@ -44,4 +48,46 @@ export class FakeRuntime implements AgentRuntime {
   get last() {
     return this.sessions.at(-1)!;
   }
+}
+
+const templates = new Map<string, string>();
+let templateDir: string | undefined;
+
+/**
+ * Makes `path` a git repository on `main` with `files` committed as "init", in which tests can
+ * commit. Spawning git is what makes the tests slow, so each set of files is committed once into
+ * a template, and the repository is a copy of it.
+ */
+export function gitRepo(path: string, files: Record<string, string> = { 'README.md': 'hello\n' }): string {
+  const key = JSON.stringify(files);
+  let template = templates.get(key);
+  if (!template) {
+    templateDir ??= mkdtempSync(join(tmpdir(), 'obeya-template-'));
+    template = join(templateDir, String(templates.size));
+    git(templateDir, 'init', '--quiet', '--template=', '-b', 'main', template);
+    identify(template);
+    // a copy keeps mtime and size but not inode and ctime: git is to trust what the copy keeps
+    appendFileSync(join(template, '.git/config'), '[core]\n\tcheckStat = minimal\n\ttrustctime = false\n');
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(template, file)), { recursive: true });
+      writeFileSync(join(template, file), text);
+    }
+    git(template, 'add', '.');
+    git(template, 'commit', '--quiet', '-m', 'init');
+    templates.set(key, template);
+  }
+  cpSync(template, path, { recursive: true, preserveTimestamps: true });
+  return path;
+}
+
+/** Removes the templates of `gitRepo`; test-setup.ts calls it once all tests have run. */
+export function removeTemplates() {
+  if (templateDir) rmSync(templateDir, { recursive: true, force: true });
+  templateDir = undefined;
+  templates.clear();
+}
+
+/** Lets tests commit in `repo`, a repository or a clone of one, as T. */
+export function identify(repo: string) {
+  appendFileSync(join(repo, '.git/config'), '[user]\n\temail = t@example.com\n\tname = T\n');
 }
