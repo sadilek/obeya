@@ -29,7 +29,7 @@ export class ProjectAgents {
         message: [
           `Question from the worker on ${card.label ?? 'a workstream'} "${card.title}":`,
           q.text,
-          q.options.length ? `Options the worker suggests:\n${q.options.map((o) => `- ${o}`).join('\n')}` : '',
+          q.options.length ? `Options the worker suggests${q.multiple ? ' (several may be chosen)' : ''}:\n${q.options.map((o) => `- ${o}`).join('\n')}` : '',
           `Decisions taken in this project so far:\n${decisionLog(this.board.decisions(project.id))}`,
           this.preferences(),
         ]

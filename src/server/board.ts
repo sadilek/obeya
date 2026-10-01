@@ -6,7 +6,7 @@
 
 import { boundsOf, CARD_SIZE, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
-import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Idea, type Item, type NewCard, STATES } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Idea, type Item, type NewCard, type Question, STATES } from '../core/types';
 import type { CardRow, NewRow, RowUpdate, Store } from './db';
 
 /** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
@@ -609,11 +609,12 @@ export interface StoredIdea {
   brief: string;
   thinking?: boolean;
   yourTurn?: boolean;
+  questions?: Question[];
 }
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
-  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn };
+  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [] };
 }
 
 function checkPreference(v: unknown): string {

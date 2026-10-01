@@ -8,9 +8,12 @@ export type CardState = (typeof STATES)[number];
 /** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M4). */
 export type Need = 'demo' | 'question' | 'review';
 
+/** A question an agent asks the owner, with answer options to choose from when it has them. */
 export interface Question {
   text: string;
   options: string[];
+  /** Several options may be chosen together. */
+  multiple?: boolean;
 }
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
@@ -76,6 +79,8 @@ export interface Idea {
   thinking: boolean;
   /** The agent replied and the owner has not answered yet: an open idea then needs the owner. */
   yourTurn: boolean;
+  /** The questions of the agent's latest reply, until the owner says something. */
+  questions: Question[];
 }
 
 export interface PullRequest {

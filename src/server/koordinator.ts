@@ -197,7 +197,7 @@ export class Koordinator {
             `Question from the worker on the ${card.kind} "${card.title}":`,
             card.body ? `The card: ${card.body.slice(0, 1500)}` : '',
             q.text,
-            q.options.length ? `Options the worker suggests:\n${q.options.map((o) => `- ${o}`).join('\n')}` : '',
+            q.options.length ? `Options the worker suggests${q.multiple ? ' (several may be chosen)' : ''}:\n${q.options.map((o) => `- ${o}`).join('\n')}` : '',
             `Decisions on cards without a project so far:\n${decisionLog(this.o.board.decisions(null))}`,
             this.o.preferences?.() ?? '',
           ]

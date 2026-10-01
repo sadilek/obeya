@@ -60,7 +60,10 @@ An idea is thought through on its card before anything is planned; no worker run
    planned card of the owner's, makes a card in state `idea`.
 2. The unfolded idea is a conversation with its exploration agent: a read-only session (code, plan
    docs, the decision log, the preferences) resumed for every message, days later too. It asks
-   back, shows variants with their trade-offs and says what they would cost. The owner types in the
+   back, shows variants with their trade-offs and says what they would cost. Its questions come
+   with answer options, shown under its reply as radio buttons, or checkboxes when several fit
+   together; the owner picks, may add their own words, and both go out as one message that names
+   each question. The owner types in the
    panel or holds Space with the idea open; the reply stands in the panel, and only its short
    summary is spoken, when the owner spoke. What the agent read and thought on the way to a reply
    folds away under that reply ("Verlauf"), for whoever wants to follow it. Once the agent has replied, the open idea needs the
@@ -110,8 +113,9 @@ An idea is thought through on its card before anything is planned; no worker run
 
 Agents never talk to each other directly; the Obeya server is the mailbox, so every exchange is
 visible on a card. A worker has four tools, served in-process: `report(status)`, a status line
-on the card; `ask(question, options)`, which returns at once — the worker ends its turn and the
-answer arrives as its next message; `propose_card(kind, title, reason, suggestion)`; and
+on the card; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
+and the answer arrives as its next message (the owner picks one option, several when `multiple`,
+or writes their own answer); `propose_card(kind, title, reason, suggestion)`; and
 `ready_for_review(summary)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner. A turn that ends while the worker's own
 background work runs (a demo render, a test suite) is no such turn: the work wakes the worker when
@@ -260,7 +264,7 @@ the owner's language (`src/core/locale.ts`).
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
 branch, status line, open question or review summary, the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
-when archived, an idea's status and brief, a spike's idea, landed work whose worker still
+when archived, an idea's status, brief and open questions, a spike's idea, landed work whose worker still
 finishes),
 card events (the log, with an error code where the UI words it and the owner's screenshots), workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
@@ -357,6 +361,10 @@ the repository).
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
   to an idea is the exception: it only adds to a conversation.
+- An agent's question to the owner is a first-class thing with answer options, not prose: the
+  owner answers with a click, and their own words are always possible beside the options. The
+  answer travels as text (question and pick), so the conversation reads the same later and a
+  spoken answer takes the same path.
 - A discussion lives on a card, not in the conversation with the Koordinator: an exploration
   parked on the canvas is found there again with its brief, and the Koordinator only passes the
   owner's words on. A big idea becomes a project through a worker writing its plan doc, not

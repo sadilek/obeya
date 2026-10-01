@@ -7,8 +7,8 @@
 import { basename } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
-import type { Item } from '../core/types';
-import { decisionLog } from './advisor';
+import type { Item, Question } from '../core/types';
+import { decisionLog, toQuestion } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { imageNote } from './images';
@@ -49,7 +49,7 @@ export class Explorers {
       this.o.board.log(cardId, 'state', 'owner', 'Idee wieder aufgenommen.');
     }
     this.o.board.log(cardId, 'talk', 'owner', text, undefined, images.map((f) => basename(f)));
-    this.o.board.setIdea(cardId, { yourTurn: false });
+    this.o.board.setIdea(cardId, { yourTurn: false, questions: [] });
     if (text) this.o.onOwnerInput?.(card, text);
     this.send(card, `The owner says:\n\n${text}${imageNote(images)}`, spoken, images);
   }
@@ -151,10 +151,10 @@ export class Explorers {
     }
   }
 
-  /** The agent's reply stands in the conversation; the owner is next. */
-  private answer(cardId: string, text: string) {
+  /** The agent's reply stands in the conversation, its questions below it; the owner is next. */
+  private answer(cardId: string, text: string, questions: Question[] = []) {
     this.o.board.log(cardId, 'talk', 'explorer', text);
-    this.o.board.setIdea(cardId, { yourTurn: true });
+    this.o.board.setIdea(cardId, { yourTurn: true, questions });
   }
 
   private tools(cardId: string, live: Live): AgentTool[] {
@@ -163,12 +163,20 @@ export class Explorers {
     return current([
       {
         name: 'reply',
-        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. Call it once per message, then end your turn.`,
-        schema: { text: z.string(), spoken: z.string() },
-        run: ({ text, spoken }) => {
+        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. questions: the questions you ask now, each with its answer options (multiple: true when several may be chosen together); the card shows them under your reply for the owner to pick from, so the reply does not repeat them. Call it once per message, then end your turn.`,
+        schema: {
+          text: z.string(),
+          spoken: z.string(),
+          questions: z
+            .array(z.object({ question: z.string(), options: z.array(z.string()).max(6), multiple: z.boolean().optional() }))
+            .max(4)
+            .optional(),
+        },
+        run: ({ text, spoken, questions }) => {
           if (live.replied) return 'Already replied. End your turn now.';
           live.replied = true;
-          this.answer(cardId, clip(String(text), 12000));
+          const asked = ((questions as { question: string; options: string[]; multiple?: boolean }[] | undefined) ?? []).map((q) => toQuestion(q.question, q.options, q.multiple));
+          this.answer(cardId, clip(String(text), 12000), asked.filter((q) => q.text));
           if (live.speak && String(spoken).trim()) this.o.board.speak(cardId, clip(String(spoken).trim(), 400));
           live.speak = false;
           return 'Shown to the owner. End your turn now; their next message arrives as a new one.';
@@ -225,7 +233,7 @@ The card shows the brief ("Stand der Idee") and the conversation side by side. T
 How to work:
 - Put what you find and propose into the brief, not into your reply: what the code does today, variants with their trade-offs and what each would cost (what it touches, roughly how much agent work, the risks), decisions, open questions, effort.
 - Ground it in the code and the plan; say when you are guessing.
-- Ask what you need to know, one or two questions at a time, under **Offene Fragen** in the brief, numbered, so the owner can answer by number.
+- Ask what you need to know, one or two questions at a time, under **Offene Fragen** in the brief, numbered, and pass the same questions to reply as questions, with two to five short answer options each when the answer is a choice; when options can be combined, set multiple instead of offering combinations as options. The card shows them as choices under your reply; the owner picks or writes their own answer. A question without options gets a written answer.
 - Your reply is your turn in the conversation, a few sentences at most: react to what the owner said, name in a few words what changed in the brief ("Varianten A bis C ergänzt", not the variants again, and no finding from it summed up), and say what you need from them next by pointing to the open questions ("Zwei offene Fragen, siehe Stand"), without repeating them. Only what has no place in the brief (an explanation the owner asked for, a remark on the side) is said in the reply itself.
 - Do not confirm recorded decisions one by one; the brief shows them.
 

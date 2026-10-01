@@ -54,7 +54,7 @@ const turn = (s: FakeSession, reply: string, extra?: () => void) => {
 describe('an idea', () => {
   test('starts as an idea: no worker, no workspace, nothing with the Koordinator', () => {
     const i = idea();
-    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { status: 'open', brief: '', thinking: false, yourTurn: false } });
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { status: 'open', brief: '', thinking: false, yourTurn: false, questions: [] } });
     expect(runtime.sessions).toHaveLength(0);
     expect(() => canvas.act(i.id, { action: 'start' })).toThrow('only a planned card can be started');
   });
@@ -74,7 +74,7 @@ describe('an idea', () => {
       s.call('record_decision', { question: 'Format?', answer: 'CSV' });
     });
     expect(s.closed).toBe(true);
-    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false, yourTurn: true });
+    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false, yourTurn: true, questions: [] });
     expect(talk(i.id)).toEqual([
       ['owner', 'Lass uns das durchdenken.'],
       ['explorer', 'CSV oder PDF?'],
@@ -165,12 +165,42 @@ describe('an idea', () => {
     expect(item(i.id).idea).toMatchObject({ thinking: true });
     s.call('reply', { text: 'Zu zweitens.', spoken: '' });
     s.emit({ type: 'idle' });
-    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: true });
+    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: true, questions: [] });
     canvas.act(i.id, { action: 'discuss', text: 'Drittens.' });
     expect(item(i.id).idea).toMatchObject({ thinking: true, yourTurn: false });
     // a turn that ends without words leaves nothing to answer
     explorer().emit({ type: 'idle' });
-    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: false });
+    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: false, questions: [] });
+  });
+
+  test('its agent asks with answer options, which stand until the owner says something', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Los.' });
+    const s = explorer();
+    s.call('reply', {
+      text: 'Zwei Fragen.',
+      spoken: '',
+      questions: [
+        { question: 'Welches Format?', options: ['CSV', 'PDF', 'CSV'] },
+        { question: 'Für wen?', options: ['Vermieter', 'Verwalter'], multiple: true },
+        { question: 'Wann?', options: [], multiple: true },
+        { question: ' ', options: ['x'] },
+      ],
+    });
+    s.emit({ type: 'idle' });
+    expect(item(i.id).idea).toMatchObject({
+      yourTurn: true,
+      questions: [
+        { text: 'Welches Format?', options: ['CSV', 'PDF'] },
+        { text: 'Für wen?', options: ['Vermieter', 'Verwalter'], multiple: true },
+        { text: 'Wann?', options: [] },
+      ],
+    });
+    expect(item(i.id).idea!.questions[0]!.multiple).toBeUndefined();
+    expect(item(i.id).idea!.questions[2]!.multiple).toBeUndefined();
+    canvas.act(i.id, { action: 'discuss', text: '- **Welches Format?** CSV' });
+    expect(item(i.id).idea).toMatchObject({ yourTurn: false, questions: [] });
+    expect(explorer().inbox.at(-1)).toContain('- **Welches Format?** CSV');
   });
 
   test('an idea whose agent had the last word before the update waits for the owner', () => {
@@ -241,7 +271,7 @@ describe('an idea', () => {
   test('a planned card of the owner’s can become an idea first', () => {
     const c = board().create({ kind: 'feature', title: 'Unklar', x: 0, y: 0 });
     board().patch(c.id, { state: 'idea' });
-    expect(item(c.id).idea).toEqual({ status: 'open', brief: '', thinking: false, yourTurn: false });
+    expect(item(c.id).idea).toEqual({ status: 'open', brief: '', thinking: false, yourTurn: false, questions: [] });
   });
 
   test('after a restart an idea whose agent was answering gets its reply', () => {

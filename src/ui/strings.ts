@@ -54,6 +54,13 @@ export const t = {
     review: 'Feedback – der Agent arbeitet daran weiter',
   },
   questionFromWorker: 'Frage des Agenten',
+  ask: {
+    question: 'Frage an dich',
+    questions: 'Fragen an dich',
+    several: 'Mehrere möglich',
+    words: 'Eigene Antwort oder Anmerkung – optional',
+    send: 'Antworten',
+  },
   summary: 'Zusammenfassung des Agenten',
   proposal: 'Vorschlag',
   proposedBy: (title: string) => `Vorgeschlagen vom Agenten der Karte „${title}“.`,

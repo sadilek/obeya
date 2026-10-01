@@ -128,6 +128,16 @@ describe('workers', () => {
     expect(runtime.last.inbox.at(-1)).toContain('CSV');
   });
 
+  test('a question may let the owner choose several options', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'Welche Spalten?', options: ['Datum', 'Stand', 'Zähler'], multiple: true });
+    expect(board.item(c.id)!.question).toEqual({ text: 'Welche Spalten?', options: ['Datum', 'Stand', 'Zähler'], multiple: true });
+    expect(board.events(c.id).at(-1)!.text).toContain('Mehrfachauswahl');
+    workers.answer(c.id, 'Datum, Stand');
+    expect(runtime.last.inbox.at(-1)).toContain('Datum, Stand');
+  });
+
   test('a workstream asks its project agent first', async () => {
     const w = board.snapshot().items.find((i) => i.label === 'W1')!;
     workers.start(w.id);

@@ -7,7 +7,7 @@ import { OWNER_LANGUAGE } from '../core/locale';
 import { basename } from 'node:path';
 import type { Item, Question } from '../core/types';
 import { BadRequest, type Board } from './board';
-import type { Reply } from './advisor';
+import { type Reply, toQuestion } from './advisor';
 import { readChapters } from './demo';
 import { imageNote } from './images';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
@@ -496,11 +496,11 @@ export class Workers {
       },
       {
         name: 'ask',
-        description: `Ask for a decision you should not make yourself: product behaviour, trade-offs, anything irreversible or external. Write the question in ${OWNER_LANGUAGE} for a reader who has not seen the code, and offer up to four short answer options when they exist. Then end your turn.`,
-        schema: { question: z.string(), options: z.array(z.string()).max(4).optional() },
-        run: ({ question, options }) => {
+        description: `Ask for a decision you should not make yourself: product behaviour, trade-offs, anything irreversible or external. Write the question in ${OWNER_LANGUAGE} for a reader who has not seen the code, and offer up to four short answer options when they exist; the owner picks one on the card (several when multiple is true) or writes their own. Then end your turn.`,
+        schema: { question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() },
+        run: ({ question, options, multiple }) => {
           handOver();
-          this.routeQuestion(cardId, { text: clip(String(question), 2000), options: ((options as string[] | undefined) ?? []).map((x) => clip(x, 120)) });
+          this.routeQuestion(cardId, toQuestion(question, options, multiple));
           return END_TURN;
         },
       },
@@ -705,7 +705,7 @@ ${idea.idea.brief}` : '',
 }
 
 function formatQuestion(q: Question): string {
-  return q.options.length ? `${q.text}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
+  return q.options.length ? `${q.text}${q.multiple ? ' (Mehrfachauswahl)' : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
 }
 
 /** One log line for a built-in tool call. */
