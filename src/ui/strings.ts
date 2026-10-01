@@ -146,7 +146,7 @@ export const t = {
   },
   pr: {
     title: (n: number) => `Pull Request #${n}`,
-    conflict: 'Konflikt mit dem Zielbranch; der Agent rebased.',
+    conflict: 'Konflikt mit dem Zielbranch; der Agent bringt den Branch auf Stand.',
     noChecks: 'Noch keine Checks.',
     opening: 'Der Agent öffnet den Pull Request.',
     short: (n: number, failed: number, conflict: boolean) =>
