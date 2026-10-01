@@ -304,6 +304,25 @@ describe('workers', () => {
     expect(workers.busy()).toBe(true);
   });
 
+  test('a preference learned while a worker runs reaches it once, with its next tool step', () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, preferences: () => board.preferencesText() });
+    board.addPreference('Antworten auf Deutsch.');
+    const c = manual();
+    workers.start(c.id);
+    const s = runtime.last;
+    expect(s.spec.system).toContain('- Antworten auf Deutsch.');
+    expect(s.spec.system).toContain('Never wait with sleep or a polling loop in the foreground');
+    // what its instructions hold is nothing new
+    expect(s.toolStep()).toBeUndefined();
+    const id = board.addPreference('Keine Commits ohne Tests.');
+    expect(s.toolStep()).toContain('- Keine Commits ohne Tests.');
+    expect(s.toolStep()).toBeUndefined();
+    board.setPreference(id, null);
+    expect(s.toolStep()).not.toContain('Keine Commits ohne Tests.');
+    // silently: no message, no new turn
+    expect(s.inbox).toHaveLength(1);
+  });
+
   test('a worker that stopped and then works on by itself takes its question back', () => {
     const c = manual();
     workers.start(c.id);

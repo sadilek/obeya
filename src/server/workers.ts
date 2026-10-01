@@ -66,6 +66,8 @@ interface Live {
   stalled: boolean;
   /** Whether the worker has heard of the restart that is due, so that it pauses for it. */
   toldRestart?: boolean;
+  /** The owner's preferences as the worker last heard them: in its instructions, or since then. */
+  preferences: string;
 }
 
 /** A restart that waits for workers to finish their turns: why, and when it goes ahead at the latest. */
@@ -138,7 +140,7 @@ export class Workers {
     } else if (card.state === 'working' || card.state === 'inPr' || (card.state === 'waiting' && card.need === 'question') || card.finishing) {
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
       if (text) this.o.onOwnerInput?.(card, 'note', text);
-      this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything):\n\n${text}${imageNote(images)}`, images);
+      this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything, and say briefly what you change or why nothing):\n\n${text}${imageNote(images)}`, images);
     } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
 
@@ -385,14 +387,16 @@ export class Workers {
   private launch(cardId: string, message: string, resume?: string, images: string[] = []) {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
-    const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true, stalled: false };
+    const preferences = this.o.preferences?.() ?? '';
+    const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true, stalled: false, preferences };
     this.live.set(cardId, live);
     message = this.withRestart(live, message);
     live.session = this.o.runtime.start(
       {
         cwd: row.workspace,
-        system: this.system(),
+        system: this.system(preferences),
         tools: this.tools(cardId, live),
+        contextUpdate: () => this.preferencesUpdate(live),
         ...(resume ? { resume } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         onEvent: (e) => this.onEvent(cardId, live, e),
@@ -420,6 +424,14 @@ export class Workers {
     // no session to resume (it never reported one): a new one needs the card first
     const card = this.card(cardId);
     this.launch(cardId, `${this.briefing(card, row.branch ?? '', true)}\n\n${text}`, undefined, [...this.taskImages(card), ...images]);
+  }
+
+  /** Preferences the owner gave or changed since the worker last heard them, passed with its next tool result. */
+  private preferencesUpdate(live: Live): string | undefined {
+    const now = this.o.preferences?.() ?? '';
+    if (now === live.preferences) return;
+    live.preferences = now;
+    return now ? `The owner's preferences changed while you work; they now read:\n\n${now}` : 'The owner withdrew their standing preferences; none apply any more.';
   }
 
   /** A message that starts a turn while a restart is due tells the worker of it, once. */
@@ -727,7 +739,7 @@ export class Workers {
 
   // ---------------------------------------------------------------- prompts
 
-  private system(): string {
+  private system(preferences: string): string {
     return `
 You are a worker agent directed through Obeya, a canvas on which the owner directs coding agents like an engineering director directs a team. You work on exactly one card, in a workspace of the repository (a clone or worktree) that belongs to that card, on your own branch. Other workers may work on other cards at the same time in their own workspaces.
 
@@ -743,7 +755,9 @@ Rules:
 - Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.
 - Follow the repository's own instructions (CLAUDE.md and docs).
 - Owner-facing text (report, ask, propose_card, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete. What you write between tool calls also shows in the card's log for the owner: keep it brief and in ${OWNER_LANGUAGE} too.
-`.trim() + (this.o.preferences?.() ? `\n\n${this.o.preferences()}` : '');
+- Wait for anything external (a deploy, a CI run, a point in time, a process to finish) in the background: run_in_background or Monitor, then end your turn; Obeya wakes you when it finishes or fires. Never wait with sleep or a polling loop in the foreground: a note from the owner reaches you only once the running command is done.
+- When a note from the owner arrives, answer it in a sentence or two of text (it shows in the card's log): what you change because of it, or why nothing. If it is unclear what they want, ask.
+`.trim() + (preferences ? `\n\n${preferences}` : '');
   }
 
   /** The task the card's worker gets at its start, as Obeya would send it now (one that already ran goes on from its branch). */
