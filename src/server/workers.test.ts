@@ -10,6 +10,7 @@ import { Store } from './db';
 import { Images } from './images';
 import { FakeRuntime, gitRepo, identify } from './testing';
 import type { Reply } from './advisor';
+import { Restarter } from './self-update';
 import { Workers } from './workers';
 import { GIT, git, Workspaces } from './workspaces';
 
@@ -112,6 +113,76 @@ describe('workers', () => {
     // a turn Obeya did not start, e.g. after a background command finished
     runtime.last.emit({ type: 'text', text: 'Fertig gerendert.' });
     expect(workers.busy()).toBe(true);
+  });
+
+  test('a due restart is announced to busy workers, who pause for it instead of being nudged', () => {
+    const c = manual();
+    workers.start(c.id);
+    const busy = runtime.last;
+    busy.emit({ type: 'text', text: 'Ich lasse die Tests laufen.' });
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 15 * 60_000 });
+    expect(busy.inbox.at(-1)).toContain('Obeya is about to restart (new code landed on main)');
+    expect(busy.inbox.at(-1)).toContain('at most 15 more minutes');
+    // heard once, however often the restart's waiting list changes
+    const told = busy.inbox.length;
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 15 * 60_000 });
+    expect(busy.inbox.length).toBe(told);
+    // the worker ends its turn without handing over: it paused, the owner is not asked
+    busy.emit({ type: 'idle' });
+    expect(workers.busy()).toBe(false);
+    expect(busy.inbox.length).toBe(told);
+    expect(state(c.id)).toBe('working');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
+  });
+
+  test('a restart goes ahead once the workers it announced itself to have paused', async () => {
+    const c = manual();
+    workers.start(c.id);
+    let gone = 0;
+    const restarter = new Restarter({ busy: () => workers.busyCards().map((card) => ({ canvas: 'c', card })), go: () => gone++, intervalMs: 5 });
+    restarter.onChange(() => {
+      const due = restarter.due();
+      workers.restartDue(due && { reason: due.reason, deadline: due.deadline });
+    });
+    restarter.request('code');
+    expect(runtime.last.inbox.at(-1)).toContain('Obeya is about to restart');
+    await Bun.sleep(20);
+    expect(gone).toBe(0);
+    runtime.last.emit({ type: 'idle' });
+    await Bun.sleep(20);
+    expect(gone).toBe(1);
+  });
+
+  test('a turn that starts while a restart is due hears of it with its message', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'CSV oder Excel?' });
+    runtime.last.emit({ type: 'idle' });
+    // not in a turn: nothing to pause
+    workers.restartDue({ reason: 'config', deadline: Date.now() + 60_000 });
+    const before = runtime.last.inbox.length;
+    expect(runtime.last.inbox.at(-1)).not.toContain('about to restart');
+    workers.answer(c.id, 'CSV');
+    expect(runtime.last.inbox.length).toBe(before + 1);
+    expect(runtime.last.inbox.at(-1)).toContain('Answer to your question');
+    expect(runtime.last.inbox.at(-1)).toContain('Obeya is about to restart (the owner saved a new configuration)');
+    expect(runtime.last.inbox.at(-1)).toContain('at most 1 more minute.');
+  });
+
+  test('a worker started while a restart is due hears of it in its briefing', () => {
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 10 * 60_000 });
+    const c = manual();
+    workers.start(c.id);
+    expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
+    expect(runtime.last.inbox[0]).toContain('Obeya is about to restart');
+  });
+
+  test('without a restart due, a turn that ends without handing over is nudged as before', () => {
+    const c = manual();
+    workers.start(c.id);
+    workers.restartDue(null);
+    runtime.last.emit({ type: 'idle' });
+    expect(runtime.last.inbox.at(-1)).toContain('ready_for_review');
   });
 
   test('report shows on the card and in the log', () => {

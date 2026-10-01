@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { basename } from 'node:path';
-import type { Item, Question } from '../core/types';
+import type { Item, Question, RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
 import { readChapters } from './demo';
@@ -64,6 +64,14 @@ interface Live {
   waiting?: ReturnType<typeof setTimeout>;
   /** Whether the card's open question is the worker having stopped, not a question it asked. */
   stalled: boolean;
+  /** Whether the worker has heard of the restart that is due, so that it pauses for it. */
+  toldRestart?: boolean;
+}
+
+/** A restart that waits for workers to finish their turns: why, and when it goes ahead at the latest. */
+export interface DueRestart {
+  reason: RestartReason;
+  deadline: number;
 }
 
 /** A render or a test suite finishes well within this; a turn that waits longer counts as ended. */
@@ -71,7 +79,14 @@ const BACKGROUND_GRACE = 10 * 60_000;
 
 const END_TURN = 'Recorded. End your turn now without further work; the reply arrives as your next message.';
 
-const RESTARTED = 'Obeya was restarted. Commands you had running (background commands, servers you started) were stopped with it.';
+const RESTARTED =
+  'Obeya was restarted. Whatever you had running then was stopped with it: background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need. If you had paused for the restart, go on from there.';
+
+/** Tells a worker that Obeya is about to restart, so that it pauses at a safe point instead of being cut off. */
+const restartNotice = (due: DueRestart) => {
+  const minutes = Math.max(1, Math.round((due.deadline - Date.now()) / 60_000));
+  return `Obeya is about to restart (${due.reason === 'code' ? 'new code landed on main' : 'the owner saved a new configuration'}) and stops whatever its workers run at that moment. It waits until no worker is in the middle of a turn, at most ${minutes} more minute${minutes === 1 ? '' : 's'}. Pause at the next safe point: finish the step you are in, start nothing long (a test run, a demo render, a measurement), and end your turn, without handing over if you are not done. Background commands still running keep Obeya waiting: let those you need finish, stop the others (a scratch server you can start again). Obeya resumes you once it runs again, and you go on from there.`;
+};
 
 const AFTER_LANDING =
   'Your workspace and this session stay until you end a turn with nothing left to wait for (a question, the restart); then both end. Commits you make here no longer land.';
@@ -80,6 +95,8 @@ export class Workers {
   private live = new Map<string, Live>();
   /** Bumped whenever a card's work starts, stops or ends: replies and tool calls from before are stale. */
   private generation = new Map<string, number>();
+  /** The restart that waits for workers, if one does. */
+  private restart: DueRestart | null = null;
 
   constructor(private o: WorkerOptions) {}
 
@@ -344,6 +361,21 @@ export class Workers {
     return [...this.live].filter(([, l]) => l.busy).map(([id]) => id);
   }
 
+  /**
+   * Obeya is about to restart (or no longer is): workers in the middle of a turn hear so and pause
+   * at a safe point, and those that start a turn before the restart hear it with their message.
+   */
+  restartDue(due: DueRestart | null) {
+    this.restart = due;
+    if (!due) return;
+    for (const [cardId, live] of this.live) {
+      if (!live.busy || live.toldRestart) continue;
+      live.toldRestart = true;
+      live.session.send(restartNotice(due));
+      this.o.board.log(cardId, 'state', 'obeya', 'Neustart von Obeya angekündigt; der Agent pausiert beim nächsten sicheren Punkt.');
+    }
+  }
+
   shutdown() {
     for (const id of [...this.live.keys()]) this.end(id);
   }
@@ -355,6 +387,7 @@ export class Workers {
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
     const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true, stalled: false };
     this.live.set(cardId, live);
+    message = this.withRestart(live, message);
     live.session = this.o.runtime.start(
       {
         cwd: row.workspace,
@@ -379,7 +412,7 @@ export class Workers {
       clearTimeout(live.waiting);
       live.waiting = undefined;
       live.busy = true;
-      live.session.send(text, images);
+      live.session.send(this.withRestart(live, text), images);
       return;
     }
     const row = this.o.board.row(cardId);
@@ -387,6 +420,13 @@ export class Workers {
     // no session to resume (it never reported one): a new one needs the card first
     const card = this.card(cardId);
     this.launch(cardId, `${this.briefing(card, row.branch ?? '', true)}\n\n${text}`, undefined, [...this.taskImages(card), ...images]);
+  }
+
+  /** A message that starts a turn while a restart is due tells the worker of it, once. */
+  private withRestart(live: Live, text: string): string {
+    if (!this.restart || live.toldRestart) return text;
+    live.toldRestart = true;
+    return `${text}\n\n${restartNotice(this.restart)}`;
   }
 
   private bump(cardId: string) {
@@ -473,6 +513,11 @@ export class Workers {
     if (landed) {
       // what remained after the landing is done, unless the worker waits for its question or the restart
       if (card.state !== 'waiting' && !landed.waits) this.finish(cardId);
+      return;
+    }
+    if (this.restart && live.toldRestart) {
+      // it paused for the restart, which resumes it
+      this.o.board.log(cardId, 'state', 'obeya', 'Pausiert bis zum Neustart von Obeya.');
       return;
     }
     if (!live.nudged) {
