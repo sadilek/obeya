@@ -19,19 +19,12 @@ export interface Speaker {
 
 /**
  * Whisper's way of failing on a recording without audible speech, the card titles as prompt making
- * it likelier: one word or phrase over and over („Fall Fall Fall …“). Six times in a row is a loop;
- * nobody says a command like that.
+ * it likelier: one word, phrase or syllable over and over („Fall Fall Fall …“, „aufgingingingi…“).
+ * Six times in a row is a loop; nobody says a command like that.
  */
 export function looping(text: string): boolean {
-  const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-  for (let n = 1; n <= 10; n++) {
-    for (let i = 0; i + 6 * n <= words.length; i++) {
-      let times = 1;
-      while (times < 6 && words.slice(i + times * n, i + (times + 1) * n).every((w, k) => w === words[i + k])) times++;
-      if (times === 6) return true;
-    }
-  }
-  return false;
+  const plain = `${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
+  return /(.{1,60}?)\1{5}/u.test(plain);
 }
 
 /** What Whisper writes for a recording without speech instead of a loop: there was nothing to hear. */
