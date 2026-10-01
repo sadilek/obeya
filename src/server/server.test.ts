@@ -166,12 +166,11 @@ describe('voice', () => {
     const prompts: string[] = [];
     whisper = (vocabulary) => (prompts.push(vocabulary), vocabulary ? 'Fall '.repeat(40) : 'Starte Export');
     const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
-    await settle();
+    const s = await briefed();
     expect(prompts).toHaveLength(2);
     expect(prompts[0]).toContain('Export für Vermieter');
     expect(prompts[1]).toBe('');
     expect(heardAudio).toEqual(['AUDIO', 'AUDIO']);
-    const s = interpretation();
     expect(s.inbox[0]).toContain('"Starte Export"');
     expect(s.inbox[0]).not.toContain('Fall Fall');
     s.call('act', { actions: [], confirm: 'Ok.' });
