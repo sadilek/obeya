@@ -137,6 +137,7 @@ export const t = {
     remove: 'Entfernen',
     add: 'Hinzufügen',
     addPlaceholder: 'Neue Präferenz',
+    undone: 'zurückgenommen',
   },
   archive: {
     button: 'Archiv',

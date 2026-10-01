@@ -619,7 +619,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
         </div>
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
-      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} onOpen={open} onHeard={onHeard} />
+      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
       <PushToTalk phase={ptt.phase} level={ptt.level} target={target} onDown={ptt.start} />
       <Sheet project={sheetProject} kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []} on={sheetOn} onOpen={open} />
       <div id="ack" className={ackOn ? 'on' : undefined}>

@@ -226,12 +226,12 @@ describe('a spike', () => {
 });
 
 describe('by voice', () => {
-  const reader = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'new_idea')).at(-1)!;
+  const reader = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1)!;
 
   test('"Ich will über … nachdenken" makes an idea whose agent opens the discussion', async () => {
     const heard = canvas.commander.hear('Ich will über Export für Vermieter nachdenken', {});
     await settle();
-    reader().call('new_idea', { title: 'Export für Vermieter', body: 'Über Export für Vermieter nachdenken.', confirm: 'Neue Idee „Export für Vermieter“.' });
+    reader().call('act', { actions: [{ do: 'new_idea', title: 'Export für Vermieter', body: 'Über Export für Vermieter nachdenken.' }], confirm: 'Neue Idee „Export für Vermieter“.' });
     const h = await heard;
     canvas.commander.arm(h.token!);
     await settle(30);
@@ -249,7 +249,7 @@ describe('by voice', () => {
     const heard = canvas.commander.hear('eher als PDF', { card: i.id });
     await settle();
     expect(reader().inbox[0]).toContain('[idea] feature "Export für Vermieter"');
-    reader().call('discuss', { card: 'K1', text: 'Eher als PDF.', confirm: 'An die Idee weitergegeben.' });
+    reader().call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Eher als PDF.' }], confirm: 'An die Idee weitergegeben.' });
     expect(await heard).toEqual({ confirm: 'An die Idee weitergegeben.', quiet: true });
     expect(talk(i.id)).toEqual([['owner', 'Eher als PDF.']]);
     expect(explorer().inbox[0]).toContain('Eher als PDF.');
@@ -259,7 +259,7 @@ describe('by voice', () => {
     const i = idea();
     const heard = canvas.commander.hear('so bauen', { card: i.id });
     await settle();
-    reader().call('build', { card: 'K1', confirm: '„Export für Vermieter“ wird gebaut.' });
+    reader().call('act', { actions: [{ do: 'build', card: 'K1' }], confirm: '„Export für Vermieter“ wird gebaut.' });
     const h = await heard;
     expect(h.token).toBeTruthy();
     canvas.commander.arm(h.token!);

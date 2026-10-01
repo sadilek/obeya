@@ -106,7 +106,7 @@ describe('archive', () => {
 });
 
 describe('voice', () => {
-  const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'new_card')).at(-1)!;
+  const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1)!;
 
   test('a recording is transcribed, read as one action, confirmed with speech, and runs after the delay', async () => {
     const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
@@ -115,7 +115,7 @@ describe('voice', () => {
     const s = interpretation();
     expect(s.inbox[0]).toContain('"Neue Karte Export"');
     expect(s.spec).toMatchObject({ readOnly: true, effort: 'low' });
-    s.call('new_card', { kind: 'feature', title: 'Export', body: 'CSV', start: true, confirm: 'Neue Karte „Export“, der Agent fängt an.' });
+    s.call('act', { actions: [{ do: 'new_card', kind: 'feature', title: 'Export', body: 'CSV', start: true }], confirm: 'Neue Karte „Export“, der Agent fängt an.' });
     s.emit({ type: 'idle' });
     const body = (await (await res).json()) as { confirm: string; token: string; audio?: string };
     expect(body.confirm).toBe('Neue Karte „Export“, der Agent fängt an.');
@@ -132,11 +132,12 @@ describe('voice', () => {
 
   test('typed commands name cards by tag; undo takes one back before it runs', async () => {
     const c = card();
+    board.work(c.id, { state: 'waiting', need: 'review' });
     const res = fetch(new URL(api(`/command?card=${c.id}`), server.url), { method: 'POST', body: JSON.stringify({ text: 'gib das frei' }) });
     await settle();
     const s = interpretation();
     expect(s.inbox[0]).toContain('The owner has this card open');
-    s.call('approve', { card: 'K1', confirm: '„A“ freigegeben.' });
+    s.call('act', { actions: [{ do: 'approve', card: 'K1' }], confirm: '„A“ freigegeben.' });
     s.emit({ type: 'idle' });
     const { token } = (await (await res).json()) as { token: string };
     const undo = await (await fetch(new URL(api('/command/undo'), server.url), { method: 'POST', body: JSON.stringify({ token }) })).json();
@@ -145,35 +146,34 @@ describe('voice', () => {
     expect(executed).toEqual([]);
   });
 
-  test('pressing Space starts the agent for the command ahead; the command then only sends it the brief', async () => {
+  test('pressing Space starts the Koordinator ahead; commands then only send it the brief', async () => {
     const c = card();
     expect((await post(api('/voice/warm'), '')).status).toBe(204);
     await post(api('/voice/warm'), '');
     expect(warmed).toBe(2);
-    const spare = interpretation();
-    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'new_card'))).toHaveLength(1);
-    expect(spare.inbox).toEqual([]);
+    const k = interpretation();
+    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toHaveLength(1);
+    expect(k.inbox).toEqual([]);
     const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'starte A' }) });
     await settle();
-    expect(interpretation()).toBe(spare);
-    expect(spare.inbox[0]).toContain('"starte A"');
-    spare.call('start', { card: 'K1', confirm: '„A“ startet.' });
+    expect(interpretation()).toBe(k);
+    expect(k.inbox[0]).toContain('"starte A"');
+    k.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: '„A“ startet.' });
     await res;
-    // the next command's agent is already starting
-    expect(interpretation()).not.toBe(spare);
-    expect(interpretation().inbox).toEqual([]);
     await new Promise((r) => setTimeout(r, 60));
     expect(executed).toEqual([{ do: 'start', card: c.id }]);
   });
 
-  test('an agent that waited and then fails is replaced by a fresh one for the same command', async () => {
+  test('a session that fails is replaced by a fresh one for the same command', async () => {
     canvas.commander.warm();
-    const spare = interpretation();
+    const k = interpretation();
     const heard = canvas.commander.hear('ähm', {});
-    spare.emit({ type: 'error', message: 'stale' });
-    expect(spare.closed).toBe(true);
+    await settle();
+    k.emit({ type: 'error', message: 'stale' });
+    expect(k.closed).toBe(true);
+    await settle();
     const fresh = interpretation();
-    expect(fresh).not.toBe(spare);
+    expect(fresh).not.toBe(k);
     expect(fresh.inbox[0]).toContain('"ähm"');
     fresh.call('reply', { confirm: 'Was genau soll ich tun?' });
     expect(await heard).toEqual({ confirm: 'Was genau soll ich tun?' });

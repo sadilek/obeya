@@ -1,7 +1,7 @@
-// The Koordinator's sheet: what waits, what runs, and the owner's preferences it keeps.
+// The Koordinator's sheet: the conversation, what waits, what runs, and the owner's preferences it keeps.
 
-import { useState } from 'react';
-import type { Item, Preference } from '../core/types';
+import { useEffect, useRef, useState } from 'react';
+import type { Item, Preference, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
@@ -12,10 +12,11 @@ interface Props {
   onHeard: (h: Heard) => void;
   items: Item[];
   preferences: Preference[];
+  talk: Talk[];
   onOpen: (i: Item) => void;
 }
 
-export function KoordinatorSheet({ on, items, preferences, onOpen, onHeard }: Props) {
+export function KoordinatorSheet({ on, items, preferences, talk, onOpen, onHeard }: Props) {
   const queued = items.filter((i) => i.state === 'planned' && i.queue);
   const running = items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project');
   const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
@@ -23,6 +24,7 @@ export function KoordinatorSheet({ on, items, preferences, onOpen, onHeard }: Pr
     <aside id="ksheet" className={on ? 'sheet on' : 'sheet'}>
       <div className="p-kind">{t.koordinator.kind}</div>
       <h2>{t.koordinator.title}</h2>
+      <Conversation talk={talk} />
       <TellKoordinator onHeard={onHeard} />
 
       <h4 className="p-h">{t.koordinator.queue}</h4>
@@ -72,6 +74,38 @@ export function KoordinatorSheet({ on, items, preferences, onOpen, onHeard }: Pr
       </ul>
       <NewPreference />
     </aside>
+  );
+}
+
+/** What the owner said to the Koordinator with no card open, and its replies; newest last. */
+function Conversation({ talk }: { talk: Talk[] }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [talk]);
+  if (!talk.length) return null;
+  const time = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <div className="log talk" ref={box}>
+      {talk.map((x) => (
+        <div key={x.id} className={x.undone ? 'exchange undone' : 'exchange'}>
+          <div className="ev ev-say by-owner">
+            <span className="t">{time(x.at)}</span>
+            <span className="who">{t.author.owner}</span>
+            <span className="x">{x.said}</span>
+          </div>
+          <div className="ev ev-say by-koordinator">
+            <span className="t">{time(x.at)}</span>
+            <span className="who">{t.author.koordinator}</span>
+            <span className="x">
+              {x.reply}
+              {x.undone && <span className="hint"> ({t.koordinator.undone})</span>}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

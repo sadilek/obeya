@@ -1,10 +1,11 @@
-// Spoken (or typed) commands: the Koordinator reads what the owner said as one action, confirms
-// it, and runs it after a short delay unless the owner takes it back.
+// Spoken (or typed) commands: the Koordinator reads what the owner said as one or more actions,
+// confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
 import type { Item } from '../core/types';
 import { BadRequest, type Board } from './board';
-import type { AgentRuntime, AgentSession, AgentTool } from './runtime';
+import type { Moment } from './db';
+import type { AgentRuntime, AgentSession } from './runtime';
 
 export type Command =
   | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string }
@@ -15,7 +16,7 @@ export type Command =
 export interface Heard {
   /** What the owner hears and reads back. */
   confirm: string;
-  /** Takes the command back while it waits; absent when there was nothing to do. */
+  /** Takes the actions back while they wait; absent when there was nothing to do. */
   token?: string;
   /**
    * Said to the idea the owner has open: it is already part of the conversation there, which is
@@ -37,40 +38,75 @@ export interface CommanderOptions {
   execute: (c: Command) => unknown | Promise<unknown>;
   /** How long a command waits for "Rückgängig". */
   delayMs?: number;
+  /** Commands one session reads; the next one starts from the stored memory. */
+  sessionCommands?: number;
 }
 
-interface Reader {
-  session: AgentSession;
+/** The Koordinator's conversation with the owner: one agent session that reads command after command. */
+interface Session {
+  agent: AgentSession;
   ended: boolean;
-  /** The command being read; absent while the agent waits for one. */
+  /** Tags of the cards it has seen; they stay the same for the session, so earlier messages stay right. */
+  tags: Map<string, string>;
+  tagOf: Map<string, string>;
+  /** Commands it has read so far; the first one brings the memory. */
+  read: number;
+  /** Up to when it knows the canvas's history (ISO time). */
+  since: string;
+  /** The command being read. */
   reading?: {
-    tags: Map<string, string>;
-    finish: (command: Command | null, confirm: string) => string;
-    fail: (e: Error) => void;
+    finish: (commands: Command[], confirm: string) => string;
+    /** The turn ended, with the error that ended it. */
+    end: (error?: Error) => void;
   };
 }
 
+type Decision = { commands: Command[]; confirm: string };
+
+/** The actions `act` takes, as the Koordinator names them. */
+const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'spike', 'park', 'drop'] as const;
+type Action = (typeof ACTIONS)[number];
+
+/** How far back a fresh session's memory reaches. */
+const REMEMBERED_EXCHANGES = 20;
+const HISTORY_DAYS = 14;
+const HISTORY_STEPS = 60;
+/** What happened between two commands, at most. */
+const NEWS_STEPS = 40;
+
 export class Commander {
   /** Commands between being understood and running; the timer is set once the owner has the confirmation. */
-  private waiting = new Map<string, { command: Command; timer?: ReturnType<typeof setTimeout> }>();
+  private waiting = new Map<string, { commands: Command[]; talk: number; confirm: string; card?: string; timer?: ReturnType<typeof setTimeout> }>();
+  private session: Session | null = null;
+  /** Commands are read one after the other, each once the previous turn has ended. */
+  private turns: Promise<unknown> = Promise.resolve();
+  /** What the Koordinator hears with the next command: actions the owner took back. */
+  private news: string[] = [];
 
   constructor(private o: CommanderOptions) {}
 
-  /** Understands the command; it runs only after `arm`, so the undo window starts when the owner hears back. */
+  /**
+   * Understands the command; its actions run only after `arm`, so the undo window starts when the
+   * owner hears back. The exchange goes into the open card's log, or without one into the
+   * Koordinator's sheet.
+   */
   async hear(transcript: string, focus: Focus): Promise<Heard> {
-    const { command, confirm } = await this.interpret(transcript, focus);
-    if (!command) return { confirm };
+    const { commands, confirm } = await this.interpret(transcript, focus);
+    const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
     // talking about an idea changes nothing that would need taking back: it goes on at once
-    if (command.do === 'discuss') {
-      try {
-        await this.o.execute(command);
-      } catch (e) {
-        this.o.board.log(command.card, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
-      }
-      return { confirm, ...(command.card === focus.card ? { quiet: true } : {}) };
+    const talking = commands.filter((c) => c.do === 'discuss');
+    const rest = commands.filter((c) => c.do !== 'discuss');
+    // said to the open idea, it stands in the idea's conversation, which is confirmation enough
+    const quiet = talking.length > 0 && !rest.length && talking.every((c) => 'card' in c && c.card === card);
+    const talk = this.o.board.addTalk(transcript, confirm, card ?? null);
+    if (card && !quiet) {
+      this.o.board.log(card, 'say', 'owner', transcript);
+      this.o.board.log(card, 'say', 'koordinator', confirm);
     }
+    for (const c of talking) await this.run(c);
+    if (!rest.length) return { confirm, ...(quiet ? { quiet: true } : {}) };
     const token = crypto.randomUUID();
-    this.waiting.set(token, { command });
+    this.waiting.set(token, { commands: rest, talk, confirm, ...(card ? { card } : {}) });
     return { confirm, token };
   }
 
@@ -84,14 +120,20 @@ export class Commander {
     if (!w || w.timer) return;
     w.timer = setTimeout(async () => {
       this.waiting.delete(token);
-      try {
-        await this.o.execute(w.command);
-      } catch (e) {
-        const card = 'card' in w.command ? w.command.card : undefined;
-        if (card) this.o.board.log(card, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
-        else console.error('voice command:', e);
-      }
+      // in the order the owner said them; one that fails does not hold up the others
+      for (const command of w.commands) await this.run(command);
     }, this.delayMs);
+  }
+
+  /** Runs one command; what it throws is logged on its card. */
+  private async run(command: Command) {
+    try {
+      await this.o.execute(command);
+    } catch (e) {
+      const card = 'card' in command ? command.card : undefined;
+      if (card) this.o.board.log(card, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
+      else console.error('voice command:', e);
+    }
   }
 
   /** Takes a waiting command back; false when it already ran. */
@@ -100,6 +142,9 @@ export class Commander {
     if (!w) return false;
     clearTimeout(w.timer);
     this.waiting.delete(token);
+    this.o.board.undoTalk(w.talk);
+    if (w.card && this.o.board.item(w.card)) this.o.board.log(w.card, 'state', 'owner', 'Zurückgenommen.');
+    this.news.push(`The owner took back what you confirmed with „${w.confirm}“; it did not happen.`);
     return true;
   }
 
@@ -112,156 +157,254 @@ export class Commander {
     return ['Obeya, Koordinator, Karte, Workstream, Bugfix, Feature, Idee, Spike, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
   }
 
-  /**
-   * Starts the next reading's agent ahead, so a command does not wait for its start-up. Called
-   * when the owner starts speaking, and after each command for the next one.
-   */
+  /** Starts the Koordinator's session ahead, so a command does not wait for its start-up. Called when the owner starts speaking. */
   warm() {
-    if (!this.spare) this.spare = this.open();
+    if (!this.session || this.session.ended) this.session = this.open();
   }
 
-  /** The agent waiting for the next command, if any. */
-  private spare: Reader | null = null;
-
-  /** An agent that reads one command; its tools act on whatever `reading` it has been given. */
-  private open(): Reader {
-    const r: Reader = { session: null as unknown as AgentSession, ended: false };
-    const tagged = (tag: unknown) => r.reading?.tags.get(String(tag)) ?? null;
-    const finish = (command: Command | null, confirm: string) => (r.reading ? r.reading.finish(command, confirm) : 'No command to read.');
-    const onCard = (name: Exclude<Command['do'], 'newCard' | 'newIdea' | 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'>, what: string): AgentTool => ({
-      name,
-      description: `${what} Pass the card's tag and the confirmation.`,
-      schema: { card: z.string(), confirm: z.string() },
-      run: ({ card: tag, confirm }) => {
-        const id = tagged(tag);
-        return id ? finish({ do: name, card: id }, String(confirm)) : `Unknown tag ${String(tag)}.`;
-      },
-    });
-    const withText = (name: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike', what: string): AgentTool => ({
-      name,
-      description: `${what} Pass the card's tag, the text as the owner meant it (fix obvious recognition errors), and the confirmation.`,
-      schema: { card: z.string(), text: z.string(), confirm: z.string() },
-      run: ({ card: tag, text, confirm }) => {
-        const id = tagged(tag);
-        return id ? finish({ do: name, card: id, text: String(text) }, String(confirm)) : `Unknown tag ${String(tag)}.`;
-      },
-    });
-    r.session = this.o.runtime.start({
+  /** A session whose tools act on whatever command it is reading. */
+  private open(): Session {
+    const s: Session = { agent: null as unknown as AgentSession, ended: false, tags: new Map(), tagOf: new Map(), read: 0, since: '' };
+    const finish = (commands: Command[], confirm: string) => (s.reading ? s.reading.finish(commands, confirm) : 'No command to read.');
+    const repos = this.o.board.canvas.repos;
+    s.agent = this.o.runtime.start({
       cwd: this.o.cwd,
       readOnly: true,
       effort: 'low',
       system: SYSTEM,
       tools: [
         {
-          name: 'new_card',
-          description: `A new card. Title short and precise; body what the owner asked for, in their words. start: whether the owner wants work to begin right away.${this.o.board.canvas.repos.length > 1 ? ' repo: the repository it belongs to (an id from the list).' : ''}`,
-          schema: { kind: z.enum(['bugfix', 'feature']), title: z.string(), body: z.string(), start: z.boolean(), repo: z.string().optional(), confirm: z.string() },
-          run: (a) => {
-            const repos = this.o.board.canvas.repos;
-            const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? String(a.repo) : undefined;
-            return finish(
-              { do: 'newCard', kind: a.kind as 'bugfix' | 'feature', title: String(a.title), body: String(a.body), start: Boolean(a.start), ...(repo ? { repo } : {}) },
-              String(a.confirm),
-            );
+          name: 'act',
+          description: [
+            'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
+            'Actions (card: the tag of the card, for all but new_card):',
+            `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}.`,
+            '- start: start work on a planned card.',
+            "- note: text to the agent working on a card (working, in PR, or waiting); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
+            "- answer: text as the answer to the card's open question.",
+            '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
+            '- approve: approve work waiting for review. accept / dismiss: a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
+            `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
+            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (it becomes a planned card as its brief stands), plan_doc (a big idea becomes a project: an agent writes its plan doc first), spike (a worker builds a throwaway prototype shown as a demo on it; text: what it should show, may be empty), park (for later), drop (it stays on the canvas with its brief).",
+            'Texts as the owner meant them (fix obvious recognition errors).',
+          ].join('\n'),
+          schema: {
+            actions: z
+              .array(
+                z.object({
+                  do: z.enum(ACTIONS),
+                  card: z.string().optional(),
+                  text: z.string().optional(),
+                  kind: z.enum(['bugfix', 'feature']).optional(),
+                  title: z.string().optional(),
+                  body: z.string().optional(),
+                  start: z.boolean().optional(),
+                  repo: z.string().optional(),
+                }),
+              )
+              .min(1)
+              .max(6),
+            confirm: z.string(),
+          },
+          run: ({ actions, confirm }) => {
+            const commands: Command[] = [];
+            const problems: string[] = [];
+            (actions as ActionArgs[]).forEach((a, n) => {
+              const r = this.command(a, s);
+              if (typeof r === 'string') problems.push(`action ${n + 1} (${a.do}${a.card ? ` on ${a.card}` : ''}): ${r}`);
+              else commands.push(r);
+            });
+            if (problems.length)
+              return `Nothing recorded: ${problems.join('; ')}. Fix or drop what does not fit and call act again, or use reply (a question the owner asks is answered with reply).`;
+            return finish(commands, String(confirm));
           },
         },
-        {
-          name: 'new_idea',
-          description: `A new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). Title short and precise; body what the owner said about it, in their words.${this.o.board.canvas.repos.length > 1 ? ' repo: the repository it belongs to (an id from the list).' : ''}`,
-          schema: { title: z.string(), body: z.string(), repo: z.string().optional(), confirm: z.string() },
-          run: (a) => {
-            const repos = this.o.board.canvas.repos;
-            const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? String(a.repo) : undefined;
-            return finish({ do: 'newIdea', title: String(a.title), body: String(a.body), ...(repo ? { repo } : {}) }, String(a.confirm));
-          },
-        },
-        withText('discuss', "What the owner says in the discussion of an idea (a card in state idea): a thought, a question, an answer to the idea's agent."),
-        onCard('build', 'Build an idea as its brief stands: it becomes a planned card.'),
-        onCard('planDoc', 'Turn a big idea into a project: an agent writes its plan doc first.'),
-        withText('spike', 'Have a worker build a throwaway prototype for an idea, shown as a demo on it. text: what the prototype should show (may be empty).'),
-        onCard('park', 'Park an idea for later.'),
-        onCard('drop', 'Drop an idea; it stays on the canvas with its brief.'),
-        onCard('start', 'Start work on a planned card.'),
-        withText('note', "A note to the agent working on a card; it doesn't stop it."),
-        withText('answer', "The answer to the card's open question."),
-        withText('feedback', 'Feedback on work that waits for review (demo or summary); the agent works on it again.'),
-        onCard('approve', 'Approve work that waits for review (demo or summary).'),
-        onCard('accept', 'Accept a proposed card.'),
-        onCard('dismiss', 'Dismiss a proposed card.'),
-        onCard('split', 'Let the Koordinator cut a planned card into packages.'),
-        onCard('stop', 'Stop the agent working on a card.'),
         {
           name: 'reply',
-          description: 'Nothing to do, or unclear what is meant: just say so (ask what is meant, briefly).',
+          description: 'No action: answer a question about the canvas, a card, its history or your conversation, or say that it is unclear what is meant (ask what is meant, briefly).',
           schema: { confirm: z.string() },
-          run: ({ confirm }) => finish(null, String(confirm)),
+          run: ({ confirm }) => finish([], String(confirm)),
         },
       ],
       onEvent: (e) => {
         if (e.type === 'error') {
-          r.session.close();
-          r.reading?.fail(new Error(e.message));
-        } else if (e.type === 'idle') {
-          r.session.close();
-          r.reading?.finish(null, 'Das habe ich nicht verstanden.');
-        }
+          s.ended = true;
+          s.agent.close();
+          s.reading?.end(new Error(e.message));
+        } else if (e.type === 'idle') s.reading?.end();
       },
     });
-    r.session.done.then(() => {
-      r.ended = true;
-      if (this.spare === r) this.spare = null;
+    s.agent.done.then(() => {
+      s.ended = true;
+      s.reading?.end(new Error('the session ended'));
+      if (this.session === s) this.session = null;
     });
-    return r;
+    return s;
   }
 
-  private interpret(transcript: string, focus: Focus, retry = true): Promise<{ command: Command | null; confirm: string }> {
-    const items = this.o.board.snapshot().items;
-    const relevant = items.filter((i) => i.kind !== 'project' && (i.state !== 'live' || i.id === focus.card));
-    const tags = new Map(relevant.map((i, n) => [`K${n + 1}`, i.id]));
-    const tagOf = new Map([...tags].map(([t, id]) => [id, t]));
-    const waited = this.spare && !this.spare.ended ? this.spare : null;
-    const reader = waited ?? this.open();
-    this.spare = null;
-    return new Promise((resolve, reject) => {
-      let done = false;
-      const settle = () => {
-        done = true;
-        this.warm();
-      };
-      reader.reading = {
-        tags,
-        finish: (command, confirm) => {
-          if (done) return 'Already decided.';
-          settle();
-          resolve({ command, confirm: confirm.trim().slice(0, 300) });
+  /** One action as a command, or why it cannot be done. */
+  private command(a: ActionArgs, s: Session): Command | string {
+    if (a.do === 'new_idea') {
+      if (!a.title?.trim()) return 'a new idea needs a title';
+      const repos = this.o.board.canvas.repos;
+      const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? a.repo : undefined;
+      return { do: 'newIdea', title: a.title.trim(), body: a.body ?? '', ...(repo ? { repo } : {}) };
+    }
+    if (a.do === 'new_card') {
+      if (!a.title?.trim()) return 'a new card needs a title';
+      const repos = this.o.board.canvas.repos;
+      const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? a.repo : undefined;
+      return { do: 'newCard', kind: a.kind ?? 'feature', title: a.title.trim(), body: a.body ?? '', start: Boolean(a.start), ...(repo ? { repo } : {}) };
+    }
+    const id = a.card ? s.tags.get(a.card) : undefined;
+    const card = id ? this.o.board.item(id) : undefined;
+    if (!card) return `unknown tag ${a.card ?? '(none)'}`;
+    const reviewable = card.state === 'waiting' && (card.need === 'review' || card.need === 'demo');
+    const is = `it is ${card.need ? `${card.state}: ${card.need}` : card.state}`;
+    if (['discuss', 'build', 'plan_doc', 'spike', 'park', 'drop'].includes(a.do) !== (card.state === 'idea'))
+      return card.state === 'idea' ? `the card is an idea: discuss it, or build, plan_doc, spike, park or drop it` : `only an idea can be discussed, built, prototyped, parked or dropped (${is})`;
+    switch (a.do) {
+      case 'discuss':
+        if (!a.text?.trim()) return 'the text is missing';
+        return { do: 'discuss', card: card.id, text: a.text.trim() };
+      case 'spike':
+        return { do: 'spike', card: card.id, text: a.text?.trim() ?? '' };
+      case 'plan_doc':
+        return { do: 'planDoc', card: card.id };
+      case 'note':
+      case 'answer':
+      case 'feedback': {
+        if (!a.text?.trim()) return 'the text is missing';
+        if (a.do === 'note' && !['working', 'inPr', 'waiting'].includes(card.state)) return `no agent works on this card (${is}), a note cannot reach it`;
+        if (a.do === 'answer' && !(card.state === 'waiting' && card.need === 'question')) return `the card has no open question (${is})`;
+        if (a.do === 'feedback' && !reviewable) return `the card does not wait for review (${is})`;
+        return { do: a.do, card: card.id, text: a.text.trim() };
+      }
+      case 'start':
+        if (card.state !== 'planned' || card.queue || card.kind === 'project') return `only a planned card that is not queued can be started (${is}${card.queue ? ', queued' : ''})`;
+        break;
+      case 'approve':
+        if (!reviewable) return `the card does not wait for review (${is})`;
+        break;
+      case 'accept':
+      case 'dismiss':
+        if (card.state !== 'proposal') return `the card is no proposal (${is})`;
+        break;
+      case 'split':
+        if (card.source !== 'manual' || card.state !== 'planned' || card.queue) return 'only a planned card of the owner can be split';
+        break;
+      case 'stop':
+        if (card.state !== 'working' && card.state !== 'waiting') return `no agent works on this card (${is})`;
+        break;
+    }
+    return { do: a.do, card: card.id };
+  }
+
+  private interpret(transcript: string, focus: Focus): Promise<Decision> {
+    return new Promise((decide, fail) => {
+      this.turns = this.turns.then(() => this.read(transcript, focus, decide)).catch(fail);
+    });
+  }
+
+  /** Reads one command; settles when the turn has ended, while the decision goes out as soon as it is taken. */
+  private async read(transcript: string, focus: Focus, decide: (d: Decision) => void, retry = true): Promise<void> {
+    const warmed = this.session && !this.session.ended ? this.session : null;
+    const s = warmed ?? (this.session = this.open());
+    let decided = false;
+    const ended = new Promise<Error | undefined>((end) => {
+      s.reading = {
+        finish: (commands, confirm) => {
+          if (decided) return 'Already decided.';
+          decided = true;
+          decide({ commands, confirm: confirm.trim().slice(0, 400) });
           return 'Done. End your turn now.';
         },
-        fail: (e) => {
-          if (done) return;
-          done = true;
-          // an agent that waited long may have gone stale: read the command once more on a fresh one
-          if (waited && retry) return resolve(this.interpret(transcript, focus, false));
-          settle();
-          reject(e);
-        },
+        end,
       };
-      reader.session.send(this.brief(transcript, focus, items, relevant, tagOf));
     });
+    s.agent.send(this.brief(s, transcript, focus));
+    const error = await ended;
+    s.reading = undefined;
+    if (error && !decided) {
+      // a session that waited or talked before may have gone stale: read the command once more in a fresh one
+      if (warmed && retry) return this.read(transcript, focus, decide, false);
+      throw error;
+    }
+    if (!decided) decide({ commands: [], confirm: 'Das habe ich nicht verstanden.' });
+    if (s.read >= (this.o.sessionCommands ?? 30)) {
+      // long enough: the next session starts from the stored memory, so the context stays short
+      s.ended = true;
+      s.agent.close();
+      this.session = null;
+      this.warm();
+    }
   }
 
-  private brief(transcript: string, focus: Focus, items: Item[], relevant: Item[], tagOf: Map<string, string>): string {
+  /** The message for one command: what the Koordinator needs to know besides what it already knows. */
+  private brief(s: Session, transcript: string, focus: Focus): string {
+    const items = this.o.board.snapshot().items;
+    const relevant = items.filter((i) => i.kind !== 'project' && (i.state !== 'live' || i.id === focus.card));
+    const tag = (id: string) => {
+      let t = s.tagOf.get(id);
+      if (!t) {
+        t = `K${s.tags.size + 1}`;
+        s.tags.set(t, id);
+        s.tagOf.set(id, t);
+      }
+      return t;
+    };
     const describe = (i: Item) => {
       const project = i.parent ? items.find((p) => p.id === i.parent) : undefined;
       const state = i.queue ? 'queued' : i.need ? `${i.state}: ${i.need}` : i.idea && i.idea.status !== 'open' ? `idea: ${i.idea.status}` : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
-      return `${tagOf.get(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.question ? ` — open question: ${i.question.text}` : ''}`;
+      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question: ${i.question.text}` : ''}`;
     };
+    const step = (m: Moment) => {
+      const card = items.find((i) => i.id === m.cardId);
+      // a card no longer shown (its plan doc is gone) is no longer talked about
+      if (!card) return [];
+      const what =
+        m.kind === 'created'
+          ? m.author === 'owner'
+            ? 'new card'
+            : 'proposed by an agent'
+          : `${STEP[m.kind] ?? ''}${clip(m.text, 200)}`;
+      return [`- ${when(m.at)} ${tag(m.cardId)} "${card.title}": ${what}`];
+    };
+    const now = new Date().toISOString();
+    const first = s.read === 0;
+    let history: string[];
+    if (first) {
+      const talk = this.o.board.talk(REMEMBERED_EXCHANGES);
+      const steps = this.o.board.timeline(new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString(), HISTORY_STEPS);
+      history = [
+        talk.length
+          ? `Your conversation with the owner before this session (oldest first; card tags did not exist then):\n${talk
+              .map((t) => {
+                const open = t.cardId ? items.find((i) => i.id === t.cardId) : undefined;
+                return `- ${when(t.at)}${open ? ` (with "${open.title}" open)` : ''} the owner: "${t.said}" → you: "${t.reply}"${t.undone ? ' (the owner took it back)' : ''}`;
+              })
+              .join('\n')}`
+          : 'You have not talked with the owner before.',
+        `What happened on the canvas in the last ${HISTORY_DAYS} days (oldest first):\n${steps.flatMap(step).join('\n') || '(nothing)'}`,
+      ];
+    } else {
+      const steps = this.o.board.timeline(s.since, NEWS_STEPS + 1);
+      const more = steps.length > NEWS_STEPS ? steps.splice(0, steps.length - NEWS_STEPS).length : 0;
+      history = steps.length ? [`What happened on the canvas since the owner's last command:\n${more ? `- (${more} earlier steps left out)\n` : ''}${steps.flatMap(step).join('\n')}`] : [];
+    }
+    s.read++;
+    s.since = now;
+    const news = this.news.splice(0);
     const focused = focus.card ? relevant.find((i) => i.id === focus.card) : undefined;
     const project = focus.project ? items.find((i) => i.id === focus.project) : undefined;
     return [
+      `Now: ${when(now)}.`,
+      ...history,
+      ...news,
       `The owner said (speech recognition, may contain errors): "${transcript}"`,
       focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}` : project ? `The owner is looking at the project "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
-      `Cards on the canvas:\n${relevant.map(describe).join('\n') || '(none)'}`,
+      `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
       ...(this.o.board.canvas.repos.length > 1
         ? [`Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name})`).join(', ')}`]
         : []),
@@ -269,12 +412,47 @@ export class Commander {
   }
 }
 
-const SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents by voice. You get what the owner just said, transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary.
+/** What `act` gets for one action. */
+interface ActionArgs {
+  do: Action;
+  card?: string;
+  text?: string;
+  kind?: 'bugfix' | 'feature';
+  title?: string;
+  body?: string;
+  start?: boolean;
+  repo?: string;
+}
 
-Call exactly one tool, then end your turn:
-- the action the owner asked for, on the card they meant (the open card unless they name another), or new_card or new_idea;
-- reply, when nothing fits or it is unclear which card or what is meant.
-When the open card is an idea, what the owner says is part of its discussion: use discuss with their words, unless they clearly ask for an action on it (build, plan doc, spike, park, drop). Wanting to think about something, rather than have it done, is new_idea.
-Every tool takes confirm: one short German sentence the owner hears back, saying what will happen, naming the card ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
+/** How a step of a card's history reads. */
+const STEP: Partial<Record<Moment['kind'], string>> = {
+  question: 'the agent asked: ',
+  answer: 'answer: ',
+  review: 'handed over for review: ',
+  hint: "the owner's note: ",
+  error: 'error: ',
+};
+
+const clip = (text: string, n: number) => {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > n ? `${flat.slice(0, n - 1)}…` : flat;
+};
+
+/** A time as the Koordinator reads it: local, to the minute, with the weekday. */
+function when(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+const SYSTEM = `
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents by voice. Each message brings what the owner just said, transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary.
+
+This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Card tags (K1, K2, …) stay the same throughout this conversation. No agent works on a planned or live card; a workstream of a project takes its state from the project's plan doc (checked off there means live).
+
+For each message, call act or reply once, then end your turn:
+- act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgekarte …" is approve and new_card): leave none out.
+- reply, when the owner asks you something (answer from what you know: the cards, their history, this conversation), also about the open card, or when nothing fits or it is unclear which card or what is meant.
+Both take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
+When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, spike, park, drop). Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

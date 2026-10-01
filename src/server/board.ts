@@ -26,6 +26,9 @@ export interface PrState {
 /** States a worker or the owner's decision is still part of. */
 const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
 
+/** Exchanges with the Koordinator its sheet shows. */
+const SHEET_TALK = 30;
+
 /** How long an untitled card of the owner's may exist before Obeya drops it on start. */
 const UNTITLED_GRACE_MS = 10 * 60_000;
 
@@ -235,6 +238,29 @@ export class Board {
     return toItems([row!], [], this.home)[0]!;
   }
 
+  // ---------------------------------------------------------------- the Koordinator's memory
+
+  /** Records an exchange with the Koordinator; returns its id. */
+  addTalk(said: string, reply: string, cardId: string | null = null): number {
+    const id = this.store.addTalk(this.canvas.id, said, reply, cardId);
+    this.changed();
+    return id;
+  }
+
+  undoTalk(id: number) {
+    this.store.undoTalk(id);
+    this.changed();
+  }
+
+  talk(limit?: number) {
+    return this.store.talk(this.canvas.id, limit);
+  }
+
+  /** The cards' history after `since` (ISO time), oldest first, at most the latest `limit` steps. */
+  timeline(since: string, limit: number) {
+    return this.store.timeline(this.canvas.id, since, limit);
+  }
+
   accept(id: string) {
     if (this.own(id).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     this.store.update(id, { state: 'planned' });
@@ -282,7 +308,7 @@ export class Board {
     const docs = (this.docs ??= this.readDocs());
     let items = toItems(this.store.cards(this.canvas.id), docs, this.home);
     if (this.placeNew(docs, items)) items = toItems(this.store.cards(this.canvas.id), docs, this.home);
-    this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id) };
+    this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id), talk: this.store.talk(this.canvas.id, SHEET_TALK, true) };
     return this.cache;
   }
 

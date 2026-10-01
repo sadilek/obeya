@@ -122,6 +122,21 @@ export interface CanvasSnapshot {
   canvas: CanvasInfo;
   items: Item[];
   preferences: Preference[];
+  /** The owner's latest exchanges with the Koordinator without an open card (those with one are in its log). */
+  talk: Talk[];
+}
+
+/** One exchange between the owner and the Koordinator. */
+export interface Talk {
+  id: number;
+  at: string;
+  /** What the owner said or typed. */
+  said: string;
+  reply: string;
+  /** The card that was open. */
+  cardId?: string;
+  /** The owner took the actions back. */
+  undone?: boolean;
 }
 
 /** A lasting preference of the owner, learned by the Koordinator or written by the owner. */

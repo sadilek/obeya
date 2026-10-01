@@ -295,6 +295,9 @@ export function Detail(p: Props) {
           {parent?.plan && <PlanSource file={parent.plan.file} />}
         </>
       )}
+
+      {/* a card nobody worked on shows its log once there is something, such as a talk with the Koordinator */}
+      {!worked && <Log cardId={item.id} hideEmpty />}
     </>
   );
 }
@@ -680,14 +683,14 @@ function LastFailure({ cardId }: { cardId: string }) {
 }
 
 /** The card's log, live. */
-function Log({ cardId }: { cardId: string }) {
+function Log({ cardId, hideEmpty }: { cardId: string; hideEmpty?: boolean }) {
   const events = useEvents(cardId);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [events]);
-  if (!events) return null;
+  if (!events || (hideEmpty && !events.length)) return null;
   return (
     <>
       <h4 className="p-h">{t.log}</h4>
