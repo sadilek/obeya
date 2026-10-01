@@ -136,7 +136,7 @@ describe('the configuration over HTTP', () => {
   beforeEach(() => {
     const c = config('args', [{ repos: [{ path: web }] }], ['web']);
     canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never }, config: c });
-    server = serve([canvas], { transcriber: { transcribe: async () => '' }, speaker: { speak: async () => null } }, 0, false, c);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker: { speak: async () => null } }, 0, false, c);
   });
   afterEach(() => {
     server.stop(true);
