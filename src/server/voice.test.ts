@@ -12,7 +12,7 @@ test.skipIf(process.platform !== 'darwin')('the speech sidecar renders confirmat
   }
 });
 
-test('a loop is one word or phrase six times in a row, whatever the case and punctuation', () => {
+test('a loop is one word, phrase or syllable six times in a row, whatever the case and punctuation', () => {
   for (const loop of [
     'Fall '.repeat(40),
     'PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE',
@@ -20,12 +20,15 @@ test('a loop is one word or phrase six times in a row, whatever the case and pun
     `${'lächpt '.repeat(30)}lä`,
     `Ich finde, ${'ihr arbeitet dafür als ihr arbeitet, '.repeat(6)}`,
     'An aktuellen An aktuellen An aktuellen An aktuellen An aktuellen An aktuellen',
+    `auf${'ging'.repeat(40)}`,
   ])
     expect(looping(loop)).toBe(true);
   for (const speech of [
     'Starte alle Karten, die noch in der Warteschlange sind.',
     'Nein, nein, nein, nicht diese Karte, die andere.',
     'Was ist der Stand? Was ist der Stand bei Export?',
+    'Ja, ja, ja, ja, mach das.',
+    'Die Zählerstände der Zähler 1111 und 2222 exportieren.',
     '',
   ])
     expect(looping(speech)).toBe(false);
