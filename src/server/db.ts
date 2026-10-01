@@ -425,12 +425,14 @@ export class Store {
     return (
       this.db
         .query(
-          `SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text FROM events e JOIN cards c ON c.id = e.card_id
-           WHERE c.canvas_id = $c AND c.deleted_at IS NULL AND e.at > $since AND e.kind IN ('state', 'question', 'answer', 'review', 'hint', 'error')
-           UNION ALL
-           SELECT created_at, id, 'created', CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END, '' FROM cards
-           WHERE canvas_id = $c AND deleted_at IS NULL AND plan_ref IS NULL AND created_at > $since
-           ORDER BY 1 DESC LIMIT $limit`,
+          // within one millisecond, cards are created before anything happens to them, each in the order it was written
+          `SELECT at, cardId, kind, author, text FROM (
+             SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text, 1 AS phase, e.id AS seq FROM events e JOIN cards c ON c.id = e.card_id
+             WHERE c.canvas_id = $c AND c.deleted_at IS NULL AND e.at > $since AND e.kind IN ('state', 'question', 'answer', 'review', 'hint', 'error')
+             UNION ALL
+             SELECT created_at, id, 'created', CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END, '', 0, rowid FROM cards
+             WHERE canvas_id = $c AND deleted_at IS NULL AND plan_ref IS NULL AND created_at > $since
+           ) ORDER BY at DESC, phase DESC, seq DESC LIMIT $limit`,
         )
         .all({ c: canvasId, since, limit }) as Moment[]
     ).reverse();

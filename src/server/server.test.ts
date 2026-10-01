@@ -20,6 +20,8 @@ let server: ReturnType<typeof serve>;
 let canvas: CanvasRuntime;
 let warmed: number;
 const speaker = { speak: async (text: string) => new TextEncoder().encode(`WAV ${text}`) };
+// how long a command waits for an undo; long enough that a loaded machine still undoes in time
+const DELAY_MS = 200;
 
 // A canvas in clone mode without any clone registered: every start fails for want of a workspace.
 beforeEach(() => {
@@ -33,7 +35,7 @@ beforeEach(() => {
   git(main, 'commit', '--quiet', '-m', 'init');
   runtime = new FakeRuntime();
   // the generic adapter: clones, none registered; the canvas is named after the directory
-  canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => { throw new Error('no forge'); } }, commandDelayMs: 30 });
+  canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => { throw new Error('no forge'); } }, commandDelayMs: DELAY_MS });
   board = canvas.board;
   executed = [];
   heardAudio = [];
@@ -47,7 +49,15 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const settle = () => new Promise((r) => setTimeout(r, 5));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/**
+ * Waits until `done` holds. A request reaches the server only after a round trip, which on a
+ * loaded machine (other workers' test runs) takes longer than any fixed pause; a test that went
+ * on too early failed and left its request open, and stopping the server reset it in the next test.
+ */
+const until = async (done: () => unknown, ms = 3000) => {
+  for (const end = Date.now() + ms; !(await done()); await sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
+};
 const card = () => board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
 const post = (path: string, body: string) => fetch(new URL(path, server.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body });
 const codeOf = async (res: Promise<Response>) => ((await (await res).json()) as { code: string }).code;
@@ -83,7 +93,7 @@ describe('refused requests', () => {
   test('a start that fails without a free workspace is logged with its code', async () => {
     const c = card();
     expect((await act(c.id, { action: 'start' })).status).toBe(204);
-    await settle();
+    await until(() => board.events(c.id).at(-1)?.kind === 'error');
     const events = (await (await fetch(new URL(api(`/cards/${c.id}/events`), server.url))).json()) as { kind: string; code?: string; text: string }[];
     expect(events.at(-1)).toMatchObject({ kind: 'error', code: 'noWorkspace', text: 'no workspace registered or all are leased' });
     expect(board.item(c.id)!.state).toBe('planned');
@@ -121,12 +131,16 @@ describe('plan docs', () => {
 
 describe('voice', () => {
   const interpretation = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1)!;
+  /** The Koordinator's session once the command has reached it. */
+  const briefed = async () => {
+    await until(() => interpretation()?.inbox.length);
+    return interpretation();
+  };
 
   test('a recording is transcribed, read as one action, confirmed with speech, and runs after the delay', async () => {
     const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
-    await settle();
+    const s = await briefed();
     expect(heardAudio).toEqual(['AUDIO']);
-    const s = interpretation();
     expect(s.inbox[0]).toContain('"Neue Karte Export"');
     expect(s.spec).toMatchObject({ readOnly: true, effort: 'low' });
     s.call('act', { actions: [{ do: 'new_card', kind: 'feature', title: 'Export', body: 'CSV', start: true }], confirm: 'Neue Karte „Export“, der Agent fängt an.' });
@@ -134,13 +148,13 @@ describe('voice', () => {
     const body = (await (await res).json()) as { confirm: string; token: string; audio?: string };
     expect(body.confirm).toBe('Neue Karte „Export“, der Agent fängt an.');
     expect(body.token).toBeTruthy();
-    expect((body as { undoMs?: number }).undoMs).toBe(30);
+    expect((body as { undoMs?: number }).undoMs).toBe(DELAY_MS);
     expect(body.audio).toStartWith(api('/voice/speech/'));
     const speech = await fetch(new URL(body.audio!, server.url));
     expect(speech.headers.get('content-type')).toBe('audio/wav');
     expect(await speech.text()).toBe('WAV Neue Karte „Export“, der Agent fängt an.');
     expect(executed).toEqual([]);
-    await new Promise((r) => setTimeout(r, 60));
+    await until(() => executed.length);
     expect(executed).toEqual([{ do: 'newCard', kind: 'feature', title: 'Export', body: 'CSV', start: true }]);
   });
 
@@ -148,15 +162,14 @@ describe('voice', () => {
     const c = card();
     board.work(c.id, { state: 'waiting', need: 'review' });
     const res = fetch(new URL(api(`/command?card=${c.id}`), server.url), { method: 'POST', body: JSON.stringify({ text: 'gib das frei' }) });
-    await settle();
-    const s = interpretation();
+    const s = await briefed();
     expect(s.inbox[0]).toContain('The owner has this card open');
     s.call('act', { actions: [{ do: 'approve', card: 'K1' }], confirm: '„A“ freigegeben.' });
     s.emit({ type: 'idle' });
     const { token } = (await (await res).json()) as { token: string };
     const undo = await (await fetch(new URL(api('/command/undo'), server.url), { method: 'POST', body: JSON.stringify({ token }) })).json();
     expect(undo).toEqual({ undone: true });
-    await new Promise((r) => setTimeout(r, 60));
+    await sleep(DELAY_MS + 50);
     expect(executed).toEqual([]);
   });
 
@@ -169,12 +182,11 @@ describe('voice', () => {
     expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toHaveLength(1);
     expect(k.inbox).toEqual([]);
     const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'starte A' }) });
-    await settle();
-    expect(interpretation()).toBe(k);
+    expect(await briefed()).toBe(k);
     expect(k.inbox[0]).toContain('"starte A"');
     k.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: '„A“ startet.' });
     await res;
-    await new Promise((r) => setTimeout(r, 60));
+    await until(() => executed.length);
     expect(executed).toEqual([{ do: 'start', card: c.id }]);
   });
 
@@ -182,12 +194,11 @@ describe('voice', () => {
     canvas.commander.warm();
     const k = interpretation();
     const heard = canvas.commander.hear('ähm', {});
-    await settle();
+    await until(() => k.inbox.length);
     k.emit({ type: 'error', message: 'stale' });
     expect(k.closed).toBe(true);
-    await settle();
-    const fresh = interpretation();
-    expect(fresh).not.toBe(k);
+    await until(() => interpretation() !== k);
+    const fresh = await briefed();
     expect(fresh.inbox[0]).toContain('"ähm"');
     fresh.call('reply', { confirm: 'Was genau soll ich tun?' });
     expect(await heard).toEqual({ confirm: 'Was genau soll ich tun?' });
@@ -195,8 +206,7 @@ describe('voice', () => {
 
   test('nothing to do is just said', async () => {
     const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'ähm' }) });
-    await settle();
-    interpretation().call('reply', { confirm: 'Was genau soll ich tun?' });
+    (await briefed()).call('reply', { confirm: 'Was genau soll ich tun?' });
     interpretation().emit({ type: 'idle' });
     const body = (await (await res).json()) as { confirm: string; token?: string };
     expect(body).toMatchObject({ confirm: 'Was genau soll ich tun?' });

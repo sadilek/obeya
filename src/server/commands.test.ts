@@ -113,9 +113,9 @@ describe('the Koordinator remembers', () => {
     await settle();
     const s = runtime.last;
     expect(s.inbox[0]).toContain('K2 [queued behind "Export"] feature "Archiv"');
-    expect(s.inbox[0]).toContain('K1 [queued: the Koordinator checks it for overlaps] bugfix "Login"');
-    const refused = await s.call('act', { actions: [{ do: 'start', card: 'K2' }, { do: 'start', card: 'K1' }], confirm: 'Beide starten.' });
-    expect(refused).toContain('action 2 (start on K1): the Koordinator is still checking the card');
+    expect(s.inbox[0]).toContain('K3 [queued: the Koordinator checks it for overlaps] bugfix "Login"');
+    const refused = await s.call('act', { actions: [{ do: 'start', card: 'K2' }, { do: 'start', card: 'K3' }], confirm: 'Beide starten.' });
+    expect(refused).toContain('action 2 (start on K3): the Koordinator is still checking the card');
     s.call('act', { actions: [{ do: 'start', card: 'K2' }], confirm: '„Archiv“ startet trotz Überschneidung.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
