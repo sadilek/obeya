@@ -232,7 +232,7 @@ export const t = {
       code: 'Auf main liegt neuer Code, mit dem Obeya neu startet.',
       config: 'Die Konfiguration wurde gespeichert; Obeya startet mit ihr neu.',
     } satisfies Record<RestartReason, string>,
-    waits: 'Obeya wartet, bis diese Agenten ihren Schritt beendet haben:',
+    waits: 'Die Agenten wissen Bescheid und pausieren beim nächsten sicheren Punkt. Obeya wartet noch auf:',
     elsewhere: (n: number) => (n === 1 ? '1 Agent auf einer anderen Leinwand' : `${n} Agenten auf anderen Leinwänden`),
     deadline: (time: string) => `Um ${time} startet Obeya auf jeden Fall neu.`,
     now: 'Jetzt neu starten',

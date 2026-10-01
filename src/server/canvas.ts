@@ -21,7 +21,7 @@ import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import type { AgentRuntime } from './runtime';
 import { changesCode } from './self-update';
-import { Workers } from './workers';
+import { type DueRestart, Workers } from './workers';
 import { type Landed, Workspaces } from './workspaces';
 
 export type { CanvasConfig, RepoConfig };
@@ -380,6 +380,11 @@ export class CanvasRuntime {
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */
   busy(): string[] {
     return this.repos.flatMap((r) => r.workers.busyCards());
+  }
+
+  /** Obeya is about to restart, or no longer is: the workers hear so and pause for it. */
+  restartDue(due: DueRestart | null) {
+    for (const r of this.repos) r.workers.restartDue(due);
   }
 
   shutdown() {

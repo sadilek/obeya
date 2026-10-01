@@ -107,6 +107,11 @@ const restarter = new Restarter({
     shutdown(exitCode);
   },
 });
+// workers in the middle of a turn hear of a restart that waits for them, and pause for it
+restarter.onChange(() => {
+  const due = restarter.due();
+  for (const c of canvases) c.restartDue(due && { reason: due.reason, deadline: due.deadline });
+});
 const restart = (reason: RestartReason, why: string) => {
   if (!restarter.due()) console.log(`Obeya: ${why}; restarting${busy().length ? ' once no worker is in the middle of a turn' : ''}`);
   restarter.request(reason);

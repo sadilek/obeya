@@ -222,8 +222,11 @@ the owner's language (`src/core/locale.ts`).
   moves to commits that change code (not only docs), the server stops and starts again; workers
   resume, and an open page reloads when it reconnects to a new server process. The restart waits
   until no worker is in the middle of a turn or waiting for its background work, even one that has
-  asked or handed over meanwhile (at most 15 minutes), since it stops whatever a worker runs; a
-  resumed worker is told so. A worker that waits for the restart to finish its landed work is not
+  asked or handed over meanwhile (at most 15 minutes), since it stops whatever a worker runs. The
+  workers it waits for are told it is due, and so is a worker that starts a turn before it: they
+  start nothing long, stop background work they can start again, and pause at the next safe point
+  by ending their turn (no nudge, no question to the owner; the card's log says it paused). A
+  resumed worker hears that what ran was stopped (exit code 137) and goes on. A worker that waits for the restart to finish its landed work is not
   in a turn and does not hold it up. While a restart waits, the bar shows it ("Neustart wartet auf
   N Agenten", until when at most); hovering names why and the cards it waits for, and "Jetzt neu
   starten" (`POST /api/restart`) has it go ahead at once, its hover text saying what that cuts off.
@@ -422,6 +425,12 @@ the repository; the copy on the project is only for the archive).
 - Obeya restarts itself for new code on its own checkout instead of hot reloading: a restart is a
   path that already exists (workers resume by session id), hot reloading keeps old state alive
   next to new code. It also restarts for commits made outside Obeya.
+- A due restart is announced to the workers, which pause for it themselves, rather than waiting
+  for a moment in which none is busy (2026-10-01): with six workers in parallel such a moment
+  rarely came, and the 15 minutes ran out in the middle of test runs and demo renders (four of the
+  restarts after the waiting rule came in). An agent knows where its work can stop; a lock it sets
+  before long commands would hold restarts off just as well but rests on every agent remembering
+  it, and restarting each worker on its own between steps is impossible with one server process.
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
   to an idea is the exception: it only adds to a conversation.
