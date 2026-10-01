@@ -2,7 +2,7 @@
 
 import { type CSSProperties, memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import type { CanvasInfo, Item, ProjectHistory } from '../core/types';
+import type { CanvasInfo, Item, PendingRestart, ProjectHistory } from '../core/types';
 import { api } from './api';
 import type { Cam } from './camera';
 import { Doc, Inline, plain } from './markdown';
@@ -135,6 +135,51 @@ export function CanvasPill({ canvas, canvases }: { canvas: CanvasInfo; canvases:
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** A restart that waits for workers: for whom and until when (on hover), and a button that has it go ahead now. */
+export function RestartPill({ restart, items }: { restart: PendingRestart; items: Item[] }) {
+  const [going, setGoing] = useState(false);
+  const n = restart.cards.length + restart.elsewhere;
+  const until = new Date(restart.deadline).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const titles = restart.cards.map((id) => plain(items.find((i) => i.id === id)?.title ?? id));
+  const now = () => {
+    setGoing(true);
+    api.restartNow().then(
+      (r) => r.restarting || setGoing(false),
+      () => setGoing(false),
+    );
+  };
+  if (going)
+    return (
+      <div className="pill restart going" id="restart">
+        <span className="spin">↻</span> {t.restart.going}
+      </div>
+    );
+  return (
+    <div className="pill restart" id="restart">
+      <span className="spin">↻</span>
+      <span>{t.restart.pill(n)}</span>
+      <span className="hint">{t.restart.until(until)}</span>
+      <button onClick={now}>
+        {t.restart.now}
+        <span className="tip risk" role="tooltip">
+          {t.restart.nowRisk}
+        </span>
+      </button>
+      <div className="tip why" role="tooltip">
+        <p>{t.restart.reason[restart.reason]}</p>
+        <p>{t.restart.waits}</p>
+        <ul>
+          {titles.map((x, i) => (
+            <li key={i}>{x}</li>
+          ))}
+          {restart.elsewhere > 0 && <li className="hint">{t.restart.elsewhere(restart.elsewhere)}</li>}
+        </ul>
+        <p className="hint">{t.restart.deadline(until)}</p>
+      </div>
     </div>
   );
 }

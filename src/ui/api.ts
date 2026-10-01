@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ConfigView, CardAction, CardEvent, CardPatch, Item, NewCard, ProjectHistory, ServerMessage } from '../core/types';
+import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ConfigView, CardAction, CardEvent, CardPatch, Item, NewCard, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -50,6 +50,8 @@ export const api = {
   checkConfig: (canvases: CanvasConfig[]) => call<Pick<ConfigView, 'canvases' | 'resolved' | 'problems'>>('POST', '/api/config/check', canvases),
   /** Saves it; Obeya then starts again with it where something restarts it. */
   saveConfig: (canvases: CanvasConfig[]) => call<{ restarting: boolean }>('PUT', '/api/config', canvases),
+  /** Has a restart that waits for workers go ahead now; false when none waits. */
+  restartNow: () => call<{ restarting: boolean }>('POST', '/api/restart'),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   patch: (id: string, p: CardPatch) => call<void>('PATCH', at(`/cards/${id}`), p),
   remove: (id: string) => call<void>('DELETE', at(`/cards/${id}`)),
@@ -108,10 +110,11 @@ export function onSpeak(fn: (cardId: string | undefined, audio: string) => void)
   return () => speakListeners.delete(fn);
 }
 
-/** The live canvas: the server pushes a snapshot on connect and after every change. */
-export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean } {
+/** The live canvas: the server pushes a snapshot on connect and after every change, and the restart that waits. */
+export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean; restart: PendingRestart | null } {
   const [snapshot, setSnapshot] = useState<CanvasSnapshot | null>(null);
   const [online, setOnline] = useState(true);
+  const [restart, setRestart] = useState<PendingRestart | null>(null);
   useEffect(() => {
     let ws: WebSocket;
     let retry: ReturnType<typeof setTimeout>;
@@ -131,6 +134,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
           if (server && server !== msg.server) location.reload();
           server = msg.server;
         } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
+        else if (msg.type === 'restart') setRestart(msg.restart);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
         else if (msg.type === 'speak') for (const fn of speakListeners) fn(msg.cardId, msg.audio);
       };
@@ -150,5 +154,5 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
       ws.close();
     };
   }, []);
-  return { snapshot, online };
+  return { snapshot, online, restart };
 }

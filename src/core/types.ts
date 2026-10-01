@@ -367,11 +367,28 @@ export interface ConfigView {
   restarting: boolean;
 }
 
+/** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved. */
+export type RestartReason = 'code' | 'config';
+
+/** A restart that waits for workers to finish their turns, as one canvas sees it. */
+export interface PendingRestart {
+  reason: RestartReason;
+  /** When it was due, and when it goes ahead however busy the workers are (ms since the epoch). */
+  since: number;
+  deadline: number;
+  /** The cards on this canvas whose worker it waits for. */
+  cards: string[];
+  /** How many workers on other canvases it waits for. */
+  elsewhere: number;
+}
+
 /** Server → UI over the WebSocket. */
 export type ServerMessage =
   | { type: 'snapshot'; snapshot: CanvasSnapshot }
   | { type: 'event'; event: CardEvent }
   /** First on every connection: which server process this is, so a page from an earlier one reloads. */
   | { type: 'hello'; server: string }
+  /** On connect and whenever it changes: the restart Obeya waits with, if any. */
+  | { type: 'restart'; restart: PendingRestart | null }
   /** A short spoken summary of a card's agent (an idea's reply), to play while the card is open. */
   | { type: 'speak'; cardId?: string; audio: string };

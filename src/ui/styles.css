@@ -107,6 +107,21 @@ a { color: inherit; }
 button.pill { cursor: pointer; }
 button.pill:hover { box-shadow: var(--lift); }
 .pill.offline { background: var(--waiting); color: #fff; }
+.pill.restart { position: relative; padding: 4px 4px 4px 14px; cursor: default; }
+.pill.restart.going { padding: 7px 14px; cursor: default; }
+.pill.restart .spin { display: inline-block; color: var(--working); font-weight: 700; animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.pill.restart button { border: 0; border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  background: var(--chip); color: var(--ink); }
+.pill.restart button:hover { background: var(--ink); color: var(--bg); }
+.pill.restart .tip { display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 360px; padding: 10px 14px; border-radius: 12px;
+  background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: normal; font-size: 13px; font-weight: 400; line-height: 1.45;
+  text-align: left; pointer-events: none; z-index: 30; }
+.pill.restart .tip p { margin: 0 0 6px; }
+.pill.restart .tip p:last-child { margin: 0; }
+.pill.restart .tip ul { margin: 0 0 6px; padding-left: 18px; }
+.pill.restart .tip.risk { border-left: 3px solid var(--waiting); }
+.pill.restart:hover:not(:has(button:hover)) > .tip.why, .pill.restart button:hover > .tip.risk { display: block; }
 .canvas-pill { position: relative; }
 .canvas-pill .switch { cursor: pointer; }
 .canvas-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 240px; list-style: none; margin: 0; padding: 6px; background: var(--panel);
