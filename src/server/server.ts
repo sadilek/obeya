@@ -85,7 +85,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
   /** `null`: Whisper heard nothing it could write down, which the Koordinator should not guess from. */
   const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = []) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
-    console.log(`heard on ${c.id}: ${text ?? '(not understood)'}`);
+    console.log(`heard on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
     const h: Heard =
       text === null ? { confirm: 'Das habe ich nicht verstanden.' } : text ? await c.commander.hear(text, focus, images) : { confirm: 'Ich habe nichts gehört.' };
     // the written confirmation goes out now, so the undo window starts now; the voice follows
