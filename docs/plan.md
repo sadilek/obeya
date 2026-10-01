@@ -156,9 +156,8 @@ screenshots the same way: picked with the small button to the right of the micro
 it, or pasted (⌘V) anywhere outside a text field, they show beside the microphone and go with the
 next recording; one in which nothing was heard or understood leaves them there.
 
-A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff,
-until then to the owner), which answers from the plan doc, the decision log and the preference
-memory. Only what needs the owner reaches the owner: product decisions, trade-offs, anything
+A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff),
+which answers from the plan doc, the decision log and the preference memory. Only what needs the owner reaches the owner: product decisions, trade-offs, anything
 irreversible or external. An answer given on the owner's behalf stays visible on the card and
 can be overruled; overruling feeds the preference memory. Owner-facing text from agents is in
 the owner's language (`src/core/locale.ts`).
@@ -366,12 +365,10 @@ the repository; the copy on the project is only for the archive).
 - [x] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
   with undo; the Koordinator takes voice input.
 - [x] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
-- [ ] **M8 Ideas.** Discuss and explore a feature before deciding to build it (proposed
+- [x] **M8 Ideas.** Discuss and explore a feature before deciding to build it (proposed
   2026-09-30). Built as described under [Ideas](#ideas): the state `idea`, an exploration agent
   per idea with a resumed read-only session, the brief it keeps, prototypes that never land, and the
   decisions build, plan doc (written by a worker), park and drop.
-  - Still open: a short-term memory for commands to the Koordinator (follow-ups such as "und die
-    zweite auch"); today every command is read in a fresh session.
 
 ## Decisions
 
@@ -502,5 +499,4 @@ the repository; the copy on the project is only for the archive).
 - Which OKE clones may workers lease: the existing `~/dev/oke2`–`oke5`, or fresh ones?
 - A plan doc without a `## Workstreams` checklist is not shown (in OKE: `utilmd-parsed-view.md`,
   whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
-- UI language: German first, all strings in one place for an English release.
 - Demo sharing beyond the team: narration in a cloned voice.
