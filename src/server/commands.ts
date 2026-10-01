@@ -2,8 +2,9 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import type { Item, Queue } from '../core/types';
+import type { CanvasConfig, Item, Queue } from '../core/types';
 import { BadRequest, type Board } from './board';
+import type { Config } from './config';
 import type { Moment } from './db';
 import type { AgentRuntime, AgentSession } from './runtime';
 
@@ -14,6 +15,8 @@ export type Command = (
   /** `force` starts a card that waits behind others now, despite the overlap. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'; card: string; text: string }
+  /** Saves Obeya's configuration, which then starts again with it. */
+  | { do: 'configure'; canvases: CanvasConfig[] }
 ) & {
   /** Screenshots that came with the command (image ids), on the actions that take them (`TAKES_IMAGES`). */
   images?: string[];
@@ -53,6 +56,8 @@ export interface CommanderOptions {
   lookUp?: (talk: number) => void;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
   imageFiles?: (ids?: string[]) => string[];
+  /** Obeya's configuration: the Koordinator reads it, and changes it on the owner's word. */
+  config?: Pick<Config, 'view' | 'check'>;
 }
 
 /** The Koordinator's conversation with the owner: one agent session that reads command after command. */
@@ -203,6 +208,7 @@ export class Commander {
     const s: Session = { agent: null as unknown as AgentSession, ended: false, tags: new Map(), tagOf: new Map(), read: 0, since: '' };
     const finish = (commands: Command[], confirm: string, lookUp?: LookUp) => (s.reading ? s.reading.finish(commands, confirm, lookUp) : 'No command to read.');
     const repos = this.o.board.canvas.repos;
+    const config = this.o.config;
     s.agent = this.o.runtime.start({
       cwd: this.o.cwd,
       readOnly: true,
@@ -262,6 +268,45 @@ export class Commander {
           schema: { confirm: z.string() },
           run: ({ confirm }) => finish([], String(confirm)),
         },
+        ...(config
+          ? [
+              {
+                name: 'config',
+                description: [
+                  "Read Obeya's configuration: the canvases this Obeya serves (canvases), each with its repositories (path; adapter, else picked by the repository's origin; clones: clones to create, workspaces: existing clones to use, both only for adapters whose workers use clones), what they amount to (resolved: canvas id, as in ?c=<id>, name, repository ids, adapter and whether workers use clones or worktrees), problems, which canvases run now (running), where it is saved (file; source: whether the running canvases come from that file or from the command line), and the server's settings from its command line (port, data directory, the agents' permission mode, whether it restarts by itself).",
+                  'Call it for any question about the configuration, and before configure.',
+                ].join('\n'),
+                schema: {},
+                run: () => JSON.stringify(config.view(), null, 1),
+              },
+              {
+                name: 'configure',
+                description: [
+                  "Change Obeya's configuration on the owner's word: canvases is the whole new list as config shows it (keep what the owner did not ask to change). It is saved after the undo window, and Obeya then starts again with it once no agent is in the middle of a turn; the page reloads.",
+                  "A canvas's id follows its name (without one, the first repository's adapter names it), unless id is set: to rename a canvas, set id to its current id (from resolved), or it becomes a new, empty canvas and its cards stay under the old id, unseen. The first repository a canvas was served with stays its home and must stay listed. Server settings (port, permission mode) are not part of it; they come from the command line.",
+                  'confirm: one short German sentence saying what changes and that Obeya then starts again, e.g. „Das Repository app-web kommt auf die Leinwand Acme; Obeya startet danach neu.“',
+                ].join('\n'),
+                schema: {
+                  canvases: z.array(
+                    z.object({
+                      name: z.string().optional(),
+                      id: z.string().optional(),
+                      repos: z.array(
+                        z.object({ path: z.string(), adapter: z.string().optional(), workspaces: z.array(z.string()).optional(), clones: z.number().int().optional() }),
+                      ),
+                    }),
+                  ),
+                  confirm: z.string(),
+                },
+                run: ({ canvases, confirm }: Record<string, unknown>) => {
+                  const { problems, canvases: checked } = config.check(canvases);
+                  if (problems.length)
+                    return `Nothing recorded, the configuration does not work: ${problems.map((p) => p.detail).join('; ')}. Fix it and call configure again, or reply to the owner.`;
+                  return finish([{ do: 'configure', canvases: checked }], String(confirm));
+                },
+              },
+            ]
+          : []),
         {
           name: 'look_up',
           description: [
@@ -554,5 +599,6 @@ For each message, call act, reply or look_up once, then end your turn:
 - reply, when the owner asks you something you can answer from what you know (the cards, their states and history, this conversation), also about the open card, or when nothing fits or it is unclear which card or what is meant.
 - look_up, when the answer needs reading: what an agent would do on a card ("Was würde der Agent hier machen, wenn ich starte?"), what the plan says, how or why something works. Never reply that you cannot know or predict it; look it up. The answer follows in a few seconds.
 All three take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
+Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, spike, park, drop). Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

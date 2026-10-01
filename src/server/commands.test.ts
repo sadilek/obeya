@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import type { CanvasConfig, ConfigProblem, ConfigView } from '../core/types';
 import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Store } from './db';
@@ -260,5 +261,53 @@ describe('the Koordinator remembers', () => {
     s.call('reply', { confirm: 'Zwei.' });
     s.emit({ type: 'idle' });
     expect(await second).toEqual({ confirm: 'Zwei.' });
+  });
+});
+
+describe("the Koordinator and Obeya's configuration", () => {
+  const view = { file: '/h/canvases.json', source: 'file', canvases: [{ name: 'Obeya', repos: [{ path: '/r' }] }], running: ['obeya'] } as unknown as ConfigView;
+  const config = {
+    view: () => view,
+    check: (input: unknown) => {
+      const canvases = input as CanvasConfig[];
+      const problems: ConfigProblem[] = canvases.some((c) => c.repos.some((r) => r.path === '/nirgends'))
+        ? [{ code: 'notRepo', canvas: 0, repo: 0, detail: '/nirgends is not a git repository' }]
+        : [];
+      return { canvases, resolved: [], problems };
+    },
+  };
+  const withConfig = () => new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, config });
+
+  test('reads it for a question and replies', async () => {
+    const k = withConfig();
+    const heard = k.hear('welche Leinwände gibt es?', {});
+    await settle();
+    expect(JSON.parse(runtime.last.call('config', {}) as string)).toMatchObject({ file: '/h/canvases.json', running: ['obeya'] });
+    runtime.last.call('reply', { confirm: 'Eine: Obeya.' });
+    runtime.last.emit({ type: 'idle' });
+    expect(await heard).toEqual({ confirm: 'Eine: Obeya.' });
+  });
+
+  test('changes it on the owner\'s word after the undo window; one that does not work goes back to it', async () => {
+    const k = withConfig();
+    const heard = k.hear('nimm das Repository nirgends dazu', {});
+    await settle();
+    const s = runtime.last;
+    const bad = [{ name: 'Obeya', repos: [{ path: '/r' }, { path: '/nirgends' }] }];
+    expect(s.call('configure', { canvases: bad, confirm: 'Ok.' })).toContain('/nirgends is not a git repository');
+    const good = [{ name: 'Obeya', repos: [{ path: '/r' }, { path: '/r2' }] }];
+    s.call('configure', { canvases: good, confirm: 'Das Repository r2 kommt dazu; Obeya startet danach neu.' });
+    s.emit({ type: 'idle' });
+    const h = await heard;
+    expect(h.confirm).toBe('Das Repository r2 kommt dazu; Obeya startet danach neu.');
+    k.arm(h.token!);
+    expect(executed).toEqual([]);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'configure', canvases: good }]);
+  });
+
+  test('without it, the Koordinator has no such tools', async () => {
+    commander().warm();
+    expect(runtime.last.spec.tools.map((t) => t.name)).not.toContain('configure');
   });
 });

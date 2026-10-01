@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasInfo, CanvasSnapshot, CardAction, CardEvent, CardPatch, Item, NewCard, ProjectHistory, ServerMessage } from '../core/types';
+import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ConfigView, CardAction, CardEvent, CardPatch, Item, NewCard, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -45,6 +45,11 @@ type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: st
 
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
+  /** Obeya's configuration, for all canvases. */
+  config: () => call<ConfigView>('GET', '/api/config'),
+  checkConfig: (canvases: CanvasConfig[]) => call<Pick<ConfigView, 'canvases' | 'resolved' | 'problems'>>('POST', '/api/config/check', canvases),
+  /** Saves it; Obeya then starts again with it where something restarts it. */
+  saveConfig: (canvases: CanvasConfig[]) => call<{ restarting: boolean }>('PUT', '/api/config', canvases),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   patch: (id: string, p: CardPatch) => call<void>('PATCH', at(`/cards/${id}`), p),
   remove: (id: string) => call<void>('DELETE', at(`/cards/${id}`)),
@@ -132,6 +137,8 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean 
       ws.onclose = () => {
         if (closed) return;
         setOnline(false);
+        // a canvas the configuration no longer has: the page goes to the first one there is
+        api.canvases().then((list) => list.some((c) => c.id === canvasId) || location.replace(location.pathname), () => {});
         retry = setTimeout(connect, delay);
         delay = Math.min(delay * 2, 8000);
       };

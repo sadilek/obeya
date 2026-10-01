@@ -7,9 +7,10 @@ import { pickAdapter } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
-import type { CardAction, Item, RepoRef } from '../core/types';
+import type { CanvasConfig, CardAction, ConfigProblemCode, Item, RepoConfig, RepoRef } from '../core/types';
 import { BadRequest, Board } from './board';
 import { type Command, Commander } from './commands';
+import type { Config } from './config';
 import type { Store } from './db';
 import { Explorers } from './explorers';
 import { Images, MAX_IMAGES } from './images';
@@ -23,20 +24,7 @@ import { changesCode } from './self-update';
 import { Workers } from './workers';
 import { type Landed, Workspaces } from './workspaces';
 
-export interface RepoConfig {
-  path: string;
-  adapter?: string;
-  /** Clones to register as workspaces (adapters that use clones). */
-  workspaces?: string[];
-  /** Clones to create under Obeya's home (adapters that use clones). */
-  clones?: number;
-}
-
-export interface CanvasConfig {
-  /** Names the canvas; its id follows. Without it, the first repository's adapter names both. */
-  name?: string;
-  repos: RepoConfig[];
-}
+export type { CanvasConfig, RepoConfig };
 
 export interface CanvasDeps {
   store: Store;
@@ -51,6 +39,8 @@ export interface CanvasDeps {
   commandDelayMs?: number;
   /** The checkout this Obeya runs from, when it starts again for new code there (self-update.ts). */
   ownCheckout?: string | null;
+  /** Obeya's configuration, which the Koordinator reads and changes on the owner's word. */
+  config?: Config;
 }
 
 export interface RepoRuntime {
@@ -74,24 +64,9 @@ export class CanvasRuntime {
   private stops: (() => void)[] = [];
 
   constructor(config: CanvasConfig, private deps: CanvasDeps) {
-    if (!config.repos.length) throw new Error('a canvas needs at least one repository');
-    let infos = config.repos.map((r) => repoInfo(resolve(r.path)));
-    let adapters = config.repos.map((r, i) => pickAdapter(infos[i]!, r.adapter));
-    let refs = uniqueRefs(infos, adapters);
-    const id = config.name ? slug(config.name) : adapters[0]!.canvasId(infos[0]!);
-    // the home repository is fixed when the canvas is first served: bare plan references, cards
-    // without a repository and the home workspace directory are its, whatever the order later
-    const stored = deps.store.setting(id, 'home_repo');
-    if (stored && stored !== refs[0]!.id) {
-      const at = refs.findIndex((r) => r.id === stored);
-      if (at < 0) throw new Error(`canvas ${id}: its home repository "${stored}" is not configured; list it (first or anywhere)`);
-      const order = [at, ...refs.map((_, i) => i).filter((i) => i !== at)];
-      config = { ...config, repos: order.map((i) => config.repos[i]!) };
-      infos = order.map((i) => infos[i]!);
-      adapters = order.map((i) => adapters[i]!);
-      refs = uniqueRefs(infos, adapters);
-    }
-    const name = config.name ?? adapters[0]!.canvasName(infos[0]!);
+    const resolved = resolveCanvas(config, deps.store);
+    const { id, name, infos, adapters, refs, stored } = resolved;
+    config = resolved.config;
     const home = refs[0]!.id;
     const images = (this.images = new Images(join(deps.home, 'images', id)));
     this.board = new Board(
@@ -191,6 +166,7 @@ export class CanvasRuntime {
       execute: (c) => this.run(c),
       imageFiles,
       lookUp: (talk) => this.answers.lookUp(talk),
+      ...(deps.config ? { config: deps.config } : {}),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
     this.answers.resume();
@@ -390,6 +366,8 @@ export class CanvasRuntime {
       case 'split':
       case 'stop':
         return this.act(c.card, { action: c.do });
+      case 'configure':
+        return this.deps.config?.save(c.canvases);
     }
   }
 
@@ -409,6 +387,55 @@ export class CanvasRuntime {
     for (const r of this.repos) r.workers.shutdown();
     this.explorers.shutdown();
   }
+}
+
+/** Why a canvas's configuration does not work; `repo` is the index of the repository in question. */
+export class ConfigError extends Error {
+  constructor(
+    readonly code: ConfigProblemCode,
+    message: string,
+    readonly repo?: number,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * What a canvas's configuration amounts to, without touching anything: its repositories (home
+ * first), their adapters and ids, and the canvas's id and name. Throws a ConfigError.
+ */
+export function resolveCanvas(config: CanvasConfig, store: Store) {
+  if (!config.repos.length) throw new ConfigError('noRepo', 'a canvas needs at least one repository');
+  let infos = config.repos.map((r, i) => {
+    try {
+      return repoInfo(resolve(r.path));
+    } catch {
+      throw new ConfigError('notRepo', `${r.path} is not a git repository`, i);
+    }
+  });
+  let adapters = config.repos.map((r, i) => {
+    try {
+      return pickAdapter(infos[i]!, r.adapter);
+    } catch (e) {
+      throw new ConfigError('unknownAdapter', e instanceof Error ? e.message : String(e), i);
+    }
+  });
+  let refs = uniqueRefs(infos, adapters);
+  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : adapters[0]!.canvasId(infos[0]!);
+  // the home repository is fixed when the canvas is first served: bare plan references, cards
+  // without a repository and the home workspace directory are its, whatever the order later
+  const stored = store.setting(id, 'home_repo');
+  if (stored && stored !== refs[0]!.id) {
+    const at = refs.findIndex((r) => r.id === stored);
+    if (at < 0) throw new ConfigError('homeMissing', `canvas ${id}: its home repository "${stored}" is not configured; list it (first or anywhere)`);
+    const order = [at, ...refs.map((_, i) => i).filter((i) => i !== at)];
+    config = { ...config, repos: order.map((i) => config.repos[i]!) };
+    infos = order.map((i) => infos[i]!);
+    adapters = order.map((i) => adapters[i]!);
+    refs = uniqueRefs(infos, adapters);
+  }
+  const name = config.name ?? adapters[0]!.canvasName(infos[0]!);
+  return { config, id, name, infos, adapters, refs, stored };
 }
 
 /** Repository ids unique on the canvas: the repository's name, with a number when two share one. */

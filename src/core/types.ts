@@ -289,8 +289,83 @@ export type ErrorCode =
   | 'landCheckout'
   | 'landMerge'
   | 'land'
+  /** A configuration with problems; they come with it. */
+  | 'config'
   /** Malformed input: a bug in the UI rather than something the owner can fix. */
   | 'invalid';
+
+/** A repository on a canvas, as Obeya's configuration lists it (`canvases.json`). */
+export interface RepoConfig {
+  path: string;
+  /** The adapter's name; without it, the repository's `origin` picks one. */
+  adapter?: string;
+  /** Clones to register as workspaces (adapters that use clones). */
+  workspaces?: string[];
+  /** Clones to create under Obeya's home (adapters that use clones). */
+  clones?: number;
+}
+
+/** A canvas in Obeya's configuration. */
+export interface CanvasConfig {
+  /** Names the canvas; its id follows. Without it, the first repository's adapter names both. */
+  name?: string;
+  /** Keeps the canvas's id, and with it its cards, whatever its name says: set when a canvas is renamed. */
+  id?: string;
+  repos: RepoConfig[];
+}
+
+/** What a configuration amounts to: each canvas's id and name, and its repositories with their adapters. */
+export interface ResolvedCanvas {
+  id: string;
+  name: string;
+  repos: { id: string; adapter: string; workspaces: 'clones' | 'worktrees' }[];
+}
+
+/** Something in a configuration that keeps Obeya from starting with it; `canvas` and `repo` count from 0. */
+export interface ConfigProblem {
+  code: ConfigProblemCode;
+  canvas?: number;
+  repo?: number;
+  /** In English, for developers and the Koordinator. */
+  detail: string;
+}
+
+export type ConfigProblemCode =
+  /** No canvas at all. */
+  | 'noCanvas'
+  | 'noRepo'
+  /** A path that is no git repository. */
+  | 'notRepo'
+  | 'unknownAdapter'
+  /** Two canvases with the same id. */
+  | 'sameId'
+  /** The repository the canvas was first served with is missing. */
+  | 'homeMissing'
+  /** A clone listed as a workspace that is no git repository. */
+  | 'notClone'
+  /** Malformed: a bug in whoever wrote it. */
+  | 'invalid';
+
+/** Obeya's configuration as the owner sees and edits it. */
+export interface ConfigView {
+  /** The file it is saved in. */
+  file: string;
+  /** Where the running canvases come from: that file, or repositories named on the command line. */
+  source: 'file' | 'args';
+  /** As saved (or as given on the command line, before anything is saved). */
+  canvases: CanvasConfig[];
+  /** What they amount to, by index; null for a canvas with a problem. */
+  resolved: (ResolvedCanvas | null)[];
+  problems: ConfigProblem[];
+  /** The ids of the canvases this server runs. */
+  running: string[];
+  /** The adapters a repository can name. */
+  adapters: string[];
+  /** Settings of the running server, from its command line. */
+  server: { port: number; home: string; permissionMode: string; restarts: boolean };
+  /** Saved, and Obeya starts again with it once no agent is in the middle of a turn. */
+  restarting: boolean;
+}
 
 /** Server → UI over the WebSocket. */
 export type ServerMessage =
