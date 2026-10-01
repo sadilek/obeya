@@ -105,6 +105,11 @@ answer arrives as its next message; `propose_card(kind, title, reason, suggestio
 then its last words become a question to the owner. The owner can send a note at any time; it
 reaches the worker without stopping it.
 
+What the owner writes on a card (a note, feedback, an answer, talk to an idea) may carry
+screenshots: pasted (⌘V), dropped or picked in the text field, scaled down in the browser to at
+most 2000 px, and uploaded at once. They show as thumbnails in the card's log or conversation,
+large on a click, and reach the agent as images in the message, with their file paths.
+
 A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff,
 until then to the owner), which answers from the plan doc, the decision log and the preference
 memory. Only what needs the owner reaches the owner: product decisions, trade-offs, anything
@@ -208,10 +213,12 @@ the owner's language (`src/core/locale.ts`).
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
 branch, status line, open question or review summary, proposal source, estimated scope, queue,
 when archived, an idea's status and brief, a spike's idea),
-card events (the log, with an error code where the UI words it), workspaces and their leases,
+card events (the log, with an error code where the UI words it and the owner's screenshots), workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
 reply, the open card, whether it was taken back), per-canvas settings (the Koordinator's session for questions);
 later PR links.
+
+Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`).
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository).
@@ -301,6 +308,8 @@ the repository).
   cards' history. That keeps the context short over weeks, and restart and renewal are one path.
   The card history is part of it, because the owner asks about progress over time ("was ist seit
   gestern passiert?") and refers to cards by what happened to them.
+- Screenshots reach agents as images in the message, not as files for them to read: an exploration
+  agent may only read its checkout, and the agent sees the image without a step of its own.
 
 ## Open questions
 

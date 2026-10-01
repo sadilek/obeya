@@ -57,6 +57,13 @@ export const api = {
   /** Archives every finished card of the owner's on the canvas. */
   archiveDone: () => call<{ ids: string[] }>('POST', at('/archive')),
   act: (id: string, a: CardAction) => call<void>('POST', at(`/cards/${id}/act`), a),
+  /** Stores a screenshot for a message; the message names it by the id. */
+  uploadImage: async (image: Blob) => {
+    const res = await fetch(at('/images'), { method: 'POST', headers: { 'content-type': image.type }, body: image });
+    const body = (await res.json().catch(() => ({}))) as { id?: string; code?: string; error?: string };
+    if (!res.ok || !body.id) throw new ApiError(body.code, body.error ?? `HTTP ${res.status}`);
+    return body.id;
+  },
   events: (id: string) => call<CardEvent[]>('GET', at(`/cards/${id}/events`)),
   /** What the owner said about the card or project in view. */
   voice: async (audio: Blob, where: Where) => {

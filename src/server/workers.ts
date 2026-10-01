@@ -4,10 +4,12 @@
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { OWNER_LANGUAGE } from '../core/locale';
+import { basename } from 'node:path';
 import type { Item, Question } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Reply } from './advisor';
 import { readChapters } from './demo';
+import { imageNote } from './images';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { branchName, WorkspaceError, type Workspaces } from './workspaces';
 import type { PrState } from './board';
@@ -76,36 +78,37 @@ export class Workers {
     this.launch(card.id, this.briefing(card, branch, !!row.branch));
   }
 
-  /** A hint while the worker runs, or feedback on its review. */
-  message(cardId: string, text: string) {
+  /** A hint while the worker runs, or feedback on its review; `images` are screenshot files the owner attached. */
+  message(cardId: string, text: string, images: string[] = []) {
     const card = this.card(cardId);
     if (card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) {
       this.o.board.work(cardId, { state: 'working', need: null, detail: null });
-      this.o.board.log(cardId, 'hint', 'owner', text);
-      this.o.onOwnerInput?.(card, 'feedback', text);
+      this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
+      if (text) this.o.onOwnerInput?.(card, 'feedback', text);
       this.deliver(
         cardId,
-        `Feedback from the owner on your work. Address it${card.need === 'demo' ? ', render the demo again' : ''}, then call ready_for_review again:\n\n${text}`,
+        `Feedback from the owner on your work. Address it${card.need === 'demo' ? ', render the demo again' : ''}, then call ready_for_review again:\n\n${text}${imageNote(images)}`,
+        images,
       );
     } else if (card.state === 'working' || card.state === 'inPr' || (card.state === 'waiting' && card.need === 'question')) {
-      this.o.board.log(cardId, 'hint', 'owner', text);
-      this.o.onOwnerInput?.(card, 'note', text);
-      this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything):\n\n${text}`);
+      this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
+      if (text) this.o.onOwnerInput?.(card, 'note', text);
+      this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything):\n\n${text}${imageNote(images)}`, images);
     } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
 
-  answer(cardId: string, text: string, by: 'owner' | Adviser = 'owner') {
+  answer(cardId: string, text: string, by: 'owner' | Adviser = 'owner', images: string[] = []) {
     const card = this.card(cardId);
     if (!(card.state === 'waiting' && card.need === 'question') && by === 'owner') throw new BadRequest('noQuestion', 'the card has no open question');
     const row = this.o.board.row(cardId);
     const question = row.detail ? (JSON.parse(row.detail).question as Question | undefined) : undefined;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
     this.o.board.work(cardId, { state: row.pr ? 'inPr' : 'working', need: null, detail: null });
-    this.o.board.log(cardId, 'answer', by, text);
-    this.recordDecision(card, q, text, by);
-    if (by === 'owner') this.o.onOwnerInput?.(card, 'answer', text, q);
+    this.o.board.log(cardId, 'answer', by, text, undefined, images.map((f) => basename(f)));
+    this.recordDecision(card, q, text || '(Screenshot)', by);
+    if (by === 'owner' && text) this.o.onOwnerInput?.(card, 'answer', text, q);
     const from = { owner: 'from the owner', project: 'from the project agent, on the owner\u2019s behalf', koordinator: 'from the Koordinator, on the owner\u2019s behalf' }[by];
-    this.deliver(cardId, `Answer to your question (${from}):\n\n${text}`);
+    this.deliver(cardId, `Answer to your question (${from}):\n\n${text}${imageNote(images)}`, images);
   }
 
   async approve(cardId: string) {
@@ -223,7 +226,7 @@ export class Workers {
 
   // ---------------------------------------------------------------- sessions
 
-  private launch(cardId: string, message: string, resume?: string) {
+  private launch(cardId: string, message: string, resume?: string, images: string[] = []) {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
     const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true };
@@ -238,23 +241,24 @@ export class Workers {
         onEvent: (e) => this.onEvent(cardId, live, e),
       },
       message,
+      images,
     );
     live.session.done.then(() => {
       if (this.live.get(cardId) === live) this.live.delete(cardId);
     });
   }
 
-  private deliver(cardId: string, text: string) {
+  private deliver(cardId: string, text: string, images: string[] = []) {
     const live = this.live.get(cardId);
     if (live) {
       live.busy = true;
-      live.session.send(text);
+      live.session.send(text, images);
       return;
     }
     const row = this.o.board.row(cardId);
-    if (row.session_id) return this.launch(cardId, text, row.session_id);
+    if (row.session_id) return this.launch(cardId, text, row.session_id, images);
     // no session to resume (it never reported one): a new one needs the card first
-    this.launch(cardId, `${this.briefing(this.card(cardId), row.branch ?? '', true)}\n\n${text}`);
+    this.launch(cardId, `${this.briefing(this.card(cardId), row.branch ?? '', true)}\n\n${text}`, undefined, images);
   }
 
   private bump(cardId: string) {

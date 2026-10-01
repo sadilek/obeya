@@ -97,8 +97,8 @@ export class Board {
   }
 
   /** Appends a line to the card's log. */
-  log(cardId: string, kind: CardEvent['kind'], author: CardEvent['author'], text: string, code?: ErrorCode): CardEvent {
-    const e = this.store.addEvent({ cardId, kind, author, text, ...(code ? { code } : {}) });
+  log(cardId: string, kind: CardEvent['kind'], author: CardEvent['author'], text: string, code?: ErrorCode, images?: string[]): CardEvent {
+    const e = this.store.addEvent({ cardId, kind, author, text, ...(code ? { code } : {}), ...(images?.length ? { images } : {}) });
     for (const fn of this.eventListeners) fn(e);
     return e;
   }

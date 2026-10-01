@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { CardAction, CardEvent, CardPatch, Demo, Item, RepoRef } from '../core/types';
 import { ApiError, api, at, onCardEvent } from './api';
 import { Inline, plain } from './markdown';
+import { imageFiles, imageUrl, prepareImage, Shots } from './shots';
 import { errorText, stateLabel, t } from './strings';
 
 /** What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open. */
@@ -192,7 +193,7 @@ export function Detail(p: Props) {
               {item.spikeOf ? t.idea.discard : t.approve}
             </button>
           </div>
-          <Composer placeholder={t.compose.review} onSend={(text) => act({ action: 'message', text }, { close: false })} />
+          <Composer placeholder={t.compose.review} onSend={(text, images) => act({ action: 'message', text, images }, { close: false })} />
         </DemoView>
       )}
 
@@ -249,10 +250,10 @@ export function Detail(p: Props) {
         <Composer
           key={`${item.state}:${item.need ?? ''}`}
           placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' ? t.compose.review : t.compose.working}
-          onSend={(text) =>
+          onSend={(text, images) =>
             item.need === 'question'
-              ? act({ action: 'answer', text }, { close: true, ack: t.answered })
-              : act({ action: 'message', text }, { close: false })
+              ? act({ action: 'answer', text, images }, { close: true, ack: t.answered })
+              : act({ action: 'message', text, images }, { close: false })
           }
         />
       )}
@@ -335,7 +336,7 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
         </div>
         <div className="idea-talk">
           <Conversation item={item} />
-          <Composer placeholder={t.idea.compose} onSend={(text) => act({ action: 'discuss', text }, { close: false })} />
+          <Composer placeholder={t.idea.compose} onSend={(text, images) => act({ action: 'discuss', text, images }, { close: false })} />
         </div>
       </div>
       {idea.status !== 'open' && <p className="hint">{t.idea.reopen}</p>}
@@ -344,6 +345,7 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
           placeholder={t.idea.spikePlaceholder}
           button={t.idea.spikeGo}
           allowEmpty
+          noImages
           onSend={(text) => act({ action: 'spike', ...(text ? { text } : {}) }, { close: true, ack: t.idea.spiked })}
         />
       ) : (
@@ -405,6 +407,7 @@ function Conversation({ item }: { item: Item }) {
                 {t.author[e.author]} <span className="t">{time(e.at)}</span>
               </div>
               <Body md={e.text} />
+              <Shots ids={e.images} />
             </div>
           ) : (
             <div key={e.id} className={`note ev-${e.kind}`} title={e.code ? e.text : undefined}>
@@ -604,33 +607,132 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
 
 // ------------------------------------------------------------------ talking to the worker
 
-function Composer({ placeholder, onSend, button = t.send, allowEmpty = false }: { placeholder: string; onSend: (text: string) => Promise<void>; button?: string; allowEmpty?: boolean }) {
+/** What the owner writes to an agent; screenshots are pasted, dropped or picked, unless `noImages`. */
+function Composer({
+  placeholder,
+  onSend,
+  button = t.send,
+  allowEmpty = false,
+  noImages = false,
+}: {
+  placeholder: string;
+  onSend: (text: string, images?: string[]) => Promise<void>;
+  button?: string;
+  allowEmpty?: boolean;
+  noImages?: boolean;
+}) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Uploaded screenshots by id, and how many are still on their way. */
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const [dropping, setDropping] = useState(false);
+  const [error, setError] = useState('');
+  const picker = useRef<HTMLInputElement>(null);
+  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !busy && !uploading;
   const send = async () => {
-    if ((!text.trim() && !allowEmpty) || busy) return;
+    if (!ready) return;
     setBusy(true);
-    await onSend(text.trim());
+    await onSend(text.trim(), images.length ? images : undefined);
     setBusy(false);
     setText('');
+    setImages([]);
+  };
+  const attach = async (files: File[]) => {
+    if (noImages || !files.length) return;
+    setError('');
+    setUploading((n) => n + files.length);
+    for (const f of files) {
+      try {
+        const id = await api.uploadImage(await prepareImage(f));
+        setImages((cur) => [...cur, id]);
+      } catch (e) {
+        setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
   };
   return (
-    <div className="composer">
-      <textarea
-        value={text}
-        placeholder={placeholder}
-        rows={2}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
+    <div
+      className={`composer${dropping ? ' dropping' : ''}`}
+      onDragOver={(e) => {
+        if (noImages || !e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        setDropping(true);
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(e) => {
+        setDropping(false);
+        const files = imageFiles(e.dataTransfer.files);
+        if (noImages || !files.length) return;
+        e.preventDefault();
+        attach(files);
+      }}
+    >
+      {(images.length > 0 || uploading > 0) && (
+        <div className="c-shots">
+          {images.map((id) => (
+            <span key={id} className="c-shot">
+              <img src={imageUrl(id)} alt={t.shots.alt} />
+              <button title={t.shots.remove} onClick={() => setImages((cur) => cur.filter((x) => x !== id))}>
+                ×
+              </button>
+            </span>
+          ))}
+          {Array.from({ length: uploading }, (_, i) => (
+            <span key={`u${i}`} className="c-shot loading">
+              {t.shots.uploading}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="c-field">
+        <textarea
+          value={text}
+          placeholder={placeholder}
+          rows={2}
+          onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {
+            const files = imageFiles(e.clipboardData.files);
+            if (noImages || !files.length) return;
             e.preventDefault();
-            send();
-          }
-        }}
-      />
-      <button className="btn primary" disabled={(!text.trim() && !allowEmpty) || busy} onClick={send}>
+            attach(files);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+        {!noImages && (
+          <>
+            <button className="c-attach" title={t.shots.attach} aria-label={t.shots.attach} onClick={() => picker.current?.click()}>
+              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                <rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <circle cx="7" cy="8.5" r="1.5" fill="currentColor" />
+                <path d="M3.5 14.5 8 10.5l3 2.5 2.5-2 3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <input
+              ref={picker}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                attach(imageFiles(e.target.files));
+                e.target.value = '';
+              }}
+            />
+          </>
+        )}
+      </div>
+      <button className="btn primary" disabled={!ready} onClick={send}>
         {button}
       </button>
+      {error && <p className="p-error c-error">{error}</p>}
     </div>
   );
 }
@@ -702,6 +804,7 @@ function Log({ cardId, hideEmpty }: { cardId: string; hideEmpty?: boolean }) {
             {e.author !== 'worker' && <span className="who">{t.author[e.author]}</span>}
             <span className="x" title={e.code ? e.text : undefined}>
               {eventText(e)}
+              <Shots ids={e.images} />
             </span>
           </div>
         ))}

@@ -502,6 +502,8 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       return;
     }
     if (e.key === 'Escape') {
+      // a screenshot shown large closes first; the card stays open
+      if (document.querySelector('.lightbox')) return;
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();
       else if (f?.type === 'project') closeProject();

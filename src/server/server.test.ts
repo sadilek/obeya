@@ -189,3 +189,41 @@ describe('voice', () => {
     expect(body.token).toBeUndefined();
   });
 });
+
+describe('screenshots', () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  const upload = (body: Uint8Array<ArrayBuffer>, type = 'image/png') =>
+    fetch(new URL(api('/images'), server.url), { method: 'POST', headers: { 'content-type': type }, body });
+  const working = () => {
+    const c = card();
+    board.work(c.id, { state: 'working', workspace: dir, session_id: 'sess-1' });
+    return c;
+  };
+
+  test('are uploaded, served, and reach the worker with the note and in the log', async () => {
+    const { id } = (await (await upload(png)).json()) as { id: string };
+    expect(id).toMatch(/^[0-9a-f-]{36}\.png$/);
+    const served = await fetch(new URL(api(`/images/${id}`), server.url));
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+
+    const c = working();
+    expect((await act(c.id, { action: 'message', text: 'Der Knopf hier ist zu klein', images: [id] })).status).toBe(204);
+    const s = runtime.sessions.find((x) => x.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    expect(s.inbox[0]).toContain('Der Knopf hier ist zu klein');
+    expect(s.inbox[0]).toContain('attached a screenshot');
+    expect(s.images[0]).toEqual([canvas.images.path(id)!]);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Der Knopf hier ist zu klein', images: [id] });
+  });
+
+  test('may stand without text; unknown ones, other files and too large ones are refused', async () => {
+    const { id } = (await (await upload(png, 'image/jpeg')).json()) as { id: string };
+    expect(id).toEndWith('.jpg');
+    const c = working();
+    expect((await act(c.id, { action: 'message', text: '', images: [id] })).status).toBe(204);
+    expect(await codeOf(act(c.id, { action: 'message', text: '' }))).toBe('emptyText');
+    expect(await codeOf(act(c.id, { action: 'message', text: 'x', images: ['0000.png'] } as CardAction))).toBe('invalid');
+    expect(await codeOf(upload(png, 'text/html'))).toBe('imageType');
+    expect(await codeOf(upload(new Uint8Array(4_000_000)))).toBe('imageTooLarge');
+    expect((await fetch(new URL(api('/images/..%2Fobeya.db'), server.url))).status).toBe(404);
+  });
+});

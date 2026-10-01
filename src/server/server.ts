@@ -104,6 +104,16 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       '/api/c/:canvas/archive': { GET: on((c) => c.board.archived()), POST: on((c) => ({ ids: c.board.archiveDone() })) },
       '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.act(req.params.id!, (await req.json()) as CardAction)) },
       '/api/c/:canvas/cards/:id/events': { GET: on((c, req) => c.board.events(req.params.id!)) },
+      // a screenshot for a message: uploaded first, the message then names it by id
+      '/api/c/:canvas/images': {
+        POST: on(async (c, req) => ({ id: c.images.save(new Uint8Array(await req.arrayBuffer()), req.headers.get('content-type') ?? '') })),
+      },
+      '/api/c/:canvas/images/:file': {
+        GET: (req) => {
+          const file = byId.get(req.params.canvas)?.images.path(req.params.file);
+          return file ? new Response(Bun.file(file), { headers: { 'cache-control': 'private, max-age=31536000, immutable' } }) : new Response('Not found', { status: 404 });
+        },
+      },
       '/api/c/:canvas/cards/:id/demo/:file': {
         GET: (req) => {
           try {

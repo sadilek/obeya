@@ -10,6 +10,7 @@ import { BadRequest, Board } from './board';
 import { type Command, Commander } from './commands';
 import type { Store } from './db';
 import { Explorers } from './explorers';
+import { Images } from './images';
 import type { Forge } from './forge';
 import { Koordinator } from './koordinator';
 import { PrWatcher } from './pr-watcher';
@@ -61,6 +62,8 @@ export class CanvasRuntime {
   readonly koordinator: Koordinator;
   readonly commander: Commander;
   readonly explorers: Explorers;
+  /** Screenshots the owner attaches to what they write. */
+  readonly images: Images;
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];
 
@@ -90,6 +93,7 @@ export class CanvasRuntime {
       ),
     );
     const board = this.board;
+    this.images = new Images(join(deps.home, 'images', id));
     if (!stored) deps.store.setSetting(id, 'home_repo', home);
     const preferences = () => board.preferencesText();
 
@@ -180,8 +184,9 @@ export class CanvasRuntime {
   /** An owner action from the card's panel. */
   act(cardId: string, a: CardAction) {
     const text = 'text' in a ? (a.text ?? '') : '';
-    // a spike may leave it to the idea's brief what the prototype shows
-    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'spike') || text.length > 20000))
+    const images = this.images.resolve('images' in a ? a.images : undefined);
+    // a spike may leave it to the idea's brief what the prototype shows; a screenshot may speak for itself
+    if ('text' in a && (typeof text !== 'string' || (!text.trim() && a.action !== 'spike' && !images.length) || text.length > 20000))
       throw new BadRequest('emptyText', 'text must be a non-empty string');
     switch (a.action) {
       case 'start':
@@ -195,9 +200,9 @@ export class CanvasRuntime {
       case 'stop':
         return this.repoOf(cardId).workers.stop(cardId);
       case 'message':
-        return this.repoOf(cardId).workers.message(cardId, text.trim());
+        return this.repoOf(cardId).workers.message(cardId, text.trim(), images);
       case 'answer':
-        return this.repoOf(cardId).workers.answer(cardId, text.trim());
+        return this.repoOf(cardId).workers.answer(cardId, text.trim(), 'owner', images);
       case 'approve':
         return this.repoOf(cardId).workers.approve(cardId);
       case 'accept':
@@ -206,7 +211,7 @@ export class CanvasRuntime {
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return this.board.remove(cardId);
       case 'discuss':
-        return this.explorers.discuss(cardId, text.trim(), !!a.spoken);
+        return this.explorers.discuss(cardId, text.trim(), !!a.spoken, images);
       case 'build':
         return this.build(cardId);
       case 'planDoc':
