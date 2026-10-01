@@ -28,7 +28,7 @@ test('gh output becomes a PR status', () => {
           { id: 'PRR_2', author: { login: 'lead' }, body: 'Please split this.' },
         ],
       });
-    return JSON.stringify([{ id: 7, user: { login: 'greptile-apps' }, body: 'Null check.', path: 'src/a.ts', line: 3, html_url: 'https://gh/i7' }]);
+    return JSON.stringify([{ id: 7, user: { login: 'greptile-apps[bot]' }, body: 'Null check.', path: 'src/a.ts', line: 3, html_url: 'https://gh/i7' }]);
   });
   const s = forge.status('/repo', 'https://github.com/acme/app/pull/42');
   expect(calls[1]).toEqual(['api', 'repos/acme/app/pulls/42/comments', '--paginate']);

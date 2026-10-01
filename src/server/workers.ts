@@ -184,8 +184,8 @@ export class Workers {
     this.deliver(
       cardId,
       [
-        'The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it: from now on you may push this branch (after a rebase with --force-with-lease). Whoever reads the pull request has not seen Obeya, the card or the plan doc.',
-        'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts. A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask).',
+        'The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it (its own skills and conventions): from now on you may push this branch. Whoever reads the pull request has not seen Obeya, the card or the plan doc. Do not merge it; merging is not part of your task.',
+        'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask).',
       ].join('\n\n'),
     );
   }

@@ -70,7 +70,7 @@ export class PrWatcher {
           cardId,
           comments.length === 1 ? `Neuer Review-Kommentar von ${comments[0]!.author}, an den Agenten weitergegeben.` : `${comments.length} neue Review-Kommentare, an den Agenten weitergegeben.`,
           [
-            'New review comments on your pull request. Address each (fix, or reply on the PR where a change is not right, with the reason), push, and end your turn. Use ask if one questions a decision only the owner can make.',
+            'New review comments on your pull request. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or reply on the PR where a change is not right, with the reason), push, and end your turn. Use ask if one questions a decision only the owner can make.',
             ...comments.map((c) => `- ${c.author}${c.path ? ` on ${c.path}${c.line ? `:${c.line}` : ''}` : ''}${c.url ? ` (${c.url})` : ''}:\n${c.body}`),
           ].join('\n\n'),
         );
@@ -89,7 +89,7 @@ export class PrWatcher {
         this.workers.prEvent(
           cardId,
           'Konflikt mit dem Zielbranch. Der Agent rebased.',
-          'Your pull request conflicts with its base branch. Rebase onto the latest base, resolve the conflicts, run the checks, push with --force-with-lease, and end your turn. Use ask if a conflict needs a product decision.',
+          'Your pull request conflicts with its base branch. Bring it up to date with the latest base the way the repository does it (merge or rebase; push a rebase with --force-with-lease), resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.',
         );
       } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
     }
