@@ -7,8 +7,7 @@ import { CanvasRuntime } from './canvas';
 import { Config, readConfigFile } from './config';
 import { Store } from './db';
 import { serve } from './server';
-import { FakeRuntime } from './testing';
-import { git } from './workspaces';
+import { FakeRuntime, gitRepo } from './testing';
 
 let dir: string;
 let store: Store;
@@ -18,15 +17,7 @@ let file: string;
 let restarts: number;
 
 function repo(name: string) {
-  const path = join(dir, name);
-  mkdirSync(path, { recursive: true });
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', path]);
-  git(path, 'config', 'user.email', 't@example.com');
-  git(path, 'config', 'user.name', 'T');
-  writeFileSync(join(path, 'README.md'), 'hello\n');
-  git(path, 'add', '.');
-  git(path, 'commit', '--quiet', '-m', 'init');
-  return path;
+  return gitRepo(join(dir, name));
 }
 
 const config = (source: 'file' | 'args', started: CanvasConfig[], running: string[] = []) =>
