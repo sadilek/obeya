@@ -1,7 +1,8 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import type { CardAction, CardEvent, CardPatch, Demo, Item, RepoRef } from '../core/types';
+import type { CardAction, CardEvent, CardPatch, Demo, Item, Question, RepoRef } from '../core/types';
+import { answerText, toggle } from './answer';
 import { ApiError, api, at, onCardEvent } from './api';
 import { Inline, plain, shortTitle } from './markdown';
 import { imageFiles, imageUrl, prepareImage, Shots } from './shots';
@@ -170,20 +171,14 @@ export function Detail(p: Props) {
         </details>
       )}
 
-      {item.state === 'waiting' && item.need === 'question' && item.question && (
-        <div className="question">
-          <h4>{t.questionFromWorker}</h4>
-          <div className="q-text">{item.question.text}</div>
-          {item.question.options.length > 0 && (
-            <div className="opts">
-              {item.question.options.map((o) => (
-                <button key={o} onClick={() => act({ action: 'answer', text: o }, { close: true, ack: t.answered })}>
-                  {o}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+      {item.state === 'waiting' && item.need === 'question' && (
+        <Answer
+          key={JSON.stringify(item.question ?? null)}
+          questions={item.question ? [item.question] : []}
+          heading={t.questionFromWorker}
+          placeholder={item.question?.options.length ? t.ask.words : t.compose.question}
+          onSend={(text, images) => act({ action: 'answer', text, images }, { close: true, ack: t.answered })}
+        />
       )}
 
       {item.state === 'waiting' && item.need === 'demo' && item.demo && (
@@ -259,15 +254,11 @@ export function Detail(p: Props) {
 
       {item.finishing && item.state === 'live' && <p className="hint">{t.finishingLong}</p>}
 
-      {(item.state === 'working' || item.state === 'inPr' || (item.state === 'waiting' && item.need !== 'demo') || item.finishing) && (
+      {(item.state === 'working' || item.state === 'inPr' || (item.state === 'waiting' && item.need === 'review') || item.finishing) && (
         <Composer
           key={`${item.state}:${item.need ?? ''}`}
-          placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' ? t.compose.review : t.compose.working}
-          onSend={(text, images) =>
-            item.need === 'question'
-              ? act({ action: 'answer', text, images }, { close: true, ack: t.answered })
-              : act({ action: 'message', text, images }, { close: false })
-          }
+          placeholder={item.need === 'review' ? t.compose.review : t.compose.working}
+          onSend={(text, images) => act({ action: 'message', text, images }, { close: false })}
         />
       )}
 
@@ -328,6 +319,7 @@ export function Detail(p: Props) {
 function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; onDelete: () => void }) {
   const idea = item.idea!;
   const [spiking, setSpiking] = useState(false);
+  const answer = usePicks(idea.questions);
   return (
     <>
       <div className="p-state">
@@ -351,8 +343,14 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
           )}
         </div>
         <div className="idea-talk">
-          <Conversation item={item} />
-          <Composer placeholder={t.idea.compose} onSend={(text, images) => act({ action: 'discuss', text, images }, { close: false })} />
+          {/* the questions stand under the agent's reply, in the conversation; the owner's words go with their picks */}
+          <Conversation item={item} questions={<Questions questions={idea.questions} heading={idea.questions.length > 1 ? t.ask.questions : t.ask.question} {...answer} />} />
+          <Composer
+            placeholder={idea.questions.length ? t.ask.words : t.idea.compose}
+            button={idea.questions.length ? t.ask.send : t.send}
+            allowEmpty={answer.picked}
+            onSend={(words, images) => act({ action: 'discuss', text: answerText(idea.questions, answer.picks, words, true), images }, { close: false })}
+          />
         </div>
       </div>
       {idea.status !== 'open' && <p className="hint">{t.idea.reopen}</p>}
@@ -397,15 +395,16 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
 /**
  * The discussion of an idea, live: the owner's messages and the agent's replies. How the agent got
  * to a reply (what it read and thought, the decisions it recorded) folds away under that reply;
- * while it thinks, its latest step shows.
+ * while it thinks, its latest step shows. The agent's open questions stand at the end.
  */
-function Conversation({ item }: { item: Item }) {
+function Conversation({ item, questions }: { item: Item; questions: ReactNode }) {
   const events = useEvents(item.id);
   const box = useRef<HTMLDivElement>(null);
+  const asked = JSON.stringify(item.idea?.questions ?? []);
   useEffect(() => {
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [events, item.idea?.thinking]);
+  }, [events, item.idea?.thinking, asked]);
   if (!events) return null;
   const turns = talkTurns(events);
   const thinking = !!item.idea?.thinking;
@@ -451,6 +450,7 @@ function Conversation({ item }: { item: Item }) {
             </div>
           )
         )}
+        {!thinking && questions}
       </div>
     </>
   );
@@ -704,6 +704,71 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
 }
 
 // ------------------------------------------------------------------ talking to the worker
+
+/** A worker's question with its answer options, and the composer for the owner's own words: both go out as one answer. */
+function Answer(p: { questions: Question[]; heading: string; placeholder: string; onSend: (text: string, images?: string[]) => Promise<void> }) {
+  const answer = usePicks(p.questions);
+  return (
+    <>
+      <Questions questions={p.questions} heading={p.heading} {...answer} />
+      <Composer
+        placeholder={p.placeholder}
+        button={p.questions.length ? t.ask.send : t.send}
+        allowEmpty={answer.picked}
+        onSend={(words, images) => p.onSend(answerText(p.questions, answer.picks, words), images)}
+      />
+    </>
+  );
+}
+
+/** The options the owner picked for each question; they start over when the questions change. */
+function usePicks(questions: Question[]) {
+  const key = JSON.stringify(questions);
+  const [state, setState] = useState({ key, picks: [] as string[][] });
+  const picks = state.key === key ? state.picks : [];
+  const choose = (i: number, o: string) =>
+    setState((cur) => {
+      const was = cur.key === key ? cur.picks : [];
+      return { key, picks: questions.map((q, j) => (j === i ? toggle(q, was[j] ?? [], o) : (was[j] ?? []))) };
+    });
+  return { picks, choose, picked: picks.some((x) => x.length > 0) };
+}
+
+/** An agent's questions, each with its options as radio buttons, or checkboxes when several may be chosen. */
+function Questions(p: { questions: Question[]; heading: string; picks: string[][]; choose: (i: number, option: string) => void }) {
+  if (!p.questions.length) return null;
+  return (
+    <div className="question ask">
+      <h4>{p.heading}</h4>
+      {p.questions.map((q, i) => (
+        <div key={i} className="ask-q">
+          <div className="q-text">{q.text}</div>
+          {q.options.length > 0 && (
+            <div className={`choices ${q.multiple ? 'multiple' : 'single'}`} role={q.multiple ? 'group' : 'radiogroup'}>
+              {q.multiple && <div className="hint">{t.ask.several}</div>}
+              {q.options.map((o) => {
+                const on = (p.picks[i] ?? []).includes(o);
+                return (
+                  <button
+                    key={o}
+                    role={q.multiple ? 'checkbox' : 'radio'}
+                    aria-checked={on}
+                    className={on ? 'choice on' : 'choice'}
+                    // a click must not take the focus: Space would then not reach push-to-talk
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => p.choose(i, o)}
+                  >
+                    <Inline md={o} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** What the owner writes to an agent; screenshots are pasted, dropped or picked, unless `noImages`. */
 function Composer({

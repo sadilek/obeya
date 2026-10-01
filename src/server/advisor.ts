@@ -45,9 +45,9 @@ export function consult(c: Consultation): Promise<Reply> {
           },
           {
             name: 'escalate',
-            description: `Pass the question to the owner, rewritten in ${OWNER_LANGUAGE} for a reader who has not seen the code, with up to four short answer options when they exist.`,
-            schema: { question: z.string(), options: z.array(z.string()).max(4).optional() },
-            run: ({ question, options }) => settle({ escalate: { text: String(question), options: (options as string[] | undefined) ?? [] } }),
+            description: `Pass the question to the owner, rewritten in ${OWNER_LANGUAGE} for a reader who has not seen the code, with up to four short answer options when they exist (multiple: true when several may be chosen together).`,
+            schema: { question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() },
+            run: ({ question, options, multiple }) => settle({ escalate: toQuestion(question, options, multiple) }),
           },
         ],
         onEvent: (e) => {
@@ -139,6 +139,17 @@ The owner asked a question about the canvas by voice. The Koordinator, which rea
 - The owner does not read code: no code blocks, file paths only where they help.
 Read what you need, then call answer_owner exactly once and end your turn. You cannot change files.
 `.trim();
+
+/**
+ * A question from an agent's tool call, as the owner gets it: the options the card offers to choose
+ * from (the owner can always write something else), several of them when `multiple`.
+ */
+export function toQuestion(text: unknown, options: unknown, multiple?: unknown): Question {
+  const opts = [...new Set((Array.isArray(options) ? options : []).map((o) => clip(String(o).trim(), 120)).filter(Boolean))];
+  return { text: clip(String(text).trim(), 2000), options: opts, ...(multiple === true && opts.length > 1 ? { multiple: true } : {}) };
+}
+
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
 /** When to answer and when to escalate, the same for every advisor. */
 export const ADVICE_RULES = `

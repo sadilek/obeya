@@ -258,9 +258,21 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .question .q-text { white-space: pre-wrap; }
 .question .p-lead { margin-top: 6px; font-size: 14.5px; }
-.opts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.opts button { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
-.opts button:hover { border-color: var(--ink); }
+/* an agent's questions: options to pick, as radio buttons or checkboxes */
+.question.ask .ask-q + .ask-q { margin-top: 12px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--waiting) 30%, transparent); }
+.choices { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-top: 8px; }
+.choices .hint { flex-basis: 100%; }
+.choice { display: flex; align-items: flex-start; gap: 9px; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 9px;
+  padding: 5px 11px 5px 9px; font: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer; max-width: 100%; }
+.choice:hover { border-color: var(--muted); }
+.choice::before { content: ""; flex: none; width: 14px; height: 14px; margin-top: 2px; box-sizing: border-box; border: 1.5px solid var(--muted); background: var(--card); }
+.single .choice::before { border-radius: 50%; }
+.multiple .choice::before { border-radius: 4px; }
+.choice.on { border-color: var(--waiting); background: color-mix(in srgb, var(--waiting) 8%, var(--card)); }
+.single .choice.on::before { border-color: var(--waiting); background: radial-gradient(var(--waiting) 0 3.5px, var(--card) 4px); }
+.multiple .choice.on::before { border-color: var(--waiting); background: var(--waiting) no-repeat center / 10px
+  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 5.2 4 7.5 8.5 2.5' fill='none' stroke='white' stroke-width='1.8'/%3E%3C/svg%3E"); }
+.talk .question.ask { margin: 0; max-width: 92%; padding: 10px 12px; font-size: 14px; flex: none; background: color-mix(in srgb, var(--waiting) 9%, var(--card)); }
 .composer { display: flex; gap: 10px; align-items: flex-end; margin-top: 16px; max-width: 80ch; }
 .composer textarea { flex: 1; resize: vertical; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); outline: none; font-size: 14px; }
