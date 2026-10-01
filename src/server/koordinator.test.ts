@@ -228,7 +228,7 @@ describe('Koordinator cuts a card', () => {
 });
 
 describe('Koordinator answers questions of cards without a project', () => {
-  test('from the decisions on such cards, in one resumed session', async () => {
+  test('from the decisions on such cards, in a session it resumes', async () => {
     const a = card('Export');
     board.decide({ project_id: null, card_id: a.id, question: 'Trennzeichen?', answer: 'Semikolon', by: 'owner' });
     const r1 = k.ask(item(a.id), { text: 'Kopfzeile?', options: [] });
@@ -245,6 +245,37 @@ describe('Koordinator answers questions of cards without a project', () => {
     expect(runtime.last.spec.resume).toBe('k-1');
     runtime.last.call('escalate', { question: 'Darf das Geld kosten?' });
     expect(await r2).toEqual({ escalate: { text: 'Darf das Geld kosten?', options: [] } });
+  });
+
+  test('a fresh session after a number of questions, after a restart, and after a failure', async () => {
+    const repoFor = () => ({ workers, workspaces, adapter: { ...generic, land: 'main' as const, workspaces: 'worktrees' as const, softPaths: [] }, path: dir });
+    k = new Koordinator({ board, runtime, repoFor, sessionQuestions: 2 });
+    const a = card('Export');
+    const answer = async (id: string, text: string) => {
+      const r = k.ask(item(a.id), { text, options: [] });
+      await settle();
+      const s = runtime.last;
+      s.emit({ type: 'session', id });
+      s.call('answer', { text: 'Ja.' });
+      s.emit({ type: 'idle' });
+      await r;
+      return s.spec.resume;
+    };
+    expect(await answer('k-1', 'Eins?')).toBeUndefined();
+    expect(await answer('k-1', 'Zwei?')).toBe('k-1');
+    expect(await answer('k-2', 'Drei?')).toBeUndefined();
+    expect(await answer('k-2', 'Vier?')).toBe('k-2');
+
+    // a restart: the session is not resumed
+    k = new Koordinator({ board, runtime, repoFor });
+    expect(await answer('k-3', 'Fünf?')).toBeUndefined();
+
+    const r = k.ask(item(a.id), { text: 'Sechs?', options: [] });
+    await settle();
+    expect(runtime.last.spec.resume).toBe('k-3');
+    runtime.last.emit({ type: 'error', message: 'kaputt' });
+    await expect(r).rejects.toThrow('kaputt');
+    expect(await answer('k-4', 'Sieben?')).toBeUndefined();
   });
 
   test('its answer reaches the worker and is marked as the Koordinator\u2019s', async () => {
