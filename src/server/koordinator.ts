@@ -45,6 +45,8 @@ export interface KoordinatorOptions {
   repoFor: (card: Item) => RepoHands;
   /** The owner's recorded preferences, as agents read them. */
   preferences?: () => string;
+  /** Worker questions one session answers; the next one starts fresh. */
+  sessionQuestions?: number;
 }
 
 export class Koordinator {
@@ -52,6 +54,12 @@ export class Koordinator {
   private chain: Promise<unknown> = Promise.resolve();
   private answers: Promise<unknown> = Promise.resolve();
   private learning: Promise<unknown> = Promise.resolve();
+  /**
+   * The session that answers worker questions, kept for a few questions and never across a
+   * restart, so it cannot grow without end. What it needs to remember comes with every question:
+   * the decisions so far and the preferences.
+   */
+  private questionSession: { id?: string; asked: number } = { asked: 0 };
   private draining = false;
 
   constructor(private o: KoordinatorOptions) {
@@ -175,12 +183,15 @@ export class Koordinator {
   ask(card: Item, q: Question): Promise<Reply> {
     const next = this.answers
       .catch(() => {})
-      .then(() =>
-        consult({
+      .then(() => {
+        if (this.questionSession.asked >= (this.o.sessionQuestions ?? 20)) this.questionSession = { asked: 0 };
+        const s = this.questionSession;
+        s.asked++;
+        return consult({
           runtime: this.o.runtime,
           cwd: this.o.repoFor(card).path,
-          resume: this.o.board.setting('koordinator_session') ?? undefined,
-          onSession: (id) => this.o.board.setSetting('koordinator_session', id),
+          resume: s.id,
+          onSession: (id) => (s.id = id),
           system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Workers on cards that belong to no project send you the questions they cannot decide themselves.\n\n${ADVICE_RULES}`,
           message: [
             `Question from the worker on the ${card.kind} "${card.title}":`,
@@ -193,8 +204,12 @@ export class Koordinator {
             .filter(Boolean)
             .join('\n\n'),
           fallback: q,
-        }),
-      );
+        }).catch((e) => {
+          // a session that failed is not resumed again
+          if (this.questionSession === s) this.questionSession = { asked: 0 };
+          throw e;
+        });
+      });
     this.answers = next;
     return next;
   }
