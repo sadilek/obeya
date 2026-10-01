@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { SpeechSidecar } from './voice';
+import { looping, silence, SpeechSidecar } from './voice';
 
 test.skipIf(process.platform !== 'darwin')('the speech sidecar renders confirmations as WAV, one after another', async () => {
   const speaker = new SpeechSidecar();
@@ -10,4 +10,28 @@ test.skipIf(process.platform !== 'darwin')('the speech sidecar renders confirmat
   } finally {
     speaker.stop();
   }
+});
+
+test('a loop is one word or phrase six times in a row, whatever the case and punctuation', () => {
+  for (const loop of [
+    'Fall '.repeat(40),
+    'PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE',
+    `Pann ${'quarterback '.repeat(20)}`,
+    `${'lächpt '.repeat(30)}lä`,
+    `Ich finde, ${'ihr arbeitet dafür als ihr arbeitet, '.repeat(6)}`,
+    'An aktuellen An aktuellen An aktuellen An aktuellen An aktuellen An aktuellen',
+  ])
+    expect(looping(loop)).toBe(true);
+  for (const speech of [
+    'Starte alle Karten, die noch in der Warteschlange sind.',
+    'Nein, nein, nein, nicht diese Karte, die andere.',
+    'Was ist der Stand? Was ist der Stand bei Export?',
+    '',
+  ])
+    expect(looping(speech)).toBe(false);
+});
+
+test("Whisper's words for silence are told from a command", () => {
+  for (const s of ['Vielen Dank.', ' vielen Dank ', 'Untertitelung des ZDF, 2020', 'Danke fürs Zuschauen!']) expect(silence(s)).toBe(true);
+  for (const s of ['Vielen Dank, das war gut.', 'Danke, gib das frei.']) expect(silence(s)).toBe(false);
 });

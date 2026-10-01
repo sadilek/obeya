@@ -17,6 +17,26 @@ export interface Speaker {
   warm?(): void;
 }
 
+/**
+ * Whisper's way of failing on a recording without audible speech, the card titles as prompt making
+ * it likelier: one word or phrase over and over („Fall Fall Fall …“). Six times in a row is a loop;
+ * nobody says a command like that.
+ */
+export function looping(text: string): boolean {
+  const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  for (let n = 1; n <= 10; n++) {
+    for (let i = 0; i + 6 * n <= words.length; i++) {
+      let times = 1;
+      while (times < 6 && words.slice(i + times * n, i + (times + 1) * n).every((w, k) => w === words[i + k])) times++;
+      if (times === 6) return true;
+    }
+  }
+  return false;
+}
+
+/** What Whisper writes for silence without a prompt; after a loop, it means there was nothing to hear. */
+export const silence = (text: string) => /^(vielen dank|danke fürs zuschauen|untertitel(ung)? (im auftrag )?des zdf.*)[.!]?$/i.test(text.trim());
+
 const VOICE = join(import.meta.dir, '../../voice');
 
 /** A helper process that stays up and answers JSON lines by id: `{id, …}` in, `{id, …}` or `{id, error}` out. */
