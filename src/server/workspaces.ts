@@ -26,6 +26,12 @@ export interface LandProblem {
   files?: string[];
 }
 
+/** Work that landed: the default branch moved from `from` to `to`. */
+export interface Landed {
+  from: string;
+  to: string;
+}
+
 export function git(cwd: string, ...args: string[]): string {
   const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stderr: 'pipe' });
   if (r.exitCode !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${r.stderr.toString().trim()}`);
@@ -142,11 +148,12 @@ export class Workspaces {
 
   /**
    * Lands the card's committed branch on the Obeya checkout's default branch by rebasing (or,
-   * when only the replay conflicts, squashing) and fast-forwarding; a worktree and its branch are
-   * removed afterwards. Returns what went wrong:
-   * `worker` problems are the worker's to fix, the others stop at the Obeya checkout.
+   * when only the replay conflicts, squashing) and fast-forwarding. The workspace stays with the
+   * card, so its worker can finish what remains; `removeLanded` frees it. Returns what went wrong
+   * (`worker` problems are the worker's to fix, the others stop at the Obeya checkout), or how
+   * the default branch moved.
    */
-  landOnMain(cardId: string, branch: string): LandProblem | null {
+  landOnMain(cardId: string, branch: string): LandProblem | Landed {
     const ws = this.leasedBy(cardId);
     if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
     let base = 'main';
@@ -176,20 +183,33 @@ export class Workspaces {
       return { code: 'land', worker: false, detail: e instanceof Error ? e.message : String(e) };
     }
     try {
-      if (this.o.mode === 'worktrees') {
-        git(this.o.repoPath, 'merge', '--ff-only', '--quiet', branch);
-        this.store.removeWorkspace(ws);
-        git(this.o.repoPath, 'worktree', 'remove', ws);
-        git(this.o.repoPath, 'branch', '--quiet', '-d', branch);
-      } else {
+      const from = git(this.o.repoPath, 'rev-parse', 'HEAD');
+      if (this.o.mode === 'worktrees') git(this.o.repoPath, 'merge', '--ff-only', '--quiet', branch);
+      else {
         git(this.o.repoPath, 'fetch', '--quiet', ws, branch);
         git(this.o.repoPath, 'merge', '--ff-only', '--quiet', 'FETCH_HEAD');
-        this.release(cardId);
       }
-      return null;
+      return { from, to: git(this.o.repoPath, 'rev-parse', 'HEAD') };
     } catch (e) {
       // typically local changes in the Obeya checkout that the fast-forward would overwrite
       return { code: 'landMerge', worker: false, detail: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /**
+   * Frees the workspace of work that has landed, once its worker is done: a worktree and its
+   * branch are removed (a branch with commits that never landed stays), a clone is free again.
+   */
+  removeLanded(cardId: string, branch: string) {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return;
+    if (this.o.mode === 'clones') return this.release(cardId);
+    this.store.removeWorkspace(ws);
+    if (existsSync(ws)) git(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+    try {
+      if (git(this.o.repoPath, 'branch', '--list', branch)) git(this.o.repoPath, 'branch', '--quiet', '-d', branch);
+    } catch (e) {
+      console.error(`keeping branch ${branch}:`, e instanceof Error ? e.message : e);
     }
   }
 

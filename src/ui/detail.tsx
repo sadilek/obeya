@@ -73,7 +73,7 @@ export function Detail(p: Props) {
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div>}
       <div className="p-state">
         ● {stateLabel(item)}
-        {item.statusLine && (item.state === 'working' || item.state === 'inPr') && <span className="p-status"> · {item.statusLine}</span>}
+        {item.statusLine && (item.state === 'working' || item.state === 'inPr' || item.finishing) && <span className="p-status"> · {item.statusLine}</span>}
         {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
       </div>
 
@@ -187,7 +187,14 @@ export function Detail(p: Props) {
       )}
 
       {item.state === 'waiting' && item.need === 'demo' && item.demo && (
-        <DemoView item={item} all={all} run={run} summary={item.summary ?? ''} demo={item.demo}>
+        <DemoView
+          item={item}
+          all={all}
+          run={run}
+          summary={item.summary ?? ''}
+          demo={item.demo}
+          onAnswer={(text, images) => act({ action: 'answer', text, images }, { close: false })}
+        >
           {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
             <button
@@ -250,7 +257,9 @@ export function Detail(p: Props) {
       )}
       {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
 
-      {(item.state === 'working' || item.state === 'inPr' || (item.state === 'waiting' && item.need !== 'demo')) && (
+      {item.finishing && item.state === 'live' && <p className="hint">{t.finishingLong}</p>}
+
+      {(item.state === 'working' || item.state === 'inPr' || (item.state === 'waiting' && item.need !== 'demo') || item.finishing) && (
         <Composer
           key={`${item.state}:${item.need ?? ''}`}
           placeholder={item.need === 'question' ? t.compose.question : item.need === 'review' ? t.compose.review : t.compose.working}
@@ -262,7 +271,7 @@ export function Detail(p: Props) {
         />
       )}
 
-      {item.state === 'live' && item.source === 'manual' && <ArchiveButton item={item} run={run} />}
+      {item.state === 'live' && item.source === 'manual' && !item.finishing && <ArchiveButton item={item} run={run} />}
 
       {error && <p className="p-error">{error}</p>}
 
@@ -287,7 +296,7 @@ export function Detail(p: Props) {
               </>
             )}
           </p>
-          {(item.state === 'working' || item.state === 'waiting') && (
+          {(item.state === 'working' || item.state === 'waiting' || item.finishing) && (
             <div className="actions">
               <button className="btn" onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
                 {t.stop}
@@ -480,6 +489,7 @@ function DemoView({
   demo,
   children,
   autoplay = true,
+  onAnswer,
 }: {
   item: Item;
   all?: Item[];
@@ -488,6 +498,8 @@ function DemoView({
   demo: Demo;
   children: ReactNode;
   autoplay?: boolean;
+  /** Answers the report's open question; without it the question only shows. */
+  onAnswer?: (text: string, images?: string[]) => Promise<void>;
 }) {
   const cardId = item.id;
   const video = useRef<HTMLVideoElement>(null);
@@ -528,7 +540,14 @@ function DemoView({
           {demo.question && (
             <div className="question">
               <h4>{t.demo.question}</h4>
-              {demo.question}
+              <div className="q-text">{demo.question}</div>
+              {demo.answer ? (
+                <p className="hint">
+                  {t.demo.yourAnswer}: {demo.answer}
+                </p>
+              ) : (
+                onAnswer && <Composer placeholder={t.demo.answerPlaceholder} onSend={onAnswer} />
+              )}
             </div>
           )}
           {children}

@@ -409,7 +409,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   const focusItem = focus ? (items.find((i) => i.id === focus.id) ?? archived.find((i) => i.id === focus.id)) : undefined;
   const target =
     focus?.type === 'card'
-      ? (focusItem?.state === 'idea' ? t.voice.idea : t.voice.agent)(plain(focusItem?.title ?? ''))
+      ? (focusItem?.state === 'idea' ? t.voice.idea : t.voice.card)(plain(focusItem?.title ?? ''))
       : focus?.type === 'project'
         ? t.voice.project(plain(focusItem?.title ?? ''))
         : t.voice.koordinator;

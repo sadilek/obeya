@@ -34,7 +34,10 @@ export interface Item {
   plan?: { file: string; goal: string };
   /** The worker's latest `report`. */
   statusLine?: string;
-  /** Open question, when `need` is `question`. */
+  /**
+   * Open question: the worker's, when `need` is `question`; or the one in its demo report, while
+   * the demo waits for approval and the owner has not answered it.
+   */
   question?: Question;
   /** The worker's summary, when `need` is `review` or `demo`. */
   summary?: string;
@@ -57,6 +60,8 @@ export interface Item {
   idea?: Idea;
   /** A spike's idea: the throwaway prototype is built for it and never lands. */
   spikeOf?: string;
+  /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
+  finishing?: boolean;
 }
 
 /**
@@ -91,6 +96,8 @@ export interface Demo {
   findings: string[];
   /** A question only the owner can answer, beyond "approve or give feedback". */
   question?: string;
+  /** The owner's answer to it; the demo keeps waiting for approval. */
+  answer?: string;
 }
 
 /** One line in a card's log. */

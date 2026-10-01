@@ -31,6 +31,12 @@ const git = (cwd: string, ...args: string[]): string | null => {
   return r.exitCode === 0 ? r.stdout.toString().trim() : null;
 };
 
+/** Whether the commits from `from` to `to` change code, not only docs (unknown counts as code). */
+export function changesCode(checkout: string, from: string, to: string): boolean {
+  const changed = git(checkout, 'diff', '--name-only', from, to);
+  return changed === null || changed.split('\n').some((f) => f && !INERT.test(f));
+}
+
 /** The git checkout this process's code comes from, if it is one. */
 export function ownCheckout(): string | null {
   return git(dirname(import.meta.path), 'rev-parse', '--show-toplevel');
@@ -53,8 +59,7 @@ export function watchOwnCode(checkout: string, fn: (from: string, to: string) =>
       return;
     }
     if (head === base) return;
-    const changed = git(checkout, 'diff', '--name-only', base, head);
-    if (changed !== null && changed.split('\n').every((f) => !f || INERT.test(f))) {
+    if (!changesCode(checkout, base, head)) {
       base = head;
       return;
     }

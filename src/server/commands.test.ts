@@ -141,6 +141,33 @@ describe('the Koordinator remembers', () => {
     expect(await heard).toEqual({ confirm: '„Export“ ist seit gestern auf main.' });
   });
 
+  test("the question in a demo report is the card's open question: a bare „ja“ answers it", async () => {
+    const a = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
+    board.work(a.id, { state: 'waiting', need: 'demo', demo: JSON.stringify({ dir: '/d', chapters: [], shown: [], notShown: [], findings: [], question: 'Alte Projekte nachtragen?' }) });
+    const k = commander();
+    const heard = k.hear('ja', { card: a.id });
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain('[waiting: demo] feature "Archiv" — open question in its demo report: Alte Projekte nachtragen?');
+    expect(await s.call('act', { actions: [{ do: 'answer', card: 'K1', text: 'ja' }], confirm: 'Antwort an „Archiv“.' })).toContain('Done');
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'answer', card: a.id, text: 'ja' }]);
+  });
+
+  test('a landed card whose agent finishes what remains still takes notes', async () => {
+    const a = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
+    board.work(a.id, { state: 'live', workspace: '/w', landed: '{}' });
+    const k = commander();
+    const { brief, heard } = await say(k, 'sag Archiv, es soll auch die alten Karten nachtragen', 'act', {
+      actions: [{ do: 'note', card: 'K1', text: 'Auch die alten Karten nachtragen.' }],
+      confirm: 'Weitergegeben.',
+    });
+    expect(brief).toContain('K1 [live, its agent finishes what remains after the landing] feature "Archiv"');
+    expect(heard.token).toBeDefined();
+  });
+
   test('starting a queued card starts it now despite the overlap; one still being checked starts by itself', async () => {
     const running = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
     board.work(running.id, { state: 'working' });
