@@ -100,8 +100,10 @@ a { color: inherit; }
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
-#bar { position: fixed; top: 14px; left: 14px; right: 14px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 20; }
-#bar > * { pointer-events: auto; }
+/* a frosted strip the canvas slides under, so cards never run into the pills and the key hint */
+#bar { position: fixed; top: 0; left: 0; right: 0; height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
+  background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
 .pill { background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 13px; border: 0; white-space: nowrap; }
 .pill b { font-weight: 600; }
 button.pill { cursor: pointer; }
