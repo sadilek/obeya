@@ -56,7 +56,7 @@ export function Detail(p: Props) {
         : item.spikeOf
           ? t.kind.spike
           : t.kind[item.kind]);
-  const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea') && !item.queue;
+  const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea' || item.state === 'proposal') && !item.queue;
   if (item.state === 'idea' && item.idea)
     return (
       <>
@@ -80,11 +80,14 @@ export function Detail(p: Props) {
 
       {item.state === 'proposal' && (
         <>
-          <Body md={item.body} />
+          <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} />
           {p.from && <p className="hint">{t.proposedBy(plain(p.from.title))}</p>}
           <div className="actions">
             <button className="btn primary" onClick={() => act({ action: 'accept' }, { close: true, ack: t.accepted })}>
               {t.accept}
+            </button>
+            <button className="btn" onClick={() => act({ action: 'accept', start: false }, { close: false })}>
+              {t.acceptOnly}
             </button>
             <button className="btn" onClick={() => act({ action: 'dismiss' }, { close: true, ack: t.dismissed })}>
               {t.dismiss}

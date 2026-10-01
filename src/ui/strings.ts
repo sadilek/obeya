@@ -46,6 +46,7 @@ export const t = {
   stop: 'Anhalten',
   approve: 'Freigeben',
   accept: 'Übernehmen und starten',
+  acceptOnly: 'Übernehmen',
   dismiss: 'Verwerfen',
   send: 'Senden',
   compose: {

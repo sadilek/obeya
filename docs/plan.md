@@ -86,8 +86,9 @@ An idea is thought through on its card before anything is planned; no worker run
 
 ## Card lifecycle
 
-1. A card is created by the owner (voice or canvas) or proposed by an agent; accepting a
-   proposal starts it (it goes to the Koordinator like a started `planned` card).
+1. A card is created by the owner (voice or canvas) or proposed by an agent; the owner can
+   edit a proposal, and accepting it starts it (it goes to the Koordinator like a started
+   `planned` card) unless they only accept it as `planned`.
 2. `working`: the worker leases a workspace, implements, runs the local reviews the repo adapter
    names, and records the demo.
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
