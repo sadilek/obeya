@@ -1,0 +1,56 @@
+import { expect, test } from 'bun:test';
+import { type Cam, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll } from './camera';
+
+const view = { left: 0, top: 70, right: 1000, bottom: 800 };
+const cam: Cam = { x: 0, y: 0, s: 1 };
+// the world shown is x 0..1000, y 70..800; the content reaches beyond it on every side
+const wide = { x: -2000, y: -2000, w: 5000, h: 5000 };
+
+test('a card dragged to an edge scrolls the view that way, faster the nearer the edge', () => {
+  const from = { x: 500, y: 400 };
+  expect(edgeScroll(cam, { x: 999, y: 400 }, from, view, wide, 100).x).toBeLessThan(0);
+  expect(edgeScroll(cam, { x: 1, y: 400 }, from, view, wide, 100).x).toBeGreaterThan(0);
+  expect(edgeScroll(cam, { x: 500, y: 71 }, from, view, wide, 100).y).toBeGreaterThan(0);
+  expect(edgeScroll(cam, { x: 500, y: 799 }, from, view, wide, 100).y).toBeLessThan(0);
+  const deep = edgeScroll(cam, { x: 1000, y: 400 }, from, view, wide, 100).x;
+  const shallow = edgeScroll(cam, { x: 1000 - EDGE_ZONE / 2, y: 400 }, from, view, wide, 100).x;
+  expect(deep).toBeLessThan(shallow);
+  expect(shallow).toBeLessThan(0);
+  // away from the edges nothing moves
+  expect(edgeScroll(cam, { x: 1000 - EDGE_ZONE - 1, y: 400 }, from, view, wide, 100)).toEqual(cam);
+});
+
+test('only towards an edge the pointer moved to: a card picked up at an edge does not run off', () => {
+  expect(edgeScroll(cam, { x: 990, y: 400 }, { x: 995, y: 400 }, view, wide, 100)).toEqual(cam);
+  expect(edgeScroll(cam, { x: 990, y: 400 }, { x: 990, y: 400 }, view, wide, 100)).toEqual(cam);
+});
+
+test('the view scrolls no further than the content plus room for the card', () => {
+  const content = { x: 0, y: 0, w: 1500, h: 600 };
+  const limit = dragLimit(content, { w: 300, h: 136 });
+  expect(limit).toEqual({ x: -300 - DROP_ROOM, y: -136 - DROP_ROOM, w: 1500 + 600 + 2 * DROP_ROOM, h: 600 + 272 + 2 * DROP_ROOM });
+  let c = cam;
+  for (let i = 0; i < 100; i++) c = edgeScroll(c, { x: 1000, y: 400 }, { x: 500, y: 400 }, view, limit, 16);
+  // the right edge of the view stops at the content's right edge plus the card and its room
+  expect((view.right - c.x) / c.s).toBeCloseTo(1500 + 300 + DROP_ROOM);
+  for (let i = 0; i < 300; i++) c = edgeScroll(c, { x: 0, y: 400 }, { x: 500, y: 400 }, view, limit, 16);
+  expect((view.left - c.x) / c.s).toBeCloseTo(-300 - DROP_ROOM);
+  for (let i = 0; i < 100; i++) c = edgeScroll(c, { x: 500, y: 70 }, { x: 500, y: 400 }, view, limit, 16);
+  expect((view.top - c.y) / c.s).toBeCloseTo(-136 - DROP_ROOM);
+});
+
+test('a limit counts in world units at any zoom', () => {
+  const half = { x: 0, y: 0, s: 0.5 };
+  const limit = { x: 0, y: 0, w: 2400, h: 1000 };
+  let c = half;
+  for (let i = 0; i < 100; i++) c = edgeScroll(c, { x: 1000, y: 400 }, { x: 500, y: 400 }, view, limit, 16);
+  expect((view.right - c.x) / c.s).toBeCloseTo(2400);
+});
+
+test('a view already beyond the limit stays put rather than jump back', () => {
+  const far: Cam = { x: -5000, y: 0, s: 1 };
+  const limit = { x: 0, y: 0, w: 1200, h: 1000 };
+  expect(edgeScroll(far, { x: 1000, y: 400 }, { x: 500, y: 400 }, view, limit, 16)).toEqual(far);
+  // towards the content it scrolls as usual
+  expect(edgeScroll(far, { x: 0, y: 400 }, { x: 500, y: 400 }, view, limit, 16).x).toBeGreaterThan(far.x);
+});

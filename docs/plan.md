@@ -410,6 +410,9 @@ the repository; the copy on the project is only for the archive).
 - Card sizes are fixed per kind; a delivered workstream shrinks to a chip, a project wraps its
   children, and a workstream cannot be dragged out of its project. New projects are placed in a
   grid below the existing ones.
+- A card dragged to an edge of the view scrolls it that way, faster the nearer the edge, but only
+  as far as the rest of the canvas reaches plus room to drop the card beside it; a card picked up
+  at an edge scrolls only once the pointer moves towards it (2026-10-01).
 - An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
   follows its content while open.
 - Opening a card takes 300 ms: a 130 ms flight brings it to the middle, then it unfolds in 170 ms;
