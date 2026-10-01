@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import type { CanvasInfo, CanvasSnapshot, CardPatch, Item } from '../core/types';
-import { api, onSpeak, setCanvas, useCanvas } from './api';
+import { api, ApiError, onSpeak, setCanvas, useCanvas } from './api';
 import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
@@ -13,7 +13,7 @@ import { KoordinatorSheet } from './koordinator';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
 import { CanvasPill, CardView, Edges, Links, Minimap, needsYou, ProjectView, readingWidth, Sheet } from './parts';
-import { t } from './strings';
+import { errorText, t } from './strings';
 
 export function App() {
   const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
@@ -359,6 +359,17 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     ackTimer.current = setTimeout(() => setAckOn(false), 7000);
   }
 
+  /** The play button on a card: starts it, or one queued behind others despite the overlap. */
+  const startCard = useCallback(async (i: Item) => {
+    try {
+      await api.act(i.id, { action: i.queue ? 'force' : 'start' });
+      if (i.queue) showAck(t.queue.forced);
+    } catch (e) {
+      if (!(e instanceof ApiError)) console.error(e);
+      showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  }, []);
+
   // ---------------------------------------------------------------- voice
   const where = (): Where => {
     const f = focusRef.current;
@@ -616,6 +627,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
                 pop={item.id === popId}
                 showRepo={snapshot.canvas.repos.length > 1}
                 els={els}
+                onStart={startCard}
               />
             ),
           )}

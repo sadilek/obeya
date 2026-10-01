@@ -212,7 +212,8 @@ the owner's language (`src/core/locale.ts`).
   card starts it estimates the files the card will change and judges collisions with cards in
   progress (their estimated and actual changes); a card that overlaps or collides waits, with the
   reason, and starts on its own once what it waits for has landed or stopped — the owner can start
-  it anyway. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
+  it anyway. On the canvas, a planned card and one waiting in the queue show a play button
+  while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
   without a project, and after each owner answer, note or feedback it decides whether a lasting
   preference was stated and records it as a rule every agent gets. Its sheet (button or `K`)

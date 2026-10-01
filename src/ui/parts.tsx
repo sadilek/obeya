@@ -30,13 +30,17 @@ interface CardProps {
   dragging: boolean;
   pop: boolean;
   els: Map<string, HTMLElement>;
+  /** Starts a planned card, or one queued behind others despite the overlap. */
+  onStart: (item: Item) => void;
 }
 
 const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, showRepo, els }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, showRepo, els, onStart }: CardProps) {
     const shape = shapeOf(item);
+    // a card the Koordinator is checking or cutting has nothing to start yet
+    const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
     const kind = item.label ?? (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.spikeOf ? t.kind.spike : t.kind[item.kind]);
     const status =
       item.state === 'working'
@@ -77,10 +81,28 @@ export const CardView = memo(
         {meta && <div className="meta">{meta}</div>}
         <div className="state">{stateLabel(item)}</div>
         {needsYou(item) && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}
+        {startable && (
+          <button
+            className="play"
+            title={item.queue ? t.queue.force : t.start}
+            aria-label={item.queue ? t.queue.force : t.start}
+            // the canvas would take the press as the start of a drag or a click that opens the card
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onStart(item);
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <path d="M3 1.6v8.8a.6.6 0 0 0 .9.5l7-4.4a.6.6 0 0 0 0-1L3.9 1.1a.6.6 0 0 0-.9.5z" fill="currentColor" />
+            </svg>
+          </button>
+        )}
       </div>
     );
   },
-  (a, b) => a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.showRepo === b.showRepo,
+  (a, b) =>
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.showRepo === b.showRepo && a.onStart === b.onStart,
 );
 
 /** The canvas's name and home branch; with several canvases, a switcher. */
