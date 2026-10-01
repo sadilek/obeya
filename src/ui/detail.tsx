@@ -436,7 +436,7 @@ function DemoView({ cardId, summary, demo, children, autoplay = true }: { cardId
   useEffect(() => {
     // start once the card has unfolded, like the mock; a demo kept on a finished card waits to be played
     if (!autoplay) return;
-    const h = setTimeout(() => video.current?.play().catch(() => {}), 500);
+    const h = setTimeout(() => video.current?.play().catch(() => {}), 300);
     return () => clearTimeout(h);
   }, []);
   const current = demo.chapters.reduce((cur, [at], i) => (at <= now + 0.05 ? i : cur), 0);

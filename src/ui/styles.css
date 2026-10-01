@@ -140,16 +140,17 @@ button.pill:hover { box-shadow: var(--lift); }
 #minimap svg { width: 100%; height: 100%; display: block; }
 
 /* ---------- focus: dim + panel + plan sheet ---------- */
-#dim { position: fixed; inset: 0; background: var(--dim); opacity: 0; pointer-events: none; transition: opacity .35s; z-index: 30; }
+#dim { position: fixed; inset: 0; background: var(--dim); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; }
 #dim.on { opacity: 1; pointer-events: auto; }
 #panel { position: fixed; z-index: 40; background: var(--panel); border-radius: 14px; box-shadow: var(--lift); overflow: hidden; display: none; }
-#panel.anim { transition: left .42s cubic-bezier(.3,.9,.3,1), top .42s cubic-bezier(.3,.9,.3,1), width .42s cubic-bezier(.3,.9,.3,1),
-  height .42s cubic-bezier(.3,.9,.3,1), border-radius .42s; }
+/* --unfold is set by App.tsx (UNFOLD_MS) */
+#panel.anim { --ease: cubic-bezier(.3,.9,.3,1); transition: left var(--unfold) var(--ease), top var(--unfold) var(--ease),
+  width var(--unfold) var(--ease), height var(--unfold) var(--ease), border-radius var(--unfold); }
 /* the inner box keeps the final width while the panel unfolds, so the content can be measured before it shows */
 #panel .inner { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; overflow: auto; scrollbar-gutter: stable;
-  padding: 26px 30px 40px; opacity: 0; transition: opacity .2s; }
+  padding: 26px 30px 40px; opacity: 0; transition: opacity .12s; }
 #panel .content { display: flow-root; }
-#panel.ready .inner { opacity: 1; transition-delay: .08s; }
+#panel.ready .inner { opacity: 1; }
 #panel .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; z-index: 2; }
 #panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); z-index: 1; }
 .p-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }

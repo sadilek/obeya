@@ -288,6 +288,8 @@ the repository).
   grid below the existing ones.
 - An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
   follows its content while open.
+- Opening a card takes 300 ms: a 130 ms flight brings it to the middle, then it unfolds in 170 ms;
+  closing runs the same in reverse. Fast enough not to wait on, long enough to keep the context.
 - Manual cards are created by double-click, the button or `n`, and edited in the unfolded card;
   a new card closed without a title is dropped. Deleting offers undo.
 - The server words no UI text for refusals: it answers `{ code, error }` with a stable code
