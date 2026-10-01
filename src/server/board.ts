@@ -315,6 +315,7 @@ export class Board {
       const row = this.own(id);
       if (row.plan_ref) throw new BadRequest('planCard', 'a workstream stays with its project');
       if (row.state !== 'live') throw new BadRequest('notDone', 'only a live card can be archived');
+      if (row.landed && row.workspace) throw new BadRequest('notDone', 'its agent still finishes what remains after the landing');
     }
     const at = new Date().toISOString();
     this.store.db.transaction(() => ids.forEach((id) => this.store.update(id, { archived_at: at })))();
@@ -324,7 +325,7 @@ export class Board {
   /** Archives every finished card of the owner's on the canvas; returns their ids. */
   archiveDone(): string[] {
     const ids = this.snapshot()
-      .items.filter((i) => i.source === 'manual' && i.state === 'live')
+      .items.filter((i) => i.source === 'manual' && i.state === 'live' && !i.finishing)
       .map((i) => i.id);
     if (ids.length) this.archive(ids);
     return ids;
@@ -592,10 +593,13 @@ function work(r: CardRow): Partial<Item> {
     ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
+    // a demo's question is as open as a worker's: the owner answers it on the card or by voice
+    ...(demo?.question && !demo.answer && r.need === 'demo' ? { question: { text: demo.question, options: [] } } : {}),
     ...(detail.summary && (r.need === 'review' || r.need === 'demo') ? { summary: detail.summary } : {}),
     ...(demo ? { demo } : {}),
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),
+    ...(r.landed && r.workspace ? { finishing: true } : {}),
   };
 }
 

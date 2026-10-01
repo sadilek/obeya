@@ -58,7 +58,7 @@ describe('the PR phase', () => {
   test('approval asks the worker to open the PR; pr_opened records it', async () => {
     const id = await inPr();
     expect(state(id)).toBe('inPr');
-    expect(runtime.last.inbox.at(-1)).toContain('open the pull request the way this repository does it');
+    expect(runtime.last.inbox.at(-1)).toContain('goes out as a pull request');
     expect(runtime.last.closed).toBe(false);
     expect(runtime.last.call('pr_opened', { url: 'https://example.com/x' })).toContain('not a GitHub pull request');
     runtime.last.call('pr_opened', { url: URL_ });
@@ -77,8 +77,10 @@ describe('the PR phase', () => {
 
   test('a turn in the PR phase without a PR is nudged', async () => {
     await inPr();
+    // the turn that handed over ends, then the one the approval started
     runtime.last.emit({ type: 'idle' });
-    expect(runtime.last.inbox.at(-1)).toContain('call pr_opened');
+    runtime.last.emit({ type: 'idle' });
+    expect(runtime.last.inbox.at(-1)).toContain('no pull request for this card yet');
   });
 });
 
@@ -147,10 +149,16 @@ describe('watching', () => {
   test('a merge makes the card live and frees the clone; a close asks the owner', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
     status.state = 'MERGED';
     watcher.poll();
     expect(state(id)).toBe('live');
+    // the worker hears it and may finish what remains; the clone is free once its turn has ended
+    expect(runtime.last.inbox.at(-1)).toContain('pull request was merged');
+    expect(board.item(id)!.finishing).toBe(true);
+    runtime.last.emit({ type: 'idle' });
     expect(runtime.last.closed).toBe(true);
+    expect(board.row(id).workspace).toBeNull();
 
     status.state = 'OPEN';
     const other = await inPr();

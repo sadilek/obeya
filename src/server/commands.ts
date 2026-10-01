@@ -205,8 +205,8 @@ export class Commander {
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
             `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card. On a queued card (waiting behind cards in progress) it starts it now, despite the overlap; a card the Koordinator is still checking starts by itself unless it collides.",
-            "- note: text to the agent working on a card (working, in PR, or waiting); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
-            "- answer: text as the answer to the card's open question.",
+            "- note: text to the agent working on a card (working, in PR, waiting, or live while its agent finishes after the landing); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
+            "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
             '- approve: approve work waiting for review. accept / dismiss: a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
@@ -319,8 +319,8 @@ export class Commander {
       case 'answer':
       case 'feedback': {
         if (!a.text?.trim()) return 'the text is missing';
-        if (a.do === 'note' && !['working', 'inPr', 'waiting'].includes(card.state)) return `no agent works on this card (${is}), a note cannot reach it`;
-        if (a.do === 'answer' && !(card.state === 'waiting' && card.need === 'question')) return `the card has no open question (${is})`;
+        if (a.do === 'note' && !['working', 'inPr', 'waiting'].includes(card.state) && !card.finishing) return `no agent works on this card (${is}), a note cannot reach it`;
+        if (a.do === 'answer' && !card.question) return `the card has no open question (${is})`;
         if (a.do === 'feedback' && !reviewable) return `the card does not wait for review (${is})`;
         return { do: a.do, card: card.id, text: a.text.trim() };
       }
@@ -340,7 +340,7 @@ export class Commander {
         if (card.source !== 'manual' || card.state !== 'planned' || card.queue) return 'only a planned card of the owner can be split';
         break;
       case 'stop':
-        if (card.state !== 'working' && card.state !== 'waiting') return `no agent works on this card (${is})`;
+        if (card.state !== 'working' && card.state !== 'waiting' && !card.finishing) return `no agent works on this card (${is})`;
         break;
     }
     return { do: a.do, card: card.id };
@@ -408,7 +408,7 @@ export class Commander {
   /** The message for one command: what the Koordinator needs to know besides what it already knows. */
   private brief(s: Session, transcript: string, focus: Focus): string {
     const items = this.o.board.snapshot().items;
-    const relevant = items.filter((i) => i.kind !== 'project' && (i.state !== 'live' || i.id === focus.card));
+    const relevant = items.filter((i) => i.kind !== 'project' && (i.state !== 'live' || i.finishing || i.id === focus.card));
     const tag = (id: string) => {
       let t = s.tagOf.get(id);
       if (!t) {
@@ -420,9 +420,17 @@ export class Commander {
     };
     const describe = (i: Item) => {
       const project = i.parent ? items.find((p) => p.id === i.parent) : undefined;
-      const state = i.queue ? queued(i.queue, items) : i.need ? `${i.state}: ${i.need}` : i.idea && i.idea.status !== 'open' ? `idea: ${i.idea.status}` : i.state;
+      const state = i.queue
+        ? queued(i.queue, items)
+        : i.need
+          ? `${i.state}: ${i.need}`
+          : i.idea && i.idea.status !== 'open'
+            ? `idea: ${i.idea.status}`
+            : i.finishing
+              ? 'live, its agent finishes what remains after the landing'
+              : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
-      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question: ${i.question.text}` : ''}`;
+      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}`;
     };
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);

@@ -1,6 +1,7 @@
 // One canvas and everything that works on it: its repositories (each with adapter, workspaces,
 // workers, project agents and PR watcher), the board, the Koordinator and the voice commands.
 
+import { realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pickAdapter } from '../adapters';
 import { Answers } from './answers';
@@ -18,8 +19,9 @@ import { PrWatcher } from './pr-watcher';
 import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import type { AgentRuntime } from './runtime';
+import { changesCode } from './self-update';
 import { Workers } from './workers';
-import { Workspaces } from './workspaces';
+import { type Landed, Workspaces } from './workspaces';
 
 export interface RepoConfig {
   path: string;
@@ -47,6 +49,8 @@ export interface CanvasDeps {
   watch?: boolean;
   /** How long a voice command waits for undo. */
   commandDelayMs?: number;
+  /** The checkout this Obeya runs from, when it starts again for new code there (self-update.ts). */
+  ownCheckout?: string | null;
 }
 
 export interface RepoRuntime {
@@ -132,6 +136,7 @@ export class CanvasRuntime {
             : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
         },
         onSpike: (spike, summary, demo) => this.spikeReady(spike, summary, demo),
+        ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       });
       this.repos.push({ ref, info, adapter, workspaces, workers, projectAgents });
@@ -241,8 +246,8 @@ export class CanvasRuntime {
 
   /** Deletes a card of the owner's, stopping its worker first. */
   remove(cardId: string) {
-    const { state } = this.board.row(cardId);
-    if (state === 'working' || state === 'waiting') this.repoOf(cardId).workers.stop(cardId);
+    const { state, landed, workspace } = this.board.row(cardId);
+    if (state === 'working' || state === 'waiting' || (landed && workspace)) this.repoOf(cardId).workers.stop(cardId);
     if (state === 'idea') this.explorers.close(cardId);
     this.board.remove(cardId);
   }
@@ -386,6 +391,14 @@ function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
     seen.set(base, n);
     return { id: n === 1 ? base : `${base}${n}`, name: i === 0 ? adapters[0]!.canvasName(info) : repoName(info), path: info.path, branch: info.branch };
   });
+}
+
+function sameDir(a: string, b: string): boolean {
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return false;
+  }
 }
 
 const slug = (s: string) =>

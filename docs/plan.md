@@ -91,12 +91,16 @@ An idea is thought through on its card before anything is planned; no worker run
    sends the card back to `working`. Each finding in the demo's report has "Als Karte anlegen": a
    planned card with the finding as its text, below the card it comes from, in its repository; the
    finding then names that card. A follow-up's worker hears which card it comes from and that
-   card's summary.
+   card's summary. A question in the demo report is an open question like a
+   worker's: the owner answers it on the card or by voice, the worker hears the answer, and the
+   demo keeps waiting for approval.
 4. Approval opens the PR (demo linked, report as description) and starts monitoring: review bot
    comments (Greptile) are handled by the worker, CI is watched, conflicts are rebased. Only
    what needs judgement — a review comment that questions a decision, a conflict with product
    meaning — comes back to the owner as a question on the card.
-5. Merged → `live`. The demo stays on the card.
+5. Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its
+   work is on main and may finish what was waiting for that (a data migration, say) before its
+   session ends.
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card, or
    all finished ones at once in the archive). The archive (button or `A`) lists archived cards
    by day, the most recently archived first; one unfolds from its row as on the canvas and can go
@@ -114,6 +118,11 @@ background work runs (a demo render, a test suite) is no such turn: the work wak
 it finishes, so Obeya waits, and only after ten minutes without a sign of life does it nudge. A
 worker that went to the owner for having stopped and then works on by itself takes that question
 back. The owner can send a note at any time; it reaches the worker without stopping it.
+
+Obeya's messages to a worker say what happened — feedback, an answer, a note, a landing that
+failed, the landing — not step by step what to do: workers are full agents. Whether a demo is
+recorded again after feedback is the worker's call; a handover without a new demo keeps the one on
+the card.
 
 What the owner writes on a card (a note, feedback, an answer, talk to an idea) may carry
 screenshots: pasted (⌘V), dropped or picked in the text field, scaled down in the browser to at
@@ -156,15 +165,23 @@ the owner's language (`src/core/locale.ts`).
   until the card's work has landed. Clones come from `--workspace <path>` or `--clones <n>`.
 - **Landing** — per adapter. `pr` (OKE): approval leaves the branch for the PR loop. `main`
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
-  is `live`, worktree and branch are removed. Commits that conflict one by one but not as a whole
-  land squashed into one commit. Uncommitted work or a real conflict sends the card back to its
-  worker with the approval kept: its next handover (no new demo needed) lands on its own.
+  is `live`. Commits that conflict one by one but not as a whole land squashed into one commit.
+  Uncommitted work or a real conflict sends the card back to its worker with the approval kept:
+  its next handover (no new demo needed) lands on its own.
+- **After landing** — the worker is told its work is on main (or that its PR was merged) and may
+  finish what remains, in its workspace, which stays at what landed until then (the card is `live`,
+  "Agent erledigt den Rest"; notes reach it, "Anhalten" ends it). Ending a turn with nothing to wait
+  for ends its session and removes worktree and branch (a clone is free again). When the landing
+  changed Obeya's own running code, the worker is told Obeya restarts with it; what needs the new
+  code waits through `after_restart`: the worker ends its turn, the restart goes ahead, and the
+  resumed worker hears that Obeya now runs its change.
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs), the server stops and starts again; workers
   resume, and an open page reloads when it reconnects to a new server process. The restart waits
   until no worker is in the middle of a turn or waiting for its background work (at most 15
-  minutes), since it stops whatever a worker runs; a resumed worker is told so.
+  minutes), since it stops whatever a worker runs; a resumed worker is told so. A worker that
+  waits for the restart to finish its landed work is not in a turn and does not hold it up.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges collisions with cards in
   progress (their estimated and actual changes); a card that overlaps or collides waits, with the
@@ -213,7 +230,10 @@ the owner's language (`src/core/locale.ts`).
   soon as the Koordinator has decided, and the undo window starts with it; the spoken one follows
   from its own URL.
 - **Koordinator memory** — the owner's commands go to one ongoing Koordinator session per canvas,
-  one after the other, so it understands "die andere auch" or "nein, die von vorhin". Card tags
+  one after the other, so it understands "die andere auch" or "nein, die von vorhin". It sees a
+  card's open question, also one in a demo report, so a bare "ja" to it is an answer, not an
+  approval. Under the mic the UI names who listens: the Koordinator, and the card, idea or project
+  in focus ("Koordinator · Karte: …"). Card tags
   (`K1`, …) stay fixed for the session. Each command brings the cards as they are now and what
   happened since the previous one (state changes, questions, answers, hand-overs, the owner's
   notes, errors, new cards; not the workers' steps); a command the owner took back is told with the
@@ -240,7 +260,8 @@ the owner's language (`src/core/locale.ts`).
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
 branch, status line, open question or review summary, the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
-when archived, an idea's status and brief, a spike's idea),
+when archived, an idea's status and brief, a spike's idea, landed work whose worker still
+finishes),
 card events (the log, with an error code where the UI words it and the owner's screenshots), workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
 reply, the open card, whether it was taken back; a looked-up question, the card it is about, its
@@ -345,6 +366,12 @@ the repository).
   cards' history. That keeps the context short over weeks, and restart and renewal are one path.
   The card history is part of it, because the owner asks about progress over time ("was ist seit
   gestern passiert?") and refers to cards by what happened to them.
+- Workers are told what happened, not what to do next: they are full agents and judge the next
+  step themselves (re-rendering a demo, say). Protocol stays where Obeya depends on it: hand over
+  with `ready_for_review`, ask with `ask`, report the PR with `pr_opened`.
+- Landed work's worker keeps its workspace and session until it is done, instead of ending with
+  the approval: what a change needs after it is on main (a migration against the running Obeya)
+  is done by the agent that knows the change. A landing costs one short worker turn for it.
 - Screenshots reach agents as images in the message, not as files for them to read: an exploration
   agent may only read its checkout, and the agent sees the image without a step of its own.
 

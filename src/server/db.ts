@@ -49,6 +49,11 @@ export interface CardRow {
   spike_of: string | null;
   /** When the owner approved work that could not land yet; its next handover lands without asking again. */
   approved_at: string | null;
+  /**
+   * JSON, while the card's work is on main and its worker finishes what remains (its workspace and
+   * session are kept until then): `{ commit?, restart? }`, `restart` when it waits for Obeya to run the change.
+   */
+  landed: string | null;
 }
 
 
@@ -177,6 +182,8 @@ export const MIGRATIONS = [
    ALTER TABLE talk ADD COLUMN answer_by TEXT;`,
   // an approval that could not land yet holds until the worker has fixed what stood in the way
   `ALTER TABLE cards ADD COLUMN approved_at TEXT;`,
+  // landed work whose worker still finishes what remains after the landing
+  `ALTER TABLE cards ADD COLUMN landed TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -205,6 +212,7 @@ export type RowUpdate = Partial<
     | 'archived_at'
     | 'idea'
     | 'approved_at'
+    | 'landed'
   >
 >;
 

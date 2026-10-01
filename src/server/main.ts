@@ -82,8 +82,11 @@ if (values.config) {
 
 const home = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
 const store = new Store(join(home, 'obeya.db'));
+// work that lands on the checkout this code comes from restarts the server, so what is live is what runs
+const own = process.env.OBEYA_SUPERVISED ? ownCheckout() : null;
 const canvases = configs.map(
-  (c) => new CanvasRuntime(c, { store, home, runtime: sdkRuntime, forge: ghForge, permissionMode: values['permission-mode'] as 'auto', watch: true }),
+  (c) =>
+    new CanvasRuntime(c, { store, home, runtime: sdkRuntime, forge: ghForge, permissionMode: values['permission-mode'] as 'auto', watch: true, ownCheckout: own }),
 );
 const ids = canvases.map((c) => c.id);
 if (new Set(ids).size !== ids.length) {
@@ -102,8 +105,6 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => shutdown
 
 const server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev);
 console.log(`Obeya on ${server.url}`);
-// work landed on the checkout this code comes from: start again, so what is live is what runs
-const own = process.env.OBEYA_SUPERVISED ? ownCheckout() : null;
 if (own)
   watchOwnCode(own, (from, to) => {
     const busy = () => canvases.some((c) => c.busy());

@@ -15,6 +15,9 @@ export const t = {
     live: 'Live',
   } satisfies Record<CardState, string>,
   need: { demo: 'Demo bereit', question: 'Frage an dich', review: 'Bereit zur Abnahme' } satisfies Record<Need, string>,
+  demoWithQuestion: 'Demo bereit, mit Frage',
+  finishing: 'Live · Agent erledigt den Rest',
+  finishingLong: 'Auf main. Der Agent erledigt noch, was nach dem Landen ansteht; danach endet seine Sitzung.',
   proposalMark: '✦ Vorschlag · ',
   progress: (live: number, all: number) => `${live} von ${all} live`,
   needsYou: 'brauchen dich',
@@ -116,9 +119,9 @@ export const t = {
   voice: {
     hold: 'Halten zum Sprechen (Leertaste)',
     koordinator: 'Koordinator',
-    agent: (title: string) => `Agent: ${title}`,
-    idea: (title: string) => `Idee: ${title}`,
-    project: (title: string) => `Projekt: ${title}`,
+    card: (title: string) => `Koordinator · Karte: ${title}`,
+    idea: (title: string) => `Koordinator · Idee: ${title}`,
+    project: (title: string) => `Koordinator · Projekt: ${title}`,
     noMic: 'Kein Mikrofon: der Browser hat den Zugriff nicht erlaubt.',
     failed: 'Das hat nicht geklappt; bitte noch einmal.',
     typePlaceholder: 'Dem Koordinator schreiben, z. B. „Neue Karte: …“',
@@ -132,7 +135,7 @@ export const t = {
     short: (n: number, failed: number, conflict: boolean) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
   },
-  demo: { question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.',
+  demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.',
     followUp: 'Als Karte anlegen',
     followedUp: (title: string) => `Karte „${title}“ angelegt`,
   },
@@ -224,8 +227,10 @@ export const t = {
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea }) =>
-  i.idea
+export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; finishing?: boolean }) =>
+  i.finishing && i.state === 'live'
+    ? t.finishing
+    : i.idea
     ? i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking
       ? t.idea.yourTurn
       : t.idea.status[i.idea.status]
@@ -236,7 +241,9 @@ export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; id
         ? t.queue.cutting
         : t.queue.waiting
     : i.state === 'waiting' && i.need
-      ? t.need[i.need]
+      ? i.need === 'demo' && i.question
+        ? t.demoWithQuestion
+        : t.need[i.need]
       : t.state[i.state];
 
 /** The owner's text for a refused request or a logged error code; the generic one for anything unknown. */

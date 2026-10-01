@@ -22,6 +22,7 @@ let runtime: FakeRuntime;
 let workers: Workers;
 let projectReply: Reply | null;
 let spaces: Workspaces;
+let store: Store;
 
 function setup(adapter: RepoAdapter) {
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
@@ -32,7 +33,7 @@ function setup(adapter: RepoAdapter) {
   writeFileSync(join(main, 'README.md'), 'hello\n');
   git(main, 'add', '.');
   git(main, 'commit', '--quiet', '-m', 'init');
-  const store = new Store(':memory:');
+  store = new Store(':memory:');
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => [doc]);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
@@ -228,9 +229,14 @@ describe('workers', () => {
     expect(runtime.last.inbox.at(-1)).toContain('Bitte mit Kopfzeile.');
 
     runtime.last.call('ready_for_review', { summary: 'Mit Kopfzeile.' });
+    runtime.last.emit({ type: 'idle' });
     await workers.approve(c.id);
     expect(state(c.id)).toBe('live');
     expect(git(main, 'log', '--format=%s', '-1')).toBe('Export');
+    // the worker hears that its work is on main; its session ends with that turn
+    expect(runtime.last.inbox.at(-1)).toContain('is on main now');
+    expect(runtime.last.closed).toBe(false);
+    runtime.last.emit({ type: 'idle' });
     expect(runtime.last.closed).toBe(true);
     const d = manual();
     workers.start(d.id);
@@ -346,7 +352,7 @@ describe('handing over with a demo', () => {
   };
   const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, shown: ['Export'], not_shown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
 
-  test('the card waits with the demo; its files are found; feedback asks for a new render', () => {
+  test('the card waits with the demo; its files are found; feedback leaves the demo to the worker', () => {
     const c = manual();
     workers.start(c.id);
     const d = demoDir();
@@ -357,9 +363,43 @@ describe('handing over with a demo', () => {
     expect(board.demoDir(c.id)).toBe(d);
     workers.message(c.id, 'Bitte mit Kopfzeile.');
     expect(state(c.id)).toBe('working');
-    expect(runtime.last.inbox.at(-1)).toContain('render the demo again');
+    expect(runtime.last.inbox.at(-1)).toContain('your demo stays on it');
     // the demo stays with the card while it is reworked and after it is done
     expect(board.demoDir(c.id)).toBe(d);
+    expect(board.item(c.id)!.demo!.chapters).toHaveLength(2);
+  });
+
+  test('the question in the demo report is answered on the card; the demo still waits for approval', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
+    runtime.last.emit({ type: 'idle' });
+    expect(board.item(c.id)!.question).toEqual({ text: 'Semikolon oder Komma?', options: [] });
+    const n = runtime.last.inbox.length;
+    workers.answer(c.id, 'Semikolon.');
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.question).toBeUndefined();
+    expect(board.item(c.id)!.demo!.answer).toBe('Semikolon.');
+    expect(runtime.last.inbox.at(-1)).toContain('answered the question in your demo report');
+    expect(runtime.last.inbox.at(-1)).toContain('Semikolon.');
+    // the worker takes note and ends its turn: no nudge, the card keeps waiting
+    runtime.last.emit({ type: 'idle' });
+    expect(runtime.last.inbox).toHaveLength(n + 1);
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.decisions(null).at(-1)).toMatchObject({ question: 'Semikolon oder Komma?', answer: 'Semikolon.', by: 'owner' });
+    expect(() => workers.answer(c.id, 'Komma.')).toThrow(BadRequest);
+  });
+
+  test('after feedback, the worker may hand over again without a new demo: the one on the card stands', () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start' } });
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
+    workers.message(c.id, 'Nur den Text ändern.');
+    expect(runtime.last.call('ready_for_review', { summary: 'Text geändert.' })).toContain('End your turn');
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.summary).toBe('Text geändert.');
     expect(board.item(c.id)!.demo!.chapters).toHaveLength(2);
   });
 
@@ -422,9 +462,12 @@ describe('a worktree per card', () => {
     commitIn(wa, 'a.ts', 'A');
     commitIn(wb, 'b.ts', 'B');
     for (const c of [a, b]) {
-      runtime.sessions.find((s) => s.spec.cwd === board.row(c.id).workspace)!.call('ready_for_review', { summary: 'S' });
+      const session = runtime.sessions.find((s) => s.spec.cwd === board.row(c.id).workspace)!;
+      session.call('ready_for_review', { summary: 'S' });
+      session.emit({ type: 'idle' });
       await workers.approve(c.id);
       expect(state(c.id)).toBe('live');
+      session.emit({ type: 'idle' });
     }
     // B was rebased onto A before the fast-forward
     expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['B', 'A', 'init']);
@@ -548,6 +591,88 @@ describe('a worktree per card', () => {
     expect(git(main, 'log', '--format=%B', '-1')).toBe(`C draft\n\nC\n\n${trailer}`);
     expect(git(main, 'show', 'HEAD:same.ts')).toBe('main');
     expect(git(main, 'show', 'HEAD:c.ts')).toBe('C');
+  });
+
+  test('after landing, the worker finishes what remains in its worktree; then worktree and branch go', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const wc = board.row(c.id).workspace!;
+    const branch = board.row(c.id).branch!;
+    commitIn(wc, 'c.ts', 'C');
+    const s = runtime.last;
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(board.item(c.id)!.finishing).toBe(true);
+    expect(s.inbox.at(-1)).toContain('is on main now');
+    expect(s.inbox.at(-1)).not.toContain('after_restart');
+    // its worktree is still there, at what landed
+    expect(git(wc, 'rev-parse', 'HEAD')).toBe(git(main, 'rev-parse', 'HEAD'));
+    expect(s.call('ready_for_review', { summary: 'S' })).toContain('on main already');
+    // the owner can still reach it, and it works on
+    workers.message(c.id, 'Auch die alten Karten nachtragen.');
+    expect(s.inbox.at(-1)).toContain('Auch die alten Karten nachtragen.');
+    expect(s.call('after_restart', {})).toContain('does not start again');
+    s.emit({ type: 'tool', name: 'Bash', input: { command: 'bun scripts/backfill.ts' } });
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(board.item(c.id)!.finishing).toBeUndefined();
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
+    expect(git(main, 'branch', '--list', branch)).toBe('');
+  });
+
+  test('a worker whose remaining work needs the new code waits for the restart and goes on after it', async () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'worktrees' });
+    const restarting = (b: Board) =>
+      new Workers({ board: b, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, restartsFor: () => true });
+    workers = restarting(board);
+    const c = manual();
+    workers.start(c.id);
+    const wc = board.row(c.id).workspace!;
+    commitIn(wc, 'c.ts', 'C');
+    const s = runtime.last;
+    s.emit({ type: 'session', id: 'sess-1' });
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    expect(s.inbox.at(-1)).toContain('call after_restart');
+    expect(s.call('after_restart', {})).toContain('Recorded');
+    s.emit({ type: 'idle' });
+    // it waits, and is no reason to put off the restart
+    expect(s.closed).toBe(false);
+    expect(workers.busy()).toBe(false);
+    expect(board.item(c.id)!.finishing).toBe(true);
+
+    // Obeya starts again: the worker resumes its session in the worktree it had
+    workers.shutdown();
+    const after = restarting(new Board(store, board.canvas, () => [doc]));
+    after.resumeAll();
+    const resumed = runtime.last;
+    expect(resumed).not.toBe(s);
+    expect(resumed.spec.resume).toBe('sess-1');
+    expect(resumed.spec.cwd).toBe(wc);
+    expect(resumed.inbox[0]).toContain('runs main with your change now');
+    resumed.emit({ type: 'idle' });
+    expect(resumed.closed).toBe(true);
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(board.row(c.id).landed).toBeNull();
+  });
+
+  test('stopping a worker that finishes after the landing frees its worktree; the card stays live', async () => {
+    const c = manual();
+    workers.start(c.id);
+    commitIn(board.row(c.id).workspace!, 'c.ts', 'C');
+    runtime.last.call('ready_for_review', { summary: 'S' });
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    workers.stop(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(runtime.last.closed).toBe(true);
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
   });
 
   test('a stopped card keeps its worktree and picks it up again', () => {
