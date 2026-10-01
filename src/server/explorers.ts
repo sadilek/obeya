@@ -1,6 +1,8 @@
 // Exploration agents: one read-only session per idea, resumed for every message, even days later.
 // The owner and the agent talk on the card; the agent keeps the idea's brief, which is what
-// remains of the conversation: whoever opens the card later reads the brief, not the talk.
+// remains of the conversation: whoever opens the card later reads the brief, not the talk. The
+// brief holds the substance and the replies only the turns, so the two never say the same; how
+// the agent got to a reply (what it read and thought) folds away under that reply.
 
 import { basename } from 'node:path';
 import { z } from 'zod';
@@ -119,6 +121,8 @@ export class Explorers {
         break;
       case 'text':
         live.lastText = e.text;
+        // what it thinks on the way to its reply; words after the reply only close the turn
+        if (!live.replied && e.text.trim()) this.o.board.log(cardId, 'say', 'explorer', clip(e.text.trim(), 4000));
         break;
       case 'tool':
         // its own tools show in the conversation and the brief, not as reading
@@ -159,7 +163,7 @@ export class Explorers {
     return current([
       {
         name: 'reply',
-        description: `Your reply to the owner, shown on the card (markdown, in ${OWNER_LANGUAGE}). spoken: one or two short sentences in ${OWNER_LANGUAGE} that sum it up for the ear. Call it once per message, then end your turn.`,
+        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. Call it once per message, then end your turn.`,
         schema: { text: z.string(), spoken: z.string() },
         run: ({ text, spoken }) => {
           if (live.replied) return 'Already replied. End your turn now.';
@@ -176,6 +180,7 @@ export class Explorers {
         schema: { brief: z.string() },
         run: ({ brief }) => {
           this.o.board.setIdea(cardId, { brief: clip(String(brief).trim(), 20000) });
+          this.o.board.log(cardId, 'activity', 'explorer', 'Aktualisiert den Stand der Idee');
           return 'Brief updated.';
         },
       },
@@ -215,16 +220,19 @@ You are the exploration agent of one idea on Obeya, a canvas on which the owner 
 
 You can only read: the code, the plan docs (docs/plan.md and the plan directory), and what the messages give you (decisions taken so far, the owner's preferences). You cannot change files, and nothing you do starts work.
 
-How to talk:
-- Ask what you need to know, one or two questions at a time.
-- Show variants with their trade-offs, and say what each would cost: what it touches, roughly how much agent work, the risks.
-- Ground what you say in the code and the plan; say when you are guessing.
-- Be brief. The owner reads your reply on the card and hears only a short spoken summary.
+The card shows the brief ("Stand der Idee") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
+
+How to work:
+- Put what you find and propose into the brief, not into your reply: what the code does today, variants with their trade-offs and what each would cost (what it touches, roughly how much agent work, the risks), decisions, open questions, effort.
+- Ground it in the code and the plan; say when you are guessing.
+- Ask what you need to know, one or two questions at a time, under **Offene Fragen** in the brief, numbered, so the owner can answer by number.
+- Your reply is your turn in the conversation, a few sentences at most: react to what the owner said, name in a few words what changed in the brief ("Varianten A bis C ergänzt", not the variants again), and say what you need from them next by pointing to the open questions ("Zwei offene Fragen, siehe Stand"), without repeating them. Only what has no place in the brief (an explanation the owner asked for, a remark on the side) is said in the reply itself.
+- Do not confirm recorded decisions one by one; the brief shows them.
 
 Tools, within a turn in this order:
 - record_decision: when the owner decided something in the message. General preferences (how they like to work) are not decisions; Obeya learns those on its own.
-- update_brief: keep the brief ("Stand der Idee") current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
-- reply, last: your answer to the message, and spoken, its summary for the ear. Exactly once per message, then end your turn.
+- update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Ist-Stand** (what the code does today, when it matters), **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
+- reply, last: your turn in the conversation, and spoken, its summary for the ear. Exactly once per message, then end your turn.
 
 The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype (spike) built, park it or drop it. You may suggest one of these when the time has come.
 Owner-facing text is in ${OWNER_LANGUAGE}.

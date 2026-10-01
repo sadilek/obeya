@@ -178,6 +178,7 @@ export const t = {
     talk: 'Gespräch',
     talkEmpty: 'Erzähl, worum es geht. Der Explorations-Agent liest Code und Pläne mit, fragt nach und zeigt Varianten.',
     thinking: 'denkt nach …',
+    steps: (n: number) => `Verlauf: ${n} ${n === 1 ? 'Schritt' : 'Schritte'}`,
     compose: 'Frag nach, widersprich, entscheide – oder halte die Leertaste',
     build: 'So bauen',
     planDoc: 'Als Projekt planen',

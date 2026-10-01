@@ -84,6 +84,25 @@ describe('an idea', () => {
     expect(spoken).toEqual([]);
   });
 
+  test('keeps what its agent read and thought on the way to a reply, but not its words after it', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Was meinst du?' });
+    const s = explorer();
+    s.emit({ type: 'tool', name: 'Read', input: { file_path: '/repo/src/server/board.ts' } });
+    s.emit({ type: 'text', text: 'Das Archiv nimmt keine Projekte auf.' });
+    s.call('update_brief', { brief: '**Ziel:** Archiv für Projekte.' });
+    s.emit({ type: 'tool', name: 'mcp__obeya__update_brief', input: {} });
+    s.call('reply', { text: 'Ziel und Ist-Stand stehen im Stand. Eine offene Frage.', spoken: '' });
+    s.emit({ type: 'text', text: 'Fertig.' });
+    s.emit({ type: 'idle' });
+    expect(board().events(i.id).filter((e) => e.author === 'explorer').map((e) => [e.kind, e.text])).toEqual([
+      ['activity', 'Liest server/board.ts'],
+      ['say', 'Das Archiv nimmt keine Projekte auf.'],
+      ['activity', 'Aktualisiert den Stand der Idee'],
+      ['talk', 'Ziel und Ist-Stand stehen im Stand. Eine offene Frage.'],
+    ]);
+  });
+
   test('its conversation goes on in the same session, and what the owner says during a turn waits for it', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });

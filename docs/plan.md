@@ -62,12 +62,15 @@ An idea is thought through on its card before anything is planned; no worker run
    docs, the decision log, the preferences) resumed for every message, days later too. It asks
    back, shows variants with their trade-offs and says what they would cost. The owner types in the
    panel or holds Space with the idea open; the reply stands in the panel, and only its short
-   summary is spoken, when the owner spoke. Once the agent has replied, the open idea needs the
+   summary is spoken, when the owner spoke. What the agent read and thought on the way to a reply
+   folds away under that reply ("Verlauf"), for whoever wants to follow it. Once the agent has replied, the open idea needs the
    owner like a waiting card ("Idee · du bist dran", badge, counted in "brauchen dich") until they
    answer, park, drop or decide it.
 3. The agent keeps the brief ("Stand der Idee") on top of the card: goal, open and dropped
    variants, decisions, open questions, effort. The conversation is the means, the brief the
-   result: whoever opens the card later reads the brief.
+   result: whoever opens the card later reads the brief. The two stand side by side and never say
+   the same: findings, variants and questions go into the brief, and a reply only carries the
+   turn (what changed in the brief, which open question is next).
 4. A spike, when talking is not enough: a worker builds a throwaway prototype in its own workspace
    and records a demo, which shows on the idea; the exploration agent hears what it found. The
    spike never lands and does not count for collisions; approving it discards workspace and branch.

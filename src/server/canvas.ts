@@ -311,7 +311,7 @@ export class CanvasRuntime {
     if (!idea) return;
     if (demo) this.board.work(idea.id, { demo });
     this.board.log(idea.id, 'state', 'worker', `Spike „${spike.title}“ fertig${demo ? '; die Demo liegt auf dieser Karte' : ''}.`);
-    if (idea.state === 'idea') this.explorers.tell(idea.id, `A worker built a throwaway prototype (spike) for this idea. Its summary:\n\n${summary}\n\nTake what it showed into the brief, then reply to the owner briefly with what it means for the idea.`);
+    if (idea.state === 'idea') this.explorers.tell(idea.id, `A worker built a throwaway prototype (spike) for this idea. Its summary:\n\n${summary}\n\nTake what it showed and what it means for the idea into the brief, then reply to the owner in a sentence or two.`);
   }
 
   private ideaCard(cardId: string): Item {
