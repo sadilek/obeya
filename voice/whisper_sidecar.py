@@ -1,14 +1,20 @@
 """Whisper (MLX) transcription for Obeya, one process that keeps the model loaded.
 
 Reads JSON lines on stdin: {"id": ..., "path": "<audio file>", "prompt": "<vocabulary>"}.
-Writes JSON lines on stdout: {"id": ..., "text": "..."} or {"id": ..., "error": "..."}.
+Writes JSON lines on stdout: {"id": ..., "text": "...", "doubtful": bool} or {"id": ..., "error": "..."}.
 Audio is decoded by ffmpeg, so any format the browser records (webm/opus, wav) works. The model is
 loaded at start, before "ready". Each recording's length and level go to stderr (the server's log), so
 a transcript that went wrong can be told from a recording without audible speech. A recording whose
 peak stays below QUIET_DBFS, or that holds no audio at all, gives an empty text without Whisper.
+
+Whisper decodes once, at temperature 0. By default it decodes again at five higher temperatures when
+a decode looks failed (a loop, or too unsure of its words); on a recording without speech each of
+them looped as well, which took 3 to 6 seconds. "doubtful" is that same test, so the server can try
+once more without the card titles instead.
 """
 
 import json
+import math
 import os
 import sys
 
@@ -20,11 +26,13 @@ MODEL = os.environ.get("OBEYA_WHISPER_MODEL", "mlx-community/whisper-large-v3-tu
 # below this peak a working microphone delivers nothing, not even room noise (about -40 to -55 dBFS on
 # the AT2020USB+), while speech peaks far above it: the recording is not transcribed, it has nothing to hear
 QUIET_DBFS = -60
+# Whisper's own thresholds for a failed decode (its defaults for compression_ratio_threshold and logprob_threshold)
+LOOPING, UNSURE = 2.4, -1.0
 
 
 def main() -> None:
     # load the model and warm it up on a second of silence, so the first recording is as quick as the rest
-    mlx_whisper.transcribe(np.zeros(16000, dtype=np.float32), path_or_hf_repo=MODEL, language="de")
+    mlx_whisper.transcribe(np.zeros(16000, dtype=np.float32), path_or_hf_repo=MODEL, language="de", temperature=0.0)
     print(json.dumps({"ready": True}), flush=True)
     for line in sys.stdin:
         if not line.strip():
@@ -44,7 +52,7 @@ def main() -> None:
                   f"rms {dbfs(np.sqrt(np.mean(audio ** 2)) if len(audio) else 0)}"
                   f"{'; too quiet to transcribe' if quiet else ''}", file=sys.stderr, flush=True)
             if quiet:
-                print(json.dumps({"id": job["id"], "text": ""}), flush=True)
+                print(json.dumps({"id": job["id"], "text": "", "doubtful": False}), flush=True)
                 continue
             result = mlx_whisper.transcribe(
                 audio,
@@ -52,11 +60,19 @@ def main() -> None:
                 language="de",
                 initial_prompt=job.get("prompt") or None,
                 condition_on_previous_text=False,
+                temperature=0.0,
             )
-            text = " ".join(s["text"].strip() for s in result.get("segments", [])) or result.get("text", "").strip()
-            print(json.dumps({"id": job["id"], "text": text.strip()}), flush=True)
+            segments = result.get("segments", [])
+            text = " ".join(s["text"].strip() for s in segments) or result.get("text", "").strip()
+            print(json.dumps({"id": job["id"], "text": text.strip(), "doubtful": any(map(doubtful, segments))}), flush=True)
         except Exception as e:  # one bad recording must not take the sidecar down
             print(json.dumps({"id": job["id"], "error": str(e)}), flush=True)
+
+
+def doubtful(segment: dict) -> bool:
+    """A decode Whisper would have tried again at a higher temperature (NaN: it wrote no words, only a mark)."""
+    logprob = segment.get("avg_logprob", 0.0)
+    return segment.get("compression_ratio", 0.0) > LOOPING or not math.isfinite(logprob) or logprob < UNSURE
 
 
 def dbfs(x: float) -> str:

@@ -5,8 +5,14 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+/** `doubtful`: Whisper itself counts the decode as failed (a loop, or too unsure of its words). */
+export interface Transcript {
+  text: string;
+  doubtful: boolean;
+}
+
 export interface Transcriber {
-  transcribe(audioPath: string, vocabulary: string): Promise<string>;
+  transcribe(audioPath: string, vocabulary: string): Promise<Transcript>;
   /** Gets ready for the next recording (the owner started speaking). */
   warm?(): void;
 }
@@ -102,9 +108,9 @@ export class WhisperSidecar implements Transcriber {
     this.sidecar.ensure();
   }
 
-  async transcribe(audioPath: string, vocabulary: string): Promise<string> {
-    const { text } = await this.sidecar.request({ path: audioPath, prompt: vocabulary });
-    return typeof text === 'string' ? text : '';
+  async transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
+    const { text, doubtful } = await this.sidecar.request({ path: audioPath, prompt: vocabulary });
+    return { text: typeof text === 'string' ? text : '', doubtful: doubtful === true };
   }
 
   stop() {

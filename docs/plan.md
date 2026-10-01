@@ -236,12 +236,15 @@ the owner's language (`src/core/locale.ts`).
   loaded and transcribes in German with the canvas's titles as vocabulary
   (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). On a recording without audible speech
   (silence, noise, a mic that has not started) the titles as prompt talk Whisper into a loop
-  („Fall Fall Fall …“) at every temperature, or into its words for silence („Untertitelung des
+  („Fall Fall Fall …“), a guess („www.pap.com“, „!“) or its words for silence („Untertitelung des
   ZDF“), as its no-speech probability stays at 0; with speech in it, even quiet, noisy or short,
-  it transcribes correctly. A transcript with one word or phrase six times in a row is
-  transcribed once more without the titles. Words for silence, then or at once, give „Ich habe
-  nichts gehört.“, a second loop „Das habe ich nicht verstanden.“; the Koordinator gets neither
-  to guess from. The log has each recording's length and level next to the transcript. A
+  it transcribes correctly and sure of its words. Whisper decodes once, at temperature 0: its
+  fallback through five higher temperatures looped there as well and took 3 to 6 seconds. A
+  transcript with one word or phrase six times in a row, or one Whisper itself counts as failed
+  (the test its fallback used: a loop, or too unsure of its words), is transcribed once more
+  without the titles, about 0.4 s. Words for silence, then or at once, give „Ich habe nichts
+  gehört.“, a second loop or failure „Das habe ich nicht verstanden.“; the Koordinator gets
+  neither to guess from. The log has each recording's length and level next to the transcript. A
   recording whose peak stays below -60 dBFS (a microphone that delivers nothing; room noise is
   about -40 to -55, speech far above), or that holds no audio frame at all, is „Ich habe nichts gehört.“ without Whisper. While the
   owner holds the key, a level that stays that flat for 1.5 s shows „Das Mikrofon liefert keinen

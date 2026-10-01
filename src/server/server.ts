@@ -70,15 +70,17 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     const file = join(dir, 'speech.webm');
     try {
       await Bun.write(file, await req.arrayBuffer());
-      const text = (await transcriber.transcribe(file, c.commander.vocabulary())).trim();
+      const first = await transcriber.transcribe(file, c.commander.vocabulary());
+      const text = first.text.trim();
       if (silence(text)) return console.log(`whisper on ${c.id}: ${text}`), '';
-      if (!looping(text)) return text;
-      // the card titles talk Whisper into loops on a recording without speech: once more without them
-      console.log(`whisper looped on ${c.id}: ${text.slice(0, 80)}…; once more without the card titles`);
-      const again = (await transcriber.transcribe(file, '')).trim();
-      if (!looping(again) && !silence(again)) return again;
-      console.log(`whisper on ${c.id} without the card titles: ${again.slice(0, 80)}`);
-      return silence(again) ? '' : null;
+      if (!looping(text) && !first.doubtful) return text;
+      // the card titles talk Whisper into loops or guesses on a recording without speech: once more without them
+      console.log(`whisper ${looping(text) ? 'looped' : 'was unsure'} on ${c.id}: ${text.slice(0, 80)}; once more without the card titles`);
+      const again = await transcriber.transcribe(file, '');
+      const second = again.text.trim();
+      if (!looping(second) && !again.doubtful && !silence(second)) return second;
+      console.log(`whisper on ${c.id} without the card titles${again.doubtful ? ', unsure' : ''}: ${second.slice(0, 80)}`);
+      return silence(second) ? '' : null;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
