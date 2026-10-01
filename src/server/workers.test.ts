@@ -200,6 +200,34 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toBe('Ich warte auf den Server.');
   });
 
+  test('a worker that asks while its background work runs counts as busy until the work wakes it', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 });
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'Soll das Video Ton haben?' });
+    runtime.last.emit({ type: 'idle', background: 1 });
+    // the question reaches the owner at once, but a restart now would cut the render off
+    expect(state(c.id)).toBe('waiting:question');
+    expect(workers.busy()).toBe(true);
+    await Bun.sleep(20);
+    // a watcher nobody stopped does not keep a restart away for good
+    expect(workers.busy()).toBe(false);
+    expect(state(c.id)).toBe('waiting:question');
+  });
+
+  test('a note to a worker waiting for its background work starts a turn of its own', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 });
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'idle', background: 1 });
+    const before = runtime.last.inbox.length;
+    workers.message(c.id, 'Nimm die dunkle Variante.');
+    await Bun.sleep(20);
+    // the wait ended with the note, not with a nudge in the middle of the note's turn
+    expect(runtime.last.inbox.length).toBe(before + 1);
+    expect(workers.busy()).toBe(true);
+  });
+
   test('a worker that stopped and then works on by itself takes its question back', () => {
     const c = manual();
     workers.start(c.id);
