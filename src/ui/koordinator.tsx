@@ -112,8 +112,7 @@ function Conversation({ talk }: { talk: Talk[] }) {
             </div>
           )}
           {x.answer !== undefined && (
-            <div className={`ev ev-say by-${x.answerBy ?? 'koordinator'}`}>
-              <span className="t later">{time(x.at)}</span>
+            <div className={`ev ev-say answer by-${x.answerBy ?? 'koordinator'}`}>
               <span className="who">{t.author[x.answerBy ?? 'koordinator']}</span>
               <span className="x">
                 <Inline md={x.answer} />
