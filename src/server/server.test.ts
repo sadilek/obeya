@@ -16,6 +16,8 @@ let board: Board;
 let runtime: FakeRuntime;
 let executed: Command[];
 let heardAudio: string[];
+/** What the fake Whisper writes, given the vocabulary it was prompted with. */
+let whisper: (vocabulary: string) => string;
 let server: ReturnType<typeof serve>;
 let canvas: CanvasRuntime;
 let warmed: number;
@@ -39,9 +41,10 @@ beforeEach(() => {
   board = canvas.board;
   executed = [];
   heardAudio = [];
+  whisper = () => 'Neue Karte Export';
   canvas.run = (c) => void executed.push(c);
   warmed = 0;
-  const transcriber = { transcribe: async (path: string) => (heardAudio.push(await Bun.file(path).text()), 'Neue Karte Export'), warm: () => void warmed++ };
+  const transcriber = { transcribe: async (path: string, vocabulary: string) => (heardAudio.push(await Bun.file(path).text()), whisper(vocabulary)), warm: () => void warmed++ };
   server = serve([canvas], { transcriber, speaker }, 0);
 });
 afterEach(() => {
@@ -157,6 +160,38 @@ describe('voice', () => {
     await until(() => executed.length);
     expect(executed).toEqual([{ do: 'newCard', kind: 'feature', title: 'Export', body: 'CSV', start: true }]);
   });
+
+  test('a recording Whisper loops on is transcribed once more without the card titles', async () => {
+    board.create({ kind: 'feature', title: 'Export für Vermieter', x: 0, y: 0 });
+    const prompts: string[] = [];
+    whisper = (vocabulary) => (prompts.push(vocabulary), vocabulary ? 'Fall '.repeat(40) : 'Starte Export');
+    const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
+    await settle();
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain('Export für Vermieter');
+    expect(prompts[1]).toBe('');
+    expect(heardAudio).toEqual(['AUDIO', 'AUDIO']);
+    const s = interpretation();
+    expect(s.inbox[0]).toContain('"Starte Export"');
+    expect(s.inbox[0]).not.toContain('Fall Fall');
+    s.call('act', { actions: [], confirm: 'Ok.' });
+    s.emit({ type: 'idle' });
+    await res;
+  });
+
+  for (const [what, again] of [
+    ['loops again', 'PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE'],
+    ['finds only silence', 'Vielen Dank.'],
+  ]) {
+    test(`a recording that Whisper ${what} without the card titles is not understood, and the Koordinator does not guess`, async () => {
+      whisper = (vocabulary) => (vocabulary ? 'lächpt '.repeat(30) : again!);
+      const body = (await (await fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { confirm: string; token?: string; audio?: string };
+      expect(body.confirm).toBe('Das habe ich nicht verstanden.');
+      expect(body.token).toBeUndefined();
+      expect(await (await fetch(new URL(body.audio!, server.url))).text()).toBe('WAV Das habe ich nicht verstanden.');
+      expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+    });
+  }
 
   test('typed commands name cards by tag; undo takes one back before it runs', async () => {
     const c = card();

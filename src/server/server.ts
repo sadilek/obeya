@@ -10,7 +10,7 @@ import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
 import type { Focus, Heard } from './commands';
 import { serveDemoFile } from './demo';
-import type { Speaker, Transcriber } from './voice';
+import { looping, silence, type Speaker, type Transcriber } from './voice';
 
 type Req = Request & { params: Record<string, string> };
 
@@ -69,15 +69,24 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     const file = join(dir, 'speech.webm');
     try {
       await Bun.write(file, await req.arrayBuffer());
-      return (await transcriber.transcribe(file, c.commander.vocabulary())).trim();
+      const text = (await transcriber.transcribe(file, c.commander.vocabulary())).trim();
+      if (!looping(text)) return text;
+      // the card titles talk Whisper into loops on a quiet recording: once more without them
+      console.log(`whisper looped on ${c.id}: ${text.slice(0, 80)}…; once more without the card titles`);
+      const again = (await transcriber.transcribe(file, '')).trim();
+      if (!looping(again) && !silence(again)) return again;
+      console.log(`whisper on ${c.id} without the card titles: ${again.slice(0, 80)}`);
+      return null;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   };
-  const heard = async (c: CanvasRuntime, text: string, focus: Focus, images: string[] = []) => {
+  /** `null`: Whisper heard nothing it could write down, which the Koordinator should not guess from. */
+  const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = []) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
-    console.log(`heard on ${c.id}: ${text || '(nothing)'}`);
-    const h: Heard = text ? await c.commander.hear(text, focus, images) : { confirm: 'Ich habe nichts gehört.' };
+    console.log(`heard on ${c.id}: ${text ?? '(not understood)'}`);
+    const h: Heard =
+      text === null ? { confirm: 'Das habe ich nicht verstanden.' } : text ? await c.commander.hear(text, focus, images) : { confirm: 'Ich habe nichts gehört.' };
     // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
     if (h.quiet) return h;
