@@ -224,7 +224,9 @@ export class CanvasRuntime {
       case 'approve':
         return this.repoOf(cardId).workers.approve(cardId);
       case 'accept':
-        return this.board.accept(cardId);
+        // accepting a proposal is the owner's go: the card goes to the Koordinator like a started one
+        this.board.accept(cardId);
+        return this.koordinator.request(cardId);
       case 'dismiss':
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return this.board.remove(cardId);

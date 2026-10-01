@@ -35,7 +35,7 @@ decisions are made in front of the wall.
 - **Cards** — `bugfix`, `feature`, `project`. A project is a container backed by a plan doc; its
   workstreams are its child cards.
 - **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) →
-  `approved` → `in PR` → `live`; an agent's `proposal` becomes `planned` when accepted. An
+  `approved` → `in PR` → `live`; an agent's `proposal` is started when accepted. An
   adapter that does not require demos lets a worker hand over with a written summary alone:
   `waiting: review`. An idea is `open`, `parked` or `dropped`.
 - **Agents**
@@ -86,8 +86,8 @@ An idea is thought through on its card before anything is planned; no worker run
 
 ## Card lifecycle
 
-1. A card is created by the owner (voice or canvas) or proposed by an agent; a proposal becomes
-   `planned` when accepted.
+1. A card is created by the owner (voice or canvas) or proposed by an agent; accepting a
+   proposal starts it (it goes to the Koordinator like a started `planned` card).
 2. `working`: the worker leases a workspace, implements, runs the local reviews the repo adapter
    names, and records the demo.
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback

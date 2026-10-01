@@ -94,6 +94,16 @@ describe('a canvas with several repositories', () => {
     expect(item(c.id).queue).toMatchObject({ behind: [a.id] });
   });
 
+  test('accepting a proposal starts it', async () => {
+    const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0 });
+    const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    canvas.act(p.id, { action: 'accept' });
+    expect(item(p.id)).toMatchObject({ state: 'planned', queue: { checking: true } });
+    await settle();
+    expect(item(p.id).state).toBe('working');
+    expect(() => canvas.act(p.id, { action: 'accept' })).toThrow();
+  });
+
   test('proposals keep the repository of the card they came from', () => {
     const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0, repo: 'api' });
     const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });
