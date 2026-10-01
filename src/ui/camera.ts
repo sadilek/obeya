@@ -37,6 +37,51 @@ export function centreOn(b: Bounds, s: number): Cam {
   return { s, x: innerWidth / 2 - (b.x + b.w / 2) * s, y: TOP + (innerHeight - TOP) / 2 - (b.y + b.h / 2) * s };
 }
 
+/** How near an edge of the view, in screen pixels, a dragged card starts it scrolling. */
+export const EDGE_ZONE = 60;
+/** Screen pixels per second at the very edge; it slows towards the inner side of the zone. */
+const EDGE_SPEED = 1200;
+/** World room kept beside the content for the dragged card, beyond its own size. */
+export const DROP_ROOM = 40;
+
+/** A rectangle of the screen, in pixels. */
+export interface View {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** How far the view may scroll while `card` is dragged: the rest of the content plus room to drop it beside. */
+export const dragLimit = (content: Bounds, card: { w: number; h: number }): Bounds => ({
+  x: content.x - card.w - DROP_ROOM,
+  y: content.y - card.h - DROP_ROOM,
+  w: content.w + 2 * (card.w + DROP_ROOM),
+  h: content.h + 2 * (card.h + DROP_ROOM),
+});
+
+/**
+ * The camera after `ms` of scrolling while a card is dragged to an edge of `view`. It scrolls
+ * faster the nearer the pointer is to the edge, only towards an edge the pointer moved towards
+ * since `from` (a card picked up near an edge does not run off), and shows no more of the world
+ * than `limit`. A view already beyond the limit stays where it is rather than jump back.
+ */
+export function edgeScroll(cam: Cam, pointer: { x: number; y: number }, from: { x: number; y: number }, view: View, limit: Bounds, ms: number): Cam {
+  const step = (EDGE_SPEED * ms) / 1000;
+  const near = (d: number) => Math.min(1, Math.max(0, (EDGE_ZONE - d) / EDGE_ZONE)) ** 2;
+  const axis = (c: number, p: number, p0: number, lo: number, hi: number, wlo: number, whi: number) => {
+    // towards the low edge the world moves forward, until its low limit reaches the edge
+    if (p < p0) return Math.min(c + step * near(p - lo), Math.max(c, lo - wlo * cam.s));
+    if (p > p0) return Math.max(c - step * near(hi - p), Math.min(c, hi - whi * cam.s));
+    return c;
+  };
+  return {
+    s: cam.s,
+    x: axis(cam.x, pointer.x, from.x, view.left, view.right, limit.x, limit.x + limit.w),
+    y: axis(cam.y, pointer.y, from.y, view.top, view.bottom, limit.y, limit.y + limit.h),
+  };
+}
+
 let frame = 0;
 let settle: (() => void) | null = null;
 

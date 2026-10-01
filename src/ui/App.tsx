@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import type { CanvasInfo, CanvasSnapshot, CardPatch, Item, PendingRestart } from '../core/types';
 import { api, ApiError, onSpeak, setCanvas, useCanvas } from './api';
-import { type Cam, camFor, centreOn, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, toWorld } from './camera';
+import { type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flyTo, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
@@ -468,9 +468,15 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
   // ---------------------------------------------------------------- pointer: pan, drag, click
   const viewportRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<{ x: number; y: number; cam: Cam } | null>(null);
-  const dragRef = useRef<{ id: string; x: number; y: number; start: Pos; moved: boolean } | null>(null);
+  // a dragged card follows the world point it was picked up at, also while the view scrolls under it
+  type Drag = { id: string; x: number; y: number; px: number; py: number; grab: Pos; start: Pos; limit: Bounds; moved: boolean; frame: number; last: number };
+  const dragRef = useRef<Drag | null>(null);
   const [panning, setPanning] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  // the strip on the right a sheet covers, which neither edge indicators nor dragging count as view
+  const reserve = focus || kOn || aOn || cOn ? (reading && focus?.type === 'project' ? readingWidth() + 30 : SHEET_W) : 0;
+  const reserveRef = useRef(reserve);
+  reserveRef.current = reserve;
 
   function onPointerDown(e: React.PointerEvent) {
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
@@ -480,7 +486,12 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
     if (el && (!el.classList.contains('project') || (e.target as Element).closest('.head'))) {
       const i = byId(el.dataset.id!);
       if (!i) return;
-      dragRef.current = { id: i.id, x: e.clientX, y: e.clientY, start: { x: i.x, y: i.y }, moved: false };
+      // the view scrolls as far as the rest of the canvas reaches, plus room to drop the card beside it
+      const rest = itemsRef.current.filter((x) => x.id !== i.id);
+      const b = bounds(i);
+      const content = unionBounds(rest.map((x) => boundsOf(x, rest))) ?? b;
+      const grab = toWorld(camRef.current, e.clientX, e.clientY);
+      dragRef.current = { id: i.id, x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, grab, start: { x: i.x, y: i.y }, limit: dragLimit(content, b), moved: false, frame: 0, last: 0 };
     } else {
       panRef.current = { x: e.clientX, y: e.clientY, cam: camRef.current };
       setPanning(true);
@@ -488,20 +499,43 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
     viewportRef.current!.setPointerCapture(e.pointerId);
   }
 
+  /** Puts the dragged card under the pointer. */
+  function place(d: Drag) {
+    const w = toWorld(camRef.current, d.px, d.py);
+    let p = { x: Math.round(d.start.x + w.x - d.grab.x), y: Math.round(d.start.y + w.y - d.grab.y) };
+    // workstreams stay inside their project
+    if (byId(d.id)?.parent) p = { x: Math.max(PROJECT_PAD, p.x), y: Math.max(PROJECT_HEAD, p.y) };
+    setMoved((m) => ({ ...m, [d.id]: p }));
+  }
+
+  /** While a card is dragged, scrolls the view when the pointer is near an edge. */
+  function edgeTick(now: number) {
+    const d = dragRef.current;
+    if (!d) return;
+    const ms = d.last ? Math.min(50, now - d.last) : 0;
+    d.last = now;
+    const c = camRef.current;
+    const view = { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight };
+    const next = edgeScroll(c, { x: d.px, y: d.py }, { x: d.x, y: d.y }, view, d.limit, ms);
+    if (next.x !== c.x || next.y !== c.y) {
+      setCam(next);
+      place(d);
+    }
+    d.frame = requestAnimationFrame(edgeTick);
+  }
+
   function onPointerMove(e: React.PointerEvent) {
     const d = dragRef.current;
-    const s = camRef.current.s;
     if (d) {
-      const dx = (e.clientX - d.x) / s;
-      const dy = (e.clientY - d.y) / s;
-      if (!d.moved && Math.hypot(dx * s, dy * s) < 5) return;
-      if (!d.moved) setDragId(d.id);
-      d.moved = true;
-      const i = byId(d.id);
-      let p = { x: Math.round(d.start.x + dx), y: Math.round(d.start.y + dy) };
-      // workstreams stay inside their project
-      if (i?.parent) p = { x: Math.max(PROJECT_PAD, p.x), y: Math.max(PROJECT_HEAD, p.y) };
-      setMoved((m) => ({ ...m, [d.id]: p }));
+      d.px = e.clientX;
+      d.py = e.clientY;
+      if (!d.moved && Math.hypot(d.px - d.x, d.py - d.y) < 5) return;
+      if (!d.moved) {
+        setDragId(d.id);
+        d.moved = true;
+        d.frame = requestAnimationFrame(edgeTick);
+      }
+      place(d);
       return;
     }
     const p = panRef.current;
@@ -511,6 +545,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
   function onPointerUp() {
     const d = dragRef.current;
     if (d) {
+      cancelAnimationFrame(d.frame);
       dragRef.current = null;
       setDragId(null);
       const i = byId(d.id);
@@ -646,7 +681,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
         </div>
       </div>
       {!items.length && <div className="empty">{t.empty}</div>}
-      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn || aOn || cOn ? (reading && focus?.type === 'project' ? readingWidth() + 30 : SHEET_W) : 0} onOpen={open} />}
+      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={reserve} onOpen={open} />}
       <header id="bar">
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} />
         {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
