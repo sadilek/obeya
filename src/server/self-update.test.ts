@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ownCheckout, watchOwnCode, whenIdle } from './self-update';
+import { gitRepo } from './testing';
 import { git } from './workspaces';
 
 let repo: string;
@@ -19,10 +20,7 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), 'obeya-self-'));
-  git(repo, 'init', '--quiet', '-b', 'main');
-  git(repo, 'config', 'user.email', 't@example.com');
-  git(repo, 'config', 'user.name', 'T');
-  commit('src/a.ts', 'a');
+  gitRepo(repo, { 'src/a.ts': 'a' });
 });
 
 afterEach(() => {

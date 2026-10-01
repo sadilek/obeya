@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { MIGRATIONS, Store } from './db';
-import { FakeRuntime, type FakeSession } from './testing';
+import { FakeRuntime, type FakeSession, gitRepo } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -20,13 +20,8 @@ const open = () =>
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-ideas-'));
   main = join(dir, 'main');
+  gitRepo(main);
   mkdirSync(join(main, 'docs/plan'), { recursive: true });
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', main]);
-  git(main, 'config', 'user.email', 't@example.com');
-  git(main, 'config', 'user.name', 'T');
-  writeFileSync(join(main, 'README.md'), 'hello\n');
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', 'init');
   store = new Store(':memory:');
   runtime = new FakeRuntime();
   canvas = open();

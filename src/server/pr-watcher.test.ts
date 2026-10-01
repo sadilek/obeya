@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -7,9 +7,9 @@ import { Board } from './board';
 import { Store } from './db';
 import type { Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { FakeRuntime } from './testing';
+import { FakeRuntime, gitRepo } from './testing';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { Workspaces } from './workspaces';
 
 let dir: string;
 let board: Board;
@@ -22,12 +22,7 @@ const URL_ = 'https://github.com/acme/app/pull/42';
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-pr-'));
   const main = join(dir, 'main');
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', main]);
-  git(main, 'config', 'user.email', 't@example.com');
-  git(main, 'config', 'user.name', 'T');
-  writeFileSync(join(main, 'README.md'), 'hello\n');
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', 'init');
+  gitRepo(main);
   const store = new Store(':memory:');
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => []);
   const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });

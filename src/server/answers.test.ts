@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import type { Focus } from './commands';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession } from './testing';
-import { git } from './workspaces';
+import { FakeRuntime, type FakeSession, gitRepo } from './testing';
 
 let dir: string;
 let main: string;
@@ -24,13 +23,7 @@ const open = () => {
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-answers-'));
   main = join(dir, 'main');
-  mkdirSync(join(main, 'docs/plan'), { recursive: true });
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', main]);
-  git(main, 'config', 'user.email', 't@example.com');
-  git(main, 'config', 'user.name', 'T');
-  writeFileSync(join(main, 'docs/plan/pr-loop.md'), '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live auf OKE. Mit dem Go des Owners.\n');
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', 'init');
+  gitRepo(main, { 'docs/plan/pr-loop.md': '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live auf OKE. Mit dem Go des Owners.\n' });
   store = new Store(':memory:');
   runtime = new FakeRuntime();
   spoken = [];

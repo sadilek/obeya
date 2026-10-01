@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
-import { FakeRuntime } from './testing';
+import { FakeRuntime, gitRepo } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -13,15 +13,7 @@ let canvas: CanvasRuntime;
 
 /** A repository with one plan doc (same path in both). */
 function repo(name: string, title: string) {
-  const path = join(dir, name);
-  mkdirSync(join(path, 'docs/plan'), { recursive: true });
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', path]);
-  git(path, 'config', 'user.email', 't@example.com');
-  git(path, 'config', 'user.name', 'T');
-  writeFileSync(join(path, 'docs/plan/plan.md'), `# ${title}\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Erster Schritt.\n`);
-  git(path, 'add', '.');
-  git(path, 'commit', '--quiet', '-m', 'init');
-  return path;
+  return gitRepo(join(dir, name), { 'docs/plan/plan.md': `# ${title}\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** Erster Schritt.\n` });
 }
 
 beforeEach(() => {
@@ -142,7 +134,7 @@ test('a clone registered for a repository must be one of it', () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
-  Bun.spawnSync(['git', 'clone', '--quiet', api, join(dir, 'api-clone')]);
+  git(dir, 'clone', '--quiet', api, join(dir, 'api-clone'));
   const deps = { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } };
   expect(() => new CanvasRuntime({ repos: [{ path: web, workspaces: [join(dir, 'api-clone')] }] }, deps)).toThrow('is not a clone of');
   canvas = new CanvasRuntime({ repos: [{ path: api, workspaces: [join(dir, 'api-clone')] }] }, deps);

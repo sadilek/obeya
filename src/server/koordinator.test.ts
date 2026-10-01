@@ -6,7 +6,7 @@ import { generic } from '../adapters/generic';
 import { Board } from './board';
 import { Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
-import { FakeRuntime, type FakeSession } from './testing';
+import { FakeRuntime, type FakeSession, gitRepo } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -20,12 +20,7 @@ let k: Koordinator;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-k-'));
   const main = join(dir, 'main');
-  Bun.spawnSync(['git', 'init', '--quiet', '-b', 'main', main]);
-  git(main, 'config', 'user.email', 't@example.com');
-  git(main, 'config', 'user.name', 'T');
-  writeFileSync(join(main, 'README.md'), 'hello\n');
-  git(main, 'add', '.');
-  git(main, 'commit', '--quiet', '-m', 'init');
+  gitRepo(main);
   const store = new Store(':memory:');
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => []);
   const adapter = { ...generic, land: 'main' as const, workspaces: 'worktrees' as const, softPaths: ['docs/'] };

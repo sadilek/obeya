@@ -3,6 +3,7 @@
 // when that is due.
 
 import { dirname } from 'node:path';
+import { GIT } from './workspaces';
 
 /** The exit code that asks the supervisor for a fresh server. */
 export const RESTART = 75;
@@ -29,7 +30,7 @@ export function whenIdle(busy: () => boolean, fn: () => void, patienceMs = RESTA
 const INERT = /(^docs\/|^design\/|\.md$)/;
 
 const git = (cwd: string, ...args: string[]): string | null => {
-  const r = Bun.spawnSync(['git', '-C', cwd, ...args], { stderr: 'ignore' });
+  const r = Bun.spawnSync([GIT, '-C', cwd, ...args], { stderr: 'ignore' });
   return r.exitCode === 0 ? r.stdout.toString().trim() : null;
 };
 
