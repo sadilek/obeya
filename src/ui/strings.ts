@@ -136,6 +136,8 @@ export const t = {
     idea: (title: string) => `Koordinator · Idee: ${title}`,
     project: (title: string) => `Koordinator · Projekt: ${title}`,
     noMic: 'Kein Mikrofon: der Browser hat den Zugriff nicht erlaubt.',
+    notReady: 'Das Mikrofon war noch nicht bereit; bitte noch einmal.',
+    flat: 'Das Mikrofon liefert keinen Ton.',
     failed: 'Das hat nicht geklappt; bitte noch einmal.',
     typePlaceholder: 'Dem Koordinator schreiben, z. B. „Neue Karte: …“',
     tooLate: 'Zu spät: das ist schon passiert.',
