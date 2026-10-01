@@ -204,7 +204,9 @@ the owner's language (`src/core/locale.ts`).
   canvases keep their data. The others' plan docs are referenced as `<repo>:<path>`; the owner's
   cards carry their repository, chosen in the panel before work begins (home by default), and a
   proposal or a cut package inherits it. The UI opens `?c=<canvas>`, the top-left pill switches,
-  and on a canvas with several repositories every card names its own.
+  and on a canvas with several repositories every card names its own. Cards on other canvases that
+  need the owner show as a count at their entry in the switcher and, while it is closed, as the sum
+  on the pill; the server pushes every canvas's count to all of them when one changes.
 - **UI** — browser app, React + TypeScript. Custom canvas: camera with
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap, and a frosted top bar the
   canvas slides under.

@@ -410,3 +410,32 @@ describe('a restart that waits', () => {
     ws.close();
   });
 });
+
+describe('cards that need the owner', () => {
+  test('are counted per canvas on every canvas, so the switcher points to the others', async () => {
+    const other = join(dir, 'other');
+    gitRepo(other);
+    const second = new CanvasRuntime({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: { status: () => { throw new Error('no forge'); } } });
+    const waiting = second.board.create({ kind: 'feature', title: 'B', x: 0, y: 0 });
+    second.board.work(waiting.id, { state: 'waiting', need: 'review' });
+    server.stop(true);
+    server = serve([canvas, second], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0);
+    const messages: ServerMessage[] = [];
+    const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
+    ws.onmessage = (e) => messages.push(JSON.parse(e.data));
+    const counts = () => messages.flatMap((m) => (m.type === 'waiting' ? [m.waiting] : []));
+    await until(() => counts().length === 1);
+    expect(counts()[0]).toEqual({ main: 0, other: 1 });
+
+    // a change on the other canvas reaches this one; one that leaves the counts alone does not
+    second.board.patch(waiting.id, { title: 'B2' });
+    const c = second.board.create({ kind: 'feature', title: 'C', x: 0, y: 0 });
+    second.board.work(c.id, { state: 'waiting', need: 'review' });
+    await until(() => counts().length === 2);
+    expect(counts()[1]).toEqual({ main: 0, other: 2 });
+    second.board.work(waiting.id, { state: 'working' });
+    await until(() => counts().length === 3);
+    expect(counts()[2]).toEqual({ main: 0, other: 1 });
+    ws.close();
+  });
+});

@@ -129,6 +129,14 @@ button.pill:hover { box-shadow: var(--lift); }
   border-radius: 12px; box-shadow: var(--lift); z-index: 30; }
 .canvas-menu a { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 8px; text-decoration: none; font-size: 13px; }
 .canvas-menu a:hover, .canvas-menu li.on a { background: var(--chip); }
+/* cards on another canvas that need the owner: their count at its menu entry, the sum at the closed pill */
+.waits { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--waiting); color: #fff; font-size: 12px; font-weight: 700;
+  display: grid; place-items: center; box-sizing: border-box; }
+.canvas-pill .switch { position: relative; }
+.canvas-pill .switch .waits { position: absolute; top: -7px; right: -7px; box-shadow: 0 0 0 3px var(--bg); }
+.canvas-pill .switch .waits.pulse { animation: pulse 1.8s ease-out infinite; }
+.canvas-menu a { position: relative; padding-right: 40px; }
+.canvas-menu a .waits { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .kpill .n { background: var(--planned); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
