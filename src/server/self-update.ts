@@ -7,6 +7,22 @@ import { dirname } from 'node:path';
 /** The exit code that asks the supervisor for a fresh server. */
 export const RESTART = 75;
 
+/** How long a restart waits for workers to finish their turns before it cuts them off. */
+export const RESTART_PATIENCE_MS = 15 * 60_000;
+
+/** Calls `fn` once `busy` is false, or after `patienceMs` whatever it says. */
+export function whenIdle(busy: () => boolean, fn: () => void, patienceMs = RESTART_PATIENCE_MS, intervalMs = 2000): () => void {
+  const deadline = Date.now() + patienceMs;
+  const check = () => {
+    if (busy() && Date.now() < deadline) return;
+    clearInterval(timer);
+    fn();
+  };
+  const timer = setInterval(check, intervalMs);
+  check();
+  return () => clearInterval(timer);
+}
+
 /** Paths whose change leaves the running code as it is. */
 const INERT = /(^docs\/|^design\/|\.md$)/;
 

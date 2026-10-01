@@ -41,6 +41,8 @@ interface Live {
   handedOver: boolean;
   nudged: boolean;
   lastText: string;
+  /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
+  busy: boolean;
 }
 
 const END_TURN = 'Recorded. End your turn now without further work; the reply arrives as your next message.';
@@ -199,10 +201,20 @@ export class Workers {
       if (i.state !== 'working' && i.state !== 'inPr') continue;
       const row = this.o.board.row(i.id);
       if (!row.workspace) continue;
-      if (row.session_id) this.launch(i.id, 'Obeya was restarted. Continue where you left off.', row.session_id);
+      if (row.session_id)
+        this.launch(
+          i.id,
+          'Obeya was restarted. Commands you had running (background commands, servers you started) were stopped with it: check what is still needed, start it again, and continue where you left off.',
+          row.session_id,
+        );
       // it never reported a session: start one with the card
       else if (i.state === 'working') this.launch(i.id, this.briefing(i, row.branch ?? '', true));
     }
+  }
+
+  /** Whether a worker is in the middle of a turn. */
+  busy(): boolean {
+    return [...this.live.values()].some((l) => l.busy);
   }
 
   shutdown() {
@@ -214,7 +226,7 @@ export class Workers {
   private launch(cardId: string, message: string, resume?: string) {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
-    const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '' };
+    const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true };
     this.live.set(cardId, live);
     live.session = this.o.runtime.start(
       {
@@ -235,6 +247,7 @@ export class Workers {
   private deliver(cardId: string, text: string) {
     const live = this.live.get(cardId);
     if (live) {
+      live.busy = true;
       live.session.send(text);
       return;
     }
@@ -256,6 +269,8 @@ export class Workers {
 
   private onEvent(cardId: string, live: Live, e: AgentEvent) {
     if (this.live.get(cardId) !== live) return;
+    // a turn may also start without a message from Obeya (a finished background command)
+    live.busy = e.type !== 'idle';
     switch (e.type) {
       case 'session':
         this.o.board.work(cardId, { session_id: e.id });
@@ -288,6 +303,7 @@ export class Workers {
     if (card.state !== 'working' && card.state !== 'inPr') return;
     if (!live.nudged) {
       live.nudged = true;
+      live.busy = true;
       live.session.send(
         card.state === 'inPr'
           ? 'You ended your turn without reporting the pull request. Open it, then call pr_opened with its URL.'

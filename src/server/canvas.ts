@@ -343,6 +343,11 @@ export class CanvasRuntime {
     }
   }
 
+  /** Whether a worker is in the middle of a turn, which a restart would cut off. */
+  busy(): boolean {
+    return this.repos.some((r) => r.workers.busy());
+  }
+
   shutdown() {
     for (const stop of this.stops) stop();
     for (const r of this.repos) r.workers.shutdown();

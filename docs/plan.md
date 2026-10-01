@@ -146,7 +146,9 @@ the owner's language (`src/core/locale.ts`).
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs), the server stops and starts again; workers
-  resume, and an open page reloads when it reconnects to a new server process.
+  resume, and an open page reloads when it reconnects to a new server process. The restart waits
+  until no worker is in the middle of a turn (at most 15 minutes), since it stops whatever a
+  worker runs; a resumed worker is told so.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges collisions with cards in
   progress (their estimated and actual changes); a card that overlaps or collides waits, with the
