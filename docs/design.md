@@ -425,7 +425,10 @@ the repository; the copy on the project is only for the archive).
   project (title, goal, workstreams with key, label, title, text and state).
 - A plan doc that disappears ends its project: the project goes into the archive with that last
   state, and returns with its placement when the same file comes back (2026-10-01). Ending is
-  automatic rather than an explicit "abschließen", which can later sit on top. Reading old content
+  automatic rather than an explicit "abschließen", which can later sit on top. Obeya watches the
+  plan directory and the nearest directory above it: git removes the plan directory with its last
+  doc, and the directory's own watch then reports nothing (M5 stayed on the canvas until a
+  restart). Reading old content
   from the git history instead was rejected as fragile (PRs and clones on Acme, renames); it served
   only once, to backfill Obeya's own projects from before
   (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a doc missing only for a moment (a branch
