@@ -23,6 +23,8 @@ export interface ExplorerOptions {
   preferences?: () => string;
   /** Called with what the owner says, so lasting preferences can be learned. */
   onOwnerInput?: (card: Item, text: string) => void;
+  /** The files of the owner's screenshots, by id; unknown ones are left out. */
+  imageFiles?: (ids?: string[]) => string[];
 }
 
 interface Live {
@@ -93,7 +95,10 @@ export class Explorers {
     }
     const row = this.o.board.row(card.id);
     this.o.board.setIdea(card.id, { thinking: true });
-    this.launch(card, row.session_id ? message : `${this.briefing(card)}\n\n${message}`, row.session_id ?? undefined, spoken, images);
+    if (row.session_id) return this.launch(card, message, row.session_id, spoken, images);
+    // a planned card that became an idea brings the screenshots of its task
+    const shots = this.o.imageFiles?.(card.images) ?? [];
+    this.launch(card, `${this.briefing(card, shots)}\n\n${message}`, undefined, spoken, [...shots, ...images]);
   }
 
   private launch(card: Item, message: string, resume: string | undefined, speak: boolean, images: string[]) {
@@ -205,10 +210,11 @@ export class Explorers {
     ]);
   }
 
-  private briefing(card: Item): string {
+  private briefing(card: Item, shots: string[]): string {
     return [
       `The idea: “${card.title}”.`,
       card.body.trim(),
+      shots.length ? `The owner attached ${shots.length === 1 ? 'a screenshot' : `${shots.length} screenshots`} to the card (shown with this message; files: ${shots.join(', ')}).` : '',
       `Decisions on cards without a project so far:\n${decisionLog(this.o.board.decisions(null))}`,
     ]
       .filter(Boolean)

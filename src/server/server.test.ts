@@ -239,6 +239,58 @@ describe('screenshots', () => {
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Der Knopf hier ist zu klein', images: [id] });
   });
 
+  test("a card keeps its task's screenshots; unknown ones are refused", async () => {
+    const { id } = (await (await upload(png)).json()) as { id: string };
+    const res = await post(api('/cards'), JSON.stringify({ kind: 'bugfix', title: 'Seite bricht um', x: 0, y: 0, images: [id] }));
+    const c = (await res.json()) as { id: string };
+    expect(board.item(c.id)!.images).toEqual([id]);
+    const patch = (p: unknown) => fetch(new URL(api(`/cards/${c.id}`), server.url), { method: 'PATCH', body: JSON.stringify(p) });
+    expect((await patch({ images: [] })).status).toBe(204);
+    expect(board.item(c.id)!.images).toBeUndefined();
+    expect(await codeOf(patch({ images: ['0000.png'] }))).toBe('invalid');
+    expect(await codeOf(post(api('/cards'), JSON.stringify({ kind: 'bugfix', title: 'x', x: 0, y: 0, images: 'a.png' })))).toBe('invalid');
+  });
+
+  test("a typed command's screenshots go to the Koordinator and to the cards it creates or concerns", async () => {
+    const { id } = (await (await upload(png)).json()) as { id: string };
+    const c = card();
+    board.work(c.id, { state: 'working', workspace: dir, session_id: 'sess-1' });
+    const res = post(api('/command'), JSON.stringify({ text: 'Neue Karte: diese Seite bricht um, und sag A, dass es so aussieht', images: [id] }));
+    const koordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    await until(() => koordinator()?.inbox.length);
+    const k = koordinator()!;
+    expect(k.images[0]).toEqual([canvas.images.path(id)!]);
+    expect(k.inbox[0]).toContain('The owner attached a screenshot');
+    k.call('act', {
+      actions: [
+        { do: 'new_card', kind: 'bugfix', title: 'Seite bricht um', body: 'diese Seite bricht um' },
+        { do: 'note', card: 'K1', text: 'So sieht es aus.' },
+        { do: 'stop', card: 'K1' },
+      ],
+      confirm: 'Neue Karte „Seite bricht um“; an „A“ weitergegeben.',
+    });
+    await res;
+    await until(() => executed.length === 3, DELAY_MS + 3000);
+    expect(executed).toEqual([
+      { do: 'newCard', kind: 'bugfix', title: 'Seite bricht um', body: 'diese Seite bricht um', start: false, images: [id] },
+      { do: 'note', card: c.id, text: 'So sieht es aus.', images: [id] },
+      { do: 'stop', card: c.id },
+    ]);
+    expect(board.snapshot().talk.at(-1)).toMatchObject({ said: 'Neue Karte: diese Seite bricht um, und sag A, dass es so aussieht', images: [id] });
+    expect(await codeOf(post(api('/command'), JSON.stringify({ text: 'x', images: ['0000.png'] })))).toBe('invalid');
+  });
+
+  test('a new card from a command keeps its screenshots; one said with a start goes to the task', async () => {
+    const { id } = (await (await upload(png)).json()) as { id: string };
+    const run = CanvasRuntime.prototype.run.bind(canvas);
+    run({ do: 'newCard', kind: 'bugfix', title: 'Seite bricht um', body: '', start: false, images: [id] });
+    const made = board.snapshot().items.find((i) => i.title === 'Seite bricht um')!;
+    expect(made.images).toEqual([id]);
+    const c = card();
+    run({ do: 'start', card: c.id, images: [id] });
+    expect(board.item(c.id)!.images).toEqual([id]);
+  });
+
   test('may stand without text; unknown ones, other files and too large ones are refused', async () => {
     const { id } = (await (await upload(png, 'image/jpeg')).json()) as { id: string };
     expect(id).toEndWith('.jpg');

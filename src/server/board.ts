@@ -8,6 +8,7 @@ import { boundsOf, CARD_SIZE, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams
 import type { PlanDoc } from '../core/plan-doc';
 import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Idea, type Item, type NewCard, type Question, STATES } from '../core/types';
 import type { CardRow, NewRow, RowUpdate, Store } from './db';
+import type { Images } from './images';
 
 /** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
 export interface PrState {
@@ -52,6 +53,8 @@ export class Board {
     private store: Store,
     readonly canvas: CanvasInfo,
     private readDocs: () => PlanDoc[],
+    /** The owner's screenshots, which a card's images must be among. */
+    private images?: Pick<Images, 'resolve'>,
   ) {
     store.ensureCanvas(canvas.id, canvas.name);
     // a new card whose page closed before it got a title was never wanted
@@ -152,6 +155,8 @@ export class Board {
         x: row.x + (n % 3) * 330,
         y: row.y + Math.floor(n / 3) * 170,
         repo: row.repo,
+        // every package may need the screenshots of the task it came from
+        images: row.images,
       })),
     );
     rows.forEach((r, n) => this.store.update(r.id, { scope: JSON.stringify({ files: cards[n]!.files, reason: '' }) }));
@@ -266,8 +271,8 @@ export class Board {
   // ---------------------------------------------------------------- the Koordinator's memory
 
   /** Records an exchange with the Koordinator; returns its id. */
-  addTalk(said: string, reply: string, cardId: string | null = null, lookUp?: { question: string; about: string | null }): number {
-    const id = this.store.addTalk(this.canvas.id, said, reply, cardId, lookUp);
+  addTalk(said: string, reply: string, cardId: string | null = null, lookUp?: { question: string; about: string | null }, images: string[] = []): number {
+    const id = this.store.addTalk(this.canvas.id, said, reply, cardId, lookUp, images);
     this.changed();
     return id;
   }
@@ -392,6 +397,7 @@ export class Board {
     const at = from ? this.followUpSpot(from.id) : { x: n.x!, y: n.y! };
     // a follow-up stays in the repository of the card it comes from unless told otherwise
     const repo = n.repo ?? (from ? (from.repo ?? this.home) : undefined);
+    if (n.images !== undefined) this.checkImages(n.images);
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
@@ -402,6 +408,7 @@ export class Board {
         ...at,
         repo: repo && repo !== this.home ? repo : null,
         ...(from ? { from_id: from.id } : {}),
+        images: n.images?.length ? JSON.stringify(n.images) : null,
         ...(n.idea ? { idea: JSON.stringify({ status: 'open', brief: '' } satisfies StoredIdea) } : {}),
       },
     ]);
@@ -411,7 +418,7 @@ export class Board {
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'kind', 'title', 'body', 'state', 'need', 'repo'];
+    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'kind', 'title', 'body', 'state', 'need', 'repo', 'images'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
@@ -419,9 +426,10 @@ export class Board {
     if (p.kind !== undefined && p.kind !== 'bugfix' && p.kind !== 'feature') throw new BadRequest('invalid', 'kind must be bugfix or feature');
     if (p.title !== undefined) checkText(p.title, 'title', 200);
     if (p.body !== undefined) checkText(p.body, 'body', 20000);
+    if (p.images !== undefined) this.checkImages(p.images);
     if (p.state !== undefined && !STATES.includes(p.state)) throw new BadRequest('invalid', `state must be one of ${STATES.join(', ')}`);
     if (p.need !== undefined && p.need !== null && p.need !== 'demo' && p.need !== 'question') throw new BadRequest('invalid', 'need must be demo, question or null');
-    const { repo, ...fields } = p;
+    const { repo, images, ...fields } = p;
     // a planned card of the owner's may become an idea again, to be discussed first
     if (p.state === 'idea' && row.state !== 'idea' && (row.plan_ref || (row.state ?? 'planned') !== 'planned' || row.workspace))
       throw new BadRequest('invalid', 'only a planned card of your own that has not been worked on can become an idea');
@@ -430,7 +438,11 @@ export class Board {
       // its workspace and branch belong to the repository it started in
       if ((row.state ?? 'planned') !== 'planned' || row.workspace) throw new BadRequest('invalid', 'a card changes repository only before work begins');
     }
-    this.store.update(id, { ...fields, ...(repo !== undefined ? { repo: repo === this.home ? null : repo } : {}) });
+    this.store.update(id, {
+      ...fields,
+      ...(repo !== undefined ? { repo: repo === this.home ? null : repo } : {}),
+      ...(images !== undefined ? { images: images.length ? JSON.stringify(images) : null } : {}),
+    });
     this.changed();
   }
 
@@ -446,6 +458,11 @@ export class Board {
     if (!row || row.canvas_id !== this.canvas.id) throw new BadRequest('unknownCard', 'unknown card');
     this.store.update(id, { deleted_at: null });
     this.changed();
+  }
+
+  private checkImages(ids: unknown) {
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) throw new BadRequest('invalid', 'images must be a list of image ids');
+    this.images?.resolve(ids);
   }
 
   private own(id: string): CardRow {
@@ -524,6 +541,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         ...work(r),
         ...(r.state === 'idea' ? { idea: ideaOf(r) } : {}),
         ...(r.spike_of ? { spikeOf: r.spike_of } : {}),
+        ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
       });
       continue;
     }

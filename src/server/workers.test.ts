@@ -7,6 +7,7 @@ import type { RepoAdapter } from '../adapters/types';
 import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
+import { Images } from './images';
 import { FakeRuntime } from './testing';
 import type { Reply } from './advisor';
 import { Workers } from './workers';
@@ -88,6 +89,16 @@ describe('workers', () => {
     // the only clone is taken
     const d = manual();
     expect(() => workers.start(d.id)).toThrow(BadRequest);
+  });
+
+  test('the screenshots of the task go with it when the worker starts', () => {
+    const images = new Images(join(dir, 'images'));
+    const shot = images.save(new Uint8Array([1, 2, 3]), 'image/png');
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: generic, imageFiles: (ids = []) => ids.flatMap((i) => images.path(i) ?? []) });
+    const c = board.create({ kind: 'bugfix', title: 'Seite bricht um', x: 0, y: 0, images: [shot] });
+    workers.start(c.id);
+    expect(runtime.last.images[0]).toEqual([images.path(shot)!]);
+    expect(runtime.last.inbox[0]).toContain(`The owner attached a screenshot to the card (shown with this message; files: ${images.path(shot)})`);
   });
 
   test('a worker is busy from a message to the end of the turn it starts', () => {

@@ -5,7 +5,7 @@ import type { CardAction, CardEvent, CardPatch, Demo, Item, Question, RepoRef } 
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, onCardEvent } from './api';
 import { Inline, plain, shortTitle } from './markdown';
-import { imageFiles, imageUrl, prepareImage, Shots } from './shots';
+import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { errorText, stateLabel, t } from './strings';
 import { talkTurns } from './talk';
 
@@ -125,7 +125,14 @@ export function Detail(p: Props) {
 
       {item.state === 'planned' && (
         <>
-          {editable ? <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} /> : <Body md={item.body} />}
+          {editable ? (
+            <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} />
+          ) : (
+            <>
+              <Body md={item.body} />
+              <Shots ids={item.images} />
+            </>
+          )}
           {parent?.plan && <PlanSource file={parent.plan.file} onRead={() => p.onReadPlan(parent, item.label)} />}
           {!item.queue && (
             <div className="actions">
@@ -272,10 +279,11 @@ export function Detail(p: Props) {
       {worked && (
         <>
           <Log cardId={item.id} />
-          {item.body.trim() && (
+          {(item.body.trim() || !!item.images?.length) && (
             <details className="p-task">
               <summary>{t.task}</summary>
               <Body md={item.body} />
+              <Shots ids={item.images} />
             </details>
           )}
           <p className="p-src">
@@ -303,6 +311,7 @@ export function Detail(p: Props) {
       {!worked && item.state !== 'planned' && item.state !== 'proposal' && (
         <>
           <Body md={item.body} />
+          <Shots ids={item.images} />
           {parent?.plan && <PlanSource file={parent.plan.file} onRead={() => p.onReadPlan(parent, item.label)} />}
         </>
       )}
@@ -658,6 +667,7 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
   const [body, setBody] = useState(item.body);
   const [kind, setKind] = useState(item.kind as 'feature' | 'bugfix');
   const [repo, setRepo] = useState(item.repo);
+  const shots = useShotInput({ initial: item.images, onChange: (images) => onEdit({ images }) });
   return (
     <>
       <div className="segs">
@@ -692,16 +702,25 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
           ))}
         </div>
       </div>
-      <textarea
-        className="p-body"
-        value={body}
-        placeholder={t.bodyPlaceholder}
-        maxLength={20000}
-        onChange={(e) => {
-          setBody(e.target.value);
-          onEdit({ body: e.target.value });
-        }}
-      />
+      {/* the task's screenshots: the worker gets them with the task when it starts */}
+      <div className={`p-body-field${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
+        <ShotStrip shots={shots} />
+        <div className="c-field">
+          <textarea
+            className="p-body"
+            value={body}
+            placeholder={t.bodyPlaceholder}
+            maxLength={20000}
+            onPaste={shots.onPaste}
+            onChange={(e) => {
+              setBody(e.target.value);
+              onEdit({ body: e.target.value });
+            }}
+          />
+          <AttachButton shots={shots} />
+        </div>
+        {shots.error && <p className="p-error c-error">{shots.error}</p>}
+      </div>
     </>
   );
 }
@@ -789,82 +808,27 @@ function Composer({
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  /** Uploaded screenshots by id, and how many are still on their way. */
-  const [images, setImages] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(0);
-  const [dropping, setDropping] = useState(false);
-  const [error, setError] = useState('');
-  const picker = useRef<HTMLInputElement>(null);
-  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !busy && !uploading;
+  const shots = useShotInput({ off: noImages });
+  const images = shots.images;
+  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !busy && !shots.uploading;
   const send = async () => {
     if (!ready) return;
     setBusy(true);
     await onSend(text.trim(), images.length ? images : undefined);
     setBusy(false);
     setText('');
-    setImages([]);
-  };
-  const attach = async (files: File[]) => {
-    if (noImages || !files.length) return;
-    setError('');
-    setUploading((n) => n + files.length);
-    for (const f of files) {
-      try {
-        const id = await api.uploadImage(await prepareImage(f));
-        setImages((cur) => [...cur, id]);
-      } catch (e) {
-        setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
-      } finally {
-        setUploading((n) => n - 1);
-      }
-    }
+    shots.clear();
   };
   return (
-    <div
-      className={`composer${dropping ? ' dropping' : ''}`}
-      onDragOver={(e) => {
-        if (noImages || !e.dataTransfer.types.includes('Files')) return;
-        e.preventDefault();
-        setDropping(true);
-      }}
-      onDragLeave={() => setDropping(false)}
-      onDrop={(e) => {
-        setDropping(false);
-        const files = imageFiles(e.dataTransfer.files);
-        if (noImages || !files.length) return;
-        e.preventDefault();
-        attach(files);
-      }}
-    >
-      {(images.length > 0 || uploading > 0) && (
-        <div className="c-shots">
-          {images.map((id) => (
-            <span key={id} className="c-shot">
-              <img src={imageUrl(id)} alt={t.shots.alt} />
-              <button title={t.shots.remove} onClick={() => setImages((cur) => cur.filter((x) => x !== id))}>
-                ×
-              </button>
-            </span>
-          ))}
-          {Array.from({ length: uploading }, (_, i) => (
-            <span key={`u${i}`} className="c-shot loading">
-              {t.shots.uploading}
-            </span>
-          ))}
-        </div>
-      )}
+    <div className={`composer${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
+      <ShotStrip shots={shots} />
       <div className="c-field">
         <textarea
           value={text}
           placeholder={placeholder}
           rows={2}
           onChange={(e) => setText(e.target.value)}
-          onPaste={(e) => {
-            const files = imageFiles(e.clipboardData.files);
-            if (noImages || !files.length) return;
-            e.preventDefault();
-            attach(files);
-          }}
+          onPaste={shots.onPaste}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -872,33 +836,12 @@ function Composer({
             }
           }}
         />
-        {!noImages && (
-          <>
-            <button className="c-attach" title={t.shots.attach} aria-label={t.shots.attach} onClick={() => picker.current?.click()}>
-              <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
-                <rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <circle cx="7" cy="8.5" r="1.5" fill="currentColor" />
-                <path d="M3.5 14.5 8 10.5l3 2.5 2.5-2 3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <input
-              ref={picker}
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              onChange={(e) => {
-                attach(imageFiles(e.target.files));
-                e.target.value = '';
-              }}
-            />
-          </>
-        )}
+        <AttachButton shots={shots} />
       </div>
       <button className="btn primary" disabled={!ready} onClick={send}>
         {button}
       </button>
-      {error && <p className="p-error c-error">{error}</p>}
+      {shots.error && <p className="p-error c-error">{shots.error}</p>}
     </div>
   );
 }

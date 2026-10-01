@@ -5,6 +5,7 @@ import type { Item, Preference, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
+import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import type { Heard } from './voice';
 
 interface Props {
@@ -93,7 +94,10 @@ function Conversation({ talk }: { talk: Talk[] }) {
           <div className="ev ev-say by-owner">
             <span className="t">{time(x.at)}</span>
             <span className="who">{t.author.owner}</span>
-            <span className="x">{x.said}</span>
+            <span className="x">
+              {x.said}
+              <Shots ids={x.images} />
+            </span>
           </div>
           <div className="ev ev-say by-koordinator">
             <span className="t">{time(x.at)}</span>
@@ -125,39 +129,48 @@ function Conversation({ talk }: { talk: Talk[] }) {
   );
 }
 
-/** A command in writing, for when speaking is not possible. */
+/** A command in writing, for when speaking is not possible; its screenshots go to the cards it creates or concerns. */
 function TellKoordinator({ onHeard }: { onHeard: (h: Heard) => void }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const shots = useShotInput();
+  const ready = !!text.trim() && !busy && !shots.uploading;
   const send = async () => {
-    if (!text.trim() || busy) return;
+    if (!ready) return;
     setBusy(true);
     try {
-      onHeard(await api.command(text.trim(), null));
+      onHeard(await api.command(text.trim(), null, shots.images));
       setText('');
+      shots.clear();
     } catch (e) {
       onHeard({ confirm: e instanceof ApiError ? errorText(e.code) : t.offlineError });
     }
     setBusy(false);
   };
   return (
-    <div className="composer tell">
-      <textarea
-        value={text}
-        rows={2}
-        placeholder={t.voice.typePlaceholder}
-        onFocus={() => api.warmVoice()}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            send();
-          }
-        }}
-      />
-      <button className="btn primary" disabled={!text.trim() || busy} onClick={send}>
+    <div className={`composer tell${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
+      <ShotStrip shots={shots} />
+      <div className="c-field">
+        <textarea
+          value={text}
+          rows={2}
+          placeholder={t.voice.typePlaceholder}
+          onFocus={() => api.warmVoice()}
+          onChange={(e) => setText(e.target.value)}
+          onPaste={shots.onPaste}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+        <AttachButton shots={shots} />
+      </div>
+      <button className="btn primary" disabled={!ready} onClick={send}>
         {t.send}
       </button>
+      {shots.error && <p className="p-error c-error">{shots.error}</p>}
     </div>
   );
 }

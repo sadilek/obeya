@@ -140,6 +140,22 @@ describe('an idea', () => {
     expect(s.images[1]).toEqual([canvas.images.path(id2)!]);
   });
 
+  test("a planned card's screenshots reach its exploration agent; built, the discussion's go to the task", () => {
+    const task = canvas.images.save(new Uint8Array([1]), 'image/png');
+    const c = board().create({ kind: 'bugfix', title: 'Seite bricht um', x: 0, y: 0, images: [task] });
+    board().patch(c.id, { state: 'idea' });
+    canvas.act(c.id, { action: 'discuss', text: 'Wie gehen wir das an?' });
+    const s = explorer();
+    expect(s.images[0]).toEqual([canvas.images.path(task)!]);
+    expect(s.inbox[0]).toContain('The owner attached a screenshot to the card');
+    const shown = canvas.images.save(new Uint8Array([2]), 'image/png');
+    turn(s, 'Zwei Wege.');
+    canvas.act(c.id, { action: 'discuss', text: 'Und hier auf dem Handy', images: [shown] });
+    turn(s, 'Verstehe.');
+    canvas.act(c.id, { action: 'build' });
+    expect(item(c.id).images).toEqual([task, shown]);
+  });
+
   test('a spoken message gets a spoken summary; a turn without reply still answers with its words', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Was kostet das?', spoken: true });

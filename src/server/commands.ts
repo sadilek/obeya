@@ -7,13 +7,20 @@ import { BadRequest, type Board } from './board';
 import type { Moment } from './db';
 import type { AgentRuntime, AgentSession } from './runtime';
 
-export type Command =
+export type Command = (
   /** `from`: the card it follows up on. */
   | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string; from?: string }
   | { do: 'newIdea'; title: string; body: string; repo?: string }
   /** `force` starts a card that waits behind others now, despite the overlap. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
-  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'; card: string; text: string };
+  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'; card: string; text: string }
+) & {
+  /** Screenshots that came with the command (image ids), on the actions that take them (`TAKES_IMAGES`). */
+  images?: string[];
+};
+
+/** The actions a command's screenshots go with: those that create a card, start one or say something to its agent. */
+const TAKES_IMAGES: Command['do'][] = ['newCard', 'newIdea', 'start', 'force', 'note', 'answer', 'feedback', 'discuss'];
 
 export interface Heard {
   /** What the owner hears and reads back. */
@@ -44,6 +51,8 @@ export interface CommanderOptions {
   sessionCommands?: number;
   /** A question the Koordinator could not answer at once: looked up, and answered later. */
   lookUp?: (talk: number) => void;
+  /** The files of the owner's screenshots, by id; unknown ones are left out. */
+  imageFiles?: (ids?: string[]) => string[];
 }
 
 /** The Koordinator's conversation with the owner: one agent session that reads command after command. */
@@ -97,17 +106,19 @@ export class Commander {
   /**
    * Understands the command; its actions run only after `arm`, so the undo window starts when the
    * owner hears back. The exchange goes into the open card's log, or without one into the
-   * Koordinator's sheet.
+   * Koordinator's sheet. Screenshots (image ids) go with the actions that create or concern a card.
    */
-  async hear(transcript: string, focus: Focus): Promise<Heard> {
-    const { commands, confirm, lookUp } = await this.interpret(transcript, focus);
+  async hear(transcript: string, focus: Focus, images: string[] = []): Promise<Heard> {
+    const decision = await this.interpret(transcript, focus, images);
+    const { confirm, lookUp } = decision;
+    const commands = images.length ? decision.commands.map((c) => (TAKES_IMAGES.includes(c.do) ? { ...c, images } : c)) : decision.commands;
     const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
     if (lookUp) {
       // nothing to take back: the answer follows once it is looked up
       const about = lookUp.about ?? card ?? (focus.project && this.o.board.item(focus.project) ? focus.project : undefined);
-      const talk = this.o.board.addTalk(transcript, confirm, card ?? null, { question: lookUp.question, about: about ?? null });
+      const talk = this.o.board.addTalk(transcript, confirm, card ?? null, { question: lookUp.question, about: about ?? null }, images);
       if (card) {
-        this.o.board.log(card, 'say', 'owner', transcript);
+        this.o.board.log(card, 'say', 'owner', transcript, undefined, images);
         this.o.board.log(card, 'say', 'koordinator', confirm);
       }
       this.o.lookUp?.(talk);
@@ -118,9 +129,9 @@ export class Commander {
     const rest = commands.filter((c) => c.do !== 'discuss');
     // said to the open idea, it stands in the idea's conversation, which is confirmation enough
     const quiet = talking.length > 0 && !rest.length && talking.every((c) => 'card' in c && c.card === card);
-    const talk = this.o.board.addTalk(transcript, confirm, card ?? null);
+    const talk = this.o.board.addTalk(transcript, confirm, card ?? null, undefined, images);
     if (card && !quiet) {
-      this.o.board.log(card, 'say', 'owner', transcript);
+      this.o.board.log(card, 'say', 'owner', transcript, undefined, images);
       this.o.board.log(card, 'say', 'koordinator', confirm);
     }
     for (const c of talking) await this.run(c);
@@ -346,14 +357,14 @@ export class Commander {
     return { do: a.do, card: card.id };
   }
 
-  private interpret(transcript: string, focus: Focus): Promise<Decision> {
+  private interpret(transcript: string, focus: Focus, images: string[]): Promise<Decision> {
     return new Promise((decide, fail) => {
-      this.turns = this.turns.then(() => this.read(transcript, focus, decide)).catch(fail);
+      this.turns = this.turns.then(() => this.read(transcript, focus, images, decide)).catch(fail);
     });
   }
 
   /** Reads one command; settles when the turn has ended, while the decision goes out as soon as it is taken. */
-  private async read(transcript: string, focus: Focus, decide: (d: Decision) => void, retry = true): Promise<void> {
+  private async read(transcript: string, focus: Focus, images: string[], decide: (d: Decision) => void, retry = true): Promise<void> {
     const warmed = this.session && !this.session.ended ? this.session : null;
     const s = warmed ?? (this.session = this.open());
     let decided = false;
@@ -368,12 +379,13 @@ export class Commander {
         end,
       };
     });
-    s.agent.send(this.brief(s, transcript, focus));
+    const files = this.o.imageFiles?.(images) ?? [];
+    s.agent.send(this.brief(s, transcript, focus, files.length), files);
     const error = await ended;
     s.reading = undefined;
     if (error && !decided) {
       // a session that waited or talked before may have gone stale: read the command once more in a fresh one
-      if (warmed && retry) return this.read(transcript, focus, decide, false);
+      if (warmed && retry) return this.read(transcript, focus, images, decide, false);
       throw error;
     }
     if (!decided) decide({ commands: [], confirm: 'Das habe ich nicht verstanden.' });
@@ -406,7 +418,7 @@ export class Commander {
   }
 
   /** The message for one command: what the Koordinator needs to know besides what it already knows. */
-  private brief(s: Session, transcript: string, focus: Focus): string {
+  private brief(s: Session, transcript: string, focus: Focus, shots = 0): string {
     const items = this.o.board.snapshot().items;
     const relevant = items.filter((i) => i.kind !== 'project' && (i.state !== 'live' || i.finishing || i.id === focus.card));
     const tag = (id: string) => {
@@ -477,6 +489,11 @@ export class Commander {
       ...history,
       ...news,
       `The owner said (speech recognition, may contain errors): "${transcript}"`,
+      ...(shots
+        ? [
+            `The owner attached ${shots === 1 ? 'a screenshot' : `${shots} screenshots`} (shown below). Obeya gives ${shots === 1 ? 'it' : 'them'} to every new_card, new_idea, start, note, answer, feedback and discuss action you take for this message; a title for a new card may say what ${shots === 1 ? 'it shows' : 'they show'}.`,
+          ]
+        : []),
       focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused, tag)}` : project ? `The owner is looking at the project "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
       `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
       ...(this.o.board.canvas.repos.length > 1

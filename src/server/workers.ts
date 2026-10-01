@@ -37,6 +37,8 @@ export interface WorkerOptions {
   onSpike?: (spike: Item, summary: string, demo: string | undefined) => void;
   /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
   backgroundGrace?: number;
+  /** The files of the owner's screenshots, by id; unknown ones are left out. */
+  imageFiles?: (ids?: string[]) => string[];
   /** Whether Obeya starts again for work that landed: it runs from this repository's checkout and the work changed code. */
   restartsFor?: (landed: Landed) => boolean;
 }
@@ -100,7 +102,7 @@ export class Workers {
     this.bump(card.id);
     this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr: null, approved_at: null });
     this.o.board.log(card.id, 'state', 'obeya', `Agent gestartet auf ${branch}.`);
-    this.launch(card.id, this.briefing(card, branch, !!row.branch));
+    this.launch(card.id, this.briefing(card, branch, !!row.branch), undefined, this.taskImages(card));
   }
 
   /** A hint while the worker runs, or feedback on its review; `images` are screenshot files the owner attached. */
@@ -304,7 +306,7 @@ export class Workers {
       if (!row.workspace) continue;
       if (row.session_id) this.launch(i.id, RESTARTED, row.session_id);
       // it never reported a session: start one with the card
-      else if (i.state === 'working') this.launch(i.id, this.briefing(i, row.branch ?? '', true));
+      else if (i.state === 'working') this.launch(i.id, this.briefing(i, row.branch ?? '', true), undefined, this.taskImages(i));
     }
   }
 
@@ -364,7 +366,8 @@ export class Workers {
     const row = this.o.board.row(cardId);
     if (row.session_id) return this.launch(cardId, text, row.session_id, images);
     // no session to resume (it never reported one): a new one needs the card first
-    this.launch(cardId, `${this.briefing(this.card(cardId), row.branch ?? '', true)}\n\n${text}`, undefined, images);
+    const card = this.card(cardId);
+    this.launch(cardId, `${this.briefing(card, row.branch ?? '', true)}\n\n${text}`, undefined, [...this.taskImages(card), ...images]);
   }
 
   private bump(cardId: string) {
@@ -664,6 +667,11 @@ Rules:
     return this.briefing(card, row.branch ?? branchName(card.title, card.id), !!row.branch);
   }
 
+  /** The files of the screenshots the owner attached to the card's task. */
+  private taskImages(card: Item): string[] {
+    return this.o.imageFiles?.(card.images) ?? [];
+  }
+
   private briefing(card: Item, branch: string, resumed = false): string {
     const parts = [`Your card: ${card.kind === 'bugfix' ? 'bugfix' : 'feature'} “${card.title}”.`];
     const idea = card.spikeOf ? this.o.board.item(card.spikeOf) : undefined;
@@ -685,6 +693,9 @@ ${idea.idea.brief}` : '',
       const summary = this.o.board.summary(from.id)?.trim();
       parts.push(`This card follows up on the card “${from.title}”.${summary ? ` Its worker handed it over with this summary:\n\n${summary}` : ''}`);
     }
+    const shots = this.taskImages(card);
+    if (shots.length)
+      parts.push(`${shots.length === 1 ? 'The owner attached a screenshot' : `The owner attached ${shots.length} screenshots`} to the card (shown with this message; files: ${shots.join(', ')}).`);
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
     parts.push(
