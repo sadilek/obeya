@@ -191,7 +191,8 @@ the owner's language (`src/core/locale.ts`).
   proposal or a cut package inherits it. The UI opens `?c=<canvas>`, the top-left pill switches,
   and on a canvas with several repositories every card names its own.
 - **UI** — browser app, React + TypeScript. Custom canvas grown from `design/mock/`: camera with
-  fly-to, unfold-in-place, semantic zoom, edge indicators, minimap.
+  fly-to, unfold-in-place, semantic zoom, edge indicators, minimap, and a frosted top bar the
+  canvas slides under.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
   on the Claude Code login of the machine (tested without an API key: `apiKeySource: none`).
   A worker is one SDK session per card with streaming input, the repo's own settings and
