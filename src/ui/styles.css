@@ -74,7 +74,7 @@ a { color: inherit; }
 .card.s-live .ttl { font-weight: 500; }
 .card.s-proposal { background: transparent; box-shadow: none; border: 2px dashed var(--proposal); }
 .card.s-proposal::before { display: none; }
-.card.s-waiting { box-shadow: 0 0 0 2px var(--waiting), var(--shadow); }
+.card.s-waiting, .card.s-idea.your-turn { box-shadow: 0 0 0 2px var(--waiting), var(--shadow); }
 .card.s-working .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--working), transparent); background-size: 200% 100%;
   animation: flow 1.4s linear infinite; }

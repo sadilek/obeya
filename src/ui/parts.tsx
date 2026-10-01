@@ -7,7 +7,9 @@ import type { Cam } from './camera';
 import { Inline, plain } from './markdown';
 import { stateLabel, t } from './strings';
 
-export const needsYou = (i: Item) => i.state === 'waiting' || i.state === 'proposal';
+/** An open idea needs the owner once its agent has replied and is done. */
+export const needsYou = (i: Item) =>
+  i.state === 'waiting' || i.state === 'proposal' || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
 
 /** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
 const firstLine = (md: string) =>
@@ -53,6 +55,7 @@ export const CardView = memo(
       `s-${item.state}`,
       item.idea && `idea-${item.idea.status}`,
       item.idea?.thinking && 'thinking',
+      item.idea && needsYou(item) && 'your-turn',
       item.queue && 'queued', lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (
       <div

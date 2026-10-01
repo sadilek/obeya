@@ -54,7 +54,7 @@ const turn = (s: FakeSession, reply: string, extra?: () => void) => {
 describe('an idea', () => {
   test('starts as an idea: no worker, no workspace, nothing with the Koordinator', () => {
     const i = idea();
-    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { status: 'open', brief: '', thinking: false } });
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { status: 'open', brief: '', thinking: false, yourTurn: false } });
     expect(runtime.sessions).toHaveLength(0);
     expect(() => canvas.act(i.id, { action: 'start' })).toThrow('only a planned card can be started');
   });
@@ -74,7 +74,7 @@ describe('an idea', () => {
       s.call('record_decision', { question: 'Format?', answer: 'CSV' });
     });
     expect(s.closed).toBe(true);
-    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false });
+    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false, yourTurn: true });
     expect(talk(i.id)).toEqual([
       ['owner', 'Lass uns das durchdenken.'],
       ['explorer', 'CSV oder PDF?'],
@@ -117,6 +117,48 @@ describe('an idea', () => {
     s.emit({ type: 'text', text: 'Dann ein Plan-Doc.' });
     s.emit({ type: 'idle' });
     expect(talk(i.id).at(-1)).toEqual(['explorer', 'Dann ein Plan-Doc.']);
+  });
+
+  test('once its agent has replied the owner is next, until they answer', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
+    const s = explorer();
+    s.emit({ type: 'session', id: 'sess-1' });
+    expect(item(i.id).idea).toMatchObject({ thinking: true, yourTurn: false });
+    canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
+    s.call('reply', { text: 'Zu erstens.', spoken: '' });
+    s.emit({ type: 'idle' });
+    // the owner's second message is still to be answered
+    expect(item(i.id).idea).toMatchObject({ thinking: true });
+    s.call('reply', { text: 'Zu zweitens.', spoken: '' });
+    s.emit({ type: 'idle' });
+    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: true });
+    canvas.act(i.id, { action: 'discuss', text: 'Drittens.' });
+    expect(item(i.id).idea).toMatchObject({ thinking: true, yourTurn: false });
+    // a turn that ends without words leaves nothing to answer
+    explorer().emit({ type: 'idle' });
+    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: false });
+  });
+
+  test('an idea whose agent had the last word before the update waits for the owner', () => {
+    const path = join(dir, 'obeya.db');
+    let s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    const idea = JSON.stringify({ status: 'open', brief: '' });
+    const [answered, asked] = s.insert([0, 1].map((y) => ({ canvas_id: 'c', kind: 'feature' as const, state: 'idea' as const, idea, x: 0, y })));
+    const say = (card: string, author: 'owner' | 'explorer') => s.addEvent({ cardId: card, kind: 'talk', author, text: '…' });
+    say(answered!.id, 'owner');
+    say(answered!.id, 'explorer');
+    say(asked!.id, 'explorer');
+    say(asked!.id, 'owner');
+    const { user_version } = s.db.query('PRAGMA user_version').get() as { user_version: number };
+    s.db.run(`PRAGMA user_version = ${user_version - 1}`);
+    s.db.close();
+    s = new Store(path);
+    const yourTurn = (id: string) => (JSON.parse(s.card(id)!.idea!) as { yourTurn?: boolean }).yourTurn;
+    expect(yourTurn(answered!.id)).toBe(true);
+    expect(yourTurn(asked!.id)).toBeUndefined();
+    s.db.close();
   });
 
   test('what the owner says is offered for learning preferences', async () => {
@@ -164,7 +206,7 @@ describe('an idea', () => {
   test('a planned card of the owner’s can become an idea first', () => {
     const c = board().create({ kind: 'feature', title: 'Unklar', x: 0, y: 0 });
     board().patch(c.id, { state: 'idea' });
-    expect(item(c.id).idea).toEqual({ status: 'open', brief: '', thinking: false });
+    expect(item(c.id).idea).toEqual({ status: 'open', brief: '', thinking: false, yourTurn: false });
   });
 
   test('after a restart an idea whose agent was answering gets its reply', () => {

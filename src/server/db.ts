@@ -162,6 +162,10 @@ const MIGRATIONS = [
      card_id TEXT REFERENCES cards(id),
      undone INTEGER NOT NULL DEFAULT 0
    );`,
+  // an idea whose agent had the last word waits for the owner
+  `UPDATE cards SET idea = json_set(idea, '$.yourTurn', json('true'))
+   WHERE state = 'idea' AND idea IS NOT NULL
+     AND (SELECT author FROM events WHERE card_id = cards.id AND kind = 'talk' ORDER BY id DESC LIMIT 1) = 'explorer';`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &

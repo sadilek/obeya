@@ -45,6 +45,7 @@ export class Explorers {
       this.o.board.log(cardId, 'state', 'owner', 'Idee wieder aufgenommen.');
     }
     this.o.board.log(cardId, 'talk', 'owner', text);
+    this.o.board.setIdea(cardId, { yourTurn: false });
     this.o.onOwnerInput?.(card, text);
     this.send(card, `The owner says:\n\n${text}`, spoken);
   }
@@ -126,7 +127,7 @@ export class Explorers {
         break;
       case 'idle': {
         // a turn without reply still said something: that is the reply
-        if (!live.replied && live.lastText.trim()) this.o.board.log(cardId, 'talk', 'explorer', live.lastText.trim());
+        if (!live.replied && live.lastText.trim()) this.answer(cardId, live.lastText.trim());
         live.replied = false;
         live.lastText = '';
         if (live.queue.length) {
@@ -137,6 +138,12 @@ export class Explorers {
         break;
       }
     }
+  }
+
+  /** The agent's reply stands in the conversation; the owner is next. */
+  private answer(cardId: string, text: string) {
+    this.o.board.log(cardId, 'talk', 'explorer', text);
+    this.o.board.setIdea(cardId, { yourTurn: true });
   }
 
   private tools(cardId: string, live: Live): AgentTool[] {
@@ -150,7 +157,7 @@ export class Explorers {
         run: ({ text, spoken }) => {
           if (live.replied) return 'Already replied. End your turn now.';
           live.replied = true;
-          this.o.board.log(cardId, 'talk', 'explorer', clip(String(text), 12000));
+          this.answer(cardId, clip(String(text), 12000));
           if (live.speak && String(spoken).trim()) this.o.board.speak(cardId, clip(String(spoken).trim(), 400));
           live.speak = false;
           return 'Shown to the owner. End your turn now; their next message arrives as a new one.';

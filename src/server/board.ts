@@ -552,16 +552,17 @@ function work(r: CardRow): Partial<Item> {
   };
 }
 
-/** What is stored of an idea; `thinking` while its agent works on a reply. */
+/** What is stored of an idea; `thinking` while its agent works on a reply, `yourTurn` once it replied. */
 export interface StoredIdea {
   status: Idea['status'];
   brief: string;
   thinking?: boolean;
+  yourTurn?: boolean;
 }
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
-  return { status: i.status, brief: i.brief, thinking: !!i.thinking };
+  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn };
 }
 
 function checkPreference(v: unknown): string {
