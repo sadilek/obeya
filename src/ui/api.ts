@@ -89,9 +89,10 @@ export function onCardEvent(fn: (e: CardEvent) => void): () => void {
   return () => eventListeners.delete(fn);
 }
 
-// Short spoken summaries of agents (an idea's replies); whoever has the card open plays them.
-const speakListeners = new Set<(cardId: string, audio: string) => void>();
-export function onSpeak(fn: (cardId: string, audio: string) => void): () => void {
+// Short spoken summaries of agents: an idea's replies, for whoever has the card open; answers the
+// Koordinator looked up come without a card and are heard anywhere.
+const speakListeners = new Set<(cardId: string | undefined, audio: string) => void>();
+export function onSpeak(fn: (cardId: string | undefined, audio: string) => void): () => void {
   speakListeners.add(fn);
   return () => speakListeners.delete(fn);
 }

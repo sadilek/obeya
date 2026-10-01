@@ -12,7 +12,7 @@ let main: string;
 let store: Store;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
-let spoken: [string, string][];
+let spoken: [string | undefined, string][];
 
 const open = () =>
   new CanvasRuntime({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: { status: () => ({}) as never }, commandDelayMs: 10 });

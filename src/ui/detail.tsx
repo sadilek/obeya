@@ -803,7 +803,7 @@ function Log({ cardId, hideEmpty }: { cardId: string; hideEmpty?: boolean }) {
             <span className="t">{time(e.at)}</span>
             {e.author !== 'worker' && <span className="who">{t.author[e.author]}</span>}
             <span className="x" title={e.code ? e.text : undefined}>
-              {eventText(e)}
+              {e.kind === 'say' ? <Inline md={e.text} /> : eventText(e)}
               <Shots ids={e.images} />
             </span>
           </div>

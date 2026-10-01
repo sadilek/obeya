@@ -168,6 +168,11 @@ export const MIGRATIONS = [
      AND (SELECT author FROM events WHERE card_id = cards.id AND kind = 'talk' ORDER BY id DESC LIMIT 1) = 'explorer';`,
   // screenshots the owner attached to a message (a JSON list of image ids)
   `ALTER TABLE events ADD COLUMN images TEXT;`,
+  // a question the Koordinator looks up: answered later, by itself or a project agent
+  `ALTER TABLE talk ADD COLUMN question TEXT;
+   ALTER TABLE talk ADD COLUMN about TEXT;
+   ALTER TABLE talk ADD COLUMN answer TEXT;
+   ALTER TABLE talk ADD COLUMN answer_by TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -372,11 +377,11 @@ export class Store {
 
   // ---------------------------------------------------------------- the Koordinator's memory
 
-  addTalk(canvasId: string, said: string, reply: string, cardId: string | null): number {
+  addTalk(canvasId: string, said: string, reply: string, cardId: string | null, lookUp?: { question: string; about: string | null }): number {
     return (
       this.db
-        .query('INSERT INTO talk (canvas_id, at, said, reply, card_id) VALUES ($c, $at, $said, $reply, $cardId) RETURNING id')
-        .get({ c: canvasId, at: now(), said, reply, cardId }) as { id: number }
+        .query('INSERT INTO talk (canvas_id, at, said, reply, card_id, question, about) VALUES ($c, $at, $said, $reply, $cardId, $question, $about) RETURNING id')
+        .get({ c: canvasId, at: now(), said, reply, cardId, question: lookUp?.question ?? null, about: lookUp?.about ?? null }) as { id: number }
     ).id;
   }
 
@@ -384,15 +389,26 @@ export class Store {
     this.db.query('UPDATE talk SET undone = 1 WHERE id = $id').run({ id });
   }
 
+  answerTalk(id: number, answer: string, by: 'koordinator' | 'project') {
+    this.db.query('UPDATE talk SET answer = $answer, answer_by = $by WHERE id = $id').run({ id, answer, by });
+  }
+
   /** The latest exchanges, oldest first; with `withoutCard`, only those without an open card. */
   talk(canvasId: string, limit = 20, withoutCard = false): Talk[] {
-    return (
-      this.db
-        .query(`SELECT id, at, said, reply, card_id, undone FROM talk WHERE canvas_id = $c${withoutCard ? ' AND card_id IS NULL' : ''} ORDER BY id DESC LIMIT $limit`)
-        .all({ c: canvasId, limit }) as { id: number; at: string; said: string; reply: string; card_id: string | null; undone: number }[]
-    )
+    return (this.db.query(`SELECT * FROM talk WHERE canvas_id = $c${withoutCard ? ' AND card_id IS NULL' : ''} ORDER BY id DESC LIMIT $limit`).all({ c: canvasId, limit }) as TalkRow[])
       .reverse()
-      .map(({ card_id, undone, ...r }) => ({ ...r, ...(card_id ? { cardId: card_id } : {}), ...(undone ? { undone: true } : {}) }));
+      .map(toTalk);
+  }
+
+  /** One exchange, with the card its question is about. */
+  exchange(id: number): (Talk & { about?: string }) | null {
+    const r = this.db.query('SELECT * FROM talk WHERE id = $id').get({ id }) as TalkRow | null;
+    return r ? { ...toTalk(r), ...(r.about ? { about: r.about } : {}) } : null;
+  }
+
+  /** Questions being looked up, oldest first. */
+  lookingUp(canvasId: string): number[] {
+    return (this.db.query('SELECT id FROM talk WHERE canvas_id = $c AND question IS NOT NULL AND answer IS NULL ORDER BY id').all({ c: canvasId }) as { id: number }[]).map((r) => r.id);
   }
 
   /**
@@ -429,3 +445,28 @@ export class Store {
 }
 
 const now = () => new Date().toISOString();
+
+interface TalkRow {
+  id: number;
+  at: string;
+  said: string;
+  reply: string;
+  card_id: string | null;
+  undone: number;
+  question: string | null;
+  about: string | null;
+  answer: string | null;
+  answer_by: 'koordinator' | 'project' | null;
+}
+
+const toTalk = (r: TalkRow): Talk => ({
+  id: r.id,
+  at: r.at,
+  said: r.said,
+  reply: r.reply,
+  ...(r.card_id ? { cardId: r.card_id } : {}),
+  ...(r.undone ? { undone: true } : {}),
+  ...(r.question ? { question: r.question } : {}),
+  ...(r.answer !== null ? { answer: r.answer } : {}),
+  ...(r.answer_by ? { answerBy: r.answer_by } : {}),
+});

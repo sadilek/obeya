@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Item, Preference, Talk } from '../core/types';
 import { api, ApiError } from './api';
-import { plain } from './markdown';
+import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
 import type { Heard } from './voice';
 
@@ -103,6 +103,23 @@ function Conversation({ talk }: { talk: Talk[] }) {
               {x.undone && <span className="hint"> ({t.koordinator.undone})</span>}
             </span>
           </div>
+          {/* a question it looked up: the answer follows the acknowledgement */}
+          {x.question && x.answer === undefined && (
+            <div className="ev ev-say by-koordinator">
+              <span className="t">{time(x.at)}</span>
+              <span className="who">{t.author.koordinator}</span>
+              <span className="x hint">{t.koordinator.lookingUp}</span>
+            </div>
+          )}
+          {x.answer !== undefined && (
+            <div className={`ev ev-say by-${x.answerBy ?? 'koordinator'}`}>
+              <span className="t later">{time(x.at)}</span>
+              <span className="who">{t.author[x.answerBy ?? 'koordinator']}</span>
+              <span className="x">
+                <Inline md={x.answer} />
+              </span>
+            </div>
+          )}
         </div>
       ))}
     </div>

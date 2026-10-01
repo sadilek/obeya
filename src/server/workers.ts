@@ -477,6 +477,12 @@ Rules:
 `.trim() + (this.o.preferences?.() ? `\n\n${this.o.preferences()}` : '');
   }
 
+  /** The task the card's worker gets at its start, as Obeya would send it now (one that already ran goes on from its branch). */
+  startBrief(card: Item): string {
+    const row = this.o.board.row(card.id);
+    return this.briefing(card, row.branch ?? branchName(card.title, card.id), !!row.branch);
+  }
+
   private briefing(card: Item, branch: string, resumed = false): string {
     const parts = [`Your card: ${card.kind === 'bugfix' ? 'bugfix' : 'feature'} “${card.title}”.`];
     const idea = card.spikeOf ? this.o.board.item(card.spikeOf) : undefined;

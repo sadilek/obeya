@@ -40,6 +40,8 @@ export interface CommanderOptions {
   delayMs?: number;
   /** Commands one session reads; the next one starts from the stored memory. */
   sessionCommands?: number;
+  /** A question the Koordinator could not answer at once: looked up, and answered later. */
+  lookUp?: (talk: number) => void;
 }
 
 /** The Koordinator's conversation with the owner: one agent session that reads command after command. */
@@ -55,13 +57,15 @@ interface Session {
   since: string;
   /** The command being read. */
   reading?: {
-    finish: (commands: Command[], confirm: string) => string;
+    finish: (commands: Command[], confirm: string, lookUp?: LookUp) => string;
     /** The turn ended, with the error that ended it. */
     end: (error?: Error) => void;
   };
 }
 
-type Decision = { commands: Command[]; confirm: string };
+/** A question to look up: what the owner asked, and the card it is about. */
+type LookUp = { question: string; about?: string };
+type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp };
 
 /** The actions `act` takes, as the Koordinator names them. */
 const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'spike', 'park', 'drop'] as const;
@@ -91,8 +95,19 @@ export class Commander {
    * Koordinator's sheet.
    */
   async hear(transcript: string, focus: Focus): Promise<Heard> {
-    const { commands, confirm } = await this.interpret(transcript, focus);
+    const { commands, confirm, lookUp } = await this.interpret(transcript, focus);
     const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
+    if (lookUp) {
+      // nothing to take back: the answer follows once it is looked up
+      const about = lookUp.about ?? card ?? (focus.project && this.o.board.item(focus.project) ? focus.project : undefined);
+      const talk = this.o.board.addTalk(transcript, confirm, card ?? null, { question: lookUp.question, about: about ?? null });
+      if (card) {
+        this.o.board.log(card, 'say', 'owner', transcript);
+        this.o.board.log(card, 'say', 'koordinator', confirm);
+      }
+      this.o.lookUp?.(talk);
+      return { confirm };
+    }
     // talking about an idea changes nothing that would need taking back: it goes on at once
     const talking = commands.filter((c) => c.do === 'discuss');
     const rest = commands.filter((c) => c.do !== 'discuss');
@@ -148,6 +163,11 @@ export class Commander {
     return true;
   }
 
+  /** Something the Koordinator hears with the owner's next command: an answer it looked up. */
+  tell(text: string) {
+    this.news.push(text);
+  }
+
   /** Words Whisper should expect: Obeya's own, and the titles on the canvas. */
   vocabulary(): string {
     const titles = this.o.board
@@ -165,7 +185,7 @@ export class Commander {
   /** A session whose tools act on whatever command it is reading. */
   private open(): Session {
     const s: Session = { agent: null as unknown as AgentSession, ended: false, tags: new Map(), tagOf: new Map(), read: 0, since: '' };
-    const finish = (commands: Command[], confirm: string) => (s.reading ? s.reading.finish(commands, confirm) : 'No command to read.');
+    const finish = (commands: Command[], confirm: string, lookUp?: LookUp) => (s.reading ? s.reading.finish(commands, confirm, lookUp) : 'No command to read.');
     const repos = this.o.board.canvas.repos;
     s.agent = this.o.runtime.start({
       cwd: this.o.cwd,
@@ -215,15 +235,32 @@ export class Commander {
               else commands.push(r);
             });
             if (problems.length)
-              return `Nothing recorded: ${problems.join('; ')}. Fix or drop what does not fit and call act again, or use reply (a question the owner asks is answered with reply).`;
+              return `Nothing recorded: ${problems.join('; ')}. Fix or drop what does not fit and call act again, or use reply (a question the owner asks is answered with reply, or with look_up when it needs reading).`;
             return finish(commands, String(confirm));
           },
         },
         {
           name: 'reply',
-          description: 'No action: answer a question about the canvas, a card, its history or your conversation, or say that it is unclear what is meant (ask what is meant, briefly).',
+          description:
+            'No action: answer a question from what this conversation gives you (the cards, their states and history, what was said), or say that it is unclear what is meant (ask what is meant, briefly).',
           schema: { confirm: z.string() },
           run: ({ confirm }) => finish([], String(confirm)),
+        },
+        {
+          name: 'look_up',
+          description: [
+            'No action: a question that needs reading you cannot do in this quick turn: what an agent would do on a card if it were started, what the plan doc says about a workstream, how something works in the code, why something is the way it is.',
+            "An agent that reads the plan docs, the repository and the card's start task answers it in a few seconds; a question about a workstream goes to its project agent.",
+            'question: the question in full, standing on its own (in English or German). card: the tag of the card it is about, if any (the open one unless the owner means another). confirm: a short German acknowledgement, e.g. „Ich schaue im Plan nach.“ / „Moment, ich lese nach, was der Agent bei „…“ tun würde.“',
+          ].join('\n'),
+          schema: { question: z.string(), card: z.string().optional(), confirm: z.string() },
+          run: ({ question, card, confirm }) => {
+            const q = String(question).trim();
+            if (!q) return 'The question is missing.';
+            const about = card ? s.tags.get(String(card)) : undefined;
+            if (card && (!about || !this.o.board.item(about))) return `Unknown tag ${String(card)}; call look_up again with a tag from the list, or without card.`;
+            return finish([], String(confirm), { question: q, ...(about ? { about } : {}) });
+          },
         },
       ],
       onEvent: (e) => {
@@ -313,10 +350,10 @@ export class Commander {
     let decided = false;
     const ended = new Promise<Error | undefined>((end) => {
       s.reading = {
-        finish: (commands, confirm) => {
+        finish: (commands, confirm, lookUp) => {
           if (decided) return 'Already decided.';
           decided = true;
-          decide({ commands, confirm: confirm.trim().slice(0, 400) });
+          decide({ commands, confirm: confirm.trim().slice(0, 400), ...(lookUp ? { lookUp } : {}) });
           return 'Done. End your turn now.';
         },
         end,
@@ -382,7 +419,8 @@ export class Commander {
           ? `Your conversation with the owner before this session (oldest first; card tags did not exist then):\n${talk
               .map((t) => {
                 const open = t.cardId ? items.find((i) => i.id === t.cardId) : undefined;
-                return `- ${when(t.at)}${open ? ` (with "${open.title}" open)` : ''} the owner: "${t.said}" → you: "${t.reply}"${t.undone ? ' (the owner took it back)' : ''}`;
+                const later = t.answer !== undefined ? ` → the answer you looked up: "${clip(t.answer, 400)}"` : t.question ? ' (you were looking it up; no answer came)' : '';
+                return `- ${when(t.at)}${open ? ` (with "${open.title}" open)` : ''} the owner: "${t.said}" → you: "${t.reply}"${t.undone ? ' (the owner took it back)' : ''}${later}`;
               })
               .join('\n')}`
           : 'You have not talked with the owner before.',
@@ -450,9 +488,10 @@ You are the Koordinator of Obeya, a canvas on which the owner directs coding age
 
 This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Card tags (K1, K2, …) stay the same throughout this conversation. No agent works on a planned or live card; a workstream of a project takes its state from the project's plan doc (checked off there means live).
 
-For each message, call act or reply once, then end your turn:
+For each message, call act, reply or look_up once, then end your turn:
 - act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgekarte …" is approve and new_card): leave none out.
-- reply, when the owner asks you something (answer from what you know: the cards, their history, this conversation), also about the open card, or when nothing fits or it is unclear which card or what is meant.
-Both take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
+- reply, when the owner asks you something you can answer from what you know (the cards, their states and history, this conversation), also about the open card, or when nothing fits or it is unclear which card or what is meant.
+- look_up, when the answer needs reading: what an agent would do on a card ("Was würde der Agent hier machen, wenn ich starte?"), what the plan says, how or why something works. Never reply that you cannot know or predict it; look it up. The answer follows in a few seconds.
+All three take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, spike, park, drop). Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

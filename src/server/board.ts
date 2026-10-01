@@ -46,7 +46,7 @@ export class Board {
   private docs: PlanDoc[] | null = null;
   private cache: CanvasSnapshot | null = null;
   private eventListeners = new Set<(e: CardEvent) => void>();
-  private speakListeners = new Set<(cardId: string, text: string) => void>();
+  private speakListeners = new Set<(cardId: string | undefined, text: string) => void>();
 
   constructor(
     private store: Store,
@@ -74,13 +74,13 @@ export class Board {
   }
 
   /** Whoever voices the canvas (the server) speaks what agents say aloud. */
-  onSpeak(fn: (cardId: string, text: string) => void): () => void {
+  onSpeak(fn: (cardId: string | undefined, text: string) => void): () => void {
     this.speakListeners.add(fn);
     return () => this.speakListeners.delete(fn);
   }
 
-  /** A short text to speak to the owner, about a card. */
-  speak(cardId: string, text: string) {
+  /** A short text to speak to the owner: about a card, heard while it is open, or without one, heard anywhere. */
+  speak(cardId: string | undefined, text: string) {
     for (const fn of this.speakListeners) fn(cardId, text);
   }
 
@@ -241,8 +241,8 @@ export class Board {
   // ---------------------------------------------------------------- the Koordinator's memory
 
   /** Records an exchange with the Koordinator; returns its id. */
-  addTalk(said: string, reply: string, cardId: string | null = null): number {
-    const id = this.store.addTalk(this.canvas.id, said, reply, cardId);
+  addTalk(said: string, reply: string, cardId: string | null = null, lookUp?: { question: string; about: string | null }): number {
+    const id = this.store.addTalk(this.canvas.id, said, reply, cardId, lookUp);
     this.changed();
     return id;
   }
@@ -254,6 +254,21 @@ export class Board {
 
   talk(limit?: number) {
     return this.store.talk(this.canvas.id, limit);
+  }
+
+  /** The answer to a question the Koordinator looked up. */
+  answerTalk(id: number, answer: string, by: 'koordinator' | 'project') {
+    this.store.answerTalk(id, answer, by);
+    this.changed();
+  }
+
+  exchange(id: number) {
+    return this.store.exchange(id);
+  }
+
+  /** Questions the Koordinator is still looking up. */
+  lookingUp(): number[] {
+    return this.store.lookingUp(this.canvas.id);
   }
 
   /** The cards' history after `since` (ISO time), oldest first, at most the latest `limit` steps. */
