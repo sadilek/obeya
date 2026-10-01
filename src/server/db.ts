@@ -39,7 +39,7 @@ export interface CardRow {
   pr: string | null;
   /** The owner's card's repository on a canvas with several; null is the home repository. */
   repo: string | null;
-  /** JSON: the card's latest demo (`{ dir, chapters, shown, notShown, findings, question? }`). */
+  /** JSON: the card's latest demo (`{ kind, dir, chapters, shown, notShown, findings, question? }`; no `kind` is a video). */
   demo: string | null;
   /** When the owner took the finished card off the canvas into the archive. */
   archived_at: string | null;

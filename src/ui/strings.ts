@@ -153,6 +153,8 @@ export const t = {
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
   },
   demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.',
+    artifact: 'HTML-Artefakt des Agenten',
+    noDemo: 'Ohne Demo',
     followUp: 'Als Karte anlegen',
     followedUp: (title: string) => `Karte „${title}“ angelegt`,
   },

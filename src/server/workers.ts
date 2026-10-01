@@ -5,10 +5,10 @@ import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { basename } from 'node:path';
-import type { Item, Question, RestartReason } from '../core/types';
+import type { DemoKind, Item, Question, RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
-import { readChapters } from './demo';
+import { checkArtifact, readChapters } from './demo';
 import { imageNote } from './images';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
@@ -603,45 +603,66 @@ export class Workers {
       },
       {
         name: 'ready_for_review',
-        description: `Hand the finished work to the owner, after committing it, running the checks${this.o.adapter.demo ? ' and recording the demo' : ''}. The summary (in ${OWNER_LANGUAGE}) says what changed from the user's point of view, what you verified and how, and anything the owner should know. ${this.o.adapter.demo?.required ? 'The demo is required: ' : 'With a demo, pass '}its directory, the chapter titles in scene order and its report (in ${OWNER_LANGUAGE}); without a new one, the demo already on the card stands. Then end your turn.`,
+        description: `Hand the finished work to the owner, after committing it, running the checks${this.o.adapter.demo ? ' and making the demo' : ''}. The summary (in ${OWNER_LANGUAGE}) says what changed from the user's point of view, what you verified and how, and anything the owner should know. ${this.o.adapter.demo?.required ? 'The demo is required: ' : 'With a demo, pass '}a video's directory and chapter titles in scene order, or an HTML artifact's directory, with its report (in ${OWNER_LANGUAGE}); without a new one, the demo already on the card stands. Only when there is nothing to show at all, pass no_demo instead. Then end your turn.`,
         schema: {
           summary: z.string(),
           demo: z
             .object({
-              dir: z.string().describe('absolute path of the rendered demo (holds demo.mp4 and captions.vtt)'),
-              chapters: z.array(z.string()).describe('scene titles, in order'),
+              kind: z
+                .enum(['video', 'html'])
+                .optional()
+                .describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at, for results that are seen rather than watched happening"),
+              dir: z.string().describe('absolute path of the demo: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
+              chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
               shown: z.array(z.string()),
-              not_shown: z.array(z.string()).describe('behaviours not in the video, each with why'),
+              not_shown: z.array(z.string()).describe('behaviours not in the demo, each with why'),
               findings: z.array(z.string()),
               question: z.string().optional().describe('only when something needs the owner beyond approve or feedback; the owner can answer it on the card before approving'),
             })
             .optional(),
+          no_demo: z
+            .string()
+            .optional()
+            .describe(`the exception, for when there is nothing to show (the work turned out to be done already, say): why, in ${OWNER_LANGUAGE}; the summary then stands alone`),
         },
-        run: ({ summary, demo }) => {
+        run: ({ summary, demo, no_demo }) => {
           const s = clip(String(summary), 6000);
-          const d = demo as { dir: string; chapters: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string } | undefined;
+          const d = demo as { kind?: DemoKind; dir: string; chapters?: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string } | undefined;
+          const none = typeof no_demo === 'string' && no_demo.trim() ? clip(no_demo.trim(), 1000) : undefined;
           const row = this.o.board.row(cardId);
           if (row.landed) return 'Not handed over: your work is on main already.';
           if (row.pr) return 'Not handed over: the work is in its pull request, where Obeya follows it.';
+          if (d && none) return 'Not handed over: pass either a demo or no_demo, not both.';
           // approved work that could not land comes back to be landed, not reviewed: its demo stands
           const approved = !!row.approved_at;
-          // without a new demo, the one on the card stands
-          const kept = !d && !!row.demo;
-          if (!d && !kept && this.o.adapter.demo?.required && !approved) return 'Not handed over: this repository requires a demo. Record it with the demo skill, then call ready_for_review again with it.';
+          // without a new demo, the one on the card stands, unless the worker says there is nothing to show
+          const kept = !d && !none && !!row.demo;
+          if (!d && !kept && !none && this.o.adapter.demo?.required && !approved)
+            return 'Not handed over: this repository requires a demo. Record it with the demo skill, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it. Only if there is nothing to show at all, pass no_demo with the reason.';
           let demoJson: string | undefined;
           if (d) {
-            const chapters = readChapters(d.dir, d.chapters);
-            if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
-            demoJson = JSON.stringify({ dir: d.dir, chapters, shown: d.shown, notShown: d.not_shown, findings: d.findings, ...(d.question ? { question: d.question } : {}) });
+            const kind = d.kind ?? 'video';
+            const report = { shown: d.shown, notShown: d.not_shown, findings: d.findings, ...(d.question ? { question: d.question } : {}) };
+            if (kind === 'html') {
+              const wrong = checkArtifact(d.dir);
+              if (wrong) return `Not handed over: ${wrong}. Fix the artifact, then call ready_for_review again.`;
+              demoJson = JSON.stringify({ kind, dir: d.dir, chapters: [], ...report });
+            } else {
+              const chapters = readChapters(d.dir, d.chapters ?? []);
+              if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
+              demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...report });
+            }
           }
           handOver();
           // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
           this.o.board.work(cardId, {
             ...(approved ? { status_line: 'Landet auf main' } : { state: 'waiting', need: d || kept ? 'demo' : 'review' }),
-            detail: JSON.stringify({ summary: s }),
+            detail: JSON.stringify({ summary: s, ...(none ? { noDemo: none } : {}) }),
             ...(demoJson ? { demo: demoJson } : {}),
+            // an earlier demo would show on the finished card as if it were this work's
+            ...(none && !approved ? { demo: null } : {}),
           });
-          this.o.board.log(cardId, 'review', 'worker', s);
+          this.o.board.log(cardId, 'review', 'worker', none ? `${s}\n\nOhne Demo: ${none}` : s);
           const card = this.o.board.item(cardId);
           if (card?.prototypeOf) this.o.onPrototype?.(card, s, demoJson);
           if (approved) return 'Recorded. End your turn now; once it has ended, Obeya lands your work on main.';
@@ -743,7 +764,7 @@ Rules:
       parts.push(
         [
           `This card is a throwaway prototype for the idea “${idea?.title ?? ''}”, so the owner can see the idea before deciding on it. It never lands; approving it throws it away.`,
-          'So build only what the demo needs to show, as quickly as you can: no tests, no polish, no docs or plan changes, and do not run the checks. Commit it on your branch anyway, so the demo can be reproduced. The demo only needs to make the idea visible (30–60 s).',
+          'So build only what the demo needs to show, as quickly as you can: no tests, no polish, no docs or plan changes, and do not run the checks. Commit it on your branch anyway, so the demo can be reproduced. The demo only needs to make the idea visible: a video of 30–60 s, or an HTML artifact when the idea is something to look at (drafts of a logo, say).',
           idea?.idea?.brief ? `The idea as discussed so far:
 
 ${idea.idea.brief}` : '',
@@ -771,7 +792,12 @@ ${idea.idea.brief}` : '',
     if (this.o.adapter.checks?.length && !card.prototypeOf) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
     if (this.o.adapter.demo)
       parts.push(
-        `${this.o.adapter.demo.required ? 'Then record' : 'Where it helps the owner, record'} a demo of the change with the demo skill, as its instructions say, and hand it over with ready_for_review (directory, chapter titles, report). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card. How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+        [
+          `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review (with its report).`,
+          `Usually that is a demo of the change, recorded with the demo skill as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card. How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+          "When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis), make an HTML artifact instead: an index.html in a new directory under ~/demos/ (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.",
+          `Only when there is nothing to show at all (the task turned out to be done already, say), hand over with no_demo and why instead. That is the exception: the owner wants something to see.`,
+        ].join(' '),
       );
     return parts.join('\n\n');
   }

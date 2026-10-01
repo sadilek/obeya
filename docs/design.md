@@ -25,7 +25,10 @@ decisions are made in front of the wall.
   a question only they can answer, a proposal. Everything else runs.
 - **Every change gets a demo.** Bugfixes 30–60 s, features 1½–3 min, projects one demo per
   workstream. Backend behaviour is shown through the app's own inspection views; "covered by
-  tests" is no reason to leave it out.
+  tests" is no reason to leave it out. What is to be looked at rather than watched (logo drafts,
+  a layout, variants side by side) is shown as an HTML artifact instead of a video. Only when there
+  is nothing to show at all ("das gibt es schon") does the worker hand over without one, and says
+  why.
 - **Voice first, mouse welcome.** Push-to-talk anywhere; buttons for the obvious actions. No live
   transcript: a short confirmation, written and spoken, with undo. What was said and answered
   stays in the log of the open card, or in the Koordinator's sheet.
@@ -129,7 +132,7 @@ visible on a card. A worker has four tools, served in-process: `report(status)`,
 on the card; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
 or writes their own answer); `propose_card(kind, title, reason, suggestion)`; and
-`ready_for_review(summary)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
+`ready_for_review(summary, demo | no_demo)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner. A turn that ends while the worker's own
 background work runs (a demo render, a test suite, a watcher it started) is no such turn: the work
 wakes the worker when it finishes or fires, so Obeya waits, and only after ten minutes without a
@@ -320,7 +323,15 @@ the owner's language (`src/core/locale.ts`).
   agents; Acme: the clone's AppHost), and hands over the directory, chapter titles and report with `ready_for_review`.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
   the card's demo (range requests). The card shows it as in the mock, with approve and feedback
-  beside the video; feedback asks for a new render. Artifacts stay in `~/demos/`, never in git;
+  beside the video; feedback asks for a new render. When the result is something to look at
+  rather than something that happens, the worker makes an HTML artifact instead (`kind: 'html'`):
+  a directory with an `index.html` and the files it loads, handed over with the same report. The
+  card shows the page in a frame where the video would be (no chapters); Obeya serves any file of
+  that directory, none outside it, with a CSP sandbox and the frame's `sandbox`, so the page's
+  scripts run in an origin of their own, away from Obeya's API. A handover with `no_demo` (the
+  reason) instead is the exception the worker's brief names as such: the card waits for review
+  with the summary and the reason, and a demo from an earlier handover leaves the card, since it
+  showed other work. Artifacts stay in `~/demos/`, never in git;
   sharing them through object storage behind the team's login and linking them from the PR comes
   with the PR loop.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
@@ -329,7 +340,7 @@ the owner's language (`src/core/locale.ts`).
 ## Data
 
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
-branch, status line, open question or review summary, the card it came from (a proposal's
+branch, status line, open question or review summary (with the reason when there is no demo), the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
 when archived, the PR link, an idea's status, brief and open questions, a prototype's idea, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
@@ -465,6 +476,10 @@ the repository; the copy on the project is only for the archive).
   git` names, not the `/usr/bin/git` shim, which looks it up again on every call (10 ms a call
   instead of 4). Test repositories are copies of a template committed once per set of files
   (`gitRepo` in `src/server/testing.ts`). Together they halved the test suite.
+- A demo is a video or an HTML artifact, chosen by the worker (2026-10-01): drafts to choose from
+  (a logo for Obeya) say more as a page side by side than as a recording of one. The report, the
+  open question and the follow-up cards are the same for both. Without any demo the owner would
+  have to read to decide, so handing over without one needs a reason and stays the exception.
 - A demo's scratch Obeya is staged by a script from a stage file rather than by hand (2026-10-01):
   in the 14 card runs before, the demo took longer than the change itself, and every worker wrote
   its own staging (curl, sqlite, server start) with the same mistakes: the wrong API path, a

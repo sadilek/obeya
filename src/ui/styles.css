@@ -217,6 +217,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question.review { border-color: var(--approved); background: color-mix(in srgb, var(--approved) 7%, transparent); }
 .p-grid { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; align-items: start; margin-top: 16px; }
 .p-grid video { width: 100%; border-radius: 10px; background: #000; display: block; }
+.p-grid iframe.artifact { width: 100%; height: min(560px, 62vh); border: 1px solid var(--line); border-radius: 10px; background: #fff; display: block; }
 .chapters { list-style: none; margin: 0; padding: 6px; background: var(--chip); border-radius: 10px; }
 .chapters button { all: unset; cursor: pointer; display: flex; gap: 10px; width: 100%; padding: 6px 8px; border-radius: 7px; font-size: 13px; box-sizing: border-box; }
 .chapters button:hover, .chapters button.on { background: var(--card); }
@@ -276,6 +277,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .checks li.pending::before { content: "○"; color: var(--muted); }
 .checks a { color: inherit; }
 .question.queue { border-color: var(--planned); background: var(--chip); }
+.question.no-demo { border-color: var(--planned); background: var(--chip); }
 .question.failed { border-color: #dc2626; background: color-mix(in srgb, #dc2626 6%, transparent); }
 .question.queue .actions { margin-top: 10px; }
 .question.queue .btn { background: var(--card); border: 1px solid var(--line); }

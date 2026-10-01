@@ -330,7 +330,7 @@ describe('a prototype', () => {
     const branch = board().row(prototype.id).branch!;
     w.call('ready_for_review', { summary: 'Knopf gebaut.', demo: { dir: demoDir(), chapters: ['Knopf'], shown: ['Knopf'], not_shown: [], findings: [] } });
     expect(item(i.id).demo).toMatchObject({ chapters: [[0, 'Knopf']] });
-    expect(board().demoDir(i.id)).toBe(join(dir, 'demo'));
+    expect(board().demoFiles(i.id)).toEqual({ dir: join(dir, 'demo'), kind: 'video' });
     expect(explorer().inbox.at(-1)).toContain('Knopf gebaut.');
     expect(item(prototype.id)).toMatchObject({ state: 'waiting', need: 'demo' });
 

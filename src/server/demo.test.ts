@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readChapters, serveDemoFile } from './demo';
@@ -24,7 +24,7 @@ describe('readChapters', () => {
 });
 
 describe('serveDemoFile', () => {
-  const get = (name: string, range?: string) => serveDemoFile(dir, name, new Request('http://x/', range ? { headers: { range } } : {}));
+  const get = (name: string, range?: string) => serveDemoFile({ dir, kind: 'video' }, name, new Request('http://x/', range ? { headers: { range } } : {}));
 
   test('whole file, byte ranges, and nothing outside the demo files', async () => {
     const all = get('demo.mp4');
@@ -41,5 +41,23 @@ describe('serveDemoFile', () => {
     expect(get('../secret').status).toBe(404);
     expect(get('demo.ts').status).toBe(404);
     expect(get('captions.vtt').headers.get('content-type')).toContain('text/vtt');
+  });
+});
+
+describe('serveDemoFile for an HTML artifact', () => {
+  const html = join(dir, 'logos');
+  mkdirSync(join(html, 'img'), { recursive: true });
+  writeFileSync(join(html, 'index.html'), '<img src="img/a.svg">');
+  writeFileSync(join(html, 'img', 'a.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const get = (name: string) => serveDemoFile({ dir: html, kind: 'html' }, name, new Request('http://x/'));
+
+  test('the page and the files beside it, sandboxed; nothing outside its directory', async () => {
+    const page = get('index.html');
+    expect(page.headers.get('content-type')).toContain('text/html');
+    expect(page.headers.get('content-security-policy')).toBe('sandbox allow-scripts');
+    expect(await get('img/a.svg').text()).toContain('<svg');
+    expect(get('../demo.mp4').status).toBe(404);
+    expect(get('img').status).toBe(404);
+    expect(get('nope.html').status).toBe(404);
   });
 });

@@ -1,10 +1,20 @@
-// A card's demo: the directory the `demo` skill rendered into, read and served by Obeya.
+// A card's demo: the directory the `demo` skill rendered into, or an HTML artifact the worker
+// made instead, read and served by Obeya.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
+import type { DemoKind } from '../core/types';
 
-/** The files of a demo the UI loads; nothing else in the directory is served. */
+/** The files of a video demo the UI loads; nothing else in the directory is served. */
 export const DEMO_FILES = ['demo.mp4', 'poster.jpg', 'captions.vtt'] as const;
+
+/** The page of an HTML artifact; the files beside it (images, styles) are served too. */
+export const ARTIFACT_PAGE = 'index.html';
+
+/** What is wrong with an HTML artifact's directory, for the worker to fix; null when nothing is. */
+export function checkArtifact(dir: string): string | null {
+  return existsSync(join(dir, ARTIFACT_PAGE)) ? null : `${ARTIFACT_PAGE} is missing in ${dir}`;
+}
 
 /** The skill starts narration this long after its scene; a chapter starts at the scene. */
 const NARRATION_LEAD = 0.35;
@@ -22,8 +32,10 @@ export function readChapters(dir: string, titles: string[]): [number, string][] 
   return titles.map((t, i) => [Math.max(0, Math.round((starts[i]! - NARRATION_LEAD) * 100) / 100), t]);
 }
 
-/** Serves one demo file, with byte ranges so the player can seek. */
-export function serveDemoFile(dir: string, name: string, req: Request): Response {
+/** Serves one demo file: a video's with byte ranges so the player can seek, any file of an HTML artifact's directory. */
+export function serveDemoFile(demo: { dir: string; kind: DemoKind }, name: string, req: Request): Response {
+  if (demo.kind === 'html') return serveArtifactFile(demo.dir, name);
+  const dir = demo.dir;
   if (!(DEMO_FILES as readonly string[]).includes(name)) return new Response('Not found', { status: 404 });
   const path = join(dir, name);
   if (!existsSync(path)) return new Response('Not found', { status: 404 });
@@ -47,5 +59,19 @@ export function serveDemoFile(dir: string, name: string, req: Request): Response
       'content-range': `bytes ${start}-${end}/${size}`,
       'accept-ranges': 'bytes',
     },
+  });
+}
+
+/**
+ * A file of an HTML artifact, never one outside its directory. The page is the worker's, so it runs
+ * sandboxed: scripts yes, but in an origin of its own, without Obeya's API or the canvas's storage.
+ */
+function serveArtifactFile(dir: string, name: string): Response {
+  const root = resolve(dir);
+  const path = resolve(root, name);
+  if (!path.startsWith(root + sep) || !existsSync(path) || !statSync(path).isFile()) return new Response('Not found', { status: 404 });
+  const file = Bun.file(path);
+  return new Response(file, {
+    headers: { 'content-type': file.type, 'content-security-policy': 'sandbox allow-scripts', 'cache-control': 'no-cache' },
   });
 }

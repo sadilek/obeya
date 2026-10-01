@@ -472,14 +472,14 @@ describe('handing over with a demo', () => {
     const d = demoDir();
     expect(runtime.last.call('ready_for_review', { summary: 'S', demo: demo(d) })).toContain('End your turn');
     expect(state(c.id)).toBe('waiting:demo');
-    expect(board.item(c.id)!.demo).toEqual({ chapters: [[0, 'Vorher'], [6, 'Nachher']], shown: ['Export'], notShown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
+    expect(board.item(c.id)!.demo).toEqual({ kind: 'video', chapters: [[0, 'Vorher'], [6, 'Nachher']], shown: ['Export'], notShown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
     expect(board.item(c.id)!.summary).toBe('S');
-    expect(board.demoDir(c.id)).toBe(d);
+    expect(board.demoFiles(c.id)).toEqual({ dir: d, kind: 'video' });
     workers.message(c.id, 'Bitte mit Kopfzeile.');
     expect(state(c.id)).toBe('working');
     expect(runtime.last.inbox.at(-1)).toContain('your demo stays on it');
     // the demo stays with the card while it is reworked and after it is done
-    expect(board.demoDir(c.id)).toBe(d);
+    expect(board.demoFiles(c.id)).toEqual({ dir: d, kind: 'video' });
     expect(board.item(c.id)!.demo!.chapters).toHaveLength(2);
   });
 
@@ -529,6 +529,39 @@ describe('handing over with a demo', () => {
     expect(runtime.last.inbox[0]).toContain('How to run the app for the demo: bun start');
     expect(runtime.last.call('ready_for_review', { summary: 'S' })).toContain('requires a demo');
     expect(state(d.id)).toBe('working');
+  });
+
+  test('an HTML artifact instead of a video: it needs its page', () => {
+    const c = manual();
+    workers.start(c.id);
+    const d = join(dir, 'logos');
+    Bun.spawnSync(['mkdir', '-p', join(d, 'img')]);
+    const html = { kind: 'html', dir: d, shown: ['Drei Logo-Entwürfe'], not_shown: [], findings: [] };
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: html })).toContain('index.html is missing');
+    expect(state(c.id)).toBe('working');
+    writeFileSync(join(d, 'index.html'), '<img src="img/a.svg">');
+    writeFileSync(join(d, 'img', 'a.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: html })).toContain('End your turn');
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.demo).toEqual({ kind: 'html', chapters: [], shown: ['Drei Logo-Entwürfe'], notShown: [], findings: [] });
+    expect(board.demoFiles(c.id)).toEqual({ dir: d, kind: 'html' });
+  });
+
+  test('without anything to show, the worker says why: the card waits for review without a demo', () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start' } });
+    const c = manual();
+    workers.start(c.id);
+    expect(runtime.last.inbox[0]).toContain('no_demo');
+    runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
+    workers.message(c.id, 'Das gibt es doch schon?');
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()), no_demo: 'x' })).toContain('either');
+    expect(runtime.last.call('ready_for_review', { summary: 'Gibt es schon.', no_demo: 'Das Feature ist bereits implementiert.' })).toContain('End your turn');
+    expect(state(c.id)).toBe('waiting:review');
+    expect(board.item(c.id)).toMatchObject({ summary: 'Gibt es schon.', noDemo: 'Das Feature ist bereits implementiert.' });
+    // the earlier demo was of other work: it does not stay on the card
+    expect(board.item(c.id)!.demo).toBeUndefined();
+    expect(board.events(c.id).at(-1)!.text).toContain('Ohne Demo: Das Feature ist bereits implementiert.');
   });
 });
 
