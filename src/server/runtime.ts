@@ -17,8 +17,11 @@ export type AgentEvent =
   | { type: 'session'; id: string }
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: Record<string, unknown> }
-  /** The turn ended; the session waits for the next message. */
-  | { type: 'idle' }
+  /**
+   * The turn ended; the session waits for the next message. `background` counts the agent's
+   * background tasks still running: when one ends, the session wakes itself for a new turn.
+   */
+  | { type: 'idle'; background?: number }
   | { type: 'error'; message: string };
 
 export interface AgentSpec {
@@ -84,10 +87,13 @@ export const sdkRuntime: AgentRuntime = {
         env: cleanEnv(),
       },
     });
+    // the agent's background tasks (a render, a test run); watchers that are no activity don't count
+    let background = 0;
     const done = (async () => {
       try {
         for await (const m of q) {
           if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id });
+          else if (m.type === 'system' && m.subtype === 'background_tasks_changed') background = m.tasks.filter((t) => !t.ambient).length;
           else if (m.type === 'assistant' && !m.parent_tool_use_id) {
             for (const block of m.message.content) {
               if (block.type === 'text' && block.text.trim()) spec.onEvent({ type: 'text', text: block.text });
@@ -95,7 +101,7 @@ export const sdkRuntime: AgentRuntime = {
             }
           } else if (m.type === 'result') {
             if (m.subtype !== 'success') spec.onEvent({ type: 'error', message: m.subtype });
-            spec.onEvent({ type: 'idle' });
+            spec.onEvent({ type: 'idle', background });
           }
         }
       } catch (e) {
