@@ -88,11 +88,11 @@ export const t = {
     cutting: 'Koordinator teilt auf',
     cuttingLong: 'Der Koordinator schneidet die Karte in Pakete, die parallel laufen können. Sie ersetzen die Karte.',
     waiting: 'In der Warteschlange',
-    checkingLong: 'Der Koordinator prüft, ob die Karte mit laufender Arbeit kollidiert.',
+    checkingLong: 'Der Koordinator prüft, ob die Karte mit laufender Arbeit wahrscheinlich in Merge-Konflikte gerät.',
     behind: (titles: string[]) => `Wartet auf ${titles.map((x) => `„${x}“`).join(', ')}.`,
     force: 'Trotzdem starten',
     dequeue: 'Aus der Warteschlange nehmen',
-    forced: 'Gestartet, trotz Überschneidung.',
+    forced: 'Gestartet, trotz möglicher Merge-Konflikte.',
     dequeued: 'Aus der Warteschlange genommen.',
   },
   /** Why the server refused an action; `invalid` is also the text for anything unknown. */

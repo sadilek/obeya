@@ -8,7 +8,7 @@ import { Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
 import { FakeRuntime, type FakeSession, gitRepo } from './testing';
 import { Workers } from './workers';
-import { git, Workspaces } from './workspaces';
+import { git, parseChanges, Workspaces } from './workspaces';
 
 let dir: string;
 let board: Board;
@@ -38,10 +38,10 @@ const estimates = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => 
 const workerOf = (id: string) => runtime.sessions.find((s) => s.spec.cwd === board.row(id).workspace)!;
 
 /** Answers the latest open estimate. */
-async function scope(files: string[], collides: string[] = [], reason = 'Grund.') {
+async function scope(files: string[], conflicts: string[] = [], reason = 'Grund.') {
   await settle();
   const s = estimates().at(-1) as FakeSession;
-  s.call('scope', { files, collides_with: collides, reason });
+  s.call('scope', { files, conflicts_with: conflicts, reason });
   s.emit({ type: 'idle' });
   await settle();
 }
@@ -59,7 +59,7 @@ describe('Koordinator', () => {
     expect(estimates()[0]!.spec).toMatchObject({ readOnly: true });
   });
 
-  test('an overlapping card waits and starts when the other one has landed', async () => {
+  test('a card likely to conflict waits and starts when the other one has landed', async () => {
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -67,8 +67,8 @@ describe('Koordinator', () => {
     k.request(b.id);
     await settle();
     expect(estimates().at(-1)!.inbox[0]).toContain('"A"');
-    await scope(['src/a.ts', 'src/b.ts'], [], 'Beide ändern src/a.ts.');
-    expect(item(b.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id], reason: 'Beide ändern src/a.ts.' } });
+    await scope(['src/a.ts', 'src/b.ts'], ['K1'], 'Beide ändern decide() in src/a.ts.');
+    expect(item(b.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id], reason: 'Beide ändern decide() in src/a.ts.' } });
 
     const wa = board.row(a.id).workspace!;
     writeFileSync(join(wa, 'a.ts'), 'a');
@@ -80,19 +80,33 @@ describe('Koordinator', () => {
     expect(item(b.id).state).toBe('working');
   });
 
-  test('actual changes of a card in progress count, soft paths do not', async () => {
+  test('sharing a file is not enough: without a likely conflict the card starts, and says why', async () => {
     const a = card('A');
     k.request(a.id);
-    await scope(['docs/plan.md']);
-    writeFileSync(join(board.row(a.id).workspace!, 'x.ts'), 'x');
+    await scope(['src/strings.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['docs/plan.md', 'src/b.ts']);
+    await scope(['src/strings.ts'], [], 'Beide ergänzen src/strings.ts, an verschiedenen Stellen.');
     expect(item(b.id).state).toBe('working');
-    const c = card('C');
-    k.request(c.id);
-    await scope(['x.ts']);
-    expect(item(c.id).queue).toMatchObject({ behind: [a.id] });
+    expect(board.events(b.id).some((e) => e.text.includes('Kein Merge-Konflikt') && e.text.includes('an verschiedenen Stellen'))).toBe(true);
+  });
+
+  test('the estimate sees where a card in progress has changed its files, without soft paths', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts', 'docs/plan.md']);
+    const wa = board.row(a.id).workspace!;
+    writeFileSync(join(wa, 'README.md'), 'hello\nworld\n');
+    git(wa, 'add', '.');
+    git(wa, 'commit', '--quiet', '-m', 'A');
+    writeFileSync(join(wa, 'x.ts'), 'x');
+    const b = card('B');
+    k.request(b.id);
+    await settle();
+    const brief = estimates().at(-1)!.inbox[0]!;
+    expect(brief).toContain('expected to change: src/a.ts\n');
+    expect(brief).toContain('changed so far: README.md (lines 2 in hello), x.ts (new)');
+    expect(brief).toContain('Changes under docs/ never count');
   });
 
   test('work approved into a pull request still holds its files until it is merged', async () => {
@@ -102,7 +116,7 @@ describe('Koordinator', () => {
     board.work(a.id, { state: 'inPr' });
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts']);
+    await scope(['src/a.ts'], ['K1']);
     expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
     board.work(a.id, { state: 'live' });
     await settle();
@@ -117,14 +131,26 @@ describe('Koordinator', () => {
     expect(runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'packages'))).toBe(true);
   });
 
-  test('the Koordinator may judge a collision without overlapping files', async () => {
+  test('a waiting card is judged again against what started while it waited', async () => {
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['src/b.ts'], ['K1'], 'Gleicher Ablauf.');
-    expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+    await scope(['src/a.ts'], ['K1']);
+    const c = card('C');
+    k.request(c.id);
+    await scope(['src/a.ts']);
+    expect(item(c.id).state).toBe('working');
+    workers.stop(a.id);
+    await settle();
+    expect(item(b.id).queue).toEqual({ checking: true });
+    expect(estimates().at(-1)!.inbox[0]).toContain('"C"');
+    await scope(['src/a.ts'], ['K1'], 'Beide ändern dieselbe Funktion.');
+    expect(item(b.id).queue).toMatchObject({ behind: [c.id] });
+    workers.stop(c.id);
+    await settle();
+    expect(item(b.id).state).toBe('working');
   });
 
   test('two cards requested together are decided one after the other', async () => {
@@ -135,7 +161,7 @@ describe('Koordinator', () => {
     await settle();
     expect(estimates()).toHaveLength(1);
     await scope(['src/shared.ts']);
-    await scope(['src/shared.ts']);
+    await scope(['src/shared.ts'], ['K1']);
     expect(item(a.id).state).toBe('working');
     expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
   });
@@ -146,19 +172,19 @@ describe('Koordinator', () => {
     await scope(['src/a.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts']);
+    await scope(['src/a.ts'], ['K1']);
     k.dequeue(b.id);
     expect(item(b.id).queue).toBeUndefined();
 
     const c = card('C');
     k.request(c.id);
-    await scope(['src/a.ts']);
+    await scope(['src/a.ts'], ['K1']);
     k.force(c.id);
     expect(item(c.id).state).toBe('working');
 
     const d = card('D');
     k.request(d.id);
-    await scope(['src/a.ts']);
+    await scope(['src/a.ts'], ['K1', 'K2']);
     expect(item(d.id).queue).toMatchObject({ behind: [a.id, c.id] });
     workers.stop(a.id);
     await settle();
@@ -340,6 +366,28 @@ describe('preference memory', () => {
     w.message(a.id, 'Noch die Einheit.');
     expect(heard).toEqual(['answer:Ja.', 'note:Bitte kleiner schneiden.', 'feedback:Noch die Einheit.']);
   });
+});
+
+test('parseChanges', () => {
+  const diff = [
+    'diff --git a/src/a.ts b/src/a.ts',
+    'index 1..2 100644',
+    '--- a/src/a.ts',
+    '+++ b/src/a.ts',
+    '@@ -10,2 +10,4 @@ function decide() {',
+    '+--- a/not-a-file',
+    '@@ -30 +32 @@',
+    '@@ -40,3 +41,0 @@ class K {',
+    'diff --git a/old.ts b/old.ts',
+    'deleted file mode 100644',
+    '--- a/old.ts',
+    '+++ /dev/null',
+    '@@ -1,3 +0,0 @@',
+  ].join('\n');
+  expect(parseChanges(diff)).toEqual([
+    { file: 'src/a.ts', regions: ['10-13 in function decide() {', '32', '41 (lines removed) in class K {'] },
+    { file: 'old.ts', regions: ['deleted'] },
+  ]);
 });
 
 test('overlaps', () => {

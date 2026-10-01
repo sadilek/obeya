@@ -1,6 +1,6 @@
-// The Koordinator decides when a card may start: not while it is likely to collide with work in
-// progress. Collisions come from overlapping files (estimated before the start, actual while a
-// worker works) and from the Koordinator's own judgement.
+// The Koordinator decides when a card may start: not while its changes are likely to conflict on
+// merge with work in progress. It judges that from what each card will change (estimated before
+// the start) and has changed so far (files and the places in them); sharing a file is not enough.
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
@@ -9,7 +9,7 @@ import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { AgentRuntime } from './runtime';
 import type { Workers } from './workers';
-import type { Workspaces } from './workspaces';
+import type { Change, Workspaces } from './workspaces';
 
 interface Package {
   kind: 'bugfix' | 'feature';
@@ -24,8 +24,8 @@ export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea';
 
 export interface Scope {
   files: string[];
-  /** Cards in progress the Koordinator judges to collide, beyond overlapping files. */
-  collidesWith: string[];
+  /** Cards in progress whose changes the Koordinator expects to conflict with this card's on merge. */
+  conflictsWith: string[];
   reason: string;
 }
 
@@ -306,14 +306,14 @@ export class Koordinator {
       scope = await this.estimate(card, active);
     } catch (e) {
       this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte den Umfang nicht schätzen (${e instanceof Error ? e.message : String(e)}); die Karte startet trotzdem.`);
-      scope = { files: [], collidesWith: [], reason: '' };
+      scope = { files: [], conflictsWith: [], reason: '' };
     }
     if (!this.o.board.item(cardId)?.queue) return;
     this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
     const behind = this.collisions(card, scope, active);
-    if (!behind.length) return this.startNow(cardId, 'Keine Überschneidung mit laufender Arbeit.');
+    if (!behind.length) return this.startNow(cardId, `Kein Merge-Konflikt mit laufender Arbeit zu erwarten.${scope.reason ? ` ${scope.reason}` : ''}`);
     const names = behind.map((id) => `„${active.find((a) => a.id === id)?.title ?? id}“`).join(', ');
-    const reason = scope.reason || 'Überschneidung mit laufender Arbeit.';
+    const reason = scope.reason || 'Wahrscheinlich Merge-Konflikte mit laufender Arbeit.';
     this.setQueue(cardId, { behind, reason });
     this.o.board.log(cardId, 'state', 'obeya', `Koordinator: wartet auf ${names}. ${reason}`);
   }
@@ -329,19 +329,9 @@ export class Koordinator {
     }
   }
 
-  /** In-progress cards of the card's repository its scope collides with: overlapping files, or the Koordinator's judgement. */
+  /** In-progress cards of the card's repository whose changes the Koordinator expects to conflict with the card's. */
   collisions(card: Item, scope: Scope, active: Item[]): string[] {
-    const hands = this.o.repoFor(card);
-    const hard = (files: string[]) => files.map(normalize).filter((f) => f && !hands.adapter.softPaths.some((s) => overlaps(f, s)));
-    const mine = hard(scope.files);
-    return active
-      .filter((a) => {
-        if (a.repo !== card.repo) return false;
-        if (scope.collidesWith.includes(a.id)) return true;
-        const theirs = hard([...(a.scope ?? []), ...hands.workspaces.changedFiles(a.id)]);
-        return mine.some((f) => theirs.some((g) => overlaps(f, g)));
-      })
-      .map((a) => a.id);
+    return active.filter((a) => a.repo === card.repo && scope.conflictsWith.includes(a.id)).map((a) => a.id);
   }
 
   /** Queued cards start once nothing they wait for is in progress any more. */
@@ -366,13 +356,15 @@ export class Koordinator {
         this.setQueue(w.id, { behind: still, reason: q.reason });
         continue;
       }
-      // what it waited for is done; check again against what runs now, with the estimate it has
-      const scope: Scope = { files: w.scope ?? [], collidesWith: [], reason: q.reason };
-      const now = this.collisions(w, scope, this.inProgress(w.repo));
-      if (now.length) this.setQueue(w.id, { behind: now, reason: q.reason });
-      else {
-        this.startNow(w.id, 'Die Überschneidung ist erledigt; es geht los.');
+      // what it waited for is done; with nothing else running it starts, else it is judged again
+      // against what runs now, which may have started after it was judged
+      if (!this.inProgress(w.repo).length) {
+        this.startNow(w.id, 'Worauf sie gewartet hat, ist erledigt; es geht los.');
         active.add(w.id);
+      } else {
+        this.setQueue(w.id, { checking: true });
+        this.o.board.log(w.id, 'state', 'obeya', 'Koordinator: Worauf sie gewartet hat, ist erledigt; prüft neu gegen die laufende Arbeit.');
+        this.serial(() => this.decide(w.id));
       }
     }
   }
@@ -391,14 +383,14 @@ export class Koordinator {
           tools: [
             {
               name: 'scope',
-              description: 'Report the files the card will change, the cards in progress it collides with (their tags), and a one-sentence reason in German.',
-              schema: { files: z.array(z.string()), collides_with: z.array(z.string()), reason: z.string() },
+              description: 'Report the files the card will change, the cards in progress whose changes are likely to conflict with it on merge (their tags), and a one-sentence reason in German.',
+              schema: { files: z.array(z.string()), conflicts_with: z.array(z.string()), reason: z.string() },
               run: (a) => {
                 if (done) return 'Already reported.';
                 done = true;
                 resolve({
                   files: (a.files as string[]).slice(0, 200),
-                  collidesWith: (a.collides_with as string[]).map((t) => tags.get(t)).filter((x): x is string => !!x),
+                  conflictsWith: (a.conflicts_with as string[]).map((t) => tags.get(t)).filter((x): x is string => !!x),
                   reason: String(a.reason).slice(0, 500),
                 });
                 return 'Recorded. End your turn now.';
@@ -426,6 +418,8 @@ export class Koordinator {
 
   private brief(card: Item, active: Item[], tags: Map<string, string>): string {
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
+    const soft = this.o.repoFor(card).adapter.softPaths;
+    const hard = (f: string) => !soft.some((s) => overlaps(normalize(f), s));
     const lines = [
       `The card to start: ${card.kind} "${card.title}".`,
       card.body.trim(),
@@ -434,11 +428,16 @@ export class Koordinator {
         ? `Cards in progress:\n${[...tags]
             .map(([tag, id]) => {
               const a = active.find((x) => x.id === id)!;
-              const files = [...new Set([...(a.scope ?? []), ...this.o.repoFor(a).workspaces.changedFiles(id)])];
-              return `- ${tag}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}\n  files: ${files.join(', ') || '(none known)'}`;
+              const changed = this.o.repoFor(a).workspaces.changes(id).filter((c) => hard(c.file));
+              return [
+                `- ${tag}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
+                `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
+                `  changed so far: ${changed.length ? changed.slice(0, 60).map(describe).join(', ') : '(nothing yet)'}`,
+              ].join('\n');
             })
             .join('\n')}`
         : 'No cards are in progress.',
+      soft.length ? `Changes under ${soft.join(', ')} never count: they are resolved when a branch lands.` : '',
     ];
     return lines.filter(Boolean).join('\n\n');
   }
@@ -461,12 +460,14 @@ export class Koordinator {
 }
 
 const SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether it collides with a card in progress — whether their changes are likely to conflict or to step on each other's behaviour.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting; everything else should run in parallel.
+
+Sharing a file is not a conflict. Git merges changes to different places of the same file cleanly: new strings, types, routes, tests or functions added next to others; edits in different functions. A conflict is likely when both cards change the same lines or the same function or block, when one rewrites, moves, renames or reformats code the other one edits, or when both change the same small, tightly packed section (one config entry, one signature that both extend). For a card in progress you see what it is expected to change and the places it has changed so far (line ranges in its branch, with the enclosing function); read the code there when you need to.
 
 Read what you need in the repository (you cannot change files), then call scope exactly once:
 - files: repository-relative paths the card will most likely change; a path ending in "/" stands for a directory. Be concrete; list new files where you expect them.
-- collides_with: the tags of cards in progress it collides with beyond plain file overlap (same feature, same data model, same UI flow); empty when none.
-- reason: one sentence in German for the owner, naming the overlap if there is one. The owner does not know the tags: name cards by their title.
+- conflicts_with: the tags of cards in progress whose changes will likely conflict with this card's on merge; empty when none. When in doubt, leave a card out: a conflict that happens anyway goes back to its worker to resolve.
+- reason: one sentence in German for the owner: with a conflict, where the two cards change the same code; without one, which files they share, if any, and why that is fine. The owner does not know the tags: name cards by their title.
 Keep it quick: this runs every time a card starts.
 `.trim();
 
@@ -478,13 +479,17 @@ If it does state one, call remember with a short, general rule in German ("Besch
 `.trim();
 
 const CUT_SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers run at the same time, each on one card in its own workspace; cards that change the same files have to wait for each other. The owner asks you to cut a card into work packages that can run in parallel.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers run at the same time, each on one card in its own workspace; cards whose changes would conflict on merge (the same code in the same files) have to wait for each other. The owner asks you to cut a card into work packages that can run in parallel.
 
 Read what you need in the repository (you cannot change files). Then either call packages or keep:
 - packages: 2 to 6 cards that together do exactly what the card asks, each shippable and testable on its own, touching different files wherever possible. Each body says what to do and how to verify it, so a worker needs no other context. files: the repository-relative paths each will change ("dir/" for a directory). reason: one sentence in German on how you cut.
 - keep: when the card is small, or its parts cannot run apart without stepping on each other.
 Do not add scope the card does not ask for.
 `.trim();
+
+/** A changed file with the places changed in it: "src/a.ts (lines 12-20 in function f; 40)", or "(new)". */
+const describe = (c: Change) =>
+  `${c.file} (${c.regions.length ? (c.regions[0] === 'deleted' ? 'deleted' : `lines ${c.regions.slice(0, 8).join('; ')}${c.regions.length > 8 ? '; …' : ''}`) : 'new'})`;
 
 const normalize = (p: string) => p.trim().replace(/^\.\//, '').replace(/^\/+/, '');
 

@@ -371,7 +371,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     ackTimer.current = setTimeout(() => setAckOn(false), 7000);
   }
 
-  /** The play button on a card: starts it, or one queued behind others despite the overlap. */
+  /** The play button on a card: starts it, or one queued behind others despite the likely conflict. */
   const startCard = useCallback(async (i: Item) => {
     try {
       await api.act(i.id, { action: i.queue ? 'force' : 'start' });

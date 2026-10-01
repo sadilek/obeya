@@ -30,7 +30,7 @@ interface CardProps {
   dragging: boolean;
   pop: boolean;
   els: Map<string, HTMLElement>;
-  /** Starts a planned card, or one queued behind others despite the overlap. */
+  /** Starts a planned card, or one queued behind others despite the likely conflict. */
   onStart: (item: Item) => void;
 }
 

@@ -63,9 +63,10 @@ describe('a canvas with several repositories', () => {
     await settle();
     expect(item(a.id).state).toBe('working');
     // A's estimate, and B in the other repository with the same file
-    const scopeCall = (files: string[]) => {
-      const s = runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope')).at(-1)!;
-      s.call('scope', { files, collides_with: [], reason: '' });
+    const estimate = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope')).at(-1)!;
+    const scopeCall = (files: string[], conflicts: string[] = []) => {
+      const s = estimate();
+      s.call('scope', { files, conflicts_with: conflicts, reason: '' });
       s.emit({ type: 'idle' });
     };
     scopeCall(['src/index.ts']);
@@ -75,13 +76,15 @@ describe('a canvas with several repositories', () => {
     await settle();
     // nothing in progress in "api": B starts without an estimate first
     expect(item(b.id).state).toBe('working');
-    // and a second card in "web" with A's file waits
+    // and a second card in "web" is judged against A only, and waits for it
     const c = canvas.board.create({ kind: 'feature', title: 'C', x: 0, y: 0 });
     canvas.act(c.id, { action: 'start' });
     await settle();
     scopeCall(['src/index.ts']);
     await settle();
-    scopeCall(['src/index.ts']);
+    expect(estimate().inbox[0]).toContain('K1: "A"');
+    expect(estimate().inbox[0]).not.toContain('"B"');
+    scopeCall(['src/index.ts'], ['K1']);
     await settle();
     expect(item(c.id).queue).toMatchObject({ behind: [a.id] });
   });

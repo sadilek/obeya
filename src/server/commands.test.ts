@@ -169,7 +169,7 @@ describe('the Koordinator remembers', () => {
     expect(heard.token).toBeDefined();
   });
 
-  test('starting a queued card starts it now despite the overlap; one still being checked starts by itself', async () => {
+  test('starting a queued card starts it now despite the likely conflict; one still being checked starts by itself', async () => {
     const running = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
     board.work(running.id, { state: 'working' });
     const behind = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
@@ -181,7 +181,7 @@ describe('the Koordinator remembers', () => {
     await settle();
     const s = runtime.last;
     expect(s.inbox[0]).toContain('K2 [queued behind "Export"] feature "Archiv"');
-    expect(s.inbox[0]).toContain('K3 [queued: the Koordinator checks it for overlaps] bugfix "Login"');
+    expect(s.inbox[0]).toContain('K3 [queued: the Koordinator checks it for merge conflicts] bugfix "Login"');
     const refused = await s.call('act', { actions: [{ do: 'start', card: 'K2' }, { do: 'start', card: 'K3' }], confirm: 'Beide starten.' });
     expect(refused).toContain('action 2 (start on K3): the Koordinator is still checking the card');
     s.call('act', { actions: [{ do: 'start', card: 'K2' }], confirm: '„Archiv“ startet trotz Überschneidung.' });
