@@ -1,4 +1,5 @@
-// The archive: finished cards taken off the canvas, the most recently archived first.
+// The archive: finished cards taken off the canvas and projects whose plan doc is gone, the most
+// recently archived first. A project's workstreams belong to it and are not listed on their own.
 
 import type { Item } from '../core/types';
 import { plain } from './markdown';
@@ -6,7 +7,7 @@ import { t } from './strings';
 
 interface Props {
   on: boolean;
-  /** The archive as the server sends it, newest first. */
+  /** The archive as the server sends it, newest first; a project is followed by its workstreams. */
   archived: Item[];
   /** Finished cards of the owner's still on the canvas. */
   done: number;
@@ -19,7 +20,7 @@ interface Props {
 export function ArchiveSheet({ on, archived, done, onOpen, onArchiveDone, els }: Props) {
   // one heading per day, in the server's order
   const days: { day: string; items: Item[] }[] = [];
-  for (const i of archived) {
+  for (const i of archived.filter((x) => !x.parent)) {
     const day = t.archive.day(new Date(i.archivedAt!));
     if (days.at(-1)?.day === day) days.at(-1)!.items.push(i);
     else days.push({ day, items: [i] });
@@ -49,7 +50,9 @@ export function ArchiveSheet({ on, archived, done, onOpen, onArchiveDone, els }:
                       {plain(i.title)}
                       <br />
                       <span className="hint">
-                        {t.kind[i.kind]} · {t.archive.time(new Date(i.archivedAt!))}
+                        {t.kind[i.kind]}
+                        {i.kind === 'project' && ` · ${t.archive.workstreams(archived.filter((x) => x.parent === i.id).length)}`} ·{' '}
+                        {t.archive.time(new Date(i.archivedAt!))}
                       </span>
                     </span>
                   </li>

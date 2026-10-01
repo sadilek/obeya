@@ -2,9 +2,9 @@
 
 import { type CSSProperties, memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import type { CanvasInfo, Item } from '../core/types';
-import type { Cam } from './camera';
+import type { CanvasInfo, Item, ProjectHistory } from '../core/types';
 import { api } from './api';
+import type { Cam } from './camera';
 import { Doc, Inline, plain } from './markdown';
 import { stateLabel, t } from './strings';
 
@@ -161,7 +161,8 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
 export const readingWidth = () => Math.min(760, Math.max(380, innerWidth - 520));
 
 /**
- * The open project: its goal and workstreams, or, while `reading`, its plan doc as written, with the
+ * The open project: its goal and workstreams (as the doc last stood, for an archived one), the idea
+ * it came from and the decisions taken in it; or, while `reading`, its plan doc as written, with the
  * workstream `reading.mark` (a label) in view.
  */
 export function Sheet({
@@ -171,6 +172,8 @@ export function Sheet({
   reading,
   onOpen,
   onRead,
+  els,
+  version,
 }: {
   project?: Item;
   kids: Item[];
@@ -179,7 +182,22 @@ export function Sheet({
   onOpen: (i: Item) => void;
   /** Reads the plan doc (`{}`), or goes back to the workstreams (`null`). */
   onRead: (r: { mark?: string } | null) => void;
+  /** Where the cards opened from the sheet unfold from (an archived project's are not on the canvas). */
+  els: Map<string, HTMLElement>;
+  /** Changes when the canvas does, so the decisions are read again. */
+  version: unknown;
 }) {
+  const [loaded, setLoaded] = useState<{ id: string; h: ProjectHistory } | null>(null);
+  const id = project?.id;
+  useEffect(() => {
+    if (!id || !on) return;
+    let current = true;
+    api.history(id).then((h) => current && setLoaded({ id, h }), console.error);
+    return () => void (current = false);
+  }, [id, on, version]);
+  // never another project's
+  const history = loaded && loaded.id === id ? loaded.h : null;
+  const ref = (key: string) => (el: HTMLElement | null) => void (el ? els.set(key, el) : els.delete(key));
   const [doc, setDoc] = useState<{ id: string; markdown: string } | null>(null);
   const [failed, setFailed] = useState(false);
   // read again whenever the project changes, which includes an edit of its doc
@@ -229,18 +247,27 @@ export function Sheet({
       )}
       {project?.plan && !reading && (
         <>
-          <div className="p-kind">{t.planSheet}</div>
+          <div className="p-kind">{project.archivedAt ? t.archivedProject : t.planSheet}</div>
           <h2>{plain(project.title)}</h2>
+          {project.archivedAt && <p className="hint">{t.archive.projectGone(new Date(project.archivedAt))}</p>}
           <div className="goal">
             <Inline md={project.plan.goal} />
           </div>
           <div className="src">{project.plan.file}</div>
-          <button className="btn read" onClick={() => onRead({})}>
-            {t.plan.read}
-          </button>
+          {!project.archivedAt && (
+            <button className="btn read" onClick={() => onRead({})}>
+              {t.plan.read}
+            </button>
+          )}
+          {history?.origin && (
+            <button className="origin" ref={ref(history.origin.id)} onClick={() => onOpen(history.origin!)}>
+              <span className="hint">{t.fromIdea}</span>
+              <span>{plain(history.origin.title.replace(/^Plan-Doc:\s*/, ''))}</span>
+            </button>
+          )}
           <ol>
             {kids.map((k) => (
-              <li key={k.id} className={`s-${k.state}`} onClick={() => onOpen(k)}>
+              <li key={k.id} ref={ref(k.id)} className={`s-${k.state}`} onClick={() => onOpen(k)}>
                 <span className="dot" />
                 <span className="w">{k.label}</span>
                 <span>
@@ -251,6 +278,21 @@ export function Sheet({
               </li>
             ))}
           </ol>
+          <h4 className="p-h">{t.decisions}</h4>
+          {history && history.decisions.length === 0 && <p className="hint">{t.noDecisions}</p>}
+          {history && history.decisions.length > 0 && (
+            <ul className="decisions">
+              {history.decisions.map((d) => (
+                <li key={d.id}>
+                  <div className="q">{d.question}</div>
+                  <div className="a">{d.answer}</div>
+                  <div className="hint">
+                    {t.decidedBy[d.by]} · {new Date(d.at).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
     </aside>

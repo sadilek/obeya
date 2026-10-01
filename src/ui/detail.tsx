@@ -1,6 +1,6 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardAction, CardEvent, CardPatch, Demo, Item, Question, RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, onCardEvent } from './api';
@@ -133,7 +133,7 @@ export function Detail(p: Props) {
               <Shots ids={item.images} />
             </>
           )}
-          {parent?.plan && <PlanSource file={parent.plan.file} onRead={() => p.onReadPlan(parent, item.label)} />}
+          {parent?.plan && <PlanSource file={parent.plan.file} onRead={parent.archivedAt ? undefined : () => p.onReadPlan(parent, item.label)} />}
           {!item.queue && (
             <div className="actions">
               <button className="btn primary" onClick={() => act({ action: 'start' }, { close: false })}>
@@ -276,10 +276,23 @@ export function Detail(p: Props) {
 
       {error && <p className="p-error">{error}</p>}
 
+      {/* a decided idea keeps what it was decided on, and how */}
+      {item.brief !== undefined && (
+        <>
+          {item.brief.trim() && (
+            <div className="question brief">
+              <h4>{t.idea.brief}</h4>
+              <Body md={item.brief} />
+            </div>
+          )}
+          <Conversation item={item} past />
+        </>
+      )}
+
       {worked && (
         <>
-          <Log cardId={item.id} />
-          {(item.body.trim() || !!item.images?.length) && (
+          <Log cardId={item.id} skipTalk={item.brief !== undefined} />
+          {((item.body.trim() && item.body.trim() !== item.brief?.trim()) || !!item.images?.length) && (
             <details className="p-task">
               <summary>{t.task}</summary>
               <Body md={item.body} />
@@ -292,9 +305,12 @@ export function Detail(p: Props) {
               <>
                 {' · '}
                 <code>{parent.plan.file}</code>{' '}
-                <button className="link" onClick={() => p.onReadPlan(parent, item.label)}>
-                  {t.plan.readAt}
-                </button>
+                {/* an archived project's doc is gone */}
+                {!parent.archivedAt && (
+                  <button className="link" onClick={() => p.onReadPlan(parent, item.label)}>
+                    {t.plan.readAt}
+                  </button>
+                )}
               </>
             )}
           </p>
@@ -312,12 +328,12 @@ export function Detail(p: Props) {
         <>
           <Body md={item.body} />
           <Shots ids={item.images} />
-          {parent?.plan && <PlanSource file={parent.plan.file} onRead={() => p.onReadPlan(parent, item.label)} />}
+          {parent?.plan && <PlanSource file={parent.plan.file} onRead={parent.archivedAt ? undefined : () => p.onReadPlan(parent, item.label)} />}
         </>
       )}
 
       {/* a card nobody worked on shows its log once there is something, such as a talk with the Koordinator */}
-      {!worked && <Log cardId={item.id} hideEmpty />}
+      {!worked && <Log cardId={item.id} hideEmpty skipTalk={item.brief !== undefined} />}
     </>
   );
 }
@@ -407,9 +423,10 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
 /**
  * The discussion of an idea, live: the owner's messages and the agent's replies. How the agent got
  * to a reply (what it read and thought, the decisions it recorded) folds away under that reply;
- * while it thinks, its latest step shows. The agent's open questions stand at the end.
+ * while it thinks, its latest step shows. The agent's open questions stand at the end. `past`: the
+ * idea is decided, only the talk is left.
  */
-function Conversation({ item, questions }: { item: Item; questions: ReactNode }) {
+function Conversation({ item, questions, past = false }: { item: Item; questions?: ReactNode; past?: boolean }) {
   const events = useEvents(item.id);
   const box = useRef<HTMLDivElement>(null);
   const asked = JSON.stringify(item.idea?.questions ?? []);
@@ -418,14 +435,16 @@ function Conversation({ item, questions }: { item: Item; questions: ReactNode })
     if (el) el.scrollTop = el.scrollHeight;
   }, [events, item.idea?.thinking, asked]);
   if (!events) return null;
-  const turns = talkTurns(events);
-  const thinking = !!item.idea?.thinking;
+  if (past && !events.some((e) => e.kind === 'talk')) return null;
+  const all = talkTurns(events);
+  const turns = past ? { shown: all.shown.filter((x) => x.e.kind === 'talk'), pending: [] } : all;
+  const thinking = !past && !!item.idea?.thinking;
   return (
     <>
       <h4 className="p-h">{t.idea.talk}</h4>
       <div className="talk" ref={box}>
         {turns.shown.length === 0 && !thinking && <div className="hint">{t.idea.talkEmpty}</div>}
-        {item.body.trim() && !events.some((e) => e.kind === 'talk') && (
+        {!past && item.body.trim() && !events.some((e) => e.kind === 'talk') && (
           <div className="msg by-owner seed">
             <div className="who">{t.idea.seed}</div>
             <Body md={item.body} />
@@ -633,13 +652,15 @@ function ArchiveButton({ item, run }: { item: Item; run: (fn: () => Promise<void
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-function PlanSource({ file, onRead }: { file: string; onRead: () => void }) {
+function PlanSource({ file, onRead }: { file: string; onRead?: () => void }) {
   return (
     <p className="p-src">
       {t.fromPlan} <code>{file}</code>{' '}
-      <button className="link" onClick={onRead}>
-        {t.plan.readAt}
-      </button>
+      {onRead && (
+        <button className="link" onClick={onRead}>
+          {t.plan.readAt}
+        </button>
+      )}
     </p>
   );
 }
@@ -894,8 +915,10 @@ function LastFailure({ cardId }: { cardId: string }) {
 }
 
 /** The card's log, live. */
-function Log({ cardId, hideEmpty }: { cardId: string; hideEmpty?: boolean }) {
-  const events = useEvents(cardId);
+function Log({ cardId, hideEmpty, skipTalk }: { cardId: string; hideEmpty?: boolean; skipTalk?: boolean }) {
+  const all = useEvents(cardId);
+  // the conversation of a decided idea shows on its own
+  const events = useMemo(() => (all && skipTalk ? all.filter((e) => e.kind !== 'talk') : all), [all, skipTalk]);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = box.current;

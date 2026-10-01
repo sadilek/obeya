@@ -32,6 +32,11 @@ export const t = {
     loading: 'Plandokument wird geladen …',
     failed: 'Das Plandokument ließ sich nicht laden.',
   },
+  archivedProject: 'Projekt · Archiv',
+  fromIdea: 'Entstanden aus der Idee',
+  decisions: 'Entscheidungen',
+  noDecisions: 'Noch keine Entscheidungen.',
+  decidedBy: { owner: 'du', project: 'Projekt-Agent für dich', koordinator: 'Koordinator für dich' },
   fromPlan: 'Aus dem Plan-Dokument; geändert wird es dort:',
   titlePlaceholder: 'Worum geht es?',
   bodyPlaceholder: 'Beschreibung',
@@ -167,7 +172,7 @@ export const t = {
   archive: {
     button: 'Archiv',
     kind: 'Archiv',
-    title: 'Erledigte Karten',
+    title: 'Erledigte Karten und Projekte',
     hint: 'Zuletzt archivierte oben. Ein Klick öffnet die Karte.',
     empty: 'Noch nichts archiviert.',
     archive: 'Archivieren',
@@ -189,6 +194,9 @@ export const t = {
       return `archiviert ${day === 'Heute' || day === 'Gestern' ? day.toLowerCase() : `am ${day}`}, ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
     },
     time: (d: Date) => `archiviert ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`,
+    /** Over an archived project: its plan doc is gone, and the sheet shows it as it last stood. */
+    projectGone: (d: Date) => `Das Plan-Dokument ist weg (${t.archive.when(d)}). So stand es zuletzt; kommt die Datei zurück, kehrt das Projekt an seinen Platz zurück.`,
+    workstreams: (n: number) => (n === 1 ? '1 Workstream' : `${n} Workstreams`),
   },
   split: 'Aufteilen',
   idea: {
