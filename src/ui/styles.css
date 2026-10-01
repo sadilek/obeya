@@ -390,6 +390,7 @@ button.link:hover { text-decoration: underline; }
 @keyframes spin { to { transform: rotate(360deg); } }
 #target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 4px 12px; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
 #target b { color: var(--ink); font-weight: 600; }
+#target.flat { color: #fff; background: #dc2626; font-weight: 600; }
 /* screenshots for the next recording: a small button and thumbnails to the right of the mic, which stays centred */
 .ptt-row { position: relative; }
 .ptt-shots { position: absolute; left: calc(100% + 12px); top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 10px; }

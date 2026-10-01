@@ -24,60 +24,91 @@ export type Where = { card: string } | { project: string } | null;
 
 type Phase = 'idle' | 'listening' | 'thinking';
 
-/** Recording and sending, with the screenshots beside the microphone; `level` drives the ring while listening. */
+/** Below this peak a working microphone delivers nothing, not even room noise (the sidecar's threshold too). */
+const QUIET_DBFS = -60;
+/** How long the level may stay flat at the start of a recording before the owner is told. */
+const FLAT_MS = 1500;
+
+/**
+ * Recording and sending, with the screenshots beside the microphone; `level` drives the ring while
+ * listening, `flat` says the microphone delivers nothing.
+ */
 export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void, shots: ShotInput) {
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
   const [phase, setPhase] = useState<Phase>('idle');
   const [level, setLevel] = useState(0);
-  const mic = useRef<{ stream: MediaStream; analyser: AnalyserNode } | null>(null);
+  const [flat, setFlat] = useState(false);
+  const mic = useRef<Promise<{ stream: MediaStream; ctx: AudioContext; analyser: AnalyserNode }> | null>(null);
   const rec = useRef<{ recorder: MediaRecorder; chunks: Blob[]; t0: number; target: Where } | null>(null);
+  const held = useRef<number | null>(null);
   const frame = useRef(0);
 
   async function start() {
-    if (rec.current || phase === 'thinking') return;
+    if (held.current !== null || rec.current || phase === 'thinking') return;
+    const pressed = performance.now();
+    held.current = pressed;
+    const target = where();
     api.warmVoice();
+    let m;
     try {
-      if (!mic.current) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // the first press after a page load opens the microphone, which takes a moment
+      mic.current ??= navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
         const ctx = new AudioContext();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
         ctx.createMediaStreamSource(stream).connect(analyser);
-        mic.current = { stream, analyser };
-      }
+        return { stream, ctx, analyser };
+      });
+      m = await mic.current;
     } catch {
+      mic.current = null;
+      held.current = null;
       onHeard({ confirm: t.voice.noMic });
       return;
     }
-    const recorder = new MediaRecorder(mic.current.stream);
-    const r = { recorder, chunks: [] as Blob[], t0: performance.now(), target: where() };
+    if (held.current !== pressed) {
+      // let go before the microphone was open: nothing was recorded, and a recording started now would run on unheld
+      if (held.current === null && performance.now() - pressed >= 350) onHeard({ confirm: t.voice.notReady });
+      return;
+    }
+    void m.ctx.resume();
+    const recorder = new MediaRecorder(m.stream);
+    const r = { recorder, chunks: [] as Blob[], t0: performance.now(), target };
     recorder.ondataavailable = (e) => e.data.size && r.chunks.push(e.data);
     recorder.start();
     rec.current = r;
     setPhase('listening');
-    const buf = new Uint8Array(512);
+    const buf = new Float32Array(m.analyser.fftSize);
+    let loudest = 0;
     const meter = () => {
-      if (!rec.current || !mic.current) return setLevel(0);
-      mic.current.analyser.getByteTimeDomainData(buf);
+      if (rec.current !== r) return;
+      m.analyser.getFloatTimeDomainData(buf);
       let s = 0;
-      for (const x of buf) s += ((x - 128) / 128) ** 2;
+      for (const x of buf) {
+        s += x * x;
+        loudest = Math.max(loudest, Math.abs(x));
+      }
       setLevel(Math.min(1, Math.sqrt(s / buf.length) * 6));
+      // a suspended context reads flat too; only a running one tells about the microphone
+      setFlat(m.ctx.state === 'running' && performance.now() - r.t0 > FLAT_MS && 20 * Math.log10(loudest) < QUIET_DBFS);
       frame.current = requestAnimationFrame(meter);
     };
     meter();
   }
 
   function stop() {
+    held.current = null;
     const r = rec.current;
     if (!r) return;
     rec.current = null;
     cancelAnimationFrame(frame.current);
     setLevel(0);
-    const held = performance.now() - r.t0;
+    setFlat(false);
+    const length = performance.now() - r.t0;
     r.recorder.onstop = async () => {
       // a tap is not a command
-      if (held < 350) return setPhase('idle');
+      if (length < 350) return setPhase('idle');
       setPhase('thinking');
       // those still uploading wait for the next recording
       const images = shotsRef.current.images;
@@ -93,11 +124,11 @@ export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void, s
     r.recorder.stop();
   }
 
-  useEffect(() => () => mic.current?.stream.getTracks().forEach((tr) => tr.stop()), []);
-  return { phase, level, start, stop };
+  useEffect(() => () => void mic.current?.then((m) => m.stream.getTracks().forEach((tr) => tr.stop())), []);
+  return { phase, level, flat, start, stop };
 }
 
-export function PushToTalk({ phase, level, target, shots, onDown }: { phase: Phase; level: number; target: string; shots: ShotInput; onDown: () => void }) {
+export function PushToTalk({ phase, level, flat, target, shots, onDown }: { phase: Phase; level: number; flat: boolean; target: string; shots: ShotInput; onDown: () => void }) {
   return (
     <div id="ptt" className={`${phase}${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
       <div className="ptt-row">
@@ -122,9 +153,15 @@ export function PushToTalk({ phase, level, target, shots, onDown }: { phase: Pha
         </div>
       </div>
       {shots.error && <div className="ptt-error">{shots.error}</div>}
-      <div id="target">
-        → <b>{target}</b>
-      </div>
+      {flat ? (
+        <div id="target" className="flat">
+          {t.voice.flat}
+        </div>
+      ) : (
+        <div id="target">
+          → <b>{target}</b>
+        </div>
+      )}
     </div>
   );
 }

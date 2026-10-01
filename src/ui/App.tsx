@@ -680,7 +680,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
       <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
-      <PushToTalk phase={ptt.phase} level={ptt.level} target={target} shots={voiceShots} onDown={ptt.start} />
+      <PushToTalk phase={ptt.phase} level={ptt.level} flat={ptt.flat} target={target} shots={voiceShots} onDown={ptt.start} />
       <Sheet
         project={sheetProject}
         kids={sheetKids}
