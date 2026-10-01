@@ -377,9 +377,9 @@ export class CanvasRuntime {
     this.board.work(cardId, { images: JSON.stringify([...had.filter((i) => !images.includes(i)), ...images].slice(-MAX_IMAGES)) });
   }
 
-  /** Whether a worker is in the middle of a turn, which a restart would cut off. */
-  busy(): boolean {
-    return this.repos.some((r) => r.workers.busy());
+  /** The cards whose worker is in the middle of a turn, which a restart would cut off. */
+  busy(): string[] {
+    return this.repos.flatMap((r) => r.workers.busyCards());
   }
 
   shutdown() {

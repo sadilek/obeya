@@ -336,7 +336,12 @@ export class Workers {
 
   /** Whether a worker is in the middle of a turn, or its ended turn waits for its background work. */
   busy(): boolean {
-    return [...this.live.values()].some((l) => l.busy);
+    return this.busyCards().length > 0;
+  }
+
+  /** The cards whose worker is busy, as `busy` means it. */
+  busyCards(): string[] {
+    return [...this.live].filter(([, l]) => l.busy).map(([id]) => id);
   }
 
   shutdown() {

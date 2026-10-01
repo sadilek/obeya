@@ -97,9 +97,11 @@ describe('workers', () => {
     const c = manual();
     workers.start(c.id);
     expect(workers.busy()).toBe(true);
+    expect(workers.busyCards()).toEqual([c.id]);
     runtime.last.call('ask', { question: 'CSV oder Excel?' });
     runtime.last.emit({ type: 'idle' });
     expect(workers.busy()).toBe(false);
+    expect(workers.busyCards()).toEqual([]);
     workers.answer(c.id, 'CSV');
     expect(workers.busy()).toBe(true);
     runtime.last.emit({ type: 'idle' });

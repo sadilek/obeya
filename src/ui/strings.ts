@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, Queue } from '../core/types';
+import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, Queue, RestartReason } from '../core/types';
 
 export const t = {
   kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', spike: 'Spike' },
@@ -224,6 +224,21 @@ export const t = {
       notClone: 'Ein Klon in der Liste ist kein git-Repository.',
       invalid: 'Die Konfiguration ist fehlerhaft.',
     } satisfies Record<ConfigProblemCode, string>,
+  },
+  restart: {
+    pill: (n: number) => (n === 1 ? 'Neustart wartet auf 1 Agenten' : `Neustart wartet auf ${n} Agenten`),
+    until: (time: string) => `spätestens ${time}`,
+    reason: {
+      code: 'Auf main liegt neuer Code, mit dem Obeya neu startet.',
+      config: 'Die Konfiguration wurde gespeichert; Obeya startet mit ihr neu.',
+    } satisfies Record<RestartReason, string>,
+    waits: 'Obeya wartet, bis diese Agenten ihren Schritt beendet haben:',
+    elsewhere: (n: number) => (n === 1 ? '1 Agent auf einer anderen Leinwand' : `${n} Agenten auf anderen Leinwänden`),
+    deadline: (time: string) => `Um ${time} startet Obeya auf jeden Fall neu.`,
+    now: 'Jetzt neu starten',
+    nowRisk:
+      'Ohne zu warten: Die Agenten werden mitten im Schritt unterbrochen. Was sie gerade laufen lassen (Tests, Builds, gestartete Server, eine Demo-Aufnahme), wird gestoppt. Nach dem Neustart machen sie in ihrer Sitzung weiter und erfahren davon, müssen Abgebrochenes aber neu anstoßen; eine halb fertige Änderung liegt bis dahin unfertig im Workspace.',
+    going: 'Obeya startet neu …',
   },
   archive: {
     button: 'Archiv',

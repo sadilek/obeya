@@ -4,13 +4,14 @@ import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CanvasInfo, CardAction, CardPatch, NewCard, ServerMessage } from '../core/types';
+import type { CanvasInfo, CardAction, CardPatch, NewCard, PendingRestart, ServerMessage } from '../core/types';
 import index from '../ui/index.html';
 import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
 import type { Focus, Heard } from './commands';
 import type { Config } from './config';
 import { serveDemoFile } from './demo';
+import type { Restarter } from './self-update';
 import { looping, silence, type Speaker, type Transcriber } from './voice';
 
 type Req = Request & { params: Record<string, string> };
@@ -20,7 +21,7 @@ export interface Voice {
   speaker: Speaker;
 }
 
-export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false, config?: Config) {
+export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false, config?: Config, restarter?: Restarter) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
   const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string }>>>(canvases.map((c) => [c.id, new Set()]));
@@ -33,11 +34,19 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     setTimeout(() => speech.delete(id), 60_000);
     return `/api/c/${encodeURIComponent(c.id)}/voice/speech/${id}`;
   };
+  /** The restart that waits, as canvas `id` sees it. */
+  const pending = (id: string): PendingRestart | null => {
+    const due = restarter?.due();
+    if (!due) return null;
+    const here = due.waiting.filter((w) => w.canvas === id);
+    return { reason: due.reason, since: due.since, deadline: due.deadline, cards: here.map((w) => w.card), elsewhere: due.waiting.length - here.length };
+  };
   for (const c of canvases) {
     const send = (msg: ServerMessage) => {
       const text = JSON.stringify(msg);
       for (const ws of sockets.get(c.id)!) ws.send(text);
     };
+    restarter?.onChange(() => send({ type: 'restart', restart: pending(c.id) }));
     c.board.onChange(() => send({ type: 'snapshot', snapshot: c.board.snapshot() }));
     c.board.onEvent((event) => send({ type: 'event', event }));
     c.board.onSpeak((cardId, text) => send({ type: 'speak', cardId, audio: voice(c, text) }));
@@ -113,6 +122,16 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       '/api/config': {
         GET: () => (config ? Response.json(config.view()) : new Response('Not found', { status: 404 })),
         PUT: async (req) => (config ? handle(async () => config.save(await req.json())) : new Response('Not found', { status: 404 })),
+      },
+      // the owner has a restart that waits for workers go ahead at once
+      '/api/restart': {
+        POST: () =>
+          handle(() => {
+            const due = !!restarter?.due();
+            // after the answer is out: the restart stops this server
+            if (due) setTimeout(() => restarter!.now(), 100);
+            return { restarting: due };
+          }),
       },
       '/api/config/check': { POST: async (req) => (config ? handle(async () => config.check(await req.json())) : new Response('Not found', { status: 404 })) },
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
@@ -205,6 +224,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         sockets.get(c.id)!.add(ws);
         ws.send(JSON.stringify({ type: 'hello', server: started } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
+        ws.send(JSON.stringify({ type: 'restart', restart: pending(c.id) } satisfies ServerMessage));
       },
       close: (ws) => void sockets.get(ws.data.canvas)?.delete(ws),
       message: () => {},

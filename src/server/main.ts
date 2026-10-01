@@ -17,12 +17,13 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import type { RestartReason } from '../core/types';
 import { type CanvasConfig, CanvasRuntime } from './canvas';
 import { Config, CONFIG_FILE, expand, expandConfig, readConfigFile } from './config';
 import { Store } from './db';
 import { ghForge } from './forge';
 import { sdkRuntime } from './runtime';
-import { ownCheckout, RESTART, RESTART_FROM_FILE, watchOwnCode, whenIdle } from './self-update';
+import { ownCheckout, RESTART, RESTART_FROM_FILE, Restarter, watchOwnCode } from './self-update';
 import { serve } from './server';
 import { SpeechSidecar, WhisperSidecar } from './voice';
 
@@ -96,18 +97,19 @@ const store = new Store(join(home, 'obeya.db'));
 const own = process.env.OBEYA_SUPERVISED ? ownCheckout() : null;
 let canvases: CanvasRuntime[] = [];
 let server: ReturnType<typeof serve> | undefined;
-let restarting = false;
 let exitCode = RESTART;
-/** Starts the server again once no worker is in the middle of a turn. */
-const restart = (why: string) => {
-  if (restarting) return;
-  restarting = true;
-  const busy = () => canvases.some((c) => c.busy());
-  console.log(`Obeya: ${why}; restarting${busy() ? ' once no worker is in the middle of a turn' : ''}`);
-  whenIdle(busy, () => {
+/** Starts the server again once no worker is in the middle of a turn, or when the owner says so. */
+const busy = () => canvases.flatMap((c) => c.busy().map((card) => ({ canvas: c.id, card })));
+const restarter = new Restarter({
+  busy,
+  go: () => {
     server?.stop(true);
     shutdown(exitCode);
-  });
+  },
+});
+const restart = (reason: RestartReason, why: string) => {
+  if (!restarter.due()) console.log(`Obeya: ${why}; restarting${busy().length ? ' once no worker is in the middle of a turn' : ''}`);
+  restarter.request(reason);
 };
 const config = new Config({
   file: configFile,
@@ -121,7 +123,7 @@ const config = new Config({
         restart: () => {
           // canvases from the command line come from the saved file from now on
           if (source === 'args') exitCode = RESTART_FROM_FILE;
-          restart('the configuration changed');
+          restart('config', 'the configuration changed');
         },
       }
     : {}),
@@ -145,9 +147,9 @@ const shutdown = (code: number) => {
 };
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => shutdown(0));
 
-server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev, config);
+server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev, config, restarter);
 console.log(`Obeya on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'})`);
-if (own) watchOwnCode(own, (from, to) => restart(`${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
+if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
 for (const c of canvases) {
   console.log(`  ${c.board.canvas.name} (?c=${c.id})`);
   for (const r of c.repos)

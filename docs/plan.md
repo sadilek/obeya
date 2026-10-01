@@ -221,7 +221,9 @@ the owner's language (`src/core/locale.ts`).
   until no worker is in the middle of a turn or waiting for its background work, even one that has
   asked or handed over meanwhile (at most 15 minutes), since it stops whatever a worker runs; a
   resumed worker is told so. A worker that waits for the restart to finish its landed work is not
-  in a turn and does not hold it up.
+  in a turn and does not hold it up. While a restart waits, the bar shows it ("Neustart wartet auf
+  N Agenten", until when at most); hovering names why and the cards it waits for, and "Jetzt neu
+  starten" (`POST /api/restart`) has it go ahead at once, its hover text saying what that cuts off.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges whether running it next to
   the cards in progress likely ends in merge conflicts. For each card in progress it sees the

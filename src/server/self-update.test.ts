@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownCheckout, watchOwnCode, whenIdle } from './self-update';
+import { type Busy, ownCheckout, Restarter, watchOwnCode, whenIdle } from './self-update';
 import { gitRepo } from './testing';
 import { git } from './workspaces';
 
@@ -69,4 +69,51 @@ test('a restart waits until nothing is busy, or until its patience is out', asyn
   stop = whenIdle(() => true, () => ran++, 40, 10);
   await wait(100);
   expect(ran).toBe(2);
+});
+
+test('a restart with no worker busy goes ahead at once and never waits', () => {
+  let gone = 0;
+  const r = new Restarter({ busy: () => [], go: () => gone++ });
+  r.request('code');
+  expect(gone).toBe(1);
+  expect(r.due()).toBeNull();
+  expect(r.now()).toBe(false);
+});
+
+test('a restart that waits tells for whom, follows them, and goes once they are done', async () => {
+  let busy: Busy[] = [
+    { canvas: 'c', card: 'a' },
+    { canvas: 'c', card: 'b' },
+  ];
+  let gone = 0;
+  let changes = 0;
+  const r = new Restarter({ busy: () => busy, go: () => gone++, patienceMs: 10_000, intervalMs: 10 });
+  r.onChange(() => changes++);
+  r.request('config');
+  r.request('code');
+  expect(r.due()).toMatchObject({ reason: 'config', waiting: busy });
+  expect(r.due()!.deadline - r.due()!.since).toBe(10_000);
+  expect(changes).toBe(1);
+  busy = [busy[1]!];
+  await wait(50);
+  expect(r.due()!.waiting).toEqual([{ canvas: 'c', card: 'b' }]);
+  expect(changes).toBe(2);
+  expect(gone).toBe(0);
+  busy = [];
+  await wait(50);
+  expect(gone).toBe(1);
+  expect(r.due()).toBeNull();
+});
+
+test('the owner has a waiting restart go ahead now, once', async () => {
+  let gone = 0;
+  const r = new Restarter({ busy: () => [{ canvas: 'c', card: 'a' }], go: () => gone++, patienceMs: 10_000, intervalMs: 10 });
+  r.request('code');
+  expect(r.now()).toBe(true);
+  expect(gone).toBe(1);
+  expect(r.due()).toBeNull();
+  expect(r.now()).toBe(false);
+  r.request('code');
+  await wait(50);
+  expect(gone).toBe(1);
 });

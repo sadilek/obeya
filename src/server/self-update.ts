@@ -3,6 +3,7 @@
 // when that is due.
 
 import { dirname } from 'node:path';
+import type { RestartReason } from '../core/types';
 import { GIT } from './workspaces';
 
 /** The exit code that asks the supervisor for a fresh server. */
@@ -25,6 +26,98 @@ export function whenIdle(busy: () => boolean, fn: () => void, patienceMs = RESTA
   check();
   return () => clearInterval(timer);
 }
+
+/** A worker a restart waits for. */
+export interface Busy {
+  canvas: string;
+  card: string;
+}
+
+/** A restart that is due and waits for the workers it would cut off. */
+export interface Due {
+  reason: RestartReason;
+  since: number;
+  deadline: number;
+  waiting: Busy[];
+}
+
+export interface RestarterOptions {
+  /** The workers in the middle of a turn. */
+  busy: () => Busy[];
+  /** Stops the server so that it starts again. */
+  go: () => void;
+  patienceMs?: number;
+  intervalMs?: number;
+}
+
+/**
+ * Starts the server again once no worker is in the middle of a turn (`whenIdle`), and tells while
+ * it waits: for whom, and until when at most. The owner can have it go ahead at once.
+ */
+export class Restarter {
+  private current: Due | null = null;
+  private gone = false;
+  private stopWaiting = () => {};
+  private listeners = new Set<() => void>();
+
+  constructor(private o: RestarterOptions) {}
+
+  /** The restart that waits, if one does. */
+  due(): Due | null {
+    return this.current;
+  }
+
+  onChange(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  /** Asks for a restart; one that is due already covers the next reason too. */
+  request(reason: RestartReason) {
+    if (this.current || this.gone) return;
+    const patience = this.o.patienceMs ?? RESTART_PATIENCE_MS;
+    const since = Date.now();
+    let waiting = this.o.busy();
+    if (!waiting.length) return this.go();
+    this.current = { reason, since, deadline: since + patience, waiting };
+    this.emit();
+    this.stopWaiting = whenIdle(
+      () => {
+        const now = this.o.busy();
+        if (key(now) !== key(waiting) && this.current) {
+          waiting = now;
+          this.current = { ...this.current, waiting };
+          this.emit();
+        }
+        return now.length > 0;
+      },
+      () => this.go(),
+      patience,
+      this.o.intervalMs,
+    );
+  }
+
+  /** Goes ahead with the restart that waits, cutting off the workers it waits for; false when none waits. */
+  now(): boolean {
+    if (!this.current) return false;
+    this.go();
+    return true;
+  }
+
+  private go() {
+    if (this.gone) return;
+    this.gone = true;
+    this.stopWaiting();
+    this.current = null;
+    this.o.go();
+  }
+
+  private emit() {
+    for (const fn of this.listeners) fn();
+  }
+}
+
+const key = (b: Busy[]) => b.map((x) => `${x.canvas}/${x.card}`).join(' ');
 
 /** Paths whose change leaves the running code as it is. */
 const INERT = /(^docs\/|^design\/|\.md$)/;
