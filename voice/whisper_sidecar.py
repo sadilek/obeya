@@ -7,7 +7,9 @@ loaded at start, before "ready". Each recording's length and level go to stderr 
 a transcript that went wrong can be told from a recording without audible speech. A recording whose
 peak stays below QUIET_DBFS, or that holds no audio at all, gives an empty text without Whisper.
 
-Whisper decodes once, at temperature 0. By default it decodes again at five higher temperatures when
+On a recording without speech, Whisper's no-speech probability stays at 0 with the card titles as
+prompt, so it tells nothing; with speech in it, even quiet, noisy or short, Whisper transcribes
+correctly and sure of its words. Whisper decodes once, at temperature 0. By default it decodes again at five higher temperatures when
 a decode looks failed (a loop, or too unsure of its words); on a recording without speech each of
 them looped as well, which took 3 to 6 seconds. "doubtful" is that same test, so the server can try
 once more without the card titles instead.

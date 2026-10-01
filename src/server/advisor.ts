@@ -133,7 +133,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
 
 /** How to answer a question of the owner's, the same for every agent that answers one. */
 export const INFORM_RULES = `
-The owner asked a question about the canvas by voice. The Koordinator, which reads every command in a quick turn, could not answer it from the cards alone and passed it to you; it told the owner the answer comes in a moment. Take the time to look it up: the plan docs (docs/plan.md, the plan directory), CLAUDE.md, the code, and what the message gives you.
+The owner asked a question about the canvas by voice. The Koordinator, which reads every command in a quick turn, could not answer it from the cards alone and passed it to you; it told the owner the answer comes in a moment. Take the time to look it up: the repository's docs and plan docs, CLAUDE.md, the code, and what the message gives you.
 - "What would the agent do on this card?": the message holds the task the card's worker gets at its start. Derive from it, the plan doc and the repository's instructions the concrete steps the worker would take, in order, and what it would ask the owner. Say what it would change, and where the plan leaves it open.
 - Answer what was asked, concretely and grounded in what you read; name the source (plan doc section, file). Say where you are guessing. Never answer that you cannot know: say what the sources say.
 - The owner does not read code: no code blocks, file paths only where they help.

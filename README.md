@@ -12,7 +12,7 @@ repositories, agents that work on their cards (a worker per card in its own clon
 or the Koordinator), a Koordinator that queues colliding cards, cuts large ones and learns the
 owner's preferences, every change coming back as a narrated demo on its card, pull requests
 carried to the merge, and push-to-talk for all of it.
-See [`docs/plan.md`](docs/plan.md); the interaction reference is the mock in
+See [`docs/design.md`](docs/design.md); the interaction reference is the mock in
 [`design/mock/`](design/mock/index.html).
 
 ## Running

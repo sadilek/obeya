@@ -1,7 +1,7 @@
 # M5 PR loop
 
-> Plan doc for milestone M5 of [`docs/plan.md`](../plan.md). Deleted when M5 ships; durable
-> content moves into `docs/plan.md`.
+> Plan doc for the PR loop. Deleted when it ships; durable content moves into
+> [`docs/design.md`](../design.md).
 
 ## Goal
 
