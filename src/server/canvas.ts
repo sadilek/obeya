@@ -348,6 +348,8 @@ export class CanvasRuntime {
         return this.act(c.card, { action: c.do });
       case 'start':
         return this.act(c.card, { action: 'start' });
+      case 'force':
+        return this.act(c.card, { action: 'force' });
       case 'note':
       case 'feedback':
         return this.act(c.card, { action: 'message', text: c.text });
