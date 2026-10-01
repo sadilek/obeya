@@ -71,7 +71,8 @@ An idea is thought through on its card before anything is planned; no worker run
 4. A spike, when talking is not enough: a worker builds a throwaway prototype in its own workspace
    and records a demo, which shows on the idea; the exploration agent hears what it found. The
    spike never lands and does not count for collisions; approving it discards workspace and branch.
-5. Deciding: "So bauen" plans the card with the brief as its task. "Als Projekt planen" plans a
+5. Deciding: "So bauen" makes the brief the card's task and starts it at once, through the
+   Koordinator like "Agent starten" (it waits only if it overlaps running work). "Als Projekt planen" plans a
    card whose worker writes a plan doc with workstreams, which lands like any change (Acme: a PR)
    and then appears as a project. "Parken" and "Verwerfen" leave the card with its brief; talking
    to it opens it again. Decisions from the conversation go into the decision log; lasting

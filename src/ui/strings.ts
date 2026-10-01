@@ -186,7 +186,7 @@ export const t = {
     spikeGo: 'Spike starten',
     park: 'Parken',
     drop: 'Verwerfen',
-    built: 'Die Idee ist eingeplant; der Stand der Idee ist ihr Auftrag.',
+    built: 'Die Idee wird gebaut; der Stand der Idee ist ihr Auftrag.',
     planned: 'Eingeplant: Ein Agent schreibt das Plan-Doc.',
     parked: 'Idee geparkt.',
     dropped: 'Idee verworfen. Die Karte bleibt mit ihrem Stand liegen.',
