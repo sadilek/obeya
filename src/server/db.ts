@@ -47,6 +47,8 @@ export interface CardRow {
   idea: string | null;
   /** A spike's idea. */
   spike_of: string | null;
+  /** When the owner approved work that could not land yet; its next handover lands without asking again. */
+  approved_at: string | null;
 }
 
 
@@ -173,6 +175,8 @@ export const MIGRATIONS = [
    ALTER TABLE talk ADD COLUMN about TEXT;
    ALTER TABLE talk ADD COLUMN answer TEXT;
    ALTER TABLE talk ADD COLUMN answer_by TEXT;`,
+  // an approval that could not land yet holds until the worker has fixed what stood in the way
+  `ALTER TABLE cards ADD COLUMN approved_at TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -200,6 +204,7 @@ export type RowUpdate = Partial<
     | 'demo'
     | 'archived_at'
     | 'idea'
+    | 'approved_at'
   >
 >;
 

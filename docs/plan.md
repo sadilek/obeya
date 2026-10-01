@@ -150,8 +150,9 @@ the owner's language (`src/core/locale.ts`).
   until the card's work has landed. Clones come from `--workspace <path>` or `--clones <n>`.
 - **Landing** — per adapter. `pr` (OKE): approval leaves the branch for the PR loop. `main`
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
-  is `live`, worktree and branch are removed. Uncommitted work or a failed rebase sends the card
-  back to its worker.
+  is `live`, worktree and branch are removed. Commits that conflict one by one but not as a whole
+  land squashed into one commit. Uncommitted work or a real conflict sends the card back to its
+  worker with the approval kept: its next handover (no new demo needed) lands on its own.
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs), the server stops and starts again; workers
@@ -309,6 +310,8 @@ the repository).
   the start, and a waiting card is checked again against what runs when its blockers finish.
 - Landing problems are classified: uncommitted work, rebase conflicts and empty branches go back
   to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
+- An approval holds through what the worker fixes to land it: main moving on is no reason to ask
+  the owner again. Feedback, a stop or a blocked Obeya checkout take it back.
 - Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
   for developers.
 - Only the owner's cards are archived, and only once `live`; a workstream stays with its project,
