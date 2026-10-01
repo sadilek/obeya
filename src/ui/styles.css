@@ -47,13 +47,16 @@ a { color: inherit; }
   cursor: pointer; overflow: visible; transition: box-shadow .2s, opacity .25s; user-select: none; }
 .card:hover { box-shadow: var(--lift); }
 .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); border-radius: 14px 0 0 14px; }
-.card .kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.card .kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: flex; gap: 6px; align-items: center;
+  white-space: nowrap; overflow: hidden; }
+.card .kind span { overflow: hidden; text-overflow: ellipsis; }
 .card .ttl { font-weight: 600; margin-top: 3px; letter-spacing: -.005em; font-size: 15px; line-height: 1.22;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .card .ttl.untitled { color: var(--muted); font-weight: 500; }
-.card .meta { margin-top: 6px; color: var(--muted); font-size: 12.5px;
+.card .meta { margin-top: 5px; color: var(--muted); font-size: 12.5px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.card .state { position: absolute; left: 18px; bottom: 11px; font-size: 11.5px; font-weight: 600; color: var(--c); display: flex; align-items: center; gap: 6px; }
+/* kind, two lines of title and two of meta leave room for the state line on a feature card */
+.card .state { position: absolute; left: 18px; bottom: 10px; font-size: 11.5px; line-height: 1.2; font-weight: 600; color: var(--c); display: flex; align-items: center; gap: 6px; }
 .card.feature { width: 300px; height: 136px; }
 .card.bugfix { width: 230px; height: 104px; }
 .card.bugfix .meta { display: none; }
