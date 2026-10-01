@@ -315,8 +315,9 @@ the owner's language (`src/core/locale.ts`).
   the fallback.
 - **Demos** — the `demo` skill's pipeline (scripted walkthrough, narrated video, report). The
   worker records once the change is committed and checked, as the adapter says how to run the
-  app (Obeya: a scratch instance from the worktree on a scratch repository; OKE: the clone's
-  AppHost), and hands over the directory, chapter titles and report with `ready_for_review`.
+  app (Obeya: a scratch instance from the worktree, staged by `scripts/scratch-obeya.ts` from a
+  stage file before every take, its workers idle (`--idle-workers`) unless the change is about
+  agents; OKE: the clone's AppHost), and hands over the directory, chapter titles and report with `ready_for_review`.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
   the card's demo (range requests). The card shows it as in the mock, with approve and feedback
   beside the video; feedback asks for a new render. Artifacts stay in `~/demos/`, never in git;
@@ -464,6 +465,12 @@ the repository; the copy on the project is only for the archive).
   git` names, not the `/usr/bin/git` shim, which looks it up again on every call (10 ms a call
   instead of 4). Test repositories are copies of a template committed once per set of files
   (`gitRepo` in `src/server/testing.ts`). Together they halved the test suite.
+- A demo's scratch Obeya is staged by a script from a stage file rather than by hand (2026-10-01):
+  in the 14 card runs before, the demo took longer than the change itself, and every worker wrote
+  its own staging (curl, sqlite, server start) with the same mistakes: the wrong API path, a
+  server that restarted on the worker's commit, a staged "working" card that a real agent resumed,
+  real agents the Koordinator started mid-take. The script writes the cards' fields straight into
+  the database, so any state is a line in the stage file, and the workers are idle unless asked.
 
 ## Open questions
 

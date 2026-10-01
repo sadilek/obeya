@@ -1,6 +1,6 @@
 // obeya [--config <canvases.json>]
 // obeya <repo>… [--name <canvas>] [--adapter <name>] [--workspace <path>]… [--clones <n>]
-//   [--port <n>] [--dev] [--permission-mode <mode>]
+//   [--port <n>] [--dev] [--permission-mode <mode>] [--idle-workers]
 //
 // Serves canvases at http://127.0.0.1:<port>. Without repositories: the canvases the JSON file
 // lists, `[{ "name"?, "id"?, "repos": [{ "path", "adapter"?, "workspaces"?, "clones"? }] }]`, by default
@@ -12,6 +12,8 @@
 // when the server exits to pick up new code on Obeya's own checkout (self-update.ts), or a
 // configuration the owner saved (config.ts). Saved while the canvases came from the command line,
 // it starts the server from the file from then on.
+//
+// --idle-workers: no agent works on a started card (a scratch Obeya for a demo, scripts/scratch-obeya.ts).
 
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -22,7 +24,7 @@ import { type CanvasConfig, CanvasRuntime } from './canvas';
 import { Config, CONFIG_FILE, expand, expandConfig, readConfigFile } from './config';
 import { Store } from './db';
 import { ghForge } from './forge';
-import { sdkRuntime } from './runtime';
+import { idleRuntime, sdkRuntime } from './runtime';
 import { ownCheckout, RESTART, RESTART_FROM_FILE, Restarter, watchOwnCode } from './self-update';
 import { serve } from './server';
 import { SpeechSidecar, WhisperSidecar } from './voice';
@@ -38,6 +40,7 @@ const { values, positionals } = parseArgs({
     workspace: { type: 'string', multiple: true, default: [] },
     clones: { type: 'string' },
     'permission-mode': { type: 'string', default: 'auto' },
+    'idle-workers': { type: 'boolean', default: false },
   },
   allowPositionals: true,
 });
@@ -135,7 +138,17 @@ const config = new Config({
 });
 canvases = configs.map(
   (c) =>
-    new CanvasRuntime(c, { store, home, runtime: sdkRuntime, forge: ghForge, permissionMode: values['permission-mode'] as 'auto', watch: true, ownCheckout: own, config }),
+    new CanvasRuntime(c, {
+      store,
+      home,
+      runtime: sdkRuntime,
+      ...(values['idle-workers'] ? { workerRuntime: idleRuntime } : {}),
+      forge: ghForge,
+      permissionMode: values['permission-mode'] as 'auto',
+      watch: true,
+      ownCheckout: own,
+      config,
+    }),
 );
 const ids = canvases.map((c) => c.id);
 if (new Set(ids).size !== ids.length) {

@@ -133,6 +133,20 @@ test('the home repository stays home when the configuration lists the repositori
   canvas = new CanvasRuntime({ name: 'Q', repos: [{ path: web }] }, deps);
 });
 
+test("the cards' workers run on their own runtime when one is given (a scratch Obeya's idle workers)", async () => {
+  dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
+  const web = repo('web', 'Web');
+  const workers = new FakeRuntime();
+  canvas.shutdown();
+  canvas = new CanvasRuntime({ repos: [{ path: web, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: { status: () => ({}) as never } });
+  const a = canvas.board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
+  canvas.act(a.id, { action: 'start' });
+  await settle();
+  expect(item(a.id).state).toBe('working');
+  expect(workers.sessions.map((s) => s.spec.cwd)).toEqual([canvas.board.row(a.id).workspace!]);
+  expect(runtime.sessions.some((s) => s.spec.cwd === canvas.board.row(a.id).workspace)).toBe(false);
+});
+
 test('a clone registered for a repository must be one of it', () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
   const web = repo('web', 'Web');

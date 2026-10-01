@@ -16,11 +16,11 @@ export const obeya: RepoAdapter = {
   demo: {
     required: true,
     howToRun: [
-      'run a scratch Obeya from your worktree. Make a scratch git repository (git init, one commit) with a plan doc in docs/plan/ whose `## Workstreams` checklist fits the demo, then start',
-      '`OBEYA_HOME=$(mktemp -d) bun src/server/main.ts <scratch repo> --adapter obeya --port <a free port>` in the background and record against http://127.0.0.1:<port>/.',
-      'Create cards with `POST /api/cards` and put them into the states the demo needs with `PATCH /api/cards/:id` (`state`, `need`).',
-      'Start real workers in the scratch instance only when the change is about agents; they take minutes.',
-      'Stop the instance when the demo is rendered.',
+      'a scratch Obeya from your worktree, staged by `bun scripts/scratch-obeya.ts <stage.json>` (its header describes the stage file): a fresh repository with plan docs, a fresh OBEYA_HOME and the cards in the states the demo needs, in about a second.',
+      "Stage afresh before every take: call it from the demo's `login` and record against the `url` it prints.",
+      'Its workers are idle: a started card is in progress without an agent. Give it `--real-workers` only when the change is about what agents do; they take minutes.',
+      'For a before and after, stage a second instance from the earlier commit with `--code <commit> --port <another port>`.',
+      'Stop each instance with `--stop <port>` when the demo is rendered.',
     ].join(' '),
   },
 };
