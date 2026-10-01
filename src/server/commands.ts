@@ -205,7 +205,7 @@ export class Commander {
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
             '- approve: approve work waiting for review. accept / dismiss: a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
-            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (it becomes a planned card as its brief stands), plan_doc (a big idea becomes a project: an agent writes its plan doc first), spike (a worker builds a throwaway prototype shown as a demo on it; text: what it should show, may be empty), park (for later), drop (it stays on the canvas with its brief).",
+            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent writes its plan doc first), spike (a worker builds a throwaway prototype shown as a demo on it; text: what it should show, may be empty), park (for later), drop (it stays on the canvas with its brief).",
             'Texts as the owner meant them (fix obvious recognition errors).',
           ].join('\n'),
           schema: {

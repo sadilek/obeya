@@ -249,7 +249,7 @@ export class CanvasRuntime {
 
   // ---------------------------------------------------------------- ideas
 
-  /** The idea is built as it stands: its brief becomes the task of a planned card. */
+  /** The idea is built as it stands: its brief becomes the card's task, and the card goes to the Koordinator to start. */
   private build(cardId: string) {
     const card = this.ideaCard(cardId);
     const { brief } = this.board.idea(cardId);
@@ -257,6 +257,7 @@ export class CanvasRuntime {
     this.board.work(cardId, { state: 'planned', ...(brief.trim() ? { body: brief.trim() } : {}) });
     this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'So bauen, wie der Stand der Idee sagt.', by: 'owner' });
     this.board.log(cardId, 'state', 'owner', 'So bauen: Der Stand der Idee ist der Auftrag.');
+    this.koordinator.request(cardId);
   }
 
   /** A big idea becomes a project: a worker writes its plan doc, which lands like any change. */

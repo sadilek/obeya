@@ -181,13 +181,17 @@ describe('an idea', () => {
     expect(learn.inbox[0]).toContain('words in the discussion of an idea: Exporte immer als CSV.');
   });
 
-  test('"So bauen" plans it with the brief as its task', () => {
+  test('"So bauen" starts it with the brief as its task', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Los.' });
     turn(explorer(), 'Gut.', () => explorer().call('update_brief', { brief: '**Ziel:** CSV-Export.' }));
     canvas.act(i.id, { action: 'build' });
-    expect(item(i.id)).toMatchObject({ state: 'planned', body: '**Ziel:** CSV-Export.', title: 'Export für Vermieter' });
+    expect(item(i.id)).toMatchObject({ state: 'planned', body: '**Ziel:** CSV-Export.', title: 'Export für Vermieter', queue: { checking: true } });
     expect(item(i.id).idea).toBeUndefined();
+    await settle();
+    expect(item(i.id).state).toBe('working');
+    const worker = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    expect(worker.inbox[0]).toContain('**Ziel:** CSV-Export.');
     expect(board().decisions(null).at(-1)).toMatchObject({ answer: 'So bauen, wie der Stand der Idee sagt.' });
     expect(() => canvas.act(i.id, { action: 'discuss', text: 'Noch was.' })).toThrow('not an idea');
   });
@@ -319,6 +323,6 @@ describe('by voice', () => {
     canvas.commander.arm(h.token!);
     expect(item(i.id).state).toBe('idea');
     await settle(30);
-    expect(item(i.id).state).toBe('planned');
+    expect(item(i.id).state).toBe('working');
   });
 });
