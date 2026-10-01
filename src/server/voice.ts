@@ -34,7 +34,7 @@ export function looping(text: string): boolean {
   return false;
 }
 
-/** What Whisper writes for silence without a prompt; after a loop, it means there was nothing to hear. */
+/** What Whisper writes for a recording without speech instead of a loop: there was nothing to hear. */
 export const silence = (text: string) => /^(vielen dank|danke fürs zuschauen|untertitel(ung)? (im auftrag )?des zdf.*)[.!]?$/i.test(text.trim());
 
 const VOICE = join(import.meta.dir, '../../voice');

@@ -70,13 +70,14 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     try {
       await Bun.write(file, await req.arrayBuffer());
       const text = (await transcriber.transcribe(file, c.commander.vocabulary())).trim();
+      if (silence(text)) return console.log(`whisper on ${c.id}: ${text}`), '';
       if (!looping(text)) return text;
-      // the card titles talk Whisper into loops on a quiet recording: once more without them
+      // the card titles talk Whisper into loops on a recording without speech: once more without them
       console.log(`whisper looped on ${c.id}: ${text.slice(0, 80)}…; once more without the card titles`);
       const again = (await transcriber.transcribe(file, '')).trim();
       if (!looping(again) && !silence(again)) return again;
       console.log(`whisper on ${c.id} without the card titles: ${again.slice(0, 80)}`);
-      return null;
+      return silence(again) ? '' : null;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
