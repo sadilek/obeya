@@ -16,7 +16,7 @@
 //
 // The stage file (JSON; every field but `cards` optional):
 //   {
-//     "port": 4480, "dir": "/tmp/obeya-scratch-4480", "adapter": "obeya",
+//     "port": 4480, "dir": "/tmp/obeya-scratch-4480", "adapter": "obeya", "clones": 2,
 //     "files": { "src/cli.ts": "…" },
 //     "plans": { "docs/plan/werkzeug.md": "# Werkzeug\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n" },
 //     "cards": [
@@ -82,6 +82,8 @@ interface Stage {
   port?: number;
   dir?: string;
   adapter?: string;
+  /** Clones for an adapter that works in clones (generic): real workers need one each. */
+  clones?: number;
   files?: Record<string, string>;
   plans?: Record<string, string>;
   cards: StageCard[];
@@ -153,7 +155,7 @@ const out = openSync(log, 'a');
 const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')), OBEYA_HOME: home };
 const server = spawn(
   process.execPath,
-  ['src/server/main.ts', repo, '--adapter', stage.adapter ?? 'obeya', '--port', String(port), '--dev', ...(idle && canIdle ? ['--idle-workers'] : [])],
+  ['src/server/main.ts', repo, '--adapter', stage.adapter ?? 'obeya', '--port', String(port), '--dev', ...(stage.clones ? ['--clones', String(stage.clones)] : []), ...(idle && canIdle ? ['--idle-workers'] : [])],
   { cwd: code, env, detached: true, stdio: ['ignore', out, out] },
 );
 server.unref();
