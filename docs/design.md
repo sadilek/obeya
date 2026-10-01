@@ -194,7 +194,7 @@ the owner's language (`src/core/locale.ts`).
   cards carry their repository, chosen in the panel before work begins (home by default), and a
   proposal or a cut package inherits it. The UI opens `?c=<canvas>`, the top-left pill switches,
   and on a canvas with several repositories every card names its own.
-- **UI** — browser app, React + TypeScript. Custom canvas grown from `design/mock/`: camera with
+- **UI** — browser app, React + TypeScript. Custom canvas: camera with
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap, and a frosted top bar the
   canvas slides under.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
@@ -322,7 +322,7 @@ the owner's language (`src/core/locale.ts`).
   stage file before every take, its workers idle (`--idle-workers`) unless the change is about
   agents; Acme: the clone's AppHost), and hands over the directory, chapter titles and report with `ready_for_review`.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
-  the card's demo (range requests). The card shows it as in the mock, with approve and feedback
+  the card's demo (range requests). The card shows it with approve and feedback
   beside the video; feedback asks for a new render. When the result is something to look at
   rather than something that happens, the worker makes an HTML artifact instead (`kind: 'html'`):
   a directory with an `index.html` and the files it loads, handed over with the same report. The
