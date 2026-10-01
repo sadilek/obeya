@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { CardEvent, CardKind, CardState, Need, Preference } from '../core/types';
+import type { CardEvent, CardKind, CardState, Need, Preference, Talk } from '../core/types';
 
 export interface CardRow {
   id: string;
@@ -47,6 +47,16 @@ export interface CardRow {
   idea: string | null;
   /** A spike's idea. */
   spike_of: string | null;
+}
+
+
+/** A step in a card's history, as the Koordinator reads it; `created` marks a card of the owner's or a proposal. */
+export interface Moment {
+  at: string;
+  cardId: string;
+  kind: CardEvent['kind'] | 'created';
+  author: CardEvent['author'];
+  text: string;
 }
 
 export interface DecisionRow {
@@ -142,6 +152,16 @@ const MIGRATIONS = [
   // ideas are discussed before they are planned; a spike prototypes one and never lands
   `ALTER TABLE cards ADD COLUMN idea TEXT;
    ALTER TABLE cards ADD COLUMN spike_of TEXT REFERENCES cards(id);`,
+  // what the owner said to the Koordinator and what it answered: its memory across sessions
+  `CREATE TABLE talk (
+     id INTEGER PRIMARY KEY,
+     canvas_id TEXT NOT NULL REFERENCES canvases(id),
+     at TEXT NOT NULL,
+     said TEXT NOT NULL,
+     reply TEXT NOT NULL,
+     card_id TEXT REFERENCES cards(id),
+     undone INTEGER NOT NULL DEFAULT 0
+   );`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -342,6 +362,51 @@ export class Store {
         ? this.db.query('UPDATE preferences SET deleted_at = $now WHERE id = $id AND canvas_id = $c AND deleted_at IS NULL').run({ id, c: canvasId, now: now() })
         : this.db.query('UPDATE preferences SET text = $text WHERE id = $id AND canvas_id = $c AND deleted_at IS NULL').run({ id, c: canvasId, text });
     return r.changes > 0;
+  }
+
+  // ---------------------------------------------------------------- the Koordinator's memory
+
+  addTalk(canvasId: string, said: string, reply: string, cardId: string | null): number {
+    return (
+      this.db
+        .query('INSERT INTO talk (canvas_id, at, said, reply, card_id) VALUES ($c, $at, $said, $reply, $cardId) RETURNING id')
+        .get({ c: canvasId, at: now(), said, reply, cardId }) as { id: number }
+    ).id;
+  }
+
+  undoTalk(id: number) {
+    this.db.query('UPDATE talk SET undone = 1 WHERE id = $id').run({ id });
+  }
+
+  /** The latest exchanges, oldest first; with `withoutCard`, only those without an open card. */
+  talk(canvasId: string, limit = 20, withoutCard = false): Talk[] {
+    return (
+      this.db
+        .query(`SELECT id, at, said, reply, card_id, undone FROM talk WHERE canvas_id = $c${withoutCard ? ' AND card_id IS NULL' : ''} ORDER BY id DESC LIMIT $limit`)
+        .all({ c: canvasId, limit }) as { id: number; at: string; said: string; reply: string; card_id: string | null; undone: number }[]
+    )
+      .reverse()
+      .map(({ card_id, undone, ...r }) => ({ ...r, ...(card_id ? { cardId: card_id } : {}), ...(undone ? { undone: true } : {}) }));
+  }
+
+  /**
+   * How the cards got where they are, after `since` (ISO time), oldest first: their milestones
+   * (state changes, questions, answers, hand-overs, the owner's notes, errors) and the creation of
+   * cards that come from no plan doc. Deleted cards are left out.
+   */
+  timeline(canvasId: string, since: string, limit: number): Moment[] {
+    return (
+      this.db
+        .query(
+          `SELECT e.at, e.card_id AS cardId, e.kind, e.author, e.text FROM events e JOIN cards c ON c.id = e.card_id
+           WHERE c.canvas_id = $c AND c.deleted_at IS NULL AND e.at > $since AND e.kind IN ('state', 'question', 'answer', 'review', 'hint', 'error')
+           UNION ALL
+           SELECT created_at, id, 'created', CASE WHEN from_id IS NULL THEN 'owner' ELSE 'worker' END, '' FROM cards
+           WHERE canvas_id = $c AND deleted_at IS NULL AND plan_ref IS NULL AND created_at > $since
+           ORDER BY 1 DESC LIMIT $limit`,
+        )
+        .all({ c: canvasId, since, limit }) as Moment[]
+    ).reverse();
   }
 
   // ---------------------------------------------------------------- settings

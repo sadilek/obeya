@@ -24,8 +24,9 @@ decisions are made in front of the wall.
 - **Every change gets a demo.** Bugfixes 30–60 s, features 1½–3 min, projects one demo per
   workstream. Backend behaviour is shown through the app's own inspection views; "covered by
   tests" is no reason to leave it out.
-- **Voice first, mouse welcome.** Push-to-talk anywhere; buttons for the obvious actions. The
-  transcript is not shown: a short confirmation, written and spoken, with undo.
+- **Voice first, mouse welcome.** Push-to-talk anywhere; buttons for the obvious actions. No live
+  transcript: a short confirmation, written and spoken, with undo. What was said and answered
+  stays in the log of the open card, or in the Koordinator's sheet.
 - **Repo-agnostic core.** Project specifics live in a per-repo adapter. The first adapter is OKE.
 
 ## Concepts
@@ -157,19 +158,32 @@ the owner's language (`src/core/locale.ts`).
   audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
   loaded and transcribes in German with the canvas's titles as vocabulary
   (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). A quick, low-effort Koordinator turn reads
-  the transcript as speech that may be misheard and picks one action (new card, new idea, start,
-  note, answer, feedback, approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc,
-  spike, park, drop) or just replies; it writes the confirmation. The action runs a few seconds
-  after the confirmation reached the owner, so "Rückgängig" takes back anything, even an approval.
-  Only talking to an idea goes on at once: it changes nothing, and said to the open idea it needs
-  no confirmation, since the conversation shows it. The same commands can be typed in the
-  Koordinator's sheet. The transcript goes to the server log only.
+  the transcript as speech that may be misheard and either acts or replies. Acting takes one or
+  more actions from one sentence (new card, new idea, start, note, answer, feedback, approve,
+  accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, spike, park, drop), checked
+  against the cards' states in the turn, so an action that does not fit (a note to a card no agent
+  works on) goes back to the Koordinator, which may reply instead. A reply answers questions too
+  ("Was ist seit gestern passiert?"). One confirmation covers all actions; they run in order a few
+  seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
+  talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
+  confirmation, since the conversation shows it. The same commands can be typed in the
+  Koordinator's sheet. What the owner said and the Koordinator's confirmation go into the log of
+  the card that was open, and "Zurückgenommen." when taken back; with no card open, the sheet
+  shows the conversation. Talk to an open idea is the exception: its conversation already holds it.
 - **Voice latency** — pressing Space (or focusing the typed command) gets everything ready while
   the owner speaks: the Whisper sidecar starts and loads its model, the speech sidecar starts, and
-  the Koordinator's agent for the command starts up and waits (after each command the next one
-  waits; one that fails after waiting is replaced once). The written confirmation comes back as
+  the Koordinator's session starts up if it is not running (one that fails is replaced once, for
+  the same command). The written confirmation comes back as
   soon as the Koordinator has decided, and the undo window starts with it; the spoken one follows
   from its own URL.
+- **Koordinator memory** — the owner's commands go to one ongoing Koordinator session per canvas,
+  one after the other, so it understands "die andere auch" or "nein, die von vorhin". Card tags
+  (`K1`, …) stay fixed for the session. Each command brings the cards as they are now and what
+  happened since the previous one (state changes, questions, answers, hand-overs, the owner's
+  notes, errors, new cards; not the workers' steps); a command the owner took back is told with the
+  next. Every exchange is stored (`talk`). A session is not resumed: after a restart, and after 30
+  commands so the context stays short, a fresh one starts from memory: the last 20 exchanges and
+  the canvas's last 14 days (at most 60 steps), with times.
 - **Voice out** — the default system voice speaks the confirmation, which the browser plays: a
   JXA sidecar keeps the macOS synthesizer loaded (about half a second a sentence), with `say` as
   the fallback.
@@ -191,7 +205,9 @@ Persistent (SQLite): canvases, cards (kind, state, position, parent; agent sessi
 branch, status line, open question or review summary, proposal source, estimated scope, queue,
 when archived, an idea's status and brief, a spike's idea),
 card events (the log, with an error code where the UI words it), workspaces and their leases,
-decision log, preferences, per-canvas settings (the Koordinator's session); later PR links.
+decision log, preferences, the Koordinator's conversation with the owner (what was said, its
+reply, the open card, whether it was taken back), per-canvas settings (the Koordinator's session for questions);
+later PR links.
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository).
@@ -272,10 +288,15 @@ the repository).
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
   to an idea is the exception: it only adds to a conversation.
-- A discussion lives on a card, not in a chat with the Koordinator: every command runs in a fresh
-  Koordinator session, and an exploration parked on the canvas is found there again with its
-  brief. A big idea becomes a project through a worker writing its plan doc, not through the
-  exploration agent, which stays read-only.
+- A discussion lives on a card, not in the conversation with the Koordinator: an exploration
+  parked on the canvas is found there again with its brief, and the Koordinator only passes the
+  owner's words on. A big idea becomes a project through a worker writing its plan doc, not
+  through the exploration agent, which stays read-only.
+- The Koordinator's memory lives in the store, not in the agent session: a session is never
+  resumed, and a new one (restart, or a long session) starts from the stored conversation and the
+  cards' history. That keeps the context short over weeks, and restart and renewal are one path.
+  The card history is part of it, because the owner asks about progress over time ("was ist seit
+  gestern passiert?") and refers to cards by what happened to them.
 
 ## Open questions
 
