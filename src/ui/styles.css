@@ -357,6 +357,22 @@ textarea.p-body:focus { border-color: var(--muted); }
 .sheet > ol > li:hover { background: var(--chip); }
 .sheet > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .sheet > ol > li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
+/* the archive: per day a timeline, the time on the left, each archived card as a small card */
+.sheet ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
+.timeline li { position: relative; display: grid; grid-template-columns: 38px 12px 1fr; column-gap: 8px; align-items: start; padding-bottom: 8px; }
+.timeline li::before { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+.timeline li:first-child::before { top: 15px; }
+.timeline li:last-child::before { bottom: auto; height: 15px; }
+.timeline li:only-child::before { display: none; }
+.timeline time { padding-top: 9px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+.timeline .tick { position: relative; width: 12px; height: 12px; margin-top: 10px; border-radius: 50%; background: var(--panel); border: 2px solid var(--live); box-sizing: border-box; }
+.timeline .a-card { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 9px 12px; text-align: left; font: inherit; color: var(--ink);
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); cursor: pointer;
+  transition: transform .15s, box-shadow .15s; }
+.timeline .a-card:hover { transform: translateY(-1px); box-shadow: var(--lift); }
+.timeline .a-card:focus-visible { outline: 2px solid var(--working); outline-offset: 2px; }
+.timeline .a-ttl { font-size: 13.5px; font-weight: 500; line-height: 1.35; }
+.timeline .hint { font-size: 11.5px; }
 .sheet .btn.read { margin-top: 14px; padding: 7px 14px; font-size: 13px; }
 
 /* Obeya's configuration */
