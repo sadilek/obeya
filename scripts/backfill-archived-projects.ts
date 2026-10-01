@@ -33,6 +33,8 @@ const git = (...a: string[]) => {
 
 if (!existsSync(dbPath)) throw new Error(`no database at ${dbPath}`);
 const db = new Database(dbPath, { strict: true });
+// the running Obeya writes to the same database
+db.run('PRAGMA busy_timeout = 10000');
 const columns = (db.query('PRAGMA table_info(cards)').all() as { name: string }[]).map((c) => c.name);
 if (!columns.includes('plan')) throw new Error('the database has no `plan` column yet: start Obeya with the new code first');
 
