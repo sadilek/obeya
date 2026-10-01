@@ -347,7 +347,10 @@ export class Koordinator {
   private drain() {
     const items = this.o.board.snapshot().items;
     const active = new Set(this.inProgress().map((i) => i.id));
-    const waiting = items.filter((i) => i.state === 'planned' && i.queue && 'behind' in i.queue);
+    // the card waiting longest goes first: one queued later must not take its turn
+    const waiting = items
+      .filter((i) => i.state === 'planned' && i.queue && 'behind' in i.queue)
+      .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
     for (const w of waiting) {
       const q = w.queue as { behind: string[]; reason: string };
       const still = q.behind.filter((id) => active.has(id));
@@ -448,8 +451,10 @@ export class Koordinator {
     this.chain = this.chain.then(fn).catch((e) => console.error('Koordinator:', e));
   }
 
+  /** A card keeps the time it came to the Koordinator for as long as it stays queued. */
   private setQueue(cardId: string, q: Queue | null) {
-    this.o.board.work(cardId, { queue: q ? JSON.stringify(q) : null });
+    const since = this.o.board.item(cardId)?.queue?.since ?? new Date().toISOString();
+    this.o.board.work(cardId, { queue: q ? JSON.stringify({ ...q, since }) : null });
   }
 
   private card(id: string): Item {

@@ -50,7 +50,7 @@ describe('Koordinator', () => {
   test('a card with nothing in progress starts at once; its scope is estimated afterwards', async () => {
     const a = card('A');
     k.request(a.id);
-    expect(item(a.id).queue).toEqual({ checking: true });
+    expect(item(a.id).queue).toMatchObject({ checking: true });
     await settle();
     expect(item(a.id).state).toBe('working');
     await scope(['src/a.ts']);
@@ -144,7 +144,7 @@ describe('Koordinator', () => {
     expect(item(c.id).state).toBe('working');
     workers.stop(a.id);
     await settle();
-    expect(item(b.id).queue).toEqual({ checking: true });
+    expect(item(b.id).queue).toMatchObject({ checking: true });
     expect(estimates().at(-1)!.inbox[0]).toContain('"C"');
     await scope(['src/a.ts'], ['K1'], 'Beide ändern dieselbe Funktion.');
     expect(item(b.id).queue).toMatchObject({ behind: [c.id] });
@@ -194,6 +194,51 @@ describe('Koordinator', () => {
     expect(item(d.id).state).toBe('working');
   });
 
+  test('of the cards free to start, the one waiting longest goes first, and keeps its place while judged again', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    // the later card comes first on the board: its turn must still come second
+    const later = card('Später');
+    const first = card('Zuerst');
+    k.request(first.id);
+    await scope(['src/a.ts'], ['K1']);
+    k.request(later.id);
+    await scope(['src/a.ts'], ['K1']);
+    expect(item(first.id).queue).toMatchObject({ behind: [a.id] });
+    const since = item(later.id).queue!.since;
+    expect(since! > item(first.id).queue!.since!).toBe(true);
+
+    workers.stop(a.id);
+    await settle();
+    expect(item(first.id).state).toBe('working');
+    expect(item(later.id).queue).toMatchObject({ checking: true, since });
+    expect(estimates().at(-1)!.inbox[0]).toContain('"Zuerst"');
+    await scope(['src/a.ts'], ['K1'], 'Beide ändern dieselbe Funktion.');
+    expect(item(later.id).queue).toEqual({ behind: [first.id], reason: 'Beide ändern dieselbe Funktion.', since });
+
+    workers.stop(first.id);
+    await settle();
+    expect(item(later.id).state).toBe('working');
+  });
+
+  test('a card keeps its place in the queue while what it waits for changes', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/b.ts']);
+    const c = card('C');
+    k.request(c.id);
+    await scope(['src/a.ts', 'src/b.ts'], ['K1', 'K2']);
+    const since = item(c.id).queue!.since;
+    expect(since).toBeString();
+    workers.stop(a.id);
+    await settle();
+    expect(item(c.id).queue).toEqual({ behind: [b.id], reason: 'Grund.', since });
+  });
+
   test('without an estimate the card still starts, and says why', async () => {
     const a = card('A');
     k.request(a.id);
@@ -214,7 +259,7 @@ describe('Koordinator cuts a card', () => {
   test('into packages that replace it, each with its scope', async () => {
     const a = board.create({ kind: 'feature', title: 'Export', body: 'CSV und PDF', x: 100, y: 50 });
     k.split(a.id);
-    expect(item(a.id).queue).toEqual({ cutting: true });
+    expect(item(a.id).queue).toMatchObject({ cutting: true });
     await settle();
     expect(cutSession().inbox[0]).toContain('CSV und PDF');
     cutSession().call('packages', {

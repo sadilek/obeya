@@ -115,7 +115,8 @@ export interface PullRequest {
   conflict: boolean;
 }
 
-export type Queue = { checking: true } | { cutting: true } | { behind: string[]; reason: string };
+/** `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting longest goes first. */
+export type Queue = ({ checking: true } | { cutting: true } | { behind: string[]; reason: string }) & { since?: string };
 
 export interface Demo {
   /** Seconds and title of each scene. */
