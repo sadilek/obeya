@@ -42,19 +42,18 @@ export function ArchiveSheet({ on, archived, done, onOpen, onArchiveDone, els }:
           {days.map(({ day, items }) => (
             <section key={day}>
               <h4 className="p-h">{day}</h4>
-              <ol>
+              <ol className="timeline">
                 {items.map((i) => (
-                  <li key={i.id} className="s-live" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
-                    <span className="dot" />
-                    <span>
-                      {plain(i.title)}
-                      <br />
+                  <li key={i.id}>
+                    <time>{t.archive.time(new Date(i.archivedAt!))}</time>
+                    <span className="tick" />
+                    <button className="a-card" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
+                      <span className="a-ttl">{plain(i.title)}</span>
                       <span className="hint">
                         {t.kind[i.kind]}
-                        {i.kind === 'project' && ` · ${t.archive.workstreams(archived.filter((x) => x.parent === i.id).length)}`} ·{' '}
-                        {t.archive.time(new Date(i.archivedAt!))}
+                        {i.kind === 'project' && ` · ${t.archive.workstreams(archived.filter((x) => x.parent === i.id).length)}`}
                       </span>
-                    </span>
+                    </button>
                   </li>
                 ))}
               </ol>

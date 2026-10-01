@@ -264,7 +264,8 @@ export const t = {
       const day = t.archive.day(d);
       return `archiviert ${day === 'Heute' || day === 'Gestern' ? day.toLowerCase() : `am ${day}`}, ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
     },
-    time: (d: Date) => `archiviert ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`,
+    /** On the archive's timeline, beside a card: when it went into the archive that day. */
+    time: (d: Date) => d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
     /** Over an archived project: its plan doc is gone, and the sheet shows it as it last stood. */
     projectGone: (d: Date) => `Das Plan-Dokument ist weg (${t.archive.when(d)}). So stand es zuletzt; kommt die Datei zurück, kehrt das Projekt an seinen Platz zurück.`,
     workstreams: (n: number) => (n === 1 ? '1 Workstream' : `${n} Workstreams`),

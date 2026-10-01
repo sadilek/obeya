@@ -111,8 +111,8 @@ An idea is thought through on its card before anything is planned; no worker run
    session ends.
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card, or
    all finished ones at once in the archive). The archive (button or `A`) lists archived cards
-   by day, the most recently archived first; one unfolds from its row as on the canvas and can go
-   back to the place it had.
+   by day, the most recently archived first, as small cards on a timeline with the time they were
+   archived; one unfolds from its card as on the canvas and can go back to the place it had.
 7. A project ends when its plan doc goes (done, deleted): it moves into the
    archive with its workstreams, which are not listed on their own. Its sheet then shows, read-only,
    the goal and the workstreams as the doc last stood; each workstream unfolds with its log and demo.
