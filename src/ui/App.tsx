@@ -39,6 +39,9 @@ type Focus = { type: 'project'; id: string; prevCam: Cam } | { type: 'card'; id:
 type Pos = { x: number; y: number };
 
 const SHEET_W = 410;
+// opening a card takes FLY_MS + UNFOLD_MS (300 ms) and closing the same: fast, yet still a visible move
+const FLY_MS = 130;
+const UNFOLD_MS = 170;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const camKey = (canvasId: string) => `obeya-cam-${canvasId}`;
 
@@ -184,7 +187,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     openTitle.current = i.title;
     // bring the card to the middle at a readable scale first, so the unfold starts where the eye is;
     // an archived card is not on the canvas and unfolds from its row in the archive
-    if (!i.archivedAt) await fly(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), 520);
+    if (!i.archivedAt) await fly(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), FLY_MS);
     const el = i.archivedAt ? archiveEls.get(i.id) : els.get(i.id);
     const panel = panelRef.current;
     if (!el || !panel) return;
@@ -192,6 +195,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     flushSync(() => setOpenId(i.id));
     panel.style.setProperty('--c', `var(--${i.state})`);
     panel.className = '';
+    panel.style.setProperty('--unfold', `${UNFOLD_MS}ms`);
     Object.assign(panel.style, rect(r), { display: 'block', borderRadius: '14px' });
     panel.getBoundingClientRect();
     panel.classList.add('anim');
@@ -200,7 +204,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     unfolded.current = true;
     setDim(true);
     setSheetOn(false);
-    await sleep(450);
+    await sleep(UNFOLD_MS);
     panel.classList.add('ready');
     const title = panel.querySelector<HTMLInputElement>('input.p-title');
     if (title && !title.value) title.focus();
@@ -251,7 +255,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     panel.classList.remove('ready');
     if (el) Object.assign(panel.style, rect(el.getBoundingClientRect()), { borderRadius: '14px' });
     setDim(false);
-    await sleep(430);
+    await sleep(UNFOLD_MS);
     panel.style.display = 'none';
     panel.className = '';
     setOpenId(null);
@@ -259,7 +263,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     if (f.project) setSheetOn(true);
     // a new card left without a title was not wanted
     if (!keepUntitled && i?.source === 'manual' && !openTitle.current.trim()) api.remove(i.id).catch(console.error);
-    await fly(f.prevCam, 480);
+    await fly(f.prevCam, FLY_MS);
   }
 
   async function openProject(p: Item) {
