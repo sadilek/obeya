@@ -418,3 +418,13 @@ button.link:hover { text-decoration: underline; }
 #ack.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 #ack button { background: transparent; border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent); color: var(--bg); border-radius: 8px; padding: 3px 10px; cursor: pointer; flex: none; }
 @media (max-width: 760px) { #minimap, #keys { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; } .p-grid, .cols { grid-template-columns: 1fr; } }
+
+/* the play button on a startable card, shown while the pointer is on the card */
+.card .play { position: absolute; right: 10px; bottom: 8px; width: 26px; height: 26px; border-radius: 13px; border: 0; padding: 0 0 0 2px;
+  background: var(--working); color: #fff; display: grid; place-items: center; cursor: pointer; box-shadow: var(--shadow);
+  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s;
+  transform: scale(max(1, calc(.9 / var(--s)))); transform-origin: 100% 100%; }
+.card.chip .play { bottom: 19px; }
+.card:hover .play { opacity: 1; pointer-events: auto; }
+.card .play:hover { filter: brightness(1.1); }
+.card.dragging .play, .card.lifted .play { opacity: 0; pointer-events: none; }
