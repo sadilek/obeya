@@ -119,9 +119,10 @@ describe('manual cards', () => {
     expect(a).toMatchObject({ state: 'planned', from: src.id, repo: src.repo, body: 'Der ambient-Ton läuft nach dem Stopp weiter.' });
     expect(a.x).toBe(135);
     expect(a.y).toBeGreaterThan(100);
-    // the next one does not cover it
+    // the next one goes beside it
     const b = board.create({ kind: 'bugfix', title: 'Noch eine', from: src.id });
-    expect([b.x - a.x, b.y - a.y]).toEqual([30, 30]);
+    expect(b.y).toBe(a.y);
+    expect(b.x - a.x).toBeGreaterThan(boundsOf(a, board.snapshot().items).w);
     expect(() => board.create({ kind: 'bugfix', title: 'x', from: 'nope' })).toThrow(BadRequest);
     expect(() => board.create({ kind: 'feature', title: 'x', from: src.id, idea: true })).toThrow(BadRequest);
     expect(() => board.create({ kind: 'feature', title: 'x' })).toThrow(BadRequest);

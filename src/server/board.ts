@@ -4,7 +4,7 @@
 // time they appear, so the owner's placement survives; title, text and state always come from the
 // doc. A row whose doc or workstream is gone stays stored but is not shown.
 
-import { boundsOf, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
+import { boundsOf, CARD_SIZE, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
 import { type CanvasInfo, type CanvasSnapshot, type CardEvent, type CardPatch, type ErrorCode, type Idea, type Item, type NewCard, STATES } from '../core/types';
 import type { CardRow, NewRow, RowUpdate, Store } from './db';
@@ -172,15 +172,15 @@ export class Board {
     return { x, y };
   }
 
-  /** Where a follow-up of a card goes: below it, each further one a little offset, like proposals. */
+  /** Where a follow-up of a card goes: below it, each further one beside the one before. */
   private followUpSpot(fromId: string): { x: number; y: number } {
     const items = this.snapshot().items;
     const from = items.find((i) => i.id === fromId);
     // an archived card is not on the canvas: its follow-ups go where there is room
     if (!from) return this.freeSpot();
     const b = boundsOf(from, items);
-    const earlier = items.filter((i) => i.from === fromId).length;
-    return { x: b.x + 35 + earlier * 30, y: b.y + b.h + 60 + earlier * 30 };
+    const earlier = items.filter((i) => i.from === fromId && i.state !== 'proposal' && !i.spikeOf).length;
+    return { x: b.x + 35 + earlier * (CARD_SIZE.feature[0] + GAP), y: b.y + b.h + 60 };
   }
 
   /** The worker's last summary of a card; it stays with the card until work on it starts again. */
