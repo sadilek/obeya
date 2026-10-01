@@ -82,7 +82,7 @@ export class Workers {
       throw e;
     }
     this.bump(card.id);
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr: null });
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr: null, approved_at: null });
     this.o.board.log(card.id, 'state', 'obeya', `Agent gestartet auf ${branch}.`);
     this.launch(card.id, this.briefing(card, branch, !!row.branch));
   }
@@ -91,7 +91,8 @@ export class Workers {
   message(cardId: string, text: string, images: string[] = []) {
     const card = this.card(cardId);
     if (card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) {
-      this.o.board.work(cardId, { state: 'working', need: null, detail: null });
+      // feedback instead of an approval: what comes back is reviewed again
+      this.o.board.work(cardId, { state: 'working', need: null, detail: null, approved_at: null });
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
       if (text) this.o.onOwnerInput?.(card, 'feedback', text);
       this.deliver(
@@ -123,37 +124,51 @@ export class Workers {
   async approve(cardId: string) {
     const card = this.card(cardId);
     if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
-    const row = this.o.board.row(cardId);
     if (card.spikeOf) return this.discard(card);
-    if (this.o.adapter.land === 'main') {
-      const problem = this.o.workspaces.landOnMain(cardId, row.branch!);
-      if (problem && !problem.worker) throw new BadRequest(problem.code, problem.detail);
-      if (problem) {
-        this.o.board.work(cardId, { state: 'working', need: null, detail: null });
-        this.o.board.log(cardId, 'error', 'obeya', problem.detail, problem.code);
-        this.deliver(cardId, `Your work could not land on main: ${problem.detail}\nFix this in your workspace (rebase onto main and resolve conflicts, or commit), then call ready_for_review again.`);
-        return;
-      }
+    if (this.o.adapter.land === 'main') return this.land(cardId, 'owner');
+    // the worker opens the PR the way the repository does it, then Obeya watches it
+    const pr: PrState = { url: null, seen: [], reported: [] };
+    this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, pr: JSON.stringify(pr) });
+    this.o.board.log(cardId, 'state', 'owner', 'Freigegeben. Der Agent öffnet den Pull Request.');
+    this.deliver(
+      cardId,
+      [
+        'The owner approved your work. Now push your branch and open the pull request the way this repository does it (its own skills and conventions; the description must stand on its own: no local paths, no plan-doc workstream labels).',
+        'Then call pr_opened with the pull request URL and end your turn.',
+        'From now on you may push this branch; after a rebase push with --force-with-lease. Obeya watches the pull request and sends you review comments, failed checks and conflicts; handle each, push, and end your turn. Use ask when a comment questions a decision or a conflict needs a product call. Do not call ready_for_review again.',
+      ].join('\n\n'),
+    );
+  }
+
+  /**
+   * Lands approved work on main. What the worker can fix (main moved on and the change conflicts,
+   * uncommitted work) goes back to it with the approval kept: its next handover lands without the
+   * owner approving again. What blocks the Obeya checkout stays with the owner and needs a new approval.
+   */
+  private land(cardId: string, by: 'owner' | 'obeya') {
+    const row = this.o.board.row(cardId);
+    const problem = this.o.workspaces.landOnMain(cardId, row.branch!);
+    if (problem && !problem.worker) {
+      this.o.board.work(cardId, { approved_at: null });
+      throw new BadRequest(problem.code, problem.detail);
     }
-    if (this.o.adapter.land === 'pr') {
-      // the worker opens the PR the way the repository does it, then Obeya watches it
-      const pr: PrState = { url: null, seen: [], reported: [] };
-      this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, pr: JSON.stringify(pr) });
-      this.o.board.log(cardId, 'state', 'owner', 'Freigegeben. Der Agent öffnet den Pull Request.');
+    if (problem) {
+      this.o.board.work(cardId, { state: 'working', need: null, detail: null, approved_at: row.approved_at ?? new Date().toISOString() });
+      this.o.board.log(cardId, 'error', 'obeya', problem.detail, problem.code);
       this.deliver(
         cardId,
         [
-          'The owner approved your work. Now push your branch and open the pull request the way this repository does it (its own skills and conventions; the description must stand on its own: no local paths, no plan-doc workstream labels).',
-          'Then call pr_opened with the pull request URL and end your turn.',
-          'From now on you may push this branch; after a rebase push with --force-with-lease. Obeya watches the pull request and sends you review comments, failed checks and conflicts; handle each, push, and end your turn. Use ask when a comment questions a decision or a conflict needs a product call. Do not call ready_for_review again.',
+          `The owner approved your work, but it could not land on main: ${problem.detail}`,
+          'Fix this in your workspace (rebase onto main and resolve the conflicts, or commit), run the checks, then call ready_for_review again with a short summary of what you had to change; no new demo is needed. Obeya then lands the work without asking the owner again.',
+          'Use ask only if the fix needs a decision that changes what the owner approved.',
         ].join('\n\n'),
       );
       return;
     }
     this.end(cardId);
     this.bump(cardId);
-    this.o.board.work(cardId, { state: 'live', need: null, detail: null, workspace: null });
-    this.o.board.log(cardId, 'state', 'owner', 'Freigegeben und auf main.');
+    this.o.board.work(cardId, { state: 'live', need: null, detail: null, workspace: null, approved_at: null });
+    this.o.board.log(cardId, 'state', by, by === 'owner' ? 'Freigegeben und auf main.' : 'Nach der Freigabe auf main gelandet.');
   }
 
   /** A spike has served its purpose: its prototype is thrown away with the card; the idea keeps the demo. */
@@ -202,7 +217,7 @@ export class Workers {
     // work on the branch keeps its workspace, so starting again goes on from there
     const keep = this.o.workspaces.hasWork(cardId);
     if (!keep) this.o.workspaces.release(cardId);
-    this.o.board.work(cardId, { state: 'planned', need: null, detail: null, pr: null, ...(keep ? {} : { workspace: null }) });
+    this.o.board.work(cardId, { state: 'planned', need: null, detail: null, pr: null, approved_at: null, ...(keep ? {} : { workspace: null }) });
     this.o.board.log(cardId, 'state', 'owner', card.pr ? `Angehalten. Pull Request #${card.pr.number} bleibt auf GitHub offen.` : 'Angehalten.');
   }
 
@@ -309,6 +324,17 @@ export class Workers {
     }
   }
 
+  private landApproved(cardId: string) {
+    try {
+      this.land(cardId, 'obeya');
+    } catch (e) {
+      // the Obeya checkout is in the way: the card waits for the owner, who approves again
+      if (!(e instanceof BadRequest)) throw e;
+      this.o.board.work(cardId, { state: 'waiting', need: this.o.board.row(cardId).demo ? 'demo' : 'review', status_line: null });
+      this.o.board.log(cardId, 'error', 'obeya', e.message, e.code);
+    }
+  }
+
   /**
    * A turn that ends without handing over gets one nudge; after that the owner is asked. A turn
    * that ends while the worker's background work runs (a demo render, say) waits for that work
@@ -318,7 +344,12 @@ export class Workers {
     const handedOver = live.handedOver;
     live.handedOver = false;
     const card = this.o.board.item(cardId);
-    if (!card || handedOver) return;
+    if (!card) return;
+    if (handedOver) {
+      // work the owner approved already lands once its worker handed over what stood in the way
+      if (card.state === 'working' && this.o.board.row(cardId).approved_at) this.landApproved(cardId);
+      return;
+    }
     // in the PR phase a turn ends normally once the PR is open
     if (card.state === 'inPr' && card.pr) return;
     if (card.state !== 'working' && card.state !== 'inPr') return;
@@ -432,7 +463,9 @@ export class Workers {
         run: ({ summary, demo }) => {
           const s = clip(String(summary), 6000);
           const d = demo as { dir: string; chapters: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string } | undefined;
-          if (!d && this.o.adapter.demo?.required) return 'Not handed over: this repository requires a demo. Record it with the demo skill, then call ready_for_review again with it.';
+          // approved work that could not land comes back to be landed, not reviewed: its demo stands
+          const approved = !!this.o.board.row(cardId).approved_at;
+          if (!d && this.o.adapter.demo?.required && !approved) return 'Not handed over: this repository requires a demo. Record it with the demo skill, then call ready_for_review again with it.';
           let demoJson: string | undefined;
           if (d) {
             const chapters = readChapters(d.dir, d.chapters);
@@ -440,15 +473,16 @@ export class Workers {
             demoJson = JSON.stringify({ dir: d.dir, chapters, shown: d.shown, notShown: d.not_shown, findings: d.findings, ...(d.question ? { question: d.question } : {}) });
           }
           handOver();
+          // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
           this.o.board.work(cardId, {
-            state: 'waiting',
-            need: d ? 'demo' : 'review',
+            ...(approved ? { status_line: 'Landet auf main' } : { state: 'waiting', need: d ? 'demo' : 'review' }),
             detail: JSON.stringify({ summary: s }),
             ...(demoJson ? { demo: demoJson } : {}),
           });
           this.o.board.log(cardId, 'review', 'worker', s);
           const card = this.o.board.item(cardId);
           if (card?.spikeOf) this.o.onSpike?.(card, s, demoJson);
+          if (approved) return 'Recorded. End your turn now; once it has ended, Obeya lands your work on main.';
           return END_TURN;
         },
       },

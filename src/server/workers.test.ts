@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -449,6 +449,96 @@ describe('a worktree per card', () => {
     const err = await workers.approve(c.id).catch((e) => e);
     expect(err).toMatchObject({ code: 'landMerge' });
     expect(state(c.id)).toBe('waiting:review');
+  });
+
+  test('an approval that could not land holds: the worker brings the branch up to date and it lands', async () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'worktrees', demo: { required: true, howToRun: 'bun start' } });
+    const demo = join(dir, 'demo');
+    mkdirSync(demo);
+    writeFileSync(join(demo, 'demo.mp4'), '0');
+    writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nEins.\n');
+    const handOver = { summary: 'S', demo: { dir: demo, chapters: ['Eins'], shown: [], not_shown: [], findings: [] } };
+    const a = manual();
+    const b = board.create({ kind: 'bugfix', title: 'Zweite Karte', x: 0, y: 0 });
+    workers.start(a.id);
+    workers.start(b.id);
+    const wb = board.row(b.id).workspace!;
+    commitIn(board.row(a.id).workspace!, 'same.ts', 'A');
+    commitIn(wb, 'same.ts', 'B');
+    const sa = runtime.sessions.find((s) => s.spec.cwd === board.row(a.id).workspace)!;
+    const sb = runtime.sessions.find((s) => s.spec.cwd === wb)!;
+    sa.call('ready_for_review', handOver);
+    await workers.approve(a.id);
+    sb.call('ready_for_review', handOver);
+    await workers.approve(b.id);
+    expect(state(b.id)).toBe('working');
+    expect(sb.inbox.at(-1)).toContain('without asking the owner again');
+
+    // the worker resolves the conflict and hands over again, without a new demo
+    expect(() => git(wb, 'rebase', '--quiet', 'main')).toThrow();
+    writeFileSync(join(wb, 'same.ts'), 'A and B');
+    git(wb, 'add', '.');
+    Bun.spawnSync(['git', '-C', wb, '-c', 'core.editor=true', 'rebase', '--continue']);
+    expect(sb.call('ready_for_review', { summary: 'Konflikt gelöst' })).toContain('lands your work');
+    expect(state(b.id)).toBe('working');
+    sb.emit({ type: 'idle' });
+    expect(state(b.id)).toBe('live');
+    expect(git(main, 'show', 'HEAD:same.ts')).toBe('A and B');
+    expect(board.events(b.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: 'Nach der Freigabe auf main gelandet.' });
+    expect(board.row(b.id).approved_at).toBeNull();
+  });
+
+  test('feedback instead of an approval is reviewed again; a blocked checkout waits for the owner', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const wc = board.row(c.id).workspace!;
+    commitIn(wc, 'c.ts', 'C');
+    commitIn(main, 'c.ts', 'main');
+    const sc = runtime.last;
+    sc.call('ready_for_review', { summary: 'S' });
+    await workers.approve(c.id);
+    expect(board.row(c.id).approved_at).toBeTruthy();
+    git(wc, 'reset', '--quiet', '--hard', 'main');
+    commitIn(wc, 'c.ts', 'C on main');
+
+    // the Obeya checkout moved off main in the meantime: the card waits and needs a new approval
+    git(main, 'checkout', '--quiet', '-b', 'elsewhere');
+    sc.call('ready_for_review', { summary: 'S' });
+    expect(state(c.id)).toBe('working');
+    sc.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:review');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', code: 'landCheckout' });
+    expect(board.row(c.id).approved_at).toBeNull();
+
+    // feedback while it waits: what comes back is reviewed, not landed
+    git(main, 'checkout', '--quiet', 'main');
+    workers.message(c.id, 'Bitte noch anders.');
+    sc.call('ready_for_review', { summary: 'S' });
+    sc.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:review');
+  });
+
+  test('commits that conflict one by one but not as a whole land as one commit', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const wc = board.row(c.id).workspace!;
+    const trailer = 'Co-Authored-By: W <w@example.com>';
+    writeFileSync(join(wc, 'same.ts'), 'C draft');
+    git(wc, 'add', '.');
+    git(wc, 'commit', '--quiet', '-m', 'C draft', '-m', trailer);
+    git(wc, 'rm', '--quiet', 'same.ts');
+    writeFileSync(join(wc, 'c.ts'), 'C');
+    git(wc, 'add', '.');
+    git(wc, 'commit', '--quiet', '-m', 'C', '-m', trailer);
+    commitIn(main, 'same.ts', 'main');
+    runtime.last.call('ready_for_review', { summary: 'S' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['C draft', 'main', 'init']);
+    expect(git(main, 'log', '--format=%B', '-1')).toBe(`C draft\n\nC\n\n${trailer}`);
+    expect(git(main, 'show', 'HEAD:same.ts')).toBe('main');
+    expect(git(main, 'show', 'HEAD:c.ts')).toBe('C');
   });
 
   test('a stopped card keeps its worktree and picks it up again', () => {

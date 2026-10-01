@@ -32,6 +32,35 @@ export function git(cwd: string, ...args: string[]): string {
   return r.stdout.toString().trim();
 }
 
+/**
+ * Puts the branch's whole change onto `upstream` as one commit, if it merges cleanly there; the
+ * commits' messages are kept in order, their trailers once at the end. Returns whether it did.
+ */
+function squashOnto(ws: string, upstream: string): boolean {
+  let tree: string;
+  try {
+    // exits non-zero on a conflict
+    tree = git(ws, 'merge-tree', '--write-tree', upstream, 'HEAD').split('\n')[0]!;
+  } catch {
+    return false;
+  }
+  const trailers: string[] = [];
+  const bodies = git(ws, 'log', '--reverse', '--format=%B%x00', `${upstream}..HEAD`)
+    .split('\0')
+    .map((m) =>
+      m
+        .split('\n')
+        .filter((line) => !(/^[\w-]+-by: /i.test(line) && trailers.push(line)))
+        .join('\n')
+        .trim(),
+    )
+    .filter(Boolean);
+  const message = [...bodies, [...new Set(trailers)].join('\n')].filter(Boolean).join('\n\n');
+  const commit = git(ws, 'commit-tree', tree, '-p', git(ws, 'rev-parse', upstream), '-m', message);
+  git(ws, 'reset', '--quiet', '--hard', commit);
+  return true;
+}
+
 export interface WorkspaceOptions {
   mode: 'clones' | 'worktrees';
   /** The checkout Obeya runs on. */
@@ -112,8 +141,9 @@ export class Workspaces {
   }
 
   /**
-   * Lands the card's committed branch on the Obeya checkout's default branch by rebasing and
-   * fast-forwarding; a worktree and its branch are removed afterwards. Returns what went wrong:
+   * Lands the card's committed branch on the Obeya checkout's default branch by rebasing (or,
+   * when only the replay conflicts, squashing) and fast-forwarding; a worktree and its branch are
+   * removed afterwards. Returns what went wrong:
    * `worker` problems are the worker's to fix, the others stop at the Obeya checkout.
    */
   landOnMain(cardId: string, branch: string): LandProblem | null {
@@ -130,12 +160,15 @@ export class Workspaces {
       } catch (e) {
         const files = git(ws, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
         git(ws, 'rebase', '--abort');
-        return {
-          code: 'landConflict',
-          worker: true,
-          files,
-          detail: `rebase onto ${base} failed${files.length ? `; conflicts in ${files.join(', ')}` : ''}: ${e instanceof Error ? e.message : String(e)}`,
-        };
+        // replayed one by one, the commits may conflict where the change as a whole does not
+        if (!squashOnto(ws, upstream)) {
+          return {
+            code: 'landConflict',
+            worker: true,
+            files,
+            detail: `rebase onto ${base} failed${files.length ? `; conflicts in ${files.join(', ')}` : ''}: ${e instanceof Error ? e.message : String(e)}`,
+          };
+        }
       }
       if (git(ws, 'rev-list', '--count', `${upstream}..HEAD`) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
       if (git(this.o.repoPath, 'branch', '--show-current') !== base) return { code: 'landCheckout', worker: false, detail: `the Obeya checkout is not on ${base}` };
