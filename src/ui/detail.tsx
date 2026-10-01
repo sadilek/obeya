@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardAction, CardEvent, CardPatch, Demo, Item, Question, RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, onCardEvent } from './api';
+import { firstOpening } from './demoSeen';
 import { Inline, plain, shortTitle } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { errorText, stateLabel, t } from './strings';
@@ -537,9 +538,9 @@ function DemoView({
   const [now, setNow] = useState(0);
   const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
   useEffect(() => {
-    // start once the card has unfolded, like the mock; a demo kept on a finished card waits to be played
+    // start once the card has unfolded, like the mock, the first time only; a demo kept on a finished card waits to be played
     if (!autoplay) return;
-    const h = setTimeout(() => video.current?.play().catch(() => {}), 300);
+    const h = setTimeout(() => firstOpening(localStorage, cardId, demo) && video.current?.play().catch(() => {}), 300);
     return () => clearTimeout(h);
   }, []);
   const current = demo.chapters.reduce((cur, [at], i) => (at <= now + 0.05 ? i : cur), 0);
