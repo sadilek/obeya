@@ -261,16 +261,19 @@ export class Workspaces {
     this.release(cardId);
   }
 
-  /** Files the card's branch changes so far, committed or not, relative to the repository root. */
-  changedFiles(cardId: string): string[] {
+  /**
+   * What the card's branch changes so far, committed or not: each file relative to the repository
+   * root, with the changed line ranges and git's function context, so a judge can tell whether two
+   * cards edit the same place. A new file has no ranges.
+   */
+  changes(cardId: string): Change[] {
     const ws = this.leasedBy(cardId);
     if (!ws || !existsSync(ws)) return [];
     try {
       const base = this.o.mode === 'worktrees' ? defaultBranch(this.o.repoPath) : `origin/${defaultBranch(ws)}`;
-      const committed = git(ws, 'diff', '--name-only', `${git(ws, 'merge-base', 'HEAD', base)}..HEAD`);
-      const changed = git(ws, 'diff', '--name-only', 'HEAD');
+      const diff = git(ws, 'diff', '-U0', '--no-color', '--no-ext-diff', git(ws, 'merge-base', 'HEAD', base));
       const untracked = git(ws, 'ls-files', '--others', '--exclude-standard');
-      return [...new Set([committed, changed, untracked].flatMap((s) => s.split('\n')).filter(Boolean))];
+      return [...parseChanges(diff), ...untracked.split('\n').filter(Boolean).map((file) => ({ file, regions: [] }))];
     } catch {
       return [];
     }
@@ -306,6 +309,40 @@ export class Workspaces {
 }
 
 /** The remote's default branch as the checkout knows it (`main` if origin has no HEAD). */
+export interface Change {
+  file: string;
+  /** Changed ranges in the new file, as git's hunk header has them: "120-134 in function decide". */
+  regions: string[];
+}
+
+/** Files and their hunks from a `git diff -U0`. */
+export function parseChanges(diff: string): Change[] {
+  const out: Change[] = [];
+  let header = false;
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      out.push({ file: '', regions: [] });
+      header = true;
+      continue;
+    }
+    const cur = out.at(-1);
+    if (!cur) continue;
+    // the file names come before the first hunk; later lines like these are content
+    if (header && line.startsWith('--- a/')) cur.file = line.slice(6);
+    else if (header && line.startsWith('+++ b/')) cur.file = line.slice(6);
+    else if (header && line === '+++ /dev/null') cur.regions.push('deleted');
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@ ?(.*)$/.exec(line);
+    if (!hunk) continue;
+    header = false;
+    if (cur.regions[0] === 'deleted') continue;
+    const start = Number(hunk[1]);
+    const n = hunk[2] === undefined ? 1 : Number(hunk[2]);
+    const at = n === 0 ? `${start} (lines removed)` : n === 1 ? `${start}` : `${start}-${start + n - 1}`;
+    cur.regions.push(hunk[3] ? `${at} in ${hunk[3].trim()}` : at);
+  }
+  return out.filter((c) => c.file);
+}
+
 export function defaultBranch(path: string): string {
   try {
     return git(path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD').replace(/^origin\//, '');

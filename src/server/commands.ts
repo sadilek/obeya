@@ -12,7 +12,7 @@ export type Command = (
   /** `from`: the card it follows up on. */
   | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string; from?: string }
   | { do: 'newIdea'; title: string; body: string; repo?: string }
-  /** `force` starts a card that waits behind others now, despite the overlap. */
+  /** `force` starts a card that waits behind others now, despite the likely merge conflict. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'; card: string; text: string }
   /** Saves Obeya's configuration, which then starts again with it. */
@@ -221,7 +221,7 @@ export class Commander {
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
             `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
-            "- start: start work on a planned card. On a queued card (waiting behind cards in progress) it starts it now, despite the overlap; a card the Koordinator is still checking starts by itself unless it collides.",
+            "- start: start work on a planned card. On a queued card (waiting behind cards in progress) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress.",
             "- note: text to the agent working on a card (working, in PR, waiting, or live while its agent finishes after the landing); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
@@ -571,7 +571,7 @@ const STEP: Partial<Record<Moment['kind'], string>> = {
 
 /** A queued card's state as the Koordinator reads it. */
 function queued(q: Queue, items: Item[]): string {
-  if ('checking' in q) return 'queued: the Koordinator checks it for overlaps';
+  if ('checking' in q) return 'queued: the Koordinator checks it for merge conflicts';
   if ('cutting' in q) return 'queued: the Koordinator splits it';
   const titles = q.behind.map((id) => `"${items.find((i) => i.id === id)?.title ?? id}"`).join(', ');
   return `queued behind ${titles}`;

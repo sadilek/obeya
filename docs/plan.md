@@ -47,7 +47,8 @@ decisions are made in front of the wall.
   - *Chief of Staff* (in the UI: *Koordinator*), one per canvas: takes voice input on the open
     canvas, creates and assigns cards, runs the workspace pool, and keeps the preference memory.
     It also schedules the work: it cuts work packages so they can run in parallel, detects cards
-    whose changes are likely to collide, and does not run those at the same time but queues them.
+    whose changes are likely to conflict on merge, and does not run those at the same time but
+    queues them.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
   ("billing changes always get the Codex review", "labels: precise over short"). Shared by all
   agents, maintained by the Chief of Staff.
@@ -78,7 +79,7 @@ An idea is thought through on its card before anything is planned; no worker run
    and records a demo, which shows on the idea; the exploration agent hears what it found. The
    spike never lands and does not count for collisions; approving it discards workspace and branch.
 5. Deciding: "So bauen" makes the brief the card's task and starts it at once, through the
-   Koordinator like "Agent starten" (it waits only if it overlaps running work). "Als Projekt planen" plans a
+   Koordinator like "Agent starten" (it waits only if it would likely conflict with running work). "Als Projekt planen" plans a
    card whose worker writes a plan doc with workstreams, which lands like any change (Acme: a PR)
    and then appears as a project, linked back to the idea. "Parken" and "Verwerfen" leave the card with its brief; talking
    to it opens it again. Decisions from the conversation go into the decision log; lasting
@@ -222,10 +223,16 @@ the owner's language (`src/core/locale.ts`).
   resumed worker is told so. A worker that waits for the restart to finish its landed work is not
   in a turn and does not hold it up.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
-  card starts it estimates the files the card will change and judges collisions with cards in
-  progress (their estimated and actual changes); a card that overlaps or collides waits, with the
-  reason, and starts on its own once what it waits for has landed or stopped — the owner can start
-  it anyway. On the canvas, a planned card and one waiting in the queue show a play button
+  card starts it estimates the files the card will change and judges whether running it next to
+  the cards in progress likely ends in merge conflicts. For each card in progress it sees the
+  estimated files and what the branch has changed so far: each file with the changed line ranges
+  and git's function context. Sharing a file does not keep a card waiting (additions in different
+  places merge cleanly); the same lines or function, or code that one card moves, renames or
+  reformats while the other edits it, do. In doubt the card runs: a conflict that happens anyway
+  goes back to its worker on landing. A card likely to conflict waits, with the reason (one that
+  starts says which files it shares and why that is fine); once what it waits for has landed or
+  stopped it starts, or, while other work runs that may have started meanwhile, it is judged
+  again — the owner can start it anyway. On the canvas, a planned card and one waiting in the queue show a play button
   while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
   without a project, and after each owner answer, note or feedback it decides whether a lasting
@@ -257,7 +264,7 @@ the owner's language (`src/core/locale.ts`).
   approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, spike, park, drop),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
-  others starts it now despite the overlap, like "Trotzdem starten"; it sees which cards a queued
+  others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
   one waits for, so "starte alle wartenden Karten" works. A reply answers questions too
   ("Was ist seit gestern passiert?"), as far as the cards and their history answer them.
   With a card open, the Koordinator gets its worker's whole summary and the findings of its demo,
