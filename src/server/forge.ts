@@ -72,7 +72,8 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       comments: [
         ...pr.comments.map((c) => ({ id: `c${c.id}`, author: c.author.login, body: c.body, url: c.url })),
         ...pr.reviews.filter((r) => r.body.trim()).map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body })),
-        ...inline.map((c) => ({ id: `i${c.id}`, author: c.user.login, body: c.body, path: c.path, ...(c.line ? { line: c.line } : {}), url: c.html_url })),
+        // the REST API names an app `<name>[bot]`, `gh pr view` plain `<name>`: one name for both
+        ...inline.map((c) => ({ id: `i${c.id}`, author: c.user.login.replace(/\[bot\]$/, ''), body: c.body, path: c.path, ...(c.line ? { line: c.line } : {}), url: c.html_url })),
       ],
     };
   },

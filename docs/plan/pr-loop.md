@@ -17,8 +17,11 @@ needs judgement comes back to the owner.
   `pr_opened(url)`.
 - **Watching.** Obeya polls every open PR through `gh` (state, mergeability, checks, review
   comments). New review comments and failed checks go to the worker as a message, a conflict asks
-  it to rebase onto the base branch and push with `--force-with-lease`. From the PR phase on the
-  worker may push its branch; it ends its turn when done instead of handing over again.
+  it to bring the branch up to date with the base. The worker handles all of it the way the
+  repository does (Acme: its `address-reviews` skill, which merges `main` instead of rebasing,
+  replies on and resolves threads, and asks Greptile for a re-review after each push, since
+  Greptile reviews a PR only once by itself). From the PR phase on the worker may push its branch,
+  never merges the PR, and ends its turn when done instead of handing over again.
 - **Judgement.** A comment that questions a decision, or a conflict with product meaning, is the
   worker's to recognise: it uses `ask`, the card waits for the owner, and returns to `in PR` with
   the answer.
@@ -32,7 +35,12 @@ needs judgement comes back to the owner.
 - [x] **W1:** PR phase: approval hands the worker the PR, `pr_opened`, `in PR` with its link.
 - [x] **W2:** Watching: comments, checks, conflicts to the worker; merge and close.
 - [x] **W3:** Card UI: PR link, checks, what the worker does about them.
-- [ ] **W4:** Live on Acme, with the owner's go.
+- [ ] **W4:** Live on Acme, with the owner's go. The go: the owner has put Acme on its own canvas
+  (`~/.obeya/canvases.json`, clones `app2`–`app5`). Checked against real Acme pull requests
+  (2026-10-01): `gh` reads their state, checks and comments; Greptile's inline comments come from
+  `greptile-apps[bot]`, now named `greptile-apps` like its summary; Cloudflare's deploy comment is
+  noise. What is left is the run itself: the first approved Acme card's PR, through Obeya to the
+  merge.
 
 ## Open questions
 
