@@ -6,6 +6,7 @@ import { ApiError, api, at, onCardEvent } from './api';
 import { Inline, plain } from './markdown';
 import { imageFiles, imageUrl, prepareImage, Shots } from './shots';
 import { errorText, stateLabel, t } from './strings';
+import { talkTurns } from './talk';
 
 /** What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open. */
 export type ActDone = { close: true; ack: string; undo?: () => unknown } | { close: false };
@@ -378,7 +379,11 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
   );
 }
 
-/** The discussion of an idea, live; what the agent reads shows while it thinks. */
+/**
+ * The discussion of an idea, live: the owner's messages and the agent's replies. How the agent got
+ * to a reply (what it read and thought, the decisions it recorded) folds away under that reply;
+ * while it thinks, its latest step shows.
+ */
 function Conversation({ item }: { item: Item }) {
   const events = useEvents(item.id);
   const box = useRef<HTMLDivElement>(null);
@@ -387,20 +392,20 @@ function Conversation({ item }: { item: Item }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [events, item.idea?.thinking]);
   if (!events) return null;
-  const shown = events.filter((e) => e.kind === 'talk' || e.kind === 'error' || (e.kind === 'state' && e.author !== 'obeya'));
-  const reading = item.idea?.thinking ? events.filter((e) => e.kind === 'activity').at(-1) : undefined;
+  const turns = talkTurns(events);
+  const thinking = !!item.idea?.thinking;
   return (
     <>
       <h4 className="p-h">{t.idea.talk}</h4>
       <div className="talk" ref={box}>
-        {shown.length === 0 && !item.idea?.thinking && <div className="hint">{t.idea.talkEmpty}</div>}
+        {turns.shown.length === 0 && !thinking && <div className="hint">{t.idea.talkEmpty}</div>}
         {item.body.trim() && !events.some((e) => e.kind === 'talk') && (
           <div className="msg by-owner seed">
             <div className="who">{t.idea.seed}</div>
             <Body md={item.body} />
           </div>
         )}
-        {shown.map((e) =>
+        {turns.shown.map(({ e, steps }) =>
           e.kind === 'talk' ? (
             <div key={e.id} className={`msg by-${e.author}`}>
               <div className="who">
@@ -408,6 +413,7 @@ function Conversation({ item }: { item: Item }) {
               </div>
               <Body md={e.text} />
               <Shots ids={e.images} />
+              <Steps steps={steps} />
             </div>
           ) : (
             <div key={e.id} className={`note ev-${e.kind}`} title={e.code ? e.text : undefined}>
@@ -415,18 +421,47 @@ function Conversation({ item }: { item: Item }) {
             </div>
           ),
         )}
-        {item.idea?.thinking && (
+        {thinking ? (
           <div className="msg by-explorer thinking">
             <div className="who">
               {t.author.explorer} {t.idea.thinking}
             </div>
-            {reading && <div className="hint">{reading.text}</div>}
+            {turns.pending.at(-1) && <div className="hint">{clipLine(turns.pending.at(-1)!.text)}</div>}
+            <Steps steps={turns.pending} />
           </div>
+        ) : (
+          turns.pending.length > 0 && (
+            <div className="msg by-explorer">
+              <Steps steps={turns.pending} />
+            </div>
+          )
         )}
       </div>
     </>
   );
 }
+
+/** What the agent did on its way to a reply, folded. */
+function Steps({ steps }: { steps: CardEvent[] }) {
+  if (!steps.length) return null;
+  return (
+    <details className="steps">
+      <summary>{t.idea.steps(steps.length)}</summary>
+      <ol>
+        {steps.map((s) => (
+          <li key={s.id} className={`step-${s.kind}`}>
+            {s.kind === 'say' ? <Body md={s.text} /> : s.text}
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+const clipLine = (s: string) => {
+  const line = s.split('\n').find((l) => l.trim())?.trim() ?? '';
+  return line.length > 140 ? line.slice(0, 139) + '…' : line;
+};
 
 /** The narrated demo with its chapters and the report beside it. */
 function DemoView({ cardId, summary, demo, children, autoplay = true }: { cardId: string; summary: string; demo: Demo; children: ReactNode; autoplay?: boolean }) {
