@@ -18,7 +18,7 @@ import { type CanvasConfig, CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ghForge } from './forge';
 import { sdkRuntime } from './runtime';
-import { ownCheckout, RESTART, watchOwnCode } from './self-update';
+import { ownCheckout, RESTART, watchOwnCode, whenIdle } from './self-update';
 import { serve } from './server';
 import { SpeechSidecar, WhisperSidecar } from './voice';
 
@@ -106,9 +106,12 @@ console.log(`Obeya on ${server.url}`);
 const own = process.env.OBEYA_SUPERVISED ? ownCheckout() : null;
 if (own)
   watchOwnCode(own, (from, to) => {
-    console.log(`Obeya: ${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}; restarting`);
-    server.stop(true);
-    shutdown(RESTART);
+    const busy = () => canvases.some((c) => c.busy());
+    console.log(`Obeya: ${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}; restarting${busy() ? ' once no worker is in the middle of a turn' : ''}`);
+    whenIdle(busy, () => {
+      server.stop(true);
+      shutdown(RESTART);
+    });
   });
 for (const c of canvases) {
   console.log(`  ${c.board.canvas.name} (?c=${c.id})`);

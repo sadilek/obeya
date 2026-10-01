@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ownCheckout, watchOwnCode } from './self-update';
+import { ownCheckout, watchOwnCode, whenIdle } from './self-update';
 import { git } from './workspaces';
 
 let repo: string;
@@ -57,4 +57,18 @@ test('docs alone change nothing that runs', async () => {
   const head = commit('src/a.ts', 'b');
   await wait(120);
   expect(calls).toEqual([head]);
+});
+
+test('a restart waits until nothing is busy, or until its patience is out', async () => {
+  let busy = true;
+  let ran = 0;
+  stop = whenIdle(() => busy, () => ran++, 10_000, 10);
+  await wait(50);
+  expect(ran).toBe(0);
+  busy = false;
+  await wait(50);
+  expect(ran).toBe(1);
+  stop = whenIdle(() => true, () => ran++, 40, 10);
+  await wait(100);
+  expect(ran).toBe(2);
 });

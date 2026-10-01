@@ -80,6 +80,25 @@ describe('workers', () => {
     expect(() => workers.start(d.id)).toThrow(BadRequest);
   });
 
+  test('a worker is busy from a message to the end of the turn it starts', () => {
+    const c = manual();
+    workers.start(c.id);
+    expect(workers.busy()).toBe(true);
+    runtime.last.call('ask', { question: 'CSV oder Excel?' });
+    runtime.last.emit({ type: 'idle' });
+    expect(workers.busy()).toBe(false);
+    workers.answer(c.id, 'CSV');
+    expect(workers.busy()).toBe(true);
+    runtime.last.emit({ type: 'idle' });
+    // the nudge starts a turn as well
+    expect(workers.busy()).toBe(true);
+    runtime.last.emit({ type: 'idle' });
+    expect(workers.busy()).toBe(false);
+    // a turn Obeya did not start, e.g. after a background command finished
+    runtime.last.emit({ type: 'text', text: 'Fertig gerendert.' });
+    expect(workers.busy()).toBe(true);
+  });
+
   test('report shows on the card and in the log', () => {
     const c = manual();
     workers.start(c.id);
