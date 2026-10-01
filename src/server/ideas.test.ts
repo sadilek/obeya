@@ -318,6 +318,8 @@ describe('a prototype', () => {
       .items.find((x) => x.prototypeOf === i.id)!;
     expect(prototype).toMatchObject({ state: 'working', title: 'Prototyp: Export für Vermieter', from: i.id, body: 'Den Export-Knopf' });
     expect(item(i.id).state).toBe('idea');
+    // while the prototype is built, the owner waits for it, not the idea for the owner
+    expect(item(i.id).idea).toMatchObject({ yourTurn: false, thinking: false });
     const w = worker();
     expect(w.inbox[0]).toContain('throwaway prototype');
     expect(w.inbox[0]).toContain('**Ziel:** CSV-Export.');
@@ -332,6 +334,8 @@ describe('a prototype', () => {
     expect(item(i.id).demo).toMatchObject({ chapters: [[0, 'Knopf']] });
     expect(board().demoFiles(i.id)).toEqual({ dir: join(dir, 'demo'), kind: 'video' });
     expect(explorer().inbox.at(-1)).toContain('Knopf gebaut.');
+    turn(explorer(), 'Der Knopf trägt; nimmst du ihn?');
+    expect(item(i.id).idea).toMatchObject({ yourTurn: true });
     expect(item(prototype.id)).toMatchObject({ state: 'waiting', need: 'demo' });
 
     canvas.act(prototype.id, { action: 'approve' });

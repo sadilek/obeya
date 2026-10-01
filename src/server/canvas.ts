@@ -300,6 +300,8 @@ export class CanvasRuntime {
       this.board.remove(prototype.id);
       throw e;
     }
+    // the owner now waits for the prototype, not the other way round; the agent's reply to its result gives the turn back
+    this.board.setIdea(cardId, { yourTurn: false });
     this.board.log(cardId, 'state', 'owner', `Prototyp gestartet: ${what || 'die Idee, wie sie steht'}.`);
   }
 
