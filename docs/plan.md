@@ -358,7 +358,7 @@ the repository; the copy on the project is only for the archive).
   automatic rather than an explicit "abschließen", which can later sit on top. Reading old content
   from the git history instead was rejected as fragile (PRs and clones on OKE, renames); it served
   only once, to backfill Obeya's own projects from before
-  (`scripts/backfill-archived-projects.ts`). Known edges: a doc missing only for a moment (a branch
+  (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a doc missing only for a moment (a branch
   switch in the checkout) sends the project to the archive and back; a renamed doc makes a new
   project and leaves the old one archived. A project from before the doc was kept has nothing to
   show and stays hidden.
