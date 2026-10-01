@@ -35,6 +35,8 @@ export interface Item {
   label?: string;
   /** Projects only. */
   plan?: { file: string; goal: string };
+  /** Projects only: the idea their plan doc was written from. */
+  origin?: string;
   /** The worker's latest `report`. */
   statusLine?: string;
   /**
@@ -46,7 +48,7 @@ export interface Item {
   summary?: string;
   /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
   demo?: Demo;
-  /** The card it comes from: a proposal's source, a spike's idea, the card a follow-up follows up on, or the idea a project's plan doc was written from. */
+  /** The card it comes from: a proposal's source, a spike's idea, or the card a follow-up follows up on. */
   from?: string;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
   repo: string;
