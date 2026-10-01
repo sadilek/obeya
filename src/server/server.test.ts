@@ -315,6 +315,26 @@ describe('screenshots', () => {
     expect(await codeOf(post(api('/command'), JSON.stringify({ text: 'x', images: ['0000.png'] })))).toBe('invalid');
   });
 
+  test("a recording's screenshots go to the Koordinator and its actions; nothing heard leaves them unused", async () => {
+    const { id } = (await (await upload(png)).json()) as { id: string };
+    const voice = (q = '') => fetch(new URL(api(`/voice${q}`), server.url), { method: 'POST', body: 'AUDIO' });
+    expect(await codeOf(voice('?image=0000.png'))).toBe('invalid');
+    expect(heardAudio).toEqual([]);
+    const res = voice(`?image=${id}`);
+    const koordinator = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act')).at(-1);
+    await until(() => koordinator()?.inbox.length);
+    const k = koordinator()!;
+    expect(k.images[0]).toEqual([canvas.images.path(id)!]);
+    k.call('act', { actions: [{ do: 'new_card', kind: 'bugfix', title: 'Export', body: 'bricht um' }], confirm: 'Neue Karte „Export“.' });
+    expect(await (await res).json()).not.toHaveProperty('unheard');
+    await until(() => executed.length);
+    expect(executed).toEqual([{ do: 'newCard', kind: 'bugfix', title: 'Export', body: 'bricht um', start: false, images: [id] }]);
+    expect(board.snapshot().talk.at(-1)).toMatchObject({ said: 'Neue Karte Export', images: [id] });
+
+    whisper = () => '';
+    expect(await (await voice(`?image=${id}`)).json()).toMatchObject({ confirm: 'Ich habe nichts gehört.', unheard: true });
+  });
+
   test('a new card from a command keeps its screenshots; one said with a start goes to the task', async () => {
     const { id } = (await (await upload(png)).json()) as { id: string };
     const run = CanvasRuntime.prototype.run.bind(canvas);

@@ -1,8 +1,10 @@
 // Push-to-talk: hold Space or the microphone, speak, let go. The recording goes to Obeya, which
-// answers with a confirmation to show and play.
+// answers with a confirmation to show and play. Screenshots picked or pasted beside the microphone
+// go with the next recording.
 
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { AttachButton, type ShotInput, ShotStrip } from './shots';
 import { t } from './strings';
 
 export interface Heard {
@@ -14,14 +16,18 @@ export interface Heard {
   audio?: string;
   /** Said to the open idea: its conversation shows it, so there is nothing to confirm. */
   quiet?: boolean;
+  /** Nothing was heard: the screenshots shown with it wait for the next recording. */
+  unheard?: boolean;
 }
 
 export type Where = { card: string } | { project: string } | null;
 
 type Phase = 'idle' | 'listening' | 'thinking';
 
-/** Recording and sending; `level` drives the ring while listening. */
-export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void) {
+/** Recording and sending, with the screenshots beside the microphone; `level` drives the ring while listening. */
+export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void, shots: ShotInput) {
+  const shotsRef = useRef(shots);
+  shotsRef.current = shots;
   const [phase, setPhase] = useState<Phase>('idle');
   const [level, setLevel] = useState(0);
   const mic = useRef<{ stream: MediaStream; analyser: AnalyserNode } | null>(null);
@@ -73,8 +79,12 @@ export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void) {
       // a tap is not a command
       if (held < 350) return setPhase('idle');
       setPhase('thinking');
+      // those still uploading wait for the next recording
+      const images = shotsRef.current.images;
       try {
-        onHeard(await api.voice(new Blob(r.chunks, { type: r.recorder.mimeType }), r.target));
+        const h = await api.voice(new Blob(r.chunks, { type: r.recorder.mimeType }), r.target, images);
+        if (!h.unheard) shotsRef.current.clear(images);
+        onHeard(h);
       } catch {
         onHeard({ confirm: t.voice.failed });
       }
@@ -87,24 +97,31 @@ export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void) {
   return { phase, level, start, stop };
 }
 
-export function PushToTalk({ phase, level, target, onDown }: { phase: Phase; level: number; target: string; onDown: () => void }) {
+export function PushToTalk({ phase, level, target, shots, onDown }: { phase: Phase; level: number; target: string; shots: ShotInput; onDown: () => void }) {
   return (
-    <div id="ptt" className={phase}>
-      <button
-        id="mic"
-        title={t.voice.hold}
-        style={{ ['--lvl' as string]: 1 + level * 0.45 }}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          onDown();
-        }}
-      >
-        <span className="ring" />
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <rect x="9" y="3" width="6" height="11" rx="3" />
-          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-        </svg>
-      </button>
+    <div id="ptt" className={`${phase}${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
+      <div className="ptt-row">
+        <button
+          id="mic"
+          title={t.voice.hold}
+          style={{ ['--lvl' as string]: 1 + level * 0.45 }}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            onDown();
+          }}
+        >
+          <span className="ring" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="9" y="3" width="6" height="11" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+          </svg>
+        </button>
+        <div className="ptt-shots">
+          <AttachButton shots={shots} title={t.voice.attach} />
+          <ShotStrip shots={shots} />
+        </div>
+      </div>
+      {shots.error && <div className="ptt-error">{shots.error}</div>}
       <div id="target">
         → <b>{target}</b>
       </div>

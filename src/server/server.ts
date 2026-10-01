@@ -86,8 +86,13 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
   const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = []) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
     console.log(`heard on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
-    const h: Heard =
-      text === null ? { confirm: 'Das habe ich nicht verstanden.' } : text ? await c.commander.hear(text, focus, images) : { confirm: 'Ich habe nichts gehört.' };
+    // nothing heard or understood: screenshots shown with it stay in the browser for the next try
+    const h: Heard & { unheard?: true } =
+      text === null
+        ? { confirm: 'Das habe ich nicht verstanden.', unheard: true }
+        : text
+          ? await c.commander.hear(text, focus, images)
+          : { confirm: 'Ich habe nichts gehört.', unheard: true };
     // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
     if (h.quiet) return h;
@@ -138,7 +143,14 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         },
       },
       // what the owner said (audio) or typed, read by the Koordinator as one action
-      '/api/c/:canvas/voice': { POST: on(async (c, req) => heard(c, await transcribe(c, req), focusOf(req))) },
+      '/api/c/:canvas/voice': {
+        POST: on(async (c, req) => {
+          // screenshots shown with the recording (`?image=<id>`, repeated), checked before transcribing
+          const images = new URL(req.url).searchParams.getAll('image');
+          c.images.resolve(images);
+          return heard(c, await transcribe(c, req), focusOf(req), images);
+        }),
+      },
       // the owner started speaking: transcription, speech and the Koordinator get ready meanwhile
       '/api/c/:canvas/voice/warm': {
         POST: on((c) => {

@@ -139,6 +139,7 @@ export const t = {
     failed: 'Das hat nicht geklappt; bitte noch einmal.',
     typePlaceholder: 'Dem Koordinator schreiben, z. B. „Neue Karte: …“',
     tooLate: 'Zu spät: das ist schon passiert.',
+    attach: 'Screenshot für die nächste Sprachnachricht – oder mit ⌘V einfügen oder auf das Mikrofon ziehen',
   },
   pr: {
     title: (n: number) => `Pull Request #${n}`,
