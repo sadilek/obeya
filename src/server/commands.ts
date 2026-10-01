@@ -8,7 +8,8 @@ import type { Moment } from './db';
 import type { AgentRuntime, AgentSession } from './runtime';
 
 export type Command =
-  | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string }
+  /** `from`: the card it follows up on. */
+  | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string; from?: string }
   | { do: 'newIdea'; title: string; body: string; repo?: string }
   /** `force` starts a card that waits behind others now, despite the overlap. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
@@ -201,8 +202,8 @@ export class Commander {
           name: 'act',
           description: [
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
-            'Actions (card: the tag of the card, for all but new_card):',
-            `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}.`,
+            'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
+            `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card. On a queued card (waiting behind cards in progress) it starts it now, despite the overlap; a card the Koordinator is still checking starts by itself unless it collides.",
             "- note: text to the agent working on a card (working, in PR, or waiting); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
             "- answer: text as the answer to the card's open question.",
@@ -295,7 +296,9 @@ export class Commander {
       if (!a.title?.trim()) return 'a new card needs a title';
       const repos = this.o.board.canvas.repos;
       const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? a.repo : undefined;
-      return { do: 'newCard', kind: a.kind ?? 'feature', title: a.title.trim(), body: a.body ?? '', start: Boolean(a.start), ...(repo ? { repo } : {}) };
+      const from = a.card ? s.tags.get(a.card) : undefined;
+      if (a.card && (!from || !this.o.board.item(from))) return `unknown tag ${a.card}; give the card a follow-up comes from, or none`;
+      return { do: 'newCard', kind: a.kind ?? 'feature', title: a.title.trim(), body: a.body ?? '', start: Boolean(a.start), ...(repo ? { repo } : {}), ...(from ? { from } : {}) };
     }
     const id = a.card ? s.tags.get(a.card) : undefined;
     const card = id ? this.o.board.item(id) : undefined;
@@ -383,6 +386,25 @@ export class Commander {
     }
   }
 
+  /**
+   * What the open card's worker handed over: the summary in full and the findings of its demo, so
+   * a follow-up for one of them carries what it is about. Findings that have their follow-up name it.
+   */
+  private report(card: Item, tag: (id: string) => string): string {
+    const summary = this.o.board.summary(card.id)?.trim();
+    const findings = card.demo?.findings ?? [];
+    if (!summary && !findings.length) return '';
+    const followUps = this.o.board.snapshot().items.filter((i) => i.from === card.id && i.state !== 'proposal' && !i.spikeOf);
+    const listed = findings.map((f, n) => {
+      const done = followUps.find((i) => i.body.includes(f.trim()));
+      return `${n + 1}. ${f.trim()}${done ? ` (follow-up card: ${tag(done.id)} "${done.title}")` : ''}`;
+    });
+    return [
+      summary ? `\n\nIts worker's summary:\n${summary}` : '',
+      listed.length ? `\n\nFindings of its demo (things the worker noticed beyond the task):\n${listed.join('\n')}` : '',
+    ].join('');
+  }
+
   /** The message for one command: what the Koordinator needs to know besides what it already knows. */
   private brief(s: Session, transcript: string, focus: Focus): string {
     const items = this.o.board.snapshot().items;
@@ -447,7 +469,7 @@ export class Commander {
       ...history,
       ...news,
       `The owner said (speech recognition, may contain errors): "${transcript}"`,
-      focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}` : project ? `The owner is looking at the project "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
+      focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused, tag)}` : project ? `The owner is looking at the project "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
       `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
       ...(this.o.board.canvas.repos.length > 1
         ? [`Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name})`).join(', ')}`]
@@ -503,7 +525,7 @@ You are the Koordinator of Obeya, a canvas on which the owner directs coding age
 This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Card tags (K1, K2, …) stay the same throughout this conversation. No agent works on a planned or live card; a workstream of a project takes its state from the project's plan doc (checked off there means live).
 
 For each message, call act, reply or look_up once, then end your turn:
-- act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgekarte …" is approve and new_card): leave none out.
+- act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgekarte …" is approve and new_card, with the open card as the one it follows up on): leave none out.
 - reply, when the owner asks you something you can answer from what you know (the cards, their states and history, this conversation), also about the open card, or when nothing fits or it is unclear which card or what is meant.
 - look_up, when the answer needs reading: what an agent would do on a card ("Was würde der Agent hier machen, wenn ich starte?"), what the plan says, how or why something works. Never reply that you cannot know or predict it; look it up. The answer follows in a few seconds.
 All three take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.

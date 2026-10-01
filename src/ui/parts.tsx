@@ -134,11 +134,11 @@ export const ProjectView = memo(
   (a, b) => a.item === b.item && sameBounds(a.b, b.b) && a.kids.length === b.kids.length && a.kids.every((k, i) => k === b.kids[i]),
 );
 
-/** A dashed line from each proposal to the card it came from, and from each spike to its idea. */
+/** A dashed line from each proposal and each follow-up not yet started to the card it came from, and from each spike to its idea. */
 export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   const byId = new Map(placed.map((p) => [p.item.id, p]));
   const paths = placed.flatMap(({ item, b }) => {
-    const src = (item.state === 'proposal' || item.spikeOf) && item.from ? byId.get(item.from) : undefined;
+    const src = (item.state === 'proposal' || item.state === 'planned' || item.spikeOf) && item.from ? byId.get(item.from) : undefined;
     if (!src) return [];
     const x1 = src.b.x + src.b.w / 2;
     const y1 = src.b.y + src.b.h;

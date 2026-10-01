@@ -172,6 +172,23 @@ export class Board {
     return { x, y };
   }
 
+  /** Where a follow-up of a card goes: below it, each further one a little offset, like proposals. */
+  private followUpSpot(fromId: string): { x: number; y: number } {
+    const items = this.snapshot().items;
+    const from = items.find((i) => i.id === fromId);
+    // an archived card is not on the canvas: its follow-ups go where there is room
+    if (!from) return this.freeSpot();
+    const b = boundsOf(from, items);
+    const earlier = items.filter((i) => i.from === fromId).length;
+    return { x: b.x + 35 + earlier * 30, y: b.y + b.h + 60 + earlier * 30 };
+  }
+
+  /** The worker's last summary of a card; it stays with the card until work on it starts again. */
+  summary(id: string): string | undefined {
+    const r = this.own(id);
+    return r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
+  }
+
   /** A card an agent proposes, placed below the card it came from. */
   propose(fromId: string, p: { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string }): Item {
     const items = this.snapshot().items;
@@ -364,9 +381,16 @@ export class Board {
     if (n.kind !== 'bugfix' && n.kind !== 'feature') throw new BadRequest('invalid', 'kind must be bugfix or feature');
     checkText(n.title, 'title', 200);
     if (n.body !== undefined) checkText(n.body, 'body', 20000);
-    checkNumber(n.x, 'x');
-    checkNumber(n.y, 'y');
     if (n.repo !== undefined && !this.canvas.repos.some((r) => r.id === n.repo)) throw new BadRequest('invalid', 'unknown repository');
+    const from = n.from !== undefined ? this.own(n.from) : undefined;
+    if (from && n.idea) throw new BadRequest('invalid', 'an idea follows up on no card');
+    if (!from) {
+      checkNumber(n.x, 'x');
+      checkNumber(n.y, 'y');
+    }
+    const at = from ? this.followUpSpot(from.id) : { x: n.x!, y: n.y! };
+    // a follow-up stays in the repository of the card it comes from unless told otherwise
+    const repo = n.repo ?? (from ? (from.repo ?? this.home) : undefined);
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
@@ -374,9 +398,9 @@ export class Board {
         state: n.idea ? 'idea' : 'planned',
         title: n.title,
         body: n.body ?? '',
-        x: n.x,
-        y: n.y,
-        repo: n.repo && n.repo !== this.home ? n.repo : null,
+        ...at,
+        repo: repo && repo !== this.home ? repo : null,
+        ...(from ? { from_id: from.id } : {}),
         ...(n.idea ? { idea: JSON.stringify({ status: 'open', brief: '' } satisfies StoredIdea) } : {}),
       },
     ]);

@@ -54,6 +54,7 @@ export const t = {
   summary: 'Zusammenfassung des Agenten',
   proposal: 'Vorschlag',
   proposedBy: (title: string) => `Vorgeschlagen vom Agenten der Karte „${title}“.`,
+  followUpOf: (title: string) => `Kommt von der Karte „${title}“.`,
   task: 'Auftrag',
   log: 'Verlauf',
   logEmpty: 'Noch nichts passiert.',
@@ -131,7 +132,10 @@ export const t = {
     short: (n: number, failed: number, conflict: boolean) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
   },
-  demo: { question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.' },
+  demo: { question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.',
+    followUp: 'Als Karte anlegen',
+    followedUp: (title: string) => `Karte „${title}“ angelegt`,
+  },
   koordinator: {
     button: 'Koordinator',
     kind: 'Koordinator',

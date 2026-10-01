@@ -40,7 +40,7 @@ export interface Item {
   summary?: string;
   /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
   demo?: Demo;
-  /** A proposal's source card. */
+  /** The card it comes from: a proposal's source, a spike's idea, or the card a follow-up follows up on. */
   from?: string;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
   repo: string;
@@ -160,12 +160,15 @@ export interface NewCard {
   kind: 'bugfix' | 'feature';
   title: string;
   body?: string;
-  x: number;
-  y: number;
-  /** A repository of the canvas; its home repository when left out. */
+  /** Where it goes; left out for a follow-up, which goes below the card it comes from. */
+  x?: number;
+  y?: number;
+  /** A repository of the canvas; its home repository when left out (a follow-up's: that of its card). */
   repo?: string;
   /** An idea to discuss before anything is planned. */
   idea?: boolean;
+  /** The card this one follows up on, e.g. for a finding of its demo. */
+  from?: string;
 }
 
 export interface CardPatch {
