@@ -45,8 +45,8 @@ export interface CardRow {
   archived_at: string | null;
   /** JSON: an idea's status and brief (`{ status, brief }`). */
   idea: string | null;
-  /** A spike's idea. */
-  spike_of: string | null;
+  /** A prototype's idea. */
+  prototype_of: string | null;
   /** When the owner approved work that could not land yet; its next handover lands without asking again. */
   approved_at: string | null;
   /**
@@ -197,10 +197,12 @@ export const MIGRATIONS = [
   // an idea's card remembers the plan docs its work added, so the project knows where it came from
   `ALTER TABLE cards ADD COLUMN plan TEXT;
    ALTER TABLE cards ADD COLUMN plan_docs TEXT;`,
+  // a spike is called a prototype now
+  `ALTER TABLE cards RENAME COLUMN spike_of TO prototype_of;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'spike_of' | 'images'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'images'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -303,8 +305,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, spike_of, images, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $spike_of, $images, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, images, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $images, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -323,7 +325,7 @@ export class Store {
           from_id: r.from_id ?? null,
           repo: r.repo ?? null,
           idea: r.idea ?? null,
-          spike_of: r.spike_of ?? null,
+          prototype_of: r.prototype_of ?? null,
           images: r.images ?? null,
           now: now(),
         });

@@ -14,7 +14,7 @@ export type Command = (
   | { do: 'newIdea'; title: string; body: string; repo?: string }
   /** `force` starts a card that waits behind others now, despite the likely merge conflict. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
-  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'spike'; card: string; text: string }
+  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string }
   /** Saves Obeya's configuration, which then starts again with it. */
   | { do: 'configure'; canvases: CanvasConfig[] }
 ) & {
@@ -84,7 +84,7 @@ type LookUp = { question: string; about?: string };
 type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp };
 
 /** The actions `act` takes, as the Koordinator names them. */
-const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'spike', 'park', 'drop'] as const;
+const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop'] as const;
 type Action = (typeof ACTIONS)[number];
 
 /** Actions in one command, at most: "start all queued cards" may name many. */
@@ -195,7 +195,7 @@ export class Commander {
       .snapshot()
       .items.filter((i) => i.state !== 'live')
       .map((i) => i.title.replace(/[`*_]/g, ''));
-    return ['Obeya, Koordinator, Karte, Workstream, Bugfix, Feature, Idee, Spike, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
+    return ['Obeya, Koordinator, Karte, Workstream, Bugfix, Feature, Idee, Prototyp, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
   }
 
   /** Starts the Koordinator's session ahead, so a command does not wait for its start-up. Called when the owner starts speaking. */
@@ -227,7 +227,7 @@ export class Commander {
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
             '- approve: approve work waiting for review. accept: take a proposed card and start it. dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
-            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent writes its plan doc first), spike (a worker builds a throwaway prototype shown as a demo on it; text: what it should show, may be empty), park (for later), drop (it stays on the canvas with its brief).",
+            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent writes its plan doc first), prototype (a worker builds a throwaway prototype shown as a demo on it; text: what it should show, may be empty), park (for later), drop (it stays on the canvas with its brief).",
             'Texts as the owner meant them (fix obvious recognition errors).',
           ].join('\n'),
           schema: {
@@ -361,14 +361,14 @@ export class Commander {
     if (!card) return `unknown tag ${a.card ?? '(none)'}`;
     const reviewable = card.state === 'waiting' && (card.need === 'review' || card.need === 'demo');
     const is = `it is ${card.need ? `${card.state}: ${card.need}` : card.state}`;
-    if (['discuss', 'build', 'plan_doc', 'spike', 'park', 'drop'].includes(a.do) !== (card.state === 'idea'))
-      return card.state === 'idea' ? `the card is an idea: discuss it, or build, plan_doc, spike, park or drop it` : `only an idea can be discussed, built, prototyped, parked or dropped (${is})`;
+    if (['discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop'].includes(a.do) !== (card.state === 'idea'))
+      return card.state === 'idea' ? `the card is an idea: discuss it, or build, plan_doc, prototype, park or drop it` : `only an idea can be discussed, built, prototyped, parked or dropped (${is})`;
     switch (a.do) {
       case 'discuss':
         if (!a.text?.trim()) return 'the text is missing';
         return { do: 'discuss', card: card.id, text: a.text.trim() };
-      case 'spike':
-        return { do: 'spike', card: card.id, text: a.text?.trim() ?? '' };
+      case 'prototype':
+        return { do: 'prototype', card: card.id, text: a.text?.trim() ?? '' };
       case 'plan_doc':
         return { do: 'planDoc', card: card.id };
       case 'note':
@@ -451,7 +451,7 @@ export class Commander {
     const summary = this.o.board.summary(card.id)?.trim();
     const findings = card.demo?.findings ?? [];
     if (!summary && !findings.length) return '';
-    const followUps = this.o.board.snapshot().items.filter((i) => i.from === card.id && i.state !== 'proposal' && !i.spikeOf);
+    const followUps = this.o.board.snapshot().items.filter((i) => i.from === card.id && i.state !== 'proposal' && !i.prototypeOf);
     const listed = findings.map((f, n) => {
       const done = followUps.find((i) => i.body.includes(f.trim()));
       return `${n + 1}. ${f.trim()}${done ? ` (follow-up card: ${tag(done.id)} "${done.title}")` : ''}`;
@@ -600,5 +600,5 @@ For each message, call act, reply or look_up once, then end your turn:
 - look_up, when the answer needs reading: what an agent would do on a card ("Was würde der Agent hier machen, wenn ich starte?"), what the plan says, how or why something works. Never reply that you cannot know or predict it; look it up. The answer follows in a few seconds.
 All three take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
-When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, spike, park, drop). Wanting to think about something, rather than have it done, is new_idea.
+When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

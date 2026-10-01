@@ -297,7 +297,7 @@ describe('an idea', () => {
   });
 });
 
-describe('a spike', () => {
+describe('a prototype', () => {
   const demoDir = () => {
     const d = join(dir, 'demo');
     mkdirSync(d, { recursive: true });
@@ -311,33 +311,33 @@ describe('a spike', () => {
     const i = idea();
     board().setIdea(i.id, { brief: '**Ziel:** CSV-Export.' });
     canvas.act(i.id, { action: 'discuss', text: 'Zeig mal.' });
-    turn(explorer(), 'Ein Spike hilft.');
-    canvas.act(i.id, { action: 'spike', text: 'Den Export-Knopf' });
-    const spike = board()
+    turn(explorer(), 'Ein Prototyp hilft.');
+    canvas.act(i.id, { action: 'prototype', text: 'Den Export-Knopf' });
+    const prototype = board()
       .snapshot()
-      .items.find((x) => x.spikeOf === i.id)!;
-    expect(spike).toMatchObject({ state: 'working', title: 'Spike: Export für Vermieter', from: i.id, body: 'Den Export-Knopf' });
+      .items.find((x) => x.prototypeOf === i.id)!;
+    expect(prototype).toMatchObject({ state: 'working', title: 'Prototyp: Export für Vermieter', from: i.id, body: 'Den Export-Knopf' });
     expect(item(i.id).state).toBe('idea');
     const w = worker();
     expect(w.inbox[0]).toContain('throwaway prototype');
     expect(w.inbox[0]).toContain('**Ziel:** CSV-Export.');
     expect(w.inbox[0]).not.toContain('Before ready_for_review, run');
-    // a spike never lands, so it holds no files for the Koordinator
+    // a prototype never lands, so it holds no files for the Koordinator
     expect(canvas.koordinator.inProgress()).toEqual([]);
-    expect(() => canvas.act(i.id, { action: 'spike' })).toThrow('still running');
+    expect(() => canvas.act(i.id, { action: 'prototype' })).toThrow('still running');
 
-    const ws = board().row(spike.id).workspace!;
-    const branch = board().row(spike.id).branch!;
+    const ws = board().row(prototype.id).workspace!;
+    const branch = board().row(prototype.id).branch!;
     w.call('ready_for_review', { summary: 'Knopf gebaut.', demo: { dir: demoDir(), chapters: ['Knopf'], shown: ['Knopf'], not_shown: [], findings: [] } });
     expect(item(i.id).demo).toMatchObject({ chapters: [[0, 'Knopf']] });
     expect(board().demoDir(i.id)).toBe(join(dir, 'demo'));
     expect(explorer().inbox.at(-1)).toContain('Knopf gebaut.');
-    expect(item(spike.id)).toMatchObject({ state: 'waiting', need: 'demo' });
+    expect(item(prototype.id)).toMatchObject({ state: 'waiting', need: 'demo' });
 
-    canvas.act(spike.id, { action: 'approve' });
-    expect(board().item(spike.id)).toBeUndefined();
+    canvas.act(prototype.id, { action: 'approve' });
+    expect(board().item(prototype.id)).toBeUndefined();
     expect(git(ws, 'branch', '--list', branch)).toBe('');
-    expect(canvas.repos[0]!.workspaces.leasedBy(spike.id)).toBeNull();
+    expect(canvas.repos[0]!.workspaces.leasedBy(prototype.id)).toBeNull();
     // the idea keeps the demo
     expect(item(i.id).demo).toBeDefined();
   });

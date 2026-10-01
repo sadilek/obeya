@@ -33,8 +33,8 @@ export interface WorkerOptions {
   repo?: string;
   /** Who answers the card's questions on the owner's behalf, if anyone. */
   advisor?: (card: Item) => Advisor | null;
-  /** A spike handed over its prototype: the idea gets the demo and the summary. */
-  onSpike?: (spike: Item, summary: string, demo: string | undefined) => void;
+  /** A prototype was handed over: the idea gets the demo and the summary. */
+  onPrototype?: (prototype: Item, summary: string, demo: string | undefined) => void;
   /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
   backgroundGrace?: number;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
@@ -158,7 +158,7 @@ export class Workers {
   async approve(cardId: string) {
     const card = this.card(cardId);
     if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
-    if (card.spikeOf) return this.discard(card);
+    if (card.prototypeOf) return this.discard(card);
     if (this.o.adapter.land === 'main') return this.land(cardId, 'owner');
     // the worker opens the PR the way the repository does it, then Obeya watches it
     const pr: PrState = { url: null, seen: [], reported: [] };
@@ -252,7 +252,7 @@ export class Workers {
       .map((f) => (home ? f : `${this.o.repo}:${f}`));
   }
 
-  /** A spike has served its purpose: its prototype is thrown away with the card; the idea keeps the demo. */
+  /** A prototype has served its purpose: it is thrown away with its card; the idea keeps the demo. */
   private discard(card: Item) {
     this.end(card.id);
     this.bump(card.id);
@@ -260,10 +260,10 @@ export class Workers {
       this.o.workspaces.discard(card.id, this.o.board.row(card.id).branch ?? '');
     } catch (e) {
       // the card goes anyway; a leftover worktree does no harm
-      console.error('discarding a spike:', e);
+      console.error('discarding a prototype:', e);
     }
     this.o.board.remove(card.id);
-    if (this.o.board.item(card.spikeOf!)) this.o.board.log(card.spikeOf!, 'state', 'owner', `Prototyp „${card.title}“ verworfen; die Demo bleibt hier.`);
+    if (this.o.board.item(card.prototypeOf!)) this.o.board.log(card.prototypeOf!, 'state', 'owner', `Prototyp „${card.title}“ verworfen; die Demo bleibt hier.`);
   }
 
   /** The card's pull request was merged: the work is live, the workspace free. */
@@ -598,7 +598,7 @@ export class Workers {
           });
           this.o.board.log(cardId, 'review', 'worker', s);
           const card = this.o.board.item(cardId);
-          if (card?.spikeOf) this.o.onSpike?.(card, s, demoJson);
+          if (card?.prototypeOf) this.o.onPrototype?.(card, s, demoJson);
           if (approved) return 'Recorded. End your turn now; once it has ended, Obeya lands your work on main.';
           return END_TURN;
         },
@@ -693,11 +693,11 @@ Rules:
 
   private briefing(card: Item, branch: string, resumed = false): string {
     const parts = [`Your card: ${card.kind === 'bugfix' ? 'bugfix' : 'feature'} “${card.title}”.`];
-    const idea = card.spikeOf ? this.o.board.item(card.spikeOf) : undefined;
-    if (card.spikeOf)
+    const idea = card.prototypeOf ? this.o.board.item(card.prototypeOf) : undefined;
+    if (card.prototypeOf)
       parts.push(
         [
-          `This card is a spike for the idea “${idea?.title ?? ''}”: a throwaway prototype, so the owner can see the idea before deciding on it. It never lands; approving it throws it away.`,
+          `This card is a throwaway prototype for the idea “${idea?.title ?? ''}”, so the owner can see the idea before deciding on it. It never lands; approving it throws it away.`,
           'So build only what the demo needs to show, as quickly as you can: no tests, no polish, no docs or plan changes, and do not run the checks. Commit it on your branch anyway, so the demo can be reproduced. The demo only needs to make the idea visible (30–60 s).',
           idea?.idea?.brief ? `The idea as discussed so far:
 
@@ -707,7 +707,7 @@ ${idea.idea.brief}` : '',
           .join('\n\n'),
       );
     if (card.body.trim()) parts.push(card.body.trim());
-    const from = card.from && !card.spikeOf ? this.o.board.item(card.from) ?? this.o.board.archived().find((i) => i.id === card.from) : undefined;
+    const from = card.from && !card.prototypeOf ? this.o.board.item(card.from) ?? this.o.board.archived().find((i) => i.id === card.from) : undefined;
     if (from) {
       const summary = this.o.board.summary(from.id)?.trim();
       parts.push(`This card follows up on the card “${from.title}”.${summary ? ` Its worker handed it over with this summary:\n\n${summary}` : ''}`);
@@ -723,7 +723,7 @@ ${idea.idea.brief}` : '',
         : `You are on branch ${branch}, fresh from the default branch.`,
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
-    if (this.o.adapter.checks?.length && !card.spikeOf) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
+    if (this.o.adapter.checks?.length && !card.prototypeOf) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
     if (this.o.adapter.demo)
       parts.push(
         `${this.o.adapter.demo.required ? 'Then record' : 'Where it helps the owner, record'} a demo of the change with the demo skill, as its instructions say, and hand it over with ready_for_review (directory, chapter titles, report). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card. How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
