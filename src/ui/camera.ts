@@ -84,6 +84,8 @@ export function edgeScroll(cam: Cam, pointer: { x: number; y: number }, from: { 
 
 /** Screen pixels of content the view keeps when panned or zoomed (all of a smaller card). */
 export const KEEP = 120;
+/** The bottom strip the minimap and the microphone cover; content kept in view lies above it. */
+export const BOTTOM = 150;
 
 /**
  * `cam`, moved by as little as it takes for `view` to show at least KEEP pixels of one of `boxes`
