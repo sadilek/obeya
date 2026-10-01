@@ -12,7 +12,7 @@ import { BadRequest, Board } from './board';
 import { type Command, Commander } from './commands';
 import type { Store } from './db';
 import { Explorers } from './explorers';
-import { Images } from './images';
+import { Images, MAX_IMAGES } from './images';
 import type { Forge } from './forge';
 import { Koordinator } from './koordinator';
 import { PrWatcher } from './pr-watcher';
@@ -93,13 +93,18 @@ export class CanvasRuntime {
     }
     const name = config.name ?? adapters[0]!.canvasName(infos[0]!);
     const home = refs[0]!.id;
-    this.board = new Board(deps.store, { id, name, repos: refs }, () =>
-      infos.flatMap((info, i) =>
-        readPlanDocs(info.path, adapters[i]!).map((d) => (refs[i]!.id === home ? d : { ...d, file: `${refs[i]!.id}:${d.file}` })),
-      ),
+    const images = (this.images = new Images(join(deps.home, 'images', id)));
+    this.board = new Board(
+      deps.store,
+      { id, name, repos: refs },
+      () =>
+        infos.flatMap((info, i) =>
+          readPlanDocs(info.path, adapters[i]!).map((d) => (refs[i]!.id === home ? d : { ...d, file: `${refs[i]!.id}:${d.file}` })),
+        ),
+      images,
     );
     const board = this.board;
-    this.images = new Images(join(deps.home, 'images', id));
+    const imageFiles = (ids: string[] = []) => ids.flatMap((i) => images.path(i) ?? []);
     if (!stored) deps.store.setSetting(id, 'home_repo', home);
     const preferences = () => board.preferencesText();
 
@@ -137,6 +142,7 @@ export class CanvasRuntime {
         },
         onSpike: (spike, summary, demo) => this.spikeReady(spike, summary, demo),
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
+        imageFiles,
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       });
       this.repos.push({ ref, info, adapter, workspaces, workers, projectAgents });
@@ -166,6 +172,7 @@ export class CanvasRuntime {
       preferences,
       pathFor: (card) => this.repoOf(card).info.path,
       onOwnerInput: (card, text) => koordinator.learn(card, 'idea', text),
+      imageFiles,
     });
     this.explorers.resumeAll();
     this.answers = new Answers({
@@ -182,6 +189,7 @@ export class CanvasRuntime {
       runtime: deps.runtime,
       cwd: this.repos[0]!.info.path,
       execute: (c) => this.run(c),
+      imageFiles,
       lookUp: (talk) => this.answers.lookUp(talk),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
@@ -264,6 +272,9 @@ export class CanvasRuntime {
     const { brief } = this.board.idea(cardId);
     this.explorers.close(cardId);
     this.board.work(cardId, { state: 'planned', ...(brief.trim() ? { body: brief.trim() } : {}) });
+    // the screenshots the owner showed in the discussion belong to what is built
+    const shown = this.board.events(cardId).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
+    if (shown.length) this.addTaskImages(cardId, shown);
     this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'So bauen, wie der Stand der Idee sagt.', by: 'owner' });
     this.board.log(cardId, 'state', 'owner', 'So bauen: Der Stand der Idee ist der Auftrag.');
     this.koordinator.request(cardId);
@@ -335,7 +346,14 @@ export class CanvasRuntime {
     switch (c.do) {
       case 'newCard': {
         const at = c.from ? { from: c.from } : this.board.freeSpot();
-        const card = this.board.create({ kind: c.kind, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...at });
+        const card = this.board.create({
+          kind: c.kind,
+          title: c.title,
+          body: c.body,
+          ...(c.repo ? { repo: c.repo } : {}),
+          ...(c.images?.length ? { images: c.images } : {}),
+          ...at,
+        });
         this.board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
         if (c.start) this.koordinator.request(card.id);
         return;
@@ -344,11 +362,11 @@ export class CanvasRuntime {
         const card = this.board.create({ kind: 'feature', idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot() });
         this.board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
         // the agent opens the discussion with what the owner said
-        this.explorers.discuss(card.id, c.body.trim() || c.title, true);
+        this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));
         return;
       }
       case 'discuss':
-        return this.act(c.card, { action: 'discuss', text: c.text, spoken: true });
+        return this.act(c.card, { action: 'discuss', text: c.text, spoken: true, ...(c.images ? { images: c.images } : {}) });
       case 'spike':
         return this.act(c.card, { action: 'spike', text: c.text });
       case 'build':
@@ -357,14 +375,15 @@ export class CanvasRuntime {
       case 'drop':
         return this.act(c.card, { action: c.do });
       case 'start':
-        return this.act(c.card, { action: 'start' });
       case 'force':
-        return this.act(c.card, { action: 'force' });
+        // screenshots said with the start belong to the task, so the worker gets them with it
+        if (c.images?.length) this.addTaskImages(c.card, c.images);
+        return this.act(c.card, { action: c.do });
       case 'note':
       case 'feedback':
-        return this.act(c.card, { action: 'message', text: c.text });
+        return this.act(c.card, { action: 'message', text: c.text, ...(c.images ? { images: c.images } : {}) });
       case 'answer':
-        return this.act(c.card, { action: 'answer', text: c.text });
+        return this.act(c.card, { action: 'answer', text: c.text, ...(c.images ? { images: c.images } : {}) });
       case 'approve':
       case 'accept':
       case 'dismiss':
@@ -372,6 +391,12 @@ export class CanvasRuntime {
       case 'stop':
         return this.act(c.card, { action: c.do });
     }
+  }
+
+  /** Adds screenshots to a card's task, keeping the latest when there are more than a message takes. */
+  private addTaskImages(cardId: string, images: string[]) {
+    const had = this.board.item(cardId)?.images ?? [];
+    this.board.work(cardId, { images: JSON.stringify([...had.filter((i) => !images.includes(i)), ...images].slice(-MAX_IMAGES)) });
   }
 
   /** Whether a worker is in the middle of a turn, which a restart would cut off. */

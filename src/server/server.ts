@@ -74,10 +74,10 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       rmSync(dir, { recursive: true, force: true });
     }
   };
-  const heard = async (c: CanvasRuntime, text: string, focus: Focus) => {
+  const heard = async (c: CanvasRuntime, text: string, focus: Focus, images: string[] = []) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
     console.log(`heard on ${c.id}: ${text || '(nothing)'}`);
-    const h: Heard = text ? await c.commander.hear(text, focus) : { confirm: 'Ich habe nichts gehört.' };
+    const h: Heard = text ? await c.commander.hear(text, focus, images) : { confirm: 'Ich habe nichts gehört.' };
     // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
     if (h.quiet) return h;
@@ -143,9 +143,11 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       },
       '/api/c/:canvas/command': {
         POST: on(async (c, req) => {
-          const { text } = (await req.json()) as { text: string };
+          const { text, images } = (await req.json()) as { text: string; images?: string[] };
           if (typeof text !== 'string' || !text.trim()) throw new BadRequest('emptyText', 'text must be a non-empty string');
-          return heard(c, text.trim(), focusOf(req));
+          // screenshots pasted into the typed command go to the cards it creates or concerns
+          c.images.resolve(images);
+          return heard(c, text.trim(), focusOf(req), images ?? []);
         }),
       },
       '/api/c/:canvas/command/undo': {

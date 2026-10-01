@@ -135,6 +135,14 @@ screenshots: pasted (⌘V), dropped or picked in the text field, scaled down in 
 most 2000 px, and uploaded at once. They show as thumbnails in the card's log or conversation,
 large on a click, and reach the agent as images in the message, with their file paths.
 
+A card's task takes screenshots the same way: in its description field, while the card is planned.
+They show under the task, and its worker gets them with the task when it starts (an idea's
+exploration agent, when a planned card becomes an idea; building an idea adds the screenshots the
+owner showed in its discussion; a cut card's packages inherit them). A command typed in the
+Koordinator's sheet may carry screenshots too: the Koordinator sees them, and they go with every
+action of the command that creates or concerns a card (new card or idea, start, note, answer,
+feedback, talk to an idea); said with a start, they join the card's task.
+
 A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff,
 until then to the owner), which answers from the plan doc, the decision log and the preference
 memory. Only what needs the owner reaches the owner: product decisions, trade-offs, anything
@@ -269,10 +277,11 @@ branch, status line, open question or review summary, the card it came from (a p
 source, a follow-up's card), estimated scope, queue,
 when archived, an idea's status, brief and open questions, a spike's idea, landed work whose worker still
 finishes),
-card events (the log, with an error code where the UI words it and the owner's screenshots), workspaces and their leases,
+card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
+screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
-reply, the open card, whether it was taken back; a looked-up question, the card it is about, its
-answer and who gave it), per-canvas settings (the Koordinator's session for questions);
+reply, the screenshots that came with it, the open card, whether it was taken back; a looked-up
+question, the card it is about, its answer and who gave it), per-canvas settings (the Koordinator's session for questions);
 later PR links.
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`).

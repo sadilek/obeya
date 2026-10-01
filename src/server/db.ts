@@ -54,6 +54,8 @@ export interface CardRow {
    * session are kept until then): `{ commit?, restart? }`, `restart` when it waits for Obeya to run the change.
    */
   landed: string | null;
+  /** JSON: ids of the screenshots the owner attached to the card's task. */
+  images: string | null;
 }
 
 
@@ -184,10 +186,13 @@ export const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN approved_at TEXT;`,
   // landed work whose worker still finishes what remains after the landing
   `ALTER TABLE cards ADD COLUMN landed TEXT;`,
+  // screenshots of a card's task, and of a command typed to the Koordinator (JSON lists of image ids)
+  `ALTER TABLE cards ADD COLUMN images TEXT;
+   ALTER TABLE talk ADD COLUMN images TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'spike_of'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'spike_of' | 'images'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -213,6 +218,7 @@ export type RowUpdate = Partial<
     | 'idea'
     | 'approved_at'
     | 'landed'
+    | 'images'
   >
 >;
 
@@ -268,8 +274,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, spike_of, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $spike_of, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, spike_of, images, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $spike_of, $images, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -289,6 +295,7 @@ export class Store {
           repo: r.repo ?? null,
           idea: r.idea ?? null,
           spike_of: r.spike_of ?? null,
+          images: r.images ?? null,
           now: now(),
         });
         return id;
@@ -390,11 +397,22 @@ export class Store {
 
   // ---------------------------------------------------------------- the Koordinator's memory
 
-  addTalk(canvasId: string, said: string, reply: string, cardId: string | null, lookUp?: { question: string; about: string | null }): number {
+  addTalk(canvasId: string, said: string, reply: string, cardId: string | null, lookUp?: { question: string; about: string | null }, images: string[] = []): number {
     return (
       this.db
-        .query('INSERT INTO talk (canvas_id, at, said, reply, card_id, question, about) VALUES ($c, $at, $said, $reply, $cardId, $question, $about) RETURNING id')
-        .get({ c: canvasId, at: now(), said, reply, cardId, question: lookUp?.question ?? null, about: lookUp?.about ?? null }) as { id: number }
+        .query(
+          'INSERT INTO talk (canvas_id, at, said, reply, card_id, question, about, images) VALUES ($c, $at, $said, $reply, $cardId, $question, $about, $images) RETURNING id',
+        )
+        .get({
+          c: canvasId,
+          at: now(),
+          said,
+          reply,
+          cardId,
+          question: lookUp?.question ?? null,
+          about: lookUp?.about ?? null,
+          images: images.length ? JSON.stringify(images) : null,
+        }) as { id: number }
     ).id;
   }
 
@@ -472,6 +490,7 @@ interface TalkRow {
   about: string | null;
   answer: string | null;
   answer_by: 'koordinator' | 'project' | null;
+  images: string | null;
 }
 
 const toTalk = (r: TalkRow): Talk => ({
@@ -484,4 +503,5 @@ const toTalk = (r: TalkRow): Talk => ({
   ...(r.question ? { question: r.question } : {}),
   ...(r.answer !== null ? { answer: r.answer } : {}),
   ...(r.answer_by ? { answerBy: r.answer_by } : {}),
+  ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
 });

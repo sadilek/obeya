@@ -65,6 +65,8 @@ export interface Item {
   spikeOf?: string;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
+  /** Screenshots the owner attached to the card's task; its worker gets them at the start. */
+  images?: string[];
 }
 
 /**
@@ -153,6 +155,8 @@ export interface Talk {
   cardId?: string;
   /** The owner took the actions back. */
   undone?: boolean;
+  /** Screenshots that came with the command; they went to the cards it created or concerned. */
+  images?: string[];
   /** A question the Koordinator looks up; its answer comes later. */
   question?: string;
   answer?: string;
@@ -181,6 +185,8 @@ export interface NewCard {
   idea?: boolean;
   /** The card this one follows up on, e.g. for a finding of its demo. */
   from?: string;
+  /** Screenshots for the task (ids from `POST /api/c/<canvas>/images`). */
+  images?: string[];
 }
 
 export interface CardPatch {
@@ -193,6 +199,8 @@ export interface CardPatch {
   need?: Need | null;
   /** Another repository of the canvas, before work on the card has begun. */
   repo?: string;
+  /** The task's screenshots, all of them (ids from `POST /api/c/<canvas>/images`). */
+  images?: string[];
 }
 
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
