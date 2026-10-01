@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import type { CanvasInfo, CanvasSnapshot, CardPatch, Item, PendingRestart } from '../core/types';
 import { api, ApiError, onSpeak, setCanvas, useCanvas } from './api';
-import { type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
+import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
@@ -89,7 +89,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
   const [cam, setCamState] = useState<Cam>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(camKey(snapshot.canvas.id)) ?? 'null');
-      if (saved && [saved.x, saved.y, saved.s].every(Number.isFinite)) return keepInView(saved, content, { left: 0, top: TOP, right: innerWidth, bottom: innerHeight });
+      if (saved && [saved.x, saved.y, saved.s].every(Number.isFinite)) return keepInView(saved, content, { left: 0, top: TOP, right: innerWidth, bottom: innerHeight - BOTTOM });
     } catch {}
     return centreOn(all, 1);
   });
@@ -296,6 +296,8 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
     // a new card left without a title was not wanted
     if (!keepUntitled && i?.source === 'manual' && !openTitle.current.trim()) api.remove(i.id).catch(console.error);
     await fly(f.prevCam, FLY_MS);
+    // the card may have gone (archived, deleted) and taken the last content in view with it
+    recover();
   }
 
   async function openProject(p: Item) {
@@ -334,6 +336,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
     // back to the archive it was opened from
     if (archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
     await fly(f.prevCam, 600);
+    recover();
   }
 
   async function deleteOpen() {
@@ -482,14 +485,15 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
   const reserveRef = useRef(reserve);
   reserveRef.current = reserve;
   /** `c`, moved just far enough that the view outside the sheet shows some content. */
-  const kept = (c: Cam) => keepInView(c, contentRef.current, { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight });
-  // when cards go or the window shrinks so that none is in view any more, the view goes to the nearest
-  useEffect(() => {
+  const kept = (c: Cam) => keepInView(c, contentRef.current, { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight - BOTTOM });
+  /** When no content is in view any more (cards went, the window shrank), flies to the nearest. */
+  const recover = () => {
     if (focusRef.current?.type === 'card' || dragRef.current || panRef.current || flying()) return;
     const c = camRef.current;
     const k = kept(c);
     if (k.x !== c.x || k.y !== c.y) fly(k, 400);
-  }, [content, tick]);
+  };
+  useEffect(recover, [content, tick]);
 
   function onPointerDown(e: React.PointerEvent) {
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
