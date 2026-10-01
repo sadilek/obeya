@@ -179,16 +179,17 @@ describe('voice', () => {
     await res;
   });
 
-  for (const [what, again] of [
-    ['loops again', 'PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE'],
-    ['finds only silence', 'Vielen Dank.'],
+  for (const [what, first, again, confirm] of [
+    ['loops on with and without the card titles is not understood', 'lächpt '.repeat(30), 'PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE PLEASE', 'Das habe ich nicht verstanden.'],
+    ['writes its words for silence on without the card titles is nothing heard', 'lächpt '.repeat(30), 'Vielen Dank.', 'Ich habe nichts gehört.'],
+    ['writes its words for silence on at once is nothing heard', 'Untertitelung des ZDF, 2020', 'Unused', 'Ich habe nichts gehört.'],
   ]) {
-    test(`a recording that Whisper ${what} without the card titles is not understood, and the Koordinator does not guess`, async () => {
-      whisper = (vocabulary) => (vocabulary ? 'lächpt '.repeat(30) : again!);
+    test(`a recording Whisper ${what}, and the Koordinator does not guess`, async () => {
+      whisper = (vocabulary) => (vocabulary ? first! : again!);
       const body = (await (await fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { confirm: string; token?: string; audio?: string };
-      expect(body.confirm).toBe('Das habe ich nicht verstanden.');
+      expect(body.confirm).toBe(confirm!);
       expect(body.token).toBeUndefined();
-      expect(await (await fetch(new URL(body.audio!, server.url))).text()).toBe('WAV Das habe ich nicht verstanden.');
+      expect(await (await fetch(new URL(body.audio!, server.url))).text()).toBe(`WAV ${confirm}`);
       expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
     });
   }
