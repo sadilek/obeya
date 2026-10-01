@@ -208,7 +208,8 @@ export type CardAction =
   | { action: 'dequeue' }
   /** Let the Koordinator cut the card into packages that can run in parallel. */
   | { action: 'split' }
-  | { action: 'accept' }
+  /** A proposal becomes the owner's card and starts; with `start: false` it is only planned. */
+  | { action: 'accept'; start?: boolean }
   | { action: 'dismiss' }
   /** Ideas: talk to the exploration agent; `spoken` gets a short spoken summary back. */
   | { action: 'discuss'; text: string; spoken?: boolean; images?: string[] }

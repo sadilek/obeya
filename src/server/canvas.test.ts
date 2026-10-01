@@ -104,6 +104,16 @@ describe('a canvas with several repositories', () => {
     expect(() => canvas.act(p.id, { action: 'accept' })).toThrow();
   });
 
+  test('a proposal can be edited, and accepted without starting', async () => {
+    const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0 });
+    const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    canvas.board.patch(p.id, { title: 'Folgefehler im Export', body: 'Nur den Export.', kind: 'feature' });
+    canvas.act(p.id, { action: 'accept', start: false });
+    await settle();
+    expect(item(p.id)).toMatchObject({ state: 'planned', title: 'Folgefehler im Export', body: 'Nur den Export.', kind: 'feature' });
+    expect(item(p.id).queue).toBeFalsy();
+  });
+
   test('proposals keep the repository of the card they came from', () => {
     const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0, repo: 'api' });
     const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });
