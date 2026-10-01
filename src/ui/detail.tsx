@@ -25,6 +25,8 @@ interface Props {
   flush: () => Promise<void>;
   onDelete: () => void;
   onDone: (d: ActDone) => void;
+  /** Reads the plan doc of a workstream's project, at the workstream. */
+  onReadPlan: (project: Item, mark?: string) => void;
 }
 
 export function Detail(p: Props) {
@@ -119,7 +121,7 @@ export function Detail(p: Props) {
       {item.state === 'planned' && (
         <>
           {editable ? <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} /> : <Body md={item.body} />}
-          {parent?.plan && <PlanSource file={parent.plan.file} />}
+          {parent?.plan && <PlanSource file={parent.plan.file} onRead={() => p.onReadPlan(parent, item.label)} />}
           {!item.queue && (
             <div className="actions">
               <button className="btn primary" onClick={() => act({ action: 'start' }, { close: false })}>
@@ -277,7 +279,10 @@ export function Detail(p: Props) {
             {parent?.plan && (
               <>
                 {' · '}
-                <code>{parent.plan.file}</code>
+                <code>{parent.plan.file}</code>{' '}
+                <button className="link" onClick={() => p.onReadPlan(parent, item.label)}>
+                  {t.plan.readAt}
+                </button>
               </>
             )}
           </p>
@@ -294,7 +299,7 @@ export function Detail(p: Props) {
       {!worked && item.state !== 'planned' && item.state !== 'proposal' && (
         <>
           <Body md={item.body} />
-          {parent?.plan && <PlanSource file={parent.plan.file} />}
+          {parent?.plan && <PlanSource file={parent.plan.file} onRead={() => p.onReadPlan(parent, item.label)} />}
         </>
       )}
 
@@ -561,10 +566,13 @@ function ArchiveButton({ item, run }: { item: Item; run: (fn: () => Promise<void
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-function PlanSource({ file }: { file: string }) {
+function PlanSource({ file, onRead }: { file: string; onRead: () => void }) {
   return (
     <p className="p-src">
-      {t.fromPlan} <code>{file}</code>
+      {t.fromPlan} <code>{file}</code>{' '}
+      <button className="link" onClick={onRead}>
+        {t.plan.readAt}
+      </button>
     </p>
   );
 }

@@ -118,6 +118,14 @@ export class Board {
     return r.demo ? (JSON.parse(r.demo) as { dir: string }).dir : null;
   }
 
+  /** The plan doc of a project, as written, for the owner to read. */
+  planDoc(id: string): { file: string; markdown: string } {
+    const ref = this.own(id).plan_ref;
+    const doc = ref && !ref.includes('#') ? (this.docs ??= this.readDocs()).find((d) => d.file === ref) : undefined;
+    if (!doc) throw new BadRequest('invalid', 'not a project with a plan doc');
+    return { file: doc.file, markdown: doc.markdown };
+  }
+
   /** The card as the UI sees it. */
   item(id: string): Item | undefined {
     return this.snapshot().items.find((i) => i.id === id);

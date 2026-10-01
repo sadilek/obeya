@@ -1,10 +1,11 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
-import { memo, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
 import type { CanvasInfo, Item } from '../core/types';
 import type { Cam } from './camera';
-import { Inline, plain } from './markdown';
+import { api } from './api';
+import { Doc, Inline, plain } from './markdown';
 import { stateLabel, t } from './strings';
 
 /** An open idea needs the owner once its agent has replied and is done. */
@@ -155,10 +156,77 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
 
 // ------------------------------------------------------------------ plan sheet
 
-export function Sheet({ project, kids, on, onOpen }: { project?: Item; kids: Item[]; on: boolean; onOpen: (i: Item) => void }) {
+/** How wide the sheet gets while the owner reads a plan doc in it; the camera keeps the project beside it. */
+export const readingWidth = () => Math.min(760, Math.max(380, innerWidth - 520));
+
+/**
+ * The open project: its goal and workstreams, or, while `reading`, its plan doc as written, with the
+ * workstream `reading.mark` (a label) in view.
+ */
+export function Sheet({
+  project,
+  kids,
+  on,
+  reading,
+  onOpen,
+  onRead,
+}: {
+  project?: Item;
+  kids: Item[];
+  on: boolean;
+  reading: { mark?: string } | null;
+  onOpen: (i: Item) => void;
+  /** Reads the plan doc (`{}`), or goes back to the workstreams (`null`). */
+  onRead: (r: { mark?: string } | null) => void;
+}) {
+  const [doc, setDoc] = useState<{ id: string; markdown: string } | null>(null);
+  const [failed, setFailed] = useState(false);
+  // read again whenever the project changes, which includes an edit of its doc
+  useEffect(() => {
+    if (!reading || !project) return;
+    let current = true;
+    setFailed(false);
+    api.planDoc(project.id).then(
+      (d) => current && setDoc({ id: project.id, markdown: d.markdown }),
+      () => current && setFailed(true),
+    );
+    return () => void (current = false);
+  }, [!!reading, project]);
+  const box = useRef<HTMLElement>(null);
+  const markEl = useRef<HTMLElement | null>(null);
+  const shown = reading && doc?.id === project?.id ? doc : null;
+  // the doc opens at its top, or at the workstream it was opened for
+  useEffect(() => {
+    if (!shown || !box.current) return;
+    box.current.scrollTop = 0;
+    if (!markEl.current) return;
+    // the sheet widens first: the workstream is where it ends up once the text has settled
+    const h = setTimeout(() => markEl.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 480);
+    return () => clearTimeout(h);
+  }, [shown?.id, reading, !!shown]);
   return (
-    <aside id="sheet" className={on ? 'sheet on' : 'sheet'}>
-      {project?.plan && (
+    <aside
+      id="sheet"
+      ref={box}
+      className={['sheet', on && 'on', reading && 'reading'].filter(Boolean).join(' ')}
+      style={{ '--read-w': `${readingWidth()}px` } as CSSProperties}
+    >
+      {project?.plan && reading && (
+        <>
+          <div className="read-head">
+            <button className="back" onClick={() => onRead(null)}>
+              ‹ {t.plan.back}
+            </button>
+            <span className="src">{project.plan.file}</span>
+          </div>
+          {shown ? (
+            <Doc md={shown.markdown} mark={reading.mark} markRef={(el) => void (markEl.current = el)} />
+          ) : (
+            <p className="hint">{failed ? t.plan.failed : t.plan.loading}</p>
+          )}
+        </>
+      )}
+      {project?.plan && !reading && (
         <>
           <div className="p-kind">{t.planSheet}</div>
           <h2>{plain(project.title)}</h2>
@@ -166,6 +234,9 @@ export function Sheet({ project, kids, on, onOpen }: { project?: Item; kids: Ite
             <Inline md={project.plan.goal} />
           </div>
           <div className="src">{project.plan.file}</div>
+          <button className="btn read" onClick={() => onRead({})}>
+            {t.plan.read}
+          </button>
           <ol>
             {kids.map((k) => (
               <li key={k.id} className={`s-${k.state}`} onClick={() => onOpen(k)}>

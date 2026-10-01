@@ -5,8 +5,8 @@ import { BadRequest, Board } from './board';
 import { Store } from './db';
 
 const ws = (key: string, done = false) => ({ key, label: key, title: `Title ${key}`, body: `Body ${key}`, done, inReview: false });
-const docA: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal A', workstreams: [ws('W1', true), ws('W2'), ws('W3')] };
-const docB: PlanDoc = { file: 'docs/plan/b.md', title: 'B', goal: 'Goal B', workstreams: [ws('W1')] };
+const docA: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal A', workstreams: [ws('W1', true), ws('W2'), ws('W3')], markdown: '# A\n\n## Goal\n\nGoal A\n' };
+const docB: PlanDoc = { file: 'docs/plan/b.md', title: 'B', goal: 'Goal B', workstreams: [ws('W1')], markdown: '' };
 
 let store: Store;
 let docs: PlanDoc[];
@@ -28,6 +28,17 @@ describe('plan docs', () => {
       ['W2', 'planned', p!.id],
       ['W3', 'planned', p!.id],
     ]);
+  });
+
+  test('a project gives its plan doc as written; a workstream or manual card has none', () => {
+    const [p, w1] = board.snapshot().items;
+    expect(board.planDoc(p!.id)).toEqual({ file: 'docs/plan/a.md', markdown: docA.markdown });
+    docs = [{ ...docA, markdown: '# A\n\nEdited\n' }];
+    board.docsChanged();
+    expect(board.planDoc(p!.id).markdown).toBe('# A\n\nEdited\n');
+    expect(() => board.planDoc(w1!.id)).toThrow(BadRequest);
+    const c = board.create({ kind: 'feature', title: 'Own', x: 0, y: 0 });
+    expect(() => board.planDoc(c.id)).toThrow(BadRequest);
   });
 
   test('placement is kept across reads and survives an edit of the doc', () => {

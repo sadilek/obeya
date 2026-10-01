@@ -304,16 +304,48 @@ textarea.p-body:focus { border-color: var(--muted); }
 #links path { fill: none; stroke: var(--proposal); stroke-width: 2; stroke-dasharray: 5 6; opacity: .7; }
 
 .sheet { position: fixed; top: 64px; right: 14px; bottom: 158px; width: 380px; background: var(--panel); border-radius: 16px; box-shadow: var(--lift);
-  z-index: 25; transform: translateX(calc(100% + 30px)); transition: transform .45s cubic-bezier(.3,.9,.3,1); overflow: auto; padding: 22px 22px 30px; }
+  z-index: 25; transform: translateX(calc(100% + 30px)); transition: transform .45s cubic-bezier(.3,.9,.3,1), width .45s cubic-bezier(.3,.9,.3,1);
+  overflow: auto; padding: 22px 22px 30px; }
 .sheet.on { transform: none; }
 .sheet h2 { margin: 2px 0 8px; font-size: 20px; letter-spacing: -.01em; }
 .sheet .goal { font-size: 13.5px; opacity: .9; }
 .sheet .src { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 8px; }
-.sheet ol { list-style: none; padding: 0; margin: 16px 0 0; }
-.sheet li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 9px; cursor: pointer; font-size: 13px; }
-.sheet li:hover { background: var(--chip); }
-.sheet li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
-.sheet li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
+.sheet > ol { list-style: none; padding: 0; margin: 16px 0 0; }
+.sheet > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.sheet > ol > li:hover { background: var(--chip); }
+.sheet > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
+.sheet > ol > li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
+.sheet .btn.read { margin-top: 14px; padding: 7px 14px; font-size: 13px; }
+
+/* the plan doc, read in the widened sheet */
+.sheet.reading { width: var(--read-w); padding: 0 30px 40px; }
+.read-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; margin: 0 -30px; padding: 14px 30px 12px;
+  background: var(--panel); border-bottom: 1px solid var(--line); }
+.read-head .back { border: 0; background: var(--chip); border-radius: 8px; padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.read-head .src { margin: 0 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.doc h2 { font-size: 22px; letter-spacing: -.01em; margin: 22px 0 10px; }
+.doc h3 { font-size: 16.5px; margin: 26px 0 8px; }
+.doc h4, .doc h5, .doc h6 { font-size: 14px; margin: 18px 0 6px; }
+.doc p { margin: 8px 0; }
+.doc ul, .doc ol { margin: 6px 0; padding-left: 22px; }
+.doc li { margin: 4px 0; }
+.doc li.open, .doc li.done { list-style: none; position: relative; }
+.doc li.open::before, .doc li.done::before { position: absolute; left: -19px; color: var(--muted); }
+.doc li.open::before { content: "○"; }
+.doc li.done::before { content: "✓"; color: var(--approved); font-weight: 700; }
+.doc li.mark { background: color-mix(in srgb, var(--waiting) 16%, transparent); border-radius: 8px; margin-left: -26px; padding: 6px 10px 6px 26px;
+  box-shadow: inset 3px 0 0 var(--waiting); }
+.doc li.mark.open::before, .doc li.mark.done::before { left: 7px; top: 6px; }
+.doc pre { background: var(--chip); border-radius: 8px; padding: 10px 12px; overflow: auto; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.doc blockquote { margin: 10px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: var(--muted); }
+.doc hr { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+.doc .table { overflow: auto; margin: 10px 0; }
+.doc table { border-collapse: collapse; font-size: 13px; }
+.doc th, .doc td { text-align: left; vertical-align: top; padding: 5px 10px; border-bottom: 1px solid var(--line); }
+.doc th { font-weight: 600; }
+button.link { border: 0; background: none; padding: 0; color: var(--working); cursor: pointer; font-size: inherit; }
+button.link:hover { text-decoration: underline; }
 
 /* ---------- push to talk (from the mock) ---------- */
 #ptt { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -340,4 +372,4 @@ textarea.p-body:focus { border-color: var(--muted); }
   transition: opacity .25s, transform .25s; display: flex; gap: 14px; align-items: center; }
 #ack.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 #ack button { background: transparent; border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent); color: var(--bg); border-radius: 8px; padding: 3px 10px; cursor: pointer; flex: none; }
-@media (max-width: 760px) { #minimap, #keys { display: none; } .sheet { width: auto; left: 14px; } .p-grid, .cols { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { #minimap, #keys { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; } .p-grid, .cols { grid-template-columns: 1fr; } }

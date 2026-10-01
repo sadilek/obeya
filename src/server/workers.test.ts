@@ -13,7 +13,7 @@ import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
 const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
-const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')] };
+const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')], markdown: '' };
 
 let dir: string;
 let main: string;

@@ -11,7 +11,7 @@ import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
 import { KoordinatorSheet } from './koordinator';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
-import { CanvasPill, CardView, Edges, Links, Minimap, needsYou, ProjectView, Sheet } from './parts';
+import { CanvasPill, CardView, Edges, Links, Minimap, needsYou, ProjectView, readingWidth, Sheet } from './parts';
 import { t } from './strings';
 
 export function App() {
@@ -121,6 +121,13 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   const [dim, setDim] = useState(false);
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sheetOn, setSheetOn] = useState(false);
+  // the open project's plan doc, read in the widened sheet
+  const [reading, setReadingState] = useState<{ mark?: string } | null>(null);
+  const readingRef = useRef(reading);
+  const setReading = (r: { mark?: string } | null) => {
+    readingRef.current = r;
+    setReadingState(r);
+  };
   const [kOn, setKOn] = useState(false);
   const toggleKoordinator = () => {
     if (!kOn && focusRef.current?.type === 'project') closeProject();
@@ -270,10 +277,25 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     const f = focusRef.current;
     setFocus({ type: 'project', id: p.id, prevCam: f?.type === 'project' ? f.prevCam : camRef.current });
     setSheetId(p.id);
+    setReading(null);
     setSheetOn(true);
     setKOn(false);
     setAOn(false);
     await fly(camFor(bounds(p), 40, SHEET_W, 60), 700);
+  }
+
+  /** Reads the project's plan doc in the sheet, at the workstream `mark`; `null` goes back to the workstreams. */
+  async function readPlan(p: Item, r: { mark?: string } | null) {
+    if (focusRef.current?.type === 'card') await closeCard();
+    const f = focusRef.current;
+    setFocus({ type: 'project', id: p.id, prevCam: f?.type === 'project' ? f.prevCam : camRef.current });
+    setSheetId(p.id);
+    setReading(r);
+    setSheetOn(true);
+    setKOn(false);
+    setAOn(false);
+    // the project stays in view beside the wider sheet
+    await fly(camFor(bounds(p), 40, r ? readingWidth() + 30 : SHEET_W, 60), 700);
   }
 
   async function closeProject() {
@@ -511,6 +533,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       if (document.querySelector('.lightbox')) return;
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();
+      else if (f?.type === 'project' && readingRef.current && sheetProject) readPlan(sheetProject, null);
       else if (f?.type === 'project') closeProject();
       return;
     }
@@ -570,7 +593,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
         </div>
       </div>
       {!items.length && <div className="empty">{t.empty}</div>}
-      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn || aOn ? SHEET_W : 0} onOpen={open} />}
+      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={focus || kOn || aOn ? (reading && focus?.type === 'project' ? readingWidth() + 30 : SHEET_W) : 0} onOpen={open} />}
       <header id="bar">
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} />
         {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
@@ -616,6 +639,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
                 repos={snapshot.canvas.repos}
                 parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
                 from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
+                onReadPlan={(project, mark) => readPlan(project, { mark })}
                 onEdit={onEdit}
                 flush={flushEdit}
                 onDelete={deleteOpen}
@@ -628,7 +652,14 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
       <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
       <PushToTalk phase={ptt.phase} level={ptt.level} target={target} onDown={ptt.start} />
-      <Sheet project={sheetProject} kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []} on={sheetOn} onOpen={open} />
+      <Sheet
+        project={sheetProject}
+        kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []}
+        on={sheetOn}
+        reading={reading}
+        onOpen={open}
+        onRead={(r) => sheetProject && readPlan(sheetProject, r)}
+      />
       <div id="ack" className={ackOn ? 'on' : undefined}>
         <span>{ack?.text}</span>
         {ack?.undo && (

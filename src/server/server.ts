@@ -114,6 +114,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
           return file ? new Response(Bun.file(file), { headers: { 'cache-control': 'private, max-age=31536000, immutable' } }) : new Response('Not found', { status: 404 });
         },
       },
+      '/api/c/:canvas/cards/:id/plan': { GET: on((c, req) => c.board.planDoc(req.params.id!)) },
       '/api/c/:canvas/cards/:id/demo/:file': {
         GET: (req) => {
           try {

@@ -286,6 +286,10 @@ the repository).
   `## Workstreams` section has a checklist; each top-level item is a workstream (`**W3:** Title.
   Details`). Checked means `live`, `(in review)` after the label means `in PR`, anything else
   `planned`. The goal is the first paragraph under `## Goal` / `## Ziel`.
+- The owner reads a plan doc where the project is: "Plandokument lesen" in the project's sheet
+  widens it and shows the doc as written, rendered, kept current with the file; a workstream's
+  card opens it at the workstream's item. Esc goes back to the workstreams. The server hands out
+  only docs it shows as projects, by project card, never a path.
 - A plan card gets a stored row the first time it is seen, so the owner's placement persists; its
   title, text and state always come from the doc. When a doc disappears its rows stay, hidden,
   and its placement returns with it.
