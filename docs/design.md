@@ -1,7 +1,9 @@
-# Obeya — plan
+# Obeya — design
 
-A living plan: decisions in flight and progress. Durable content moves into `docs/` pages as
-milestones land.
+How Obeya works and why: what it does for the owner, how it is built, and the decisions behind it.
+It describes what is built and is kept current in the same change. Work in progress is planned in
+plan docs under `docs/plan/`, which Obeya shows as projects; when one is done, what lasts moves here
+and the plan doc goes.
 
 ## Goal
 
@@ -111,7 +113,7 @@ An idea is thought through on its card before anything is planned; no worker run
    all finished ones at once in the archive). The archive (button or `A`) lists archived cards
    by day, the most recently archived first; one unfolds from its row as on the canvas and can go
    back to the place it had.
-7. A project ends when its plan doc goes (folded into `docs/plan.md`, deleted): it moves into the
+7. A project ends when its plan doc goes (done, deleted): it moves into the
    archive with its workstreams, which are not listed on their own. Its sheet then shows, read-only,
    the goal and the workstreams as the doc last stood; each workstream unfolds with its log and demo.
    When the same file comes back, the project returns to its place. Every project's sheet, live or
@@ -248,24 +250,15 @@ the owner's language (`src/core/locale.ts`).
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
   audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
   loaded and transcribes in German with the canvas's titles as vocabulary
-  (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). On a recording without audible speech
-  (silence, noise, a mic that has not started) the titles as prompt talk Whisper into a loop
-  („Fall Fall Fall …“), a guess („www.pap.com“, „!“) or its words for silence („Untertitelung des
-  ZDF“), as its no-speech probability stays at 0; with speech in it, even quiet, noisy or short,
-  it transcribes correctly and sure of its words. Whisper decodes once, at temperature 0: its
-  fallback through five higher temperatures looped there as well and took 3 to 6 seconds. A
-  transcript with one word or phrase six times in a row, or one Whisper itself counts as failed
-  (the test its fallback used: a loop, or too unsure of its words), is transcribed once more
-  without the titles, about 0.4 s. Words for silence, then or at once, give „Ich habe nichts
-  gehört.“, a second loop or failure „Das habe ich nicht verstanden.“; the Koordinator gets
-  neither to guess from. The log has each recording's length and level next to the transcript. A
-  recording whose peak stays below -60 dBFS (a microphone that delivers nothing; room noise is
-  about -40 to -55, speech far above), or that holds no audio frame at all, is „Ich habe nichts gehört.“ without Whisper. While the
-  owner holds the key, a level that stays that flat for 1.5 s shows „Das Mikrofon liefert keinen
-  Ton.“ under the mic. The first press after a page load opens the microphone (about 0.2–0.3 s;
-  the real microphone delivers sound at once, after a reload too); let go before it is open,
-  nothing is recorded (rather than a recording that runs on unheld) and the owner hears „Das
-  Mikrofon war noch nicht bereit“. A quick, low-effort Koordinator turn reads
+  (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). A recording without audible speech gives
+  „Ich habe nichts gehört.“, one Whisper cannot make sense of „Das habe ich nicht verstanden.“; the
+  Koordinator gets neither to guess from. How Whisper fails on such recordings (the titles talk it
+  into loops, guesses or its words for silence) and how they are told apart is in
+  `voice/whisper_sidecar.py` and `src/server/voice.ts`. The log has each recording's length and
+  level next to the transcript. While the owner holds the key, a level that stays flat for 1.5 s
+  shows „Das Mikrofon liefert keinen Ton.“ under the mic. The first press after a page load opens
+  the microphone (about 0.2–0.3 s); let go before it is open, nothing is recorded (rather than a
+  recording that runs on unheld) and the owner hears „Das Mikrofon war noch nicht bereit“. A quick, low-effort Koordinator turn reads
   the transcript as speech that may be misheard and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
   approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, prototype, park, drop),
@@ -299,7 +292,10 @@ the owner's language (`src/core/locale.ts`).
   the Koordinator's session starts up if it is not running (one that fails is replaced once, for
   the same command). The written confirmation comes back as
   soon as the Koordinator has decided, and the undo window starts with it; the spoken one follows
-  from its own URL.
+  from its own URL. Measured on a small scratch canvas, letting go to the written confirmation
+  takes about 2.8 s, to the spoken one about 3.3 s, the first command after a start included. Most
+  of it is the Koordinator's model turn (about 2 s); Sonnet or Haiku, or a shorter system prompt,
+  saved nothing reliable in measurements, so it stays as it is.
 - **Koordinator memory** — the owner's commands go to one ongoing Koordinator session per canvas,
   one after the other, so it understands "die andere auch" or "nein, die von vorhin". It sees a
   card's open question, also one in a demo report, so a bare "ja" to it is an answer, not an
@@ -331,15 +327,14 @@ the owner's language (`src/core/locale.ts`).
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
 branch, status line, open question or review summary, the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
-when archived, an idea's status, brief and open questions, a prototype's idea, landed work whose worker still
+when archived, the PR link, an idea's status, brief and open questions, a prototype's idea, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
 work added),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
 reply, the screenshots that came with it, the open card, whether it was taken back; a looked-up
-question, the card it is about, its answer and who gave it), per-canvas settings (the Koordinator's session for questions);
-later PR links.
+question, the card it is about, its answer and who gave it), per-canvas settings (the Koordinator's session for questions).
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
 (`canvases.json`).
@@ -347,41 +342,20 @@ Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the confi
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository; the copy on the project is only for the archive).
 
-## Milestones
-
-- [x] **M1 Canvas.** Bun server, UI from the mock, persistence, manual cards, projects read from
-  plan docs (read-only), OKE adapter skeleton.
-- [x] **M2 Agents.** Workers per card in clones or worktrees; status, log, questions, review and
-  proposals on the card; project agents; subscription auth settled. Acceptance met: Obeya is
-  developed on its own canvas, and the first worker-built change landed on `main`.
-- [x] **M3 Koordinator.** The Chief of Staff without voice: schedules cards so that likely
-  collisions do not run at the same time (queued instead), cuts work packages for parallel work,
-  answers standalone cards' questions, keeps the preference memory.
-- [x] **M4 Demo loop.** Worker records the demo; the card waits; approve or feedback. First
-  worker-recorded demo approved on Obeya itself.
-- [ ] **M5 PR loop.** Approval opens the PR; monitoring through review bot, CI and conflicts to
-  the merge; judgement questions routed to the card. Built and tested against a fake forge
-  ([`docs/plan/pr-loop.md`](plan/pr-loop.md)); the live run on OKE waits for the owner's go.
-- [x] **M6 Voice.** Push-to-talk with the Whisper sidecar, routing by focus, spoken confirmation
-  with undo; the Koordinator takes voice input.
-- [x] **M7 Beyond one repo.** Several repositories per canvas, several canvases.
-- [x] **M8 Ideas.** Discuss and explore a feature before deciding to build it (proposed
-  2026-09-30). Built as described under [Ideas](#ideas): the state `idea`, an exploration agent
-  per idea with a resumed read-only session, the brief it keeps, prototypes that never land, and the
-  decisions build, plan doc (written by a worker), park and drop.
-
 ## Decisions
 
 - Name: Obeya.
 - Runtime: Bun; browser UI served locally; native shell (Tauri) only if global push-to-talk needs
   it.
 - Persistent local store, not ephemeral.
-- One canvas per repository to start; since M7 a canvas may span several, and one Obeya serves
-  several canvases.
+- A canvas may span several repositories, and one Obeya serves several canvases (at first it was
+  one canvas per repository).
 - Agents may propose cards.
 - Approval triggers the PR and its monitoring to the merge, not the merge itself.
 - Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
+- This page describes what is built; work in progress lives in plan docs, which the canvas shows as
+  projects. The milestone list it once kept repeated what the canvas shows and went (2026-10-01).
 - Plan docs as projects: a doc in the adapter's plan directory is a project when its
   `## Workstreams` section has a checklist; each top-level item is a workstream (`**W3:** Title.
   Details`). Checked means `live`, `(in review)` after the label means `in PR`, anything else
@@ -429,8 +403,6 @@ the repository; the copy on the project is only for the archive).
   anything else.
 - A start that fails after the Koordinator took it drops the card back to planned; the unfolded
   planned card then shows the last log entry, when it is an error, as the reason.
-- The scheduling Chief of Staff comes before demos and PRs (M3): with worktrees several workers
-  run at once on Obeya itself.
 - A card waits rather than risking a collision; the Koordinator's estimate is taken once, before
   the start, and a waiting card is checked again against what runs when its blockers finish.
 - A new card does not overtake a queued one it likely conflicts with: it queues behind it, also
@@ -485,12 +457,6 @@ the repository; the copy on the project is only for the archive).
   (`gitRepo` in `src/server/testing.ts`). Together they halved the test suite.
 
 ## Open questions
-
-- Voice latency: from letting go to the written confirmation about 2.8 s, to the spoken one about
-  3.3 s, the first command after a start included, measured on a small scratch canvas (before:
-  5.3 s, 7.2 s for the first command). Most of what is left is the Koordinator's model turn (about
-  2 s); Sonnet or Haiku, or a shorter system prompt, saved nothing reliable in measurements, so it
-  stays as it is.
 
 - Plan-doc sync: Obeya reads plan docs and never writes them; workers tick off their workstream
   in the doc as part of their change. Should the project agent keep the doc's progress instead?

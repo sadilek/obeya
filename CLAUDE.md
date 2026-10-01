@@ -1,7 +1,9 @@
 # CLAUDE.md
 
-Obeya: a spatial canvas for directing AI coding agents. Goal, design and milestones are in
-`docs/plan.md` — read it before changing anything, and keep it current in the same change.
+Obeya: a spatial canvas for directing AI coding agents. Goal, behaviour, architecture and the
+decisions behind them are in `docs/design.md` — read it before changing anything, and keep it
+current in the same change. Work in progress is planned in plan docs under `docs/plan/` (Obeya
+shows them as projects); when one is done, what lasts moves into `docs/design.md` and the doc goes.
 
 - Bun + TypeScript throughout; tests with `bun test`, types with `bun run typecheck`.
 - `src/core/` is shared by server and UI (types, plan-doc parser, layout); `src/server/` is the
