@@ -65,6 +65,15 @@ const state = (id: string) => {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('workers', () => {
+  test("a follow-up's worker hears which card it comes from and that card's summary", () => {
+    const src = manual();
+    board.work(src.id, { state: 'live', detail: JSON.stringify({ summary: 'CSV-Export gebaut; Excel fehlt noch.' }) });
+    const c = board.create({ kind: 'bugfix', title: 'Excel-Export', body: 'Excel fehlt.', from: src.id });
+    workers.start(c.id);
+    expect(runtime.last.inbox[0]).toContain('Excel fehlt.');
+    expect(runtime.last.inbox[0]).toContain('This card follows up on the card “Zählerstände exportieren”. Its worker handed it over with this summary:\n\nCSV-Export gebaut; Excel fehlt noch.');
+  });
+
   test('start leases a clean clone, branches and briefs the worker', () => {
     const c = manual();
     workers.start(c.id);

@@ -325,7 +325,8 @@ export class CanvasRuntime {
   run(c: Command) {
     switch (c.do) {
       case 'newCard': {
-        const card = this.board.create({ kind: c.kind, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot() });
+        const at = c.from ? { from: c.from } : this.board.freeSpot();
+        const card = this.board.create({ kind: c.kind, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...at });
         this.board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
         if (c.start) this.koordinator.request(card.id);
         return;

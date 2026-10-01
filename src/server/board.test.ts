@@ -113,6 +113,20 @@ describe('manual cards', () => {
     expect(changes).toBe(4);
   });
 
+  test('a follow-up goes below the card it comes from, in its repository, and names it', () => {
+    const src = board.create({ kind: 'feature', title: 'Export', x: 100, y: 100 });
+    const a = board.create({ kind: 'bugfix', title: 'Ton bleibt an', body: 'Der ambient-Ton läuft nach dem Stopp weiter.', from: src.id });
+    expect(a).toMatchObject({ state: 'planned', from: src.id, repo: src.repo, body: 'Der ambient-Ton läuft nach dem Stopp weiter.' });
+    expect(a.x).toBe(135);
+    expect(a.y).toBeGreaterThan(100);
+    // the next one does not cover it
+    const b = board.create({ kind: 'bugfix', title: 'Noch eine', from: src.id });
+    expect([b.x - a.x, b.y - a.y]).toEqual([30, 30]);
+    expect(() => board.create({ kind: 'bugfix', title: 'x', from: 'nope' })).toThrow(BadRequest);
+    expect(() => board.create({ kind: 'feature', title: 'x', from: src.id, idea: true })).toThrow(BadRequest);
+    expect(() => board.create({ kind: 'feature', title: 'x' })).toThrow(BadRequest);
+  });
+
   test('rejects invalid input', () => {
     expect(() => board.create({ kind: 'project' as never, title: 'x', x: 0, y: 0 })).toThrow(BadRequest);
     expect(() => board.create({ kind: 'feature', title: 'x', x: Number.NaN, y: 0 })).toThrow(BadRequest);

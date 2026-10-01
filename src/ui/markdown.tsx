@@ -27,6 +27,17 @@ function render(md: string): ReactNode[] {
   return out;
 }
 
+/** A title from a longer text: its first sentence, cut at a word when that is still too long. */
+export function shortTitle(md: string, max = 90): string {
+  const text = plain(md).replace(/\s+/g, ' ').trim();
+  // a sentence ends where the next one starts with a capital, so "z.B. betroffen" stays whole
+  const first = (text.match(/^.+?[.!?;](?=\s+[A-ZÄÖÜ])/)?.[0] ?? text).replace(/[.;]$/, '');
+  if (first.length <= max) return first;
+  const cut = first.slice(0, max - 1);
+  const word = cut.lastIndexOf(' ');
+  return `${(word > max / 2 ? cut.slice(0, word) : cut).replace(/[\s,;:–—-]+$/, '')}…`;
+}
+
 /** Plain text for places that clamp or truncate. */
 export function plain(md: string): string {
   return md.replace(TOKEN, (_, code, bold, strike, em, text) => code ?? bold ?? strike ?? em ?? text ?? '');

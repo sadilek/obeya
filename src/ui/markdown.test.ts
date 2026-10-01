@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { blocks } from './markdown';
+import { blocks, shortTitle } from './markdown';
 
 describe('plan docs as documents', () => {
   test('headings, paragraphs joined across lines, rules, quotes and code', () => {
@@ -53,4 +53,13 @@ describe('plan docs as documents', () => {
   test('a paragraph ends where a list or heading starts', () => {
     expect(blocks('Text\n- item\n## H').map((b) => b.t)).toEqual(['p', 'list', 'h']);
   });
+});
+
+test('a title from a finding: its first sentence, without markdown, cut at a word when too long', () => {
+  expect(shortTitle('Der `ambient`-Ton läuft nach dem Stopp weiter. Er hört erst beim Neuladen auf.')).toBe('Der ambient-Ton läuft nach dem Stopp weiter');
+  expect(shortTitle('Kurz')).toBe('Kurz');
+  expect(shortTitle('Version 1.5 ist z.B. betroffen')).toBe('Version 1.5 ist z.B. betroffen');
+  const long = shortTitle(`Ein sehr langer Satz ${'mit vielen Wörtern '.repeat(10)}ohne Ende`);
+  expect(long.length).toBeLessThanOrEqual(90);
+  expect(long).toEndWith(' mit vielen…');
 });

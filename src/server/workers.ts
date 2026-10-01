@@ -569,6 +569,11 @@ ${idea.idea.brief}` : '',
           .join('\n\n'),
       );
     if (card.body.trim()) parts.push(card.body.trim());
+    const from = card.from && !card.spikeOf ? this.o.board.item(card.from) ?? this.o.board.archived().find((i) => i.id === card.from) : undefined;
+    if (from) {
+      const summary = this.o.board.summary(from.id)?.trim();
+      parts.push(`This card follows up on the card “${from.title}”.${summary ? ` Its worker handed it over with this summary:\n\n${summary}` : ''}`);
+    }
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
     parts.push(

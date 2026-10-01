@@ -86,6 +86,46 @@ describe('the Koordinator remembers', () => {
     ]);
   });
 
+  test("the open card brings its whole summary and its demo's findings, so a follow-up carries what it is about", async () => {
+    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const summary = `Export schreibt jetzt CSV. ${'Viel Kontext. '.repeat(40)}Ende der Zusammenfassung.`;
+    const finding = 'Der `ambient`-Ton läuft nach dem Stopp weiter.';
+    board.work(a.id, {
+      state: 'waiting',
+      need: 'demo',
+      detail: JSON.stringify({ summary }),
+      demo: JSON.stringify({ dir: '/d', chapters: [], shown: [], notShown: [], findings: [finding, 'Zweite Auffälligkeit.'] }),
+    });
+    const k = commander();
+    const heard = k.hear('Freigegeben und lege eine Folgekarte für die ambient-Auffälligkeit an', { card: a.id });
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain(`Its worker's summary:\n${summary}`);
+    expect(s.inbox[0]).toContain(`Findings of its demo (things the worker noticed beyond the task):\n1. ${finding}\n2. Zweite Auffälligkeit.`);
+    expect(await s.call('act', { actions: [{ do: 'new_card', card: 'K9', title: 'x' }], confirm: '…' })).toContain('unknown tag K9');
+    s.call('act', {
+      actions: [
+        { do: 'approve', card: 'K1' },
+        { do: 'new_card', card: 'K1', kind: 'bugfix', title: 'ambient-Ton stoppen', body: finding, start: false },
+      ],
+      confirm: '„Export“ freigegeben, Folgekarte „ambient-Ton stoppen“ angelegt.',
+    });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed[1]).toEqual({ do: 'newCard', kind: 'bugfix', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id });
+
+    // once a finding has its card, the Koordinator hears which
+    board.create({ kind: 'bugfix', title: 'ambient-Ton stoppen', body: finding, from: a.id });
+    const next = k.hear('und die zweite auch', { card: a.id });
+    await settle();
+    expect(runtime.last.inbox.at(-1)).toContain(`1. ${finding} (follow-up card: K2 "ambient-Ton stoppen")`);
+    expect(runtime.last.inbox.at(-1)).toContain('2. Zweite Auffälligkeit.\n');
+    runtime.last.call('reply', { confirm: 'Gut.' });
+    runtime.last.emit({ type: 'idle' });
+    await next;
+  });
+
   test('an action that does not fit the card is refused in the turn, so the Koordinator can answer instead', async () => {
     const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'live' });

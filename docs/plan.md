@@ -88,7 +88,10 @@ An idea is thought through on its card before anything is planned; no worker run
 2. `working`: the worker leases a workspace, implements, runs the local reviews the repo adapter
    names, and records the demo.
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
-   sends the card back to `working`.
+   sends the card back to `working`. Each finding in the demo's report has "Als Karte anlegen": a
+   planned card with the finding as its text, below the card it comes from, in its repository; the
+   finding then names that card. A follow-up's worker hears which card it comes from and that
+   card's summary.
 4. Approval opens the PR (demo linked, report as description) and starts monitoring: review bot
    comments (Greptile) are handled by the worker, CI is watched, conflicts are rebased. Only
    what needs judgement — a review comment that questions a decision, a conflict with product
@@ -182,7 +185,10 @@ the owner's language (`src/core/locale.ts`).
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
   others starts it now despite the overlap, like "Trotzdem starten"; it sees which cards a queued
   one waits for, so "starte alle wartenden Karten" works. A reply answers questions too
-  ("Was ist seit gestern passiert?"), as far as the cards and their history answer them. One confirmation covers all actions; they run in order a few
+  ("Was ist seit gestern passiert?"), as far as the cards and their history answer them.
+  With a card open, the Koordinator gets its worker's whole summary and the findings of its demo,
+  so "lege eine Folgekarte für die ambient-Auffälligkeit an" makes a follow-up of that card with
+  the finding as its text. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
   confirmation, since the conversation shows it. The same commands can be typed in the
@@ -232,7 +238,8 @@ the owner's language (`src/core/locale.ts`).
 ## Data
 
 Persistent (SQLite): canvases, cards (kind, state, position, parent; agent session, workspace,
-branch, status line, open question or review summary, proposal source, estimated scope, queue,
+branch, status line, open question or review summary, the card it came from (a proposal's
+source, a follow-up's card), estimated scope, queue,
 when archived, an idea's status and brief, a spike's idea),
 card events (the log, with an error code where the UI words it and the owner's screenshots), workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its

@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { CardAction, CardEvent, CardPatch, Demo, Item, RepoRef } from '../core/types';
 import { ApiError, api, at, onCardEvent } from './api';
-import { Inline, plain } from './markdown';
+import { Inline, plain, shortTitle } from './markdown';
 import { imageFiles, imageUrl, prepareImage, Shots } from './shots';
 import { errorText, stateLabel, t } from './strings';
 import { talkTurns } from './talk';
@@ -18,7 +18,7 @@ interface Props {
   /** The canvas's repositories; with several, the card names its own and a planned one can move. */
   repos: RepoRef[];
   parent?: Item;
-  /** A proposal's source card. */
+  /** The card it came from: a proposal's source, a spike's idea, a follow-up's card. */
   from?: Item;
   onEdit: (p: CardPatch) => void;
   /** Saves pending edits; actions wait for it, so the worker sees the card as typed. */
@@ -115,6 +115,7 @@ export function Detail(p: Props) {
       )}
 
       {item.spikeOf && <p className="hint">{t.idea.spikeOf(plain(p.from?.title ?? ''))}</p>}
+      {p.from && !item.spikeOf && item.state !== 'proposal' && <p className="hint">{t.followUpOf(plain(p.from.title))}</p>}
 
       {item.state === 'planned' && !item.queue && <LastFailure cardId={item.id} />}
 
@@ -186,7 +187,7 @@ export function Detail(p: Props) {
       )}
 
       {item.state === 'waiting' && item.need === 'demo' && item.demo && (
-        <DemoView cardId={item.id} summary={item.summary ?? ''} demo={item.demo}>
+        <DemoView item={item} all={all} run={run} summary={item.summary ?? ''} demo={item.demo}>
           {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
             <button
@@ -201,7 +202,7 @@ export function Detail(p: Props) {
       )}
 
       {item.demo && (item.state === 'inPr' || item.state === 'approved' || item.state === 'live') && (
-        <DemoView cardId={item.id} summary="" demo={item.demo} autoplay={false}>
+        <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={false}>
           <p className="hint">{t.demo.kept}</p>
         </DemoView>
       )}
@@ -334,7 +335,7 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
           {item.demo && (
             <>
               <h4 className="p-h">{t.idea.spikeDemo}</h4>
-              <DemoView cardId={item.id} summary="" demo={item.demo} autoplay={false}>
+              <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
                 <p className="hint">{t.idea.spikeKept}</p>
               </DemoView>
             </>
@@ -468,8 +469,27 @@ const clipLine = (s: string) => {
   return line.length > 140 ? line.slice(0, 139) + '…' : line;
 };
 
-/** The narrated demo with its chapters and the report beside it. */
-function DemoView({ cardId, summary, demo, children, autoplay = true }: { cardId: string; summary: string; demo: Demo; children: ReactNode; autoplay?: boolean }) {
+type Run = (fn: () => Promise<void>, done: ActDone) => Promise<void>;
+
+/** The narrated demo with its chapters and the report beside it; with `run`, each finding can become a card. */
+function DemoView({
+  item,
+  all = [],
+  run,
+  summary,
+  demo,
+  children,
+  autoplay = true,
+}: {
+  item: Item;
+  all?: Item[];
+  run?: Run;
+  summary: string;
+  demo: Demo;
+  children: ReactNode;
+  autoplay?: boolean;
+}) {
+  const cardId = item.id;
   const video = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
   const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
@@ -530,6 +550,7 @@ function DemoView({ cardId, summary, demo, children, autoplay = true }: { cardId
                 {list.map((x, i) => (
                   <li key={i}>
                     <Inline md={x} />
+                    {run && list === demo.findings && <FollowUp finding={x} item={item} all={all} run={run} />}
                   </li>
                 ))}
               </ul>
@@ -540,6 +561,21 @@ function DemoView({ cardId, summary, demo, children, autoplay = true }: { cardId
         ))}
       </div>
     </>
+  );
+}
+
+/** Makes a finding of the demo a card of its own that comes from this one, or names the card it already became. */
+function FollowUp({ finding, item, all, run }: { finding: string; item: Item; all: Item[]; run: Run }) {
+  const text = finding.trim();
+  const made = all.find((i) => i.from === item.id && i.state !== 'proposal' && !i.spikeOf && i.body.includes(text));
+  if (made) return <div className="follow-up done">→ {t.demo.followedUp(plain(made.title))}</div>;
+  return (
+    <button
+      className="follow-up"
+      onClick={() => run(() => api.create({ kind: 'bugfix', title: shortTitle(text), body: text, from: item.id }).then(() => {}), { close: false })}
+    >
+      + {t.demo.followUp}
+    </button>
   );
 }
 
