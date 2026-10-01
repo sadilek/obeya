@@ -46,6 +46,8 @@ export interface Item {
   question?: Question;
   /** The worker's summary, when `need` is `review` or `demo`. */
   summary?: string;
+  /** Why the worker handed over without a demo, in the rare case there was nothing to show (`need` is `review`). */
+  noDemo?: string;
   /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
   demo?: Demo;
   /** The card it comes from: a proposal's source, a prototype's idea, or the card a follow-up follows up on. */
@@ -118,8 +120,16 @@ export interface PullRequest {
 /** `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting longest goes first. */
 export type Queue = ({ checking: true } | { cutting: true } | { behind: string[]; reason: string }) & { since?: string };
 
+/**
+ * How a demo shows the work: a narrated `video` of something that happens, or an `html` artifact
+ * to look at (design drafts side by side, a layout, an analysis).
+ */
+export type DemoKind = 'video' | 'html';
+
 export interface Demo {
-  /** Seconds and title of each scene. */
+  /** Absent on demos from before HTML artifacts: those are videos. */
+  kind?: DemoKind;
+  /** Seconds and title of each scene; none for an HTML artifact. */
   chapters: [number, string][];
   shown: string[];
   notShown: string[];

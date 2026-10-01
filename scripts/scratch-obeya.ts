@@ -26,6 +26,9 @@
 //         "scope": ["src/cli.ts"] },
 //       { "key": "C", "title": "…", "state": "waiting", "need": "demo", "summary": "…",
 //         "demo": { "dir": "/abs/demo", "chapters": [[0, "Ausgangslage"]], "shown": [], "notShown": [], "findings": [] } },
+//       { "key": "H", "title": "…", "state": "waiting", "need": "demo", "summary": "…",
+//         "demo": { "kind": "html", "dir": "/abs/artifact", "chapters": [], "shown": [], "notShown": [], "findings": [] } },
+//       { "key": "N", "title": "…", "state": "waiting", "need": "review", "summary": "…", "noDemo": "…" },
 //       { "key": "D", "title": "…", "state": "waiting", "need": "question", "question": { "text": "…", "options": ["Ja", "Nein"] } },
 //       { "key": "E", "title": "…", "from": "C" },
 //       { "key": "P", "project": "docs/plan/werkzeug.md", "x": 0, "y": 0 },
@@ -36,7 +39,7 @@
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
 // into the database:
-// state, need, statusLine, summary, question, demo, queue (`behind` by key; `since` defaults to
+// state, need, statusLine, summary, noDemo, question, demo, queue (`behind` by key; `since` defaults to
 // now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago? }]),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
 // "3d" ago.
@@ -63,6 +66,7 @@ interface StageCard {
   need?: string | null;
   statusLine?: string;
   summary?: string;
+  noDemo?: string;
   question?: { text: string; options?: string[]; multiple?: boolean };
   demo?: Record<string, unknown>;
   queue?: { behind?: string[]; reason?: string; since?: string; checking?: true; cutting?: true };
@@ -217,7 +221,7 @@ for (const [i, c] of stage.cards.entries()) {
   if (c.state !== undefined) row.state = c.state;
   if (c.need !== undefined) row.need = c.need;
   if (c.statusLine !== undefined) row.status_line = c.statusLine;
-  if (c.summary !== undefined) row.detail = { summary: c.summary };
+  if (c.summary !== undefined) row.detail = { summary: c.summary, ...(c.noDemo ? { noDemo: c.noDemo } : {}) };
   if (c.question !== undefined) row.detail = { question: { options: [], ...c.question } };
   if (c.demo !== undefined) row.demo = c.demo;
   if (c.queue !== undefined)

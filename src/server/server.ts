@@ -160,11 +160,13 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       '/api/c/:canvas/cards/:id/plan': { GET: on((c, req) => c.board.planDoc(req.params.id!)) },
       // a project's decisions and the idea it came from
       '/api/c/:canvas/cards/:id/history': { GET: on((c, req) => c.board.projectHistory(req.params.id!)) },
-      '/api/c/:canvas/cards/:id/demo/:file': {
+      // an HTML artifact's page may load files from folders beside it
+      '/api/c/:canvas/cards/:id/demo/*': {
         GET: (req) => {
           try {
-            const dir = byId.get(req.params.canvas)?.board.demoDir(req.params.id);
-            return dir ? serveDemoFile(dir, req.params.file, req) : new Response('Not found', { status: 404 });
+            const demo = byId.get(req.params.canvas)?.board.demoFiles(req.params.id);
+            const file = decodeURIComponent(new URL(req.url).pathname.split('/demo/').slice(1).join('/demo/'));
+            return demo ? serveDemoFile(demo, file, req) : new Response('Not found', { status: 404 });
           } catch {
             return new Response('Not found', { status: 404 });
           }

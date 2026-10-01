@@ -14,6 +14,7 @@ import {
   type CardEvent,
   type CardPatch,
   type Decision,
+  type DemoKind,
   type ErrorCode,
   type Idea,
   type Item,
@@ -130,10 +131,12 @@ export class Board {
     return this.own(id);
   }
 
-  /** The directory of the card's latest demo; it stays with the card after approval. */
-  demoDir(id: string): string | null {
+  /** The directory and kind of the card's latest demo; it stays with the card after approval. */
+  demoFiles(id: string): { dir: string; kind: DemoKind } | null {
     const r = this.own(id);
-    return r.demo ? (JSON.parse(r.demo) as { dir: string }).dir : null;
+    if (!r.demo) return null;
+    const d = JSON.parse(r.demo) as { dir: string; kind?: DemoKind };
+    return { dir: d.dir, kind: d.kind ?? 'video' };
   }
 
   /** The plan doc of a project, as written, for the owner to read. */
@@ -703,7 +706,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow): Partial<Item> {
-  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string }) : {};
+  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noDemo?: string }) : {};
   const demo = r.demo ? (({ dir: _, ...d }) => d)(JSON.parse(r.demo) as Item['demo'] & { dir: string }) : undefined;
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
@@ -716,6 +719,7 @@ function work(r: CardRow): Partial<Item> {
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice
     ...(demo?.question && !demo.answer && r.need === 'demo' ? { question: { text: demo.question, options: [] } } : {}),
     ...(detail.summary && (r.need === 'review' || r.need === 'demo') ? { summary: detail.summary } : {}),
+    ...(detail.noDemo && r.need === 'review' ? { noDemo: detail.noDemo } : {}),
     ...(demo ? { demo } : {}),
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),

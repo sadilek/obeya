@@ -226,6 +226,12 @@ export function Detail(p: Props) {
             <h4>{t.summary}</h4>
             <Body md={item.summary ?? ''} />
           </div>
+          {item.noDemo && (
+            <div className="question no-demo">
+              <h4>{t.demo.noDemo}</h4>
+              <div className="q-text">{item.noDemo}</div>
+            </div>
+          )}
           <div className="actions">
             <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
               {t.approve}
@@ -539,7 +545,7 @@ function DemoView({
   const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
   useEffect(() => {
     // start once the card has unfolded, like the mock, the first time only; a demo kept on a finished card waits to be played
-    if (!autoplay) return;
+    if (!autoplay || demo.kind === 'html') return;
     const h = setTimeout(() => firstOpening(localStorage, cardId, demo) && video.current?.play().catch(() => {}), 300);
     return () => clearTimeout(h);
   }, []);
@@ -547,28 +553,35 @@ function DemoView({
   return (
     <>
       <div className="p-grid">
-        <video ref={video} controls preload="metadata" poster={src('poster.jpg')} src={src('demo.mp4')} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}>
-          <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
-        </video>
+        {demo.kind === 'html' ? (
+          // the worker's page: scripts run, but in an origin of its own, away from Obeya's API
+          <iframe className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} />
+        ) : (
+          <video ref={video} controls preload="metadata" poster={src('poster.jpg')} src={src('demo.mp4')} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}>
+            <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
+          </video>
+        )}
         <div>
-          <ol className="chapters">
-            {demo.chapters.map(([at, title], i) => (
-              <li key={i}>
-                <button
-                  className={i === current ? 'on' : ''}
-                  onClick={() => {
-                    const v = video.current;
-                    if (!v) return;
-                    v.currentTime = at;
-                    v.play().catch(() => {});
-                  }}
-                >
-                  <span className="t">{mmss(at)}</span>
-                  {title}
-                </button>
-              </li>
-            ))}
-          </ol>
+          {demo.chapters.length > 0 && (
+            <ol className="chapters">
+              {demo.chapters.map(([at, title], i) => (
+                <li key={i}>
+                  <button
+                    className={i === current ? 'on' : ''}
+                    onClick={() => {
+                      const v = video.current;
+                      if (!v) return;
+                      v.currentTime = at;
+                      v.play().catch(() => {});
+                    }}
+                  >
+                    <span className="t">{mmss(at)}</span>
+                    {title}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
           {demo.question && (
             <div className="question">
               <h4>{t.demo.question}</h4>
