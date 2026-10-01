@@ -145,6 +145,13 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   const archivedRef = useRef(archived);
   archivedRef.current = archived;
   const archiveEls = useRef(new Map<string, HTMLElement>()).current;
+  // rows of the project sheet, where its archived workstreams and its idea unfold from
+  const sheetEls = useRef(new Map<string, HTMLElement>()).current;
+  /** The element a card unfolds from and folds back to: on the canvas, or a row in the sheet it was opened from. */
+  const fromEl = (id: string, inProject: boolean) =>
+    els.get(id) ?? (inProject ? (sheetEls.get(id) ?? archiveEls.get(id)) : (archiveEls.get(id) ?? sheetEls.get(id)));
+  // an archived card opened from a project's sheet, which the archive list may not hold
+  const [opened, setOpened] = useState<Item | null>(null);
   useEffect(() => {
     if (!aOn) return;
     let current = true;
@@ -192,10 +199,11 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     if (i.kind === 'project') return openProject(i);
     setFocus({ type: 'card', id: i.id, prevCam: camRef.current, project: f });
     openTitle.current = i.title;
+    setOpened(i.archivedAt ? i : null);
     // bring the card to the middle at a readable scale first, so the unfold starts where the eye is;
     // an archived card is not on the canvas and unfolds from its row in the archive
     if (!i.archivedAt) await fly(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), FLY_MS);
-    const el = i.archivedAt ? archiveEls.get(i.id) : els.get(i.id);
+    const el = fromEl(i.id, !!f);
     const panel = panelRef.current;
     if (!el || !panel) return;
     const r = el.getBoundingClientRect();
@@ -218,7 +226,9 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   }
 
   // a card that starts or finishes work while open changes its width and colour: resize in place
-  const openItem = openId ? (items.find((i) => i.id === openId) ?? archived.find((i) => i.id === openId)) : undefined;
+  const openItem = openId
+    ? (items.find((i) => i.id === openId) ?? archived.find((i) => i.id === openId) ?? (opened?.id === openId ? opened : undefined))
+    : undefined;
   const openState = openItem && `${openItem.state}:${openItem.need ?? ''}`;
   useEffect(() => {
     const panel = panelRef.current;
@@ -257,7 +267,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     flushEdit().catch(console.error);
     panel.querySelector('video')?.pause();
     const i = byId(f.id);
-    const el = els.get(f.id) ?? archiveEls.get(f.id);
+    const el = fromEl(f.id, !!f.project);
     unfolded.current = false;
     panel.classList.remove('ready');
     if (el) Object.assign(panel.style, rect(el.getBoundingClientRect()), { borderRadius: '14px' });
@@ -281,7 +291,8 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     setSheetOn(true);
     setKOn(false);
     setAOn(false);
-    await fly(camFor(bounds(p), 40, SHEET_W, 60), 700);
+    // an archived project is not on the canvas: its sheet takes the archive's place
+    if (!p.archivedAt) await fly(camFor(bounds(p), 40, SHEET_W, 60), 700);
   }
 
   /** Reads the project's plan doc in the sheet, at the workstream `mark`; `null` goes back to the workstreams. */
@@ -303,6 +314,8 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
     if (f?.type !== 'project') return;
     setFocus(null);
     setSheetOn(false);
+    // back to the archive it was opened from
+    if (archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
     await fly(f.prevCam, 600);
   }
 
@@ -556,7 +569,8 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
   }, []);
 
   // ---------------------------------------------------------------- render
-  const sheetProject = sheetId ? items.find((i) => i.id === sheetId) : undefined;
+  const sheetProject = sheetId ? (items.find((i) => i.id === sheetId) ?? archived.find((i) => i.id === sheetId)) : undefined;
+  const sheetKids = !sheetProject ? [] : sheetProject.archivedAt ? archived.filter((i) => i.parent === sheetProject.id) : (kidsOf.get(sheetProject.id) ?? []);
   const edgeTargets = placed.filter(({ item }) => needsYou(item) && (focus?.type !== 'project' || item.parent === focus.id));
 
   return (
@@ -637,7 +651,7 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
                 item={openItem}
                 all={items}
                 repos={snapshot.canvas.repos}
-                parent={openItem.parent ? items.find((p) => p.id === openItem.parent) : undefined}
+                parent={openItem.parent ? (items.find((p) => p.id === openItem.parent) ?? archived.find((p) => p.id === openItem.parent)) : undefined}
                 from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
                 onReadPlan={(project, mark) => readPlan(project, { mark })}
                 onEdit={onEdit}
@@ -654,11 +668,13 @@ function Canvas({ snapshot, online, canvases }: { snapshot: CanvasSnapshot; onli
       <PushToTalk phase={ptt.phase} level={ptt.level} target={target} onDown={ptt.start} />
       <Sheet
         project={sheetProject}
-        kids={sheetProject ? (kidsOf.get(sheetProject.id) ?? []) : []}
+        kids={sheetKids}
         on={sheetOn}
         reading={reading}
         onOpen={open}
         onRead={(r) => sheetProject && readPlan(sheetProject, r)}
+        els={sheetEls}
+        version={snapshot}
       />
       <div id="ack" className={ackOn ? 'on' : undefined}>
         <span>{ack?.text}</span>

@@ -368,6 +368,16 @@ textarea.p-body:focus { border-color: var(--muted); }
 .doc th { font-weight: 600; }
 button.link { border: 0; background: none; padding: 0; color: var(--working); cursor: pointer; font-size: inherit; }
 button.link:hover { text-decoration: underline; }
+.sheet .origin { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; margin-top: 14px; padding: 9px 12px; border: 1px dashed var(--idea);
+  border-radius: 10px; background: none; color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.sheet .origin:hover { background: var(--chip); }
+.sheet .origin .hint { font-size: 11px; }
+.sheet ul.decisions { list-style: none; padding: 0; margin: 0; }
+.sheet ul.decisions li { display: block; cursor: default; padding: 7px 10px; border-left: 2px solid var(--container-line); border-radius: 0; margin-bottom: 6px; }
+.sheet ul.decisions li:hover { background: none; }
+.sheet ul.decisions .q { color: var(--muted); font-size: 12.5px; }
+.sheet ul.decisions .a { margin: 2px 0; }
+.sheet ul.decisions .hint { font-size: 11px; }
 
 /* ---------- push to talk (from the mock) ---------- */
 #ptt { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }

@@ -80,7 +80,7 @@ An idea is thought through on its card before anything is planned; no worker run
 5. Deciding: "So bauen" makes the brief the card's task and starts it at once, through the
    Koordinator like "Agent starten" (it waits only if it overlaps running work). "Als Projekt planen" plans a
    card whose worker writes a plan doc with workstreams, which lands like any change (OKE: a PR)
-   and then appears as a project. "Parken" and "Verwerfen" leave the card with its brief; talking
+   and then appears as a project, linked back to the idea. "Parken" and "Verwerfen" leave the card with its brief; talking
    to it opens it again. Decisions from the conversation go into the decision log; lasting
    preferences are learned by the Koordinator as before.
 
@@ -109,6 +109,14 @@ An idea is thought through on its card before anything is planned; no worker run
    all finished ones at once in the archive). The archive (button or `A`) lists archived cards
    by day, the most recently archived first; one unfolds from its row as on the canvas and can go
    back to the place it had.
+7. A project ends when its plan doc goes (folded into `docs/plan.md`, deleted): it moves into the
+   archive with its workstreams, which are not listed on their own. Its sheet then shows, read-only,
+   the goal and the workstreams as the doc last stood; each workstream unfolds with its log and demo.
+   When the same file comes back, the project returns to its place. Every project's sheet, live or
+   archived, lists its decisions and links the idea its plan doc was written from: when an idea's
+   "Plan-Doc" card lands and its diff adds a doc in the plan directory, the project from that doc
+   remembers the idea, whose card keeps its brief and conversation, and the idea's decisions join
+   the project's.
 
 ## Communication
 
@@ -276,7 +284,8 @@ Persistent (SQLite): canvases, cards (kind, state, position, parent; agent sessi
 branch, status line, open question or review summary, the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
 when archived, an idea's status, brief and open questions, a spike's idea, landed work whose worker still
-finishes),
+finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
+work added),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
@@ -287,7 +296,7 @@ later PR links.
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`).
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
-the repository).
+the repository; the copy on the project is only for the archive).
 
 ## Milestones
 
@@ -335,8 +344,17 @@ the repository).
   card opens it at the workstream's item. Esc goes back to the workstreams. The server hands out
   only docs it shows as projects, by project card, never a path.
 - A plan card gets a stored row the first time it is seen, so the owner's placement persists; its
-  title, text and state always come from the doc. When a doc disappears its rows stay, hidden,
-  and its placement returns with it.
+  title, text and state always come from the doc. Each read also keeps the doc's last state on the
+  project (title, goal, workstreams with key, label, title, text and state).
+- A plan doc that disappears ends its project: the project goes into the archive with that last
+  state, and returns with its placement when the same file comes back (2026-10-01). Ending is
+  automatic rather than an explicit "abschließen", which can later sit on top. Reading old content
+  from the git history instead was rejected as fragile (PRs and clones on OKE, renames); it served
+  only once, to backfill Obeya's own projects from before
+  (`scripts/backfill-archived-projects.ts`). Known edges: a doc missing only for a moment (a branch
+  switch in the checkout) sends the project to the archive and back; a renamed doc makes a new
+  project and leaves the old one archived. A project from before the doc was kept has nothing to
+  show and stays hidden.
 - A canvas belongs to a repository, not a checkout: the adapter names it (OKE: `oke`), so the
   clones share one. Adapters live in this repository (`src/adapters/`) and are picked by the
   `origin` URL; the generic one covers any repo with `docs/plan/`.
@@ -365,8 +383,11 @@ the repository).
   the owner again. Feedback, a stop or a blocked Obeya checkout take it back.
 - Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
   for developers.
-- Only the owner's cards are archived, and only once `live`; a workstream stays with its project,
-  where a delivered one is already a chip. Archiving keeps the card's position, demo and log.
+- The owner archives only their own cards, and only once `live`; a workstream stays with its
+  project, where a delivered one is already a chip, and goes into the archive with it. Archiving
+  keeps the card's position, demo and log.
+- A project links the idea it came from by what the idea's landed work added to the plan directory,
+  not by title or time, and shows the decisions of both.
 - Obeya restarts itself for new code on its own checkout instead of hot reloading: a restart is a
   path that already exists (workers resume by session id), hot reloading keeps old state alive
   next to new code. It also restarts for commits made outside Obeya.
