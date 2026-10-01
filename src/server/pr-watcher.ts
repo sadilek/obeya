@@ -88,7 +88,7 @@ export class PrWatcher {
         next.conflictHead = s.head;
         this.workers.prEvent(
           cardId,
-          'Konflikt mit dem Zielbranch. Der Agent rebased.',
+          'Konflikt mit dem Zielbranch. Der Agent bringt den Branch auf Stand.',
           'Your pull request conflicts with its base branch. Bring it up to date with the latest base the way the repository does it (merge or rebase; push a rebase with --force-with-lease), resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.',
         );
       } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
