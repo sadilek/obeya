@@ -119,6 +119,18 @@ export const sdkRuntime: AgentRuntime = {
 };
 
 /**
+ * Workers of a scratch Obeya for a demo (`--idle-workers`): a started card is in progress, but no
+ * agent works on it, so it stays as staged and costs nothing.
+ */
+export const idleRuntime: AgentRuntime = {
+  start() {
+    let end!: () => void;
+    const done = new Promise<void>((r) => (end = r));
+    return { send: () => {}, close: () => end(), done };
+  },
+};
+
+/**
  * How many of the agent's background tasks wake it when they finish or fire: a render, a test run,
  * a watcher. The SDK marks watchers `ambient` (no activity to show), like its own housekeeping,
  * which wakes no one and does not count.

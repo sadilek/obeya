@@ -31,6 +31,8 @@ export interface CanvasDeps {
   /** Obeya's data directory (workspaces live under it). */
   home: string;
   runtime: AgentRuntime;
+  /** Runs the cards' workers; `runtime` when left out. */
+  workerRuntime?: AgentRuntime;
   forge: Forge;
   permissionMode?: 'auto' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk' | 'default';
   /** Watch plan docs and pull requests; off in tests. */
@@ -103,7 +105,7 @@ export class CanvasRuntime {
       const projectAgents = new ProjectAgents(board, deps.runtime, info.path, preferences);
       const workers = new Workers({
         board,
-        runtime: deps.runtime,
+        runtime: deps.workerRuntime ?? deps.runtime,
         workspaces,
         adapter,
         repo: ref.id,

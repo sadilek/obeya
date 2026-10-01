@@ -11,9 +11,9 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
 - Code that drives agents is tested against the fake runtime in `src/server/testing.ts` and real
   git repositories in a temp directory (`gitRepo` there; git calls are what makes tests slow).
   Live runs go against a scratch git repository with a plan doc and a scratch `OBEYA_HOME` (never
-  `~/.obeya` of a running Obeya), e.g.
-  `OBEYA_HOME=$(mktemp -d) bun src/server/main.ts <scratch repo> --adapter obeya --port 4420`;
-  they start real agents on the machine's Claude login.
+  `~/.obeya` of a running Obeya): `bun scripts/scratch-obeya.ts <stage.json>` stages one with its
+  cards in about a second (its header describes the stage file; `--stop <port>` ends it). Its
+  workers are idle; with `--real-workers` they are real agents on the machine's Claude login.
 - UI checks run in headless Chrome through the `chrome-headless` skill (`input` for trusted
   clicks, drags, keys held for push-to-talk; `start --fake-mic <wav>` for voice). A claude-in-chrome
   tab is often hidden, which freezes `requestAnimationFrame`: camera flights and the unfold never
