@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import type { CanvasInfo, CanvasSnapshot, CardPatch, Item, PendingRestart } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type Item, needsYou, type PendingRestart } from '../core/types';
 import { api, ApiError, onSpeak, setCanvas, useCanvas } from './api';
 import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
@@ -13,7 +13,7 @@ import { ConfigSheet } from './config';
 import { KoordinatorSheet } from './koordinator';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
-import { CanvasPill, CardView, Edges, Links, Minimap, needsYou, ProjectView, readingWidth, RestartPill, Sheet } from './parts';
+import { CanvasPill, CardView, Edges, Links, Minimap, ProjectView, readingWidth, RestartPill, Sheet } from './parts';
 import { errorText, t } from './strings';
 
 export function App() {
@@ -32,9 +32,9 @@ export function App() {
 }
 
 function Live({ canvases }: { canvases: CanvasInfo[] }) {
-  const { snapshot, online, restart } = useCanvas();
+  const { snapshot, online, restart, waiting } = useCanvas();
   if (!snapshot) return online ? null : <div className="empty">{t.offline}</div>;
-  return <Canvas snapshot={snapshot} online={online} restart={restart} canvases={canvases} />;
+  return <Canvas snapshot={snapshot} online={online} restart={restart} canvases={canvases} waiting={waiting} />;
 }
 
 type Focus = { type: 'project'; id: string; prevCam: Cam } | { type: 'card'; id: string; prevCam: Cam; project: Focus | null };
@@ -47,7 +47,19 @@ const UNFOLD_MS = 170;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const camKey = (canvasId: string) => `obeya-cam-${canvasId}`;
 
-function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnapshot; online: boolean; restart: PendingRestart | null; canvases: CanvasInfo[] }) {
+function Canvas({
+  snapshot,
+  online,
+  restart,
+  canvases,
+  waiting,
+}: {
+  snapshot: CanvasSnapshot;
+  online: boolean;
+  restart: PendingRestart | null;
+  canvases: CanvasInfo[];
+  waiting: Record<string, number>;
+}) {
   // ---------------------------------------------------------------- items
   // Local positions win over the snapshot until the server echoes them back.
   const [moved, setMoved] = useState<Record<string, Pos>>({});
@@ -705,7 +717,7 @@ function Canvas({ snapshot, online, restart, canvases }: { snapshot: CanvasSnaps
       {!items.length && <div className="empty">{t.empty}</div>}
       {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={reserve} onOpen={open} />}
       <header id="bar">
-        <CanvasPill canvas={snapshot.canvas} canvases={canvases} />
+        <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
         {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
           <div className="pill">
             <b>Obeya</b>

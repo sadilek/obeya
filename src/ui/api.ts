@@ -110,11 +110,15 @@ export function onSpeak(fn: (cardId: string | undefined, audio: string) => void)
   return () => speakListeners.delete(fn);
 }
 
-/** The live canvas: the server pushes a snapshot on connect and after every change, and the restart that waits. */
-export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean; restart: PendingRestart | null } {
+/**
+ * The live canvas: the server pushes a snapshot on connect and after every change, the restart that
+ * waits, and how many cards on each canvas need the owner.
+ */
+export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean; restart: PendingRestart | null; waiting: Record<string, number> } {
   const [snapshot, setSnapshot] = useState<CanvasSnapshot | null>(null);
   const [online, setOnline] = useState(true);
   const [restart, setRestart] = useState<PendingRestart | null>(null);
+  const [waiting, setWaiting] = useState<Record<string, number>>({});
   useEffect(() => {
     let ws: WebSocket;
     let retry: ReturnType<typeof setTimeout>;
@@ -135,6 +139,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
           server = msg.server;
         } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
         else if (msg.type === 'restart') setRestart(msg.restart);
+        else if (msg.type === 'waiting') setWaiting(msg.waiting);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
         else if (msg.type === 'speak') for (const fn of speakListeners) fn(msg.cardId, msg.audio);
       };
@@ -154,5 +159,5 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
       ws.close();
     };
   }, []);
-  return { snapshot, online, restart };
+  return { snapshot, online, restart, waiting };
 }

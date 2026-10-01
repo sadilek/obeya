@@ -17,6 +17,10 @@ export interface Question {
 }
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
+/** A card needs the owner: it waits, is a proposal, or is an open idea whose agent has replied and is done. */
+export const needsYou = (i: Item) =>
+  i.state === 'waiting' || i.state === 'proposal' || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
+
 export interface Item {
   id: string;
   kind: CardKind;
@@ -401,5 +405,7 @@ export type ServerMessage =
   | { type: 'hello'; server: string }
   /** On connect and whenever it changes: the restart Obeya waits with, if any. */
   | { type: 'restart'; restart: PendingRestart | null }
+  /** On connect and whenever it changes: how many cards on each canvas need the owner, by canvas id. */
+  | { type: 'waiting'; waiting: Record<string, number> }
   /** A short spoken summary of a card's agent (an idea's reply), to play while the card is open. */
   | { type: 'speak'; cardId?: string; audio: string };

@@ -47,6 +47,8 @@ export const t = {
   noCanvas: 'Obeya hat keine Leinwand. Beim Start ein Repository angeben.',
   repos: (n: number) => `${n} Repositories`,
   switchCanvas: 'Leinwand wechseln',
+  waitingThere: (n: number) => (n === 1 ? '1 Karte braucht dich dort' : `${n} Karten brauchen dich dort`),
+  waitingElsewhere: (n: number) => (n === 1 ? '1 Karte auf einer anderen Leinwand braucht dich' : `${n} Karten auf anderen Leinwänden brauchen dich`),
   start: 'Agent starten',
   stop: 'Anhalten',
   approve: 'Freigeben',

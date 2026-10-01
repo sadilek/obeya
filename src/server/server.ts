@@ -4,7 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CanvasInfo, CardAction, CardPatch, NewCard, PendingRestart, ServerMessage } from '../core/types';
+import { type CanvasInfo, type CardAction, type CardPatch, needsYou, type NewCard, type PendingRestart, type ServerMessage } from '../core/types';
 import index from '../ui/index.html';
 import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
@@ -41,13 +41,24 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     const here = due.waiting.filter((w) => w.canvas === id);
     return { reason: due.reason, since: due.since, deadline: due.deadline, cards: here.map((w) => w.card), elsewhere: due.waiting.length - here.length };
   };
+  /** How many cards on each canvas need the owner: each canvas's switcher points to the others. */
+  const counted = (c: CanvasRuntime) => c.board.snapshot().items.filter(needsYou).length;
+  const waiting = Object.fromEntries(canvases.map((c) => [c.id, counted(c)]));
+  const waitingMessage = () => JSON.stringify({ type: 'waiting', waiting } satisfies ServerMessage);
   for (const c of canvases) {
     const send = (msg: ServerMessage) => {
       const text = JSON.stringify(msg);
       for (const ws of sockets.get(c.id)!) ws.send(text);
     };
     restarter?.onChange(() => send({ type: 'restart', restart: pending(c.id) }));
-    c.board.onChange(() => send({ type: 'snapshot', snapshot: c.board.snapshot() }));
+    c.board.onChange(() => {
+      send({ type: 'snapshot', snapshot: c.board.snapshot() });
+      const n = counted(c);
+      if (n === waiting[c.id]) return;
+      waiting[c.id] = n;
+      const text = waitingMessage();
+      for (const set of sockets.values()) for (const ws of set) ws.send(text);
+    });
     c.board.onEvent((event) => send({ type: 'event', event }));
     c.board.onSpeak((cardId, text) => send({ type: 'speak', cardId, audio: voice(c, text) }));
   }
@@ -227,6 +238,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         ws.send(JSON.stringify({ type: 'hello', server: started } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'restart', restart: pending(c.id) } satisfies ServerMessage));
+        ws.send(waitingMessage());
       },
       close: (ws) => void sockets.get(ws.data.canvas)?.delete(ws),
       message: () => {},

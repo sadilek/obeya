@@ -2,15 +2,11 @@
 
 import { type CSSProperties, memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import type { CanvasInfo, Item, PendingRestart, ProjectHistory } from '../core/types';
+import { type CanvasInfo, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
 import { api } from './api';
 import type { Cam } from './camera';
 import { Doc, Inline, plain } from './markdown';
 import { stateLabel, t } from './strings';
-
-/** An open idea needs the owner once its agent has replied and is done. */
-export const needsYou = (i: Item) =>
-  i.state === 'waiting' || i.state === 'proposal' || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
 
 /** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
 const firstLine = (md: string) =>
@@ -105,14 +101,22 @@ export const CardView = memo(
     a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.showRepo === b.showRepo && a.onStart === b.onStart,
 );
 
-/** The canvas's name and home branch; with several canvases, a switcher. */
-export function CanvasPill({ canvas, canvases }: { canvas: CanvasInfo; canvases: CanvasInfo[] }) {
+/**
+ * The canvas's name and home branch; with several canvases, a switcher. Other canvases with cards
+ * that need the owner carry their count in the menu, and while it is closed the pill carries the sum.
+ */
+export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; canvases: CanvasInfo[]; waiting: Record<string, number> }) {
   const [open, setOpen] = useState(false);
   const home = canvas.repos[0];
   const many = canvases.length > 1;
+  const elsewhere = canvases.reduce((n, c) => n + (c.id === canvas.id ? 0 : (waiting[c.id] ?? 0)), 0);
   return (
     <div className="canvas-pill">
-      <button className={many ? 'pill switch' : 'pill'} title={many ? t.switchCanvas : undefined} onClick={() => many && setOpen(!open)}>
+      <button
+        className={many ? 'pill switch' : 'pill'}
+        title={many ? (elsewhere ? `${t.switchCanvas} · ${t.waitingElsewhere(elsewhere)}` : t.switchCanvas) : undefined}
+        onClick={() => many && setOpen(!open)}
+      >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="6" cy="6" r="2.5" />
           <circle cx="6" cy="18" r="2.5" />
@@ -122,17 +126,22 @@ export function CanvasPill({ canvas, canvases }: { canvas: CanvasInfo; canvases:
         <b>{canvas.name}</b>
         <span className="hint">{canvas.repos.length > 1 ? t.repos(canvas.repos.length) : home?.branch}</span>
         {many && <span className="hint">▾</span>}
+        {!open && elsewhere > 0 && <span className="waits pulse">{elsewhere}</span>}
       </button>
       {open && (
         <ul className="canvas-menu">
-          {canvases.map((c) => (
-            <li key={c.id} className={c.id === canvas.id ? 'on' : ''}>
-              <a href={`?c=${encodeURIComponent(c.id)}`}>
-                <b>{c.name}</b>
-                <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
-              </a>
-            </li>
-          ))}
+          {canvases.map((c) => {
+            const n = c.id === canvas.id ? 0 : (waiting[c.id] ?? 0);
+            return (
+              <li key={c.id} className={c.id === canvas.id ? 'on' : ''}>
+                <a href={`?c=${encodeURIComponent(c.id)}`} title={n ? t.waitingThere(n) : undefined}>
+                  <b>{c.name}</b>
+                  <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
+                  {n > 0 && <span className="waits">{n}</span>}
+                </a>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
