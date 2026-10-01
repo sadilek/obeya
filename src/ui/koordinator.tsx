@@ -26,54 +26,56 @@ export function KoordinatorSheet({ on, items, preferences, talk, onOpen, onHeard
       <div className="p-kind">{t.koordinator.kind}</div>
       <h2>{t.koordinator.title}</h2>
       <Conversation talk={talk} />
-      <TellKoordinator onHeard={onHeard} />
+      <div className="k-rest">
+        <TellKoordinator onHeard={onHeard} />
 
-      <h4 className="p-h">{t.koordinator.queue}</h4>
-      {queued.length === 0 ? (
-        <p className="hint">{t.koordinator.queueEmpty}</p>
-      ) : (
-        <ol>
-          {queued.map((i) => (
-            <li key={i.id} className="s-planned" onClick={() => onOpen(i)}>
-              <span className="dot" />
-              <span>
-                {plain(i.title)}
-                <br />
-                <span className="hint">
-                  {i.queue && 'behind' in i.queue ? t.queue.behind(i.queue.behind.map(title)) : stateLabel(i)}
+        <h4 className="p-h">{t.koordinator.queue}</h4>
+        {queued.length === 0 ? (
+          <p className="hint">{t.koordinator.queueEmpty}</p>
+        ) : (
+          <ol>
+            {queued.map((i) => (
+              <li key={i.id} className="s-planned" onClick={() => onOpen(i)}>
+                <span className="dot" />
+                <span>
+                  {plain(i.title)}
+                  <br />
+                  <span className="hint">
+                    {i.queue && 'behind' in i.queue ? t.queue.behind(i.queue.behind.map(title)) : stateLabel(i)}
+                  </span>
                 </span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+              </li>
+            ))}
+          </ol>
+        )}
 
-      <h4 className="p-h">{t.koordinator.running}</h4>
-      {running.length === 0 ? (
-        <p className="hint">{t.koordinator.runningEmpty}</p>
-      ) : (
-        <ol>
-          {running.map((i) => (
-            <li key={i.id} className={`s-${i.state}`} onClick={() => onOpen(i)}>
-              <span className="dot" />
-              <span>
-                {plain(i.title)}
-                <br />
-                <span className="hint">{i.statusLine ?? stateLabel(i)}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+        <h4 className="p-h">{t.koordinator.running}</h4>
+        {running.length === 0 ? (
+          <p className="hint">{t.koordinator.runningEmpty}</p>
+        ) : (
+          <ol>
+            {running.map((i) => (
+              <li key={i.id} className={`s-${i.state}`} onClick={() => onOpen(i)}>
+                <span className="dot" />
+                <span>
+                  {plain(i.title)}
+                  <br />
+                  <span className="hint">{i.statusLine ?? stateLabel(i)}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
 
-      <h4 className="p-h">{t.koordinator.preferences}</h4>
-      <p className="hint">{t.koordinator.preferencesHint}</p>
-      <ul className="prefs">
-        {preferences.map((p) => (
-          <PreferenceRow key={p.id} p={p} />
-        ))}
-      </ul>
-      <NewPreference />
+        <h4 className="p-h">{t.koordinator.preferences}</h4>
+        <p className="hint">{t.koordinator.preferencesHint}</p>
+        <ul className="prefs">
+          {preferences.map((p) => (
+            <PreferenceRow key={p.id} p={p} />
+          ))}
+        </ul>
+        <NewPreference />
+      </div>
     </aside>
   );
 }
@@ -81,14 +83,40 @@ export function KoordinatorSheet({ on, items, preferences, talk, onOpen, onHeard
 /** What the owner said to the Koordinator with no card open, and its replies; newest last. */
 function Conversation({ talk }: { talk: Talk[] }) {
   const box = useRef<HTMLDivElement>(null);
+  const atEnd = useRef(true);
   useEffect(() => {
     const el = box.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    // it takes the height the sheet leaves free; when the rest needs more, it keeps 360px, or less
+    // when the conversation is shorter than that
+    el.style.minHeight = '0';
+    el.style.minHeight = `${Math.min(360, el.scrollHeight)}px`;
+    el.scrollTop = el.scrollHeight;
+    atEnd.current = true;
+  }, [talk]);
+  useEffect(() => {
+    // the newest exchange stays in view when the sheet grows or shrinks, or the text wraps anew once
+    // the font is in, unless the owner scrolled up
+    const el = box.current;
+    if (!el) return;
+    const keep = new ResizeObserver(() => {
+      if (atEnd.current) el.scrollTop = el.scrollHeight;
+    });
+    keep.observe(el);
+    for (const x of el.children) keep.observe(x);
+    return () => keep.disconnect();
   }, [talk]);
   if (!talk.length) return null;
   const time = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   return (
-    <div className="log talk" ref={box}>
+    <div
+      className="log talk"
+      ref={box}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight < 4;
+      }}
+    >
       {talk.map((x) => (
         <div key={x.id} className={x.undone ? 'exchange undone' : 'exchange'}>
           <div className="ev ev-say by-owner">

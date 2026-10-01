@@ -302,7 +302,8 @@ the owner's language (`src/core/locale.ts`).
   confirmation, since the conversation shows it. The same commands can be typed in the
   Koordinator's sheet. What the owner said and the Koordinator's confirmation go into the log of
   the card that was open, and "Zurückgenommen." when taken back; with no card open, the sheet
-  shows the conversation. Talk to an open idea is the exception: its conversation already holds it.
+  shows the conversation, newest last, in all the height the rest of the sheet leaves free (360px
+  at least, unless it is shorter; with less room the sheet scrolls). Talk to an open idea is the exception: its conversation already holds it.
 - **Looked-up questions** — a question that needs reading ("Was würde der Agent hier machen, wenn
   ich starte?", what the plan says, how something works) the quick turn does not answer: it
   acknowledges it ("Ich schaue im Plan nach.") and passes it on. A question about a project or one
