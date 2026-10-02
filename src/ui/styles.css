@@ -136,6 +136,7 @@ button.pill:hover { box-shadow: var(--lift); }
 @keyframes pulse-in { 0% { box-shadow: 0 0 0 0 rgba(245,158,11,.55); } 70%, 100% { box-shadow: 0 0 0 10px rgba(245,158,11,0); } }
 .canvas-menu a { position: relative; padding-right: 40px; }
 .canvas-menu a .waits { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); }
+#bar > svg { flex: none; margin-right: 4px; }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .kpill .n { background: var(--planned); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
@@ -154,6 +155,7 @@ button.pill:hover { box-shadow: var(--lift); }
 .hint { color: var(--muted); font-size: 12px; }
 #keys { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .empty { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; }
+#splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); animation: fade .3s ease-out; }
 
 #edges { position: fixed; inset: 0; pointer-events: none; z-index: 15; }
 .edge { position: absolute; pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 6px;

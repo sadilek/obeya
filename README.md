@@ -1,4 +1,9 @@
-# Obeya
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="src/ui/logo/wordmark-dark.svg">
+    <img src="src/ui/logo/wordmark.svg" alt="Obeya" height="48">
+  </picture>
+</h1>
 
 A spatial workspace for directing AI coding agents the way an engineering director directs a
 team. Every bugfix, feature and project is a card on one canvas. Agents do the work in the
