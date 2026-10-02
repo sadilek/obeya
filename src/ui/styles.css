@@ -516,4 +516,5 @@ button.link:hover { text-decoration: underline; }
 .card.chip .play { bottom: 19px; }
 .card:hover .play { opacity: 1; pointer-events: auto; }
 .card .play:hover { filter: brightness(1.1); }
+.card .play.archive { padding: 0; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 .card.dragging .play, .card.lifted .play { opacity: 0; pointer-events: none; }

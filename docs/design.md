@@ -120,8 +120,9 @@ An idea is thought through on its card before anything is planned; no worker run
 5. Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its
    work is on main and may finish what was waiting for that (a data migration, say) before its
    session ends.
-6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card, or
-   all finished ones at once in the archive). The archive (button or `A`) lists archived cards
+6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card or
+   its archive button on the canvas, shown while the pointer is on it, or all finished ones at
+   once in the archive). The archive (button or `A`) lists archived cards
    by day, the most recently archived first, as small cards on a timeline with the time they were
    archived; one unfolds from its card as on the canvas and can go back to the place it had.
 7. A project ends when its plan doc goes (done, deleted): it moves into the
