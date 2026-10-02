@@ -396,7 +396,9 @@ the owner's language (`src/core/locale.ts`).
   the canvas's last 14 days (at most 60 steps), with times.
 - **Voice out** — the default system voice speaks the confirmation, which the browser plays: a
   JXA sidecar keeps the macOS synthesizer loaded (about half a second a sentence), with `say` as
-  the fallback.
+  the fallback. While a demo video plays nothing is said (the owner often gives a command and
+  turns to the next demo); a video that starts cuts off what is being said. The written
+  confirmation still shows.
 - **Demos** — the `demo` skill's pipeline (scripted walkthrough, narrated video, report). The
   worker records once the change is committed and checked, as the adapter says how to run the
   app (Obeya: a scratch instance from the worktree, staged by `scripts/scratch-obeya.ts` from a
