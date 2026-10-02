@@ -96,8 +96,12 @@ Linux, with voices each user chooses. W1–W2 are the OKE part, W3–W7 the open
     request, with its size shown first.
   - *macOS `say`*: an extra option on a Mac, free, clearly more synthetic. Never the only way to
     a feature.
-  - Every generated voice, a clone included, is labelled as such in the video (opening caption)
-    and on the shared page. Videos rendered before W4 stay as they are.
+  - Every generated voice, a clone included, is labelled, unobtrusively and in the narration
+    language. In the video: a small badge in the lower corner during the first scene, drawn by
+    the overlay like the other captions ("KI-Stimme" for a stock voice, "KI-Stimme, geklont von
+    <name>" for a clone), not a mark that stays the whole time. On the shared page and the report:
+    one line under the video ("Gesprochen von einer KI-Stimme (Piper)" or "… geklont von <name>").
+    Videos rendered before W4 stay as they are.
 - **Windows and Linux.** Recording with Chrome through Playwright and cutting with ffmpeg on all
   three platforms; listening back with faster-whisper where mlx is missing, and optional when no
   Whisper is installed (the report says the clips were not checked). Whether Obeya itself runs on
@@ -130,7 +134,8 @@ Open questions on demos in pull requests and cloned voices go when W2 and W4 lan
 - [ ] **W4:** Voices as providers. Own service (command or HTTP, templates for Gemini, OpenAI,
   ElevenLabs, Azure), Piper as the local default and Qwen3-TTS as an option, both installed by
   Obeya on request, `say` as an extra on a Mac; the choice in settings; generated voices labelled
-  in the video and on the page. Daniel's clone moves to a command provider. After W3.
+  (a badge in the first scene, a line under the video on the page and the report). Daniel's
+  clone moves to a command provider. After W3.
 - [ ] **W5:** Demos on Windows and Linux. Recording and cutting on all three platforms,
   faster-whisper for listening back, listening back optional; checked on a Linux machine and a
   Windows one. After W3; independent of W4.
