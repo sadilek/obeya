@@ -285,10 +285,8 @@ function DemoBlock({ on }: { on: boolean }) {
           <span className="hint">{d.voice}</span>
           <select
             value={draft.voice}
-            onChange={(e) => {
-              const voice = e.target.value as VoiceKind;
-              setDraft({ language: draft.language, voice, ...(draft.ownVoice && !STOCK_ONLY.includes(voice) ? { ownVoice: true } : {}) });
-            }}
+            // another voice starts with its own fields, and is nobody's own until ticked
+            onChange={(e) => setDraft({ language: draft.language, voice: e.target.value as VoiceKind })}
           >
             {VOICE_GROUPS.map(({ group, voices }) => (
               <optgroup key={group} label={d.groups[group]}>
