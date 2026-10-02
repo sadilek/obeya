@@ -270,9 +270,18 @@ the owner's language (`src/core/locale.ts`).
   start nothing long, stop background work they can start again, and pause at the next safe point
   by ending their turn (no nudge, no question to the owner; the card's log says it paused). A
   resumed worker hears that what ran was stopped (exit code 137) and goes on. A worker that waits for the restart to finish its landed work is not
-  in a turn and does not hold it up. While a restart waits, the bar shows it ("Neustart wartet auf
-  N Agenten", until when at most); hovering names why and the cards it waits for, and "Jetzt neu
-  starten" (`POST /api/restart`) has it go ahead at once, its hover text saying what that cuts off.
+  in a turn and does not hold it up. The restart also waits while the owner watches a demo video or
+  dictates in an open page (from the press until the command's undo window is over), past the
+  15 minutes too: the page tells the server over its WebSocket whenever that starts or stops, and a
+  page that closes lets go. While a restart waits, the bar shows it ("Neustart wartet auf
+  N Agenten", "… auf dein Video", "… auf dein Diktat"; until when at most, while only agents hold
+  it); hovering names why and the cards it waits for, and "Jetzt neu starten" (`POST /api/restart`)
+  has it go ahead at once, its hover text saying what that cuts off. The page that reloads keeps
+  what was open: just before the reload it writes down (per tab, in `sessionStorage`) the open card,
+  project (its plan doc read or not) and sheet, the scroll position of every scrolled box in them,
+  the drafts in their text fields and where the demo video stood; the new page opens them again
+  without flights or unfold and puts positions and drafts back while their content loads
+  (`src/ui/keep.ts`). The camera is kept anyway.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges whether running it next to
   the cards in progress likely ends in merge conflicts. Cards queued before it count too: a card
@@ -492,6 +501,10 @@ the repository; the copy on the project is only for the archive).
   restarts after the waiting rule came in). An agent knows where its work can stop; a lock it sets
   before long commands would hold restarts off just as well but rests on every agent remembering
   it, and restarting each worker on its own between steps is impossible with one server process.
+- A restart waits for what the owner does in the page only where a restart would destroy it
+  (2026-10-02): a demo video that plays, a dictation until its command can no longer be taken back.
+  Everything else (an open card, a sheet scrolled halfway, a draft) is kept across the reload
+  instead of holding the restart off, so new code is not held back by a page that is merely open.
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
   to an idea is the exception: it only adds to a conversation.

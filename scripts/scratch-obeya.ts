@@ -3,13 +3,15 @@
 // and after), and the cards in the states the demo needs. Running it again stages afresh, so a demo
 // calls it before every take.
 //
-//   bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit>] [--real-workers]
+//   bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit>] [--real-workers] [--restarts]
 //   bun scripts/scratch-obeya.ts --stop <port>
 //
 // Prints one JSON line, also kept in <dir>/staged.json:
 //   { "url", "port", "dir", "canvas", "pid", "log", "cards": { "<key>": "<card id>" } }
 //
-// The server runs with --dev (it does not restart when the checkout commits) and, unless
+// The server runs with --dev (it does not restart when the checkout commits; with --restarts it is
+// supervised like a real Obeya and restarts once the configuration is saved, PUT /api/config, and
+// for commits on this checkout when it runs this checkout's code) and, unless
 // --real-workers, with --idle-workers: a started card is in progress without an agent. The
 // Koordinator and voice are real. --code <commit> runs that commit's code (`git archive`, with
 // this checkout's node_modules) in <dir>/code.
@@ -108,7 +110,7 @@ if (stopPort) {
 }
 
 const file = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.match(/^--(port|code|dir)$/));
-if (!file) fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit>] [--real-workers] | --stop <port>');
+if (!file) fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit>] [--real-workers] [--restarts] | --stop <port>');
 const stage = JSON.parse(readFileSync(file!, 'utf8')) as Stage;
 const port = Number(opt('port') ?? stage.port ?? fail('no port: give "port" in the stage file or --port'));
 const dir = resolve(opt('dir') ?? stage.dir ?? scratchDir(port));
@@ -151,11 +153,12 @@ if (idle && !canIdle) console.error(`scratch-obeya: ${commit} has no --idle-work
 // the server, in its own process group so --stop ends it with everything it started
 const log = join(dir, 'server.log');
 const out = openSync(log, 'a');
-// not supervised: a scratch Obeya never restarts itself
+// not supervised: a scratch Obeya restarts itself only when asked to
+const supervised = args.includes('--restarts');
 const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')), OBEYA_HOME: home };
 const server = spawn(
   process.execPath,
-  ['src/server/main.ts', repo, '--adapter', stage.adapter ?? 'obeya', '--port', String(port), '--dev', ...(stage.clones ? ['--clones', String(stage.clones)] : []), ...(idle && canIdle ? ['--idle-workers'] : [])],
+  ['src/server/main.ts', repo, '--adapter', stage.adapter ?? 'obeya', '--port', String(port), ...(supervised ? [] : ['--dev']), ...(stage.clones ? ['--clones', String(stage.clones)] : []), ...(idle && canIdle ? ['--idle-workers'] : [])],
   { cwd: code, env, detached: true, stdio: ['ignore', out, out] },
 );
 server.unref();

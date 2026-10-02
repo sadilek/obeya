@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CardAction, ServerMessage } from '../core/types';
+import type { CardAction, ClientMessage, ServerMessage } from '../core/types';
 import type { Board } from './board';
 import { CanvasRuntime } from './canvas';
 import type { Command } from './commands';
@@ -408,6 +408,40 @@ describe('a restart that waits', () => {
     expect(await (await post('/api/restart', '')).json()).toEqual({ restarting: true });
     await until(() => gone === 1);
     ws.close();
+  });
+
+  test('waits while the owner watches a video or dictates in an open page, and goes once that page lets go or closes', async () => {
+    let gone = 0;
+    const restarter = new Restarter({ busy: () => [], go: () => gone++, patienceMs: 0, intervalMs: 10 });
+    server.stop(true);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0, false, undefined, restarter);
+    const messages: ServerMessage[] = [];
+    const connect = async () => {
+      const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
+      ws.onmessage = (e) => messages.push(JSON.parse(e.data));
+      await until(() => ws.readyState === WebSocket.OPEN);
+      return ws;
+    };
+    const watching = await connect();
+    const dictating = await connect();
+    const hold = (ws: WebSocket, hold: ClientMessage['hold']) => ws.send(JSON.stringify({ type: 'hold', hold } satisfies ClientMessage));
+    const last = () => messages.filter((m): m is Extract<ServerMessage, { type: 'restart' }> => m.type === 'restart').at(-1)!.restart;
+    hold(watching, ['video']);
+    hold(dictating, ['voice']);
+    await until(() => restarter['holds'].size === 2);
+
+    // no worker is busy and the patience is out: only the owner holds it off
+    restarter.request('code');
+    await until(() => last()?.owner.length === 2);
+    expect(last()).toMatchObject({ cards: [], elsewhere: 0, owner: ['video', 'voice'] });
+    hold(watching, []);
+    await until(() => last()?.owner.length === 1);
+    expect(last()!.owner).toEqual(['voice']);
+    await Bun.sleep(50);
+    expect(gone).toBe(0);
+    dictating.close();
+    await until(() => gone === 1);
+    watching.close();
   });
 });
 

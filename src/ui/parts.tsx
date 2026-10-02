@@ -148,12 +148,13 @@ export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; 
   );
 }
 
-/** A restart that waits for workers: for whom and until when (on hover), and a button that has it go ahead now. */
+/** A restart that waits for workers or the owner: for whom and until when (on hover), and a button that has it go ahead now. */
 export function RestartPill({ restart, items }: { restart: PendingRestart; items: Item[] }) {
   const [going, setGoing] = useState(false);
   const n = restart.cards.length + restart.elsewhere;
   const until = new Date(restart.deadline).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const titles = restart.cards.map((id) => plain(items.find((i) => i.id === id)?.title ?? id));
+  const owner = restart.owner;
   const now = () => {
     setGoing(true);
     api.restartNow().then(
@@ -170,24 +171,33 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
   return (
     <div className="pill restart" id="restart">
       <span className="spin">↻</span>
-      <span>{t.restart.pill(n)}</span>
-      <span className="hint">{t.restart.until(until)}</span>
+      <span>{t.restart.pill(n, owner)}</span>
+      {/* the deadline does not cut the owner off */}
+      {!owner.length && <span className="hint">{t.restart.until(until)}</span>}
       <button onClick={now}>
         {t.restart.now}
         <span className="tip risk" role="tooltip">
-          {t.restart.nowRisk}
+          {n ? t.restart.nowRisk : t.restart.nowOwner}
         </span>
       </button>
       <div className="tip why" role="tooltip">
         <p>{t.restart.reason[restart.reason]}</p>
-        <p>{t.restart.waits}</p>
-        <ul>
-          {titles.map((x, i) => (
-            <li key={i}>{x}</li>
-          ))}
-          {restart.elsewhere > 0 && <li className="hint">{t.restart.elsewhere(restart.elsewhere)}</li>}
-        </ul>
-        <p className="hint">{t.restart.deadline(until)}</p>
+        {owner.map((h) => (
+          <p key={h}>{t.restart.owner[h]}</p>
+        ))}
+        {n > 0 && (
+          <>
+            <p>{t.restart.waits}</p>
+            <ul>
+              {titles.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+              {restart.elsewhere > 0 && <li className="hint">{t.restart.elsewhere(restart.elsewhere)}</li>}
+            </ul>
+          </>
+        )}
+        <p className="hint">{t.restart.kept}</p>
+        {n > 0 && <p className="hint">{owner.length ? t.restart.deadlineOwner(until) : t.restart.deadline(until)}</p>}
       </div>
     </div>
   );

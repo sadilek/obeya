@@ -117,3 +117,37 @@ test('the owner has a waiting restart go ahead now, once', async () => {
   await wait(50);
   expect(gone).toBe(1);
 });
+
+test('a restart waits while the owner watches a video or dictates, past its patience too, and not for a page that let go', async () => {
+  let gone = 0;
+  let changes = 0;
+  const r = new Restarter({ busy: () => [{ canvas: 'c', card: 'a' }], go: () => gone++, patienceMs: 30, intervalMs: 10 });
+  r.onChange(() => changes++);
+  r.hold('page1', ['video']);
+  r.hold('page2', ['voice', 'video']);
+  r.hold('page3', ['voice']);
+  r.hold('page3');
+  r.request('code');
+  expect(r.due()).toMatchObject({ waiting: [{ canvas: 'c', card: 'a' }], owner: ['video', 'voice'] });
+  await wait(80);
+  expect(gone).toBe(0);
+  r.hold('page2', ['voice']);
+  expect(r.due()!.owner).toEqual(['video', 'voice']);
+  r.hold('page1', []);
+  expect(r.due()!.owner).toEqual(['voice']);
+  expect(changes).toBe(2);
+  r.hold('page2');
+  await wait(50);
+  expect(gone).toBe(1);
+});
+
+test('a restart with no worker busy waits for the owner alone', async () => {
+  let gone = 0;
+  const r = new Restarter({ busy: () => [], go: () => gone++, intervalMs: 10 });
+  r.hold('page', ['voice']);
+  r.request('config');
+  expect(r.due()).toMatchObject({ waiting: [], owner: ['voice'] });
+  r.hold('page');
+  await wait(50);
+  expect(gone).toBe(1);
+});

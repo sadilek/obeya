@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ConfigView, CardAction, CardEvent, CardPatch, Item, NewCard, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, CardEvent, CardPatch, Item, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -110,6 +110,29 @@ export function onSpeak(fn: (cardId: string | undefined, audio: string) => void)
   return () => speakListeners.delete(fn);
 }
 
+// What the owner does in this page that a restart would cut off, by who holds it (the demo video,
+// push-to-talk); the server hears every change, and again after a reconnect.
+const holds = new Map<string, OwnerHold>();
+let socket: WebSocket | null = null;
+const sendHolds = () => {
+  if (socket?.readyState !== WebSocket.OPEN) return;
+  socket.send(JSON.stringify({ type: 'hold', hold: [...new Set(holds.values())] } satisfies ClientMessage));
+};
+/** Holds a due restart off while the owner watches (`video`) or dictates (`voice`); `null` lets go. */
+export function holdRestart(by: string, what: OwnerHold | null) {
+  if ((holds.get(by) ?? null) === what) return;
+  if (what) holds.set(by, what);
+  else holds.delete(by);
+  sendHolds();
+}
+
+// Whoever has something to keep across the reload a restart brings writes it down here first.
+const reloadListeners = new Set<() => void>();
+export function beforeReload(fn: () => void): () => void {
+  reloadListeners.add(fn);
+  return () => reloadListeners.delete(fn);
+}
+
 /**
  * The live canvas: the server pushes a snapshot on connect and after every change, the restart that
  * waits, and how many cards on each canvas need the owner.
@@ -126,16 +149,20 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
     let closed = false;
     let server: string | undefined;
     const connect = () => {
-      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${at('/ws')}`);
+      ws = socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${at('/ws')}`);
       ws.onopen = () => {
         setOnline(true);
         delay = 500;
+        sendHolds();
       };
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data) as ServerMessage;
-        // a new server process may run new code: the page loads it
+        // a new server process may run new code: the page loads it, and keeps what was open
         if (msg.type === 'hello') {
-          if (server && server !== msg.server) location.reload();
+          if (server && server !== msg.server) {
+            for (const fn of reloadListeners) fn();
+            location.reload();
+          }
           server = msg.server;
         } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
         else if (msg.type === 'restart') setRestart(msg.restart);

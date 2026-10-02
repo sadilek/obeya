@@ -3,7 +3,7 @@
 // go with the next recording.
 
 import { useEffect, useRef, useState } from 'react';
-import { api } from './api';
+import { api, holdRestart } from './api';
 import { AttachButton, type ShotInput, ShotStrip } from './shots';
 import { t } from './strings';
 
@@ -115,6 +115,12 @@ export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void, s
       try {
         const h = await api.voice(new Blob(r.chunks, { type: r.recorder.mimeType }), r.target, images);
         if (!h.unheard) shotsRef.current.clear(images);
+        // a restart within the undo window would lose the command
+        if (h.token && h.undoMs) {
+          const by = `undo-${h.token}`;
+          holdRestart(by, 'voice');
+          setTimeout(() => holdRestart(by, null), h.undoMs + 1000);
+        }
         onHeard(h);
       } catch {
         onHeard({ confirm: t.voice.failed });
@@ -125,6 +131,11 @@ export function usePushToTalk(where: () => Where, onHeard: (h: Heard) => void, s
   }
 
   useEffect(() => () => void mic.current?.then((m) => m.stream.getTracks().forEach((tr) => tr.stop())), []);
+  // a restart waits while the owner speaks and Obeya reads it
+  useEffect(() => {
+    holdRestart('voice', phase === 'idle' ? null : 'voice');
+    return () => holdRestart('voice', null);
+  }, [phase]);
   return { phase, level, flat, start, stop };
 }
 

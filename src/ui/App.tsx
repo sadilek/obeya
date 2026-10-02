@@ -4,13 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type Item, needsYou, type PendingRestart } from '../core/types';
-import { api, ApiError, onSpeak, setCanvas, useCanvas } from './api';
+import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
 import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
 import { KoordinatorSheet } from './koordinator';
+import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './keep';
 import { Sign, Wordmark } from './logo';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
@@ -56,6 +57,14 @@ const SHEET_W = 410;
 const FLY_MS = 130;
 const UNFOLD_MS = 170;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** What `get` returns once it returns something, within `ms`. */
+async function soon<T>(get: () => T | undefined, ms = 3000): Promise<T | undefined> {
+  for (const until = Date.now() + ms; Date.now() < until; await sleep(100)) {
+    const v = get();
+    if (v) return v;
+  }
+  return get();
+}
 const camKey = (canvasId: string) => `obeya-cam-${canvasId}`;
 
 function Canvas({
@@ -122,6 +131,7 @@ function Canvas({
     setCamState(c);
   }, []);
   const fly = (to: Cam, ms?: number) => flyTo(camRef.current, to, setCam, ms);
+  const flyOrJump = async (to: Cam, ms: number, jump: boolean) => (jump ? setCam(to) : fly(to, ms));
   useEffect(() => {
     document.documentElement.style.setProperty('--s', String(cam.s));
     if (focusRef.current) return;
@@ -231,7 +241,8 @@ function Canvas({
     e.timer = setTimeout(() => flushEdit().catch(console.error), 400);
   };
 
-  async function open(i: Item) {
+  /** Unfolds the card `i`; `quick` without the flight and the unfold, as after a reload. */
+  async function open(i: Item, quick = false) {
     const f = focusRef.current;
     if (f?.type === 'card') return;
     if (i.kind === 'project') return openProject(i);
@@ -240,7 +251,7 @@ function Canvas({
     setOpened(i.archivedAt ? i : null);
     // bring the card to the middle at a readable scale first, so the unfold starts where the eye is;
     // an archived card is not on the canvas and unfolds from its row in the archive
-    if (!i.archivedAt) await fly(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), FLY_MS);
+    if (!i.archivedAt) await flyOrJump(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), FLY_MS, quick);
     const el = fromEl(i.id, !!f);
     const panel = panelRef.current;
     if (!el || !panel) return;
@@ -248,7 +259,7 @@ function Canvas({
     flushSync(() => setOpenId(i.id));
     panel.style.setProperty('--c', `var(--${i.state})`);
     panel.className = '';
-    panel.style.setProperty('--unfold', `${UNFOLD_MS}ms`);
+    panel.style.setProperty('--unfold', `${quick ? 0 : UNFOLD_MS}ms`);
     Object.assign(panel.style, rect(r), { display: 'block', borderRadius: '14px' });
     panel.getBoundingClientRect();
     panel.classList.add('anim');
@@ -257,7 +268,7 @@ function Canvas({
     unfolded.current = true;
     setDim(true);
     setSheetOn(false);
-    await sleep(UNFOLD_MS);
+    if (!quick) await sleep(UNFOLD_MS);
     panel.classList.add('ready');
     const title = panel.querySelector<HTMLInputElement>('input.p-title');
     if (title && !title.value) title.focus();
@@ -323,7 +334,7 @@ function Canvas({
     recover();
   }
 
-  async function openProject(p: Item) {
+  async function openProject(p: Item, quick = false) {
     const f = focusRef.current;
     setFocus({ type: 'project', id: p.id, prevCam: f?.type === 'project' ? f.prevCam : camRef.current });
     setSheetId(p.id);
@@ -333,11 +344,11 @@ function Canvas({
     setAOn(false);
     setCOn(false);
     // an archived project is not on the canvas: its sheet takes the archive's place
-    if (!p.archivedAt) await fly(camFor(bounds(p), 40, SHEET_W, 60), 700);
+    if (!p.archivedAt) await flyOrJump(camFor(bounds(p), 40, SHEET_W, 60), 700, quick);
   }
 
   /** Reads the project's plan doc in the sheet, at the workstream `mark`; `null` goes back to the workstreams. */
-  async function readPlan(p: Item, r: { mark?: string } | null) {
+  async function readPlan(p: Item, r: { mark?: string } | null, quick = false) {
     if (focusRef.current?.type === 'card') await closeCard();
     const f = focusRef.current;
     setFocus({ type: 'project', id: p.id, prevCam: f?.type === 'project' ? f.prevCam : camRef.current });
@@ -348,7 +359,7 @@ function Canvas({
     setAOn(false);
     setCOn(false);
     // the project stays in view beside the wider sheet
-    await fly(camFor(bounds(p), 40, r ? readingWidth() + 30 : SHEET_W, 60), 700);
+    await flyOrJump(camFor(bounds(p), 40, r ? readingWidth() + 30 : SHEET_W, 60), 700, quick);
   }
 
   async function closeProject() {
@@ -385,6 +396,44 @@ function Canvas({
     await open(card);
   }
   const createAtCentre = () => createAt(toWorld(camRef.current, innerWidth / 2, innerHeight / 2));
+
+  // ---------------------------------------------------------------- kept across a restart
+  // a restart reloads the page: what was open comes back as it was, without the flights
+  const keepNow = useRef(() => {});
+  keepNow.current = () => {
+    flushEdit().catch(console.error);
+    const f = focusRef.current;
+    const project = f?.type === 'project' ? f.id : f?.type === 'card' ? f.project?.id : undefined;
+    const sheet: SideSheet | undefined = kOn ? 'koordinator' : aOn ? 'archive' : cOn ? 'config' : undefined;
+    keep(sessionStorage, snapshot.canvas.id, {
+      at: Date.now(),
+      ...(f?.type === 'card' ? { card: f.id } : {}),
+      ...(project ? { project, reading: !!readingRef.current } : {}),
+      ...(sheet ? { sheet } : {}),
+      ...collect(),
+    });
+  };
+  useEffect(() => beforeReload(() => keepNow.current()), []);
+  useEffect(() => {
+    const k = takeKept(sessionStorage, snapshot.canvas.id);
+    if (k) reopen(k).catch(console.error);
+  }, []);
+  async function reopen(k: Kept) {
+    if (k.sheet === 'koordinator') setKOn(true);
+    else if (k.sheet === 'archive') setAOn(true);
+    else if (k.sheet === 'config') setCOn(true);
+    let gone: Item[] | undefined;
+    const find = async (id?: string) => (id ? (byId(id) ?? (gone ??= await api.archived().catch(() => [])).find((i) => i.id === id)) : undefined);
+    const p = await find(k.project);
+    // an archived project's sheet lists its workstreams from the archive
+    if (gone) setArchived(gone);
+    // the doc opens at its top, and the kept position puts it back where it was
+    if (p) await (k.reading ? readPlan(p, {}, true) : openProject(p, true));
+    const i = await find(k.card);
+    // an archived card unfolds from its row in the archive or the project's sheet, once that has loaded
+    if (i && (!i.archivedAt || (await soon(() => fromEl(i.id, !!p))))) await open(i, true);
+    restore(k);
+  }
 
   // ---------------------------------------------------------------- acknowledgement with undo
   const [ack, setAck] = useState<{ text: string; undo?: () => unknown } | null>(null);

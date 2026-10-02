@@ -60,7 +60,7 @@ if (!values.dev && !process.env.OBEYA_SUPERVISED) {
     const code = await child.exited;
     if (code === RESTART_FROM_FILE) {
       // the owner saved the configuration of canvases given on the command line: the file is it now
-      args = [args[0]!, '--config', configFile, '--port', values.port, '--permission-mode', values['permission-mode']];
+      args = [args[0]!, '--config', configFile, '--port', values.port, '--permission-mode', values['permission-mode'], ...(values['idle-workers'] ? ['--idle-workers'] : [])];
       console.log(`Obeya: starting again with ${configFile}`);
     } else if (code === RESTART) console.log('Obeya: starting again with the new code');
     else process.exit(code);
