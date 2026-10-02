@@ -180,7 +180,7 @@ export const t = {
     reject: 'Verwerfen',
     cancel: 'Abbrechen',
     preferences: 'Deine Präferenzen',
-    preferencesHint: 'Alle Agenten halten sich daran. Was du hier einträgst, gilt sofort.',
+    preferencesHint: 'Alle Agenten halten sich daran. Was du hier einträgst oder dem Koordinator mit „Merk dir: …“ sagst, gilt sofort.',
     edit: 'Zum Bearbeiten klicken',
     remove: 'Entfernen',
     add: 'Hinzufügen',
