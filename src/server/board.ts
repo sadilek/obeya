@@ -19,6 +19,7 @@ import {
   type Idea,
   type Item,
   type NewCard,
+  type PreferenceState,
   type ProjectHistory,
   type Question,
   STATES,
@@ -432,22 +433,24 @@ export class Board {
       this.keepDocs(docs);
       items = toItems(this.store.cards(this.canvas.id), docs, this.home);
     }
-    this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id), talk: this.store.talk(this.canvas.id, SHEET_TALK, true) };
+    this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id, ['proposed', 'active']), talk: this.store.talk(this.canvas.id, SHEET_TALK, true) };
     return this.cache;
   }
 
   // ---------------------------------------------------------------- preferences
 
-  preferences() {
-    return this.store.preferences(this.canvas.id);
+  /** The canvas's preferences in the given states, or all of them (rejected proposals too). */
+  preferences(...states: PreferenceState[]) {
+    return this.store.preferences(this.canvas.id, states.length ? states : undefined);
   }
 
-  /** The owner's preferences as agents read them; empty when there are none. */
+  /** The owner's active preferences as agents read them; empty when there are none. */
   preferencesText(): string {
-    const p = this.preferences();
+    const p = this.preferences('active');
     return p.length ? `The owner's standing preferences (follow them unless the card says otherwise):\n${p.map((x) => `- ${x.text}`).join('\n')}` : '';
   }
 
+  /** A rule the owner writes: active at once. */
   addPreference(text: string, cardId: string | null = null): number {
     const clean = checkPreference(text);
     const id = this.store.addPreference(this.canvas.id, clean, cardId);
@@ -455,9 +458,40 @@ export class Board {
     return id;
   }
 
+  /** A learned rule, or a learned change to the active rule `replaces`: it waits for the owner. */
+  proposePreference(text: string, occasion: { cardId?: string; quote?: string; review?: boolean }, replaces?: number): number {
+    const clean = checkPreference(text);
+    const id = this.store.addPreference(this.canvas.id, clean, occasion.cardId ?? null, {
+      quote: occasion.quote?.trim().slice(0, 2000) || undefined,
+      review: occasion.review,
+      replaces,
+    });
+    this.changed();
+    return id;
+  }
+
   setPreference(id: number, text: string | null) {
     if (!this.store.setPreference(this.canvas.id, id, text === null ? null : checkPreference(text)))
       throw new BadRequest('unknownPreference', 'unknown preference');
+    this.changed();
+  }
+
+  /** The owner accepts a proposal, as it is or in their own words; a change takes the place of the rule it changes. */
+  acceptProposal(id: number, text?: string) {
+    const p = this.preferences('proposed').find((x) => x.id === id);
+    if (!p) throw new BadRequest('unknownPreference', 'no such proposal');
+    const clean = text === undefined ? p.text : checkPreference(text);
+    this.store.db.transaction(() => {
+      if (clean !== p.text) this.store.setPreference(this.canvas.id, id, clean);
+      if (p.replaces !== undefined && this.preferences('active').some((x) => x.id === p.replaces)) this.store.setPreference(this.canvas.id, p.replaces, null);
+      this.store.decideProposal(this.canvas.id, id, 'active');
+    })();
+    this.changed();
+  }
+
+  /** The owner rejects a proposal; it is kept, so the same one does not come back. */
+  rejectProposal(id: number) {
+    if (!this.store.decideProposal(this.canvas.id, id, 'rejected')) throw new BadRequest('unknownPreference', 'no such proposal');
     this.changed();
   }
 

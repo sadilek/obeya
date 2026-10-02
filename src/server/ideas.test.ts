@@ -237,7 +237,7 @@ describe('an idea', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Exporte immer als CSV.' });
     await settle();
-    const learn = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'remember'))!;
+    const learn = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'propose'))!;
     expect(learn.inbox[0]).toContain('words in the discussion of an idea: Exporte immer als CSV.');
   });
 

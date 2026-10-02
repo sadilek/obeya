@@ -149,6 +149,15 @@ button.pill:hover { box-shadow: var(--lift); }
 .prefs .pref-del { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0 2px; }
 .prefs .pref-del:hover { color: #dc2626; }
 .prefs .p-error { flex-basis: 100%; margin: 0; }
+.prefs .occasion { flex-basis: 100%; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.prefs .occasion .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+.prefs .occasion q { font-style: italic; }
+.prefs .pref-actions { flex-basis: 100%; display: flex; gap: 6px; margin-top: 2px; }
+.prefs .pref-actions .btn { padding: 5px 11px; font-size: 12px; border-radius: 8px; }
+.proposals li { background: color-mix(in srgb, var(--proposal) 9%, var(--chip)); border-left: 3px solid var(--proposal); }
+.proposals li:hover { background: color-mix(in srgb, var(--proposal) 9%, var(--chip)); }
+.proposals .pref-text { cursor: default; font-weight: 600; }
+.kpill .n.prop { background: var(--proposal); }
 .pref-new { margin-top: 8px; }
 .pref-new textarea { min-height: 38px; font-size: 13px; }
 #attention .n { background: var(--waiting); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }

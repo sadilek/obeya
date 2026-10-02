@@ -56,7 +56,9 @@ decisions are made in front of the wall.
     queues them.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
   ("billing changes always get the Codex review", "labels: precise over short"). Shared by all
-  agents, maintained by the Chief of Staff.
+  agents, maintained by the Chief of Staff. A learned rule, or a learned change to a rule, is a
+  proposal until the owner accepts it; agents follow active rules only. A rule the owner writes
+  is active at once.
 
 ## Ideas
 
@@ -307,8 +309,14 @@ the owner's language (`src/core/locale.ts`).
   while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
   without a project, and after each owner answer, note or feedback it decides whether a lasting
-  preference was stated and records it as a rule every agent gets. Its sheet (button or `K`)
-  shows the queue, the cards in progress and the preferences.
+  preference was stated and proposes it as a rule (the card's log says „Schlägt vor: …“). Its
+  sheet (button or `K`) shows the queue, the cards in progress and the preferences; open
+  proposals stand above the rules with their occasion (the card and the owner's words, or the
+  Rückschau) and, for a change, the rule it changes. The owner accepts one, edits it before
+  accepting, or rejects it; an accepted change takes the place of its rule. Rejected proposals
+  are kept (state `rejected` in `preferences`), so the learner can see them. The Koordinator
+  button counts open proposals (violet, beside the grey count of queued cards); they do not
+  count among the cards that need the owner and do not show on cards.
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
   audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
   loaded and transcribes in German with the canvas's titles as vocabulary
