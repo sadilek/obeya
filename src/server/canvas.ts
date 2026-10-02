@@ -46,8 +46,6 @@ export interface CanvasDeps {
   config?: Config;
   /** How long the owner stops typing in a card before what they wrote counts as written. */
   writingPauseMs?: number;
-  /** How long a shared demo waits for the owner to take it back. */
-  shareHoldMs?: number;
 }
 
 export interface RepoRuntime {
@@ -200,7 +198,6 @@ export class CanvasRuntime {
         const r = this.repoOf(card);
         return r.share ? { command: r.share, cwd: r.info.path } : null;
       },
-      ...(deps.shareHoldMs !== undefined ? { holdMs: deps.shareHoldMs } : {}),
     });
     this.sharing.resume();
   }
@@ -567,7 +564,6 @@ export class CanvasRuntime {
     for (const stop of this.stops) stop();
     for (const r of this.repos) r.workers.shutdown();
     this.explorers.shutdown();
-    this.sharing.shutdown();
   }
 }
 

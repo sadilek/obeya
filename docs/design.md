@@ -548,11 +548,10 @@ the owner's language (`src/core/locale.ts`).
   done (archived ones too); HTML artifacts and prototypes are not shared. Where it goes depends on
   the repository's share target: the command line in its configuration (`share`, see
   Configuration), else the command its adapter names (`demo.share`; Acme). With a target, the
-  demo is published on a page. Publishing goes outside Obeya,
-  so "Teilen" holds 8 s (`SHARE_HOLD_MS`) with "Doch nicht" on the card before anything is
-  uploaded. Then the card shows the link (open, copy) and "Nicht mehr teilen", which withdraws the
-  page. A card that gets a new demo after sharing says the page still shows the earlier one and
-  offers "Neu teilen"; nothing is replaced on its own. The page has a title and two to five
+  demo is published on a page. "Teilen" publishes right away, without a hold to take it back:
+  "Nicht mehr teilen" withdraws the page just as easily (until 2026-10-02 it held 8 s with "Doch
+  nicht"). Once the page is up, the card shows the link (open, copy) and "Nicht mehr teilen". A
+  card that gets a new demo after sharing says the page still shows the earlier one and offers "Neu teilen"; nothing is replaced on its own. The page has a title and two to five
   sentences for colleagues who have never seen Obeya: where the repository has a target, `ready_for_review`
   takes them with a video demo (`demo.page`), and for a demo handed over before that a short
   read-only session writes them from the worker's last summary when the owner shares, kept with

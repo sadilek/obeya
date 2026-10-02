@@ -1,6 +1,6 @@
 // Sharing a card's video demo with colleagues: a page outside Obeya, published by the command the
-// repository's adapter names (`demo.share`). Obeya holds a share a few seconds for the owner to
-// take it back, writes the page's text when the worker did not, and runs the command:
+// repository's adapter names (`demo.share`). Obeya writes the page's text when the worker did not,
+// and runs the command:
 // `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`.
 // Once the card has a pull request, its description links the page and the page links it. The
 // command comes from the repository's configuration, else from its adapter. A repository with
@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
-import { type Demo, type DemoPage, EXPORT_HTML_MAX, type Item, SHARE_HOLD_MS } from '../core/types';
+import { type Demo, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, type StoredShare } from './board';
 import { type DemoPageParts, day, demoPageHtml } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
@@ -44,8 +44,6 @@ export interface SharingOptions {
   home: string;
   /** Where the card's pull request is, for the page's link in its description. */
   forge: Forge;
-  /** How long a share waits for the owner to take it back; SHARE_HOLD_MS by default. */
-  holdMs?: number;
 }
 
 /** A share command that has not finished by then is stopped (an upload of a few files takes seconds). */
@@ -60,33 +58,26 @@ const serial = <T>(fn: () => Promise<T>): Promise<T> => {
 };
 
 export class Sharing {
-  private holds = new Map<string, ReturnType<typeof setTimeout>>();
-
   constructor(private o: SharingOptions) {}
 
-  /** "Teilen" or "Neu teilen": the card's video demo is published once the hold is over. */
+  /**
+   * "Teilen" or "Neu teilen": the card's video demo is published right away. There is no hold to
+   * take it back: "Nicht mehr teilen" withdraws the page just as easily.
+   */
   share(cardId: string) {
     const card = this.card(cardId);
     const demo = this.demo(cardId);
     if (card.prototypeOf || !demo || demo.kind === 'html' || !this.o.commandFor(card)) throw new BadRequest('noShare', "the card has no video demo, or its repository shares none");
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
-    this.set(cardId, { ...(s ? atRest(s) : { slug: slugOf(card) }), state: 'pending' });
-    const seconds = Math.round((this.o.holdMs ?? SHARE_HOLD_MS) / 1000);
-    this.o.board.log(cardId, 'state', 'owner', s?.url ? `Neu teilen: Die Seite bekommt die neue Demo in ${seconds} s.` : `Teilen: Die Seite geht in ${seconds} s online.`);
-    this.hold(cardId);
+    this.set(cardId, { ...(s ? atRest(s) : { slug: slugOf(card) }), state: 'publishing' });
+    this.o.board.log(cardId, 'state', 'owner', s?.url ? 'Neu teilen: Die Seite bekommt die neue Demo.' : 'Teilen: Die Seite geht online.');
+    void serial(() => this.publish(cardId));
   }
 
-  /** Takes a held share back, or withdraws the published page. */
+  /** Withdraws the published page. */
   unshare(cardId: string) {
     const s = this.stored(cardId);
-    if (s?.state === 'pending') {
-      clearTimeout(this.holds.get(cardId));
-      this.holds.delete(cardId);
-      this.set(cardId, atRest(s));
-      this.o.board.log(cardId, 'state', 'owner', 'Teilen zurückgenommen.');
-      return;
-    }
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     if (!s?.url) throw new BadRequest('notShared', 'the demo is not shared');
     this.set(cardId, { ...s, state: 'withdrawing' });
@@ -104,29 +95,15 @@ export class Sharing {
     if (pr && s?.url && !s.state && s.pr !== pr) this.refresh(cardId);
   }
 
-  /** After a restart: a share that was held or under way goes on, a withdrawal too. */
+  /** After a restart: a share under way goes on, a withdrawal too. */
   resume() {
     for (const r of this.o.board.sharedRows()) {
-      const s = JSON.parse(r.share!) as StoredShare;
-      if (s.state === 'pending') this.hold(r.id);
-      else if (s.state === 'publishing') void serial(() => this.publish(r.id));
+      let s = JSON.parse(r.share!) as StoredShare;
+      // held for the owner to take back, as shares were until 2026-10-02: it goes out now
+      if ((s.state as string) === 'pending') this.set(r.id, (s = { ...s, state: 'publishing' }));
+      if (s.state === 'publishing') void serial(() => this.publish(r.id));
       else if (s.state === 'withdrawing') void serial(() => this.withdraw(r.id));
     }
-  }
-
-  shutdown() {
-    for (const t of this.holds.values()) clearTimeout(t);
-    this.holds.clear();
-  }
-
-  private hold(cardId: string) {
-    this.holds.set(
-      cardId,
-      setTimeout(() => {
-        this.holds.delete(cardId);
-        void serial(() => this.publish(cardId));
-      }, this.o.holdMs ?? SHARE_HOLD_MS),
-    );
   }
 
   /** Publishes again what the page shows, with the pull request's link. */
@@ -140,8 +117,7 @@ export class Sharing {
   private async publish(cardId: string) {
     const s = this.stored(cardId);
     const card = this.find(cardId);
-    if (!s || (s.state !== 'pending' && s.state !== 'publishing') || !card) return;
-    this.set(cardId, { ...s, state: 'publishing' });
+    if (s?.state !== 'publishing' || !card) return;
     const failed = s.refresh ? 'Der Link zum Pull Request ist nicht auf die Seite gekommen' : 'Nicht geteilt';
     const back = (why: string, out = '') => {
       this.set(cardId, atRest(s));

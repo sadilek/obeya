@@ -50,8 +50,8 @@ export interface PrState {
 export interface StoredShare {
   /** The page's name on the site; it stays with the card, so its link keeps working. */
   slug: string;
-  /** While held, published or withdrawn; none when at rest. */
-  state?: 'pending' | 'publishing' | 'withdrawing';
+  /** While published or withdrawn; none when at rest. */
+  state?: 'publishing' | 'withdrawing';
   /** The published page, and the directory of the demo it shows. */
   url?: string;
   dir?: string;

@@ -218,23 +218,17 @@ export interface DemoPage {
 }
 
 /**
- * How long a demo waits after "Teilen" before it is published: the owner can take it back until
- * then (publishing goes outside Obeya, and the button is easily hit).
- */
-export const SHARE_HOLD_MS = 8000;
-
-/**
  * The largest video exported as one HTML file (which holds it in base64, a third larger): such a
  * file still goes by mail. A larger one is exported as a ZIP only.
  */
 export const EXPORT_HTML_MAX = 15 * 1024 * 1024;
 
 /**
- * A card's shared demo page. `pending` until the hold is over, `publishing` while the share command
- * runs, `shared` once the page is up, `withdrawing` while it is taken down.
+ * A card's shared demo page. `publishing` while the share command runs, `shared` once the page is
+ * up, `withdrawing` while it is taken down.
  */
 export interface Share {
-  state: 'pending' | 'publishing' | 'shared' | 'withdrawing';
+  state: 'publishing' | 'shared' | 'withdrawing';
   /** The page; set once it was published, kept while it is published again. */
   url?: string;
   /** The card has a newer demo than the one on the page. */
@@ -388,9 +382,9 @@ export type CardAction =
   | { action: 'buildPrototype' }
   /** Prototypes: thrown away, into the archive with log, demo and summary. */
   | { action: 'discard' }
-  /** A video demo is published for colleagues after a short hold (`SHARE_HOLD_MS`), or again with the card's newer demo. */
+  /** A video demo is published for colleagues right away, or again with the card's newer demo. */
   | { action: 'share' }
-  /** Takes a share back while it is held, or withdraws the published page. */
+  /** Withdraws the published page. */
   | { action: 'unshare' };
 
 /**

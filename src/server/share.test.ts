@@ -47,16 +47,14 @@ beforeEach(() => {
   sharing = make();
 });
 afterEach(() => {
-  sharing.shutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
-function make(holdMs = 30) {
+function make() {
   return new Sharing({
     board,
     runtime,
     home: join(dir, 'home'),
-    holdMs,
     forge,
     commandFor: (card) => (card.title.startsWith('Ohne') ? null : { command: [process.execPath, join(dir, 'fake-share.ts'), dir], cwd: dir }),
   });
@@ -102,20 +100,11 @@ async function until(ok: () => boolean) {
 const log = (id: string) => board.events(id).map((e) => e.text);
 
 describe('sharing a demo', () => {
-  test('is held for the owner to take back; nothing is published then', async () => {
+  test('publishes the page right away, keeps its link, and withdraws it', async () => {
     const c = card();
     sharing.share(c.id);
-    expect(share(c.id)).toEqual({ state: 'pending' });
-    sharing.unshare(c.id);
-    expect(share(c.id)).toBeUndefined();
-    await new Promise((r) => setTimeout(r, 80));
-    expect(calls()).toEqual([]);
-    expect(log(c.id).at(-1)).toBe('Teilen zurückgenommen.');
-  });
-
-  test('publishes the page after the hold, keeps its link, and withdraws it', async () => {
-    const c = card();
-    sharing.share(c.id);
+    expect(share(c.id)).toEqual({ state: 'publishing' });
+    expect(log(c.id).at(-1)).toBe('Teilen: Die Seite geht online.');
     await until(() => share(c.id)?.state === 'shared');
     const slug = 'zahlerstande-exportieren-' + c.id.slice(0, 6);
     expect(share(c.id)).toEqual({ state: 'shared', url: `https://demos.example/${slug}/` });
@@ -148,8 +137,8 @@ describe('sharing a demo', () => {
     expect(share(c.id)).toMatchObject({ state: 'shared', stale: true });
     expect(calls()).toHaveLength(1);
     sharing.share(c.id);
-    // the page stays up with its link while the new one is held and published
-    expect(share(c.id)).toMatchObject({ state: 'pending', url: expect.stringContaining('demos.example') });
+    // the page stays up with its link while the new one is published
+    expect(share(c.id)).toMatchObject({ state: 'publishing', url: expect.stringContaining('demos.example') });
     await until(() => share(c.id)?.state === 'shared');
     expect(share(c.id)!.stale).toBeUndefined();
     expect(calls().at(-1)!.input).toMatchObject({ slug: calls()[0]!.input.slug, title: 'CSV-Export 2', dir: newer });
@@ -211,14 +200,14 @@ describe('sharing a demo', () => {
     expect(board.item(c.id)!.demo!.page).toEqual({ title: 'Zählerstände als CSV', text: 'Vermieter laden Zählerstände als CSV herunter.' });
   });
 
-  test('after a restart, a held share goes on', async () => {
-    const c = card();
-    sharing.share(c.id);
-    sharing.shutdown();
-    sharing = make();
+  test('after a restart, a share under way goes on, one held as shares were before too', async () => {
+    const a = card('A');
+    const b = card('B');
+    board.work(a.id, { share: JSON.stringify({ slug: 'a', state: 'publishing' }) });
+    board.work(b.id, { share: JSON.stringify({ slug: 'b', state: 'pending' }) });
     sharing.resume();
-    await until(() => share(c.id)?.state === 'shared');
-    expect(calls()).toHaveLength(1);
+    await until(() => share(a.id)?.state === 'shared' && share(b.id)?.state === 'shared');
+    expect(calls().map((c) => c.input.slug).sort()).toEqual(['a', 'b']);
   });
 });
 
@@ -259,7 +248,8 @@ describe('the link in the pull request', () => {
   test('a PR opened while the page goes out gets a second round with its link', async () => {
     const c = card();
     sharing.share(c.id);
-    await until(() => share(c.id)?.state === 'publishing');
+    // the command is running
+    await until(() => calls().length === 1);
     openPr(c.id);
     sharing.prOpened(c.id);
     await until(() => calls().length === 2 && edits.length === 1);

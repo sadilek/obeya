@@ -781,8 +781,8 @@ function DemoView({
 }
 
 /**
- * Sharing the video with colleagues: "Teilen", a few seconds to take it back, then the page's link
- * with "Nicht mehr teilen"; "Neu teilen" once the card has a newer demo than the page.
+ * Sharing the video with colleagues: "Teilen" publishes it right away, then the page's link with
+ * "Nicht mehr teilen"; "Neu teilen" once the card has a newer demo than the page.
  */
 function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
   const [copied, setCopied] = useState(false);
@@ -794,13 +794,6 @@ function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDon
         <button className="btn" title={t.share.shareHint} onClick={() => go('share')}>
           {t.share.share}
         </button>
-      ) : s.state === 'pending' ? (
-        <div className="share-row">
-          <span className="share-busy">{t.share.holdLong}</span>
-          <button className="btn" onClick={() => go('unshare')}>
-            {t.share.takeBack}
-          </button>
-        </div>
       ) : s.state === 'publishing' || s.state === 'withdrawing' ? (
         <div className="share-row">
           <span className="share-busy">{s.state === 'publishing' ? t.share.publishing : t.share.withdrawing}</span>

@@ -60,7 +60,7 @@ describe('a canvas with several repositories', () => {
     writeFileSync(join(web, 'share.ts'), `await Bun.stdin.text(); console.log('https://pages.example/' + process.argv[2]);`);
     canvas = new CanvasRuntime(
       { name: 'Produkt', repos: [{ path: web, clones: 1, share: 'share.ts' }, { path: join(dir, 'api'), clones: 1 }] },
-      { store: new Store(':memory:'), home: dir, runtime, forge: noForge, shareHoldMs: 0 },
+      { store: new Store(':memory:'), home: dir, runtime, forge: noForge },
     );
     expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([true, undefined]);
     expect(canvas.repos[0]!.share).toEqual([process.execPath, join(web, 'share.ts')]);

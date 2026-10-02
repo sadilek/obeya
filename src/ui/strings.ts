@@ -208,8 +208,6 @@ export const t = {
     copy: 'Link kopieren',
     copied: 'Link kopiert.',
     shared: 'Geteilt',
-    holdLong: 'Wird in wenigen Sekunden geteilt.',
-    takeBack: 'Doch nicht',
     publishing: 'Wird veröffentlicht …',
     withdrawing: 'Wird zurückgezogen …',
     stale: 'Die geteilte Seite zeigt noch die frühere Demo.',
