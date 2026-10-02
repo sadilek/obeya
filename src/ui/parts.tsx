@@ -1,6 +1,6 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
-import { type CSSProperties, memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
 import { type CanvasInfo, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
 import { api } from './api';
@@ -245,9 +245,6 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
 
 // ------------------------------------------------------------------ plan sheet
 
-/** How wide the sheet gets while the owner reads a plan doc in it; the camera keeps the project beside it. */
-export const readingWidth = () => Math.min(760, Math.max(380, innerWidth - 520));
-
 /**
  * The open project: its goal and workstreams (as the doc last stood, for an archived one), the idea
  * it came from and the decisions taken in it; or, while `reading`, its plan doc as written, with the
@@ -316,7 +313,6 @@ export function Sheet({
       id="sheet"
       ref={box}
       className={['sheet', on && 'on', reading && 'reading'].filter(Boolean).join(' ')}
-      style={{ '--read-w': `${readingWidth()}px` } as CSSProperties}
     >
       {project?.plan && reading && (
         <>
