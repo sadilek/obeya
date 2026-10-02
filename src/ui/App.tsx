@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type Item, needsYou, type PendingRestart } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type Item, needsYou, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
 import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
 import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
@@ -477,11 +477,25 @@ function Canvas({
     }
   }, []);
 
-  /** The project sheet's button: all planned workstreams go to the Koordinator together. */
+  /**
+   * The project's button, on its card and in its sheet: all planned workstreams go to the
+   * Koordinator together, which waits a few seconds before it plans them, so the start can be taken back.
+   */
   const startAll = useCallback(async (p: Item, n: number) => {
     try {
       await api.act(p.id, { action: 'start' });
-      showAck(t.plan.startedAll(n));
+      showAck(
+        t.plan.startedAll(n),
+        async () => {
+          try {
+            await api.act(p.id, { action: 'dequeue' });
+            showAck(t.plan.startTakenBack);
+          } catch (e) {
+            showAck(e instanceof ApiError && e.code === 'notQueued' ? t.voice.tooLate : t.offlineError);
+          }
+        },
+        START_ALL_HOLD_MS,
+      );
     } catch (e) {
       if (!(e instanceof ApiError)) console.error(e);
       showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
@@ -815,7 +829,7 @@ function Canvas({
           <Links placed={placed} />
           {placed.map(({ item, b }) =>
             item.kind === 'project' ? (
-              <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} />
+              <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} onStartAll={startAll} />
             ) : (
               <CardView
                 key={item.id}

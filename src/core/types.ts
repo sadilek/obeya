@@ -127,6 +127,12 @@ export interface PullRequest {
  * `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting
  * longest goes first. `together`: the project whose workstreams the Koordinator judges all at once.
  */
+/**
+ * How long a project's workstreams, started together, wait before the Koordinator plans them: the
+ * owner can take the start back until then (a button on the project card is easily hit).
+ */
+export const START_ALL_HOLD_MS = 8000;
+
 export type Queue = ({ checking: true; together?: string } | { cutting: true } | { behind: string[]; reason: string }) & { since?: string };
 
 /**
@@ -268,6 +274,7 @@ export type CardAction =
   | { action: 'approve' }
   /** Start a queued card although it may collide. */
   | { action: 'force' }
+  /** On a project: takes back a start of all its workstreams while the Koordinator has not planned them yet. */
   | { action: 'dequeue' }
   /** Let the Koordinator cut the card into packages that can run in parallel. */
   | { action: 'split' }

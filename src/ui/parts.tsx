@@ -227,21 +227,39 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
 }
 
 export const ProjectView = memo(
-  function ProjectView({ item, b, kids }: { item: Item; b: Bounds; kids: Item[] }) {
+  function ProjectView({ item, b, kids, onStartAll }: { item: Item; b: Bounds; kids: Item[]; onStartAll: (project: Item, count: number) => void }) {
     const live = kids.filter((k) => k.state === 'live').length;
     const waiting = kids.filter(needsYou).length;
+    const startable = kids.filter((k) => k.state === 'planned' && !k.queue).length;
     return (
       <div className={`item project s-${item.state}`} data-id={item.id} style={{ left: b.x, top: b.y, width: b.w, height: b.h, zIndex: 0 }}>
         <div className="head">
           <span className="ttl">{plain(item.title)}</span>
           <span className="kind">{t.kind.project}</span>
           <span className="progress">{t.progress(live, kids.length)}</span>
+          {startable > 0 && (
+            <button
+              className="start-all"
+              title={`${t.plan.startAll(startable)}. ${t.plan.startAllHint}`}
+              // the canvas would take the press as the start of a drag or a click that opens the project
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onStartAll(item, startable);
+              }}
+            >
+              <svg width="10" height="10" viewBox="0 0 12 12">
+                <path d="M3 1.6v8.8a.6.6 0 0 0 .9.5l7-4.4a.6.6 0 0 0 0-1L3.9 1.1a.6.6 0 0 0-.9.5z" fill="currentColor" />
+              </svg>
+              {t.plan.startAllShort(startable)}
+            </button>
+          )}
         </div>
         {waiting > 0 && <div className="badge">{waiting}</div>}
       </div>
     );
   },
-  (a, b) => a.item === b.item && sameBounds(a.b, b.b) && a.kids.length === b.kids.length && a.kids.every((k, i) => k === b.kids[i]),
+  (a, b) => a.item === b.item && a.onStartAll === b.onStartAll && sameBounds(a.b, b.b) && a.kids.length === b.kids.length && a.kids.every((k, i) => k === b.kids[i]),
 );
 
 /** A dashed line from each proposal and each follow-up not yet started to the card it came from, and from each prototype to its idea. */
@@ -377,7 +395,7 @@ export function Sheet({
               {t.plan.read}
             </button>
           )}
-          {!project.archivedAt && startable > 1 && (
+          {!project.archivedAt && startable > 0 && (
             <div className="start-all">
               <button className="btn primary" onClick={() => onStartAll(project, startable)}>
                 {t.plan.startAll(startable)}
