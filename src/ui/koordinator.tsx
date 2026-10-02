@@ -258,7 +258,10 @@ function ProposalRow({ p, items, rules, onOpen }: { p: Preference; items: Item[]
       {replaced && <span className="occasion">{t.koordinator.changes(replaced.text)}</span>}
       <span className="occasion">
         {p.review ? (
-          t.koordinator.fromReview
+          <>
+            {t.koordinator.fromReview}
+            {quote && `: ${quote}`}
+          </>
         ) : (
           <>
             {card && (

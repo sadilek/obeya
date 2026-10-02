@@ -232,7 +232,14 @@ export class CanvasRuntime {
     if (card && text && text !== before) this.koordinator.learn(card, 'card', text, before ? { before } : {});
   }
 
-  /** An owner action from the card's panel. */
+  /** The owner clicks in the card's panel: a click without words the learner reads counts towards the Rückschau. */
+  press(cardId: string, a: CardAction) {
+    const r = this.act(cardId, a);
+    if (!(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.koordinator.noticed();
+    return r;
+  }
+
+  /** An owner action from the card's panel, or from a spoken command. */
   act(cardId: string, a: CardAction) {
     this.written(cardId);
     const text = 'text' in a ? (a.text ?? '') : '';

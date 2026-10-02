@@ -63,6 +63,12 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     c.board.onSpeak((cardId, text) => send({ type: 'speak', cardId, audio: voice(c, text) }));
   }
 
+  /** A click the Rückschau counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
+  const click = <T>(c: CanvasRuntime, out: T): T => {
+    c.koordinator.noticed();
+    return out;
+  };
+
   const handle = async (fn: () => unknown | Promise<unknown>) => {
     try {
       const out = await fn();
@@ -149,14 +155,14 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },
       '/api/c/:canvas/cards/:id': {
         PATCH: on(async (c, req) => c.patch(req.params.id!, (await req.json()) as CardPatch)),
-        DELETE: on((c, req) => c.remove(req.params.id!)),
+        DELETE: on((c, req) => click(c, c.remove(req.params.id!))),
       },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.board.restore(req.params.id!)) },
       '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
       '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },
       // the archive, newest first; posting archives every finished card of the owner's
       '/api/c/:canvas/archive': { GET: on((c) => c.board.archived()), POST: on((c) => ({ ids: c.board.archiveDone() })) },
-      '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.act(req.params.id!, (await req.json()) as CardAction)) },
+      '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.press(req.params.id!, (await req.json()) as CardAction)) },
       '/api/c/:canvas/cards/:id/events': { GET: on((c, req) => c.board.events(req.params.id!)) },
       // a screenshot for a message: uploaded first, the message then names it by id
       '/api/c/:canvas/images': {
@@ -216,7 +222,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         }),
       },
       '/api/c/:canvas/command/undo': {
-        POST: on(async (c, req) => ({ undone: c.commander.undo(((await req.json()) as { token: string }).token) })),
+        POST: on(async (c, req) => click(c, { undone: c.commander.undo(((await req.json()) as { token: string }).token) })),
       },
       '/api/c/:canvas/preferences': { POST: on(async (c, req) => ({ id: c.board.addPreference(((await req.json()) as { text: string }).text) })) },
       '/api/c/:canvas/preferences/:id': {
@@ -224,9 +230,9 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),
       },
       '/api/c/:canvas/preferences/:id/accept': {
-        POST: on(async (c, req) => c.board.acceptProposal(Number(req.params.id), ((await req.json().catch(() => ({}))) as { text?: string }).text)),
+        POST: on(async (c, req) => click(c, c.board.acceptProposal(Number(req.params.id), ((await req.json().catch(() => ({}))) as { text?: string }).text))),
       },
-      '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => c.board.rejectProposal(Number(req.params.id))) },
+      '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => click(c, c.board.rejectProposal(Number(req.params.id)))) },
       '/api/c/:canvas/ws': (req, server) =>
         byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID() } })
           ? undefined

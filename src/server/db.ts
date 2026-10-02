@@ -604,6 +604,25 @@ export class Store {
       .map((r) => ({ at: r.at, kind: r.kind, text: r.text, ...(r.cardId ? { cardId: r.cardId } : {}), ...(r.title ? { title: r.title } : {}) }));
   }
 
+  /** Proposals the owner accepted or rejected after `since` (ISO time), oldest first. */
+  decidedProposals(canvasId: string, since: string): { at: string; text: string; state: 'active' | 'rejected'; quote?: string }[] {
+    return (
+      this.db
+        .query(`SELECT decided_at AS at, text, state, quote FROM preferences WHERE canvas_id = $c AND decided_at > $since ORDER BY decided_at`)
+        .all({ c: canvasId, since }) as { at: string; text: string; state: 'active' | 'rejected'; quote: string | null }[]
+    ).map(({ quote, ...r }) => ({ ...r, ...(quote ? { quote } : {}) }));
+  }
+
+  /**
+   * Cards of the owner's deleted after `since` (ISO time), oldest first, with the state they had: a
+   * worker's proposal the owner dismissed, say. Plan cards go with their plan doc, not by a click.
+   */
+  removed(canvasId: string, since: string): { at: string; title: string; state: CardState }[] {
+    return this.db
+      .query(`SELECT deleted_at AS at, title, COALESCE(state, 'planned') AS state FROM cards WHERE canvas_id = $c AND plan_ref IS NULL AND deleted_at > $since ORDER BY deleted_at`)
+      .all({ c: canvasId, since }) as { at: string; title: string; state: CardState }[];
+  }
+
   // ---------------------------------------------------------------- settings
 
   setting(canvasId: string, key: string): string | null {

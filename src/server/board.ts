@@ -370,6 +370,16 @@ export class Board {
     return this.store.utterances(this.canvas.id, since, limit);
   }
 
+  /** Rule proposals the owner accepted or rejected after `since` (ISO time), oldest first. */
+  decidedProposals(since: string) {
+    return this.store.decidedProposals(this.canvas.id, since);
+  }
+
+  /** The owner's cards deleted after `since` (ISO time), oldest first. */
+  removed(since: string) {
+    return this.store.removed(this.canvas.id, since);
+  }
+
   accept(id: string) {
     if (this.own(id).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     this.store.update(id, { state: 'planned' });

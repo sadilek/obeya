@@ -8,7 +8,7 @@ import { type CardEvent, type Item, type Question, type Queue, START_ALL_HOLD_MS
 import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { Utterance } from './db';
-import type { AgentRuntime } from './runtime';
+import type { AgentRuntime, AgentTool } from './runtime';
 import type { Workers } from './workers';
 import type { Change, Workspaces } from './workspaces';
 
@@ -75,6 +75,8 @@ export interface KoordinatorOptions {
   sessionQuestions?: number;
   /** How long a project's start waits for the owner to take it back; START_ALL_HOLD_MS by default. */
   holdMs?: number;
+  /** After how many of the owner's inputs the Rückschau runs; REVIEW_EVERY by default. */
+  reviewEvery?: number;
 }
 
 export class Koordinator {
@@ -290,6 +292,144 @@ export class Koordinator {
       .catch(() => {})
       .then(() => this.distill(card, kind, text, context, around))
       .catch((e) => console.error('Koordinator (learning):', e));
+    this.noticed();
+  }
+
+  /**
+   * The owner said something, or clicked without words (a start, an approval, a dismissed
+   * proposal): every `reviewEvery` of these, the Rückschau reads the history since the last one,
+   * after the learner has read the input that completed the count. The count is a setting of the
+   * canvas, so it survives a restart.
+   */
+  noticed() {
+    const b = this.o.board;
+    // the first input counted starts the history; it was logged a moment ago
+    if (!b.setting(REVIEW_SINCE)) b.setSetting(REVIEW_SINCE, new Date(Date.now() - 60_000).toISOString());
+    const count = Number(b.setting(REVIEW_COUNT) ?? 0) + 1;
+    if (count < (this.o.reviewEvery ?? REVIEW_EVERY)) return b.setSetting(REVIEW_COUNT, String(count));
+    const since = b.setting(REVIEW_SINCE)!;
+    b.setSetting(REVIEW_COUNT, '0');
+    b.setSetting(REVIEW_SINCE, new Date().toISOString());
+    this.learning = this.learning
+      .catch(() => {})
+      .then(() => this.review(since))
+      .catch((e) => console.error('Koordinator (Rückschau):', e));
+  }
+
+  /** The Rückschau: one session reads what happened since `since` and proposes rules for patterns across cards. */
+  private review(since: string): Promise<void> {
+    const history = this.history(since);
+    if (!history.length) return Promise.resolve();
+    const rules = this.o.board.preferences('active');
+    const open = this.o.board.preferences('proposed');
+    const rejected = this.o.board.preferences('rejected');
+    let proposed = 0;
+    return this.read(
+      this.o.home,
+      REVIEW_SYSTEM,
+      (finish): AgentTool[] => [
+        {
+          name: 'propose',
+          description:
+            'Propose a rule to the owner: one short rule in German, and why (one sentence in German naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts.',
+          schema: { rule: z.string(), why: z.string(), replaces: z.number().int().optional() },
+          run: ({ rule, why, replaces }) => {
+            const r = String(rule).trim().slice(0, 500);
+            if (!r) return 'Empty rule ignored.';
+            if (proposed >= REVIEW_PROPOSALS) return finish(`At most ${REVIEW_PROPOSALS} proposals. End your turn now.`);
+            if (this.o.board.preferences('proposed').some((p) => p.text === r)) return 'Already proposed.';
+            const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
+            this.o.board.proposePreference(r, { review: true, quote: String(why ?? '') }, old?.id);
+            proposed++;
+            return proposed < REVIEW_PROPOSALS ? 'Proposed.' : finish('Proposed. That was the last one; end your turn now.');
+          },
+        },
+        { name: 'done', description: 'Nothing (more) to propose.', schema: {}, run: () => finish('Fine. End your turn now.') },
+      ],
+      [
+        `What happened on the canvas since the last Rückschau, oldest first:\n${history.join('\n')}`,
+        rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
+        open.length ? `Proposals waiting for the owner (do not propose them again):\n${open.map((r) => `- ${r.text}`).join('\n')}` : '',
+        rejected.length ? `Proposals the owner rejected (do not propose them again):\n${rejected.map((r) => `- ${r.text}`).join('\n')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+    );
+  }
+
+  /**
+   * What the Rückschau reads, oldest first, at most the latest REVIEW_HISTORY lines: the cards'
+   * milestones (the owner's notes, answers and clicks, the agents' questions and hand-overs, answers
+   * given in the owner's name), the owner's words in ideas and to the Koordinator (taken back or
+   * not), the cards they deleted or dismissed, and the rule proposals they decided on.
+   */
+  private history(since: string): string[] {
+    const b = this.o.board;
+    const title = (id?: string) => (id ? b.item(id)?.title : undefined);
+    const lines: { at: string; text: string }[] = [
+      ...b.timeline(since, REVIEW_HISTORY).flatMap((m) => {
+        const t = title(m.cardId);
+        if (!t) return [];
+        const who = m.kind === 'answer' && m.author !== 'owner' ? `${WHO[m.author]}, in the owner's name,` : WHO[m.author];
+        const what = m.kind === 'created' ? (m.author === 'owner' ? 'the owner created the card' : 'an agent proposed the card') : `${who}${STEPS[m.kind] ?? ' '}${clip(m.text, 300)}`;
+        return [{ at: m.at, text: `"${t}": ${what}` }];
+      }),
+      ...b
+        .utterances(since, REVIEW_HISTORY)
+        .filter((u) => u.kind === 'talk')
+        .map((u) => ({ at: u.at, text: `"${u.title ?? ''}": the owner in the idea's discussion: ${clip(u.text, 300)}` })),
+      ...b
+        .talk(REVIEW_HISTORY)
+        .filter((t) => t.at > since)
+        .map((t) => {
+          const open = title(t.cardId);
+          return {
+            at: t.at,
+            text: `the owner to the Koordinator${open ? ` (with "${open}" open)` : ''}: ${clip(t.said, 300)} → ${clip(t.reply, 200)}${t.undone ? ' (the owner took it back)' : ''}`,
+          };
+        }),
+      ...b.removed(since).map((r) => ({
+        at: r.at,
+        text: r.state === 'proposal' ? `the owner dismissed the card an agent proposed: "${r.title}"` : `the owner deleted the card "${r.title}" (${r.state})`,
+      })),
+      ...b.decidedProposals(since).map((p) => ({
+        at: p.at,
+        text: `the owner ${p.state === 'active' ? 'accepted' : 'rejected'} the proposed rule "${p.text}"${p.quote ? ` (its occasion: ${clip(p.quote, 200)})` : ''}`,
+      })),
+    ];
+    return lines
+      .sort((x, y) => x.at.localeCompare(y.at))
+      .slice(-REVIEW_HISTORY)
+      .map((l) => `- ${l.at.slice(0, 16).replace('T', ' ')} ${l.text}`);
+  }
+
+  /** A reading session of the learner's, read-only: it ends with its turn, or once a tool calls `finish`. */
+  private read(cwd: string, system: string, tools: (finish: (r: string) => string) => AgentTool[], brief: string): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (r: string) => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+        return r;
+      };
+      const session = this.o.runtime.start(
+        {
+          cwd,
+          readOnly: true,
+          system,
+          tools: tools(finish),
+          onEvent: (e) => {
+            if (e.type === 'idle' || e.type === 'error') {
+              session.close();
+              finish('');
+            }
+          },
+        },
+        brief,
+      );
+    });
   }
 
   /** What the learner reads an input in: the card's text, the agent's last message before it, what the owner said in the last days. */
@@ -320,47 +460,29 @@ export class Koordinator {
     const rejected = this.o.board.preferences('rejected');
     const { question, overruled, reply, before } = context;
     let proposed = false;
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = (r: string) => {
-        if (!done) {
-          done = true;
-          resolve();
-        }
-        return r;
-      };
-      const session = this.o.runtime.start(
+    return this.read(
+      card ? this.o.repoFor(card).path : this.o.home,
+      LEARN_SYSTEM,
+      (finish): AgentTool[] => [
         {
-          cwd: card ? this.o.repoFor(card).path : this.o.home,
-          readOnly: true,
-          system: LEARN_SYSTEM,
-          tools: [
-            {
-              name: 'propose',
-              description:
-                'Propose a lasting preference to the owner as one short rule in German. Pass replaces with the number of a recorded rule it refines or contradicts.',
-              schema: { rule: z.string(), replaces: z.number().int().optional() },
-              run: ({ rule, replaces }) => {
-                const r = String(rule).trim().slice(0, 500);
-                if (!r) return finish('Empty rule ignored.');
-                if (proposed) return finish('One proposal per input. End your turn now.');
-                if (open.some((p) => p.text === r)) return finish('Already proposed. End your turn now.');
-                const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-                this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id);
-                proposed = true;
-                if (card) this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
-                return finish('Proposed. End your turn now.');
-              },
-            },
-            { name: 'nothing', description: 'Nothing lasting to record.', schema: {}, run: () => finish('Fine. End your turn now.') },
-          ],
-          onEvent: (e) => {
-            if (e.type === 'idle' || e.type === 'error') {
-              session.close();
-              finish('');
-            }
+          name: 'propose',
+          description:
+            'Propose a lasting preference to the owner as one short rule in German. Pass replaces with the number of a recorded rule it refines or contradicts.',
+          schema: { rule: z.string(), replaces: z.number().int().optional() },
+          run: ({ rule, replaces }) => {
+            const r = String(rule).trim().slice(0, 500);
+            if (!r) return finish('Empty rule ignored.');
+            if (proposed) return finish('One proposal per input. End your turn now.');
+            if (open.some((p) => p.text === r)) return finish('Already proposed. End your turn now.');
+            const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
+            this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id);
+            proposed = true;
+            if (card) this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
+            return finish('Proposed. End your turn now.');
           },
         },
+        { name: 'nothing', description: 'Nothing lasting to record.', schema: {}, run: () => finish('Fine. End your turn now.') },
+      ],
         [
           card ? `Card${kind === 'talk' || kind === 'command' ? ' the owner had open' : ''}: ${card.kind} "${card.title}".` : '',
           ...around,
@@ -377,8 +499,7 @@ export class Koordinator {
         ]
           .filter(Boolean)
           .join('\n\n'),
-      );
-    });
+    );
   }
 
   /** Cards in progress; with a repository, only those a card of it can collide with. */
@@ -784,6 +905,47 @@ Not a preference: deciding the case at hand (an option, a name, a date, what thi
 
 Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in German, in the owner's terms and without the occasion ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
 `.trim();
+
+/** After how many of the owner's inputs the Rückschau runs, at most how many rules it proposes, and how much history it reads. */
+export const REVIEW_EVERY = 20;
+const REVIEW_PROPOSALS = 3;
+const REVIEW_HISTORY = 300;
+/** The settings that keep the Rückschau's count across restarts, and when its history begins. */
+const REVIEW_COUNT = 'review_inputs';
+const REVIEW_SINCE = 'review_since';
+
+const REVIEW_SYSTEM = `
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's preference memory: short rules every agent follows, so the owner never has to say the same thing twice.
+
+This is the Rückschau. You get what happened on the canvas since the last one, oldest first: what the owner said and clicked (notes, answers, feedback, approvals, starts against your advice, cards and proposals they deleted or dismissed, commands they took back, rule proposals they accepted or rejected), and what the agents asked and handed over. Each thing the owner said was already read on its own; look for what only shows across several moments and cards:
+- the same correction or feedback on different cards;
+- the same kind of question, answered the same way each time;
+- proposals of one kind the owner always dismisses, or always takes;
+- your advice to wait overruled again and again;
+- answers given in the owner's name that the owner then overruled;
+- commands taken back, and what the owner did instead.
+Clicks without words count here: what the owner does again and again says what they want as much as what they say.
+
+Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in German in the owner's terms and without the occasion ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); why, one sentence in German for the owner naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
+`.trim();
+
+/** How the Rückschau names who did something on a card, and what. */
+const WHO: Record<CardEvent['author'], string> = {
+  owner: 'the owner',
+  worker: 'the agent',
+  explorer: 'the idea agent',
+  project: 'the project agent',
+  koordinator: 'the Koordinator',
+  obeya: 'Obeya',
+};
+const STEPS: Partial<Record<CardEvent['kind'], string>> = {
+  state: ': ',
+  question: ' asked: ',
+  answer: ' answered: ',
+  review: ' handed over: ',
+  hint: ' wrote to the agent: ',
+  error: ', an error: ',
+};
 
 /** How far back the learner reads what the owner said, and at most how much of it. */
 const RECENT_DAYS = 3;

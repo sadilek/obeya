@@ -754,6 +754,89 @@ describe('preference memory', () => {
   });
 });
 
+describe('Rückschau', () => {
+  const texts = (state: 'proposed' | 'active') => board.preferences(state).map((p) => p.text);
+  const reviews = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'done'));
+  const koordinator = () => new Koordinator({ board, runtime, home: board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });
+
+  test('after enough inputs, counted across a restart, it reads the history since the last one and proposes rules from it', async () => {
+    let k1 = koordinator();
+    k1.noticed();
+    // what the owner said and clicked meanwhile
+    const a = card('Export');
+    board.log(a.id, 'hint', 'owner', 'Bitte ohne Emojis.');
+    board.log(a.id, 'state', 'owner', 'Trotz Überschneidung gestartet.');
+    const p = board.propose(a.id, { kind: 'feature', title: 'Emoji-Picker', reason: 'R.', suggestion: 'S.' });
+    board.remove(p.id);
+    board.undoTalk(board.addTalk('Lösch die Karte Export.', 'Mache ich.', a.id));
+    board.rejectProposal(board.proposePreference('Commits auf Englisch.', { cardId: a.id, quote: 'Englisch bitte.' }));
+    k1.noticed();
+    expect(board.setting('review_inputs')).toBe('2');
+
+    // Obeya starts again: the count goes on
+    k1 = koordinator();
+    k1.noticed();
+    expect(reviews()).toHaveLength(0);
+    // the input that completes the count is read on its own first
+    board.log(a.id, 'hint', 'owner', 'Wieder Emojis. Lass das.');
+    k1.learn(item(a.id), 'note', 'Wieder Emojis. Lass das.');
+    await settle();
+    expect(reviews()).toHaveLength(0);
+    const learner = runtime.sessions.at(-1)!;
+    learner.call('nothing', {});
+    learner.emit({ type: 'idle' });
+    await settle();
+    expect(reviews()).toHaveLength(1);
+    expect(board.setting('review_inputs')).toBe('0');
+
+    const s = reviews()[0]!;
+    expect(s.spec).toMatchObject({ cwd: board.canvas.repos[0]!.path, readOnly: true });
+    const brief = s.inbox[0]!;
+    for (const line of [
+      '"Export": the owner created the card',
+      '"Export": the owner wrote to the agent: Bitte ohne Emojis.',
+      '"Export": the owner: Trotz Überschneidung gestartet.',
+      'the owner dismissed the card an agent proposed: "Emoji-Picker"',
+      'the owner to the Koordinator (with "Export" open): Lösch die Karte Export. → Mache ich. (the owner took it back)',
+      'the owner rejected the proposed rule "Commits auf Englisch." (its occasion: Englisch bitte.)',
+      '"Export": the owner wrote to the agent: Wieder Emojis. Lass das.',
+      'Proposals the owner rejected (do not propose them again):\n- Commits auf Englisch.',
+    ])
+      expect(brief).toContain(line);
+    s.call('propose', { rule: 'Keine Emojis in Texten.', why: 'Auf „Export“ zweimal gesagt, den Emoji-Picker verworfen.' });
+    s.call('propose', { rule: 'Keine Emojis in Texten.', why: 'Doppelt.' });
+    s.call('done', {});
+    s.emit({ type: 'idle' });
+    await settle();
+    expect(board.preferences('proposed')).toEqual([{ id: 2, text: 'Keine Emojis in Texten.', state: 'proposed', quote: 'Auf „Export“ zweimal gesagt, den Emoji-Picker verworfen.', review: true }]);
+
+    // the next one reads only what came after
+    for (let n = 0; n < 3; n++) k1.noticed();
+    expect(reviews()).toHaveLength(1);
+    board.log(a.id, 'hint', 'owner', 'Und kürzer.');
+    k1.noticed();
+    await settle();
+    expect(reviews()).toHaveLength(2);
+    expect(reviews()[1]!.inbox[0]).toContain('Und kürzer.');
+    expect(reviews()[1]!.inbox[0]).not.toContain('Bitte ohne Emojis.');
+    expect(reviews()[1]!.inbox[0]).toContain('Proposals waiting for the owner (do not propose them again):\n- Keine Emojis in Texten.');
+  });
+
+  test('it proposes at most three rules, and nothing when nothing happened', async () => {
+    const k1 = koordinator();
+    for (let n = 0; n < 4; n++) k1.noticed();
+    await settle();
+    // nothing on the canvas since: no session
+    expect(reviews()).toHaveLength(0);
+    board.log(card('A').id, 'hint', 'owner', 'X.');
+    for (let n = 0; n < 4; n++) k1.noticed();
+    await settle();
+    const s = reviews()[0]!;
+    for (const rule of ['Eins.', 'Zwei.', 'Drei.', 'Vier.']) s.call('propose', { rule, why: 'W.' });
+    expect(texts('proposed')).toEqual(['Eins.', 'Zwei.', 'Drei.']);
+  });
+});
+
 test('parseChanges', () => {
   const diff = [
     'diff --git a/src/a.ts b/src/a.ts',

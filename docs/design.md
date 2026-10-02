@@ -58,7 +58,8 @@ decisions are made in front of the wall.
   ("billing changes always get the Codex review", "labels: precise over short"), or said outright
   ("Merk dir: …"). Shared by all agents, maintained by the Chief of Staff. A learned rule, or a
   learned change to a rule, is a proposal until the owner accepts it; agents follow active rules
-  only. A rule the owner writes or says outright is active at once.
+  only. A rule the owner writes or says outright is active at once. Besides each input on its own,
+  the Rückschau looks back over the last twenty or so for patterns across cards.
 
 ## Ideas
 
@@ -375,7 +376,19 @@ the owner's language (`src/core/locale.ts`).
   message before it (taken when the input arrives, not when the learner's turn comes), the active
   rules and the open and rejected proposals. Its prompt names the signals for a proposal: phrased
   generally ("immer", "nie", "ab jetzt"), a correction of how an agent works, a repetition of
-  something said before, an overruled answer; it makes at most one proposal per input. Its
+  something said before, an overruled answer; it makes at most one proposal per input. The
+  Rückschau counts the owner's inputs: what the learner reads, and clicks without words in a card
+  (start, approve, accept or dismiss a proposal, park, start anyway, …), a deleted card, a command
+  taken back, a rule proposal decided on; a spoken command counts once, as what was said. The
+  count and when the history begins are settings of the canvas, so they survive a restart. At
+  20, after the learner has read the input that completed the count, one read-only session in the
+  home checkout reads what happened since the last Rückschau (at most the latest 300 lines): the
+  cards' milestones (the owner's notes, answers and clicks, the agents' questions and hand-overs,
+  answers given in the owner's name), the owner's words in ideas and to the Koordinator, taken back
+  or not, the cards they deleted or dismissed, and the rule proposals they accepted or rejected.
+  It looks for patterns seen at least twice on different cards and proposes up to three rules,
+  each with a sentence on what it rests on; the sheet shows that as their occasion („Aus der
+  Rückschau: …“). Its
   sheet (button or `K`) shows the queue, the cards in progress and the preferences; open
   proposals stand above the rules with their occasion (the card and the owner's words, or the
   Rückschau) and, for a change, the rule it changes. The owner accepts one, edits it before
@@ -518,7 +531,7 @@ card events (the log, with an error code where the UI words it and the owner's s
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
 reply, the screenshots that came with it, the open card, whether it was taken back; a looked-up
-question, the card it is about, its answer and who gave it), per-canvas settings (the Koordinator's session for questions).
+question, the card it is about, its answer and who gave it), per-canvas settings (the home repository; the Rückschau's count and when its history begins).
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
 (`canvases.json`), Acme's shared demo site and its Cloudflare credentials (`team-share/`).
@@ -543,6 +556,10 @@ the repository; the copy on the project is only for the archive).
   answer it.
 - Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
+- Learned rules are proposals the owner accepts first, rather than stored silently as at first
+  (2026-10-02): the owner wants to see every learned rule before it applies. Open proposals count
+  on the Koordinator button only, not among the cards that need the owner nor on the cards. The
+  Rückschau runs after about 20 inputs, neither daily nor only on request.
 - This page describes what is built; work in progress lives in plan docs, which the canvas shows as
   projects. The milestone list it once kept repeated what the canvas shows and went (2026-10-01).
 - Plan docs as projects: a doc in the adapter's plan directory is a project when its

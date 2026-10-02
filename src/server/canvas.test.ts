@@ -235,3 +235,19 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   expect(learners()[2]!.spec.cwd).toBe(web);
   expect(learners()[2]!.inbox[0]).toContain('The Koordinator replied: Weil die Karten offen lassen');
 });
+
+test('clicks in a card count towards the Rückschau, and words the learner reads count once', async () => {
+  const count = () => canvas.board.setting('review_inputs');
+  const a = canvas.board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
+  canvas.press(a.id, { action: 'start' });
+  expect(count()).toBe('1');
+  await settle();
+  canvas.press(a.id, { action: 'message', text: 'Bitte kleiner.' });
+  expect(count()).toBe('2');
+  // a spoken command is counted as what the owner said, not as a click besides
+  canvas.act(a.id, { action: 'stop' });
+  expect(count()).toBe('2');
+  // a click that does not go through does not count
+  expect(() => canvas.press(a.id, { action: 'dismiss' })).toThrow();
+  expect(count()).toBe('2');
+});
