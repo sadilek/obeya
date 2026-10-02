@@ -24,6 +24,7 @@ export const t = {
   newCard: 'Neue Karte',
   keys: 'Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Doppelklick: neue Karte · K: Koordinator · A: Archiv · Leertaste halten: sprechen',
   close: 'Schließen (Esc)',
+  sheetGrip: 'Breite ziehen · Doppelklick: zurück auf die Standardbreite',
   planSheet: 'Projekt · Plan',
   plan: {
     read: 'Plandokument lesen',

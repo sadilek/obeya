@@ -15,7 +15,8 @@ import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './k
 import { Sign, Wordmark } from './logo';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
-import { CanvasPill, CardView, Edges, Links, Minimap, ProjectView, readingWidth, RestartPill, Sheet } from './parts';
+import { CanvasPill, CardView, Edges, Links, Minimap, ProjectView, RestartPill, Sheet } from './parts';
+import { clampWidth, loadWidths, saveWidths, SHEET_GAP, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
 
 export function App() {
@@ -52,7 +53,6 @@ function Live({ canvases }: { canvases: CanvasInfo[] }) {
 type Focus = { type: 'project'; id: string; prevCam: Cam } | { type: 'card'; id: string; prevCam: Cam; project: Focus | null };
 type Pos = { x: number; y: number };
 
-const SHEET_W = 410;
 // opening a card takes FLY_MS + UNFOLD_MS (300 ms) and closing the same: fast, yet still a visible move
 const FLY_MS = 130;
 const UNFOLD_MS = 170;
@@ -167,6 +167,11 @@ function Canvas({
     readingRef.current = r;
     setReadingState(r);
   };
+  // how wide the sheets are, as the owner dragged them; in effect clamped to the window
+  const [widths, setWidths] = useState<SheetWidths>(() => loadWidths(localStorage));
+  const sheetW = widthsIn(widths, innerWidth);
+  const sheetWRef = useRef(sheetW);
+  sheetWRef.current = sheetW;
   const [kOn, setKOn] = useState(false);
   const toggleKoordinator = () => {
     if (!kOn && focusRef.current?.type === 'project') closeProject();
@@ -344,7 +349,7 @@ function Canvas({
     setAOn(false);
     setCOn(false);
     // an archived project is not on the canvas: its sheet takes the archive's place
-    if (!p.archivedAt) await flyOrJump(camFor(bounds(p), 40, SHEET_W, 60), 700, quick);
+    if (!p.archivedAt) await flyOrJump(camFor(bounds(p), 40, sheetWRef.current.sheet + 30, 60), 700, quick);
   }
 
   /** Reads the project's plan doc in the sheet, at the workstream `mark`; `null` goes back to the workstreams. */
@@ -359,7 +364,7 @@ function Canvas({
     setAOn(false);
     setCOn(false);
     // the project stays in view beside the wider sheet
-    await flyOrJump(camFor(bounds(p), 40, r ? readingWidth() + 30 : SHEET_W, 60), 700, quick);
+    await flyOrJump(camFor(bounds(p), 40, (r ? sheetWRef.current.read : sheetWRef.current.sheet) + 30, 60), 700, quick);
   }
 
   async function closeProject() {
@@ -553,9 +558,36 @@ function Canvas({
   const [panning, setPanning] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   // the strip on the right a sheet covers, which neither edge indicators nor dragging count as view
-  const reserve = focus || kOn || aOn || cOn ? (reading && focus?.type === 'project' ? readingWidth() + 30 : SHEET_W) : 0;
+  const readingNow = !!reading && focus?.type === 'project';
+  const reserve = focus || kOn || aOn || cOn ? (readingNow ? sheetW.read : sheetW.sheet) + 30 : 0;
   const reserveRef = useRef(reserve);
   reserveRef.current = reserve;
+
+  // the grip at the open sheet's left edge widens or narrows it; reading a plan doc has its own width
+  const gripOn = kOn || aOn || cOn || sheetOn;
+  const gripKind = readingNow && sheetOn ? 'read' : 'sheet';
+  const gripRef = useRef<{ x: number; w: number; kind: 'sheet' | 'read' } | null>(null);
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => {
+    if (!resizing) saveWidths(localStorage, widths);
+  }, [widths, resizing]);
+  function onGripDown(e: React.PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    gripRef.current = { x: e.clientX, w: sheetW[gripKind], kind: gripKind };
+    setResizing(true);
+  }
+  function onGripMove(e: React.PointerEvent) {
+    const g = gripRef.current;
+    if (!g) return;
+    const w = clampWidth(g.w + g.x - e.clientX, innerWidth, g.kind);
+    setWidths((ws) => ({ ...ws, [g.kind]: w }));
+  }
+  function onGripUp() {
+    gripRef.current = null;
+    setResizing(false);
+  }
   /** `c`, moved just far enough that the view outside the sheet shows some content. */
   const kept = (c: Cam) => keepInView(c, contentRef.current, { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight - BOTTOM });
   /** When no content is in view any more (cards went, the window shrank), flies to the nearest. */
@@ -741,7 +773,10 @@ function Canvas({
   const edgeTargets = placed.filter(({ item }) => needsYou(item) && (focus?.type !== 'project' || item.parent === focus.id));
 
   return (
-    <div className={cam.s < FAR ? 'z-far' : undefined}>
+    <div
+      className={[cam.s < FAR && 'z-far', resizing && 'resizing'].filter(Boolean).join(' ') || undefined}
+      style={{ '--sheet-w': `${sheetW.sheet}px`, '--read-w': `${sheetW.read}px` } as React.CSSProperties}
+    >
       <div
         id="viewport"
         ref={viewportRef}
@@ -844,6 +879,17 @@ function Canvas({
         onRead={(r) => sheetProject && readPlan(sheetProject, r)}
         els={sheetEls}
         version={snapshot}
+      />
+      <div
+        id="sheet-grip"
+        className={gripOn ? 'on' : undefined}
+        style={{ right: SHEET_GAP + sheetW[gripKind] - 6 }}
+        title={t.sheetGrip}
+        onPointerDown={onGripDown}
+        onPointerMove={onGripMove}
+        onPointerUp={onGripUp}
+        onPointerCancel={onGripUp}
+        onDoubleClick={() => setWidths((ws) => ({ ...ws, [gripKind]: gripKind === 'sheet' ? SHEET_W : null }))}
       />
       <div id="ack" className={ackOn ? 'on' : undefined}>
         <span>{ack?.text}</span>

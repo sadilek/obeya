@@ -355,10 +355,19 @@ textarea.p-body:focus { border-color: var(--muted); }
 #links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 #links path { fill: none; stroke: var(--proposal); stroke-width: 2; stroke-dasharray: 5 6; opacity: .7; }
 
-.sheet { position: fixed; top: 64px; right: 14px; bottom: 158px; width: 380px; background: var(--panel); border-radius: 16px; box-shadow: var(--lift);
+.sheet { position: fixed; top: 64px; right: 14px; bottom: 158px; width: var(--sheet-w, 380px); background: var(--panel); border-radius: 16px; box-shadow: var(--lift);
   z-index: 25; transform: translateX(calc(100% + 30px)); transition: transform .45s cubic-bezier(.3,.9,.3,1), width .45s cubic-bezier(.3,.9,.3,1);
   overflow: auto; padding: 22px 22px 30px; }
 .sheet.on { transform: none; }
+/* the grip on the open sheet's left edge: drag to widen or narrow it, double-click for the default */
+#sheet-grip { position: fixed; top: 64px; bottom: 158px; width: 12px; z-index: 26; cursor: ew-resize; touch-action: none;
+  opacity: 0; pointer-events: none; transition: opacity .2s, right .45s cubic-bezier(.3,.9,.3,1); }
+#sheet-grip.on { opacity: 1; pointer-events: auto; transition-delay: .3s, 0s; }
+#sheet-grip::after { content: ""; position: absolute; left: 4px; top: 50%; width: 4px; height: 44px; margin-top: -22px; border-radius: 2px;
+  background: var(--planned); opacity: .55; transition: background .15s, opacity .15s, height .15s, margin-top .15s; }
+#sheet-grip:hover::after, .resizing #sheet-grip::after { background: var(--muted); opacity: 1; height: 64px; margin-top: -32px; }
+.resizing, .resizing * { cursor: ew-resize !important; user-select: none; }
+.resizing .sheet, .resizing #sheet-grip { transition: none; }
 .sheet h2 { margin: 2px 0 8px; font-size: 20px; letter-spacing: -.01em; }
 .sheet .goal { font-size: 13.5px; opacity: .9; }
 .sheet .src { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 8px; }
@@ -497,7 +506,7 @@ button.link:hover { text-decoration: underline; }
   transition: opacity .25s, transform .25s; display: flex; gap: 14px; align-items: center; }
 #ack.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 #ack button { background: transparent; border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent); color: var(--bg); border-radius: 8px; padding: 3px 10px; cursor: pointer; flex: none; }
-@media (max-width: 760px) { #minimap, #keys { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; } .p-grid, .cols { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { #minimap, #keys, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; } .p-grid, .cols { grid-template-columns: 1fr; } }
 
 /* the play button on a startable card, shown while the pointer is on the card */
 .card .play { position: absolute; right: 10px; bottom: 8px; width: 26px; height: 26px; border-radius: 13px; border: 0; padding: 0 0 0 2px;

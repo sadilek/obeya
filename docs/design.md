@@ -440,6 +440,11 @@ the repository; the copy on the project is only for the archive).
   widens it and shows the doc as written, rendered, kept current with the file; a workstream's
   card opens it at the workstream's item. Esc goes back to the workstreams. The server hands out
   only docs it shows as projects, by project card, never a path.
+- The sheets on the right (Koordinator, archive, configuration, a project's) are as wide as the
+  owner drags their left edge: one width for all of them, and one for reading a plan doc, which
+  follows the window until dragged. The browser remembers both; the canvas keeps 240 px beside the
+  sheet, and the camera keeps a project beside it; a double-click on the edge goes back to the
+  default (2026-10-02).
 - A plan card gets a stored row the first time it is seen, so the owner's placement persists; its
   title, text and state always come from the doc. Each read also keeps the doc's last state on the
   project (title, goal, workstreams with key, label, title, text and state).
