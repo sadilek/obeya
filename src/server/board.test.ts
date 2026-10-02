@@ -262,6 +262,24 @@ describe('archive', () => {
     expect(board.archived()).toEqual([]);
   });
 
+  test('a dropped idea goes into the archive with its brief, an open or parked one does not', () => {
+    const idea = board.create({ kind: 'feature', idea: true, title: 'Idee', x: 30, y: 40 });
+    expect(() => board.archive([idea.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
+    board.setIdea(idea.id, { status: 'parked' });
+    expect(() => board.archive([idea.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
+    board.setIdea(idea.id, { status: 'dropped', brief: '**Ziel:** nichts' });
+    board.addPrototype(idea.id, 'Prototyp: Idee', 'zeigen');
+    expect(() => board.archive([idea.id])).toThrow(expect.objectContaining({ code: 'prototypeRunning' }));
+    board.remove(board.snapshot().items.find((i) => i.prototypeOf === idea.id)!.id);
+    board.archive([idea.id]);
+    expect(board.snapshot().items.some((i) => i.id === idea.id)).toBe(false);
+    expect(board.archived()).toMatchObject([{ id: idea.id, state: 'idea', idea: { status: 'dropped', brief: '**Ziel:** nichts' } }]);
+    // archiving everything finished leaves ideas alone
+    expect(board.archiveDone()).toEqual([]);
+    board.unarchive(idea.id);
+    expect(board.snapshot().items.find((i) => i.id === idea.id)).toMatchObject({ x: 30, y: 40, idea: { status: 'dropped' } });
+  });
+
   test('archiving everything finished leaves the rest on the canvas', () => {
     const a = done('A');
     const b = done('B');

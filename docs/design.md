@@ -88,7 +88,9 @@ An idea is thought through on its card before anything is planned; no worker run
    Koordinator like "Agent starten" (it waits only if it would likely conflict with running work). "Als Projekt planen" plans a
    card whose worker writes a plan doc with workstreams, which lands like any change (OKE: a PR)
    and then appears as a project, linked back to the idea. "Parken" and "Verwerfen" leave the card with its brief; talking
-   to it opens it again. Decisions from the conversation go into the decision log; lasting
+   to it opens it again. A dropped idea can be archived ("Archivieren", not while a prototype for
+   it runs): in the archive it shows its brief and conversation read-only and can go back to its
+   place, where talking to it opens it again. Decisions from the conversation go into the decision log; lasting
    preferences are learned by the Koordinator as before.
 
 ## Card lifecycle
@@ -487,7 +489,9 @@ the repository; the copy on the project is only for the archive).
   the owner again. Feedback, a stop or a blocked Obeya checkout take it back.
 - Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
   for developers.
-- The owner archives only their own cards, and only once `live`; a workstream stays with its
+- The owner archives only their own cards, and only once `live`, or an idea once dropped (a parked
+  one is meant to come back, so it stays in sight); "all finished ones at once" leaves dropped
+  ideas alone. A workstream stays with its
   project, where a delivered one is already a chip, and goes into the archive with it. Archiving
   keeps the card's position, demo and log.
 - A project links the idea it came from by what the idea's landed work added to the plan directory,
