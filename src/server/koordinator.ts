@@ -331,7 +331,7 @@ export class Koordinator {
         {
           name: 'propose',
           description:
-            'Propose a rule to the owner: one short rule in German, and why (one sentence in German naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts.',
+            'Propose a rule to the owner: one short rule in German, and why (one short sentence in German, under 150 characters, naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts.',
           schema: { rule: z.string(), why: z.string(), replaces: z.number().int().optional() },
           run: ({ rule, why, replaces }) => {
             const r = String(rule).trim().slice(0, 500);
@@ -926,7 +926,7 @@ This is the Rückschau. You get what happened on the canvas since the last one, 
 - commands taken back, and what the owner did instead.
 Clicks without words count here: what the owner does again and again says what they want as much as what they say.
 
-Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in German in the owner's terms and without the occasion ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); why, one sentence in German for the owner naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
+Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in German in the owner's terms and without the occasion ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); why, one short sentence in German for the owner (under 150 characters) naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
 `.trim();
 
 /** How the Rückschau names who did something on a card, and what. */
