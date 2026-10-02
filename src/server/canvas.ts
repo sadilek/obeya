@@ -7,7 +7,7 @@ import { pickAdapter } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
-import type { CanvasConfig, CardAction, ConfigProblemCode, Item, RepoConfig, RepoRef } from '../core/types';
+import type { CanvasConfig, CardAction, CardPatch, ConfigProblemCode, Item, RepoConfig, RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -43,6 +43,8 @@ export interface CanvasDeps {
   ownCheckout?: string | null;
   /** Obeya's configuration, which the Koordinator reads and changes on the owner's word. */
   config?: Config;
+  /** How long the owner stops typing in a card before what they wrote counts as written. */
+  writingPauseMs?: number;
 }
 
 export interface RepoRuntime {
@@ -64,6 +66,8 @@ export class CanvasRuntime {
   readonly answers: Answers;
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];
+  /** Cards the owner is writing in, with their text before; a pause in typing hands it to the learner. */
+  private writing = new Map<string, { before: string; timer: ReturnType<typeof setTimeout> }>();
 
   constructor(config: CanvasConfig, private deps: CanvasDeps) {
     const resolved = resolveCanvas(config, deps.store);
@@ -110,7 +114,7 @@ export class CanvasRuntime {
         adapter,
         repo: ref.id,
         preferences,
-        onOwnerInput: (card, kind, text, question) => koordinator.learn(card, kind, text, question),
+        onOwnerInput: (card, kind, text, context) => koordinator.learn(card, kind, text, context),
         advisor: (card) => {
           const project = card.parent ? board.item(card.parent) : undefined;
           return project
@@ -138,6 +142,7 @@ export class CanvasRuntime {
       board,
       runtime: deps.runtime,
       preferences,
+      home: this.repos[0]!.info.path,
       repoFor: (card) => {
         const r = this.repoOf(card);
         return { workers: r.workers, workspaces: r.workspaces, adapter: r.adapter, path: r.info.path };
@@ -169,6 +174,7 @@ export class CanvasRuntime {
       execute: (c) => this.run(c),
       imageFiles,
       lookUp: (talk) => this.answers.lookUp(talk),
+      onOwnerInput: (card, kind, text, reply) => this.koordinator.learn((card && board.item(card)) || null, kind, text, { reply }),
       ...(deps.config ? { config: deps.config } : {}),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
@@ -186,8 +192,33 @@ export class CanvasRuntime {
     return this.repos.find((r) => r.ref.id === item.repo) ?? this.repos[0]!;
   }
 
+  /** The owner edits a card; what they write in it is offered for learning once they have written it. */
+  patch(cardId: string, p: CardPatch) {
+    const before = this.board.row(cardId).body ?? '';
+    this.board.patch(cardId, p);
+    if (p.body !== undefined) {
+      const w = this.writing.get(cardId);
+      clearTimeout(w?.timer);
+      this.writing.set(cardId, { before: w?.before ?? before, timer: setTimeout(() => this.written(cardId), this.deps.writingPauseMs ?? 60_000) });
+    }
+    // an idea's agent starts from the card's text
+    if (p.state === 'idea') this.written(cardId);
+  }
+
+  /** The owner has written in the card (a pause, or they act on it): the learner gets what they wrote. */
+  private written(cardId: string) {
+    const w = this.writing.get(cardId);
+    if (!w) return;
+    clearTimeout(w.timer);
+    this.writing.delete(cardId);
+    const card = this.board.item(cardId);
+    const [text, before] = [card?.body.trim() ?? '', w.before.trim()];
+    if (card && text && text !== before) this.koordinator.learn(card, 'card', text, before ? { before } : {});
+  }
+
   /** An owner action from the card's panel. */
   act(cardId: string, a: CardAction) {
+    this.written(cardId);
     const text = 'text' in a ? (a.text ?? '') : '';
     const images = this.images.resolve('images' in a ? a.images : undefined);
     // a prototype may leave it to the idea's brief what it shows; a screenshot may speak for itself
@@ -241,6 +272,8 @@ export class CanvasRuntime {
 
   /** Deletes a card of the owner's, stopping its worker first; a prototype is discarded into the archive instead. */
   remove(cardId: string) {
+    clearTimeout(this.writing.get(cardId)?.timer);
+    this.writing.delete(cardId);
     const { state, landed, workspace, prototype_of } = this.board.row(cardId);
     if (prototype_of) return this.repoOf(cardId).workers.endPrototype(cardId, 'discarded');
     if (state === 'working' || state === 'waiting' || (landed && workspace)) this.repoOf(cardId).workers.stop(cardId);
@@ -460,6 +493,7 @@ export class CanvasRuntime {
   }
 
   shutdown() {
+    for (const [, w] of this.writing) clearTimeout(w.timer);
     for (const stop of this.stops) stop();
     for (const r of this.repos) r.workers.shutdown();
     this.explorers.shutdown();

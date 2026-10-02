@@ -18,13 +18,14 @@ accepts applies to every agent at once, not from its next session.
   repetition. What it recognises is proposed (W1); the card's log says "Schlägt vor: …".
 - Sources (`OwnerInput`, wired in `src/server/canvas.ts`): notes and feedback to workers, the
   owner's own answers to worker and demo questions (option clicks included), the discussion of an
-  idea. Spoken commands the Koordinator turns into a note, answer, feedback or discussion on a card
-  go the same way, in its rewording.
-- Not learned from: the conversation with the Koordinator itself (reply, look_up), the text of new
-  cards and ideas, answers given in the owner's name (`workers.ts` passes only `by === 'owner'`),
-  clicks without text.
-- When the owner overrules an answer given in their name, the learner does not see the overruled
-  answer, although `docs/design.md` (Communication) says overruling feeds the preference memory.
+  idea, the conversation with the Koordinator (`Commander.hear`: reply and look_up at once, a
+  command once it runs, unless its words reach the learner another way), and the text the owner
+  writes in a card (`CanvasRuntime.patch`: after a minute's pause in typing, or when they act on
+  the card, with the text it had before). Spoken commands the Koordinator turns into a note,
+  answer, feedback or discussion on a card go the same way, in its rewording. The owner's first
+  note, answer or feedback on a card after an answer given in their name goes with that answer
+  (W3).
+- Not learned from: answers given in the owner's name themselves, clicks without text.
 - How rules reach agents: workers and idea agents (`explorers.ts`) get them in their instructions
   and a changed rule once at their next tool call (`AgentSpec.contextUpdate`); project agents,
   Koordinator questions, look-ups and cuts with every message; the voice Koordinator
@@ -82,7 +83,7 @@ Architecture: Koordinator; Communication: overruling).
 - [x] **W2:** "Merk dir". A `remember` action in `commands.ts` records an active rule at once,
   undone like any other command; the voice Koordinator gets the active rules with every command.
   Command tests. Independent of W1.
-- [ ] **W3:** More sources. New `OwnerInput` kinds for the conversation with the Koordinator
+- [x] **W3:** More sources. New `OwnerInput` kinds for the conversation with the Koordinator
   (`Commander.hear`: commands without a card, reply, look_up), the text of new cards and ideas
   (voice and canvas), and overruling an answer given in the owner's name, with that answer as
   context. After W1, so the new sources yield proposals, not silent rules.

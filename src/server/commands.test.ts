@@ -329,6 +329,45 @@ describe('„Merk dir“', () => {
   });
 });
 
+describe('what the owner says to the Koordinator is offered for learning', () => {
+  test('a reply and a look-up at once; a command once it runs, not when taken back; words that reach the learner another way not again', async () => {
+    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    board.work(a.id, { state: 'working' });
+    const heard: string[] = [];
+    const k = new Commander({
+      board,
+      runtime,
+      cwd: '/r',
+      execute: (c) => void executed.push(c),
+      delayMs: 20,
+      onOwnerInput: (card, kind, text, reply) => heard.push(`${kind}${card ? ` on ${board.item(card)!.title}` : ''}: ${text} → ${reply}`),
+    });
+    await say(k, 'warum dauert das so lange?', 'reply', { confirm: 'Der Agent wartet auf die Tests.' });
+    await say(k, 'was würde der Agent bei Export tun?', 'look_up', { question: 'Was würde der Agent tun?', confirm: 'Ich schaue nach.' });
+    expect(heard).toEqual(['talk: warum dauert das so lange? → Der Agent wartet auf die Tests.', 'talk: was würde der Agent bei Export tun? → Ich schaue nach.']);
+
+    const started = k.hear('mach eine Karte für den Import und fang gleich an, Tests immer zuerst', { card: a.id });
+    await settle();
+    runtime.last.call('act', { actions: [{ do: 'new_card', kind: 'feature', title: 'Import', body: 'Import, Tests zuerst', start: true }], confirm: 'Neue Karte „Import“.' });
+    runtime.last.emit({ type: 'idle' });
+    k.arm((await started).token!);
+    expect(heard).toHaveLength(2);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(heard[2]).toBe('command on Export: mach eine Karte für den Import und fang gleich an, Tests immer zuerst → Neue Karte „Import“.');
+
+    const { heard: back } = await say(k, 'stopp Export', 'act', { actions: [{ do: 'stop', card: 'K1' }], confirm: '„Export“ angehalten.' });
+    k.undo(back.token!);
+    // a note reaches the learner through the worker, a rule is one already
+    const { heard: note } = await say(k, 'sag Export: immer mit Einheit', 'act', { actions: [{ do: 'note', card: 'K1', text: 'Immer mit Einheit.' }], confirm: 'Weitergegeben.' });
+    k.arm(note.token!);
+    const { heard: rule } = await say(k, 'merk dir: Demos mit Ton', 'act', { actions: [{ do: 'remember', text: 'Demos mit Ton.' }], confirm: 'Gemerkt.' });
+    k.arm(rule.token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(heard).toHaveLength(3);
+    expect(executed.map((c) => c.do)).toEqual(['newCard', 'note', 'remember']);
+  });
+});
+
 describe("the Koordinator and Obeya's configuration", () => {
   const view = { file: '/h/canvases.json', source: 'file', canvases: [{ name: 'Obeya', repos: [{ path: '/r' }] }], running: ['obeya'] } as unknown as ConfigView;
   const config = {

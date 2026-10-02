@@ -173,3 +173,57 @@ test('a single repository keeps its canvas id and bare plan references', () => {
   expect(c.board.snapshot().items.find((i) => i.kind === 'project')!.plan!.file).toBe('docs/plan/plan.md');
   canvas = c;
 });
+
+test('what the owner writes in a card, or says to the Koordinator without one, reaches the learner', async () => {
+  dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
+  const web = repo('web', 'Web');
+  canvas.shutdown();
+  canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => ({}) as never }, writingPauseMs: 30 });
+  const learners = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'propose'));
+  const done = async () => {
+    learners().at(-1)!.emit({ type: 'idle' });
+    await settle();
+  };
+
+  // a new card: what the owner typed, once they pause
+  const a = canvas.board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+  canvas.patch(a.id, { body: 'CSV' });
+  canvas.patch(a.id, { body: 'CSV, Spalten immer mit Einheit.' });
+  await settle();
+  expect(learners()).toHaveLength(0);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(learners()).toHaveLength(1);
+  expect(learners()[0]!.inbox[0]).toContain("The owner's text of a card they wrote, the task for an agent: CSV, Spalten immer mit Einheit.");
+  expect(learners()[0]!.inbox[0]).not.toContain('Before the owner wrote');
+  await done();
+
+  // a follow-up with a finding in it: at once when the owner acts on it, with the text it had before
+  const b = canvas.board.create({ kind: 'bugfix', title: 'Datum', body: 'Befund: Datum fehlt.', from: a.id });
+  canvas.patch(b.id, { body: 'Befund: Datum fehlt.\n\nImmer ISO-Datum.' });
+  canvas.act(b.id, { action: 'split' });
+  await settle();
+  expect(learners()).toHaveLength(2);
+  expect(learners()[1]!.inbox[0]).toContain("Before the owner wrote in it, the card's text read:\nBefund: Datum fehlt.");
+  await done();
+
+  // typed back to what it was, or deleted while being written: nothing
+  const c = canvas.board.create({ kind: 'feature', title: 'C', body: 'Alt.', x: 0, y: 0 });
+  canvas.patch(c.id, { body: 'Neu.' });
+  canvas.patch(c.id, { body: 'Alt.' });
+  const d = canvas.board.create({ kind: 'feature', title: 'D', x: 0, y: 0 });
+  canvas.patch(d.id, { body: 'Weg damit.' });
+  canvas.remove(d.id);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(learners()).toHaveLength(2);
+
+  // the conversation with the Koordinator, without a card open
+  const heard = canvas.commander.hear('Warum fragen die Agenten so viel?', {});
+  await settle();
+  runtime.last.call('reply', { confirm: 'Weil die Karten offen lassen, wie weit sie gehen sollen.' });
+  runtime.last.emit({ type: 'idle' });
+  await heard;
+  await settle();
+  expect(learners()).toHaveLength(3);
+  expect(learners()[2]!.spec.cwd).toBe(web);
+  expect(learners()[2]!.inbox[0]).toContain('The Koordinator replied: Weil die Karten offen lassen');
+});

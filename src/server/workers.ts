@@ -10,6 +10,7 @@ import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
 import { checkArtifact, readChapters } from './demo';
 import { imageNote } from './images';
+import type { InputContext } from './koordinator';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
 import type { PrState } from './board';
@@ -28,7 +29,7 @@ export interface WorkerOptions {
   /** The owner's preferences, added to every worker's instructions. */
   preferences?: () => string;
   /** Called with everything the owner tells a worker, so lasting preferences can be learned. */
-  onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, question?: string) => void;
+  onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, context: InputContext) => void;
   /** On a canvas with several repositories: the one these workers work in. */
   repo?: string;
   /** Who answers the card's questions on the owner's behalf, if anyone. */
@@ -129,11 +130,12 @@ export class Workers {
   /** A hint while the worker runs, or feedback on its review; `images` are screenshot files the owner attached. */
   message(cardId: string, text: string, images: string[] = []) {
     const card = this.card(cardId);
+    const overruled = this.overruled(cardId);
     if (card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) {
       // feedback instead of an approval: what comes back is reviewed again
       this.o.board.work(cardId, { state: 'working', need: null, detail: null, approved_at: null });
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
-      if (text) this.o.onOwnerInput?.(card, 'feedback', text);
+      if (text) this.o.onOwnerInput?.(card, 'feedback', text, overruled ? { overruled } : {});
       this.deliver(
         cardId,
         `Feedback from the owner instead of an approval; the card is back with you${card.need === 'demo' ? ', and your demo stays on it until you hand over another' : ''}:\n\n${text}${imageNote(images)}`,
@@ -141,7 +143,7 @@ export class Workers {
       );
     } else if (card.state === 'working' || card.state === 'inPr' || (card.state === 'waiting' && card.need === 'question') || card.finishing) {
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
-      if (text) this.o.onOwnerInput?.(card, 'note', text);
+      if (text) this.o.onOwnerInput?.(card, 'note', text, overruled ? { overruled } : {});
       this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything, and say briefly what you change or why nothing):\n\n${text}${imageNote(images)}`, images);
     } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
@@ -156,7 +158,7 @@ export class Workers {
     this.o.board.work(cardId, { state: row.landed ? 'live' : row.pr ? 'inPr' : 'working', need: null, detail: null });
     this.o.board.log(cardId, 'answer', by, text, undefined, images.map((f) => basename(f)));
     this.recordDecision(card, q, text || '(Screenshot)', by);
-    if (by === 'owner' && text) this.o.onOwnerInput?.(card, 'answer', text, q);
+    if (by === 'owner' && text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', by);
     const from = { owner: 'from the owner', project: 'from the project agent, on the owner\u2019s behalf', koordinator: 'from the Koordinator, on the owner\u2019s behalf' }[by];
     this.deliver(cardId, `Answer to your question (${from}):\n\n${text}${imageNote(images)}`, images);
@@ -169,7 +171,7 @@ export class Workers {
     this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)' }) });
     this.o.board.log(card.id, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
     this.recordDecision(card, q, text || '(Screenshot)', 'owner');
-    if (text) this.o.onOwnerInput?.(card, 'answer', text, q);
+    if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', 'owner');
     this.deliver(
       card.id,
@@ -775,6 +777,24 @@ export class Workers {
       .events(cardId)
       .filter((e) => e.kind === 'question')
       .at(-1)?.text;
+  }
+
+  /**
+   * The answer given in the owner's name to the card's last question, as long as the owner has not
+   * said anything on the card since: what they say next may overrule it.
+   */
+  private overruled(cardId: string): InputContext['overruled'] {
+    const events = this.o.board.events(cardId);
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]!;
+      if (e.author === 'owner' && (e.kind === 'hint' || e.kind === 'answer')) return undefined;
+      // a question asked later is the card's last one
+      if (e.kind === 'question') return undefined;
+      if (e.kind !== 'answer' || (e.author !== 'project' && e.author !== 'koordinator')) continue;
+      const question = events.slice(0, i).findLast((q) => q.kind === 'question');
+      return { question: question?.text ?? '', answer: e.text, by: e.author };
+    }
+    return undefined;
   }
 
   private recordDecision(card: Item, question: string, answer: string, by: 'owner' | Adviser) {

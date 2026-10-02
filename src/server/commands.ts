@@ -26,6 +26,12 @@ export type Command = (
   images?: string[];
 };
 
+/**
+ * Actions whose words reach the learner on their own way (a note, an idea's discussion) or are a
+ * rule already: a command with one of them is not offered for learning again.
+ */
+const LEARNED: Command['do'][] = ['note', 'answer', 'feedback', 'discuss', 'newIdea', 'remember'];
+
 /** The actions a command's screenshots go with: those that create a card, start one or say something to its agent. */
 const TAKES_IMAGES: Command['do'][] = ['newCard', 'newIdea', 'start', 'force', 'note', 'answer', 'feedback', 'discuss'];
 
@@ -62,6 +68,11 @@ export interface CommanderOptions {
   imageFiles?: (ids?: string[]) => string[];
   /** Obeya's configuration: the Koordinator reads it, and changes it on the owner's word. */
   config?: Pick<Config, 'view' | 'check'>;
+  /**
+   * Called with what the owner said, so lasting preferences can be learned: a question or remark
+   * the Koordinator replied to (`talk`), or a command once it runs; `card` is the one open.
+   */
+  onOwnerInput?: (card: string | undefined, kind: 'command' | 'talk', text: string, reply: string) => void;
 }
 
 /** The Koordinator's conversation with the owner: one agent session that reads command after command. */
@@ -104,8 +115,12 @@ const HISTORY_STEPS = 60;
 const NEWS_STEPS = 40;
 
 export class Commander {
-  /** Commands between being understood and running; the timer is set once the owner has the confirmation. */
-  private waiting = new Map<string, { commands: Command[]; talk: number; confirm: string; card?: string; timer?: ReturnType<typeof setTimeout> }>();
+  /**
+   * Commands between being understood and running; the timer is set once the owner has the
+   * confirmation. `said`: the owner's words, to learn from once they run, unless they reach the
+   * learner another way.
+   */
+  private waiting = new Map<string, { commands: Command[]; said?: string; talk: number; confirm: string; card?: string; timer?: ReturnType<typeof setTimeout> }>();
   private session: Session | null = null;
   /** Commands are read one after the other, each once the previous turn has ended. */
   private turns: Promise<unknown> = Promise.resolve();
@@ -137,6 +152,7 @@ export class Commander {
         this.o.board.log(card, 'say', 'koordinator', confirm);
       }
       this.o.lookUp?.(talk);
+      this.o.onOwnerInput?.(card, 'talk', transcript, confirm);
       return { confirm };
     }
     // talking about an idea changes nothing that would need taking back: it goes on at once
@@ -150,9 +166,11 @@ export class Commander {
       this.o.board.log(card, 'say', 'koordinator', confirm);
     }
     for (const c of talking) await this.run(c);
+    if (!commands.length) this.o.onOwnerInput?.(card, 'talk', transcript, confirm);
     if (!rest.length) return { confirm, ...(quiet ? { quiet: true } : {}) };
     const token = crypto.randomUUID();
-    this.waiting.set(token, { commands: rest, talk, confirm, ...(card ? { card } : {}) });
+    const said = commands.some((c) => LEARNED.includes(c.do)) ? {} : { said: transcript };
+    this.waiting.set(token, { commands: rest, ...said, talk, confirm, ...(card ? { card } : {}) });
     return { confirm, token };
   }
 
@@ -166,6 +184,8 @@ export class Commander {
     if (!w || w.timer) return;
     w.timer = setTimeout(async () => {
       this.waiting.delete(token);
+      // what the owner takes back is not learned from either
+      if (w.said) this.o.onOwnerInput?.(w.card, 'command', w.said, w.confirm);
       // in the order the owner said them; one that fails does not hold up the others
       for (const command of w.commands) await this.run(command);
     }, this.delayMs);
