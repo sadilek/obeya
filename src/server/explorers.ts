@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { type Item, NEXT_STEPS, type NextStep, type Question } from '../core/types';
 import { decisionLog, toQuestion } from './advisor';
-import { BadRequest, type Board } from './board';
+import { BadRequest, type Board, type Message, type Unread } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { imageNote } from './images';
 import { describeTool } from './workers';
@@ -29,8 +29,10 @@ export interface ExplorerOptions {
 
 interface Live {
   session: AgentSession;
+  /** The messages the running turn answers. */
+  current: Message[];
   /** Messages that arrived during a turn; they go in together once it ends. */
-  queue: { text: string; images: string[] }[];
+  queue: Message[];
   replied: boolean;
   lastText: string;
   /** The owner spoke: the reply is summed up aloud. */
@@ -79,6 +81,20 @@ export class Explorers {
     if (card?.idea?.thinking) this.o.board.setIdea(cardId, { thinking: false });
   }
 
+  /**
+   * Ends the idea's session in the middle of a turn (parked, dropped, an error): what the agent has
+   * not answered yet stays with the idea and goes to it first when the conversation goes on.
+   */
+  interrupt(cardId: string, why: Unread['why']) {
+    const live = this.live.get(cardId);
+    if (live) {
+      // a reply already given answered the turn's messages
+      const messages = [...(live.replied ? [] : live.current), ...live.queue];
+      if (messages.length) this.o.board.setIdea(cardId, { unread: { why, messages } });
+    }
+    this.close(cardId);
+  }
+
   /** After a restart: an idea whose agent was in the middle of a reply gets it. */
   resumeAll() {
     for (const i of this.o.board.snapshot().items) {
@@ -88,8 +104,17 @@ export class Explorers {
     }
   }
 
+  /**
+   * Obeya stops: a session that started resumes with the message of its turn, but what waited for
+   * it would be lost; a session that never started loses its turn too.
+   */
   shutdown() {
-    for (const [, live] of this.live) live.session.close();
+    for (const [cardId, live] of this.live) {
+      live.session.close();
+      if (this.o.board.item(cardId)?.state !== 'idea') continue;
+      const messages = this.o.board.row(cardId).session_id ? live.queue : [...live.current, ...live.queue];
+      if (messages.length) this.o.board.setIdea(cardId, { unread: { why: 'restart', messages } });
+    }
     this.live.clear();
   }
 
@@ -102,16 +127,21 @@ export class Explorers {
       return;
     }
     const row = this.o.board.row(card.id);
-    this.o.board.setIdea(card.id, { thinking: true });
-    if (row.session_id) return this.launch(card, message, row.session_id, spoken, images, quiet);
+    // what an interrupted turn left unanswered goes first
+    const { unread } = this.o.board.idea(card.id);
+    const current = [...(unread?.messages ?? []), { text: message, images }];
+    this.o.board.setIdea(card.id, { thinking: true, unread: undefined });
+    const text = unread ? `${UNREAD_NOTE[unread.why]}\n\n${unread.messages.map((m) => m.text).join('\n\n')}\n\n---\n\n${message}` : message;
+    const all = current.flatMap((m) => m.images);
+    if (row.session_id) return this.launch(card, current, text, row.session_id, spoken, all, quiet);
     // a planned card that became an idea brings the screenshots of its task
     const shots = this.o.imageFiles?.(card.images) ?? [];
-    this.launch(card, `${this.briefing(card, shots)}\n\n${message}`, undefined, spoken, [...shots, ...images], quiet);
+    this.launch(card, current, `${this.briefing(card, shots)}\n\n${text}`, undefined, spoken, [...shots, ...all], quiet);
   }
 
-  private launch(card: Item, message: string, resume: string | undefined, speak: boolean, images: string[], quiet = false) {
+  private launch(card: Item, current: Message[], message: string, resume: string | undefined, speak: boolean, images: string[], quiet = false) {
     const preferences = this.o.preferences?.() ?? '';
-    const live: Live = { session: undefined!, queue: [], replied: false, lastText: '', speak, quiet, preferences };
+    const live: Live = { session: undefined!, current, queue: [], replied: false, lastText: '', speak, quiet, preferences };
     this.live.set(card.id, live);
     live.session = this.o.runtime.start(
       {
@@ -153,7 +183,7 @@ export class Explorers {
         break;
       case 'error':
         this.o.board.log(cardId, 'error', 'obeya', e.message);
-        this.close(cardId);
+        this.interrupt(cardId, 'error');
         break;
       case 'idle': {
         // a turn without reply still said something: that is the reply, unless the turn was for the brief only
@@ -161,8 +191,10 @@ export class Explorers {
         live.replied = false;
         live.lastText = '';
         live.quiet = false;
+        live.current = [];
         if (live.queue.length) {
           const queued = live.queue.splice(0);
+          live.current = queued;
           live.session.send(
             queued.map((m) => m.text).join('\n\n'),
             queued.flatMap((m) => m.images),
@@ -287,6 +319,14 @@ Owner-facing text is in ${OWNER_LANGUAGE}.
 `.trim();
 
 const OWN_TOOLS = ['reply', 'update_brief', 'record_decision'];
+
+/** How the agent hears the messages an interrupted turn left unanswered. */
+const UNREAD_NOTE: Record<Unread['why'], string> = {
+  parked: 'The owner parked the idea while you were working on a reply, which ended that turn. These messages are still unanswered; take them in with the one after them:',
+  dropped: 'The owner dropped the idea while you were working on a reply, which ended that turn. These messages are still unanswered; take them in with the one after them:',
+  error: 'Your last turn ended with an error before you replied. These messages are still unanswered; take them in with the one after them:',
+  restart: 'Obeya was restarted while you worked on a reply. These messages are still unanswered; take them in with the one after them:',
+};
 
 interface Asked {
   question: string;

@@ -288,7 +288,7 @@ export class CanvasRuntime {
    * Koordinator to start. A prototype still running for it is discarded: what is built now is the brief.
    */
   private build(cardId: string) {
-    const card = this.ideaCard(cardId);
+    const card = this.settledIdea(cardId);
     this.decided(card, { answer: 'So bauen, wie der Stand der Idee sagt.', log: 'So bauen: Der Stand der Idee ist der Auftrag.' });
     this.koordinator.request(cardId);
   }
@@ -300,7 +300,7 @@ export class CanvasRuntime {
    */
   private buildOnPrototype(prototypeId: string) {
     const prototype = this.prototypeCard(prototypeId);
-    const idea = this.ideaCard(prototype.prototypeOf!);
+    const idea = this.settledIdea(prototype.prototypeOf!);
     const { workers } = this.repoOf(prototype);
     const { path, branch } = workers.buildOn(prototype.id, idea);
     this.board.work(idea.id, { workspace: path, branch, built_on: prototype.id });
@@ -326,7 +326,7 @@ export class CanvasRuntime {
    * the doc lands, the project takes the idea's place.
    */
   private planDoc(cardId: string) {
-    const card = this.ideaCard(cardId);
+    const card = this.settledIdea(cardId);
     const idea = this.board.idea(cardId);
     const dir = this.repoOf(card).adapter.planDocs.dir;
     this.explorers.close(cardId);
@@ -346,10 +346,10 @@ export class CanvasRuntime {
     this.koordinator.request(cardId);
   }
 
-  /** Parked or dropped, the idea stays on the canvas with its brief. */
+  /** Parked or dropped, the idea stays on the canvas with its brief; what its agent has not answered yet waits for the conversation to go on. */
   private shelve(cardId: string, how: 'park' | 'drop') {
     const card = this.ideaCard(cardId);
-    this.explorers.close(cardId);
+    this.explorers.interrupt(cardId, how === 'park' ? 'parked' : 'dropped');
     this.board.setIdea(cardId, { status: how === 'park' ? 'parked' : 'dropped' });
     if (how === 'drop') this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'Verworfen.', by: 'owner' });
     this.board.log(cardId, 'state', 'owner', how === 'park' ? 'Geparkt.' : 'Verworfen.');
@@ -411,6 +411,13 @@ export class CanvasRuntime {
     const card = this.board.item(cardId);
     if (!card) throw new BadRequest('unknownCard', 'unknown card');
     if (card.state !== 'idea') throw new BadRequest('notIdea', 'the card is not an idea');
+    return card;
+  }
+
+  /** An idea to build or plan: not while its agent works on a reply, which will change the brief the owner decides on. */
+  private settledIdea(cardId: string): Item {
+    const card = this.ideaCard(cardId);
+    if (card.idea?.thinking) throw new BadRequest('ideaThinking', 'the idea’s agent is still working on its reply; decide once it is there');
     return card;
   }
 

@@ -274,7 +274,7 @@ export class Commander {
             '- approve: approve work waiting for review. accept: take a proposed card and start it. dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
             '- remember (no card): a rule the owner wants every agent to follow from now on („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts. It applies at once.',
-            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words, may be empty), park (for later), drop (it stays on the canvas with its brief).",
+            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words, may be empty), park (for later), drop (it stays on the canvas with its brief). Building or planning an idea waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that building goes by a click once the reply is there.",
             '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
             'Texts as the owner meant them (fix obvious recognition errors).',
           ].join('\n'),
@@ -305,6 +305,12 @@ export class Commander {
               if (typeof r === 'string') problems.push(`action ${n + 1} (${a.do}${a.card ? ` on ${a.card}` : ''}): ${r}`);
               else commands.push(r);
             });
+            if (!problems.length)
+              commands.forEach((c, n) => {
+                const r = this.waitsForReply(c, commands);
+                const a = (actions as ActionArgs[])[n]!;
+                if (r) problems.push(`action ${n + 1} (${a.do}${a.card ? ` on ${a.card}` : ''}): ${r}`);
+              });
             if (problems.length)
               return `Nothing recorded: ${problems.join('; ')}. Fix or drop what does not fit and call act again, or use reply (a question the owner asks is answered with reply, or with look_up when it needs reading).`;
             return finish(commands, String(confirm));
@@ -387,6 +393,20 @@ export class Commander {
       if (this.session === s) this.session = null;
     });
     return s;
+  }
+
+  /**
+   * Building or planning an idea waits for its agent's reply, which changes the brief the owner
+   * decides on: what the owner said goes to the agent, and they click once the reply is there.
+   */
+  private waitsForReply(c: Command, all: Command[]): string | undefined {
+    if (c.do !== 'build' && c.do !== 'planDoc' && c.do !== 'buildPrototype') return;
+    const id = c.do === 'buildPrototype' ? this.o.board.item(c.card)?.prototypeOf : c.card;
+    const idea = id ? this.o.board.item(id) : undefined;
+    if (!idea) return;
+    const talked = all.some((d) => d.do === 'discuss' && d.card === idea.id);
+    if (!idea.idea?.thinking && !talked) return;
+    return `the idea's agent ${talked ? 'starts on a reply with the discuss in this command' : 'is still working on its reply'}, and building or planning waits for that reply, so the owner decides on the brief it leaves. Drop this action and pass what the owner said to the idea with discuss (one per idea), then say in confirm that ${c.do === 'planDoc' ? 'planning' : 'building'} goes by a click on the card once the reply is there.`;
   }
 
   /** One action as a command, or why it cannot be done. */
@@ -547,6 +567,8 @@ export class Commander {
           ? `${i.state}: ${i.need}`
           : i.idea && i.idea.status !== 'open'
             ? `idea: ${i.idea.status}`
+            : i.idea?.thinking
+              ? 'idea, its agent is working on its reply'
             : i.finishing
               ? 'live, its agent finishes what remains after the landing'
               : i.state;

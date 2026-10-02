@@ -343,6 +343,8 @@ export type ErrorCode =
   | 'notDone'
   | 'notArchived'
   | 'notIdea'
+  /** The idea's agent is still working on its reply: building or planning waits for it. */
+  | 'ideaThinking'
   /** A prototype for the idea is still running. */
   | 'prototypeRunning'
   /** A project has no planned workstream left that is not already with the Koordinator. */

@@ -101,11 +101,12 @@ export function Detail(p: Props) {
       </>
     );
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
-  // a prototype is discarded or its idea built on it, never approved or deleted
+  // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
+  const ideaThinking = !!p.from?.idea?.thinking;
   const prototypeActions = item.prototypeOf && (
     <>
       {item.branch && (
-        <button className="btn primary" onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
+        <button className="btn primary" disabled={ideaThinking} title={ideaThinking ? t.idea.waitForReply : undefined} onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
           {t.idea.buildPrototype}
         </button>
       )}
@@ -171,7 +172,12 @@ export function Detail(p: Props) {
           <h4>{t.idea.buildProposal}</h4>
           <div className="q-text">{item.buildProposal}</div>
           <div className="actions">
-            <button className="btn primary" onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
+            <button
+              className="btn primary"
+              disabled={ideaThinking}
+              title={ideaThinking ? t.idea.waitForReply : undefined}
+              onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}
+            >
               {t.idea.acceptBuild}
             </button>
           </div>
@@ -494,11 +500,13 @@ function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardActio
               </span>
             </div>
           )}
+          {/* building or planning waits for the reply, which will change the brief the owner decides on */}
+          {idea.thinking && <p className="hint">{t.idea.waitForReply}</p>}
           <div className="actions">
-            <button className={btn('build')} onClick={() => act({ action: 'build' }, { close: true, ack: t.idea.built })}>
+            <button className={btn('build')} disabled={idea.thinking} onClick={() => act({ action: 'build' }, { close: true, ack: t.idea.built })}>
               {t.idea.build}
             </button>
-            <button className={btn('planDoc')} onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
+            <button className={btn('planDoc')} disabled={idea.thinking} onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
               {t.idea.planDoc}
             </button>
             <button className={btn('prototype')} onClick={() => setPrototyping(true)}>

@@ -880,6 +880,19 @@ export interface StoredIdea {
   next?: NextStep;
   /** Decided as a project: its worker writes the plan doc, and the project takes the card's place. */
   project?: boolean;
+  /** Messages a turn ended before answering (the idea parked or dropped, an error, a restart); they go to the agent first next time. */
+  unread?: Unread;
+}
+
+/** A message to an idea's agent: its text and the files of its screenshots. */
+export interface Message {
+  text: string;
+  images: string[];
+}
+
+export interface Unread {
+  why: 'parked' | 'dropped' | 'error' | 'restart';
+  messages: Message[];
 }
 
 const toDecision = (d: DecisionRow): Decision => ({ id: d.id, cardId: d.card_id, question: d.question, answer: d.answer, by: d.by, at: d.at });

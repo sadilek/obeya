@@ -121,6 +121,17 @@ An idea is thought through on its card before anything is planned; no worker run
    a finished card; not while a prototype of it is on the canvas, and then the button is not shown): in the archive it shows its brief and conversation read-only and can go back to its
    place, where talking to it opens it again. Decisions from the conversation go into the decision log; lasting
    preferences are learned by the Koordinator as before.
+   While the agent works on a reply, building and planning wait (so does "Diesen Prototyp bauen"):
+   the buttons are disabled with "Antwort kommt gleich", and the server refuses them
+   (`ideaThinking`). The reply almost always rewrites the brief, so a decision taken before it would
+   build a brief the owner never read; once the reply is there, they decide again, nothing is kept
+   for them. A voice command that builds or plans such an idea, or one that also discusses it
+   ("nimm noch X auf und bau es dann"), only passes what was said to the agent, and the
+   Koordinator says that building goes by a click once the reply is there. Parking and dropping
+   act at once and end the turn, but lose nothing: the messages the agent has not answered (the
+   one it worked on and those queued behind it) stay with the idea (`unread`, across restarts)
+   and go to it first, with why its turn ended, when the conversation goes on. The same holds for
+   a turn that ended with an error, and for messages queued when Obeya stopped.
 
 ## Card lifecycle
 

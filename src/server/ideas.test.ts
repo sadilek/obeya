@@ -146,7 +146,7 @@ describe('an idea', () => {
     const shown = canvas.images.save(new Uint8Array([2]), 'image/png');
     turn(s, 'Zwei Wege.');
     canvas.act(c.id, { action: 'discuss', text: 'Und hier auf dem Handy', images: [shown] });
-    turn(s, 'Verstehe.');
+    turn(explorer(), 'Verstehe.');
     canvas.act(c.id, { action: 'build' });
     expect(item(c.id).images).toEqual([task, shown]);
   });
@@ -362,6 +362,84 @@ describe('an idea', () => {
     expect(s.spec.resume).toBe('sess-9');
     expect(s.inbox[0]).toContain('Obeya was restarted');
   });
+
+  test('building and planning wait for its agent’s reply, which changes the brief they decide on', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Nimm noch den PDF-Export auf.' });
+    const s = explorer();
+    s.emit({ type: 'session', id: 'sess-1' });
+    s.call('update_brief', { brief: '**Ziel:** CSV- und PDF-Export.' });
+    expect(() => canvas.act(i.id, { action: 'build' })).toThrow('still working on its reply');
+    expect(() => canvas.act(i.id, { action: 'planDoc' })).toThrow('still working on its reply');
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true } });
+    expect(s.closed).toBe(false);
+    s.call('reply', { text: 'PDF ist im Stand.', spoken: '' });
+    s.emit({ type: 'idle' });
+    canvas.act(i.id, { action: 'build' });
+    expect(item(i.id)).toMatchObject({ state: 'planned', body: '**Ziel:** CSV- und PDF-Export.' });
+  });
+
+  test('parked or dropped during a turn, what its agent has not answered goes to it first when the conversation goes on, across a restart', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
+    const first = explorer();
+    first.emit({ type: 'session', id: 'sess-1' });
+    const shot = canvas.images.save(new Uint8Array([1]), 'image/png');
+    canvas.act(i.id, { action: 'discuss', text: 'Zweitens.', images: [shot] });
+    canvas.act(i.id, { action: 'park' });
+    expect(first.closed).toBe(true);
+    expect(item(i.id).idea).toMatchObject({ status: 'parked', thinking: false });
+    canvas.shutdown();
+    canvas = open();
+    expect(runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief'))).toHaveLength(1);
+    canvas.act(i.id, { action: 'discuss', text: 'Drittens.' });
+    const later = explorer();
+    expect(later).not.toBe(first);
+    expect(later.spec.resume).toBe('sess-1');
+    expect(later.inbox[0]).toContain('The owner parked the idea while you were working on a reply');
+    expect(later.inbox[0]!.indexOf('Erstens.')).toBeLessThan(later.inbox[0]!.indexOf('Zweitens.'));
+    expect(later.inbox[0]!.indexOf('Zweitens.')).toBeLessThan(later.inbox[0]!.indexOf('Drittens.'));
+    expect(later.images[0]).toEqual([canvas.images.path(shot)!]);
+    // dropped in the middle of this turn, the three wait again, now as dropped
+    canvas.act(i.id, { action: 'drop' });
+    canvas.act(i.id, { action: 'discuss', text: 'Viertens.' });
+    const again = explorer();
+    expect(again.inbox[0]).toContain('The owner dropped the idea');
+    expect(again.inbox[0]).toContain('Drittens.');
+    turn(again, 'Zu allen vier.');
+    // answered, nothing waits any more
+    canvas.act(i.id, { action: 'discuss', text: 'Fünftens.' });
+    expect(explorer().inbox).toEqual(['The owner says:\n\nFünftens.']);
+  });
+
+  test('a turn that ends with an error keeps what it did not answer', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
+    const s = explorer();
+    s.emit({ type: 'session', id: 'sess-1' });
+    canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
+    s.emit({ type: 'error', message: 'rate limit' });
+    expect(item(i.id).idea).toMatchObject({ status: 'open', thinking: false });
+    canvas.act(i.id, { action: 'discuss', text: 'Hallo?' });
+    const next = explorer();
+    expect(next.inbox[0]).toContain('Your last turn ended with an error');
+    expect(next.inbox[0]).toContain('Erstens.');
+    expect(next.inbox[0]).toContain('Zweitens.');
+    expect(next.inbox[0]).toContain('Hallo?');
+  });
+
+  test('what waited for its agent’s turn when Obeya stopped reaches it after the restart', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Frage.' });
+    explorer().emit({ type: 'session', id: 'sess-9' });
+    canvas.act(i.id, { action: 'discuss', text: 'Noch eine.' });
+    canvas.shutdown();
+    canvas = open();
+    const s = explorer();
+    expect(s.spec.resume).toBe('sess-9');
+    expect(s.inbox[0]).toContain('Noch eine.');
+    expect(s.inbox[0]).not.toContain('Frage.');
+  });
 });
 
 describe('a prototype', () => {
@@ -497,6 +575,9 @@ describe('a prototype', () => {
     const ws = board().row(chosen!.id).workspace!;
     const otherWs = board().row(other!.id).workspace!;
     const otherBranch = board().row(other!.id).branch!;
+    // the idea's agent takes in the answer, then the handover
+    explorer().emit({ type: 'idle' });
+    explorer().emit({ type: 'idle' });
 
     canvas.act(chosen!.id, { action: 'buildPrototype' });
     // the idea is the feature now, in the prototype's workspace, on its branch under the idea's name
@@ -618,6 +699,43 @@ describe('by voice', () => {
     expect(await heard).toEqual({ confirm: 'An die Idee weitergegeben.', quiet: true });
     expect(talk(i.id)).toEqual([['owner', 'Eher als PDF.']]);
     expect(explorer().inbox[0]).toContain('Eher als PDF.');
+  });
+
+  test('"nimm noch X auf und bau es dann" only passes X on: building waits for the reply', async () => {
+    const i = idea();
+    const heard = canvas.commander.hear('nimm noch PDF auf und bau es dann', { card: i.id });
+    await settle();
+    const refused = reader().call('act', {
+      actions: [
+        { do: 'discuss', card: 'K1', text: 'Nimm noch PDF auf.' },
+        { do: 'build', card: 'K1' },
+      ],
+      confirm: 'PDF kommt dazu, dann wird gebaut.',
+    });
+    expect(refused).toContain('Nothing recorded: action 2 (build on K1): the idea\'s agent starts on a reply with the discuss in this command');
+    expect(talk(i.id)).toEqual([]);
+    reader().call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Nimm noch PDF auf.' }], confirm: 'Weitergegeben. Bauen geht per Klick, sobald die Antwort da ist.' });
+    reader().emit({ type: 'idle' });
+    expect((await heard).token).toBeUndefined();
+    expect(explorer().inbox[0]).toContain('Nimm noch PDF auf.');
+    // while it thinks, building alone is refused too, and the card says so
+    const again = canvas.commander.hear('bau es', { card: i.id });
+    await settle();
+    expect(reader().inbox.at(-1)).toContain('[idea, its agent is working on its reply]');
+    expect(reader().call('act', { actions: [{ do: 'plan_doc', card: 'K1' }], confirm: 'Wird geplant.' })).toContain('is still working on its reply');
+    reader().call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Bau es.' }], confirm: 'Weitergegeben.' });
+    await again;
+    expect(item(i.id).state).toBe('idea');
+  });
+
+  test('"bau diesen Prototyp" waits for the reply of its idea’s agent', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    const prototype = board()
+      .snapshot()
+      .items.find((x) => x.prototypeOf === i.id)!;
+    canvas.act(i.id, { action: 'discuss', text: 'Schon was zu sehen?' });
+    expect(() => canvas.act(prototype.id, { action: 'buildPrototype' })).toThrow('still working on its reply');
   });
 
   test('"bau diesen Prototyp" on a prototype builds its idea on it', async () => {
