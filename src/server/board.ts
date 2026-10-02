@@ -41,6 +41,17 @@ export interface PrState {
   checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
 }
 
+/** What Obeya keeps about a card's shared demo page (share.ts). */
+export interface StoredShare {
+  /** The page's name on the site; it stays with the card, so its link keeps working. */
+  slug: string;
+  /** While held, published or withdrawn; none when at rest. */
+  state?: 'pending' | 'publishing' | 'withdrawing';
+  /** The published page, and the directory of the demo it shows. */
+  url?: string;
+  dir?: string;
+}
+
 /** A request the server refuses: a stable code for the UI's text, and an English detail. */
 /** States a worker or the owner's decision is still part of. */
 const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
@@ -159,6 +170,11 @@ export class Board {
     this.own(id);
     this.store.update(id, fields);
     this.changed();
+  }
+
+  /** The cards of the canvas, archived ones too, that were ever shared or are about to be. */
+  sharedRows(): CardRow[] {
+    return this.store.shared(this.canvas.id);
   }
 
   /** Cards that replace `id`, side by side where it was; they start planned, with their scope. */
@@ -838,6 +854,7 @@ function work(r: CardRow): Partial<Item> {
   const demo = r.demo ? (({ dir: _, ...d }) => d)(JSON.parse(r.demo) as Item['demo'] & { dir: string }) : undefined;
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
+  const share = shareOf(r);
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
@@ -849,10 +866,19 @@ function work(r: CardRow): Partial<Item> {
     ...(detail.summary && (r.need === 'review' || r.need === 'demo') ? { summary: detail.summary } : {}),
     ...(detail.noDemo && r.need === 'review' ? { noDemo: detail.noDemo } : {}),
     ...(demo ? { demo } : {}),
+    ...(share ? { share } : {}),
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),
     ...(r.landed && r.workspace ? { finishing: true } : {}),
   };
+}
+
+/** The card's shared page as the UI sees it: none when it is not shared and not about to be. */
+function shareOf(r: CardRow): Item['share'] {
+  const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
+  if (!s || (!s.state && !s.url)) return undefined;
+  const demoDir = r.demo ? (JSON.parse(r.demo) as { dir: string }).dir : undefined;
+  return { state: s.state ?? 'shared', ...(s.url ? { url: s.url } : {}), ...(s.url && demoDir && s.dir !== demoDir ? { stale: true } : {}) };
 }
 
 /** What is stored of a prototype: how it ended, once it did, and its worker's proposal to build the idea on it. */

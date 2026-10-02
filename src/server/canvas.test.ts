@@ -46,6 +46,14 @@ describe('a canvas with several repositories', () => {
     expect(ws.map((w) => w.repo).sort()).toEqual(['api', 'web']);
   });
 
+  test('a repository whose adapter shares no demos offers no sharing', () => {
+    expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([undefined, undefined]);
+    const c = canvas.board.create({ kind: 'feature', title: 'Home', x: 0, y: 0 });
+    canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], shown: [], notShown: [], findings: [] }) });
+    expect(() => canvas.act(c.id, { action: 'share' })).toThrow('shares none');
+    expect(() => canvas.act(c.id, { action: 'unshare' })).toThrow('not shared');
+  });
+
   test("a card works in its repository's clone", () => {
     const home = canvas.board.create({ kind: 'feature', title: 'Home', x: 0, y: 0 });
     const other = canvas.board.create({ kind: 'feature', title: 'Andere', x: 0, y: 0, repo: 'api' });

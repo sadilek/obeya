@@ -26,7 +26,8 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
 - *Obeya*: the worker's brief names "the demo skill" (`src/server/workers.ts`), the adapter adds
   `demo.required` and `demo.howToRun` (`src/adapters/acme.ts`). Obeya reads the handed-over
   directory under `~/demos/` (`demo.mp4`, `poster.jpg`, `captions.vtt`, `index.html`) and shows the
-  demo on the local card only (`src/server/demo.ts`). Nothing is shared. Obeya's own voice in and
+  demo on the card (`src/server/demo.ts`). Since W1 a video demo of an Acme card can be shared
+  on `team-demos.pages.dev` (design: Architecture, Sharing a demo). Obeya's own voice in and
   out is macOS-bound too (mlx-whisper, a JXA sidecar: `src/server/voice.ts`).
 - *Acme*: `docs.example.com` is the documentation on Cloudflare Pages behind Cloudflare Access,
   for `@example.com` only, on the free plan (up to 50 users; `the docs' hosting notes`).
@@ -115,7 +116,7 @@ Open questions on demos in pull requests and cloned voices go when W2 and W4 lan
 
 ## Workstreams
 
-- [ ] **W1:** Share an Acme demo. "Teilen" on video demos (a few seconds to take it back, then the
+- [x] **W1:** Share an Acme demo. "Teilen" on video demos (a few seconds to take it back, then the
   link on the card, "Nicht mehr teilen", "Neu teilen" after a new demo); the `demo.share` hook
   (`publish` with the page as JSON, `withdraw`); the page text at handover, or from the stored
   summary for older demos; the Acme script with its site directory, page, overview and

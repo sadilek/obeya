@@ -39,7 +39,17 @@ export interface RepoAdapter {
    * Demos: whether a worker must hand over with one, and how it runs the app to record it (for
    * the `demo` skill). Without it, a written summary is enough.
    */
-  demo?: { required: boolean; howToRun: string };
+  demo?: {
+    required: boolean;
+    howToRun: string;
+    /**
+     * The command (argv) that shares a video demo with colleagues on a page outside Obeya. Obeya
+     * runs it in the repository with `OBEYA_HOME` set: `publish` with the page as JSON on stdin
+     * (`SharePage` in `src/server/share.ts`), printing the page's URL; `withdraw <slug>` takes it
+     * down. Without it, demos are not shared.
+     */
+    share?: string[];
+  };
 
   /** Accounts whose pull request comments are not review feedback (deploy bots and the like). */
   prNoise?: string[];

@@ -471,8 +471,35 @@ the owner's language (`src/core/locale.ts`).
   with the summary and the reason, and a demo from an earlier handover leaves the card, since it
   showed other work. Artifacts stay in `~/demos/`, never in git, and are not linked from pull
   requests yet (planned: [`docs/plan/demo-sharing.md`](plan/demo-sharing.md)).
+- **Sharing a demo** — a video demo on a card of a repository whose adapter names a share command
+  (`demo.share`; Acme) has "Teilen" beside the video, on waiting cards and on cards long done
+  (archived ones too); HTML artifacts and prototypes are not shared. Publishing goes outside Obeya,
+  so "Teilen" holds 8 s (`SHARE_HOLD_MS`) with "Doch nicht" on the card before anything is
+  uploaded. Then the card shows the link (open, copy) and "Nicht mehr teilen", which withdraws the
+  page. A card that gets a new demo after sharing says the page still shows the earlier one and
+  offers "Neu teilen"; nothing is replaced on its own. The page has a title and two to five
+  sentences for colleagues who have never seen Obeya: where the adapter shares, `ready_for_review`
+  takes them with a video demo (`demo.page`), and for a demo handed over before that a short
+  read-only session writes them from the worker's last summary when the owner shares, kept with
+  the demo afterwards. Obeya runs the command (`src/server/share.ts`) in the repository with
+  `OBEYA_HOME` set, one call at a time: `publish` with the page as JSON on stdin (slug, title,
+  text, chapters, PR URL, demo directory, and the slugs of the other pages it has shared), which
+  prints the page's URL; `withdraw <slug>`. The slug comes from the card's title and id once and
+  stays, so a link keeps working across publishing again. The command's stderr goes into the
+  card's log, a failure with its output as an error, and the card stays as it was. A share held,
+  publishing or withdrawing at a restart goes on after it.
+  Acme's command (`src/adapters/team-share.ts`) keeps the site in `~/.obeya/team-share/site/` (a
+  directory per demo with page, video, poster, captions and `meta.json`, and the overview, newest
+  first) and deploys all of it with `wrangler pages deploy` to the Pages project `team-demos`,
+  behind the same Cloudflare Access policy as the docs (`@example.com`). Account ID and API
+  token are in `~/.obeya/team-share/cloudflare.env`. It refuses files over 25 MiB (the Pages limit)
+  and a site that lacks a page Obeya has as shared (a lost directory would take them offline), and
+  puts the directory back when a deployment fails. Needs the owner's one-time setup in Cloudflare:
+  the Pages project, the Access application for `team-demos.pages.dev` and `*.team-demos.pages.dev`,
+  a token with Pages edit rights.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
-  login recipe, where plan docs live, which reviews run, demo conventions.
+  login recipe, where plan docs live, which reviews run, demo conventions, the command that shares
+  demos.
 
 ## Data
 
@@ -482,7 +509,8 @@ source, a follow-up's card), estimated scope, queue,
 when archived, the pull request (link, checks, the comments, failed checks and conflict already
 passed on), an idea's status, brief and open questions with its agent's picks and suggested next step, a prototype's idea, how it ended and its worker's proposal to build on it, the prototype an idea is built on, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
-work added),
+work added; the shared demo page: slug, link, the demo directory it shows, and whether it is held,
+publishing or withdrawing),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
@@ -490,7 +518,7 @@ reply, the screenshots that came with it, the open card, whether it was taken ba
 question, the card it is about, its answer and who gave it), per-canvas settings (the Koordinator's session for questions).
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
-(`canvases.json`).
+(`canvases.json`), Acme's shared demo site and its Cloudflare credentials (`team-share/`).
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository; the copy on the project is only for the archive).

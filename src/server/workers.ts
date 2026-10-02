@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { basename } from 'node:path';
-import type { DemoKind, Item, Question, RestartReason } from '../core/types';
+import type { DemoKind, DemoPage, Item, Question, RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
 import { checkArtifact, readChapters } from './demo';
@@ -676,6 +676,16 @@ export class Workers {
               not_shown: z.array(z.string()).describe('behaviours not in the demo, each with why'),
               findings: z.array(z.string()),
               question: z.string().optional().describe('only when something needs the owner beyond approve or feedback; the owner can answer it on the card before approving'),
+              ...(this.o.adapter.demo?.share
+                ? {
+                    page: z
+                      .object({ title: z.string(), text: z.string() })
+                      .optional()
+                      .describe(
+                        `video only, required for one: the page on which the owner may share the video with colleagues, in ${OWNER_LANGUAGE}. They know the product but have never seen Obeya, this card or the plan doc. title: what changes, in a few words; text: two to five sentences on what changes for the user and why, without findings, tests or internal process`,
+                      ),
+                  }
+                : {}),
             })
             .optional(),
           no_demo: z
@@ -685,7 +695,9 @@ export class Workers {
         },
         run: ({ summary, demo, no_demo }) => {
           const s = clip(String(summary), 6000);
-          const d = demo as { kind?: DemoKind; dir: string; chapters?: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string } | undefined;
+          const d = demo as
+            | { kind?: DemoKind; dir: string; chapters?: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string; page?: DemoPage }
+            | undefined;
           const none = typeof no_demo === 'string' && no_demo.trim() ? clip(no_demo.trim(), 1000) : undefined;
           const row = this.o.board.row(cardId);
           if (row.landed) return 'Not handed over: your work is on main already.';
@@ -708,7 +720,10 @@ export class Workers {
             } else {
               const chapters = readChapters(d.dir, d.chapters ?? []);
               if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
-              demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...report });
+              const page = d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000) } : undefined;
+              if (this.o.adapter.demo?.share && !page)
+                return 'Not handed over: a video demo here needs its page (title and text) for colleagues, in case the owner shares it. Call ready_for_review again with demo.page.';
+              demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...report, ...(page ? { page } : {}) });
             }
           }
           handOver();
@@ -876,7 +891,7 @@ ${idea.idea.brief}` : '',
       parts.push(
         [
           `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review (with its report).`,
-          `Usually that is a demo of the change, recorded with the demo skill as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card. How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+          `Usually that is a demo of the change, recorded with the demo skill as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.o.adapter.demo.share ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
           "When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis), make an HTML artifact instead: an index.html in a new directory under ~/demos/ (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.",
           `Only when there is nothing to show at all (the task turned out to be done already, say), hand over with no_demo and why instead. That is the exception: the owner wants something to see.`,
         ].join(' '),

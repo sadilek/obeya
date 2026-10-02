@@ -101,6 +101,8 @@ export function Detail(p: Props) {
       </>
     );
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
+  // a video demo goes out to colleagues where the repository shares demos; drafts and prototypes stay here
+  const shares = !!item.demo && item.demo.kind !== 'html' && !item.prototypeOf && !!p.repos.find((r) => r.id === item.repo)?.share;
   // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
   const ideaThinking = !!p.from?.idea?.thinking;
   const prototypeActions = item.prototypeOf && (
@@ -277,12 +279,14 @@ export function Detail(p: Props) {
             )}
           </div>
           <Composer placeholder={t.compose.review} onSend={(text, images) => act({ action: 'message', text, images }, { close: false })} />
+          {shares && <ShareBox item={item} act={act} />}
         </DemoView>
       )}
 
       {item.demo && (item.state === 'inPr' || item.state === 'approved' || item.state === 'live') && (
         <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={false}>
           <p className="hint">{t.demo.kept}</p>
+          {shares && <ShareBox item={item} act={act} />}
         </DemoView>
       )}
 
@@ -769,6 +773,67 @@ function DemoView({
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * Sharing the video with colleagues: "Teilen", a few seconds to take it back, then the page's link
+ * with "Nicht mehr teilen"; "Neu teilen" once the card has a newer demo than the page.
+ */
+function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+  const [copied, setCopied] = useState(false);
+  const s = item.share;
+  const go = (action: 'share' | 'unshare') => act({ action }, { close: false });
+  return (
+    <div className="share">
+      {!s ? (
+        <button className="btn" title={t.share.shareHint} onClick={() => go('share')}>
+          {t.share.share}
+        </button>
+      ) : s.state === 'pending' ? (
+        <div className="share-row">
+          <span className="share-busy">{t.share.holdLong}</span>
+          <button className="btn" onClick={() => go('unshare')}>
+            {t.share.takeBack}
+          </button>
+        </div>
+      ) : s.state === 'publishing' || s.state === 'withdrawing' ? (
+        <div className="share-row">
+          <span className="share-busy">{s.state === 'publishing' ? t.share.publishing : t.share.withdrawing}</span>
+        </div>
+      ) : (
+        <>
+          <div className="share-row">
+            <span className="share-label">{t.share.shared}</span>
+            <a className="share-link" href={s.url} target="_blank" rel="noreferrer" title={t.share.open}>
+              {s.url!.replace(/^https?:\/\//, '')}
+            </a>
+            <button
+              className="btn"
+              onClick={() =>
+                navigator.clipboard.writeText(s.url!).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }, console.error)
+              }
+            >
+              {copied ? t.share.copied : t.share.copy}
+            </button>
+          </div>
+          {s.stale && <p className="hint">{t.share.stale}</p>}
+          <div className="share-row">
+            {s.stale && (
+              <button className="btn" title={t.share.againHint} onClick={() => go('share')}>
+                {t.share.again}
+              </button>
+            )}
+            <button className="btn" title={t.share.stopHint} onClick={() => go('unshare')}>
+              {t.share.stop}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

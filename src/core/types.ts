@@ -56,6 +56,8 @@ export interface Item {
   noDemo?: string;
   /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
   demo?: Demo;
+  /** The demo's page for colleagues, once the owner shared it (or is about to). */
+  share?: Share;
   /** The card it comes from: a proposal's source, a prototype's idea, or the card a follow-up follows up on. */
   from?: string;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
@@ -172,6 +174,32 @@ export interface Demo {
   question?: string;
   /** The owner's answer to it; the demo keeps waiting for approval. */
   answer?: string;
+  /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */
+  page?: DemoPage;
+}
+
+export interface DemoPage {
+  title: string;
+  /** Two to five sentences on what changes and why. */
+  text: string;
+}
+
+/**
+ * How long a demo waits after "Teilen" before it is published: the owner can take it back until
+ * then (publishing goes outside Obeya, and the button is easily hit).
+ */
+export const SHARE_HOLD_MS = 8000;
+
+/**
+ * A card's shared demo page. `pending` until the hold is over, `publishing` while the share command
+ * runs, `shared` once the page is up, `withdrawing` while it is taken down.
+ */
+export interface Share {
+  state: 'pending' | 'publishing' | 'shared' | 'withdrawing';
+  /** The page; set once it was published, kept while it is published again. */
+  url?: string;
+  /** The card has a newer demo than the one on the page. */
+  stale?: boolean;
 }
 
 /** One line in a card's log. */
@@ -201,6 +229,8 @@ export interface RepoRef {
   name: string;
   path: string;
   branch: string;
+  /** Its adapter can share video demos with colleagues (`demo.share`). */
+  share?: boolean;
 }
 
 export interface CanvasSnapshot {
@@ -313,7 +343,11 @@ export type CardAction =
   /** Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are discarded. */
   | { action: 'buildPrototype' }
   /** Prototypes: thrown away, into the archive with log, demo and summary. */
-  | { action: 'discard' };
+  | { action: 'discard' }
+  /** A video demo is published for colleagues after a short hold (`SHARE_HOLD_MS`), or again with the card's newer demo. */
+  | { action: 'share' }
+  /** Takes a share back while it is held, or withdraws the published page. */
+  | { action: 'unshare' };
 
 /**
  * Why the server refused a request. The server sends the code and an English detail
@@ -353,6 +387,12 @@ export type ErrorCode =
   | 'notPrototype'
   /** A discarded or built prototype stays in the archive; a new attempt is a new prototype. */
   | 'prototypeEnded'
+  /** Sharing: the card has no video demo, or its repository shares none. */
+  | 'noShare'
+  /** Sharing: the page is being published or withdrawn right now. */
+  | 'shareBusy'
+  /** Sharing: the demo is not shared. */
+  | 'notShared'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'

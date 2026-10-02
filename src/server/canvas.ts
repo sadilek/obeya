@@ -21,6 +21,7 @@ import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import type { AgentRuntime } from './runtime';
 import { changesCode } from './self-update';
+import { Sharing } from './share';
 import { type DueRestart, Workers } from './workers';
 import { type Landed, Workspaces } from './workspaces';
 
@@ -45,6 +46,8 @@ export interface CanvasDeps {
   config?: Config;
   /** How long the owner stops typing in a card before what they wrote counts as written. */
   writingPauseMs?: number;
+  /** How long a shared demo waits for the owner to take it back. */
+  shareHoldMs?: number;
 }
 
 export interface RepoRuntime {
@@ -64,6 +67,8 @@ export class CanvasRuntime {
   /** Screenshots the owner attaches to what they write. */
   readonly images: Images;
   readonly answers: Answers;
+  /** Video demos shared with colleagues, through the share command of the card's repository. */
+  readonly sharing: Sharing;
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];
   /** Cards the owner is writing in, with their text before; a pause in typing hands it to the learner. */
@@ -179,6 +184,17 @@ export class CanvasRuntime {
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
     this.answers.resume();
+    this.sharing = new Sharing({
+      board,
+      runtime: deps.runtime,
+      home: deps.home,
+      commandFor: (card) => {
+        const r = this.repoOf(card);
+        return r.adapter.demo?.share ? { command: r.adapter.demo.share, cwd: r.info.path } : null;
+      },
+      ...(deps.shareHoldMs !== undefined ? { holdMs: deps.shareHoldMs } : {}),
+    });
+    this.sharing.resume();
   }
 
   get id() {
@@ -265,6 +281,10 @@ export class CanvasRuntime {
         return this.buildOnPrototype(cardId);
       case 'discard':
         return this.repoOf(this.prototypeCard(cardId)).workers.endPrototype(cardId, 'discarded');
+      case 'share':
+        return this.sharing.share(cardId);
+      case 'unshare':
+        return this.sharing.unshare(cardId);
       default:
         throw new BadRequest('invalid', 'unknown action');
     }
@@ -504,6 +524,7 @@ export class CanvasRuntime {
     for (const stop of this.stops) stop();
     for (const r of this.repos) r.workers.shutdown();
     this.explorers.shutdown();
+    this.sharing.shutdown();
   }
 }
 
@@ -573,7 +594,13 @@ function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
     const base = slug(repoName(info)) || `repo${i + 1}`;
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
-    return { id: n === 1 ? base : `${base}${n}`, name: i === 0 ? adapters[0]!.canvasName(info) : repoName(info), path: info.path, branch: info.branch };
+    return {
+      id: n === 1 ? base : `${base}${n}`,
+      name: i === 0 ? adapters[0]!.canvasName(info) : repoName(info),
+      path: info.path,
+      branch: info.branch,
+      ...(adapters[i]!.demo?.share ? { share: true } : {}),
+    };
   });
 }
 

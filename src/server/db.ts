@@ -64,6 +64,8 @@ export interface CardRow {
   prototype: string | null;
   /** A card that was an idea and is built on the branch of one of its prototypes: that prototype. */
   built_on: string | null;
+  /** JSON: the demo's page for colleagues (`StoredShare` in share.ts); its slug stays once it was shared. */
+  share: string | null;
 }
 
 
@@ -221,6 +223,8 @@ export const MIGRATIONS = [
   // a discarded or built prototype goes into the archive; an idea may be built on a prototype's branch
   `ALTER TABLE cards ADD COLUMN prototype TEXT;
    ALTER TABLE cards ADD COLUMN built_on TEXT REFERENCES cards(id);`,
+  // a video demo shared with colleagues on a page outside Obeya
+  `ALTER TABLE cards ADD COLUMN share TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -256,6 +260,7 @@ export type RowUpdate = Partial<
     | 'from_id'
     | 'prototype'
     | 'built_on'
+    | 'share'
   >
 >;
 
@@ -288,6 +293,10 @@ export class Store {
   }
 
   /** The canvas's archive, the most recently archived first. */
+  shared(canvasId: string): CardRow[] {
+    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND share IS NOT NULL').all({ c: canvasId }) as CardRow[];
+  }
+
   archived(canvasId: string): CardRow[] {
     return this.db
       .query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC, created_at DESC')

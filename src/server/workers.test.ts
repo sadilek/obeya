@@ -538,6 +538,20 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.demo!.chapters).toHaveLength(2);
   });
 
+  test('where demos are shared, a video comes with its page for colleagues, kept with the demo', () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start', share: ['share'] } });
+    const c = manual();
+    workers.start(c.id);
+    expect(runtime.last.inbox[0]).toContain('share a video with colleagues');
+    const d = demoDir();
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: demo(d) })).toContain('needs its page');
+    expect(state(c.id)).toBe('working');
+    const page = { title: 'Zählerstände als CSV', text: 'Vermieter laden die Zählerstände jetzt als CSV herunter.' };
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: { ...demo(d), page } })).toContain('End your turn');
+    expect(board.item(c.id)!.demo!.page).toEqual(page);
+  });
+
   test('a broken demo or a missing required one is refused, and the worker keeps the card', () => {
     const c = manual();
     workers.start(c.id);
