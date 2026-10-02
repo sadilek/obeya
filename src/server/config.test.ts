@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanvasConfig, ConfigView } from '../core/types';
 import { CanvasRuntime } from './canvas';
-import { Config, readConfigFile } from './config';
+import { Config, demoSettingsProblems, readConfigFile } from './config';
 import { Store } from './db';
 import { serve } from './server';
 import { FakeRuntime, noForge, gitRepo } from './testing';
@@ -153,9 +153,32 @@ describe('the configuration over HTTP', () => {
     expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }, { path: api }] }]);
   });
 
+  test('reads and saves the demo settings in its home, without a restart', async () => {
+    const before = (await call('GET', '/api/demo-settings')).body;
+    expect(before).toMatchObject({ file: join(dir, 'demo.json'), settings: { language: 'de', voice: 'gemini' }, person: 'third' });
+    expect((await call('PUT', '/api/demo-settings', { language: 'fr', voice: 'gemini' })).status).toBe(400);
+    const saved = await call('PUT', '/api/demo-settings', { language: 'en', voice: 'clone', voiceProject: ` ${dir} ` });
+    expect(saved.body).toMatchObject({ settings: { language: 'en', voice: 'clone', voiceProject: dir }, person: 'first', problems: [] });
+    expect(JSON.parse(readFileSync(join(dir, 'demo.json'), 'utf8'))).toEqual({ language: 'en', voice: 'clone', voiceProject: dir });
+    expect(restarts).toBe(0);
+  });
+
   test('a configuration command of the Koordinator saves it after the undo window', () => {
     canvas.run({ do: 'configure', canvases: [{ name: 'Neu', repos: [{ path: web }] }] });
     expect(readConfigFile(file)).toEqual([{ name: 'Neu', repos: [{ path: web }] }]);
     expect(restarts).toBe(1);
+  });
+});
+
+describe('the demo settings', () => {
+  test('say what keeps a voice from speaking', () => {
+    const missing = join(dir, 'nowhere');
+    expect(demoSettingsProblems({ language: 'de', voice: 'clone' }, {})).toEqual(['noVoiceProject']);
+    expect(demoSettingsProblems({ language: 'de', voice: 'clone', voiceProject: missing }, {})).toEqual(['voiceProjectMissing']);
+    expect(demoSettingsProblems({ language: 'de', voice: 'gemini' }, {})).toEqual(['noGeminiKey']);
+    expect(demoSettingsProblems({ language: 'de', voice: 'gemini' }, { GEMINI_API_KEY: 'k' })).toEqual([]);
+    expect(demoSettingsProblems({ language: 'de', voice: 'gemini', geminiKeyFile: missing }, {})).toEqual(['geminiKeyMissing']);
+    writeFileSync(join(dir, 'key'), 'k');
+    expect(demoSettingsProblems({ language: 'en', voice: 'gemini', geminiKeyFile: join(dir, 'key') }, {})).toEqual([]);
   });
 });

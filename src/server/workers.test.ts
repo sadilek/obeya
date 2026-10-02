@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -7,6 +7,7 @@ import type { RepoAdapter } from '../adapters/types';
 import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
+import { DEMO_SKILL, OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { FakeRuntime, gitRepo, identify } from './testing';
 import type { Reply } from './advisor';
@@ -81,6 +82,8 @@ describe('workers', () => {
     expect(runtime.last.spec.cwd).toBe(row.workspace!);
     expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
     expect(runtime.last.inbox[0]).toContain('`bun install`');
+    // a repository without demos gets no demo skill
+    expect(runtime.last.spec.plugins).toBeUndefined();
     // the only clone is taken
     const d = manual();
     expect(() => workers.start(d.id)).toThrow(BadRequest);
@@ -486,6 +489,16 @@ describe('handing over with a demo', () => {
     return d;
   };
   const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, shown: ['Export'], not_shown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
+
+  test('the worker gets the demo skill from the plugin that comes with Obeya, and its brief names it', () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start' } });
+    const c = manual();
+    workers.start(c.id);
+    expect(runtime.last.spec.plugins).toEqual([OBEYA_PLUGIN]);
+    expect(existsSync(join(OBEYA_PLUGIN, 'skills', 'demo', 'SKILL.md'))).toBe(true);
+    expect(runtime.last.inbox[0]).toContain(`recorded with the demo skill (\`${DEMO_SKILL}\`)`);
+  });
 
   test('the card waits with the demo; its files are found; feedback leaves the demo to the worker', () => {
     const c = manual();

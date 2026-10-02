@@ -244,7 +244,9 @@ the owner's language (`src/core/locale.ts`).
   settings (port, data directory, the agents' permission mode) come from the command line and show
   read-only. The Koordinator reads the configuration (`config` tool) to answer questions about it
   and changes it on the owner's word (`configure`, the whole new list, checked like the sheet's),
-  with the usual confirmation and undo window.
+  with the usual confirmation and undo window. Below the canvases the sheet has the demo settings
+  (see Demos), saved on their own into `demo.json` in Obeya's home and read by the next render, so
+  saving them restarts nothing.
 - **Canvases and repositories** — each repository on a canvas has its adapter, workspaces,
   workers, project agents and PR watcher; the canvas has one board and one Koordinator, whose
   collision checks stay within a repository. The first repository is the canvas's home: its plan
@@ -483,7 +485,26 @@ the owner's language (`src/core/locale.ts`).
   the fallback. While a demo video plays nothing is said (the owner often gives a command and
   turns to the next demo); a video that starts cuts off what is being said. The written
   confirmation still shows.
-- **Demos** — the `demo` skill's pipeline (scripted walkthrough, narrated video, report). The
+- **Demos** — the demo skill's pipeline (scripted walkthrough, narrated video, report) is part of
+  the repository: `plugin/` is a Claude Code plugin named `obeya` whose skill `demo`
+  (`plugin/skills/demo/`) holds the instructions (`SKILL.md`, paths through `${CLAUDE_SKILL_DIR}`),
+  the director (`lib/director.ts`, Playwright on the local Chrome, cut with ffmpeg, run with plain
+  `node`), the overlay (`lib/overlay.js`) and the narration (`lib/tts.py`, synthesis and listening
+  back with Whisper), with Playwright among Obeya's dependencies. Obeya loads the plugin into every
+  worker session of a repository with demos (the Agent SDK's `plugins` option, a local plugin),
+  so the worker has the skill as `obeya:demo`, which its brief names. The skill also runs without
+  Obeya: as the plugin, or as a user skill that points to `plugin/skills/demo` (the owner's
+  `~/.claude/skills/demo` is a link to it in the Obeya checkout). The demo settings
+  (`lib/settings.ts`; `demo.json` in Obeya's home, `OBEYA_HOME` else `~/.obeya`) give the
+  narration language (German or English: narration, captions, Whisper, the report page's words)
+  and the voice: `clone`, the owner's own voice, run on-device in the voice project the settings
+  name (a uv project carrying the clone and Whisper), or `gemini`, a stock voice with a key from
+  `GEMINI_API_KEY` or a key file. The person follows from the voice: the first person only in the
+  owner's own voice, otherwise the narration presents the work without "I". `node
+  lib/settings.ts` prints what applies, for the agent writing the narration; `DEMO_VOICE`
+  overrides the voice for one render (a `.wav` clones that clip). How to run each project's app
+  for a demo is the adapter's `demo.howToRun` (Acme: AppHost, login, QA customer, migrations;
+  Obeya: the scratch instance); without Obeya, `bun lib/recipe.ts` in a repository prints it. The
   worker records once the change is committed and checked, as the adapter says how to run the
   app (Obeya: a scratch instance from the worktree, staged by `scripts/scratch-obeya.ts` from a
   stage file before every take, its workers idle (`--idle-workers`) unless the change is about
@@ -546,8 +567,8 @@ the owner's language (`src/core/locale.ts`).
   offers to pick only once the project exists (no free text); and an API token with Pages edit
   rights in `cloudflare.env`. The command never creates the project itself.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
-  login recipe, where plan docs live, which reviews run, demo conventions, the command that shares
-  demos.
+  recipe for running the app in a demo (login, test data, migrations: `demo.howToRun`), where plan
+  docs live, which reviews run, the command that shares demos.
 
 ## Data
 

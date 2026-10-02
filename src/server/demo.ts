@@ -5,6 +5,14 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import type { DemoKind } from '../core/types';
 
+/**
+ * The plugin Obeya loads into its workers' sessions: it brings the demo skill (`obeya:demo`), the
+ * pipeline that records a demo. A Claude Code session without Obeya reaches the same skill through
+ * the plugin or a user skill that points to `plugin/skills/demo`.
+ */
+export const OBEYA_PLUGIN = join(import.meta.dir, '..', '..', 'plugin');
+export const DEMO_SKILL = 'obeya:demo';
+
 /** The files of a video demo the UI loads; nothing else in the directory is served. */
 export const DEMO_FILES = ['demo.mp4', 'poster.jpg', 'captions.vtt'] as const;
 

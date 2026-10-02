@@ -34,6 +34,8 @@ export interface AgentSpec {
   resume?: string;
   /** Read-only agents get no tools that change files or run commands. */
   readOnly?: boolean;
+  /** Directories of local Claude Code plugins loaded into the session (skills, mainly). */
+  plugins?: string[];
   permissionMode?: PermissionMode;
   /** How much the model thinks; low for quick turns such as reading a spoken command. */
   effort?: 'low' | 'medium' | 'high';
@@ -84,6 +86,7 @@ export const sdkRuntime: AgentRuntime = {
         abortController: abort,
         systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.system },
         mcpServers: { obeya },
+        ...(spec.plugins?.length ? { plugins: spec.plugins.map((path) => ({ type: 'local' as const, path })) } : {}),
         ...(spec.readOnly
           ? { tools: READ_ONLY_TOOLS, allowedTools: [...READ_ONLY_TOOLS, ...ownTools], permissionMode: 'dontAsk' as const }
           : { allowedTools: ownTools, permissionMode: spec.permissionMode ?? 'auto' }),

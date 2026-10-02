@@ -150,6 +150,11 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
             return { restarting: due };
           }),
       },
+      // the demo settings: narration language and voice, read by every render
+      '/api/demo-settings': {
+        GET: () => (config ? Response.json(config.demo()) : new Response('Not found', { status: 404 })),
+        PUT: async (req) => (config ? handle(async () => config.saveDemo(await req.json())) : new Response('Not found', { status: 404 })),
+      },
       '/api/config/check': { POST: async (req) => (config ? handle(async () => config.check(await req.json())) : new Response('Not found', { status: 404 })) },
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
       '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },

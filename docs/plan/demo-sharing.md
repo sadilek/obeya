@@ -13,18 +13,20 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
 
 ## Where it stands
 
-- *Recording*: the owner's own skill `~/.claude/skills/demo` records demos (`SKILL.md`,
-  `lib/director.ts` with Playwright, `lib/overlay.js`, `lib/tts.py`), not Obeya. It is made for
-  Daniel: his name and `/Users/sadilek/…` paths are hard-coded, the narration is German and in the
-  first person, and the recipes for Acme and Obeya (login, QA customer, migrations, scratch Obeya)
-  sit in the skill.
-- *Voices*: `daniel` is a clone through `~/dev/stimmzwilling` (Qwen3-TTS 1.7B on mlx-audio, Apple
-  Silicon only); `gemini` a stock voice with a key in `~/.config/demo-skill/` (free tier: 10
-  requests a day); a `.wav` can serve as the sample for a clone. Every clip is listened back with
+- *Recording*: since W3 the pipeline is in the repository, as the skill `obeya:demo` of the
+  plugin `plugin/` that Obeya loads into its workers; Daniel's `~/.claude/skills/demo` links to it.
+  Language and voice come from the demo settings (design: Architecture, Demos), the recipes from
+  the adapters. The voices are still the two below, and listening back is still mlx only.
+- *Voices*: `clone` is Daniel's voice through the voice project `~/dev/stimmzwilling` (Qwen3-TTS
+  1.7B on mlx-audio, Apple Silicon only; `tts.py` drives it through that project's `avatar`
+  modules, which W4 replaces with a provider); `gemini` a stock voice with a key in
+  `~/.config/demo-skill/` (free tier: 10 requests a day); a `.wav` can serve as the sample for a
+  clone. Daniel's settings (`~/.obeya/demo.json`) say German and `clone`, so his demos sound as
+  before: the clips of an earlier demo are found in its cache again. Every clip is listened back with
   Whisper, also on mlx, so only on a Mac. The video is a screencast of the local Chrome, cut with
   ffmpeg; the report page is `index.html`.
-- *Obeya*: the worker's brief names "the demo skill" (`src/server/workers.ts`), the adapter adds
-  `demo.required` and `demo.howToRun` (`src/adapters/acme.ts`). Obeya reads the handed-over
+- *Obeya*: the worker's brief names the demo skill `obeya:demo` (`src/server/workers.ts`), the
+  adapter adds `demo.required` and `demo.howToRun` with the project's recipe (`src/adapters/`). Obeya reads the handed-over
   directory under `~/demos/` (`demo.mp4`, `poster.jpg`, `captions.vtt`, `index.html`) and shows the
   demo on the card (`src/server/demo.ts`). Since W1 a video demo of an Acme card can be shared
   on `team-demos.pages.dev` (design: Architecture, Sharing a demo), and since W2 the page and
@@ -128,7 +130,7 @@ demos in pull requests went with W2).
   in Cloudflare (project, Access, token) before it can be tried live. Comes first.
 - [x] **W2:** The link in the pull request. Into the description when the worker opens the PR, or
   added by Obeya when the PR already exists; the page published again with the PR's link. After W1.
-- [ ] **W3:** The demo pipeline in the Obeya repository. Director, overlay, voice code and skill
+- [x] **W3:** The demo pipeline in the Obeya repository. Director, overlay, voice code and skill
   without names or fixed paths; narration language and person from settings; project recipes in
   the adapters; Obeya gives its workers the skill (how: checked here); the owner's user skill
   points to it. Demos sound as before. After W1, so the Acme part is not held up.
@@ -153,7 +155,8 @@ demos in pull requests went with W2).
   stored as shared.
 - Piper's German voices and Qwen3-TTS without a GPU are estimates; W4 measures quality and speed
   before Piper becomes the default.
-- How Obeya hands a skill to its workers through the Agent SDK is not checked yet (W3).
+- Checked in W3: Obeya hands the skill to its workers as a local plugin (`plugins` option of the
+  Agent SDK); the session lists it as `obeya:demo`, beside the user's own skills.
 
 ## Open questions
 

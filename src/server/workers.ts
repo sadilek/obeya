@@ -8,7 +8,7 @@ import { basename } from 'node:path';
 import type { DemoKind, DemoPage, Item, Question, RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
-import { checkArtifact, readChapters } from './demo';
+import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
 import { imageNote } from './images';
 import type { InputContext } from './koordinator';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
@@ -437,6 +437,7 @@ export class Workers {
         cwd: row.workspace,
         system: this.system(preferences, !!row.prototype_of),
         tools: this.tools(cardId, live, !!row.prototype_of),
+        ...(this.o.adapter.demo ? { plugins: [OBEYA_PLUGIN] } : {}),
         contextUpdate: () => this.preferencesUpdate(live),
         ...(resume ? { resume } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
@@ -716,7 +717,7 @@ export class Workers {
           // without a new demo, the one on the card stands, unless the worker says there is nothing to show
           const kept = !d && !none && !!row.demo;
           if (!d && !kept && !none && this.o.adapter.demo?.required && !approved)
-            return 'Not handed over: this repository requires a demo. Record it with the demo skill, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it. Only if there is nothing to show at all, pass no_demo with the reason.';
+            return `Not handed over: this repository requires a demo. Record it with the demo skill (${DEMO_SKILL}), or make an HTML artifact when the result is something to look at, then call ready_for_review again with it. Only if there is nothing to show at all, pass no_demo with the reason.`;
           let demoJson: string | undefined;
           if (d) {
             const kind = d.kind ?? 'video';
@@ -899,7 +900,7 @@ ${idea.idea.brief}` : '',
       parts.push(
         [
           `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review (with its report).`,
-          `Usually that is a demo of the change, recorded with the demo skill as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.o.adapter.demo.share ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+          `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.o.adapter.demo.share ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
           "When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis), make an HTML artifact instead: an index.html in a new directory under ~/demos/ (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.",
           `Only when there is nothing to show at all (the task turned out to be done already, say), hand over with no_demo and why instead. That is the exception: the owner wants something to see.`,
         ].join(' '),

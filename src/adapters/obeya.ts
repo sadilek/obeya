@@ -17,7 +17,8 @@ export const obeya: RepoAdapter = {
     required: true,
     howToRun: [
       'a scratch Obeya from your worktree, staged by `bun scripts/scratch-obeya.ts <stage.json>` (its header describes the stage file): a fresh repository with plan docs, a fresh OBEYA_HOME and the cards in the states the demo needs, in about a second.',
-      "Stage afresh before every take: call it from the demo's `login` and record against the `url` it prints.",
+      "Keep `stage.json` in the demo directory and stage afresh before every take: call the script from the demo's `login` (`execFileSync('bun', [`${worktree}/scripts/scratch-obeya.ts`, `${import.meta.dirname}/stage.json`])`) and record against the `url` it prints.",
+      'The newest `~/demos/obeya-*` is the model for the demo script.',
       'Its workers are idle: a started card is in progress without an agent. Give it `--real-workers` only when the change is about what agents do; they take minutes.',
       'For a before and after, stage a second instance from the earlier commit with `--code <commit> --port <another port>`.',
       'Stop each instance with `--stop <port>` when the demo is rendered.',

@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, NextStep, Queue, OwnerHold, RestartReason } from '../core/types';
+import type { CardState, ConfigProblemCode, DemoSettingsProblem, ErrorCode, NarrationLanguage, VoiceKind, Idea, Need, NextStep, Queue, OwnerHold, RestartReason } from '../core/types';
 
 export const t = {
   kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
@@ -282,6 +282,25 @@ export const t = {
       notClone: 'Ein Klon in der Liste ist kein git-Repository.',
       invalid: 'Die Konfiguration ist fehlerhaft.',
     } satisfies Record<ConfigProblemCode, string>,
+    demo: {
+      title: 'Demos',
+      hint: 'Wie Agenten ihre Demos vertonen. Gilt ab der nächsten Aufnahme, ohne Neustart.',
+      language: 'Sprache der Erzählung',
+      languages: { de: 'Deutsch', en: 'Englisch' } satisfies Record<NarrationLanguage, string>,
+      voice: 'Stimme',
+      voices: { clone: 'Meine eigene Stimme (Klon)', gemini: 'Gemini (Standardstimme)' } satisfies Record<VoiceKind, string>,
+      person: { first: 'Erzählt in der Ich-Form, weil es deine eigene Stimme ist.', third: 'Erzählt ohne „ich“: Die Stimme ist nicht deine.' },
+      voiceProject: 'Stimmprojekt (uv-Projekt mit Klon und Whisper)',
+      geminiKeyFile: 'Datei mit dem Gemini-API-Schlüssel',
+      save: 'Demo-Einstellungen speichern',
+      saved: 'Gespeichert. Die nächste Demo nutzt sie.',
+      problem: {
+        noVoiceProject: 'Für den Klon fehlt das Stimmprojekt.',
+        voiceProjectMissing: 'Unter diesem Pfad liegt kein Stimmprojekt.',
+        noGeminiKey: 'Für Gemini fehlt der API-Schlüssel (Datei oder GEMINI_API_KEY).',
+        geminiKeyMissing: 'Die Datei mit dem Gemini-Schlüssel gibt es nicht.',
+      } satisfies Record<DemoSettingsProblem, string>,
+    },
   },
   restart: {
     pill: (n: number, owner: OwnerHold[]) => {

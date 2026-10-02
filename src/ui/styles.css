@@ -482,6 +482,9 @@ label.c-row input { width: 64px; }
 .c-path { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace !important; font-size: 12px !important; }
 .c-canvas .p-error { margin: 4px 0 0; font-size: 12.5px; }
 .c-actions { display: flex; gap: 8px; margin-top: 16px; }
+.c-demo .c-actions { margin-top: 10px; }
+.c-demo label.c-row > .hint { min-width: 150px; }
+.c-person { font-size: 12px; margin: 2px 0 6px; }
 .c-status { margin-top: 8px; }
 .c-server { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; }
 .c-server dt { color: var(--muted); }

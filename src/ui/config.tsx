@@ -3,7 +3,7 @@
 // read-only.
 
 import { useEffect, useRef, useState } from 'react';
-import type { CanvasConfig, ConfigProblem, ConfigView, RepoConfig } from '../core/types';
+import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, NarrationLanguage, RepoConfig, VoiceKind } from '../core/types';
 import { api, ApiError } from './api';
 import { errorText, t } from './strings';
 
@@ -130,6 +130,8 @@ export function ConfigSheet({ on }: { on: boolean }) {
       </div>
       {status && <p className="hint c-status">{status}</p>}
 
+      <DemoBlock on={on} />
+
       <h4 className="p-h">{t.config.server}</h4>
       <dl className="c-server">
         <dt>{t.config.port}</dt>
@@ -151,6 +153,96 @@ export function ConfigSheet({ on }: { on: boolean }) {
       </button>
       {json && <pre className="c-json">{JSON.stringify(draft, null, 2)}</pre>}
     </aside>
+  );
+}
+
+/** How demos are narrated: saved on their own, read by the next render, so nothing restarts. */
+function DemoBlock({ on }: { on: boolean }) {
+  const [view, setView] = useState<DemoSettingsView | null>(null);
+  const [draft, setDraft] = useState<DemoSettings | null>(null);
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!on) return;
+    api.demoSettings().then((v) => {
+      setView(v);
+      setDraft(v.settings);
+      setStatus('');
+    }, console.error);
+  }, [on]);
+  if (!view || !draft) return null;
+  const d = t.config.demo;
+  const changed = JSON.stringify(draft) !== JSON.stringify(view.settings);
+  const set = <K extends keyof DemoSettings>(k: K, v: DemoSettings[K]) => setDraft({ ...draft, [k]: v });
+  const save = async () => {
+    setBusy(true);
+    try {
+      const v = await api.saveDemoSettings(draft);
+      setView(v);
+      setDraft(v.settings);
+      setStatus(d.saved);
+    } catch (e) {
+      setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+    setBusy(false);
+  };
+  return (
+    <>
+      <h4 className="p-h">{d.title}</h4>
+      <section className="c-canvas c-demo">
+        <p className="hint">
+          {d.hint} <code>{view.file}</code>
+        </p>
+        <label className="c-row">
+          <span className="hint">{d.language}</span>
+          <select value={draft.language} onChange={(e) => set('language', e.target.value as NarrationLanguage)}>
+            {(Object.keys(d.languages) as NarrationLanguage[]).map((l) => (
+              <option key={l} value={l}>
+                {d.languages[l]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="c-row">
+          <span className="hint">{d.voice}</span>
+          <select value={draft.voice} onChange={(e) => set('voice', e.target.value as VoiceKind)}>
+            {(Object.keys(d.voices) as VoiceKind[]).map((v) => (
+              <option key={v} value={v}>
+                {d.voices[v]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="hint c-person">{d.person[draft.voice === 'clone' ? 'first' : 'third']}</p>
+        <label>
+          <span className="hint">{d.voiceProject}</span>
+          <input className="c-path" spellCheck={false} value={draft.voiceProject ?? ''} onChange={(e) => set('voiceProject', e.target.value || undefined)} />
+        </label>
+        {draft.voice === 'gemini' && (
+          <label>
+            <span className="hint">{d.geminiKeyFile}</span>
+            <input className="c-path" spellCheck={false} value={draft.geminiKeyFile ?? ''} onChange={(e) => set('geminiKeyFile', e.target.value || undefined)} />
+          </label>
+        )}
+        {!changed &&
+          view.problems.map((p) => (
+            <p key={p} className="p-error">
+              {d.problem[p]}
+            </p>
+          ))}
+        <div className="c-actions">
+          <button className="btn small primary" disabled={!changed || busy} onClick={save}>
+            {d.save}
+          </button>
+          {changed && (
+            <button className="btn small" disabled={busy} onClick={() => setDraft(view.settings)}>
+              {t.config.reset}
+            </button>
+          )}
+        </div>
+        {status && <p className="hint c-status">{status}</p>}
+      </section>
+    </>
   );
 }
 

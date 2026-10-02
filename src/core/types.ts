@@ -1,5 +1,9 @@
 // Shapes shared by the server and the UI.
 
+import type { DemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+
+export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
+
 export type CardKind = 'bugfix' | 'feature' | 'project';
 
 export const STATES = ['idea', 'proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live'] as const;
@@ -505,6 +509,19 @@ export interface ConfigView {
   server: { port: number; home: string; permissionMode: string; restarts: boolean };
   /** Saved, and Obeya starts again with it once no agent is in the middle of a turn. */
   restarting: boolean;
+}
+
+/** What keeps the demo settings from working: the clone has no voice project, or a path is not there. */
+export type DemoSettingsProblem = 'noVoiceProject' | 'voiceProjectMissing' | 'noGeminiKey' | 'geminiKeyMissing';
+
+/** The demo settings (`plugin/skills/demo/lib/settings.ts`) as the settings sheet shows them. */
+export interface DemoSettingsView {
+  /** The file they are saved in, under Obeya's home. */
+  file: string;
+  settings: DemoSettings;
+  /** The person the narration speaks in, which follows from the voice. */
+  person: 'first' | 'third';
+  problems: DemoSettingsProblem[];
 }
 
 /** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved. */

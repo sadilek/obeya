@@ -7,7 +7,18 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { z } from 'zod';
 import { adapterNames } from '../adapters';
-import type { CanvasConfig, ConfigProblem, ConfigView, ResolvedCanvas } from '../core/types';
+import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettingsProblem, DemoSettingsView, ResolvedCanvas } from '../core/types';
+import {
+  DEMO_SETTINGS_FILE,
+  type DemoSettings,
+  expandHome,
+  NARRATION_LANGUAGES,
+  narrationPerson,
+  readDemoSettings,
+  tidyDemoSettings,
+  VOICES,
+  writeDemoSettings,
+} from '../../plugin/skills/demo/lib/settings.ts';
 import { BadRequest } from './board';
 import { ConfigError, resolveCanvas } from './canvas';
 import type { Store } from './db';
@@ -80,6 +91,27 @@ export interface ConfigOptions {
   server: { port: number; home: string; permissionMode: string };
   /** Starts Obeya again with the saved configuration; absent where nothing restarts it (--dev). */
   restart?: () => void;
+}
+
+const demoShape = z
+  .object({
+    language: z.enum(NARRATION_LANGUAGES),
+    voice: z.enum(VOICES),
+    voiceProject: z.string().optional(),
+    geminiKeyFile: z.string().optional(),
+  })
+  .strict();
+
+/** What keeps demo settings from working; saving them is allowed all the same. */
+export function demoSettingsProblems(s: DemoSettings, env: Record<string, string | undefined> = process.env): DemoSettingsProblem[] {
+  const problems: DemoSettingsProblem[] = [];
+  if (s.voice === 'clone' && !s.voiceProject) problems.push('noVoiceProject');
+  if (s.voiceProject && !existsSync(expandHome(s.voiceProject))) problems.push('voiceProjectMissing');
+  if (s.voice === 'gemini' && !env.GEMINI_API_KEY) {
+    if (!s.geminiKeyFile) problems.push('noGeminiKey');
+    else if (!existsSync(expandHome(s.geminiKeyFile))) problems.push('geminiKeyMissing');
+  }
+  return problems;
 }
 
 /** A configuration checked: what it amounts to, and what keeps it from working. */
@@ -158,6 +190,25 @@ export class Config {
       if (r && first !== canvas) problems.push({ code: 'sameId', canvas, detail: `canvas ${canvas + 1} has the id "${r.id}" of canvas ${first + 1}; give it another name` });
     });
     return { canvases, resolved, problems };
+  }
+
+  /** The demo settings in Obeya's home; a demo reads them when it renders, so no restart is needed. */
+  demo(): DemoSettingsView {
+    const settings = readDemoSettings(this.o.server.home);
+    return {
+      file: resolve(this.o.server.home, DEMO_SETTINGS_FILE),
+      settings,
+      person: narrationPerson(settings.voice),
+      problems: demoSettingsProblems(settings),
+    };
+  }
+
+  saveDemo(input: unknown): DemoSettingsView {
+    const parsed = demoShape.safeParse(input);
+    if (!parsed.success) throw new BadRequest('config', z.prettifyError(parsed.error));
+    writeDemoSettings(tidyDemoSettings(parsed.data), this.o.server.home);
+    console.log(`Obeya: demo settings saved to ${resolve(this.o.server.home, DEMO_SETTINGS_FILE)}`);
+    return this.demo();
   }
 
   /** Saves a configuration that works, and starts Obeya again with it where something restarts it. */
