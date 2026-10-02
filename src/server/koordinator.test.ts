@@ -31,7 +31,7 @@ beforeEach(() => {
   workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
   workers = new Workers({ board, runtime, workspaces, adapter });
-  k = new Koordinator({ board, runtime, repoFor: () => ({ workers, workspaces, adapter, path: main }) });
+  k = new Koordinator({ board, runtime, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -425,14 +425,44 @@ describe('Koordinator starts all workstreams of a project', () => {
     expect(schedules()[0]!.inbox[0]).not.toContain('Titel W4');
   });
 
-  test('a single workstream starts as any card; none left to start is refused', async () => {
-    const { p, w2, w3 } = project();
+  test('a single workstream is judged as any card; none left to start is refused', async () => {
+    const { p, w2, w3, w4 } = project();
     k.request(w2.id);
     k.request(w3.id);
+    await settle();
+    k.request(p.id);
+    await scope(['src/w2.ts']);
+    await scope(['src/w3.ts']);
+    await settle();
+    expect(schedules()).toHaveLength(0);
+    expect(estimates().at(-1)!.inbox[0]).toContain('"Titel W4"');
+    expect(item(w4.id).queue).toMatchObject({ checking: true });
+    expect(item(w4.id).queue).not.toHaveProperty('together');
+    expect(() => k.request(p.id)).toThrow(expect.objectContaining({ code: 'nothingToStart' }));
+  });
+
+  test('the start waits a few seconds, in which the owner can take it back', async () => {
+    k = new Koordinator({ board, runtime, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 40 });
+    const { p, w2, w3, w4 } = project();
     k.request(p.id);
     await settle();
     expect(schedules()).toHaveLength(0);
-    expect(() => k.request(p.id)).toThrow(expect.objectContaining({ code: 'nothingToStart' }));
+    k.dequeue(p.id);
+    expect([w2, w3, w4].map((w) => item(w.id).queue)).toEqual([undefined, undefined, undefined]);
+    expect(board.events(p.id).at(-1)!.text).toBe('Start zurückgenommen: W2, W3, W4.');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(schedules()).toHaveLength(0);
+    expect(() => k.dequeue(p.id)).toThrow(expect.objectContaining({ code: 'notQueued' }));
+
+    // once the Koordinator has planned them, it is too late
+    k.request(p.id);
+    await new Promise((r) => setTimeout(r, 60));
+    await schedule([
+      ['K1', [], [], ''],
+      ['K2', [], [], ''],
+      ['K3', [], [], ''],
+    ]);
+    expect(() => k.dequeue(p.id)).toThrow(expect.objectContaining({ code: 'notQueued' }));
   });
 });
 

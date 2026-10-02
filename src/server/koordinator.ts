@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import type { Item, Question, Queue } from '../core/types';
+import { type Item, type Question, type Queue, START_ALL_HOLD_MS } from '../core/types';
 import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { AgentRuntime } from './runtime';
@@ -54,6 +54,8 @@ export interface KoordinatorOptions {
   preferences?: () => string;
   /** Worker questions one session answers; the next one starts fresh. */
   sessionQuestions?: number;
+  /** How long a project's start waits for the owner to take it back; START_ALL_HOLD_MS by default. */
+  holdMs?: number;
 }
 
 export class Koordinator {
@@ -99,16 +101,24 @@ export class Koordinator {
   /**
    * All planned workstreams of the project go to the Koordinator together: one turn sees them all
    * with the plan doc and decides which start now and which wait, for a dependency or a likely
-   * conflict, and in which order. They queue in the plan's order until it has.
+   * conflict, and in which order. They queue in the plan's order until it has, and the turn waits a
+   * few seconds, so the owner can take the start back (`dequeue` on the project).
    */
   private requestAll(project: Item): void {
     const open = this.o.board.snapshot().items.filter((i) => i.parent === project.id && i.state === 'planned' && !i.queue);
     if (!open.length) throw new BadRequest('nothingToStart', 'the project has no planned workstream left to start');
-    if (open.length === 1) return this.request(open[0]!.id);
     const now = Date.now();
     open.forEach((w, n) => this.o.board.work(w.id, { queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
     this.o.board.log(project.id, 'state', 'owner', `Alle Workstreams gestartet: ${open.map((w) => w.label ?? w.title).join(', ')}. Der Koordinator legt die Reihenfolge fest.`);
-    this.serial(() => this.decideAll(project.id));
+    setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? START_ALL_HOLD_MS);
+  }
+
+  /** The workstreams of a project's start that the Koordinator has not planned yet. */
+  private unplanned(projectId: string): Item[] {
+    return this.o.board
+      .snapshot()
+      .items.filter((i) => i.parent === projectId && i.state === 'planned' && i.queue && 'checking' in i.queue && i.queue.together === projectId)
+      .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
   }
 
   /** The owner wants the card cut into packages that can run in parallel. */
@@ -199,7 +209,16 @@ export class Koordinator {
   }
 
   dequeue(cardId: string) {
-    if (!this.card(cardId).queue) throw new BadRequest('notQueued', 'the card is not waiting');
+    const card = this.card(cardId);
+    if (card.kind === 'project') {
+      // the start of all its workstreams, taken back before the Koordinator planned them
+      const back = this.unplanned(cardId);
+      if (!back.length) throw new BadRequest('notQueued', 'no workstream of the project waits to be planned');
+      for (const w of back) this.setQueue(w.id, null);
+      this.o.board.log(cardId, 'state', 'owner', `Start zurückgenommen: ${back.map((w) => w.label ?? w.title).join(', ')}.`);
+      return;
+    }
+    if (!card.queue) throw new BadRequest('notQueued', 'the card is not waiting');
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', 'Aus der Warteschlange genommen.');
   }
@@ -371,10 +390,13 @@ export class Koordinator {
   /** Decides on the workstreams of a project that came to the Koordinator together. */
   private async decideAll(projectId: string) {
     const items = this.o.board.snapshot().items;
-    const batch = items
-      .filter((i) => i.parent === projectId && i.state === 'planned' && i.queue && 'checking' in i.queue && i.queue.together === projectId)
-      .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
+    const batch = this.unplanned(projectId);
     if (!batch.length) return;
+    if (batch.length === 1) {
+      // one is judged as any card
+      this.setQueue(batch[0]!.id, { checking: true });
+      return this.decide(batch[0]!.id);
+    }
     const ids = new Set(batch.map((w) => w.id));
     const repo = batch[0]!.repo;
     const active = this.inProgress(repo);
