@@ -483,7 +483,8 @@ label.c-row input { width: 64px; }
 .c-canvas .p-error { margin: 4px 0 0; font-size: 12.5px; }
 .c-actions { display: flex; gap: 8px; margin-top: 16px; }
 .c-demo .c-actions { margin-top: 10px; }
-.c-demo label.c-row > .hint { min-width: 150px; }
+.c-demo label.c-row > .hint { display: inline-block; min-width: 130px; }
+.c-demo > .hint:first-child { margin-top: 0; }
 .c-person { font-size: 12px; margin: 2px 0 6px; }
 .c-status { margin-top: 8px; }
 .c-server { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; }
