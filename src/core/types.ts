@@ -151,7 +151,9 @@ export interface PrComment {
   author: string;
   mine?: boolean;
   body: string;
+  /** When it was written, or last changed when `edited`. */
   at: string;
+  edited?: boolean;
   url?: string;
 }
 

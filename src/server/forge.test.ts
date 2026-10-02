@@ -30,7 +30,14 @@ test('gh output becomes a PR status', () => {
       });
     if (args[1] === 'graphql')
       return JSON.stringify({
-        data: { repository: { pullRequest: { reviewThreads: { nodes: [{ isResolved: true, comments: { nodes: [{ databaseId: 7 }] } }] } } } },
+        data: {
+          repository: {
+            pullRequest: {
+              reviewThreads: { nodes: [{ isResolved: true, comments: { nodes: [{ databaseId: 7 }] } }] },
+              comments: { nodes: [{ id: 'IC_1', updatedAt: '2026-10-02T08:09:00Z' }] },
+            },
+          },
+        },
       });
     return JSON.stringify([
       { id: 7, user: { login: 'greptile-apps[bot]' }, body: 'Null check.', path: 'src/a.ts', line: 3, html_url: 'https://gh/i7', created_at: '2026-10-02T08:01:00Z', pull_request_review_id: 90 },
@@ -52,7 +59,7 @@ test('gh output becomes a PR status', () => {
       { name: 'greptile', state: 'success', url: 'https://g/1' },
     ],
     comments: [
-      { id: 'cIC_1', author: 'greptile-apps', body: 'Summary', at: '2026-10-02T08:00:00Z', url: 'https://gh/c1' },
+      { id: 'cIC_1', author: 'greptile-apps', body: 'Summary', at: '2026-10-02T08:00:00Z', edited: '2026-10-02T08:09:00Z', url: 'https://gh/c1' },
       { id: 'rPRR_2', author: 'lead', body: 'Please split this.', at: '2026-10-02T08:05:00Z' },
       { id: 'i7', author: 'greptile-apps', body: 'Null check.', at: '2026-10-02T08:01:00Z', path: 'src/a.ts', line: 3, url: 'https://gh/i7', round: '90', resolved: true },
       { id: 'i8', author: 'owner', body: 'Added.', at: '2026-10-02T08:03:00Z', path: 'src/a.ts', line: 3, url: 'https://gh/i8', round: '91', replyTo: 'i7' },
@@ -69,7 +76,7 @@ test('the review: rounds of threads with their replies, and the conversation bet
     author: 'owner',
     checks: [],
     comments: [
-      c('cSUM', 'greptile-apps', '30'),
+      c('cSUM', 'greptile-apps', '30', { edited: '2026-10-02T08:49:00Z' }),
       c('cDEPLOY', 'deploy-bot', '31'),
       c('cPING', 'owner', '37', { url: 'https://gh/ping' }),
       c('i1', 'greptile-apps', '34', { round: 'A', path: 'docs/a.md', resolved: true }),
@@ -80,8 +87,9 @@ test('the review: rounds of threads with their replies, and the conversation bet
     ],
   };
   const r = reviewOf(s, ['deploy-bot']);
-  expect(r.map((e) => ('threads' in e ? `round:${e.threads.length}` : e.body))).toEqual(['cSUM text', 'round:2', 'cPING text', 'round:1']);
-  const first = r[1] as Extract<(typeof r)[number], { threads: unknown[] }>;
+  expect(r.map((e) => ('threads' in e ? `round:${e.threads.length}` : e.body))).toEqual(['round:2', 'cPING text', 'round:1', 'cSUM text']);
+  expect(r[3]).toMatchObject({ at: '2026-10-02T08:49:00Z', edited: true });
+  const first = r[0] as Extract<(typeof r)[number], { threads: unknown[] }>;
   expect(first).toMatchObject({ author: 'greptile-apps', at: '2026-10-02T08:34:00Z' });
   expect(first.threads[0]).toMatchObject({ body: 'i1 text', path: 'docs/a.md', resolved: true });
   expect(first.threads[0]!.replies).toEqual([
@@ -89,7 +97,7 @@ test('the review: rounds of threads with their replies, and the conversation bet
     { author: 'greptile-apps', body: 'i4 text', at: '2026-10-02T08:38:00Z' },
   ]);
   expect(first.threads[1]).toMatchObject({ line: 5, resolved: false, replies: [] });
-  expect(r[2]).toEqual({ author: 'owner', mine: true, body: 'cPING text', at: '2026-10-02T08:37:00Z', url: 'https://gh/ping' });
+  expect(r[1]).toEqual({ author: 'owner', mine: true, body: 'cPING text', at: '2026-10-02T08:37:00Z', url: 'https://gh/ping' });
 });
 
 test('a review bot’s HTML becomes text: badges by name, folded and code parts gone', () => {

@@ -176,6 +176,7 @@ export const t = {
     open: 'Offen',
     agent: 'Agent',
     onGithub: 'Auf GitHub',
+    edited: (time: string) => `${time} überarbeitet`,
     short: (n: number, failed: number, conflict: boolean) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
   },

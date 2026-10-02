@@ -11,13 +11,15 @@ export interface PrStatus {
   /**
    * Conversation comments, review summaries and inline review comments, oldest first. An inline
    * comment's `round` is the review it came with; a reply names its thread's first comment in
-   * `replyTo`, and that first comment says whether the thread is `resolved`.
+   * `replyTo`, and that first comment says whether the thread is `resolved`. `edited`: when a
+   * conversation comment was last changed (a review bot rewrites its summary each round).
    */
   comments: {
     id: string;
     author: string;
     body: string;
     at?: string;
+    edited?: string;
     path?: string;
     line?: number;
     url?: string;
@@ -72,7 +74,8 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       pull_request_review_id?: number | null;
       in_reply_to_id?: number | null;
     }[];
-    // whether a thread is resolved only GraphQL says; a thread is known by its first comment
+    // whether a thread is resolved and when a comment was last changed only GraphQL says; a thread
+    // is known by its first comment
     const threads = JSON.parse(
       run(
         cwd,
@@ -85,12 +88,27 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
         '-F',
         `number=${ref.number}`,
         '-f',
-        'query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } } } }',
+        'query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } comments(last: 100) { nodes { id updatedAt } } } } }',
       ),
-    ) as { data?: { repository?: { pullRequest?: { reviewThreads?: { nodes: { isResolved: boolean; comments: { nodes: { databaseId: number }[] } }[] } } } } };
+    ) as {
+      data?: {
+        repository?: {
+          pullRequest?: {
+            reviewThreads?: { nodes: { isResolved: boolean; comments: { nodes: { databaseId: number }[] } }[] };
+            comments?: { nodes: { id: string; updatedAt: string }[] };
+          };
+        };
+      };
+    };
     const resolved = new Set(
       (threads.data?.repository?.pullRequest?.reviewThreads?.nodes ?? []).filter((t) => t.isResolved).map((t) => t.comments.nodes[0]?.databaseId),
     );
+    const updated = new Map((threads.data?.repository?.pullRequest?.comments?.nodes ?? []).map((c) => [c.id, c.updatedAt]));
+    // an edit within a minute of writing is part of writing it
+    const edited = (id: string, at?: string) => {
+      const u = updated.get(id);
+      return u && at && Date.parse(u) - Date.parse(at) > 60_000 ? { edited: u } : {};
+    };
     const checks = (pr.statusCheckRollup ?? []).map((c) => {
       const name = c.name ?? c.context ?? 'check';
       const verdict = (c.conclusion ?? c.state ?? '').toUpperCase();
@@ -109,7 +127,14 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       author: pr.author.login,
       checks,
       comments: [
-        ...pr.comments.map((c) => ({ id: `c${c.id}`, author: c.author.login, body: c.body, ...(c.createdAt ? { at: c.createdAt } : {}), url: c.url })),
+        ...pr.comments.map((c) => ({
+          id: `c${c.id}`,
+          author: c.author.login,
+          body: c.body,
+          ...(c.createdAt ? { at: c.createdAt } : {}),
+          ...edited(c.id, c.createdAt),
+          url: c.url,
+        })),
         ...pr.reviews
           .filter((r) => r.body.trim())
           .map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body, ...(r.submittedAt ? { at: r.submittedAt } : {}) })),
@@ -170,7 +195,8 @@ export function reviewOf(s: PrStatus, skip: string[] = []): PrReviewEntry[] {
   for (const c of shown) {
     const reply = { author: c.author, ...mine(c.author), body: readable(c.body), at: c.at ?? '' };
     if (c.replyTo) threads.get(c.replyTo)?.replies.push(reply);
-    else if (!c.id.startsWith('i')) entries.push({ ...reply, ...(c.url ? { url: c.url } : {}) });
+    // a comment rewritten since stands where it was last changed
+    else if (!c.id.startsWith('i')) entries.push({ ...reply, ...(c.edited ? { at: c.edited, edited: true } : {}), ...(c.url ? { url: c.url } : {}) });
   }
   for (const r of rounds.values()) r.at = r.threads.reduce((a, t) => (t.at && t.at < a ? t.at : a), r.at);
   return entries.filter((e) => 'threads' in e || e.body).sort((a, b) => a.at.localeCompare(b.at));

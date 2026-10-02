@@ -1222,7 +1222,7 @@ function PrReview({ entries }: { entries: PrReviewEntry[] }) {
         ) : (
           <details key={i} className="pr-comment">
             <summary>
-              <b>{who(e)}</b> · {time(e.at)} · <span className="pr-first">
+              <b>{who(e)}</b> · {e.edited ? t.pr.edited(time(e.at)) : time(e.at)} · <span className="pr-first">
                 <Inline md={firstLine(e.body)} />
               </span>
             </summary>

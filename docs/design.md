@@ -308,9 +308,10 @@ the owner's language (`src/core/locale.ts`).
   Anmerkungen, 1 offen"), each comment folded to its first line with whether its thread is
   resolved and how many replies it has, unfolded with the file, the comment and the replies (the
   PR author's as "Agent"); between the rounds the conversation (a reviewer's summary, the
-  worker's requests for another round). Review bots write HTML into their Markdown: badges keep
+  worker's requests for another round; a comment rewritten since, like Greptile's summary each
+  round, stands where it was last changed). Review bots write HTML into their Markdown: badges keep
   their name (Greptile's "P1"), folded parts, code and diagrams go. Whether a thread is resolved
-  only GraphQL says, so the watcher asks that too. Checked against real Acme pull requests (2026-10-01): `gh`
+  and when a comment was last changed only GraphQL says, so the watcher asks that too. Checked against real Acme pull requests (2026-10-01): `gh`
   reads their state, checks and comments; the first Acme card carried through to the merge is still
   to come.
 - **After landing** — the worker is told its work is on main (or that its PR was merged) and may
