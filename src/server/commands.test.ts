@@ -157,6 +157,23 @@ describe('the Koordinator remembers', () => {
     expect(executed).toEqual([{ do: 'answer', card: a.id, text: 'ja' }]);
   });
 
+  test("an idea's suggested next step, with its agent's own answers, is in its line: „mach, was du vorschlägst“ takes it", async () => {
+    const a = board.create({ kind: 'feature', idea: true, title: 'Export', x: 0, y: 0 });
+    board.setIdea(a.id, {
+      yourTurn: true,
+      questions: [{ text: 'Welches Format?', options: ['CSV', 'PDF'], pick: { options: ['CSV'], why: 'Excel.' } }],
+      next: { step: 'answer', why: 'Das Format entscheidet den Rest.' },
+    });
+    const k = commander();
+    const { brief } = await say(k, 'mach, was du vorschlägst', 'act', { actions: [{ do: 'discuss', card: 'K1', text: 'CSV' }], confirm: 'An „Export“: CSV.' });
+    expect(brief).toContain(
+      'feature "Export" — its agent would have the owner answer its open questions (discuss) next: Das Format entscheidet den Rest. (its own answers: "Welches Format?" → CSV)',
+    );
+    board.setIdea(a.id, { questions: [], next: { step: 'prototype', why: 'Erst sehen.' } });
+    const second = await say(k, 'und?', 'reply', { confirm: '…' });
+    expect(second.brief).toContain('feature "Export" — its agent would prototype next: Erst sehen.');
+  });
+
   test('a landed card whose agent finishes what remains still takes notes', async () => {
     const a = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
     board.work(a.id, { state: 'live', workspace: '/w', landed: '{}' });

@@ -7,7 +7,7 @@
 import { basename } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
-import type { Item, Question } from '../core/types';
+import { type Item, NEXT_STEPS, type NextStep, type Question } from '../core/types';
 import { decisionLog, toQuestion } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
@@ -55,7 +55,7 @@ export class Explorers {
       this.o.board.log(cardId, 'state', 'owner', 'Idee wieder aufgenommen.');
     }
     this.o.board.log(cardId, 'talk', 'owner', text, undefined, images.map((f) => basename(f)));
-    this.o.board.setIdea(cardId, { yourTurn: false, questions: [] });
+    this.o.board.setIdea(cardId, { yourTurn: false, questions: [], next: undefined });
     if (text) this.o.onOwnerInput?.(card, text);
     this.send(card, `The owner says:\n\n${text}${imageNote(images)}`, spoken, images);
   }
@@ -176,9 +176,9 @@ export class Explorers {
   }
 
   /** The agent's reply stands in the conversation, its questions below it; the owner is next. */
-  private answer(cardId: string, text: string, questions: Question[] = []) {
+  private answer(cardId: string, text: string, questions: Question[] = [], next?: NextStep) {
     this.o.board.log(cardId, 'talk', 'explorer', text);
-    this.o.board.setIdea(cardId, { yourTurn: true, questions });
+    this.o.board.setIdea(cardId, { yourTurn: true, questions, next });
   }
 
   private tools(cardId: string, live: Live): AgentTool[] {
@@ -187,20 +187,29 @@ export class Explorers {
     return current([
       {
         name: 'reply',
-        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. questions: the questions you ask now, each with its answer options (multiple: true when several may be chosen together); the card shows them under your reply for the owner to pick from, so the reply does not repeat them. Call it once per message, then end your turn.`,
+        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. questions: the questions you ask now, each with its answer options (multiple: true when several may be chosen together); the card shows them under your reply for the owner to pick from, so the reply does not repeat them; pick: the options you would choose yourself if you had to decide (one, or several when multiple), and pick_why: why, in one short sentence in ${OWNER_LANGUAGE}. next: what you would do next in the owner's place, always: answer (the open questions come first), build, planDoc, prototype, park or drop, with why in one short sentence in ${OWNER_LANGUAGE}; the card marks that click for the owner. Call it once per message, then end your turn.`,
         schema: {
           text: z.string(),
           spoken: z.string(),
           questions: z
-            .array(z.object({ question: z.string(), options: z.array(z.string()).max(6), multiple: z.boolean().optional() }))
+            .array(
+              z.object({
+                question: z.string(),
+                options: z.array(z.string()).max(6),
+                multiple: z.boolean().optional(),
+                pick: z.array(z.string()).optional(),
+                pick_why: z.string().optional(),
+              }),
+            )
             .max(4)
             .optional(),
+          next: z.object({ step: z.enum(NEXT_STEPS), why: z.string() }).optional(),
         },
-        run: ({ text, spoken, questions }) => {
+        run: ({ text, spoken, questions, next }) => {
           if (live.replied) return 'Already replied. End your turn now.';
           live.replied = true;
-          const asked = ((questions as { question: string; options: string[]; multiple?: boolean }[] | undefined) ?? []).map((q) => toQuestion(q.question, q.options, q.multiple));
-          this.answer(cardId, clip(String(text), 12000), asked.filter((q) => q.text));
+          const asked = ((questions as Asked[] | undefined) ?? []).map(withPick).filter((q) => q.text);
+          this.answer(cardId, clip(String(text), 12000), asked, nextStep(next, asked));
           if (live.speak && String(spoken).trim()) this.o.board.speak(cardId, clip(String(spoken).trim(), 400));
           live.speak = false;
           return 'Shown to the owner. End your turn now; their next message arrives as a new one.';
@@ -267,10 +276,40 @@ Tools, within a turn in this order:
 - update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Ist-Stand** (what the code does today, when it matters), **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
 - reply, last: your turn in the conversation, and spoken, its summary for the ear. Exactly once per message, then end your turn.
 
-The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype built, park it or drop it. You may suggest one of these when the time has come. Several prototypes may try different approaches side by side; you hear each one's result, and the questions their workers asked with the owner's answers, which belong in the brief like answers given here. Once one convinces, the owner builds the idea on that prototype's branch.
+The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype built, park it or drop it. With every reply, say through next what you would do in their place if you had to decide, and why; the card marks that click, so the owner sees at a glance where to go on:
+- answer: an open question has to be settled before anything else makes sense. Then give your own pick for each question too, so the owner can follow it or overrule it.
+- build: the brief is clear enough to be one worker's task, and what is still open is a judgement call the worker can make.
+- planDoc: it is too big for one card (several workstreams, or an order to work in).
+- prototype: only seeing it will settle it (a layout, how it feels, a risky approach), and a throwaway build costs less than guessing.
+- park or drop: it is not worth it now, or no longer.
+Give your pick on every question with options, whatever next is. Do not hold the idea back with questions you could settle as well as the owner: settle them in the brief and say so. Several prototypes may try different approaches side by side; you hear each one's result, and the questions their workers asked with the owner's answers, which belong in the brief like answers given here. Once one convinces, the owner builds the idea on that prototype's branch.
 Owner-facing text is in ${OWNER_LANGUAGE}.
 `.trim();
 
 const OWN_TOOLS = ['reply', 'update_brief', 'record_decision'];
+
+interface Asked {
+  question: string;
+  options: string[];
+  multiple?: boolean;
+  pick?: string[];
+  pick_why?: string;
+}
+
+/** A question as the card shows it, with the agent's own pick when that names its options. */
+function withPick(a: Asked): Question {
+  const q = toQuestion(a.question, a.options, a.multiple);
+  const picked = (a.pick ?? []).map((o) => clip(String(o).trim(), 120)).filter((o) => q.options.includes(o));
+  const options = q.multiple ? [...new Set(picked)] : picked.slice(0, 1);
+  return options.length ? { ...q, pick: { options, why: clip(String(a.pick_why ?? '').trim(), 400) } } : q;
+}
+
+/** The step the agent suggests; answering needs questions to answer. */
+function nextStep(next: unknown, asked: Question[]): NextStep | undefined {
+  const n = next as { step?: unknown; why?: unknown } | undefined;
+  if (!n || !NEXT_STEPS.includes(n.step as NextStep['step'])) return undefined;
+  if (n.step === 'answer' && !asked.length) return undefined;
+  return { step: n.step as NextStep['step'], why: clip(String(n.why ?? '').trim(), 400) };
+}
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);

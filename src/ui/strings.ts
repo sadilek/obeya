@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, Queue, OwnerHold, RestartReason } from '../core/types';
+import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, NextStep, Queue, OwnerHold, RestartReason } from '../core/types';
 
 export const t = {
   kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
@@ -74,6 +74,9 @@ export const t = {
     several: 'Mehrere möglich',
     words: 'Eigene Antwort oder Anmerkung – optional',
     send: 'Antworten',
+    /** On the option the asking agent would pick itself. */
+    pick: 'Würde ich nehmen',
+    pickWhy: (why: string) => `Der Agent würde so entscheiden: ${why}`,
   },
   summary: 'Zusammenfassung des Agenten',
   proposal: 'Vorschlag',
@@ -334,6 +337,25 @@ export const t = {
     prototypeNoDemo: 'Noch keine Demo.',
     reopen: 'Wer weiterredet, nimmt die Idee wieder auf.',
     makeIdea: 'Erst besprechen',
+    /** What the idea's agent would do next in the owner's place, above the decisions; the button it means is marked. */
+    next: 'Nächster Schritt, wenn der Agent entscheiden müsste',
+    nextStep: {
+      answer: (n: number) => (n > 1 ? 'Erst die Fragen beantworten' : 'Erst die Frage beantworten'),
+      build: () => 'So bauen',
+      planDoc: () => 'Als Projekt planen',
+      prototype: () => 'Prototyp bauen lassen',
+      park: () => 'Parken',
+      drop: () => 'Verwerfen',
+    } satisfies Record<NextStep['step'], (questions: number) => string>,
+    /** The same, short, on the canvas card of an idea that waits for the owner. */
+    suggests: {
+      answer: 'Tipp: erst antworten',
+      build: 'Tipp: so bauen',
+      planDoc: 'Tipp: als Projekt',
+      prototype: 'Tipp: Prototyp',
+      park: 'Tipp: parken',
+      drop: 'Tipp: verwerfen',
+    } satisfies Record<NextStep['step'], string>,
     prototypeOf: (title: string) => `Wegwerf-Prototyp für die Idee „${title}“. Er landet nie selbst: Verwerfen legt ihn ins Archiv, „Diesen Prototyp bauen“ baut die Idee auf seinem Branch.`,
     discard: 'Verwerfen',
     discarded: 'Prototyp verworfen; er liegt mit seiner Demo im Archiv.',

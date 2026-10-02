@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import type { CardAction, CardEvent, CardPatch, Demo, Item, Question, RepoRef } from '../core/types';
+import type { CardAction, CardEvent, CardPatch, Demo, Item, NextStep, Question, RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
@@ -424,6 +424,9 @@ function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardActio
   const idea = item.idea!;
   const [prototyping, setPrototyping] = useState(false);
   const answer = usePicks(idea.questions);
+  // what the agent would do in the owner's place is the marked click; without a suggestion, building is
+  const next = idea.status === 'open' && !idea.thinking ? idea.next : undefined;
+  const btn = (step: NextStep['step']) => (next ? (next.step === step ? 'btn primary suggested' : 'btn') : step === 'build' ? 'btn primary' : 'btn');
   return (
     <>
       <div className="p-state">
@@ -481,31 +484,42 @@ function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardActio
           onSend={(text) => act({ action: 'prototype', ...(text ? { text } : {}) }, { close: true, ack: t.idea.prototyped })}
         />
       ) : (
-        <div className="actions">
-          <button className="btn primary" onClick={() => act({ action: 'build' }, { close: true, ack: t.idea.built })}>
-            {t.idea.build}
-          </button>
-          <button className="btn" onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
-            {t.idea.planDoc}
-          </button>
-          <button className="btn" onClick={() => setPrototyping(true)}>
-            {t.idea.prototype}
-          </button>
-          {idea.status !== 'parked' && (
-            <button className="btn" onClick={() => act({ action: 'park' }, { close: true, ack: t.idea.parked })}>
-              {t.idea.park}
-            </button>
+        <>
+          {next && (
+            <div className={`next-step ${next.step}`}>
+              <span className="next-h">{t.idea.next}</span>
+              <span>
+                <b>{t.idea.nextStep[next.step](idea.questions.length)}</b>
+                {next.why && <> – {next.why}</>}
+              </span>
+            </div>
           )}
-          {idea.status !== 'dropped' && (
-            <button className="btn" onClick={() => act({ action: 'drop' }, { close: true, ack: t.idea.dropped })}>
-              {t.idea.drop}
+          <div className="actions">
+            <button className={btn('build')} onClick={() => act({ action: 'build' }, { close: true, ack: t.idea.built })}>
+              {t.idea.build}
             </button>
-          )}
-          {idea.status === 'dropped' && <ArchiveButton item={item} run={run} />}
-          <button className="btn danger" onClick={onDelete}>
-            {t.delete}
-          </button>
-        </div>
+            <button className={btn('planDoc')} onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
+              {t.idea.planDoc}
+            </button>
+            <button className={btn('prototype')} onClick={() => setPrototyping(true)}>
+              {t.idea.prototype}
+            </button>
+            {idea.status !== 'parked' && (
+              <button className={btn('park')} onClick={() => act({ action: 'park' }, { close: true, ack: t.idea.parked })}>
+                {t.idea.park}
+              </button>
+            )}
+            {idea.status !== 'dropped' && (
+              <button className={btn('drop')} onClick={() => act({ action: 'drop' }, { close: true, ack: t.idea.dropped })}>
+                {t.idea.drop}
+              </button>
+            )}
+            {idea.status === 'dropped' && <ArchiveButton item={item} run={run} />}
+            <button className="btn danger" onClick={onDelete}>
+              {t.delete}
+            </button>
+          </div>
+        </>
       )}
     </>
   );
@@ -925,17 +939,21 @@ function Questions(p: { questions: Question[]; heading: string; picks: string[][
                     key={o}
                     role={q.multiple ? 'checkbox' : 'radio'}
                     aria-checked={on}
-                    className={on ? 'choice on' : 'choice'}
+                    className={`choice${on ? ' on' : ''}${q.pick?.options.includes(o) ? ' picked' : ''}`}
                     // a click must not take the focus: Space would then not reach push-to-talk
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => p.choose(i, o)}
                   >
-                    <Inline md={o} />
+                    <span>
+                      <Inline md={o} />
+                      {q.pick?.options.includes(o) && <span className="pick-tag">{t.ask.pick}</span>}
+                    </span>
                   </button>
                 );
               })}
             </div>
           )}
+          {q.pick?.why && <div className="hint pick-why">{t.ask.pickWhy(q.pick.why)}</div>}
         </div>
       ))}
     </div>

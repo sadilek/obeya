@@ -214,6 +214,52 @@ describe('an idea', () => {
     expect(explorer().inbox.at(-1)).toContain('- **Welches Format?** CSV');
   });
 
+  test('its agent says what it would do in the owner’s place, which stands until the owner says something', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Los.' });
+    let s = explorer();
+    s.call('reply', {
+      text: 'Eine Frage noch.',
+      spoken: '',
+      questions: [
+        { question: 'Welches Format?', options: ['CSV', 'PDF'], pick: ['CSV '], pick_why: 'Vermieter rechnen in Excel weiter.' },
+        { question: 'Für wen?', options: ['Vermieter', 'Verwalter'], multiple: true, pick: ['Vermieter', 'Mieter', 'Verwalter'], pick_why: 'Beide.' },
+        { question: 'Wann?', options: ['Sofort', 'Später'], pick: ['Sofort', 'Später'], pick_why: 'Zwei sind eins zu viel.' },
+        { question: 'Wie heißt es?', options: ['Export'], pick: ['Ausfuhr'], pick_why: 'Nicht unter den Optionen.' },
+      ],
+      next: { step: 'answer', why: 'Das Format entscheidet den Rest.' },
+    });
+    s.emit({ type: 'idle' });
+    expect(item(i.id).idea).toMatchObject({
+      questions: [
+        { text: 'Welches Format?', pick: { options: ['CSV'], why: 'Vermieter rechnen in Excel weiter.' } },
+        { text: 'Für wen?', pick: { options: ['Vermieter', 'Verwalter'], why: 'Beide.' } },
+        // one option only where only one may be chosen
+        { text: 'Wann?', pick: { options: ['Sofort'] } },
+        { text: 'Wie heißt es?' },
+      ],
+      next: { step: 'answer', why: 'Das Format entscheidet den Rest.' },
+    });
+    expect(item(i.id).idea!.questions[3]!.pick).toBeUndefined();
+    canvas.act(i.id, { action: 'discuss', text: '- **Welches Format?** CSV' });
+    expect(item(i.id).idea!.next).toBeUndefined();
+    s = explorer();
+    // answering without questions, or a step there is no button for, is no suggestion
+    s.call('reply', { text: 'Danke.', spoken: '', next: { step: 'answer', why: '?' } });
+    s.emit({ type: 'idle' });
+    expect(item(i.id).idea!.next).toBeUndefined();
+    canvas.act(i.id, { action: 'discuss', text: 'Und jetzt?' });
+    s = explorer();
+    s.call('reply', { text: 'Bauen.', spoken: '', next: { step: 'deploy', why: '?' } });
+    s.emit({ type: 'idle' });
+    expect(item(i.id).idea!.next).toBeUndefined();
+    canvas.act(i.id, { action: 'discuss', text: 'Und jetzt?' });
+    s = explorer();
+    s.call('reply', { text: 'Bauen.', spoken: '', next: { step: 'build', why: 'Der Stand reicht als Auftrag.' } });
+    s.emit({ type: 'idle' });
+    expect(item(i.id).idea!.next).toEqual({ step: 'build', why: 'Der Stand reicht als Auftrag.' });
+  });
+
   test('an idea whose agent had the last word before the update waits for the owner', () => {
     const path = join(dir, 'obeya.db');
     const s = new Store(path);

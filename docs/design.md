@@ -74,7 +74,14 @@ An idea is thought through on its card before anything is planned; no worker run
    each question. The owner types in the
    panel or holds Space with the idea open; the reply stands in the panel, and only its short
    summary is spoken, when the owner spoke. What the agent read and thought on the way to a reply
-   folds away under that reply ("Verlauf"), for whoever wants to follow it. Once the agent has replied, the open idea needs the
+   folds away under that reply ("Verlauf"), for whoever wants to follow it. With every reply the
+   agent also says what it would do in the owner's place: the option it would pick for each of its
+   questions ("Würde ich nehmen", with why), and the next step ("Nächster Schritt, wenn der Agent
+   entscheiden müsste": answer first, build, plan, prototype, park or drop, with why). The card marks
+   that click (the suggested button instead of "So bauen", the picked options), and the canvas card
+   says it short ("Tipp: Prototyp"); the owner follows or overrules it, and the suggestion goes
+   with their next message. The voice Koordinator reads it too, so "mach, was du vorschlägst"
+   takes that step. Once the agent has replied, the open idea needs the
    owner like a waiting card ("Idee · du bist dran", badge, counted in "brauchen dich") until they
    answer, park, drop or decide it.
 3. The agent keeps the brief ("Stand der Idee") on top of the card: goal, open and dropped
@@ -451,7 +458,7 @@ Persistent (SQLite): canvases, cards (kind, state, position, parent; agent sessi
 branch, status line, open question or review summary (with the reason when there is no demo), the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
 when archived, the pull request (link, checks, the comments, failed checks and conflict already
-passed on), an idea's status, brief and open questions, a prototype's idea, how it ended and its worker's proposal to build on it, the prototype an idea is built on, landed work whose worker still
+passed on), an idea's status, brief and open questions with its agent's picks and suggested next step, a prototype's idea, how it ended and its worker's proposal to build on it, the prototype an idea is built on, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
 work added),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
