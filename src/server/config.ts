@@ -2,12 +2,12 @@
 // reads and edits it in its sheet, the Koordinator on their word; a saved change takes effect when
 // Obeya starts again, which it does by itself once no agent is in the middle of a turn.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { adapterNames } from '../adapters';
-import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettingsProblem, DemoSettingsView, ResolvedCanvas } from '../core/types';
+import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettingsProblem, DemoSettingsView, DemoVoiceCheck, ResolvedCanvas, VoiceInstallJob } from '../core/types';
 import {
   DEMO_SETTINGS_FILE,
   type DemoSettings,
@@ -15,10 +15,12 @@ import {
   NARRATION_LANGUAGES,
   narrationPerson,
   readDemoSettings,
+  SERVICES,
   tidyDemoSettings,
   VOICES,
   writeDemoSettings,
 } from '../../plugin/skills/demo/lib/settings.ts';
+import { installState, installVoice, KEY_ENV, sample } from '../../plugin/skills/demo/lib/voices.ts';
 import { BadRequest } from './board';
 import { ConfigError, resolveCanvas } from './canvas';
 import type { Store } from './db';
@@ -100,19 +102,40 @@ const demoShape = z
   .object({
     language: z.enum(NARRATION_LANGUAGES),
     voice: z.enum(VOICES),
-    voiceProject: z.string().optional(),
-    geminiKeyFile: z.string().optional(),
+    ownVoice: z.boolean().optional(),
+    command: z.string().optional(),
+    url: z.string().optional(),
+    voiceName: z.string().optional(),
+    reference: z.string().optional(),
+    keyFile: z.string().optional(),
   })
   .strict();
 
+function parseDemo(input: unknown): DemoSettings {
+  const parsed = demoShape.safeParse(input);
+  if (!parsed.success) throw new BadRequest('config', z.prettifyError(parsed.error));
+  return tidyDemoSettings(parsed.data);
+}
+
 /** What keeps demo settings from working; saving them is allowed all the same. */
-export function demoSettingsProblems(s: DemoSettings, env: Record<string, string | undefined> = process.env): DemoSettingsProblem[] {
+export function demoSettingsProblems(
+  s: DemoSettings,
+  env: Record<string, string | undefined> = process.env,
+  platform: string = process.platform,
+): DemoSettingsProblem[] {
   const problems: DemoSettingsProblem[] = [];
-  if (s.voice === 'clone' && !s.voiceProject) problems.push('noVoiceProject');
-  if (s.voiceProject && !existsSync(expandHome(s.voiceProject))) problems.push('voiceProjectMissing');
-  if (s.voice === 'gemini' && !env.GEMINI_API_KEY) {
-    if (!s.geminiKeyFile) problems.push('noGeminiKey');
-    else if (!existsSync(expandHome(s.geminiKeyFile))) problems.push('geminiKeyMissing');
+  if (s.voice === 'command' && !s.command) problems.push('noCommand');
+  if ((s.voice === 'http' || s.voice === 'azure') && !s.url) problems.push('noUrl');
+  if (s.voice === 'say' && platform !== 'darwin') problems.push('notHere');
+  const service = (SERVICES as readonly string[]).includes(s.voice) || s.voice === 'http';
+  if (service && !env[KEY_ENV[s.voice as keyof typeof KEY_ENV]]) {
+    if (s.keyFile && !existsSync(expandHome(s.keyFile))) problems.push('keyFileMissing');
+    else if (!s.keyFile && s.voice !== 'http') problems.push('noKey');
+  }
+  if (s.voice === 'qwen3' && s.reference) {
+    const clip = expandHome(s.reference);
+    if (!existsSync(clip)) problems.push('referenceMissing');
+    else if (!existsSync(clip.replace(/\.wav$/i, '.txt'))) problems.push('noTranscript');
   }
   return problems;
 }
@@ -205,17 +228,64 @@ export class Config {
     return {
       file: resolve(this.o.server.home, DEMO_SETTINGS_FILE),
       settings,
-      person: narrationPerson(settings.voice),
-      problems: demoSettingsProblems(settings),
+      check: this.voiceCheck(settings),
+      ...(this.voiceJob ? { job: this.voiceJob } : {}),
+      platform: process.platform,
     };
   }
 
   saveDemo(input: unknown): DemoSettingsView {
-    const parsed = demoShape.safeParse(input);
-    if (!parsed.success) throw new BadRequest('config', z.prettifyError(parsed.error));
-    writeDemoSettings(tidyDemoSettings(parsed.data), this.o.server.home);
+    writeDemoSettings(parseDemo(input), this.o.server.home);
     console.log(`Obeya: demo settings saved to ${resolve(this.o.server.home, DEMO_SETTINGS_FILE)}`);
     return this.demo();
+  }
+
+  private voiceCheck(s: DemoSettings): DemoVoiceCheck {
+    return { person: narrationPerson(s), problems: demoSettingsProblems(s), install: installState(s, this.o.server.home) };
+  }
+
+  /** A voice as the owner is choosing it, before it is saved. */
+  checkDemo(input: unknown): DemoVoiceCheck {
+    return this.voiceCheck(parseDemo(input));
+  }
+
+  private voiceJob?: VoiceInstallJob;
+
+  /** Installs what the voice needs, in the background; the view says how far it got. */
+  installDemoVoice(input: unknown): DemoSettingsView {
+    const s = parseDemo(input);
+    if (this.voiceJob?.running) throw new BadRequest('voiceInstalling', `${this.voiceJob.voice} is being installed`);
+    const job: VoiceInstallJob = (this.voiceJob = { voice: s.voice, running: true, line: '' });
+    console.log(`Obeya: installing the voice ${s.voice}`);
+    installVoice(s, (line) => (job.line = line.slice(0, 300)), this.o.server.home).then(
+      () => {
+        job.running = false;
+        console.log(`Obeya: voice ${s.voice} installed`);
+      },
+      (e: Error) => {
+        job.running = false;
+        job.error = e.message;
+        console.error(`Obeya: installing the voice ${s.voice} failed: ${e.message}`);
+      },
+    );
+    return this.demo();
+  }
+
+  /** One sentence in the voice, as WAV, so the owner hears it before choosing it. */
+  async sampleDemoVoice(input: unknown): Promise<Uint8Array<ArrayBuffer>> {
+    const s = parseDemo(input);
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-voice-'));
+    try {
+      const out = join(dir, 'sample.wav');
+      await sample(s, out, this.o.server.home).catch((e: Error) => {
+        // tts.py says why on its last line: no key, no command, a service's refusal
+        const why = e.message.trim().split('\n').at(-1) ?? e.message;
+        throw new BadRequest('voiceSample', why);
+      });
+      return Uint8Array.from(readFileSync(out));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 
   /** Saves a configuration that works, and starts Obeya again with it where something restarts it. */

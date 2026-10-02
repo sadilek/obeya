@@ -490,6 +490,13 @@ label.c-row input { width: 64px; }
 .c-demo label.c-row > .hint { display: inline-block; min-width: 130px; }
 .c-demo > .hint:first-child { margin-top: 0; }
 .c-person { font-size: 12px; margin: 2px 0 6px; }
+.c-about { font-size: 12px; margin: 2px 0 6px; }
+.c-demo label.c-check { display: flex; gap: 6px; align-items: center; margin: 6px 0 2px; }
+.c-demo label.c-check > input { width: auto; margin: 0; }
+.c-demo label.c-check > .hint { display: inline; font-size: 12.5px; }
+.c-install { display: flex; gap: 10px; align-items: center; margin: 4px 0; font-size: 12.5px; }
+.c-install .hint { margin: 0; }
+.c-install code { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .c-status { margin-top: 8px; }
 .c-server { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; }
 .c-server dt { color: var(--muted); }

@@ -16,15 +16,15 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
 - *Recording*: since W3 the pipeline is in the repository, as the skill `obeya:demo` of the
   plugin `plugin/` that Obeya loads into its workers; Daniel's `~/.claude/skills/demo` links to it.
   Language and voice come from the demo settings (design: Architecture, Demos), the recipes from
-  the adapters. The voices are still the two below, and listening back is still mlx only.
-- *Voices*: `clone` is Daniel's voice through the voice project `~/dev/stimmzwilling` (Qwen3-TTS
-  1.7B on mlx-audio, Apple Silicon only; `tts.py` drives it through that project's `avatar`
-  modules, which W4 replaces with a provider); `gemini` a stock voice with a key in
-  `~/.config/demo-skill/` (free tier: 10 requests a day); a `.wav` can serve as the sample for a
-  clone. Daniel's settings (`~/.obeya/demo.json`) say German and `clone`, so his demos sound as
-  before: the clips of an earlier demo are found in its cache again. Every clip is listened back with
-  Whisper, also on mlx, so only on a Mac. The video is a screencast of the local Chrome, cut with
-  ffmpeg; the report page is `index.html`.
+  the adapters. Listening back is still mlx only.
+- *Voices*: since W4 every voice is a provider (design: Architecture, Demos): Piper, the default,
+  and Qwen3-TTS, both installed by Obeya on request into `~/.obeya/voices/`; macOS `say`; an own
+  command or HTTP endpoint; templates for Gemini, OpenAI, ElevenLabs and Azure. Daniel's clone is
+  his own command, `scripts/demo_voice.py` in `~/dev/stimmzwilling` (Qwen3-TTS 1.7B on mlx-audio,
+  model and reference from that project's `config.yaml`), marked as his own voice, so his demos
+  speak in the first person as before; the clips cached before W4 are synthesised once more.
+  Every clip is listened back with Whisper, on mlx, so only on a Mac. The video is a screencast
+  of the local Chrome, cut with ffmpeg; the report page is `index.html`.
 - *Obeya*: the worker's brief names the demo skill `obeya:demo` (`src/server/workers.ts`), the
   adapter adds `demo.required` and `demo.howToRun` with the project's recipe (`src/adapters/`). Obeya reads the handed-over
   directory under `~/demos/` (`demo.mp4`, `poster.jpg`, `captions.vtt`, `index.html`) and shows the
@@ -135,7 +135,7 @@ demos in pull requests went with W2).
   without names or fixed paths; narration language and person from settings; project recipes in
   the adapters; Obeya gives its workers the skill (how: checked here); the owner's user skill
   points to it. Demos sound as before. After W1, so the Acme part is not held up.
-- [ ] **W4:** Voices as providers. Own service (command or HTTP, templates for Gemini, OpenAI,
+- [x] **W4:** Voices as providers. Own service (command or HTTP, templates for Gemini, OpenAI,
   ElevenLabs, Azure), Piper as the local default and Qwen3-TTS as an option, both installed by
   Obeya on request, `say` as an extra on a Mac; the choice in settings; no label for generated
   voices. Daniel's clone moves to a command provider. After W3.
@@ -154,8 +154,9 @@ demos in pull requests went with W2).
 - The Acme site lives only in its local directory: if it is lost, the next deployment would drop
   every page published before. The script refuses to deploy a site with fewer demos than Obeya has
   stored as shared.
-- Piper's German voices and Qwen3-TTS without a GPU are estimates; W4 measures quality and speed
-  before Piper becomes the default.
+- Measured in W4 (2026-10-02): Piper's German `thorsten-high` runs about twice real time on the
+  laptop CPU and was heard back word for word; Qwen3-TTS's stock speaker needs retakes now and
+  then (0.99 match). Qwen3-TTS through PyTorch (Windows, Linux) is untried: no machine with a GPU.
 - Checked in W3: Obeya hands the skill to its workers as a local plugin (`plugins` option of the
   Agent SDK); the session lists it as `obeya:demo`, beside the user's own skills.
 

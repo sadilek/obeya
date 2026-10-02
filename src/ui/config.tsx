@@ -3,7 +3,7 @@
 // read-only.
 
 import { useEffect, useRef, useState } from 'react';
-import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, NarrationLanguage, RepoConfig, VoiceKind } from '../core/types';
+import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, NarrationLanguage, RepoConfig, VoiceKind } from '../core/types';
 import { api, ApiError } from './api';
 import { errorText, t } from './strings';
 
@@ -156,12 +156,37 @@ export function ConfigSheet({ on }: { on: boolean }) {
   );
 }
 
+/** Voices grouped as the settings sheet offers them; `say` only on a Mac. */
+const VOICE_GROUPS: { group: 'local' | 'service' | 'own'; voices: VoiceKind[] }[] = [
+  { group: 'local', voices: ['piper', 'qwen3', 'say'] },
+  { group: 'service', voices: ['gemini', 'openai', 'elevenlabs', 'azure'] },
+  { group: 'own', voices: ['command', 'http'] },
+];
+/** The fields each voice reads, in the order the sheet shows them. */
+const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'reference' | 'command' | 'url' | 'keyFile')[]> = {
+  piper: ['voiceName'],
+  qwen3: ['voiceName', 'reference'],
+  say: ['voiceName'],
+  command: ['command'],
+  http: ['url', 'keyFile'],
+  gemini: ['voiceName', 'keyFile'],
+  openai: ['voiceName', 'url', 'keyFile'],
+  elevenlabs: ['voiceName', 'keyFile'],
+  azure: ['url', 'voiceName', 'keyFile'],
+};
+/** A stock voice of a model or service is nobody's own. */
+const STOCK_ONLY: VoiceKind[] = ['piper', 'say'];
+const megabytes = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1).replace('.', ',')} GB` : `${mb} MB`);
+
 /** How demos are narrated: saved on their own, read by the next render, so nothing restarts. */
 function DemoBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<DemoSettingsView | null>(null);
   const [draft, setDraft] = useState<DemoSettings | null>(null);
+  const [check, setCheck] = useState<DemoVoiceCheck | null>(null);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const [sampling, setSampling] = useState(false);
+  const audio = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
     if (!on) return;
     api.demoSettings().then((v) => {
@@ -170,10 +195,30 @@ function DemoBlock({ on }: { on: boolean }) {
       setStatus('');
     }, console.error);
   }, [on]);
+  const installing = !!view?.job?.running;
+  // the voice as it is being chosen: its problems, what it still needs installed
+  useEffect(() => {
+    if (!draft) return;
+    let live = true;
+    api.checkDemoVoice(draft).then((c) => live && setCheck(c), console.error);
+    return () => {
+      live = false;
+    };
+  }, [draft, installing]);
+  // an installation runs on the server: follow it until it ends
+  useEffect(() => {
+    if (!on || !installing) return;
+    const timer = setInterval(() => api.demoSettings().then(setView, console.error), 1500);
+    return () => clearInterval(timer);
+  }, [on, installing]);
+  useEffect(() => () => audio.current?.pause(), []);
   if (!view || !draft) return null;
   const d = t.config.demo;
   const changed = JSON.stringify(draft) !== JSON.stringify(view.settings);
   const set = <K extends keyof DemoSettings>(k: K, v: DemoSettings[K]) => setDraft({ ...draft, [k]: v });
+  const shown = check ?? view.check;
+  const job = view.job?.voice === draft.voice ? view.job : undefined;
+  const failed = (e: unknown) => setStatus(e instanceof ApiError ? errorText(e.code) + (e.code === 'voiceSample' ? ` ${e.message}` : '') : t.offlineError);
   const save = async () => {
     setBusy(true);
     try {
@@ -182,10 +227,43 @@ function DemoBlock({ on }: { on: boolean }) {
       setDraft(v.settings);
       setStatus(d.saved);
     } catch (e) {
-      setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+      failed(e);
     }
     setBusy(false);
   };
+  const install = async () => {
+    setStatus('');
+    try {
+      setView(await api.installDemoVoice(draft));
+    } catch (e) {
+      failed(e);
+    }
+  };
+  const listen = async () => {
+    setSampling(true);
+    setStatus('');
+    try {
+      const wav = await api.demoVoiceSample(draft);
+      audio.current?.pause();
+      audio.current = new Audio(URL.createObjectURL(wav));
+      await audio.current.play();
+    } catch (e) {
+      failed(e);
+    }
+    setSampling(false);
+  };
+  const field = (k: (typeof VOICE_FIELDS)[VoiceKind][number]) => (
+    <label key={k}>
+      <span className="hint">{d.field[k](draft.voice)}</span>
+      <input
+        className="c-path"
+        spellCheck={false}
+        placeholder={d.placeholder[k](draft.voice)}
+        value={draft[k] ?? ''}
+        onChange={(e) => set(k, e.target.value || undefined)}
+      />
+    </label>
+  );
   return (
     <>
       <h4 className="p-h">{d.title}</h4>
@@ -205,31 +283,60 @@ function DemoBlock({ on }: { on: boolean }) {
         </label>
         <label className="c-row">
           <span className="hint">{d.voice}</span>
-          <select value={draft.voice} onChange={(e) => set('voice', e.target.value as VoiceKind)}>
-            {(Object.keys(d.voices) as VoiceKind[]).map((v) => (
-              <option key={v} value={v}>
-                {d.voices[v]}
-              </option>
+          <select
+            value={draft.voice}
+            onChange={(e) => {
+              const voice = e.target.value as VoiceKind;
+              setDraft({ language: draft.language, voice, ...(draft.ownVoice && !STOCK_ONLY.includes(voice) ? { ownVoice: true } : {}) });
+            }}
+          >
+            {VOICE_GROUPS.map(({ group, voices }) => (
+              <optgroup key={group} label={d.groups[group]}>
+                {voices
+                  .filter((v) => v !== 'say' || view.platform === 'darwin' || draft.voice === 'say')
+                  .map((v) => (
+                    <option key={v} value={v}>
+                      {d.voices[v]}
+                    </option>
+                  ))}
+              </optgroup>
             ))}
           </select>
         </label>
-        <p className="hint c-person">{d.person[draft.voice === 'clone' ? 'first' : 'third']}</p>
-        <label>
-          <span className="hint">{d.voiceProject}</span>
-          <input className="c-path" spellCheck={false} value={draft.voiceProject ?? ''} onChange={(e) => set('voiceProject', e.target.value || undefined)} />
-        </label>
-        {draft.voice === 'gemini' && (
-          <label>
-            <span className="hint">{d.geminiKeyFile}</span>
-            <input className="c-path" spellCheck={false} value={draft.geminiKeyFile ?? ''} onChange={(e) => set('geminiKeyFile', e.target.value || undefined)} />
+        <p className="hint c-about">{d.about[draft.voice]}</p>
+        {VOICE_FIELDS[draft.voice].map(field)}
+        {!STOCK_ONLY.includes(draft.voice) && (
+          <label className="c-check">
+            <input type="checkbox" checked={!!draft.ownVoice} onChange={(e) => set('ownVoice', e.target.checked || undefined)} />
+            <span className="hint">{d.ownVoice}</span>
           </label>
         )}
-        {!changed &&
-          view.problems.map((p) => (
-            <p key={p} className="p-error">
-              {d.problem[p]}
-            </p>
-          ))}
+        <p className="hint c-person">{d.person[shown.person]}</p>
+        {job?.running ? (
+          <p className="hint c-install">
+            {d.installing} <code>{job.line}</code>
+          </p>
+        ) : (
+          !shown.install.installed && (
+            <div className="c-install">
+              <p className="hint">{d.notInstalled(shown.install.missing.join(', '), megabytes(shown.install.mb))}</p>
+              <button className="btn small" disabled={installing} onClick={install}>
+                {d.install(megabytes(shown.install.mb))}
+              </button>
+            </div>
+          )
+        )}
+        {job?.error && !job.running && <p className="p-error">{d.installFailed(job.error.split('\n').at(-1) ?? '')}</p>}
+        {shown.problems.map((p) => (
+          <p key={p} className="p-error">
+            {d.problem[p]}
+          </p>
+        ))}
+        <div className="c-row">
+          <button className="btn small" disabled={sampling || !shown.install.installed || !!shown.problems.length} onClick={listen}>
+            {sampling ? d.sampling : d.listen}
+          </button>
+        </div>
         <div className="c-actions">
           <button className="btn small primary" disabled={!changed || busy} onClick={save}>
             {d.save}

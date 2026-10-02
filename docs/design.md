@@ -526,12 +526,35 @@ the owner's language (`src/core/locale.ts`).
   `~/.claude/skills/demo` is a link to it in the Obeya checkout). The demo settings
   (`lib/settings.ts`; `demo.json` in Obeya's home, `OBEYA_HOME` else `~/.obeya`) give the
   narration language (German or English: narration, captions, Whisper, the report page's words)
-  and the voice: `clone`, the owner's own voice, run on-device in the voice project the settings
-  name (a uv project carrying the clone and Whisper), or `gemini`, a stock voice with a key from
-  `GEMINI_API_KEY` or a key file. The person follows from the voice: the first person only in the
-  owner's own voice, otherwise the narration presents the work without "I". `node
-  lib/settings.ts` prints what applies, for the agent writing the narration; `DEMO_VOICE`
-  overrides the voice for one render (a `.wav` clones that clip). How to run each project's app
+  and the voice, a provider: text in, WAV out (`lib/voices.ts` turns the settings into what
+  `lib/tts.py` runs). Local ones run once per clip as a command with the text on stdin: Piper, the
+  default (German `de_DE-thorsten-high`, English `en_US-ryan-high`; about twice real time on a
+  laptop CPU, model loading included, and Whisper heard the test clips back word for word,
+  measured 2026-10-02), Qwen3-TTS (1.7B, a stock speaker from the CustomVoice model or a clone of
+  a clip with its transcript beside it from the Base model; MLX through mlx-audio on Apple
+  Silicon, PyTorch through qwen-tts elsewhere, `lib/qwen3.py`), macOS `say` (offered on a Mac
+  only), and the owner's own command (through the shell; it writes the WAV to `$DEMO_WAV`). Hosted
+  ones are HTTP requests from templates in `tts.py`: Gemini, OpenAI (or another base URL with the
+  same API), ElevenLabs, Azure, or the owner's own endpoint (POST `{"text", "language"}` as JSON,
+  audio back), each with its key from its environment variable or a key file. Whatever comes back
+  becomes a mono 16-bit WAV through ffmpeg; Whisper listens back in a throwaway uv environment.
+  Obeya installs Piper and Qwen3-TTS on request from the settings sheet, which shows what is
+  missing and about how large it is first: each in a Python environment of its own made by uv
+  under `voices/` in Obeya's home, Piper's voice files beside it, Qwen3's models in the Hugging
+  Face cache, where a model downloaded before counts as installed (`node lib/voices.ts install`
+  does the same without Obeya). A render refuses a voice that is not installed and says how to
+  install it. The sheet also plays a sentence in the voice being chosen ("Anhören"). Local voices
+  that load a large model (Qwen3-TTS, the owner's command) synthesise one at a time on the
+  machine (`lockf` on `~/.cache/demo-skill/tts.lock`). The owner's clone is such a command: it
+  runs in the owner's voice project (Stimmzwilling, `scripts/demo_voice.py`) and never leaves the
+  machine. Voices are not labelled as generated, a clone included: the whole demo is generated,
+  and that is clear from where it is shown. The person follows from "Das ist meine eigene
+  Stimme" in the settings: the first person only in the owner's own voice, otherwise the
+  narration presents the work without "I". `node lib/settings.ts` prints what applies, for the
+  agent writing the narration; `DEMO_VOICE` overrides the voice for one render (another provider,
+  never the owner's own, or a `.wav` that Qwen3-TTS clones). Settings from before the providers
+  carry over: `gemini` keeps its key file, `clone` becomes the owner's own command, still to be
+  written. How to run each project's app
   for a demo is the adapter's `demo.howToRun` (Acme: AppHost, login, QA customer, migrations;
   Obeya: the scratch instance); without Obeya, `bun lib/recipe.ts` in a repository prints it. The
   worker records once the change is committed and checked, as the adapter says how to run the

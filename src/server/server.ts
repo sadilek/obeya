@@ -155,6 +155,19 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         GET: () => (config ? Response.json(config.demo()) : new Response('Not found', { status: 404 })),
         PUT: async (req) => (config ? handle(async () => config.saveDemo(await req.json())) : new Response('Not found', { status: 404 })),
       },
+      // a voice as the owner chooses it: checked, installed (in the background), heard in a sample
+      '/api/demo-settings/check': { POST: async (req) => (config ? handle(async () => config.checkDemo(await req.json())) : new Response('Not found', { status: 404 })) },
+      '/api/demo-settings/install': { POST: async (req) => (config ? handle(async () => config.installDemoVoice(await req.json())) : new Response('Not found', { status: 404 })) },
+      '/api/demo-settings/sample': {
+        POST: async (req) => {
+          if (!config) return new Response('Not found', { status: 404 });
+          const input = await req.json().catch(() => null);
+          return config.sampleDemoVoice(input).then(
+            (wav) => new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } }),
+            (e) => handle(() => Promise.reject(e)),
+          );
+        },
+      },
       '/api/config/check': { POST: async (req) => (config ? handle(async () => config.check(await req.json())) : new Response('Not found', { status: 404 })) },
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
       '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },

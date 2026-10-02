@@ -6,10 +6,10 @@
 // with plain `node demo.ts`. Everything lands in the demo file's directory.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright-core';
-import { expandHome, type NarrationLanguage, readDemoSettings, VOICES } from './settings.ts';
+import { type NarrationLanguage, readDemoSettings, withVoice } from './settings.ts';
+import { installState, TTS_LOCK, voiceSpec } from './voices.ts';
 
 export interface Scene {
   /** Chapter title in the player. */
@@ -57,17 +57,11 @@ const GAP_SECONDS = 0.6;
 const TTS_MATCH_WARN = 0.85;
 /** Below this, the sentence is worth rephrasing: the voice or Whisper stumbled over it. */
 const NARRATION_OK = 0.93;
-const SETTINGS = readDemoSettings();
-const VOICE_PROJECT = process.env.DEMO_VOICE_PROJECT || (SETTINGS.voiceProject && expandHome(SETTINGS.voiceProject));
-/** `clone` (the owner's, on-device), `gemini` (stock voice, Gemini TTS) or a reference `.wav`; see tts.py. */
-const VOICE = process.env.DEMO_VOICE || SETTINGS.voice;
+const SAVED = readDemoSettings();
+/** The settings of this render: `DEMO_VOICE` names another provider, or a `.wav` to clone. */
+const SETTINGS = withVoice(SAVED, process.env.DEMO_VOICE);
 const LANGUAGE: NarrationLanguage = SETTINGS.language;
 const LIB = import.meta.dirname;
-/**
- * One on-device synthesis at a time: each loads the voice model and Whisper (7–12 GB), and
- * parallel demos from several agents swapped the machine to a halt. The kernel drops the lock
- * when its holder dies, so no stale lock survives a crash. */
-const TTS_LOCK = path.join(os.homedir(), '.cache', 'demo-skill', 'tts.lock');
 /** `lockf`'s exit status when `-t 0` finds the lock held (EX_TEMPFAIL). */
 const LOCK_BUSY = 75;
 
@@ -275,37 +269,39 @@ function run(cmd: string, args: string[], opts: { cwd?: string } = {}) {
 }
 
 /**
- * The command that runs tts.py: in the voice project's environment, which a clone needs; a stock
- * voice without one gets a throwaway environment with what listening back takes.
+ * The command that runs tts.py, with Whisper for listening back in a throwaway environment; the
+ * voice itself runs as its spec says (`voices.ts`).
  */
 function ttsCommand(args: string[]) {
-  const script = ['python', path.join(LIB, 'tts.py'), ...args];
-  if (VOICE_PROJECT) return { cmd: ['uv', 'run', '--project', VOICE_PROJECT, ...script], cwd: VOICE_PROJECT };
-  if (VOICE !== 'gemini') throw new Error(`the voice "${VOICE}" needs a voice project: set voiceProject in the demo settings (Obeya's settings, or demo.json in its home)`);
-  return { cmd: ['uv', 'run', '--no-project', '--with', 'numpy', '--with', 'mlx-whisper', ...script], cwd: undefined };
+  return ['uv', 'run', '--quiet', '--no-project', '--with', 'mlx-whisper', 'python', path.join(LIB, 'tts.py'), ...args];
 }
 
 function synthesize(scenes: Scene[], dir: string): Clip[] {
   const jobs = scenes.map((s, i) => ({ id: `s${i + 1}`, text: s.say }));
   const jobsFile = path.join(dir, 'jobs.json');
   fs.writeFileSync(jobsFile, JSON.stringify(jobs));
-  console.log(`narration: ${jobs.length} clips, voice ${VOICE}, language ${LANGUAGE}`);
-  const { cmd: tts, cwd } = ttsCommand([VOICE, LANGUAGE, jobsFile, dir]);
-  if (SETTINGS.geminiKeyFile && !process.env.GEMINI_API_KEY_FILE) process.env.GEMINI_API_KEY_FILE = expandHome(SETTINGS.geminiKeyFile);
-  if (VOICE === 'gemini') {
-    // Remote synthesis: only Whisper runs here, and rate-limit waits must not hold up the clone.
-    run(tts[0]!, tts.slice(1), { cwd });
+  const install = installState(SETTINGS);
+  if (!install.installed) {
+    throw new Error(`the voice ${SETTINGS.voice} is not installed (missing ${install.missing.join(', ')}, about ${install.mb} MB): install it in Obeya's settings, or run \`node ${path.join(LIB, 'voices.ts')} install\``);
+  }
+  const spec = voiceSpec(SETTINGS);
+  const specFile = path.join(dir, 'voice.json');
+  fs.writeFileSync(specFile, JSON.stringify(spec));
+  console.log(`narration: ${jobs.length} clips, voice ${SETTINGS.voice}, language ${LANGUAGE}`);
+  const tts = ttsCommand([specFile, LANGUAGE, jobsFile, dir]);
+  if (spec.kind !== 'command' || !spec.heavy) {
+    // A hosted or light voice: only Whisper loads here, and rate-limit waits must not hold up a clone.
+    run(tts[0]!, tts.slice(1));
   } else {
     fs.mkdirSync(path.dirname(TTS_LOCK), { recursive: true });
     const tryNow = spawnSync('lockf', ['-k', '-t', '0', TTS_LOCK, ...tts], {
-      cwd,
       encoding: 'utf8',
       maxBuffer: 1 << 26,
     });
     if (tryNow.status === LOCK_BUSY) {
       console.log('narration: another demo is synthesising, waiting for it (expected, not a hang)');
       const since = now();
-      run('lockf', ['-k', TTS_LOCK, ...tts], { cwd });
+      run('lockf', ['-k', TTS_LOCK, ...tts]);
       console.log(`narration: done after waiting ${Math.round(now() - since)} s in all`);
     } else if (tryNow.status !== 0) {
       throw new Error(`tts.py failed (${tryNow.status}):\n${tryNow.stderr?.slice(-3000)}`);
@@ -403,12 +399,11 @@ function vttTime(s: number) {
 }
 
 export async function runDemo(spec: DemoSpec, demoDir: string) {
-  const isClip = VOICE.endsWith('.wav');
-  if (!isClip && !(VOICES as readonly string[]).includes(VOICE)) throw new Error(`unknown DEMO_VOICE "${VOICE}"; use ${VOICES.join(', ')} or a .wav`);
-  const voiceName = isClip ? path.basename(VOICE, '.wav') : VOICE;
+  const override = process.env.DEMO_VOICE;
+  const voiceName = override?.endsWith('.wav') ? path.basename(override, '.wav') : override;
   // The voice of the settings renders next to the script; another one gets its own subdirectory,
   // so two renders of one demo can be compared side by side.
-  const outDir = VOICE === SETTINGS.voice ? demoDir : path.join(demoDir, voiceName);
+  const outDir = !voiceName || override === SAVED.voice ? demoDir : path.join(demoDir, voiceName);
   const viewport = spec.viewport ?? { width: 1440, height: 900 };
   const work = path.join(outDir, '.work');
   fs.mkdirSync(work, { recursive: true });

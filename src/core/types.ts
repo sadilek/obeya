@@ -1,6 +1,6 @@
 // Shapes shared by the server and the UI.
 
-import type { DemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 
@@ -442,6 +442,10 @@ export type ErrorCode =
   | 'land'
   /** A configuration with problems; they come with it. */
   | 'config'
+  /** A voice's sample could not be made; why comes with it. */
+  | 'voiceSample'
+  /** A voice is being installed already. */
+  | 'voiceInstalling'
   /** Malformed input: a bug in the UI rather than something the owner can fix. */
   | 'invalid';
 
@@ -526,17 +530,50 @@ export interface ConfigView {
   restarting: boolean;
 }
 
-/** What keeps the demo settings from working: the clone has no voice project, or a path is not there. */
-export type DemoSettingsProblem = 'noVoiceProject' | 'voiceProjectMissing' | 'noGeminiKey' | 'geminiKeyMissing';
+/** What keeps the demo settings from working (a voice to install is not one: `DemoVoiceCheck.install`). */
+export type DemoSettingsProblem =
+  /** `command` without one. */
+  | 'noCommand'
+  /** The own endpoint, or Azure's region, is missing. */
+  | 'noUrl'
+  /** A service without its environment variable or a key file. */
+  | 'noKey'
+  | 'keyFileMissing'
+  /** Qwen3's clip to clone is not there, or its transcript beside it. */
+  | 'referenceMissing'
+  | 'noTranscript'
+  /** `say` is macOS only. */
+  | 'notHere';
+
+/** What the settings sheet shows about a voice, saved or not yet. */
+export interface DemoVoiceCheck {
+  /** The person the narration speaks in, which follows from whether the voice is the owner's own. */
+  person: 'first' | 'third';
+  problems: DemoSettingsProblem[];
+  /** What the voice needs installed by Obeya and is missing (Piper, Qwen3-TTS), and about how much that is. */
+  install: { installed: boolean; missing: string[]; mb: number };
+}
+
+/** An installation Obeya runs for a voice, one at a time. */
+export interface VoiceInstallJob {
+  voice: VoiceKind;
+  running: boolean;
+  /** The last line of its output. */
+  line: string;
+  error?: string;
+}
 
 /** The demo settings (`plugin/skills/demo/lib/settings.ts`) as the settings sheet shows them. */
 export interface DemoSettingsView {
   /** The file they are saved in, under Obeya's home. */
   file: string;
   settings: DemoSettings;
-  /** The person the narration speaks in, which follows from the voice. */
-  person: 'first' | 'third';
-  problems: DemoSettingsProblem[];
+  /** The saved voice checked. */
+  check: DemoVoiceCheck;
+  /** The installation running or last run, while Obeya runs. */
+  job?: VoiceInstallJob;
+  /** `process.platform` of the server: `say` is offered on a Mac only. */
+  platform: string;
 }
 
 /** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved. */

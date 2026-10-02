@@ -109,7 +109,7 @@ Create `~/demos/<repo-dir>-<slug>/demo.ts` (model: the newest demo of the same r
 
 Narration — in the language and person of the demo settings, matter-of-fact. Read them first:
 `node ${CLAUDE_SKILL_DIR}/lib/settings.ts` prints the language (narration, chapter titles, report)
-and the person: the first person only when the voice is the owner's own clone, otherwise the work
+and the person: the first person only when the voice is the owner's own, otherwise the work
 is presented without "I" or "we".
 - One scene per behaviour, 1–3 sentences each. Say what the viewer sees and why it matters,
   never the implementation. Length follows the size of the change, never padded: a bugfix is
@@ -138,7 +138,7 @@ goes on screen with `showImage`, since a `goto` to another origin and back broke
 ```bash
 cd ~/demos/<repo-dir>-<slug> && node demo.ts --narration       # only the narration, cached
 cd ~/demos/<repo-dir>-<slug> && node demo.ts                    # the voice of the settings
-cd ~/demos/<repo-dir>-<slug> && DEMO_VOICE=gemini node demo.ts  # another voice, into gemini/
+cd ~/demos/<repo-dir>-<slug> && DEMO_VOICE=piper node demo.ts   # another voice, into piper/
 ```
 
 Start the narration as soon as the `say` texts are written, while you still script the scenes
@@ -148,15 +148,18 @@ notified when they end (a render takes one to three minutes). Not with `&`, and 
 `sleep` or `pgrep` loops (sleep is blocked; `pgrep -f "node demo.ts"` matches its own command
 line). A second render of the same demo while one runs is refused with the PID of the first.
 
-Narration is synthesised first by `lib/tts.py`. The demo settings say which voice: `clone`, the
-owner's own, runs inside the voice project they name (a uv project carrying the clone and Whisper;
-`DEMO_VOICE_PROJECT` overrides it); `gemini`, a stock voice, reads its key from `GEMINI_API_KEY`
-or the key file of the settings. A `.wav` with its transcript beside it as `.txt` is cloned like
-the owner's voice (`DEMO_VOICE=<path>.wav`). The settings live in `demo.json` in Obeya's home
-(`OBEYA_HOME`, else `~/.obeya`); Obeya's settings sheet edits them. Clips are cached by voice and text, so re-runs after a
+Narration is synthesised first by `lib/tts.py`, in the voice of the demo settings: Piper (the
+default) or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
+(Gemini, OpenAI, ElevenLabs, Azure, an own endpoint) with its key from its environment variable or
+a key file. The settings live in `demo.json` in Obeya's home (`OBEYA_HOME`, else `~/.obeya`);
+Obeya's settings sheet edits them, installs Piper and Qwen3-TTS, and plays a sample. A voice that
+is not installed stops the render with how to install it: from the settings sheet, or
+`node ${CLAUDE_SKILL_DIR}/lib/voices.ts install`. `DEMO_VOICE=<provider>` renders in another
+voice; `DEMO_VOICE=<path>.wav` clones that clip with Qwen3-TTS (its exact transcript beside it as
+`.txt`). Clips are cached by voice and text, so re-runs after a
 visual fix skip synthesis. Each clip is transcribed back with Whisper and synthesised again (up
-to three takes) when it does not match. On-device synthesis takes 7–12 GB, so only one demo
-synthesises at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it" and
+to three takes) when it does not match. A voice that loads a large model (Qwen3-TTS, the owner's
+command) takes 7–12 GB with Whisper, so only one such demo synthesises at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it" and
 wait, which is expected, not a hang. Recording uses the local Chrome (headless screencast,
 1440×900). A failing scene leaves
 `.work/failure.png`.

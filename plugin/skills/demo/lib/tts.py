@@ -1,77 +1,99 @@
-"""Narration clips for a demo, in one of three voices.
+"""Narration clips for a demo, in the voice of the demo settings.
 
-- `clone`: the owner's cloned voice, on-device through the voice project (a uv project whose
-  `avatar.config` names model and reference clip and whose `avatar.tts` synthesises).
-- `gemini`: a stock voice from Google's Gemini TTS. The API key comes from `GEMINI_API_KEY`, or
-  from the file `GEMINI_API_KEY_FILE` names.
-- a path to a `.wav`: that clip cloned like the owner's voice, with its exact transcript in the
-  `.txt` beside it. The clip must start and end inside a pause.
+The voice comes as a spec from `voices.ts`, one of two kinds:
 
-A clone runs inside the voice project's environment, which also carries Whisper; a stock voice
-needs only numpy and Whisper:
+- `command`: run once per clip, the text on stdin. Either `argv`, run directly with `{out}`
+  replaced by the WAV to write (Piper, the Qwen3-TTS helper `qwen3.py`, macOS `say`), or
+  `shell`, the owner's own command, which writes the WAV to `$DEMO_WAV` (or prints the path of
+  the one it wrote as its last line). `$DEMO_LANGUAGE` says the narration language.
+- `http`: a request from a template, for Gemini, OpenAI, ElevenLabs, Azure, or the owner's own
+  endpoint (`http`: POST `{"text", "language"}` as JSON, audio back). The key comes from the
+  service's environment variable, else from the key file in the spec.
 
-    uv run --project <voice project> python tts.py <voice> <language> <jobs.json> <out_dir>
+Whatever comes back is made a mono 16-bit WAV with ffmpeg. Listening back takes Whisper, which
+the render brings into a throwaway environment:
+
+    uv run --no-project --with mlx-whisper python tts.py <spec.json> <language> <jobs.json> <out_dir>
 
 `jobs.json` is `[{"id": ..., "text": ...}]`. Each text becomes `<out_dir>/<hash>.wav`, cached by
 voice + text, so re-rendering a demo after a visual fix costs no synthesis. Every clip is
 transcribed back with Whisper: a voice occasionally swallows or invents a word, and the narration
 is the one part of a demo nobody re-reads. Results land in `<out_dir>/tts.json`.
+
+    python tts.py --sample <spec.json> <language> <text> <out.wav>
+
+synthesises one clip without listening back, for hearing a voice in the settings.
 """
 
 from __future__ import annotations
 
-import base64
 import difflib
-import os
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 import wave
 from pathlib import Path
+from xml.sax.saxutils import escape
 
-import numpy as np
-
-#: Pause between sentences. Each sentence is synthesised on its own: the model drifts on long
-#: inputs, and a short gap reads as a natural breath.
-SENTENCE_GAP_SECONDS = 0.28
 #: A take whose transcript matches at least this well is kept without trying another. Whisper
 #: itself splits compounds ("Wasserkraft" → "Wasser Kraft"), so a perfect clip rarely scores 1.0.
 GOOD_MATCH = 0.95
 MAX_TAKES = 3
 
+LANGUAGE_NAMES = {"de": "German", "en": "English"}
+LOCALES = {"de": "de-DE", "en": "en-US"}
+STT_MODEL = os.environ.get("DEMO_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
+
+#: How the hosted voices should sound: a product lead walking a colleague through a finished feature.
+STYLE = (
+    "Calm, matter-of-fact, confident; a product lead walking a colleague through a finished "
+    "feature. Native {language}, natural pace, slightly brisk."
+)
 #: Free-tier quotas are per model (10 requests a day), so another TTS model can stand in.
 GEMINI_MODEL = os.environ.get("DEMO_GEMINI_MODEL", "gemini-3.8-flash-tts")
-#: A calm, informative male voice from Gemini's prebuilt set.
-GEMINI_VOICE = "Charon"
 #: Director's notes the model reads but does not speak; only the transcript is spoken. A plain
 #: prefix ("Sprich ruhig: …") gets read aloud.
-GEMINI_STYLE = (
-    "### DIRECTOR'S NOTES\n"
-    "Style: calm, matter-of-fact, confident; a product lead walking a colleague through a finished "
-    "feature. Native {language}, natural pace, slightly brisk.\n\n"
-    "#### TRANSCRIPT\n"
-)
-GEMINI_RATE = 24000
-LANGUAGE_NAMES = {"de": "German", "en": "English"}
-DEFAULT_STT_MODEL = "mlx-community/whisper-large-v3-turbo"
+GEMINI_NOTES = "### DIRECTOR'S NOTES\nStyle: {style}\n\n#### TRANSCRIPT\n"
+OPENAI_MODEL = os.environ.get("DEMO_OPENAI_MODEL", "gpt-4o-mini-tts")
+ELEVENLABS_MODEL = os.environ.get("DEMO_ELEVENLABS_MODEL", "eleven_multilingual_v2")
+#: Each service's voice when the settings name none: calm male voices, like Gemini's Charon.
+DEFAULT_VOICES = {
+    "gemini": {"de": "Charon", "en": "Charon"},
+    "openai": {"de": "onyx", "en": "onyx"},
+    "elevenlabs": {"de": "JBFqnCBsd6RMkjVDRZzb", "en": "JBFqnCBsd6RMkjVDRZzb"},
+    "azure": {"de": "de-DE-ConradNeural", "en": "en-US-AndrewNeural"},
+}
+KEY_ENV = {
+    "gemini": "GEMINI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "elevenlabs": "ELEVENLABS_API_KEY",
+    "azure": "AZURE_SPEECH_KEY",
+    "http": "DEMO_TTS_API_KEY",
+}
 
 
-def sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    return [p for p in parts if p]
-
-
-def write_wav(path: Path, samples: np.ndarray, rate: int) -> None:
-    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
+def write_pcm(path: Path, pcm: bytes, rate: int) -> None:
     with wave.open(str(path), "wb") as fh:
         fh.setnchannels(1)
         fh.setsampwidth(2)
         fh.setframerate(rate)
-        fh.writeframes(pcm.tobytes())
+        fh.writeframes(pcm)
+
+
+def to_wav(source: Path, target: Path) -> None:
+    """Any audio ffmpeg reads, as the mono 16-bit WAV the rest of the pipeline expects."""
+    done = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), "-ac", "1", "-c:a", "pcm_s16le", str(target)],
+        capture_output=True, text=True,
+    )
+    if done.returncode != 0:
+        sys.exit(f"cannot read the voice's audio {source}: {done.stderr.strip()[-600:]}")
 
 
 _ONES = [
@@ -144,113 +166,161 @@ class QuotaExhausted(Exception):
     """The voice cannot synthesise anything more today."""
 
 
-class ClonedVoice:
-    """The owner's voice. Sentence by sentence: the clone drifts on long inputs."""
+class CommandVoice:
+    """A program run once per clip: Piper, Qwen3-TTS, `say`, or the owner's own command."""
 
-    #: Takes are free on-device.
+    #: Takes cost only time on this machine.
     max_takes = MAX_TAKES
 
-    def __init__(self, config: dict, reference: Path | None = None) -> None:
-        if reference is not None:
-            # Any clean reference clip, e.g. a voice designed elsewhere; its transcript sits beside it.
-            transcript = reference.with_suffix(".txt")
-            if not transcript.exists():
-                sys.exit(f"no transcript for {reference}: expected {transcript}")
-            config = {**config, "tts": {**config["tts"], "reference_wav": str(reference),
-                                        "reference_text": transcript.read_text(encoding="utf-8").strip()}}
-        from avatar.tts import make_tts
+    def __init__(self, spec: dict, language: str) -> None:
+        self._argv = spec.get("argv")
+        self._shell = spec.get("shell")
+        if not self._argv and not self._shell:
+            sys.exit("no voice command: set the command in the demo settings")
+        self._language = language
+        self.tag = spec["tag"]
 
-        self._tts = make_tts(config, "local_clone")
-        self.tag = f"{config['tts'].get('model')}|{config['tts'].get('reference_wav')}"
+    def synthesize(self, text: str, target: Path) -> None:
+        raw = target.with_name(f"{target.stem}.raw.wav")
+        raw.unlink(missing_ok=True)
+        env = {**os.environ, "DEMO_WAV": str(raw), "DEMO_LANGUAGE": self._language}
+        command = [a.replace("{out}", str(raw)) for a in self._argv] if self._argv else self._shell
+        done = subprocess.run(command, input=text, shell=not self._argv, env=env, capture_output=True,
+                              text=True, encoding="utf-8")
+        if done.returncode != 0:
+            sys.exit(f"the voice command failed ({done.returncode}): {(done.stderr or done.stdout).strip()[-1500:]}")
+        produced = raw
+        if not raw.exists():
+            lines = done.stdout.strip().splitlines()
+            produced = Path(lines[-1].strip()) if lines else raw
+            if not produced.exists():
+                sys.exit(f"the voice command wrote no WAV: neither $DEMO_WAV ({raw}) nor a path on its last line")
+        to_wav(produced, target)
+        raw.unlink(missing_ok=True)
 
-    def synthesize(self, text: str) -> tuple[np.ndarray, int]:
-        chunks: list[np.ndarray] = []
-        rate = 24000
-        for sentence in sentences(text):
-            samples, rate = self._tts.synthesize(sentence)
-            chunks += [samples, np.zeros(int(SENTENCE_GAP_SECONDS * rate), dtype=np.float32)]
-        return np.concatenate(chunks[:-1]), rate
 
+class HttpVoice:
+    """A hosted voice. The whole clip in one request, for one continuous prosody."""
 
-class GeminiVoice:
-    """A stock Gemini TTS voice. The whole clip in one request, for one continuous prosody."""
-
-    #: Every take costs a request of a small daily quota; one retake at most.
+    #: Every take costs a request, often of a small quota; one retake at most.
     max_takes = 2
 
-    def __init__(self, language: str) -> None:
-        self._style = GEMINI_STYLE.format(language=LANGUAGE_NAMES[language])
-        self.tag = f"gemini|{GEMINI_MODEL}|{GEMINI_VOICE}|{self._style}"
-        key = os.environ.get("GEMINI_API_KEY", "").strip()
-        key_file = os.environ.get("GEMINI_API_KEY_FILE")
+    def __init__(self, spec: dict, language: str) -> None:
+        self._service = service = spec["service"]
+        self._language = language
+        self._url = spec.get("url") or ""
+        self._voice = spec.get("voiceName") or DEFAULT_VOICES.get(service, {}).get(language, "")
+        self._style = STYLE.format(language=LANGUAGE_NAMES[language])
+        key = os.environ.get(KEY_ENV[service], "").strip()
+        key_file = spec.get("keyFile")
         if not key and key_file:
             if not Path(key_file).exists():
-                sys.exit(f"no Gemini API key at {key_file}")
+                sys.exit(f"no API key at {key_file}")
             key = Path(key_file).read_text(encoding="utf-8").strip()
-        if not key:
-            sys.exit("no Gemini API key: set GEMINI_API_KEY, or the key file in the demo settings")
+        if not key and service != "http":
+            sys.exit(f"no {service} API key: set {KEY_ENV[service]}, or the key file in the demo settings")
+        if service in ("http", "azure") and not self._url:
+            sys.exit(f"no {'endpoint' if service == 'http' else 'region'} for the {service} voice in the demo settings")
         self._key = key
+        model = {"gemini": GEMINI_MODEL, "openai": OPENAI_MODEL, "elevenlabs": ELEVENLABS_MODEL}.get(service, "")
+        self.tag = f"{service}|{self._url}|{model}|{self._voice}|{self._style if service in ('gemini', 'openai') else ''}"
 
-    def synthesize(self, text: str) -> tuple[np.ndarray, int]:
-        body = {
-            "contents": [{"parts": [{"text": f"{self._style}{text}"}]}],
-            "generationConfig": {
-                "responseModalities": ["AUDIO"],
-                "speechConfig": {
-                    "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": GEMINI_VOICE}}
-                },
-            },
-        }
-        request = urllib.request.Request(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
-            data=json.dumps(body).encode(),
-            headers={"x-goog-api-key": self._key, "Content-Type": "application/json"},
-        )
+    def _post(self, url: str, body: bytes, headers: dict) -> bytes:
+        request = urllib.request.Request(url, data=body, headers={"User-Agent": "obeya-demo", **headers})
         for attempt in range(6):
             try:
                 with urllib.request.urlopen(request, timeout=180) as response:
-                    reply = json.load(response)
-                break
+                    return response.read()
             except urllib.error.HTTPError as error:
-                detail = error.read().decode()
+                detail = error.read().decode(errors="replace")
                 # A spent daily quota answers 429 too, but waiting does not help there.
                 if error.code == 429 and "PerDay" in detail:
-                    raise QuotaExhausted(f"daily Gemini TTS quota of {GEMINI_MODEL} is used up")
-                # The per-minute limit says in the 429 how long to wait.
-                if error.code != 429 or attempt == 5:
-                    sys.exit(f"Gemini TTS failed ({error.code}): {detail[:600]}")
-                delay = re.search(r'"retryDelay":\s*"(\d+)', detail)
-                wait = int(delay.group(1)) + 1 if delay else 30
-                print(f"Gemini rate limit, waiting {wait} s", file=sys.stderr)
+                    raise QuotaExhausted(f"the daily {self._service} TTS quota is used up")
+                if error.code not in (429, 503) or attempt == 5:
+                    sys.exit(f"{self._service} TTS failed ({error.code}): {detail[:600]}")
+                # A rate limit says how long to wait, in a header or (Gemini) in the body.
+                delay = error.headers.get("Retry-After") or (re.search(r'"retryDelay":\s*"(\d+)', detail) or [None, None])[1]
+                wait = int(float(delay)) + 1 if delay else 30
+                print(f"{self._service} rate limit, waiting {wait} s", file=sys.stderr)
                 time.sleep(wait)
-        audio = reply["candidates"][0]["content"]["parts"][0]["inlineData"]["data"]
-        pcm = np.frombuffer(base64.b64decode(audio), dtype=np.int16)
-        return pcm.astype(np.float32) / 32768, GEMINI_RATE
+            except urllib.error.URLError as error:
+                sys.exit(f"{self._service} TTS unreachable at {url}: {error.reason}")
+        raise AssertionError("unreachable")
+
+    def synthesize(self, text: str, target: Path) -> None:
+        raw = target.with_name(f"{target.stem}.raw")
+        if self._service == "gemini":
+            body = {
+                "contents": [{"parts": [{"text": GEMINI_NOTES.format(style=self._style) + text}]}],
+                "generationConfig": {
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": self._voice}}},
+                },
+            }
+            reply = json.loads(self._post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
+                json.dumps(body).encode(), {"x-goog-api-key": self._key, "Content-Type": "application/json"}))
+            import base64
+
+            audio = reply["candidates"][0]["content"]["parts"][0]["inlineData"]["data"]
+            write_pcm(target, base64.b64decode(audio), 24000)
+            return
+        if self._service == "elevenlabs":
+            pcm = self._post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice}?output_format=pcm_24000",
+                json.dumps({"text": text, "model_id": ELEVENLABS_MODEL}).encode(),
+                {"xi-api-key": self._key, "Content-Type": "application/json"})
+            write_pcm(target, pcm, 24000)
+            return
+        if self._service == "openai":
+            base = (self._url or "https://api.openai.com/v1").rstrip("/")
+            audio = self._post(
+                f"{base}/audio/speech",
+                json.dumps({"model": OPENAI_MODEL, "voice": self._voice, "input": text,
+                            "instructions": self._style, "response_format": "wav"}).encode(),
+                {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"})
+        elif self._service == "azure":
+            url = self._url if "://" in self._url else f"https://{self._url}.tts.speech.microsoft.com/cognitiveservices/v1"
+            locale = LOCALES[self._language]
+            ssml = f"<speak version='1.0' xml:lang='{locale}'><voice name='{escape(self._voice)}'>{escape(text)}</voice></speak>"
+            audio = self._post(url, ssml.encode(), {
+                "Ocp-Apim-Subscription-Key": self._key,
+                "Content-Type": "application/ssml+xml",
+                "X-Microsoft-OutputFormat": "riff-24khz-16bit-mono-pcm",
+            })
+        else:
+            headers = {"Content-Type": "application/json", "Accept": "audio/wav"}
+            if self._key:
+                headers["Authorization"] = f"Bearer {self._key}"
+            audio = self._post(self._url, json.dumps({"text": text, "language": self._language}).encode(), headers)
+        raw.write_bytes(audio)
+        to_wav(raw, target)
+        raw.unlink(missing_ok=True)
+
+
+def make_voice(spec: dict, language: str):
+    return CommandVoice(spec, language) if spec["kind"] == "command" else HttpVoice(spec, language)
 
 
 def main() -> None:
-    voice_name, language = sys.argv[1], sys.argv[2]
+    if sys.argv[1] == "--sample":
+        spec_file, language, text, target = sys.argv[2:6]
+        make_voice(json.loads(Path(spec_file).read_text(encoding="utf-8")), language).synthesize(text, Path(target))
+        return
+    spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    language = sys.argv[2]
     jobs = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
     out = Path(sys.argv[4])
     out.mkdir(parents=True, exist_ok=True)
     if language not in LANGUAGE_NAMES:
         sys.exit(f"unknown narration language {language!r}; known: {', '.join(LANGUAGE_NAMES)}")
-
-    if voice_name == "gemini":
-        voice = GeminiVoice(language)
-        stt_model = DEFAULT_STT_MODEL
-    else:
-        from avatar.config import load_config
-
-        config = load_config()
-        voice = ClonedVoice(config, Path(voice_name) if voice_name.endswith(".wav") else None)
-        stt_model = config.get("stt", {}).get("model", DEFAULT_STT_MODEL)
+    voice = make_voice(spec, language)
     voice_tag = voice.tag
 
     def hear(wav: Path) -> str:
         import mlx_whisper
 
-        heard = mlx_whisper.transcribe(str(wav), path_or_hf_repo=stt_model, language=language)
+        heard = mlx_whisper.transcribe(str(wav), path_or_hf_repo=STT_MODEL, language=language)
         return str(heard.get("text", "")).strip()
 
     def score(text: str, heard: str) -> float:
@@ -267,15 +337,14 @@ def main() -> None:
             # synthesised again; the best of a few takes is kept.
             best: tuple[float, str, Path] | None = None
             for take in range(1, voice.max_takes + 1):
+                candidate = out / f"{key}.take{take}.wav"
                 try:
-                    samples, rate = voice.synthesize(job["text"])
+                    voice.synthesize(job["text"], candidate)
                 except QuotaExhausted as exhausted:
                     if best is None:
-                        sys.exit(f"{exhausted}; set DEMO_GEMINI_MODEL to another TTS model or wait a day")
+                        sys.exit(f"{exhausted}; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
                     print(f"{job['id']}: {exhausted}, keeping take {take - 1}", file=sys.stderr)
                     break
-                candidate = out / f"{key}.take{take}.wav"
-                write_wav(candidate, samples, rate)
                 heard = hear(candidate)
                 match = score(job["text"], heard)
                 print(f"{job['id']} take {take}: match {match:.2f}", file=sys.stderr)
