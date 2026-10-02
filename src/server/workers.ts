@@ -259,6 +259,7 @@ export class Workers {
       console.error('freeing a landed workspace:', e);
     }
     this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, ...(row.state === 'waiting' ? { state: 'live', need: null, detail: null } : {}) });
+    this.o.board.workDone(cardId);
   }
 
   /** The plan docs the card's branch adds, as plan references of the canvas. */
@@ -312,8 +313,8 @@ export class Workers {
   stop(cardId: string) {
     const card = this.card(cardId);
     if (card.finishing) {
-      this.finish(cardId);
       this.o.board.log(cardId, 'state', 'owner', 'Angehalten.');
+      this.finish(cardId);
       return;
     }
     if (card.state !== 'working' && card.state !== 'waiting') throw new BadRequest('noAgent', 'no agent works on this card');

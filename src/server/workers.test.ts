@@ -20,6 +20,7 @@ const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstr
 let dir: string;
 let main: string;
 let board: Board;
+let docs: PlanDoc[];
 let runtime: FakeRuntime;
 let workers: Workers;
 let projectReply: Reply | null;
@@ -31,7 +32,8 @@ function setup(adapter: RepoAdapter) {
   main = join(dir, 'main');
   gitRepo(main);
   store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => [doc]);
+  docs = [doc];
+  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
   if (adapter.workspaces === 'clones') {
@@ -853,6 +855,16 @@ describe('a worktree per card', () => {
     await workers.approve(i.id);
     expect(state(i.id)).toBe('live');
     expect(JSON.parse(board.row(i.id).plan_docs!)).toEqual(['docs/plan/README.md', 'docs/plan/gross.md']);
+    // the project takes the idea's place; the idea goes once its worker is done after the landing
+    docs = [doc, { file: 'docs/plan/gross.md', title: 'Groß', goal: 'G', workstreams: [ws('W1')], markdown: '' }];
+    board.docsChanged();
+    expect(board.snapshot().items.find((p) => p.title === 'Groß' && p.kind === 'project')).toMatchObject({ origin: i.id, x: 0, y: 0 });
+    expect(board.item(i.id)).toBeDefined();
+    runtime.last.emit({ type: 'idle' });
+    expect(board.item(i.id)).toMatchObject({ finishing: true });
+    runtime.last.emit({ type: 'idle' });
+    expect(board.item(i.id)).toBeUndefined();
+    expect(board.archived().map((a) => a.id)).toContain(i.id);
   });
 
   test('a stopped card keeps its worktree and picks it up again', () => {

@@ -256,15 +256,19 @@ describe('an idea', () => {
     expect(() => canvas.act(i.id, { action: 'discuss', text: 'Noch was.' })).toThrow('not an idea');
   });
 
-  test('a big idea becomes a card whose worker writes the plan doc', () => {
+  test('a big idea becomes a project: a worker starts on its plan doc at once, on the idea’s card', async () => {
     const i = idea();
     board().setIdea(i.id, { brief: '**Ziel:** Vermieterportal.' });
     canvas.act(i.id, { action: 'planDoc' });
     const c = item(i.id);
-    expect(c).toMatchObject({ state: 'planned', title: 'Plan-Doc: Export für Vermieter' });
+    expect(c).toMatchObject({ state: 'planned', title: 'Export für Vermieter', becomesProject: true, brief: '**Ziel:** Vermieterportal.', queue: { checking: true } });
     expect(c.body).toContain('`docs/plan/`');
     expect(c.body).toContain('## Workstreams');
     expect(c.body).toContain('**Ziel:** Vermieterportal.');
+    await settle();
+    expect(item(i.id).state).toBe('working');
+    const worker = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    expect(worker.inbox[0]).toContain('**Ziel:** Vermieterportal.');
   });
 
   test('parked or dropped it keeps its brief; talking to it opens it again', () => {

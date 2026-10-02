@@ -413,6 +413,11 @@ export class Board {
     this.changed();
   }
 
+  /** A card's landed work is done, its worker gone: an idea whose plan doc is a project now gives way to it. */
+  workDone(cardId: string) {
+    if (this.retire(cardId)) this.changed();
+  }
+
   /** The canvas as the UI sees it; built once per change (every write here ends in `changed`). */
   snapshot(): CanvasSnapshot {
     if (this.cache) return this.cache;
@@ -582,7 +587,7 @@ export class Board {
       );
     }
     if (add.length) this.store.insert(add);
-    const linked = this.linkOrigins();
+    const linked = this.linkOrigins(docs);
 
     const fresh = docs.filter((d) => !byRef.has(d.file));
     if (!fresh.length) return add.length > 0 || linked;
@@ -599,12 +604,15 @@ export class Board {
         doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'feature' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
       );
     });
-    this.linkOrigins();
+    this.linkOrigins(docs);
     return true;
   }
 
-  /** A project whose doc an idea's landed work added remembers that idea. Returns whether any did. */
-  private linkOrigins(): boolean {
+  /**
+   * A project whose doc an idea's landed work added remembers that idea and takes its place, while
+   * the idea is on the canvas. Returns whether any did.
+   */
+  private linkOrigins(docs: PlanDoc[]): boolean {
     const origin = new Map<string, string>();
     for (const r of this.store.withPlanDocs(this.canvas.id)) for (const ref of JSON.parse(r.plan_docs!) as string[]) origin.set(ref, r.id);
     if (!origin.size) return false;
@@ -613,9 +621,46 @@ export class Board {
       const from = !r.from_id ? origin.get(r.plan_ref!) : undefined;
       if (!from) continue;
       this.store.update(r.id, { from_id: from });
+      this.takePlace(r.id, from, docs);
+      this.retire(from);
       linked = true;
     }
     return linked;
+  }
+
+  /**
+   * The project goes where its idea is on the canvas. What the larger project would cover moves
+   * aside by as much as it outgrows the idea: the cards below it down, those beside it to the right.
+   */
+  private takePlace(projectId: string, ideaId: string, docs: PlanDoc[]) {
+    const items = toItems(this.store.cards(this.canvas.id), docs, this.home);
+    const project = items.find((i) => i.id === projectId);
+    const idea = items.find((i) => i.id === ideaId);
+    if (!project || !idea) return;
+    const [iw, ih] = sizeOf(idea, items);
+    const [pw, ph] = sizeOf(project, items);
+    const moves: [string, { x: number; y: number }][] = [[project.id, { x: idea.x, y: idea.y }]];
+    for (const i of items) {
+      if (i.parent || i.id === project.id || i.id === idea.id) continue;
+      const b = boundsOf(i, items);
+      if (ph > ih && b.y >= idea.y + ih && b.x < idea.x + pw && b.x + b.w > idea.x) moves.push([i.id, { x: i.x, y: i.y + ph - ih }]);
+      else if (pw > iw && b.x >= idea.x + iw && b.y < idea.y + ph && b.y + b.h > idea.y) moves.push([i.id, { x: i.x + pw - iw, y: i.y }]);
+    }
+    this.store.db.transaction(() => moves.forEach(([id, at]) => this.store.update(id, at)))();
+  }
+
+  /**
+   * An idea whose plan doc is a project goes to the archive once its worker is done: the project
+   * stands where it was and links it. Asked when the project is linked and when the worker is done,
+   * once each; put back on the canvas, the idea stays. Returns whether it went.
+   */
+  private retire(ideaId: string): boolean {
+    const r = this.store.card(ideaId);
+    if (!r || r.deleted_at || r.archived_at || r.state !== 'live' || (r.landed && r.workspace)) return false;
+    if (!this.store.projects(this.canvas.id).some((p) => p.from_id === ideaId && !p.archived_at)) return false;
+    this.store.update(ideaId, { archived_at: new Date().toISOString() });
+    this.log(ideaId, 'state', 'obeya', 'Das Projekt steht jetzt an der Stelle der Idee; die Idee liegt im Archiv.');
+    return true;
   }
 }
 
@@ -648,7 +693,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         source: 'manual',
         repo: r.repo ?? home,
         ...work(r),
-        ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? { brief: ideaOf(r).brief } : {}),
+        ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? decided(r) : {}),
         ...(r.prototype_of ? { prototypeOf: r.prototype_of } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
       });
@@ -739,9 +784,17 @@ export interface StoredIdea {
   thinking?: boolean;
   yourTurn?: boolean;
   questions?: Question[];
+  /** Decided as a project: its worker writes the plan doc, and the project takes the card's place. */
+  project?: boolean;
 }
 
 const toDecision = (d: DecisionRow): Decision => ({ id: d.id, cardId: d.card_id, question: d.question, answer: d.answer, by: d.by, at: d.at });
+
+/** A card that was an idea, as decided: the brief, and whether it becomes a project. */
+function decided(r: CardRow): Pick<Item, 'brief' | 'becomesProject'> {
+  const i = JSON.parse(r.idea!) as StoredIdea;
+  return { brief: i.brief, ...(i.project ? { becomesProject: true } : {}) };
+}
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };

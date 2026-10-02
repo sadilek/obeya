@@ -8,7 +8,7 @@ import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CanvasConfig, CardAction, ConfigProblemCode, Item, RepoConfig, RepoRef } from '../core/types';
-import { BadRequest, Board } from './board';
+import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
 import type { Store } from './db';
@@ -258,25 +258,29 @@ export class CanvasRuntime {
     this.koordinator.request(cardId);
   }
 
-  /** A big idea becomes a project: a worker writes its plan doc, which lands like any change. */
+  /**
+   * A big idea becomes a project: a worker writes its plan doc on the idea's card at once, and once
+   * the doc lands, the project takes the idea's place.
+   */
   private planDoc(cardId: string) {
     const card = this.ideaCard(cardId);
-    const { brief } = this.board.idea(cardId);
+    const idea = this.board.idea(cardId);
     const dir = this.repoOf(card).adapter.planDocs.dir;
     this.explorers.close(cardId);
     this.board.work(cardId, {
       state: 'planned',
-      title: `Plan-Doc: ${card.title}`.slice(0, 200),
+      idea: JSON.stringify({ ...idea, project: true } satisfies StoredIdea),
       body: [
-        `Schreibe aus dem Stand dieser Idee ein Plan-Doc in \`${dir}/\`, nach den Konventionen des Repositorys (vorhandene Plan-Docs als Vorbild). Es braucht ein \`## Ziel\` (oder \`## Goal\`) und eine Checkliste unter \`## Workstreams\` (\`- [ ] **W1:** Titel. Details\`), in Pakete geschnitten, die einzeln landen können; dann zeigt Obeya es als Projekt. Baue nichts davon; nur das Plan-Doc (und ein Verweis darauf, wo das Repository Plan-Docs verlinkt).`,
+        `Schreibe aus dem Stand dieser Idee ein Plan-Doc in \`${dir}/\`, nach den Konventionen des Repositorys (vorhandene Plan-Docs als Vorbild). Es braucht ein \`## Ziel\` (oder \`## Goal\`) und eine Checkliste unter \`## Workstreams\` (\`- [ ] **W1:** Titel. Details\`), in Pakete geschnitten, die einzeln landen können; dann zeigt Obeya es als Projekt, das an die Stelle dieser Idee tritt. Baue nichts davon; nur das Plan-Doc (und ein Verweis darauf, wo das Repository Plan-Docs verlinkt).`,
         `Idee: „${card.title}“`,
-        brief.trim() || card.body.trim(),
+        idea.brief.trim() || card.body.trim(),
       ]
         .filter(Boolean)
         .join('\n\n'),
     });
     this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'Als Projekt: erst ein Plan-Doc mit Workstreams.', by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', 'Als Projekt: Ein Agent schreibt das Plan-Doc.');
+    this.board.log(cardId, 'state', 'owner', 'Als Projekt: Ein Agent schreibt das Plan-Doc; ist es gelandet, tritt das Projekt an die Stelle der Idee.');
+    this.koordinator.request(cardId);
   }
 
   /** Parked or dropped, the idea stays on the canvas with its brief. */

@@ -85,9 +85,12 @@ An idea is thought through on its card before anything is planned; no worker run
    it is built, the idea no longer needs the owner; the agent's reply to its result makes it their turn again. The
    prototype never lands and does not count for collisions; approving it discards workspace and branch.
 5. Deciding: "So bauen" makes the brief the card's task and starts it at once, through the
-   Koordinator like "Agent starten" (it waits only if it would likely conflict with running work). "Als Projekt planen" plans a
-   card whose worker writes a plan doc with workstreams, which lands like any change (OKE: a PR)
-   and then appears as a project, linked back to the idea. "Parken" and "Verwerfen" leave the card with its brief; talking
+   Koordinator like "Agent starten" (it waits only if it would likely conflict with running work). "Als Projekt planen" starts a
+   worker on the idea's card the same way, which keeps its title and shows as "Idee → Projekt": it
+   writes a plan doc with workstreams, which lands like any change (OKE: a PR). The project then
+   takes the idea's place on the canvas (cards it would cover move aside, by as much as it outgrows
+   the idea) and links back to it; the idea goes to the archive once its
+   worker is done (put back, it stays). "Parken" and "Verwerfen" leave the card with its brief; talking
    to it opens it again. A dropped idea can be archived ("Archivieren", not while a prototype for
    it runs): in the archive it shows its brief and conversation read-only and can go back to its
    place, where talking to it opens it again. Decisions from the conversation go into the decision log; lasting
@@ -128,7 +131,8 @@ An idea is thought through on its card before anything is planned; no worker run
    archived, lists its decisions and links the idea its plan doc was written from: when an idea's
    "Plan-Doc" card lands and its diff adds a doc in the plan directory, the project from that doc
    remembers the idea, whose card keeps its brief and conversation, and the idea's decisions join
-   the project's.
+   the project's. The project takes the idea's place, and the idea, once its worker is done, goes to
+   the archive.
 
 ## Communication
 
@@ -519,7 +523,10 @@ the repository; the copy on the project is only for the archive).
 - A discussion lives on a card, not in the conversation with the Koordinator: an exploration
   parked on the canvas is found there again with its brief, and the Koordinator only passes the
   owner's words on. A big idea becomes a project through a worker writing its plan doc, not
-  through the exploration agent, which stays read-only.
+  through the exploration agent, which stays read-only. That worker runs on the idea's own card and
+  starts with the decision, and the project replaces the idea on the canvas (2026-10-02): a
+  separate planned "Plan-Doc" card in between had to be started by hand and left the idea standing
+  next to its project.
 - The Koordinator's memory lives in the store, not in the agent session: a session is never
   resumed, and a new one (restart, or a long session) starts from the stored conversation and the
   cards' history. That keeps the context short over weeks, and restart and renewal are one path.
