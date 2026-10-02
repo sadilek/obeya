@@ -266,6 +266,12 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
 
 // ------------------------------------------------------------------ plan sheet
 
+/** A card a workstream waits for: a sibling by its label, any other by its title. */
+function sibling(id: string, kids: Item[], all: Item[]): string {
+  const k = kids.find((x) => x.id === id);
+  return k?.label ?? plain((k ?? all.find((x) => x.id === id))?.title ?? '…');
+}
+
 /**
  * The open project: its goal and workstreams (as the doc last stood, for an archived one), the idea
  * it came from and the decisions taken in it; or, while `reading`, its plan doc as written, with the
@@ -274,20 +280,26 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
 export function Sheet({
   project,
   kids,
+  all,
   on,
   reading,
   onOpen,
   onRead,
+  onStartAll,
   els,
   version,
 }: {
   project?: Item;
   kids: Item[];
+  /** Every card on the canvas, to name the cards a workstream waits for. */
+  all: Item[];
   on: boolean;
   reading: { mark?: string } | null;
   onOpen: (i: Item) => void;
   /** Reads the plan doc (`{}`), or goes back to the workstreams (`null`). */
   onRead: (r: { mark?: string } | null) => void;
+  /** Hands all planned workstreams to the Koordinator, which orders them. */
+  onStartAll: (project: Item, count: number) => void;
   /** Where the cards opened from the sheet unfold from (an archived project's are not on the canvas). */
   els: Map<string, HTMLElement>;
   /** Changes when the canvas does, so the decisions are read again. */
@@ -320,6 +332,7 @@ export function Sheet({
   const box = useRef<HTMLElement>(null);
   const markEl = useRef<HTMLElement | null>(null);
   const shown = reading && doc?.id === project?.id ? doc : null;
+  const startable = kids.filter((k) => k.state === 'planned' && !k.queue).length;
   // the doc opens at its top, or at the workstream it was opened for
   useEffect(() => {
     if (!shown || !box.current) return;
@@ -364,6 +377,14 @@ export function Sheet({
               {t.plan.read}
             </button>
           )}
+          {!project.archivedAt && startable > 1 && (
+            <div className="start-all">
+              <button className="btn primary" onClick={() => onStartAll(project, startable)}>
+                {t.plan.startAll(startable)}
+              </button>
+              <p className="hint">{t.plan.startAllHint}</p>
+            </div>
+          )}
           {history?.origin && (
             <button className="origin" ref={ref(history.origin.id)} onClick={() => onOpen(history.origin!)}>
               <span className="hint">{t.fromIdea}</span>
@@ -378,7 +399,9 @@ export function Sheet({
                 <span>
                   <Inline md={k.title} />
                   <br />
-                  <span className="hint">{stateLabel(k)}</span>
+                  <span className="hint">
+                    {k.queue && 'behind' in k.queue ? t.queue.behind(k.queue.behind.map((id) => sibling(id, kids, all))) : stateLabel(k)}
+                  </span>
                 </span>
               </li>
             ))}

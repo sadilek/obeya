@@ -229,7 +229,7 @@ export class Commander {
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
             `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
-            "- start: start work on a planned card. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress.",
+            "- start: start work on a planned card. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to the Koordinator together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
             "- note: text to the agent working on a card (working, in PR, waiting, or live while its agent finishes after the landing); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
@@ -400,7 +400,12 @@ export class Commander {
         return { do: a.do, card: card.id, text: a.text.trim() };
       }
       case 'start':
-        if (card.state !== 'planned' || card.kind === 'project') return `only a planned card can be started (${is})`;
+        if (card.kind === 'project') {
+          if (!this.o.board.snapshot().items.some((i) => i.parent === card.id && i.state === 'planned' && !i.queue))
+            return 'the project has no planned workstream left that is not already with the Koordinator';
+          break;
+        }
+        if (card.state !== 'planned') return `only a planned card can be started (${is})`;
         if (card.queue && 'behind' in card.queue) return { do: 'force', card: card.id };
         if (card.queue) return `the Koordinator is still ${'cutting' in card.queue ? 'splitting' : 'checking'} the card; it starts by itself unless it collides`;
         break;
@@ -550,6 +555,12 @@ export class Commander {
     s.rules = rules.map((r) => r.id);
     const focused = focus.card ? relevant.find((i) => i.id === focus.card) : undefined;
     const project = focus.project ? items.find((i) => i.id === focus.project) : undefined;
+    // projects with workstreams to start: start on one hands them all to the Koordinator
+    const projects = items.flatMap((p) => {
+      if (p.kind !== 'project') return [];
+      const open = items.filter((i) => i.parent === p.id && i.state === 'planned' && !i.queue);
+      return open.length ? [`${tag(p.id)} [project] "${p.title}" — planned workstreams not yet started: ${open.map((i) => i.label ?? i.title).join(', ')}`] : [];
+    });
     return [
       `Now: ${when(now)}.`,
       ...history,
@@ -560,8 +571,9 @@ export class Commander {
             `The owner attached ${shots === 1 ? 'a screenshot' : `${shots} screenshots`} (shown below). Obeya gives ${shots === 1 ? 'it' : 'them'} to every new_card, new_idea, start, note, answer, feedback and discuss action you take for this message; a title for a new card may say what ${shots === 1 ? 'it shows' : 'they show'}.`,
           ]
         : []),
-      focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused, tag)}` : project ? `The owner is looking at the project "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
+      focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused, tag)}` : project ? `The owner is looking at the project ${tag(project.id)} "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
       `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
+      ...(projects.length ? [`Projects with workstreams to start:\n${projects.join('\n')}`] : []),
       rules.length
         ? `The owner's rules, which every agent follows (follow them yourself too):\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}`
         : 'The owner has recorded no rules yet.',

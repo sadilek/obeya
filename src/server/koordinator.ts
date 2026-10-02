@@ -18,6 +18,13 @@ interface Package {
   files: string[];
 }
 type Cut = { packages: Package[]; reason: string } | { keep: string };
+/** A workstream as the Koordinator scheduled it, in its turn's order. */
+interface Planned {
+  card: string;
+  files: string[];
+  waitsFor: string[];
+  reason: string;
+}
 
 /** What the owner said that may hold a lasting preference. */
 export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea';
@@ -68,22 +75,40 @@ export class Koordinator {
 
   /** After a restart: decide again on cards the Koordinator was checking, and start what is free. */
   resume() {
+    const together = new Set<string>();
     for (const i of this.o.board.snapshot().items) {
       if (i.state !== 'planned' || !i.queue) continue;
-      if ('checking' in i.queue) this.serial(() => this.decide(i.id));
+      if ('checking' in i.queue && i.queue.together) together.add(i.queue.together);
+      else if ('checking' in i.queue) this.serial(() => this.decide(i.id));
       else if ('cutting' in i.queue) this.serial(() => this.cut(i.id));
     }
+    for (const p of together) this.serial(() => this.decideAll(p));
     this.scheduleDrain();
   }
 
-  /** The owner wants the card worked on. */
-  request(cardId: string) {
+  /** The owner wants the card worked on; a project, all its planned workstreams. */
+  request(cardId: string): void {
     const card = this.card(cardId);
-    if (card.kind === 'project') throw new BadRequest('project', 'a project is worked on through its workstreams');
+    if (card.kind === 'project') return this.requestAll(card);
     if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
     if (card.queue) throw new BadRequest('queued', 'the card is already with the Koordinator');
     this.setQueue(cardId, { checking: true });
     this.serial(() => this.decide(cardId));
+  }
+
+  /**
+   * All planned workstreams of the project go to the Koordinator together: one turn sees them all
+   * with the plan doc and decides which start now and which wait, for a dependency or a likely
+   * conflict, and in which order. They queue in the plan's order until it has.
+   */
+  private requestAll(project: Item): void {
+    const open = this.o.board.snapshot().items.filter((i) => i.parent === project.id && i.state === 'planned' && !i.queue);
+    if (!open.length) throw new BadRequest('nothingToStart', 'the project has no planned workstream left to start');
+    if (open.length === 1) return this.request(open[0]!.id);
+    const now = Date.now();
+    open.forEach((w, n) => this.o.board.work(w.id, { queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
+    this.o.board.log(project.id, 'state', 'owner', `Alle Workstreams gestartet: ${open.map((w) => w.label ?? w.title).join(', ')}. Der Koordinator legt die Reihenfolge fest.`);
+    this.serial(() => this.decideAll(project.id));
   }
 
   /** The owner wants the card cut into packages that can run in parallel. */
@@ -343,6 +368,66 @@ export class Koordinator {
     this.o.board.log(cardId, 'state', 'obeya', `Koordinator: wartet auf ${names}. ${reason}`);
   }
 
+  /** Decides on the workstreams of a project that came to the Koordinator together. */
+  private async decideAll(projectId: string) {
+    const items = this.o.board.snapshot().items;
+    const batch = items
+      .filter((i) => i.parent === projectId && i.state === 'planned' && i.queue && 'checking' in i.queue && i.queue.together === projectId)
+      .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
+    if (!batch.length) return;
+    const ids = new Set(batch.map((w) => w.id));
+    const repo = batch[0]!.repo;
+    const active = this.inProgress(repo);
+    // what waits already came first, as for a single card
+    const ahead = items
+      .filter((i) => i.repo === repo && !ids.has(i.id) && waits(i))
+      .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
+    let plan: Planned[];
+    try {
+      plan = await this.schedule(this.o.board.item(projectId)!, batch, active, ahead);
+    } catch (e) {
+      // judged one by one instead: without the dependencies, but nothing is lost
+      this.o.board.log(projectId, 'error', 'obeya', `Koordinator konnte die Workstreams nicht gemeinsam einplanen (${e instanceof Error ? e.message : String(e)}); er prüft sie einzeln.`);
+      for (const w of batch) {
+        this.setQueue(w.id, { checking: true });
+        this.serial(() => this.decide(w.id));
+      }
+      return;
+    }
+    // taken out of the queue or started anyway meanwhile
+    const still = (id: string) => {
+      const q = this.o.board.item(id)?.queue;
+      return !!q && 'checking' in q && q.together === projectId;
+    };
+    // the turn's order becomes the queue's: a workstream waits only for what comes before it, so
+    // none wait for each other
+    const times = batch.map((w) => w.queue!.since!);
+    const before = new Set([...active, ...ahead].map((i) => i.id));
+    const names = new Map([...active, ...ahead, ...batch].map((i) => [i.id, i.parent === projectId && i.label ? `${i.label} „${i.title}“` : `„${i.title}“`]));
+    let started = 0;
+    plan.forEach((p, n) => {
+      const id = p.card;
+      if (!still(id)) return before.add(id);
+      const behind = p.waitsFor.filter((b) => before.has(b) && this.blocks(b));
+      before.add(id);
+      this.o.board.work(id, { scope: JSON.stringify({ files: p.files, reason: p.reason }), queue: JSON.stringify({ checking: true, together: projectId, since: times[n] }) });
+      if (!behind.length) {
+        started++;
+        return this.startNow(id, `Gemeinsam mit den anderen Workstreams eingeplant; startet jetzt.${p.reason ? ` ${p.reason}` : ''}`);
+      }
+      const reason = p.reason || 'Wahrscheinlich Merge-Konflikte mit laufender Arbeit.';
+      this.setQueue(id, { behind, reason });
+      this.o.board.log(id, 'state', 'obeya', `Koordinator: wartet auf ${behind.map((b) => names.get(b) ?? b).join(', ')}. ${reason}`);
+    });
+    this.o.board.log(projectId, 'state', 'koordinator', `Eingeplant: ${started} von ${plan.length} Workstreams starten jetzt, die anderen warten.`);
+  }
+
+  /** Whether a card still holds others back: in progress, or waiting itself. */
+  private blocks(id: string): boolean {
+    const i = this.o.board.item(id);
+    return !!i && (this.inProgress(i.repo).some((a) => a.id === id) || waits(i));
+  }
+
   private startNow(cardId: string, why: string) {
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'obeya', `Koordinator: ${why}`);
@@ -446,15 +531,93 @@ export class Koordinator {
     });
   }
 
+  /** One turn over all the workstreams: in which order they go, and which wait for what. */
+  private schedule(project: Item, batch: Item[], active: Item[], ahead: Item[]): Promise<Planned[]> {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const tags = new Map([...active, ...ahead, ...batch].map((a, n) => [`K${n + 1}`, a.id]));
+      const tagOf = (id: string) => [...tags].find(([, x]) => x === id)![0];
+      const session = this.o.runtime.start(
+        {
+          cwd: this.o.repoFor(project).path,
+          readOnly: true,
+          system: SCHEDULE_SYSTEM,
+          tools: [
+            {
+              name: 'schedule',
+              description: 'Report every workstream once, in the order they should go: its tag, the files it will change, the tags of the cards it waits for (in progress, queued ahead, or workstreams earlier in your order; empty to start now), and a one-sentence reason in German.',
+              schema: {
+                workstreams: z.array(z.object({ card: z.string(), files: z.array(z.string()), waits_for: z.array(z.string()), reason: z.string() })),
+              },
+              run: (a) => {
+                if (done) return 'Already reported.';
+                const mine = new Set(batch.map((w) => w.id));
+                const seen = new Set<string>();
+                const plan: Planned[] = [];
+                for (const w of a.workstreams as { card: string; files: string[]; waits_for: string[]; reason: string }[]) {
+                  const id = tags.get(w.card);
+                  if (!id || !mine.has(id) || seen.has(id)) continue;
+                  seen.add(id);
+                  plan.push({
+                    card: id,
+                    files: w.files.slice(0, 200),
+                    waitsFor: w.waits_for.map((t) => tags.get(t)).filter((x): x is string => !!x && x !== id),
+                    reason: String(w.reason).slice(0, 500),
+                  });
+                }
+                const missing = batch.filter((w) => !seen.has(w.id));
+                if (missing.length) return `Every workstream once, please: missing ${missing.map((w) => tagOf(w.id)).join(', ')}. Call schedule again with all of them.`;
+                done = true;
+                resolve(plan);
+                return 'Recorded. End your turn now.';
+              },
+            },
+          ],
+          onEvent: (e) => {
+            if (e.type === 'error' && !done) {
+              done = true;
+              session.close();
+              reject(new Error(e.message));
+            } else if (e.type === 'idle') {
+              session.close();
+              if (!done) {
+                done = true;
+                reject(new Error('no schedule'));
+              }
+            }
+          },
+        },
+        [
+          `The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`,
+          project.plan?.goal ? `Goal: ${project.plan.goal}` : '',
+          `Its workstreams to schedule, in the plan's order:\n${batch
+            .map((w) => `- ${tagOf(w.id)}: ${w.label ? `${w.label} ` : ''}"${w.title}"${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 600)}` : ''}`)
+            .join('\n')}`,
+          ...this.others(project, active, ahead, tags),
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+      );
+    });
+  }
+
   private brief(card: Item, active: Item[], ahead: Item[], tags: Map<string, string>): string {
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
-    const soft = this.o.repoFor(card).adapter.softPaths;
-    const hard = (f: string) => !soft.some((s) => overlaps(normalize(f), s));
-    const tagOf = (id: string) => [...tags].find(([, x]) => x === id)![0];
     const lines = [
       `The card to start: ${card.kind} "${card.title}".`,
       card.body.trim(),
       project?.plan ? `It is workstream ${card.label ?? ''} of the project "${project.title}"; plan doc ${project.plan.file}.` : '',
+      ...this.others(card, active, ahead, tags),
+    ];
+    return lines.filter(Boolean).join('\n\n');
+  }
+
+  /** The cards in progress and queued ahead, as a turn of the Koordinator reads them. */
+  private others(card: Item, active: Item[], ahead: Item[], tags: Map<string, string>): string[] {
+    const soft = this.o.repoFor(card).adapter.softPaths;
+    const hard = (f: string) => !soft.some((s) => overlaps(normalize(f), s));
+    const tagOf = (id: string) => [...tags].find(([, x]) => x === id)![0];
+    return [
       active.length
         ? `Cards in progress:\n${active
             .map((a) => {
@@ -483,7 +646,6 @@ export class Koordinator {
         : '',
       soft.length ? `Changes under ${soft.join(', ')} never count: they are resolved when a branch lands.` : '',
     ];
-    return lines.filter(Boolean).join('\n\n');
   }
 
   // ---------------------------------------------------------------- helpers
@@ -515,6 +677,21 @@ Read what you need in the repository (you cannot change files), then call scope 
 - conflicts_with: the tags of cards in progress or queued ahead whose changes will likely conflict with this card's on merge; empty when none. When in doubt, leave a card out: a conflict that happens anyway goes back to its worker to resolve.
 - reason: one sentence in German for the owner: with a conflict, where the two cards change the same code; without one, which files they share, if any, and why that is fine. The owner does not know the tags: name cards by their title.
 Keep it quick: this runs every time a card starts.
+`.trim();
+
+const SCHEDULE_SYSTEM = `
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. The owner started all open workstreams of a project at once; you decide how they go. Read the plan doc and what you need in the repository (you cannot change files).
+
+A workstream waits for another when:
+- it depends on it: it builds on code, an API, data or a decision that the other one introduces, or the plan says it comes after it. It then waits until that one has landed.
+- running both at once likely ends in merge conflicts: both change the same lines or the same function or block, one rewrites, moves, renames or reformats code the other one edits, or both change the same small, tightly packed section. Sharing a file is not a conflict: changes in different places of a file merge cleanly.
+Everything else starts now and runs in parallel; parallel work is the point. When in doubt about a conflict, let it run: a conflict that happens anyway goes back to its worker. Cards in progress and queued ahead count as for any start: a workstream likely to conflict with one of them waits for it.
+
+Call schedule exactly once, with every workstream once, in the order they should go (what starts now first, then each one after what it waits for):
+- card: its tag.
+- files: repository-relative paths it will most likely change; a path ending in "/" stands for a directory.
+- waits_for: the tags of cards it waits for: cards in progress, queued ahead, or workstreams earlier in your order. Empty: it starts now. A workstream that waits starts by itself once what it waits for has landed.
+- reason: one sentence in German for the owner: why it waits (the dependency, or where the changes collide), or, starting now, why it can run beside the others. The owner does not know the tags: name cards by their label or title.
 `.trim();
 
 const LEARN_SYSTEM = `
