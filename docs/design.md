@@ -494,11 +494,12 @@ the owner's language (`src/core/locale.ts`).
   behind the same Cloudflare Access policy as the docs (`@example.com`). Account ID and API
   token are in `~/.obeya/team-share/cloudflare.env`. It refuses files over 25 MiB (the Pages limit)
   and a site that lacks a page Obeya has as shared (a lost directory would take them offline), and
-  puts the directory back when a deployment fails. Its first deployment creates the Pages project
-  (`wrangler pages project create`): the dashboard's "Create" makes a Worker on `workers.dev`
-  instead, not a Pages project on `pages.dev` like the docs. Needs the owner's one-time setup in
-  Cloudflare: an API token with Pages edit rights, and the Access application for
-  `team-demos.pages.dev` and `*.team-demos.pages.dev`.
+  puts the directory back when a deployment fails. The owner sets it up once in Cloudflare (done
+  2026-10-02), in this order: the Pages project `team-demos` (under Pages: the dashboard's plain
+  "Create" makes a Worker on `workers.dev` instead); then the Access application for
+  `team-demos.pages.dev` and `*.team-demos.pages.dev` with the docs' policy, whose domain Access
+  offers to pick only once the project exists (no free text); and an API token with Pages edit
+  rights in `cloudflare.env`. The command never creates the project itself.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   login recipe, where plan docs live, which reviews run, demo conventions, the command that shares
   demos.
