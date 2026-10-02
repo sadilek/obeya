@@ -68,7 +68,8 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
   are not uploaded again. Account ID and API token come from a file outside git. Pages takes at
   most 25 MiB per file: a larger video is refused with that reason in the log (R2 only if that
   happens; see Risks).
-- **Cloudflare, once, by the owner.** The Pages project `team-demos`; an Access application for
+- **Cloudflare, once, by the owner.** The Pages project `team-demos` (the script creates it on its
+  first deployment; the dashboard's "Create" makes a Worker on `workers.dev` instead); an Access application for
   `team-demos.pages.dev` and `*.team-demos.pages.dev` with the same policy as the documentation
   (emails ending in `@example.com`); an API token with Pages edit rights. The colleagues are
   the documentation's users, so Access needs no extra seats.
