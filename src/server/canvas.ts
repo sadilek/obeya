@@ -238,6 +238,29 @@ export class CanvasRuntime {
     if (card && text && text !== before) this.koordinator.learn(card, 'card', text, before ? { before } : {});
   }
 
+  /** The owner accepts a rule proposal, maybe in their words or for another place (a repository's CLAUDE.md, or none). */
+  acceptRule(id: number, text?: string, target?: string | null) {
+    this.board.acceptProposal(id, text, target);
+    this.fileRules();
+  }
+
+  rejectRule(id: number) {
+    this.board.rejectProposal(id);
+    this.fileRules();
+  }
+
+  /**
+   * Once no proposal waits any more, the cards „CLAUDE.md ergänzen“ start, with all the rules
+   * accepted for them: a waiting proposal might yet become one of theirs.
+   */
+  private fileRules() {
+    if (this.board.preferences('proposed').length) return;
+    for (const r of this.board.canvas.repos) {
+      const card = this.board.collecting(r.id);
+      if (card) this.koordinator.request(card.id);
+    }
+  }
+
   /** The owner clicks in the card's panel: a click without words the learner reads counts towards the Rückschau. */
   press(cardId: string, a: CardAction) {
     const r = this.act(cardId, a);

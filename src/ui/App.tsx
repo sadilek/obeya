@@ -918,7 +918,7 @@ function Canvas({
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
       <ConfigSheet on={cOn} />
-      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
+      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} repos={snapshot.canvas.repos} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
       <PushToTalk phase={ptt.phase} level={ptt.level} flat={ptt.flat} target={target} shots={voiceShots} onDown={ptt.start} />
       <Sheet
         project={sheetProject}

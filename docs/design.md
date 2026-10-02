@@ -55,11 +55,16 @@ decisions are made in front of the wall.
     whose changes are likely to conflict on merge, and does not run those at the same time but
     queues them.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
-  ("billing changes always get the Codex review", "labels: precise over short"), or said outright
-  ("Merk dir: …"). Shared by all agents, maintained by the Chief of Staff. A learned rule, or a
-  learned change to a rule, is a proposal until the owner accepts it; agents follow active rules
-  only. A rule the owner writes or says outright is active at once. Besides each input on its own,
-  the Rückschau looks back over the last twenty or so for patterns across cards.
+  ("questions to me with at most three options", "solve rebase conflicts yourself"), or said
+  outright ("Merk dir: …"). Shared by all agents, maintained by the Chief of Staff. A learned rule,
+  or a learned change to a rule, is a proposal until the owner accepts it; agents follow active
+  rules only. A rule the owner writes or says outright is active at once. Besides each input on its
+  own, the Rückschau looks back over the last twenty or so for patterns across cards. It holds only
+  rules at the level of Obeya: how the agents work with the owner through Obeya, whatever the
+  repository. Whatever is about a repository (its conventions, product requirements, tools, and
+  taste in code even when it holds in every repository) belongs in that repository's CLAUDE.md,
+  where it is versioned, colleagues see it and Claude Code follows it outside Obeya too. Such a
+  rule, once learned, goes there through a card (see the Koordinator).
 
 ## Ideas
 
@@ -382,7 +387,9 @@ the owner's language (`src/core/locale.ts`).
   on its own as if started alone; after a restart the joint turn runs again. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
   without a project, and after whatever the owner says it decides whether a lasting preference
-  was stated and proposes it as a rule (the card's log says „Schlägt vor: …“); "Merk dir: …" by
+  was stated and proposes it as a rule (the card's log says „Schlägt vor: …“), for the preference
+  memory or, when it is about a repository, for that repository's CLAUDE.md (for each repository
+  of the canvas when it holds in all of them; one proposal each); "Merk dir: …" by
   voice records an active rule outright. What it learns from: answers, notes and feedback to
   workers; an idea's discussion; the conversation with it (a reply or look-up at once, with its
   reply; a command once its undo window has passed, unless its words reach the learner another
@@ -392,8 +399,9 @@ the owner's language (`src/core/locale.ts`).
   given in their name goes with that answer, which it may overrule. The learner reads an input with
   the card's text, what the owner said in the last three days (notes, feedback and answers to
   agents, ideas' discussions, the conversation with the Koordinator; at most 30), the agent's last
-  message before it (taken when the input arrives, not when the learner's turn comes), the active
-  rules and the open and rejected proposals. Its prompt names the signals for a proposal: phrased
+  message before it (taken when the input arrives, not when the learner's turn comes), the canvas's
+  repositories, the active rules, the rules accepted for a CLAUDE.md, and the open and rejected
+  proposals. Its prompt names the signals for a proposal: phrased
   generally ("immer", "nie", "ab jetzt"), a correction of how an agent works, a repetition of
   something said before, an overruled answer; it makes at most one proposal per input. The
   Rückschau counts the owner's inputs: what the learner reads, and clicks without words in a card
@@ -406,13 +414,22 @@ the owner's language (`src/core/locale.ts`).
   answers given in the owner's name), the owner's words in ideas and to the Koordinator, taken back
   or not, the cards they deleted or dismissed, and the rule proposals they accepted or rejected.
   It looks for patterns seen at least twice on different cards and proposes up to three rules,
-  each with a sentence on what it rests on; the sheet shows that as their occasion („Aus der
+  each with a sentence on what it rests on and, like the learner, for the preferences or a
+  repository's CLAUDE.md; the sheet shows that as their occasion („Aus der
   Rückschau: …“). Its
   sheet (button or `K`) shows the queue, the cards in progress and the preferences; open
   proposals stand above the rules with their occasion (the card and the owner's words, or the
-  Rückschau) and, for a change, the rule it changes. The owner accepts one, edits it before
-  accepting, or rejects it; an accepted change takes the place of its rule. Rejected proposals
-  are kept (state `rejected` in `preferences`), so the learner can see them. The Koordinator
+  Rückschau), for a change the rule it changes, and where it goes („Gehört in“: the preferences or
+  the CLAUDE.md of a repository; `target` in `preferences`), which the owner may switch. The owner
+  accepts one, edits it before accepting, or rejects it; an accepted change takes the place of its
+  rule. Rejected proposals are kept (state `rejected` in `preferences`), so the learner can see
+  them. A rule accepted for a CLAUDE.md (state `filed`) goes into its repository's open card
+  „CLAUDE.md ergänzen“ (planned and not yet with the Koordinator; the setting `claude_md_card:<repo>`
+  names it), or into a new one when there is none; its worker writes the rules into the CLAUDE.md
+  in the style of what is there. These cards start by themselves, through the Koordinator like any
+  start, once no proposal waits any more, whatever its place: a waiting one might yet be switched
+  to theirs, so several rules go in together. The card lands like any other (in Acme, through a pull
+  request); until then the rule applies to no agent, and afterwards through the CLAUDE.md alone. The Koordinator
   button counts open proposals (violet, beside the grey count of queued cards); they do not
   count among the cards that need the owner and do not show on cards.
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
@@ -629,6 +646,15 @@ the repository; the copy on the project is only for the archive).
   (2026-10-02): the owner wants to see every learned rule before it applies. Open proposals count
   on the Koordinator button only, not among the cards that need the owner nor on the cards. The
   Rückschau runs after about 20 inputs, neither daily nor only on request.
+- Preferences hold only how agents work with the owner through Obeya; rules about a repository,
+  taste in code that holds in every repository included, go into its CLAUDE.md (2026-10-02). At
+  first the learner drew no line, and repository facts landed among the preferences, unversioned
+  and unseen by colleagues and by Claude Code outside Obeya. Rejected: not learning repository
+  rules (what the owner says would be lost), preferences scoped to a repository in the database
+  (unversioned, invisible outside Obeya), the Koordinator committing to the CLAUDE.md on accept (it
+  only reads, and nothing goes to Acme's `main` directly). Accepted ones collect in one card per
+  repository that starts once no proposal waits, so several go in together without the owner
+  starting it.
 - This page describes what is built; work in progress lives in plan docs, which the canvas shows as
   projects. The milestone list it once kept repeated what the canvas shows and went (2026-10-01).
 - Plan docs as projects: a doc in the adapter's plan directory is a project when its

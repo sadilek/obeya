@@ -2,7 +2,7 @@
 // keeps, with the ones it learned and proposes.
 
 import { useEffect, useRef, useState } from 'react';
-import type { Item, Preference, Talk } from '../core/types';
+import type { Item, Preference, RepoRef, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
@@ -14,11 +14,13 @@ interface Props {
   onHeard: (h: Heard) => void;
   items: Item[];
   preferences: Preference[];
+  /** The canvas's repositories, whose CLAUDE.md a proposal may go into. */
+  repos: RepoRef[];
   talk: Talk[];
   onOpen: (i: Item) => void;
 }
 
-export function KoordinatorSheet({ on, items, preferences, talk, onOpen, onHeard }: Props) {
+export function KoordinatorSheet({ on, items, preferences, repos, talk, onOpen, onHeard }: Props) {
   const queued = items.filter((i) => i.state === 'planned' && i.queue);
   const running = items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project');
   const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
@@ -38,7 +40,7 @@ export function KoordinatorSheet({ on, items, preferences, talk, onOpen, onHeard
             <p className="hint">{t.koordinator.proposalsHint}</p>
             <ul className="prefs proposals">
               {proposals.map((p) => (
-                <ProposalRow key={p.id} p={p} items={items} rules={rules} onOpen={onOpen} />
+                <ProposalRow key={p.id} p={p} items={items} rules={rules} repos={repos} onOpen={onOpen} />
               ))}
             </ul>
           </>
@@ -218,9 +220,14 @@ function TellKoordinator({ onHeard }: { onHeard: (h: Heard) => void }) {
   );
 }
 
-/** A rule the Koordinator learned, with where it came from: the owner accepts it, in their own words if they like, or rejects it. */
-function ProposalRow({ p, items, rules, onOpen }: { p: Preference; items: Item[]; rules: Preference[]; onOpen: (i: Item) => void }) {
+/**
+ * A rule the Koordinator learned, with where it came from and where it goes (the preferences, or a
+ * repository's CLAUDE.md): the owner accepts it, in their own words and for another place if they
+ * like, or rejects it.
+ */
+function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items: Item[]; rules: Preference[]; repos: RepoRef[]; onOpen: (i: Item) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [target, setTarget] = useState(p.target ?? '');
   const [error, setError] = useState('');
   const card = p.cardId ? items.find((i) => i.id === p.cardId) : undefined;
   const replaced = p.replaces !== undefined ? rules.find((r) => r.id === p.replaces) : undefined;
@@ -232,7 +239,8 @@ function ProposalRow({ p, items, rules, onOpen }: { p: Preference; items: Item[]
       setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
     }
   };
-  const accept = () => decide(() => api.acceptProposal(p.id, draft === null || draft.trim() === p.text ? undefined : draft.trim()));
+  const accept = () =>
+    decide(() => api.acceptProposal(p.id, draft === null || draft.trim() === p.text ? undefined : draft.trim(), target === (p.target ?? '') ? undefined : target || null));
   const quote = p.quote && (p.quote.length > 200 ? `${p.quote.slice(0, 200).trimEnd()} …` : p.quote);
   return (
     <li className="proposal">
@@ -274,6 +282,17 @@ function ProposalRow({ p, items, rules, onOpen }: { p: Preference; items: Item[]
           </>
         )}
       </span>
+      <label className="target">
+        {t.koordinator.target}
+        <select value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="">{t.koordinator.targetPreferences}</option>
+          {repos.map((r) => (
+            <option key={r.id} value={r.id}>
+              {t.koordinator.targetClaudeMd(r.name)}
+            </option>
+          ))}
+        </select>
+      </label>
       <span className="pref-actions">
         <button className="btn primary" disabled={draft !== null && !draft.trim()} onClick={accept}>
           {t.koordinator.accept}

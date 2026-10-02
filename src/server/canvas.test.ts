@@ -134,6 +134,29 @@ describe('a canvas with several repositories', () => {
     expect(item(p.id).queue).toBeFalsy();
   });
 
+  test('rules for a CLAUDE.md collect in one card per repository, which start once no rule proposal waits', async () => {
+    const b = canvas.board;
+    const web = b.proposePreference('Tests auf Deutsch.', {}, undefined, 'web');
+    const api = b.proposePreference('Logs auf Englisch.', {}, undefined, 'api');
+    const both = b.proposePreference('Keine any-Typen.', {}, undefined, 'web');
+    const obeya = b.proposePreference('Fragen mit höchstens drei Optionen.', {});
+    canvas.acceptRule(web);
+    // the owner moves it from api to web
+    canvas.acceptRule(api, undefined, 'web');
+    canvas.acceptRule(both);
+    const collect = b.collecting('web')!;
+    expect(collect).toMatchObject({ repo: 'web', title: 'CLAUDE.md ergänzen' });
+    expect(collect.body).toEndWith('- Tests auf Deutsch.\n- Logs auf Englisch.\n- Keine any-Typen.');
+    expect(collect.queue).toBeFalsy();
+    expect(b.collecting('api')).toBeUndefined();
+    // the last open proposal is decided: the card goes to the Koordinator like a started one
+    canvas.rejectRule(obeya);
+    expect(item(collect.id).queue).toMatchObject({ checking: true });
+    await settle();
+    expect(item(collect.id).state).toBe('working');
+    expect(b.preferencesText()).toBe('');
+  });
+
   test('proposals keep the repository of the card they came from', () => {
     const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0, repo: 'api' });
     const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });

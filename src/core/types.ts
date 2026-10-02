@@ -316,9 +316,14 @@ export interface Preference {
   review?: boolean;
   /** The active rule a proposal would change. */
   replaces?: number;
+  /**
+   * A repository: the rule is about it and belongs in its CLAUDE.md, not in the preference memory.
+   * Accepted, it is `filed` there through a card „CLAUDE.md ergänzen“ and applies to no agent until it is.
+   */
+  target?: string;
 }
 
-export type PreferenceState = 'proposed' | 'active' | 'rejected';
+export type PreferenceState = 'proposed' | 'active' | 'rejected' | 'filed';
 
 export interface NewCard {
   kind: 'bugfix' | 'feature';

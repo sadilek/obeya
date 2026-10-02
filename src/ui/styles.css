@@ -158,6 +158,8 @@ button.pill:hover { box-shadow: var(--lift); }
 .prefs .occasion { flex-basis: 100%; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .prefs .occasion .from { color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
 .prefs .occasion q { font-style: italic; }
+.prefs .target { flex-basis: 100%; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.prefs .target select { font: inherit; color: var(--ink); padding: 3px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); }
 .prefs .pref-actions { flex-basis: 100%; display: flex; gap: 6px; margin-top: 2px; }
 .prefs .pref-actions .btn { padding: 5px 11px; font-size: 12px; border-radius: 8px; }
 .proposals li { background: color-mix(in srgb, var(--proposal) 9%, var(--chip)); border-left: 3px solid var(--proposal); }

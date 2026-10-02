@@ -660,6 +660,46 @@ describe('preference memory', () => {
     expect(board.preferences()).toEqual([{ id: 1, text: 'Kleinkram selbst entscheiden.', state: 'proposed', quote: 'Warum fragt der Agent immer nach Kleinkram?' }]);
   });
 
+  test('a rule about a repository is proposed for its CLAUDE.md, accepted into its card „CLAUDE.md ergänzen“, and reaches no agent', async () => {
+    const a = card('Export');
+    k.learn(item(a.id), 'note', 'Tests schreiben wir hier immer auf Deutsch.');
+    await settle();
+    expect(learnSession().inbox[0]).toContain(`The canvas's repositories (ids for repos):\n- home: Home, at ${board.canvas.repos[0]!.path} (the card's)`);
+    expect(learnSession().spec.system).toContain("A repository's CLAUDE.md, for anything about a repository");
+    // a repository the canvas does not have is refused, and the learner may try again
+    expect(learnSession().call('propose', { rule: 'Tests auf Deutsch benennen.', repos: ['web'] })).toContain('Unknown repository web');
+    await learn('propose', { rule: 'Tests auf Deutsch benennen.', repos: ['home'] });
+    const [p] = board.preferences('proposed');
+    expect(p).toMatchObject({ text: 'Tests auf Deutsch benennen.', target: 'home', cardId: a.id });
+
+    board.acceptProposal(p!.id);
+    expect(board.preferences('filed')).toMatchObject([{ id: p!.id, state: 'filed', target: 'home' }]);
+    expect(board.preferencesText()).toBe('');
+    expect(board.snapshot().preferences).toEqual([]);
+    const collect = board.collecting('home')!;
+    expect(collect).toMatchObject({ title: 'CLAUDE.md ergänzen', state: 'planned', kind: 'feature' });
+    expect(collect.body).toEndWith('\n\n- Tests auf Deutsch benennen.');
+
+    // the next learner knows it is on its way; a rule for the preferences can be moved to a CLAUDE.md, and back
+    k.learn(item(a.id), 'note', 'Und Commits auf Englisch, immer.');
+    await settle();
+    expect(learnSession().inbox[0]).toContain("Rules the owner accepted for a repository's CLAUDE.md (in it or on their way; do not propose them again):\n- Tests auf Deutsch benennen. (for the CLAUDE.md of home)");
+    await learn('propose', { rule: 'Commits auf Englisch.' });
+    board.acceptProposal(board.preferences('proposed')[0]!.id, undefined, 'home');
+    const back = board.proposePreference('Fragen mit höchstens drei Optionen.', {}, undefined, 'home');
+    board.acceptProposal(back, undefined, null);
+    expect(board.preferencesText()).toContain('- Fragen mit höchstens drei Optionen.');
+    expect(board.collecting('home')!.id).toBe(collect.id);
+    expect(board.collecting('home')!.body).toEndWith('- Tests auf Deutsch benennen.\n- Commits auf Englisch.');
+
+    // once it runs, the next rule starts a new card
+    k.request(collect.id);
+    expect(board.collecting('home')).toBeUndefined();
+    board.acceptProposal(board.proposePreference('Keine any-Typen.', {}, undefined, 'home'));
+    expect(board.collecting('home')!.id).not.toBe(collect.id);
+    expect(() => board.proposePreference('X.', {}, undefined, 'web')).toThrow();
+  });
+
   test('the learner sees the answer an input may overrule, and the text a card had before the owner wrote in it', async () => {
     const a = card('Export');
     k.learn(item(a.id), 'note', 'Nein, CSV mit Semikolon.', { overruled: { question: 'Trennzeichen?', answer: 'Komma.', by: 'koordinator' } });
@@ -834,6 +874,18 @@ describe('Rückschau', () => {
     const s = reviews()[0]!;
     for (const rule of ['Eins.', 'Zwei.', 'Drei.', 'Vier.']) s.call('propose', { rule, why: 'W.' });
     expect(texts('proposed')).toEqual(['Eins.', 'Zwei.', 'Drei.']);
+  });
+
+  test('it proposes a rule about a repository for its CLAUDE.md, and reads an accepted one as such', async () => {
+    const k1 = koordinator();
+    const a = card('A');
+    board.acceptProposal(board.proposePreference('Tests auf Deutsch.', { cardId: a.id }, undefined, 'home'));
+    for (let n = 0; n < 4; n++) k1.noticed();
+    await settle();
+    const s = reviews()[0]!;
+    expect(s.inbox[0]).toContain('the owner accepted the proposed rule "Tests auf Deutsch." for the CLAUDE.md of home');
+    s.call('propose', { rule: 'Keine any-Typen.', why: 'W.', repos: ['home'] });
+    expect(board.preferences('proposed')).toMatchObject([{ text: 'Keine any-Typen.', target: 'home', review: true }]);
   });
 });
 

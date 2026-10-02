@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import { type CardEvent, type Item, type Question, type Queue, START_ALL_HOLD_MS } from '../core/types';
+import { type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS } from '../core/types';
 import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { Utterance } from './db';
@@ -321,8 +321,6 @@ export class Koordinator {
     const history = this.history(since);
     if (!history.length) return Promise.resolve();
     const rules = this.o.board.preferences('active');
-    const open = this.o.board.preferences('proposed');
-    const rejected = this.o.board.preferences('rejected');
     let proposed = 0;
     return this.read(
       this.o.home,
@@ -330,16 +328,18 @@ export class Koordinator {
       (finish): AgentTool[] => [
         {
           name: 'propose',
-          description:
-            'Propose a rule to the owner: one short rule in German, and why (one short sentence in German, under 150 characters, naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts.',
-          schema: { rule: z.string(), why: z.string(), replaces: z.number().int().optional() },
-          run: ({ rule, why, replaces }) => {
+          description: `Propose a rule to the owner: one short rule in German, and why (one short sentence in German, under 150 characters, naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
+          schema: { rule: z.string(), why: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
+          run: ({ rule, why, replaces, repos }) => {
             const r = String(rule).trim().slice(0, 500);
             if (!r) return 'Empty rule ignored.';
             if (proposed >= REVIEW_PROPOSALS) return finish(`At most ${REVIEW_PROPOSALS} proposals. End your turn now.`);
-            if (this.o.board.preferences('proposed').some((p) => p.text === r)) return 'Already proposed.';
+            const targets = this.targets(repos);
+            if (typeof targets === 'string') return targets;
+            const fresh = targets.filter((t) => !this.o.board.preferences('proposed').some((p) => p.text === r && p.target === t));
+            if (!fresh.length) return 'Already proposed.';
             const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-            this.o.board.proposePreference(r, { review: true, quote: String(why ?? '') }, old?.id);
+            for (const t of fresh) this.o.board.proposePreference(r, { review: true, quote: String(why ?? '') }, old?.id, t);
             proposed++;
             return proposed < REVIEW_PROPOSALS ? 'Proposed.' : finish('Proposed. That was the last one; end your turn now.');
           },
@@ -348,9 +348,7 @@ export class Koordinator {
       ],
       [
         `What happened on the canvas since the last Rückschau, oldest first:\n${history.join('\n')}`,
-        rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
-        open.length ? `Proposals waiting for the owner (do not propose them again):\n${open.map((r) => `- ${r.text}`).join('\n')}` : '',
-        rejected.length ? `Proposals the owner rejected (do not propose them again):\n${rejected.map((r) => `- ${r.text}`).join('\n')}` : '',
+        ...this.rules(null),
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -394,13 +392,43 @@ export class Koordinator {
       })),
       ...b.decidedProposals(since).map((p) => ({
         at: p.at,
-        text: `the owner ${p.state === 'active' ? 'accepted' : 'rejected'} the proposed rule "${p.text}"${p.quote ? ` (its occasion: ${clip(p.quote, 200)})` : ''}`,
+        text: `the owner ${p.state === 'rejected' ? 'rejected' : 'accepted'} the proposed rule "${p.text}"${p.state === 'filed' ? ` for the CLAUDE.md of ${p.target}` : ''}${p.quote ? ` (its occasion: ${clip(p.quote, 200)})` : ''}`,
       })),
     ];
     return lines
       .sort((x, y) => x.at.localeCompare(y.at))
       .slice(-REVIEW_HISTORY)
       .map((l) => `- ${l.at.slice(0, 16).replace('T', ' ')} ${l.text}`);
+  }
+
+  /**
+   * What the learner and the Rückschau read about the rules: the canvas's repositories, the active
+   * rules (numbered, for `replaces`), the rules on their way into a CLAUDE.md, and the proposals
+   * waiting or rejected.
+   */
+  private rules(card: Item | null): string[] {
+    const b = this.o.board;
+    const repo = card?.repo ?? b.home;
+    const rules = b.preferences('active');
+    const where = (p: Preference) => (p.target ? ` (for the CLAUDE.md of ${p.target})` : '');
+    const list = (ps: Preference[]) => ps.map((p) => `- ${p.text}${where(p)}`).join('\n');
+    const [open, filed, rejected] = [b.preferences('proposed'), b.preferences('filed'), b.preferences('rejected')];
+    return [
+      `The canvas's repositories (ids for repos):\n${b.canvas.repos.map((r) => `- ${r.id}: ${r.name}, at ${r.path}${r.id === repo ? (card ? " (the card's)" : ' (the home repository)') : ''}`).join('\n')}`,
+      rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
+      filed.length ? `Rules the owner accepted for a repository's CLAUDE.md (in it or on their way; do not propose them again):\n${list(filed)}` : '',
+      open.length ? `Proposals waiting for the owner (do not propose them again):\n${list(open)}` : '',
+      rejected.length ? `Proposals the owner rejected (do not propose them again):\n${list(rejected)}` : '',
+    ];
+  }
+
+  /** The repositories a proposal is for (none: the preference memory), or why they are not the canvas's. */
+  private targets(repos: unknown): (string | undefined)[] | string {
+    const ids = Array.isArray(repos) ? [...new Set(repos.map(String).filter(Boolean))] : [];
+    const known = this.o.board.canvas.repos.map((r) => r.id);
+    const unknown = ids.filter((id) => !known.includes(id));
+    if (unknown.length) return `Unknown repository ${unknown.join(', ')}; the canvas has ${known.join(', ')}. Call propose again.`;
+    return ids.length ? ids : [undefined];
   }
 
   /** A reading session of the learner's, read-only: it ends with its turn, or once a tool calls `finish`. */
@@ -457,7 +485,6 @@ export class Koordinator {
   private distill(card: Item | null, kind: OwnerInput, text: string, context: InputContext, around: string[]): Promise<void> {
     const rules = this.o.board.preferences('active');
     const open = this.o.board.preferences('proposed');
-    const rejected = this.o.board.preferences('rejected');
     const { question, overruled, reply, before } = context;
     let proposed = false;
     return this.read(
@@ -466,16 +493,18 @@ export class Koordinator {
       (finish): AgentTool[] => [
         {
           name: 'propose',
-          description:
-            'Propose a lasting preference to the owner as one short rule in German. Pass replaces with the number of a recorded rule it refines or contradicts.',
-          schema: { rule: z.string(), replaces: z.number().int().optional() },
-          run: ({ rule, replaces }) => {
+          description: `Propose a lasting preference to the owner as one short rule in German. Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
+          schema: { rule: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
+          run: ({ rule, replaces, repos }) => {
             const r = String(rule).trim().slice(0, 500);
             if (!r) return finish('Empty rule ignored.');
             if (proposed) return finish('One proposal per input. End your turn now.');
-            if (open.some((p) => p.text === r)) return finish('Already proposed. End your turn now.');
+            const targets = this.targets(repos);
+            if (typeof targets === 'string') return targets;
+            const fresh = targets.filter((t) => !open.some((p) => p.text === r && p.target === t));
+            if (!fresh.length) return finish('Already proposed. End your turn now.');
             const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-            this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id);
+            for (const t of fresh) this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id, t);
             proposed = true;
             if (card) this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
             return finish('Proposed. End your turn now.');
@@ -493,9 +522,7 @@ export class Koordinator {
           before ? `Before the owner wrote in it, the card's text read:\n${before}` : '',
           `The owner's ${INPUTS[kind]}: ${text}`,
           reply ? `The Koordinator replied: ${reply}` : '',
-          rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
-          open.length ? `Proposals waiting for the owner (do not propose them again):\n${open.map((r) => `- ${r.text}`).join('\n')}` : '',
-          rejected.length ? `Proposals the owner rejected (do not propose them again):\n${rejected.map((r) => `- ${r.text}`).join('\n')}` : '',
+          ...this.rules(card),
         ]
           .filter(Boolean)
           .join('\n\n'),
@@ -891,10 +918,25 @@ Call schedule exactly once, with every workstream once, in the order they should
 - reason: one sentence in German for the owner: why it waits (the dependency, or where the changes collide), or, starting now, why it can run beside the others. The owner does not know the tags: name cards by their label or title.
 `.trim();
 
-const LEARN_SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's preference memory: short rules every agent follows, so the owner never has to say the same thing twice.
+/**
+ * Where a rule goes: the preference memory, for how agents work with the owner through Obeya, or a
+ * repository's CLAUDE.md, for anything about the repository. Shared by the learner and the Rückschau.
+ */
+const WHERE_RULES_GO = `
+A rule goes to one of two places:
+- The preference memory, for rules at the level of Obeya: how the agents work with the owner through Obeya, whatever the repository. What to ask the owner and what to decide alone, how many options a question offers, how to report, hand over and demo, what to decide in the owner's name and what not. Leave repos out.
+- A repository's CLAUDE.md, for anything about a repository: its conventions, product requirements, tools, how its code is written, tested and landed, the UI and its wording, and taste in code too, even when it holds in every repository. There it is versioned, colleagues see it, and Claude Code follows it outside Obeya as well. Pass repos: the repository it concerns (usually the card's), or every repository of the canvas when it holds in all of them. A worker writes it into the CLAUDE.md once the owner accepts it; until that has landed, no agent follows it. If the repository's CLAUDE.md or docs say it already (you can read them), propose nothing.
+`.trim();
 
-You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you, the Koordinator, in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting preference that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
+const REPOS_PARAM =
+  "repos: the ids of the repositories whose CLAUDE.md the rule belongs in (one proposal each); leave it out for a rule on how agents work with the owner through Obeya.";
+
+const LEARN_SYSTEM = `
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's rules, so the owner never has to say the same thing twice.
+
+You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you, the Koordinator, in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the canvas's repositories, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting rule that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
+
+${WHERE_RULES_GO}
 
 Signals for one:
 - It is phrased generally: "immer", "nie", "ab jetzt", "grundsätzlich", "jedes Mal", "bei so etwas".
@@ -903,7 +945,7 @@ Signals for one:
 - It overrules an answer given in the owner's name: the agent that answered lacked a rule.
 Not a preference: deciding the case at hand (an option, a name, a date, what this card should do), approving, asking how things stand, correcting a fact. Most of what the owner says is like that: then call nothing.
 
-Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in German, in the owner's terms and without the occasion ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
+Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in German, in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Abrechnungsänderungen bekommen immer das Codex-Review." for the repository with the billing); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
 `.trim();
 
 /** After how many of the owner's inputs the Rückschau runs, at most how many rules it proposes, and how much history it reads. */
@@ -915,7 +957,9 @@ const REVIEW_COUNT = 'review_inputs';
 const REVIEW_SINCE = 'review_since';
 
 const REVIEW_SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's preference memory: short rules every agent follows, so the owner never has to say the same thing twice.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's rules, so the owner never has to say the same thing twice.
+
+${WHERE_RULES_GO}
 
 This is the Rückschau. You get what happened on the canvas since the last one, oldest first: what the owner said and clicked (notes, answers, feedback, approvals, starts against your advice, cards and proposals they deleted or dismissed, commands they took back, rule proposals they accepted or rejected), and what the agents asked and handed over. Each thing the owner said was already read on its own; look for what only shows across several moments and cards:
 - the same correction or feedback on different cards;
@@ -926,7 +970,7 @@ This is the Rückschau. You get what happened on the canvas since the last one, 
 - commands taken back, and what the owner did instead.
 Clicks without words count here: what the owner does again and again says what they want as much as what they say.
 
-Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in German in the owner's terms and without the occasion ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); why, one short sentence in German for the owner (under 150 characters) naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
+Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in German in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Abrechnungsänderungen bekommen immer das Codex-Review." for the repository with the billing); why, one short sentence in German for the owner (under 150 characters) naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
 `.trim();
 
 /** How the Rückschau names who did something on a card, and what. */

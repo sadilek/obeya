@@ -70,6 +70,12 @@ const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
 /** Exchanges with the Koordinator its sheet shows. */
 const SHEET_TALK = 30;
 
+/** The card that collects accepted rules for a repository's CLAUDE.md, and the setting that names it, per repository. */
+const CLAUDE_MD_TITLE = 'CLAUDE.md ergänzen';
+const CLAUDE_MD_TASK =
+  'Der Owner hat diese Regeln für dieses Repo angenommen. Arbeite sie in die CLAUDE.md ein, passend zu dem, was dort steht (Abschnitt, Ton, Länge) und ohne Dopplungen; steht eine schon sinngemäß drin, schärfe nur die Stelle. Sonst nichts ändern. Statt einer Demo genügt in der Zusammenfassung der neue Wortlaut.';
+const CLAUDE_MD_SETTING = 'claude_md_card:';
+
 /** How long an untitled card of the owner's may exist before Obeya drops it on start. */
 const UNTITLED_GRACE_MS = 10 * 60_000;
 
@@ -538,13 +544,18 @@ export class Board {
     return id;
   }
 
-  /** A learned rule, or a learned change to the active rule `replaces`: it waits for the owner. */
-  proposePreference(text: string, occasion: { cardId?: string; quote?: string; review?: boolean }, replaces?: number): number {
+  /**
+   * A learned rule, or a learned change to the active rule `replaces`: it waits for the owner. With a
+   * `target` it is about that repository and belongs in its CLAUDE.md.
+   */
+  proposePreference(text: string, occasion: { cardId?: string; quote?: string; review?: boolean }, replaces?: number, target?: string): number {
     const clean = checkPreference(text);
+    if (target !== undefined) this.checkRepo(target);
     const id = this.store.addPreference(this.canvas.id, clean, occasion.cardId ?? null, {
       quote: occasion.quote?.trim().slice(0, 2000) || undefined,
       review: occasion.review,
       replaces,
+      target,
     });
     this.changed();
     return id;
@@ -556,17 +567,52 @@ export class Board {
     this.changed();
   }
 
-  /** The owner accepts a proposal, as it is or in their own words; a change takes the place of the rule it changes. */
-  acceptProposal(id: number, text?: string) {
+  /**
+   * The owner accepts a proposal, as it is or in their own words; a change takes the place of the
+   * rule it changes. `target` sets where it goes when the owner changed that: a repository, or
+   * `null` for the preference memory. A rule for a repository goes into its card „CLAUDE.md
+   * ergänzen“, which a worker writes it from into the CLAUDE.md; until then it applies to no agent.
+   */
+  acceptProposal(id: number, text?: string, target?: string | null) {
     const p = this.preferences('proposed').find((x) => x.id === id);
     if (!p) throw new BadRequest('unknownPreference', 'no such proposal');
     const clean = text === undefined ? p.text : checkPreference(text);
+    if (target) this.checkRepo(target);
+    const repo = target === undefined ? p.target : (target ?? undefined);
     this.store.db.transaction(() => {
       if (clean !== p.text) this.store.setPreference(this.canvas.id, id, clean);
       if (p.replaces !== undefined && this.preferences('active').some((x) => x.id === p.replaces)) this.store.setPreference(this.canvas.id, p.replaces, null);
-      this.store.decideProposal(this.canvas.id, id, 'active');
+      this.store.decideProposal(this.canvas.id, id, 'active', repo ?? null);
+      if (repo) this.collect(repo, clean);
     })();
     this.changed();
+  }
+
+  /**
+   * Adds an accepted rule to the repository's open card „CLAUDE.md ergänzen“: planned and not yet
+   * with the Koordinator. Without one, a new card collects it.
+   */
+  private collect(repo: string, rule: string) {
+    const open = this.collecting(repo);
+    if (open) {
+      this.store.update(open.id, { body: `${open.body.trimEnd()}\n- ${rule}` });
+      this.log(open.id, 'state', 'koordinator', `Regel aufgenommen: „${rule}“`);
+      return;
+    }
+    const card = this.create({ kind: 'feature', title: CLAUDE_MD_TITLE, body: `${CLAUDE_MD_TASK}\n\n- ${rule}`, repo, ...this.freeSpot() });
+    this.setSetting(`${CLAUDE_MD_SETTING}${repo}`, card.id);
+    this.log(card.id, 'state', 'koordinator', `Regel aufgenommen: „${rule}“`);
+  }
+
+  /** The repository's card „CLAUDE.md ergänzen“ while it still collects rules, if there is one. */
+  collecting(repo: string): Item | undefined {
+    const id = this.setting(`${CLAUDE_MD_SETTING}${repo}`);
+    const card = id ? this.item(id) : undefined;
+    return card && card.state === 'planned' && !card.queue && !card.archivedAt ? card : undefined;
+  }
+
+  private checkRepo(repo: string) {
+    if (!this.canvas.repos.some((r) => r.id === repo)) throw new BadRequest('invalid', 'unknown repository');
   }
 
   /** The owner rejects a proposal; it is kept, so the same one does not come back. */

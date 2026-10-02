@@ -225,6 +225,8 @@ export const MIGRATIONS = [
    ALTER TABLE cards ADD COLUMN built_on TEXT REFERENCES cards(id);`,
   // a video demo shared with colleagues on a page outside Obeya
   `ALTER TABLE cards ADD COLUMN share TEXT;`,
+  // a learned rule about a repository goes into its CLAUDE.md, not the preference memory
+  `ALTER TABLE preferences ADD COLUMN target TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -455,6 +457,7 @@ export class Store {
         quote: string | null;
         review: number;
         replaces: number | null;
+        target: string | null;
       }[]
     )
       .filter((r) => !states || states.includes(r.state))
@@ -466,6 +469,7 @@ export class Store {
         ...(r.quote ? { quote: r.quote } : {}),
         ...(r.review ? { review: true } : {}),
         ...(r.replaces !== null ? { replaces: r.replaces } : {}),
+        ...(r.target ? { target: r.target } : {}),
       }));
   }
 
@@ -473,13 +477,13 @@ export class Store {
     canvasId: string,
     text: string,
     cardId: string | null,
-    proposal?: { quote?: string; review?: boolean; replaces?: number },
+    proposal?: { quote?: string; review?: boolean; replaces?: number; target?: string },
   ): number {
     return (
       this.db
         .query(
-          `INSERT INTO preferences (canvas_id, text, card_id, created_at, state, quote, review, replaces)
-           VALUES ($c, $text, $cardId, $now, $state, $quote, $review, $replaces) RETURNING id`,
+          `INSERT INTO preferences (canvas_id, text, card_id, created_at, state, quote, review, replaces, target)
+           VALUES ($c, $text, $cardId, $now, $state, $quote, $review, $replaces, $target) RETURNING id`,
         )
         .get({
           c: canvasId,
@@ -490,6 +494,7 @@ export class Store {
           quote: proposal?.quote ?? null,
           review: proposal?.review ? 1 : 0,
           replaces: proposal?.replaces ?? null,
+          target: proposal?.target ?? null,
         }) as { id: number }
     ).id;
   }
@@ -503,12 +508,18 @@ export class Store {
     return r.changes > 0;
   }
 
-  /** Accepts or rejects an open proposal; returns whether there was one. */
-  decideProposal(canvasId: string, id: number, state: 'active' | 'rejected'): boolean {
+  /**
+   * Accepts or rejects an open proposal; returns whether there was one. Accepted, it becomes an
+   * active rule, or one filed for the repository `target`, whose CLAUDE.md it goes into.
+   */
+  decideProposal(canvasId: string, id: number, state: 'active' | 'rejected', target?: string | null): boolean {
     return (
       this.db
-        .query(`UPDATE preferences SET state = $state, decided_at = $now WHERE id = $id AND canvas_id = $c AND state = 'proposed' AND deleted_at IS NULL`)
-        .run({ id, c: canvasId, state, now: now() }).changes > 0
+        .query(
+          `UPDATE preferences SET state = $state, decided_at = $now, target = CASE WHEN $keep THEN target ELSE $target END
+           WHERE id = $id AND canvas_id = $c AND state = 'proposed' AND deleted_at IS NULL`,
+        )
+        .run({ id, c: canvasId, state: state === 'active' && target ? 'filed' : state, now: now(), keep: target === undefined, target: target ?? null }).changes > 0
     );
   }
 
@@ -605,12 +616,12 @@ export class Store {
   }
 
   /** Proposals the owner accepted or rejected after `since` (ISO time), oldest first. */
-  decidedProposals(canvasId: string, since: string): { at: string; text: string; state: 'active' | 'rejected'; quote?: string }[] {
+  decidedProposals(canvasId: string, since: string): { at: string; text: string; state: 'active' | 'rejected' | 'filed'; quote?: string; target?: string }[] {
     return (
       this.db
-        .query(`SELECT decided_at AS at, text, state, quote FROM preferences WHERE canvas_id = $c AND decided_at > $since ORDER BY decided_at`)
-        .all({ c: canvasId, since }) as { at: string; text: string; state: 'active' | 'rejected'; quote: string | null }[]
-    ).map(({ quote, ...r }) => ({ ...r, ...(quote ? { quote } : {}) }));
+        .query(`SELECT decided_at AS at, text, state, quote, target FROM preferences WHERE canvas_id = $c AND decided_at > $since ORDER BY decided_at`)
+        .all({ c: canvasId, since }) as { at: string; text: string; state: 'active' | 'rejected' | 'filed'; quote: string | null; target: string | null }[]
+    ).map(({ quote, target, ...r }) => ({ ...r, ...(quote ? { quote } : {}), ...(target ? { target } : {}) }));
   }
 
   /**

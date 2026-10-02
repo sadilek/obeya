@@ -251,9 +251,12 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),
       },
       '/api/c/:canvas/preferences/:id/accept': {
-        POST: on(async (c, req) => click(c, c.board.acceptProposal(Number(req.params.id), ((await req.json().catch(() => ({}))) as { text?: string }).text))),
+        POST: on(async (c, req) => {
+          const { text, target } = (await req.json().catch(() => ({}))) as { text?: string; target?: string | null };
+          return click(c, c.acceptRule(Number(req.params.id), text, target));
+        }),
       },
-      '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => click(c, c.board.rejectProposal(Number(req.params.id)))) },
+      '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => click(c, c.rejectRule(Number(req.params.id)))) },
       '/api/c/:canvas/ws': (req, server) =>
         byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID() } })
           ? undefined
