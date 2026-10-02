@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, Queue, RestartReason } from '../core/types';
+import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, Queue, OwnerHold, RestartReason } from '../core/types';
 
 export const t = {
   kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp' },
@@ -230,7 +230,11 @@ export const t = {
     } satisfies Record<ConfigProblemCode, string>,
   },
   restart: {
-    pill: (n: number) => (n === 1 ? 'Neustart wartet auf 1 Agenten' : `Neustart wartet auf ${n} Agenten`),
+    pill: (n: number, owner: OwnerHold[]) => {
+      const agents = n === 1 ? '1 Agenten' : `${n} Agenten`;
+      const you = owner.length === 2 ? 'dein Video und Diktat' : owner[0] === 'video' ? 'dein Video' : 'dein Diktat';
+      return `Neustart wartet auf ${!owner.length ? agents : n ? `${agents} und ${you}` : you}`;
+    },
     until: (time: string) => `spätestens ${time}`,
     reason: {
       code: 'Auf main liegt neuer Code, mit dem Obeya neu startet.',
@@ -238,10 +242,17 @@ export const t = {
     } satisfies Record<RestartReason, string>,
     waits: 'Die Agenten wissen Bescheid und pausieren beim nächsten sicheren Punkt. Obeya wartet noch auf:',
     elsewhere: (n: number) => (n === 1 ? '1 Agent auf einer anderen Leinwand' : `${n} Agenten auf anderen Leinwänden`),
+    owner: {
+      video: 'Du siehst ein Demo-Video: Obeya startet neu, sobald du es anhältst oder es zu Ende ist.',
+      voice: 'Du diktierst: Obeya startet neu, sobald dein Diktat verarbeitet ist und nicht mehr zurückgenommen werden kann.',
+    } satisfies Record<OwnerHold, string>,
+    kept: 'Was du offen hast, ist nach dem Neustart wieder offen, an derselben Stelle.',
     deadline: (time: string) => `Um ${time} startet Obeya auf jeden Fall neu.`,
+    deadlineOwner: (time: string) => `Um ${time} startet Obeya neu, auch wenn Agenten noch arbeiten, aber nicht mitten in deinem Video oder Diktat.`,
     now: 'Jetzt neu starten',
     nowRisk:
       'Ohne zu warten: Die Agenten werden mitten im Schritt unterbrochen. Was sie gerade laufen lassen (Tests, Builds, gestartete Server, eine Demo-Aufnahme), wird gestoppt. Nach dem Neustart machen sie in ihrer Sitzung weiter und erfahren davon, müssen Abgebrochenes aber neu anstoßen; eine halb fertige Änderung liegt bis dahin unfertig im Workspace.',
+    nowOwner: 'Ohne zu warten: Dein Video oder Diktat wird unterbrochen. Was offen war, ist danach wieder offen, das Video an derselben Stelle.',
     going: 'Obeya startet neu …',
   },
   archive: {

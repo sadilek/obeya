@@ -385,7 +385,10 @@ export interface ConfigView {
 /** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved. */
 export type RestartReason = 'code' | 'config';
 
-/** A restart that waits for workers to finish their turns, as one canvas sees it. */
+/** What the owner does in an open page that a restart would cut off: watching a demo video, dictating. */
+export type OwnerHold = 'video' | 'voice';
+
+/** A restart that waits for workers to finish their turns, or for the owner, as one canvas sees it. */
 export interface PendingRestart {
   reason: RestartReason;
   /** When it was due, and when it goes ahead however busy the workers are (ms since the epoch). */
@@ -395,7 +398,12 @@ export interface PendingRestart {
   cards: string[];
   /** How many workers on other canvases it waits for. */
   elsewhere: number;
+  /** What the owner does in some open page that it waits for, past the deadline too. */
+  owner: OwnerHold[];
 }
+
+/** UI → server over the WebSocket: what the owner does in this page that a restart waits for (sent on every change). */
+export type ClientMessage = { type: 'hold'; hold: OwnerHold[] };
 
 /** Server → UI over the WebSocket. */
 export type ServerMessage =

@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { CardAction, CardEvent, CardPatch, Demo, Item, Question, RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
-import { ApiError, api, at, onCardEvent } from './api';
+import { ApiError, api, at, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
 import { Inline, plain, shortTitle } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
@@ -549,6 +549,7 @@ function DemoView({
     const h = setTimeout(() => firstOpening(localStorage, cardId, demo) && video.current?.play().catch(() => {}), 300);
     return () => clearTimeout(h);
   }, []);
+  useEffect(() => () => holdRestart('video', null), []);
   const current = demo.chapters.reduce((cur, [at], i) => (at <= now + 0.05 ? i : cur), 0);
   return (
     <>
@@ -557,7 +558,18 @@ function DemoView({
           // the worker's page: scripts run, but in an origin of its own, away from Obeya's API
           <iframe className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} />
         ) : (
-          <video ref={video} controls preload="metadata" poster={src('poster.jpg')} src={src('demo.mp4')} onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}>
+          <video
+            ref={video}
+            controls
+            preload="metadata"
+            poster={src('poster.jpg')}
+            src={src('demo.mp4')}
+            onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
+            // a restart waits while the owner watches
+            onPlay={() => holdRestart('video', 'video')}
+            onPause={() => holdRestart('video', null)}
+            onEnded={() => holdRestart('video', null)}
+          >
             <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
           </video>
         )}

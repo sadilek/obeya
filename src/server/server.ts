@@ -4,7 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type CanvasInfo, type CardAction, type CardPatch, needsYou, type NewCard, type PendingRestart, type ServerMessage } from '../core/types';
+import { type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, needsYou, type NewCard, type PendingRestart, type ServerMessage } from '../core/types';
 import index from '../ui/index.html';
 import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
@@ -24,7 +24,7 @@ export interface Voice {
 export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false, config?: Config, restarter?: Restarter) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
-  const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string }>>>(canvases.map((c) => [c.id, new Set()]));
+  const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string; page: string }>>>(canvases.map((c) => [c.id, new Set()]));
   /** Spoken texts by id, rendered while the owner already reads them. */
   const speech = new Map<string, Promise<Uint8Array<ArrayBuffer> | null>>();
   /** Starts speaking `text` and returns where the browser fetches it. */
@@ -39,7 +39,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     const due = restarter?.due();
     if (!due) return null;
     const here = due.waiting.filter((w) => w.canvas === id);
-    return { reason: due.reason, since: due.since, deadline: due.deadline, cards: here.map((w) => w.card), elsewhere: due.waiting.length - here.length };
+    return { reason: due.reason, since: due.since, deadline: due.deadline, cards: here.map((w) => w.card), elsewhere: due.waiting.length - here.length, owner: due.owner };
   };
   /** How many cards on each canvas need the owner: each canvas's switcher points to the others. */
   const counted = (c: CanvasRuntime) => c.board.snapshot().items.filter(needsYou).length;
@@ -224,13 +224,13 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),
       },
       '/api/c/:canvas/ws': (req, server) =>
-        byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas } })
+        byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID() } })
           ? undefined
           : new Response('WebSocket expected', { status: 400 }),
     },
     fetch: () => new Response('Not found', { status: 404 }),
     websocket: {
-      data: {} as { canvas: string },
+      data: {} as { canvas: string; page: string },
       open: (ws) => {
         const c = byId.get(ws.data.canvas);
         if (!c) return ws.close();
@@ -240,8 +240,17 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         ws.send(JSON.stringify({ type: 'restart', restart: pending(c.id) } satisfies ServerMessage));
         ws.send(waitingMessage());
       },
-      close: (ws) => void sockets.get(ws.data.canvas)?.delete(ws),
-      message: () => {},
+      close: (ws) => {
+        sockets.get(ws.data.canvas)?.delete(ws);
+        restarter?.hold(ws.data.page);
+      },
+      // the owner watching a demo video or dictating in this page holds a restart off
+      message: (ws, text) => {
+        try {
+          const msg = JSON.parse(String(text)) as ClientMessage;
+          if (msg.type === 'hold' && Array.isArray(msg.hold)) restarter?.hold(ws.data.page, msg.hold.filter((h) => h === 'video' || h === 'voice'));
+        } catch {}
+      },
     },
   });
 }

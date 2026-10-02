@@ -3,7 +3,7 @@
 // when that is due.
 
 import { dirname } from 'node:path';
-import type { RestartReason } from '../core/types';
+import type { OwnerHold, RestartReason } from '../core/types';
 import { GIT } from './workspaces';
 
 /** The exit code that asks the supervisor for a fresh server. */
@@ -14,11 +14,16 @@ export const RESTART_FROM_FILE = 76;
 /** How long a restart waits for workers to finish their turns before it cuts them off. */
 export const RESTART_PATIENCE_MS = 15 * 60_000;
 
-/** Calls `fn` once `busy` is false, or after `patienceMs` whatever it says. */
-export function whenIdle(busy: () => boolean, fn: () => void, patienceMs = RESTART_PATIENCE_MS, intervalMs = 2000): () => void {
+/**
+ * Calls `fn` once `busy` is false, or after `patienceMs` whatever it says; never while `held` (the
+ * owner watching a video, say), which has no deadline.
+ */
+export function whenIdle(busy: () => boolean, fn: () => void, patienceMs = RESTART_PATIENCE_MS, intervalMs = 2000, held: () => boolean = () => false): () => void {
   const deadline = Date.now() + patienceMs;
   const check = () => {
-    if (busy() && Date.now() < deadline) return;
+    // both are asked every time: `busy` and `held` keep what the restart shows current
+    const b = busy();
+    if (held() || (b && Date.now() < deadline)) return;
     clearInterval(timer);
     fn();
   };
@@ -33,12 +38,13 @@ export interface Busy {
   card: string;
 }
 
-/** A restart that is due and waits for the workers it would cut off. */
+/** A restart that is due and waits for the workers it would cut off, and for the owner. */
 export interface Due {
   reason: RestartReason;
   since: number;
   deadline: number;
   waiting: Busy[];
+  owner: OwnerHold[];
 }
 
 export interface RestarterOptions {
@@ -51,14 +57,17 @@ export interface RestarterOptions {
 }
 
 /**
- * Starts the server again once no worker is in the middle of a turn (`whenIdle`), and tells while
- * it waits: for whom, and until when at most. The owner can have it go ahead at once.
+ * Starts the server again once no worker is in the middle of a turn (`whenIdle`) and the owner
+ * neither watches a demo video nor dictates in an open page, and tells while it waits: for whom,
+ * and until when at most. The owner can have it go ahead at once.
  */
 export class Restarter {
   private current: Due | null = null;
   private gone = false;
   private stopWaiting = () => {};
   private listeners = new Set<() => void>();
+  /** What the owner does in each open page (by connection), as the page last said. */
+  private holds = new Map<string, OwnerHold[]>();
 
   constructor(private o: RestarterOptions) {}
 
@@ -72,14 +81,26 @@ export class Restarter {
     return () => this.listeners.delete(fn);
   }
 
+  /** What the owner does in the open page `page` that a restart waits for; none, or `[]`, when the page closes. */
+  hold(page: string, what: OwnerHold[] = []) {
+    if (what.length) this.holds.set(page, what);
+    else this.holds.delete(page);
+    const owner = this.owner();
+    if (this.current && owner.join() !== this.current.owner.join()) {
+      this.current = { ...this.current, owner };
+      this.emit();
+    }
+  }
+
   /** Asks for a restart; one that is due already covers the next reason too. */
   request(reason: RestartReason) {
     if (this.current || this.gone) return;
     const patience = this.o.patienceMs ?? RESTART_PATIENCE_MS;
     const since = Date.now();
     let waiting = this.o.busy();
-    if (!waiting.length) return this.go();
-    this.current = { reason, since, deadline: since + patience, waiting };
+    const owner = this.owner();
+    if (!waiting.length && !owner.length) return this.go();
+    this.current = { reason, since, deadline: since + patience, waiting, owner };
     this.emit();
     this.stopWaiting = whenIdle(
       () => {
@@ -94,6 +115,7 @@ export class Restarter {
       () => this.go(),
       patience,
       this.o.intervalMs,
+      () => this.holds.size > 0,
     );
   }
 
@@ -102,6 +124,11 @@ export class Restarter {
     if (!this.current) return false;
     this.go();
     return true;
+  }
+
+  private owner(): OwnerHold[] {
+    const all = new Set([...this.holds.values()].flat());
+    return (['video', 'voice'] as const).filter((h) => all.has(h));
   }
 
   private go() {
