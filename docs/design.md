@@ -516,7 +516,8 @@ the owner's language (`src/core/locale.ts`).
   token are in `~/.obeya/team-share/cloudflare.env`. Pages serves no byte ranges (a range request
   gets the whole file with 200), and a browser cannot seek in a video streamed that way: the
   chapters and the progress bar jumped back to the start. The page therefore asks for a range
-  first and, getting the whole file, plays the video from memory. It refuses files over 25 MiB (the Pages limit)
+  first and, getting the whole file, plays the video from memory. Each call writes every page
+  afresh from its `meta.json`, so pages shared earlier take a fixed template along. It refuses files over 25 MiB (the Pages limit)
   and a site that lacks a page Obeya has as shared (a lost directory would take them offline), and
   puts the directory back when a deployment fails. The owner sets it up once in Cloudflare (done
   2026-10-02), in this order: the Pages project `team-demos` (under Pages: the dashboard's plain
