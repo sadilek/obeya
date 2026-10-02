@@ -177,11 +177,14 @@ export function PushToTalk({ phase, level, flat, target, shots, onDown }: { phas
   );
 }
 
-/** Plays a spoken confirmation; the previous one stops. */
+/** Plays a spoken confirmation; the previous one stops. Nothing is said while a demo video plays. */
 let playing: HTMLAudioElement | null = null;
 export function play(audio: string | undefined) {
   playing?.pause();
-  if (!audio) return;
+  if (!audio || videoPlaying()) return;
   playing = new Audio(audio);
   playing.play().catch(() => {});
 }
+const videoPlaying = () => [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended);
+// a video the owner starts silences what is being said ('play' does not bubble, so listen on the way down)
+addEventListener('play', (e) => e.target instanceof HTMLVideoElement && playing?.pause(), true);
