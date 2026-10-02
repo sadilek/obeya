@@ -902,7 +902,7 @@ function Canvas({
                 all={items}
                 repos={snapshot.canvas.repos}
                 parent={openItem.parent ? (items.find((p) => p.id === openItem.parent) ?? archived.find((p) => p.id === openItem.parent)) : undefined}
-                from={openItem.from ? items.find((p) => p.id === openItem.from) : undefined}
+                from={openItem.from ? (items.find((p) => p.id === openItem.from) ?? archived.find((p) => p.id === openItem.from)) : undefined}
                 onReadPlan={(project, mark) => readPlan(project, { mark })}
                 onEdit={onEdit}
                 flush={flushEdit}

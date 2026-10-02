@@ -262,6 +262,26 @@ export class Workspaces {
   }
 
   /**
+   * Hands card `from`'s workspace and branch to card `to`, which goes on with the work there (an
+   * idea built on its prototype). The branch is renamed to `rename` when that name is free; the
+   * worktree keeps its directory. Returns the workspace and the branch as they are now.
+   */
+  transfer(from: string, to: string, branch: string, rename?: string): { path: string; branch: string } {
+    const path = this.leasedBy(from);
+    if (!path) throw new WorkspaceError('the card has no workspace', 'noWorkspace');
+    if (this.leasedBy(to)) throw new WorkspaceError('the card it goes to has a workspace of its own');
+    // in a worktree the branch lives in the Obeya checkout, in a clone in the clone
+    const repo = this.o.mode === 'worktrees' ? this.o.repoPath : path;
+    let now = branch;
+    if (rename && rename !== branch && !git(repo, 'branch', '--list', rename)) {
+      git(repo, 'branch', '-m', branch, rename);
+      now = rename;
+    }
+    this.store.setLease(path, to);
+    return { path, branch: now };
+  }
+
+  /**
    * What the card's branch changes so far, committed or not: each file relative to the repository
    * root, with the changed line ranges and git's function context, so a judge can tell whether two
    * cards edit the same place. A new file has no ranges.

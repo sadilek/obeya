@@ -126,7 +126,9 @@ export const t = {
     notDone: 'Archivieren lässt sich nur eine eigene Karte, die live ist, oder eine verworfene Idee.',
     notArchived: 'Die Karte liegt nicht mehr im Archiv.',
     notIdea: 'Die Karte ist keine Idee (mehr).',
-    prototypeRunning: 'Für diese Idee läuft schon ein Prototyp.',
+    prototypeRunning: 'Für diese Idee liegt noch ein Prototyp auf der Leinwand.',
+    notPrototype: 'Die Karte ist kein Prototyp (mehr).',
+    prototypeEnded: 'Ein verworfener oder gebauter Prototyp bleibt im Archiv. Für einen neuen Versuch: an der Idee einen neuen Prototyp bauen lassen.',
     nothingToStart: 'Alle Workstreams laufen schon oder liegen beim Koordinator.',
     landDirty: 'Nicht gelandet: Im Workspace liegen noch nicht committete Änderungen. Der Agent kümmert sich darum; danach landet die Arbeit ohne neue Freigabe.',
     landConflict: 'Nicht gelandet: Beim Rebase auf main gab es Konflikte. Der Agent löst sie; danach landet die Arbeit ohne neue Freigabe.',
@@ -275,7 +277,7 @@ export const t = {
   archive: {
     button: 'Archiv',
     kind: 'Archiv',
-    title: 'Erledigte Karten, Projekte und verworfene Ideen',
+    title: 'Erledigte Karten, Projekte, verworfene Ideen und Prototypen',
     hint: 'Zuletzt archivierte oben. Ein Klick öffnet die Karte.',
     empty: 'Noch nichts archiviert.',
     archive: 'Archivieren',
@@ -317,7 +319,7 @@ export const t = {
     build: 'So bauen',
     planDoc: 'Als Projekt planen',
     prototype: 'Prototyp bauen lassen',
-    prototypePlaceholder: 'Was soll der Prototyp zeigen? (leer: die Idee, wie sie steht)',
+    prototypePlaceholder: 'Der Ansatz in ein paar Worten, dann was der Prototyp zeigen soll. Leer: die Idee, wie sie steht.',
     prototypeGo: 'Prototyp starten',
     park: 'Parken',
     drop: 'Verwerfen',
@@ -327,12 +329,27 @@ export const t = {
     dropped: 'Idee verworfen. Die Karte bleibt mit ihrem Stand liegen, bis du sie archivierst.',
     prototyped: 'Ein Agent baut einen Wegwerf-Prototyp.',
     prototypeDemo: 'Prototyp',
-    prototypeKept: 'Der Prototyp landet nie; die Demo dient nur der Entscheidung.',
+    prototypes: 'Prototypen',
+    prototypeKept: 'Ein Prototyp landet nie selbst. Überzeugt einer, wird die Idee auf seinem Branch gebaut.',
+    prototypeNoDemo: 'Noch keine Demo.',
     reopen: 'Wer weiterredet, nimmt die Idee wieder auf.',
     makeIdea: 'Erst besprechen',
-    prototypeOf: (title: string) => `Wegwerf-Prototyp für die Idee „${title}“. Er landet nie.`,
-    discard: 'Prototyp verwerfen',
-    discarded: 'Prototyp verworfen; die Demo bleibt bei der Idee.',
+    prototypeOf: (title: string) => `Wegwerf-Prototyp für die Idee „${title}“. Er landet nie selbst: Verwerfen legt ihn ins Archiv, „Diesen Prototyp bauen“ baut die Idee auf seinem Branch.`,
+    discard: 'Verwerfen',
+    discarded: 'Prototyp verworfen; er liegt mit seiner Demo im Archiv.',
+    buildPrototype: 'Diesen Prototyp bauen',
+    builtPrototype: (idea: string) => `Die Idee „${idea}“ wird auf diesem Prototyp gebaut; ihre anderen Prototypen sind verworfen.`,
+    buildProposal: 'Der Agent schlägt vor, die Idee auf diesem Prototyp zu bauen',
+    acceptBuild: 'Annehmen: so bauen',
+    /** On the canvas card of a prototype whose worker proposes building the idea on it. */
+    proposesBuild: 'Vorschlag: so bauen',
+    /** An archived prototype, how it ended. */
+    ended: { discarded: 'Prototyp · verworfen', built: 'Prototyp · gebaut' },
+    endedLong: {
+      discarded: (idea: string) => `Verworfener Prototyp der Idee „${idea}“. Sein Code ist weg; Demo, Zusammenfassung und Log bleiben hier. Ein neuer Versuch ist ein neuer Prototyp.`,
+      built: (idea: string) => `Gebaut als Idee „${idea}“: Die Idee wird auf dem Branch dieses Prototyps gebaut.`,
+    },
+    builtOn: (title: string) => `Gebaut auf dem Prototyp „${title}“; sein Branch ist der dieser Karte.`,
   },
   shots: {
     attach: 'Screenshot anhängen – oder mit ⌘V einfügen oder hineinziehen',
@@ -347,8 +364,10 @@ export const t = {
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; finishing?: boolean }) =>
-  i.finishing && i.state === 'live'
+export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; finishing?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
+  i.prototypeEnd
+    ? t.idea.ended[i.prototypeEnd]
+    : i.finishing && i.state === 'live'
     ? t.finishing
     : i.idea
     ? i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking

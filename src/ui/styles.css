@@ -266,6 +266,11 @@ textarea.p-body:focus { border-color: var(--muted); }
 .idea-talk .talk { flex: 1; min-height: 0; max-height: none; max-width: none; }
 .idea-talk .composer { margin-top: 10px; max-width: none; }
 .question.brief { border-color: var(--idea); background: color-mix(in srgb, var(--idea) 6%, transparent); }
+.prototype-demo { margin-top: 10px; }
+.prototype-demo > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.prototype-demo > summary .hint { font-weight: 400; }
+.prototype-demo[open] > summary { margin-bottom: 8px; }
+.question.proposal { border-style: dashed; border-color: var(--proposal); }
 .question.brief .p-lead { margin-top: 6px; font-size: 14px; }
 .question.brief .p-list { margin-top: 4px; }
 .talk { background: var(--chip); border-radius: 12px; padding: 12px 14px; overflow: auto;

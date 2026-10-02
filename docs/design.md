@@ -82,19 +82,36 @@ An idea is thought through on its card before anything is planned; no worker run
    result: whoever opens the card later reads the brief. The two stand side by side and never say
    the same: findings, variants and questions go into the brief, and a reply only carries the
    turn (what changed in the brief, which open question is next).
-4. A prototype ("Prototyp bauen lassen"), when talking is not enough: a worker builds a throwaway one in its own workspace
-   and records a demo, which shows on the idea; the exploration agent hears what it found. While
-   it is built, the idea no longer needs the owner; the agent's reply to its result makes it their turn again. The
-   prototype never lands and does not count for collisions; approving it discards workspace and branch.
+4. A prototype ("Prototyp bauen lassen"), when talking is not enough: a worker builds a throwaway one in its own workspace,
+   on a card of its own below the idea, and records a demo. Several may run side by side, one per
+   approach; each carries its approach in its title ("Prototyp: Logo – Wortmarke", the first words of
+   what the owner asked it to show). The idea shows the demos of all its prototypes, each under its
+   title, and its exploration agent hears what each found. While one is built, the idea no longer
+   needs the owner; the agent's reply to its result makes it their turn again. A prototype's
+   worker asks on its own card, and the questions with the owner's answers also go to the
+   exploration agent, which takes them into the brief without replying, so the idea does not ask
+   them again. It makes no cards: instead of `propose_card` it has `propose_build`, a proposal on
+   its card to build the idea on it. A prototype never lands itself and does not count for
+   collisions. It ends in one of two ways, and either way its card goes into the archive with log,
+   demo and summary ("Prototyp · verworfen" or "Prototyp · gebaut"), never to come back: a new
+   attempt is a new prototype. "Verwerfen" (also approving or deleting it) throws its workspace and
+   branch away, whatever its state; "Diesen Prototyp bauen" (or accepting its worker's proposal)
+   builds the idea on it, see 5.
 5. Deciding: "So bauen" makes the brief the card's task and starts it at once, through the
-   Koordinator like "Agent starten" (it waits only if it would likely conflict with running work). "Als Projekt planen" starts a
+   Koordinator like "Agent starten" (it waits only if it would likely conflict with running work).
+   "Diesen Prototyp bauen", on a prototype, does the same on that prototype's branch: its workspace
+   and branch (renamed for the idea) become the idea's, whose worker hears that the branch holds a
+   throwaway prototype, to take over what carries and bring it to production quality (tests,
+   checks, docs, shortcuts removed), with the prototype's handover and the owner's answers on it.
+   The decision log says "So bauen, auf Prototyp „…“". Either way the idea's other prototypes are
+   discarded, so one card remains. "Als Projekt planen" starts a
    worker on the idea's card the same way, which keeps its title and shows as "Idee → Projekt": it
    writes a plan doc with workstreams, which lands like any change (Acme: a PR). The project then
    takes the idea's place on the canvas (cards it would cover move aside, by as much as it outgrows
    the idea) and links back to it; the idea goes to the archive once its
    worker is done (put back, it stays). "Parken" and "Verwerfen" leave the card with its brief; talking
-   to it opens it again. A dropped idea can be archived ("Archivieren", not while a prototype for
-   it runs): in the archive it shows its brief and conversation read-only and can go back to its
+   to it opens it again. A dropped idea can be archived ("Archivieren", not while a prototype of
+   it is on the canvas): in the archive it shows its brief and conversation read-only and can go back to its
    place, where talking to it opens it again. Decisions from the conversation go into the decision log; lasting
    preferences are learned by the Koordinator as before.
 
@@ -124,9 +141,11 @@ An idea is thought through on its card before anything is planned; no worker run
    session ends.
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card or
    its archive button on the canvas, shown while the pointer is on it, or all finished ones at
-   once in the archive). The archive (button or `A`) lists archived cards
+   once in the archive), or when a prototype ends (discarded or built; Ideas, 4). The archive
+   (button or `A`) lists archived cards
    by day, the most recently archived first, as small cards on a timeline with the time they were
-   archived; one unfolds from its card as on the canvas and can go back to the place it had.
+   archived; one unfolds from its card as on the canvas and can go back to the place it had. An
+   ended prototype cannot: it shows, read-only, how it ended, its demo, summary and log.
 7. A project ends when its plan doc goes (done, deleted): it moves into the
    archive with its workstreams, which are not listed on their own. Its sheet then shows, read-only,
    the goal and the workstreams as the doc last stood; each workstream unfolds with its log and demo.
@@ -343,7 +362,7 @@ the owner's language (`src/core/locale.ts`).
   the transcript as speech that may be misheard and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
   approve, accept, dismiss, cut, stop, remember; on ideas: discuss, build, plan doc, prototype,
-  park, drop),
+  park, drop; on prototypes: build on it, discard),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
@@ -425,7 +444,7 @@ Persistent (SQLite): canvases, cards (kind, state, position, parent; agent sessi
 branch, status line, open question or review summary (with the reason when there is no demo), the card it came from (a proposal's
 source, a follow-up's card), estimated scope, queue,
 when archived, the pull request (link, checks, the comments, failed checks and conflict already
-passed on), an idea's status, brief and open questions, a prototype's idea, landed work whose worker still
+passed on), an idea's status, brief and open questions, a prototype's idea, how it ended and its worker's proposal to build on it, the prototype an idea is built on, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
 work added),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
@@ -535,6 +554,11 @@ the repository; the copy on the project is only for the archive).
   ideas alone. A workstream stays with its
   project, where a delivered one is already a chip, and goes into the archive with it. Archiving
   keeps the card's position, demo and log.
+- Prototypes stay cards of their own, and several may run for one idea (2026-10-02): parallel
+  approaches are to be seen side by side, not hidden inside the idea. The one that convinces is not
+  thrown away and rebuilt from `main`: the idea is built on its branch, so its commits go into the
+  branch's history, and the worker's brief has to keep prototype quality from landing as it is.
+  A discarded prototype keeps its demo, log and summary in the archive but not its code.
 - A project links the idea it came from by what the idea's landed work added to the plan directory,
   not by title or time, and shows the decisions of both.
 - Obeya restarts itself for new code on its own checkout instead of hot reloading: a restart is a

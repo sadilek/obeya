@@ -118,6 +118,7 @@ export class CanvasRuntime {
             : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
         },
         onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
+        onPrototypeAnswer: (prototype, question, answer, by) => this.prototypeAnswered(prototype, question, answer, by),
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
         imageFiles,
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
@@ -229,14 +230,19 @@ export class CanvasRuntime {
         return this.shelve(cardId, a.action);
       case 'prototype':
         return this.prototype(cardId, text.trim());
+      case 'buildPrototype':
+        return this.buildOnPrototype(cardId);
+      case 'discard':
+        return this.repoOf(this.prototypeCard(cardId)).workers.endPrototype(cardId, 'discarded');
       default:
         throw new BadRequest('invalid', 'unknown action');
     }
   }
 
-  /** Deletes a card of the owner's, stopping its worker first. */
+  /** Deletes a card of the owner's, stopping its worker first; a prototype is discarded into the archive instead. */
   remove(cardId: string) {
-    const { state, landed, workspace } = this.board.row(cardId);
+    const { state, landed, workspace, prototype_of } = this.board.row(cardId);
+    if (prototype_of) return this.repoOf(cardId).workers.endPrototype(cardId, 'discarded');
     if (state === 'working' || state === 'waiting' || (landed && workspace)) this.repoOf(cardId).workers.stop(cardId);
     if (state === 'idea') this.explorers.close(cardId);
     this.board.remove(cardId);
@@ -244,18 +250,42 @@ export class CanvasRuntime {
 
   // ---------------------------------------------------------------- ideas
 
-  /** The idea is built as it stands: its brief becomes the card's task, and the card goes to the Koordinator to start. */
+  /**
+   * The idea is built as it stands: its brief becomes the card's task, and the card goes to the
+   * Koordinator to start. A prototype still running for it is discarded: what is built now is the brief.
+   */
   private build(cardId: string) {
     const card = this.ideaCard(cardId);
-    const { brief } = this.board.idea(cardId);
-    this.explorers.close(cardId);
-    this.board.work(cardId, { state: 'planned', ...(brief.trim() ? { body: brief.trim() } : {}) });
-    // the screenshots the owner showed in the discussion belong to what is built
-    const shown = this.board.events(cardId).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
-    if (shown.length) this.addTaskImages(cardId, shown);
-    this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'So bauen, wie der Stand der Idee sagt.', by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', 'So bauen: Der Stand der Idee ist der Auftrag.');
+    this.decided(card, { answer: 'So bauen, wie der Stand der Idee sagt.', log: 'So bauen: Der Stand der Idee ist der Auftrag.' });
     this.koordinator.request(cardId);
+  }
+
+  /**
+   * The idea is built on this prototype: the prototype's workspace and branch become the idea's,
+   * whose worker goes on from there with the brief, the prototype's handover and the owner's answers
+   * on it. The prototype goes into the archive as built, the idea's other prototypes as discarded.
+   */
+  private buildOnPrototype(prototypeId: string) {
+    const prototype = this.prototypeCard(prototypeId);
+    const idea = this.ideaCard(prototype.prototypeOf!);
+    const { workers } = this.repoOf(prototype);
+    const { path, branch } = workers.buildOn(prototype.id, idea);
+    this.board.work(idea.id, { workspace: path, branch, built_on: prototype.id });
+    this.decided(idea, { answer: `So bauen, auf Prototyp „${prototype.title}“.`, log: `So bauen, auf dem Prototyp „${prototype.title}“: Sein Branch ist jetzt der dieser Karte.` });
+    this.koordinator.request(idea.id);
+  }
+
+  /** The idea is decided for building: its agent's conversation ends, the brief becomes the task, the other prototypes are discarded. */
+  private decided(idea: Item, how: { answer: string; log: string }) {
+    const { brief } = this.board.idea(idea.id);
+    this.explorers.close(idea.id);
+    for (const p of this.board.snapshot().items.filter((i) => i.prototypeOf === idea.id)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
+    this.board.work(idea.id, { state: 'planned', ...(brief.trim() ? { body: brief.trim() } : {}) });
+    // the screenshots the owner showed in the discussion belong to what is built
+    const shown = this.board.events(idea.id).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
+    if (shown.length) this.addTaskImages(idea.id, shown);
+    this.board.decide({ project_id: null, card_id: idea.id, question: `Idee „${idea.title}“: wie weiter?`, answer: how.answer, by: 'owner' });
+    this.board.log(idea.id, 'state', 'owner', how.log);
   }
 
   /**
@@ -292,12 +322,18 @@ export class CanvasRuntime {
     this.board.log(cardId, 'state', 'owner', how === 'park' ? 'Geparkt.' : 'Verworfen.');
   }
 
-  /** A worker builds a throwaway prototype for the idea, in its own workspace; it never lands. */
+  /**
+   * A worker builds a throwaway prototype for the idea, in its own workspace; it never lands itself.
+   * Several may run side by side, each with its approach in its title.
+   */
   private prototype(cardId: string, what: string) {
     const card = this.ideaCard(cardId);
-    if (this.board.snapshot().items.some((i) => i.prototypeOf === cardId && ['working', 'waiting'].includes(i.state)))
-      throw new BadRequest('prototypeRunning', 'a prototype for this idea is still running');
-    const prototype = this.board.addPrototype(cardId, `Prototyp: ${card.title}`, what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.');
+    const approach = approachOf(what);
+    const base = `Prototyp: ${card.title}${approach ? ` – ${approach}` : ''}`;
+    const taken = new Set((this.board.item(cardId)?.prototypes ?? []).map((p) => p.title));
+    let title = base;
+    for (let n = 2; taken.has(title); n++) title = `${base} (${n})`;
+    const prototype = this.board.addPrototype(cardId, title, what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.');
     try {
       this.repoOf(prototype).workers.start(prototype.id);
     } catch (e) {
@@ -306,16 +342,36 @@ export class CanvasRuntime {
     }
     // the owner now waits for the prototype, not the other way round; the agent's reply to its result gives the turn back
     this.board.setIdea(cardId, { yourTurn: false });
-    this.board.log(cardId, 'state', 'owner', `Prototyp gestartet: ${what || 'die Idee, wie sie steht'}.`);
+    this.board.log(cardId, 'state', 'owner', `Prototyp „${title}“ gestartet${what ? `: ${what.replace(/[.!?]$/, '')}` : ''}.`);
   }
 
-  /** A prototype handed over: its demo shows on the idea, and the idea's agent hears what it found. */
+  /** A prototype handed over: its demo shows on the idea beside those of the other prototypes, and the idea's agent hears what it found. */
   private prototypeReady(prototype: Item, summary: string, demo: string | undefined) {
     const idea = this.board.item(prototype.prototypeOf!);
     if (!idea) return;
-    if (demo) this.board.work(idea.id, { demo });
-    this.board.log(idea.id, 'state', 'worker', `Prototyp „${prototype.title}“ fertig${demo ? '; die Demo liegt auf dieser Karte' : ''}.`);
-    if (idea.state === 'idea') this.explorers.tell(idea.id, `A worker built a throwaway prototype for this idea. Its summary:\n\n${summary}\n\nTake what it showed and what it means for the idea into the brief, then reply to the owner in a sentence or two.`);
+    this.board.log(idea.id, 'state', 'worker', `Prototyp „${prototype.title}“ fertig${demo ? '; seine Demo liegt auf dieser Karte' : ''}.`);
+    if (idea.state === 'idea')
+      this.explorers.tell(
+        idea.id,
+        `A worker built the throwaway prototype “${prototype.title}” for this idea. Its summary:\n\n${summary}\n\nTake what it showed and what it means for the idea into the brief, then reply to the owner in a sentence or two.`,
+      );
+  }
+
+  /** A question on a prototype was answered: the idea's agent takes it into the brief, so the idea does not ask it again. */
+  private prototypeAnswered(prototype: Item, question: string, answer: string, by: 'owner' | 'project' | 'koordinator') {
+    const who = by === 'owner' ? 'The owner' : 'The Koordinator, on the owner’s behalf,';
+    this.explorers.tell(
+      prototype.prototypeOf!,
+      `On the prototype “${prototype.title}”, its worker asked: „${question}“\n\n${who} answered: ${answer}\n\nTake what this settles into the brief (decisions, open questions), so it is not asked again. Do not reply to the owner for it; end your turn without a reply unless it raises something they must decide now.`,
+      true,
+    );
+  }
+
+  private prototypeCard(cardId: string): Item {
+    const card = this.board.item(cardId);
+    if (!card) throw new BadRequest('unknownCard', 'unknown card');
+    if (!card.prototypeOf) throw new BadRequest('notPrototype', 'the card is not a prototype');
+    return card;
   }
 
   private ideaCard(cardId: string): Item {
@@ -353,6 +409,9 @@ export class CanvasRuntime {
         return this.act(c.card, { action: 'discuss', text: c.text, spoken: true, ...(c.images ? { images: c.images } : {}) });
       case 'prototype':
         return this.act(c.card, { action: 'prototype', text: c.text });
+      case 'buildPrototype':
+      case 'discard':
+        return this.act(c.card, { action: c.do });
       case 'build':
       case 'planDoc':
       case 'park':
@@ -405,6 +464,16 @@ export class CanvasRuntime {
     for (const r of this.repos) r.workers.shutdown();
     this.explorers.shutdown();
   }
+}
+
+/** A prototype's approach, for its title: the first sentence of what it is to show, kept short. */
+export function approachOf(what: string, max = 40): string {
+  const text = what.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+  const first = (text.match(/^.+?[.!?;:](?=\s|$)/)?.[0] ?? text).replace(/[.;:]$/, '');
+  if (first.length <= max) return first;
+  const cut = first.slice(0, max - 1);
+  const word = cut.lastIndexOf(' ');
+  return `${(word > max / 2 ? cut.slice(0, word) : cut).replace(/[\s,;:–—-]+$/, '')}…`;
 }
 
 /** Why a canvas's configuration does not work; `repo` is the index of the repository in question. */
