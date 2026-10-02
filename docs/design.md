@@ -441,7 +441,7 @@ the owner's language (`src/core/locale.ts`).
   reason) instead is the exception the worker's brief names as such: the card waits for review
   with the summary and the reason, and a demo from an earlier handover leaves the card, since it
   showed other work. Artifacts stay in `~/demos/`, never in git, and are not linked from pull
-  requests yet.
+  requests yet (planned: [`docs/plan/demo-sharing.md`](plan/demo-sharing.md)).
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   login recipe, where plan docs live, which reviews run, demo conventions.
 
@@ -637,6 +637,5 @@ the repository; the copy on the project is only for the archive).
 - Which OKE clones may workers lease: the existing `~/dev/oke2`–`oke5`, or fresh ones?
 - A plan doc without a `## Workstreams` checklist is not shown (in OKE: `utilmd-parsed-view.md`,
   whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
-- Demos in pull requests: link them from the PR through object storage behind the team's login.
-  Which storage?
-- Demo sharing beyond the team: narration in a cloned voice.
+- Demos in pull requests and sharing beyond the team (storage behind the team's login, narration
+  in a cloned voice): planned in [`docs/plan/demo-sharing.md`](plan/demo-sharing.md).
