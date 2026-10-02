@@ -39,7 +39,8 @@
 //     "preferences": [
 //       { "key": "R", "text": "Beschriftungen: präzise vor kurz." },
 //       { "text": "…", "state": "proposed", "card": "A", "quote": "…", "replaces": "R" },
-//       { "text": "…", "state": "proposed", "review": true }
+//       { "text": "…", "state": "proposed", "review": true },
+//       { "text": "…", "state": "proposed", "target": "<repo id>" }
 //     ]
 //   }
 // A card is created (kind defaults to feature, x and y to a free place; `idea`, `repo`, `from` as in
@@ -49,8 +50,9 @@
 // state, need, statusLine, summary, noDemo, question, demo, queue (`behind` by key; `since` defaults to
 // now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago? }]),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
-// "3d" ago. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys.
-// What a learned rule's occasion is (card, quote, review) and `replaces` need code that has them.
+// "3d" ago. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
+// `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
+// What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
 
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
@@ -95,7 +97,7 @@ interface Stage {
   files?: Record<string, string>;
   plans?: Record<string, string>;
   cards: StageCard[];
-  preferences?: { key?: string; text: string; state?: string; card?: string; quote?: string; review?: boolean; replaces?: string }[];
+  preferences?: { key?: string; text: string; state?: string; card?: string; quote?: string; review?: boolean; replaces?: string; target?: string }[];
 }
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -275,6 +277,7 @@ for (const [i, p] of (stage.preferences ?? []).entries()) {
   if (p.state !== undefined) row.state = p.state;
   if (p.quote !== undefined) row.quote = p.quote;
   if (p.review) row.review = 1;
+  if (p.target !== undefined) row.target = p.target;
   if (p.replaces !== undefined) row.replaces = prefIds[p.replaces] ?? fail(`preference ${p.key ?? i}: replaces ${p.replaces}, which comes later or does not exist`);
   const keys = Object.keys(row);
   const r = db.query(`INSERT INTO preferences (${keys.join(', ')}) VALUES (${keys.map((k) => `$${k}`).join(', ')}) RETURNING id`).get(row) as { id: number };
