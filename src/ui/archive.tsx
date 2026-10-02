@@ -50,7 +50,7 @@ export function ArchiveSheet({ on, archived, done, onOpen, onArchiveDone, els }:
                     <button className="a-card" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
                       <span className="a-ttl">{plain(i.title)}</span>
                       <span className="hint">
-                        {i.idea ? stateLabel(i) : t.kind[i.kind]}
+                        {i.idea ? stateLabel(i) : i.becomesProject ? t.kind.becomesProject : t.kind[i.kind]}
                         {i.kind === 'project' && ` · ${t.archive.workstreams(archived.filter((x) => x.parent === i.id).length)}`}
                       </span>
                     </button>

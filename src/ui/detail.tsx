@@ -54,9 +54,11 @@ export function Detail(p: Props) {
       ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}`
       : item.state === 'idea'
         ? t.kind.idea
-        : item.prototypeOf
-          ? t.kind.prototype
-          : t.kind[item.kind]);
+        : item.becomesProject
+          ? t.kind.becomesProject
+          : item.prototypeOf
+            ? t.kind.prototype
+            : t.kind[item.kind]);
   const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea' || item.state === 'proposal') && !item.queue;
   if (item.state === 'idea' && item.idea)
     return (

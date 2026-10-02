@@ -37,7 +37,9 @@ export const CardView = memo(
     const shape = shapeOf(item);
     // a card the Koordinator is checking or cutting has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
-    const kind = item.label ?? (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.prototypeOf ? t.kind.prototype : t.kind[item.kind]);
+    const kind =
+      item.label ??
+      (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.becomesProject ? t.kind.becomesProject : item.prototypeOf ? t.kind.prototype : t.kind[item.kind]);
     const status =
       item.state === 'working'
         ? item.statusLine

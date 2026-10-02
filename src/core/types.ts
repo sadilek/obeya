@@ -77,6 +77,8 @@ export interface Item {
   images?: string[];
   /** A card that was an idea and has been decided: the brief it was decided on. */
   brief?: string;
+  /** A card that was an idea, decided as a project: its worker writes the plan doc, and the project takes its place. */
+  becomesProject?: boolean;
 }
 
 /** A decision taken on a card: an answer to a worker's question, or the owner's call on an idea. */

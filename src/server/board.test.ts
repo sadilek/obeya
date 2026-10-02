@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { boundsOf } from '../core/layout';
+import { boundsOf, sizeOf } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
@@ -162,6 +162,41 @@ describe('the archive of projects', () => {
     expect(board.archived().find((i) => i.id === b.id)!.origin).toBe(idea.id);
     expect(board.projectHistory(b.id).decisions).toHaveLength(2);
     expect(board.projectHistory(board.snapshot().items[0]!.id)).toEqual({ decisions: [], origin: null });
+  });
+
+  test('a project takes the place of the idea it was written from; the idea goes once its worker is done', () => {
+    const idea = board.create({ kind: 'feature', idea: true, title: 'Idee B', x: 900, y: 40 });
+    const below = board.create({ kind: 'feature', title: 'Darunter', x: 900, y: 240 });
+    const beside = board.create({ kind: 'feature', title: 'Daneben', x: 1240, y: 40 });
+    const away = board.create({ kind: 'feature', title: 'Weit weg', x: 3000, y: 900 });
+    board.work(idea.id, { state: 'live', landed: '{}', workspace: '/ws/1' });
+    board.planDocsLanded(idea.id, ['docs/plan/b.md']);
+    docs = [docA, docB];
+    board.docsChanged();
+    const items = board.snapshot().items;
+    const b = items.find((i) => i.title === 'B')!;
+    expect(b).toMatchObject({ origin: idea.id, x: 900, y: 40 });
+    // what the larger project would cover moves aside by as much as it outgrows the idea
+    const [iw, ih] = sizeOf(board.item(idea.id)!, items);
+    const [pw, ph] = sizeOf(b, items);
+    expect(board.item(below.id)).toMatchObject({ x: 900, y: 240 + ph - ih });
+    expect(board.item(beside.id)).toMatchObject({ x: 1240 + pw - iw, y: 40 });
+    expect(board.item(away.id)).toMatchObject({ x: 3000, y: 900 });
+    for (const i of [below, beside]) {
+      const [p, c] = [boundsOf(b, items), boundsOf(board.item(i.id)!, items)];
+      expect(c.x >= p.x + p.w || c.y >= p.y + p.h).toBe(true);
+    }
+    // its worker still finishes after the landing
+    expect(board.item(idea.id)).toBeDefined();
+    board.work(idea.id, { landed: null, workspace: null });
+    board.workDone(idea.id);
+    expect(board.item(idea.id)).toBeUndefined();
+    expect(board.archived().find((i) => i.id === idea.id)).toMatchObject({ title: 'Idee B' });
+    expect(board.events(idea.id).at(-1)!.text).toContain('an der Stelle der Idee');
+    // put back on the canvas, it stays
+    board.unarchive(idea.id);
+    board.docsChanged();
+    expect(board.item(idea.id)).toBeDefined();
   });
 
   test('only a card that was an idea becomes the origin of a project', () => {

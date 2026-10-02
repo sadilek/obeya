@@ -3,7 +3,7 @@
 import type { CardState, ConfigProblemCode, ErrorCode, Idea, Need, Queue, OwnerHold, RestartReason } from '../core/types';
 
 export const t = {
-  kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp' },
+  kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
   state: {
     idea: 'Idee',
     proposal: 'Vorschlag eines Agenten',
@@ -305,7 +305,7 @@ export const t = {
     park: 'Parken',
     drop: 'Verwerfen',
     built: 'Die Idee wird gebaut; der Stand der Idee ist ihr Auftrag.',
-    planned: 'Eingeplant: Ein Agent schreibt das Plan-Doc.',
+    planned: 'Ein Agent schreibt jetzt das Plan-Doc; danach steht hier das Projekt.',
     parked: 'Idee geparkt.',
     dropped: 'Idee verworfen. Die Karte bleibt mit ihrem Stand liegen, bis du sie archivierst.',
     prototyped: 'Ein Agent baut einen Wegwerf-Prototyp.',
