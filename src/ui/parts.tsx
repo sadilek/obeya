@@ -28,15 +28,19 @@ interface CardProps {
   els: Map<string, HTMLElement>;
   /** Starts a planned card, or one queued behind others despite the likely conflict. */
   onStart: (item: Item) => void;
+  /** Takes a finished card off the canvas into the archive. */
+  onArchive: (item: Item) => void;
 }
 
 const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, showRepo, els, onStart }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, showRepo, els, onStart, onArchive }: CardProps) {
     const shape = shapeOf(item);
     // a card the Koordinator is checking or cutting has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
+    // as "Archivieren" in the unfolded card: a finished card of the owner's whose agent is done
+    const archivable = item.state === 'live' && item.source === 'manual' && !item.finishing && !item.archivedAt;
     const kind =
       item.label ??
       (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.becomesProject ? t.kind.becomesProject : item.prototypeOf ? t.kind.prototype : t.kind[item.kind]);
@@ -96,11 +100,28 @@ export const CardView = memo(
             </svg>
           </button>
         )}
+        {archivable && (
+          <button
+            className="play archive"
+            title={t.archive.archive}
+            aria-label={t.archive.archive}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onArchive(item);
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="5" rx="1" />
+              <path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4" />
+            </svg>
+          </button>
+        )}
       </div>
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.showRepo === b.showRepo && a.onStart === b.onStart,
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive,
 );
 
 /**

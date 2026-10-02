@@ -466,6 +466,17 @@ function Canvas({
     }
   }, []);
 
+  /** The archive button on a finished card: takes it off the canvas, with a moment to undo. */
+  const archiveCard = useCallback(async (i: Item) => {
+    try {
+      await api.archive(i.id);
+      showAck(t.archive.archived(plain(i.title)), () => api.unarchive(i.id));
+    } catch (e) {
+      if (!(e instanceof ApiError)) console.error(e);
+      showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  }, []);
+
   // ---------------------------------------------------------------- voice
   const where = (): Where => {
     const f = focusRef.current;
@@ -804,6 +815,7 @@ function Canvas({
                 showRepo={snapshot.canvas.repos.length > 1}
                 els={els}
                 onStart={startCard}
+                onArchive={archiveCard}
               />
             ),
           )}
