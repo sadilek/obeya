@@ -25,7 +25,8 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
   reloads); docs-only commits leave it running. Keep tests off it.
 - No project-specific logic in the core: anything Acme-specific belongs in the Acme repo adapter.
 - UI strings live in one place, `src/ui/strings.ts` (German first, English later).
-- A button that is easy to click by accident and sets a lot in motion gets an undo.
+- A button that is easy to click by accident and sets a lot in motion gets an undo. What is easy
+  to reverse afterwards gets no undo window with a wait: it takes effect at once.
 - The colleagues use Windows or Linux: features must work there; macOS-only tools (e.g. `say`)
   only as an additional option.
 - Demo videos and voice recordings never go into git.
