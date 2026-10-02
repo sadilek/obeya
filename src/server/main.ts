@@ -25,7 +25,7 @@ import { Config, CONFIG_FILE, expand, expandConfig, readConfigFile } from './con
 import { Store } from './db';
 import { ghForge } from './forge';
 import { idleRuntime, sdkRuntime } from './runtime';
-import { ownCheckout, RESTART, RESTART_FROM_FILE, Restarter, watchOwnCode } from './self-update';
+import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, Restarter, watchOwnCode } from './self-update';
 import { serve } from './server';
 import { SpeechSidecar, WhisperSidecar } from './voice';
 
@@ -98,6 +98,8 @@ const configs = expandConfig(started);
 const store = new Store(join(home, 'obeya.db'));
 // work that lands on the checkout this code comes from restarts the server, so what is live is what runs
 const own = process.env.OBEYA_SUPERVISED ? ownCheckout() : null;
+// the commit this server's code came from: what changed since decides what to install before a restart
+const ranFrom = own && headOf(own);
 let canvases: CanvasRuntime[] = [];
 let server: ReturnType<typeof serve> | undefined;
 let exitCode = RESTART;
@@ -107,6 +109,11 @@ const restarter = new Restarter({
   busy,
   go: () => {
     server?.stop(true);
+    if (own && ranFrom) {
+      const done = installDependencies(own, ranFrom);
+      if (done.ran && done.ok) console.log(`Obeya: installed the new dependencies in ${own}`);
+      else if (done.ran) console.error(`Obeya: installing the new dependencies in ${own} failed; starting again anyway\n${done.output}`);
+    }
     shutdown(exitCode);
   },
 });

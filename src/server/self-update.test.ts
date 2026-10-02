@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Busy, ownCheckout, Restarter, watchOwnCode, whenIdle } from './self-update';
+import { type Busy, installDependencies, ownCheckout, Restarter, watchOwnCode, whenIdle } from './self-update';
 import { gitRepo } from './testing';
 import { git } from './workspaces';
 
@@ -55,6 +55,30 @@ test('docs alone change nothing that runs', async () => {
   const head = commit('src/a.ts', 'b');
   await wait(120);
   expect(calls).toEqual([head]);
+});
+
+test('a restart installs the dependencies only when package.json or bun.lock changed', () => {
+  const start = git(repo, 'rev-parse', 'HEAD');
+  const install = [process.execPath, '-e', "require('fs').writeFileSync('installed', '')"];
+  commit('src/a.ts', 'b');
+  commit('docs/package.json', '{}');
+  expect(installDependencies(repo, start, install)).toEqual({ ran: false });
+  expect(existsSync(join(repo, 'installed'))).toBe(false);
+  commit('bun.lock', '{}');
+  expect(installDependencies(repo, start, install)).toMatchObject({ ran: true, ok: true });
+  expect(existsSync(join(repo, 'installed'))).toBe(true);
+  const after = commit('package.json', '{}');
+  expect(installDependencies(repo, after, install)).toEqual({ ran: false });
+});
+
+test('an install that fails is told, not thrown', () => {
+  const start = git(repo, 'rev-parse', 'HEAD');
+  commit('package.json', '{}');
+  const failed = installDependencies(repo, start, [process.execPath, '-e', "console.error('no network'); process.exit(1)"]);
+  expect(failed).toEqual({ ran: true, ok: false, output: 'no network' });
+  expect(installDependencies(repo, start, [join(repo, 'no-such-bun')])).toMatchObject({ ran: true, ok: false });
+  // a commit that is not there any more counts as changed
+  expect(installDependencies(repo, 'f'.repeat(40), [process.execPath, '-e', '']).ran).toBe(true);
 });
 
 test('a restart waits until nothing is busy, or until its patience is out', async () => {

@@ -1,6 +1,6 @@
 // Obeya on its own checkout: work that lands there changes the code this very process runs. The
 // supervisor in main.ts starts the server again when it exits with RESTART; this module tells
-// when that is due.
+// when that is due, and installs what the new code depends on before it goes.
 
 import { dirname } from 'node:path';
 import type { OwnerHold, RestartReason } from '../core/types';
@@ -160,6 +160,32 @@ export function changesCode(checkout: string, from: string, to: string): boolean
   return changed === null || changed.split('\n').some((f) => f && !INERT.test(f));
 }
 
+/** The commit `checkout` stands at, if it is a git checkout. */
+export function headOf(checkout: string): string | null {
+  return git(checkout, 'rev-parse', 'HEAD');
+}
+
+/** What installing the dependencies before a restart came to. */
+export type Install = { ran: false } | { ran: true; ok: boolean; output: string };
+
+const INSTALL = [process.execPath, 'install', '--frozen-lockfile'];
+
+/**
+ * Installs the checkout's dependencies when the commits from `from` to where it stands now change
+ * package.json or bun.lock (unknown counts as changed), so the new code finds what it imports.
+ * Never throws: a failed install is for the log, and the restart goes ahead anyway.
+ */
+export function installDependencies(checkout: string, from: string, command = INSTALL): Install {
+  const changed = git(checkout, 'diff', '--name-only', from, 'HEAD', '--', 'package.json', 'bun.lock');
+  if (changed === '') return { ran: false };
+  try {
+    const r = Bun.spawnSync(command, { cwd: checkout, stdout: 'pipe', stderr: 'pipe' });
+    return { ran: true, ok: r.exitCode === 0, output: (r.stdout.toString() + r.stderr.toString()).trim() };
+  } catch (e) {
+    return { ran: true, ok: false, output: String(e) };
+  }
+}
+
 /** The git checkout this process's code comes from, if it is one. */
 export function ownCheckout(): string | null {
   return git(dirname(import.meta.path), 'rev-parse', '--show-toplevel');
@@ -170,7 +196,7 @@ export function ownCheckout(): string | null {
  * after HEAD has held still for one interval, so a landing in progress finishes first.
  */
 export function watchOwnCode(checkout: string, fn: (from: string, to: string) => void, intervalMs = 2000): () => void {
-  const start = git(checkout, 'rev-parse', 'HEAD');
+  const start = headOf(checkout);
   if (!start) return () => {};
   let seen = start;
   let base = start;
