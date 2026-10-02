@@ -73,7 +73,7 @@ const SHEET_TALK = 30;
 /** The card that collects accepted rules for a repository's CLAUDE.md, and the setting that names it, per repository. */
 const CLAUDE_MD_TITLE = 'CLAUDE.md ergänzen';
 const CLAUDE_MD_TASK =
-  'Der Owner hat diese Regeln für dieses Repo angenommen. Arbeite sie in die CLAUDE.md ein, passend zu dem, was dort steht (Abschnitt, Ton, Länge) und ohne Dopplungen; steht eine schon sinngemäß drin, schärfe nur die Stelle. Sonst nichts ändern. Statt einer Demo genügt in der Zusammenfassung der neue Wortlaut.';
+  'Der Owner hat diese Regeln für dieses Repo festgelegt. Arbeite sie in die CLAUDE.md ein, passend zu dem, was dort steht (Abschnitt, Ton, Länge) und ohne Dopplungen; steht eine schon sinngemäß drin, schärfe nur die Stelle. Sonst nichts ändern. Statt einer Demo genügt in der Zusammenfassung der neue Wortlaut.';
 const CLAUDE_MD_SETTING = 'claude_md_card:';
 
 /** How long an untitled card of the owner's may exist before Obeya drops it on start. */
