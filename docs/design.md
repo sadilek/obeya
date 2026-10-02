@@ -301,9 +301,17 @@ the owner's language (`src/core/locale.ts`).
   (the worker replying in the owner's name) and by accounts the adapter names as noise (Acme: the
   Cloudflare deploy bot) are skipped; an app's inline comments come as `<name>[bot]`, its
   conversation comments as `<name>`, and the watcher reads both as `<name>`. While the owner is
-  asked, news waits. A merge makes the card `live` (After landing, below). The card shows the PR
-  with its link, its checks (each linked to its run) and a conflict; folded, it reads
-  "PR #42 · 1 Check rot · Konflikt". Below the checks it shows the review as last polled, oldest
+  asked, news waits. Once nothing is left for the worker, the card needs the owner: "Bereit zum
+  Mergen" (once in the log, on the card and folded) when GitHub sees nothing in the way
+  (`mergeStateStatus` clean), every check has passed, every review thread is resolved, the worker
+  is not in a turn, and whoever the PR's author last asked for another look has answered since. A
+  review bot often answers a re-review only by rewriting its summary (Greptile's new score, on Acme's
+  PR #821 on 2026-10-02, with no new comment), so a rewrite counts as an answer; before, the watcher
+  waited for new comments only and the card stood "in PR" with nothing left to do. The owner
+  merges on GitHub; anything new for the worker takes the readiness back. A merge makes the card
+  `live` (After landing, below). The card shows the PR
+  with its link, its checks (each linked to its run), a conflict and whether it is ready to merge;
+  folded, it reads "PR #42 · 1 Check rot · Konflikt" or "PR #42 · Bereit zum Mergen". Below the checks it shows the review as last polled, oldest
   first: each round a reviewer left comments on the code in ("Runde 2 · greptile-apps · 3
   Anmerkungen, 1 offen"), each comment folded to its first line with whether its thread is
   resolved and how many replies it has, unfolded with the file, the comment and the replies (the

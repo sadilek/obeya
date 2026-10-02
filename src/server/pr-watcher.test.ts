@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
+import { needsYou } from '../core/types';
 import { Board } from './board';
 import { Store } from './db';
 import type { Forge, PrStatus } from './forge';
@@ -29,7 +30,7 @@ beforeEach(() => {
   workspaces.ensureClones(main, 1);
   runtime = new FakeRuntime();
   workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' } });
-  status = { state: 'OPEN', mergeable: 'MERGEABLE', head: 'aaa', author: 'owner', checks: [], comments: [] };
+  status = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [], comments: [] };
   const forge: Forge = { status: () => status };
   watcher = new PrWatcher(board, workers, forge, () => main, ['deploy-bot']);
 });
@@ -113,6 +114,42 @@ describe('watching', () => {
     watcher.poll();
     expect(runtime.last.inbox.at(-2)).toContain('Checks failed');
     expect(runtime.last.inbox.at(-1)).toContain('conflicts');
+  });
+
+  test('a PR with nothing left for the worker waits for the owner’s merge; new work takes that back', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    // the turn that handed over ends, then the one the approval started
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.checks = [{ name: 'Greptile Review', state: 'success' }];
+    status.comments = [
+      { id: 'cSUM', author: 'greptile', body: 'Confidence Score: 4/5', at: '2026-10-02T08:34:00Z' },
+      { id: 'cPING', author: 'owner', body: '@greptile re-review', at: '2026-10-02T08:46:00Z' },
+    ];
+    watcher.poll();
+    expect(board.item(id)!.pr!.ready).toBeUndefined();
+    // the worker answers the summary
+    runtime.last.emit({ type: 'idle' });
+    watcher.poll();
+    expect(board.item(id)!.pr!.ready).toBeUndefined();
+    // the reviewer rewrites its summary, with no new comment
+    status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 5/5', edited: '2026-10-02T08:49:00Z' };
+    const n = runtime.last.inbox.length;
+    watcher.poll();
+    expect(board.item(id)!.pr!.ready).toBe(true);
+    expect(needsYou(board.item(id)!)).toBe(true);
+    expect(board.events(id).at(-1)!.text).toStartWith('Bereit zum Mergen');
+    expect(runtime.last.inbox.length).toBe(n);
+    // said once
+    const events = board.events(id).length;
+    watcher.poll();
+    expect(board.events(id).length).toBe(events);
+    // a new comment is work for the worker again
+    status.comments.push({ id: 'i3', author: 'lead', body: 'One more thing.', at: '2026-10-02T09:00:00Z' });
+    watcher.poll();
+    expect(board.item(id)!.pr!.ready).toBeUndefined();
+    expect(needsYou(board.item(id)!)).toBe(false);
   });
 
   test('while the owner is asked, news waits; the answer returns the card to the PR', async () => {

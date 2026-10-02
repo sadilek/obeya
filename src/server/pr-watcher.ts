@@ -1,8 +1,9 @@
 // Watches the open pull requests of a canvas and passes what happens on them to the card's
-// worker: new review comments, failed checks, conflicts. A merge makes the card live.
+// worker: new review comments, failed checks, conflicts. Once nothing is left for the worker, the
+// card waits for the owner's merge; a merge makes the card live.
 
 import type { Board, PrState } from './board';
-import { reviewOf, type Forge, type PrStatus } from './forge';
+import { readyToMerge, reviewOf, type Forge, type PrStatus } from './forge';
 import type { Workers } from './workers';
 
 export class PrWatcher {
@@ -92,6 +93,11 @@ export class PrWatcher {
           'Your pull request conflicts with its base branch. Bring it up to date with the latest base the way the repository does it (merge or rebase; push a rebase with --force-with-lease), resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.',
         );
       } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
+      // ready only while the worker has nothing in hand: what it was told may still change the PR
+      if (!comments.length && !failed.length && !this.workers.busyCards().includes(cardId) && readyToMerge(s, this.noise)) {
+        if (pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch.');
+        next.readyHead = s.head;
+      } else delete next.readyHead;
     }
     this.save(cardId, next);
   }

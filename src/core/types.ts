@@ -19,9 +19,12 @@ export interface Question {
 }
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
-/** A card needs the owner: it waits, is a proposal, or is an open idea whose agent has replied and is done. */
+/**
+ * A card needs the owner: it waits, is a proposal, has a pull request that only waits for the
+ * owner's merge, or is an open idea whose agent has replied and is done.
+ */
 export const needsYou = (i: Item) =>
-  i.state === 'waiting' || i.state === 'proposal' || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
+  i.state === 'waiting' || i.state === 'proposal' || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
 
 export interface Item {
   id: string;
@@ -142,6 +145,8 @@ export interface PullRequest {
   /** Checks on the PR's latest commit, as last seen. */
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   conflict: boolean;
+  /** Nothing is left for the worker: checks green, threads resolved, reviewers answered; the owner merges. */
+  ready?: boolean;
   /** The review as last seen, oldest first (`reviewOf` in the server's forge). */
   review?: PrReviewEntry[];
 }

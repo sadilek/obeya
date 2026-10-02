@@ -165,6 +165,7 @@ export const t = {
   pr: {
     title: (n: number) => `Pull Request #${n}`,
     conflict: 'Konflikt mit dem Zielbranch; der Agent bringt den Branch auf Stand.',
+    ready: 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Mergen auf GitHub.',
     noChecks: 'Noch keine Checks.',
     opening: 'Der Agent öffnet den Pull Request.',
     review: 'Review',
@@ -177,8 +178,8 @@ export const t = {
     agent: 'Agent',
     onGithub: 'Auf GitHub',
     edited: (time: string) => `${time} überarbeitet`,
-    short: (n: number, failed: number, conflict: boolean) =>
-      [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
+    short: (n: number, failed: number, conflict: boolean, ready?: boolean) =>
+      [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : '', ready ? 'Bereit zum Mergen' : ''].filter(Boolean).join(' · '),
   },
   demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.',
     artifact: 'HTML-Artefakt des Agenten',

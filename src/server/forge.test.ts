@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { makeGhForge, parsePrUrl, readable, reviewOf, type PrStatus } from './forge';
+import { makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, type PrStatus } from './forge';
 
 test('parsePrUrl', () => {
   expect(parsePrUrl('https://github.com/example-org/acme/pull/813')).toEqual({ owner: 'example-org', repo: 'acme', number: 813 });
@@ -14,6 +14,7 @@ test('gh output becomes a PR status', () => {
       return JSON.stringify({
         state: 'OPEN',
         mergeable: 'CONFLICTING',
+        mergeStateStatus: 'DIRTY',
         headRefOid: 'abc',
         author: { login: 'owner' },
         statusCheckRollup: [
@@ -50,6 +51,7 @@ test('gh output becomes a PR status', () => {
   expect(s).toEqual({
     state: 'OPEN',
     mergeable: 'CONFLICTING',
+    mergeState: 'DIRTY',
     head: 'abc',
     author: 'owner',
     checks: [
@@ -113,4 +115,40 @@ test('a review bot’s HTML becomes text: badges by name, folded and code parts 
     ),
   ).toBe('**Confidence Score: 5/5**\n\nSafe to merge.\n\nReviews (4)');
   expect(readable('x'.repeat(4000))).toHaveLength(3002);
+});
+
+test('ready to merge: GitHub clean, checks green, threads resolved, the last re-review request answered', () => {
+  // Acme's PR #821 on 2026-10-02: Greptile answered the third re-review request by rewriting its
+  // summary to 5/5, with no new comment
+  const at = (m: string) => `2026-10-02T08:${m}:00Z`;
+  const s: PrStatus = {
+    state: 'OPEN',
+    mergeable: 'MERGEABLE',
+    mergeState: 'CLEAN',
+    head: 'e238bbc',
+    author: 'owner',
+    checks: [{ name: 'CI', state: 'success' }, { name: 'Greptile Review', state: 'success' }],
+    comments: [
+      { id: 'cDEPLOY', author: 'cloudflare', body: 'Deployed', at: at('31'), edited: at('46') },
+      { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: at('34'), edited: at('49') },
+      { id: 'cPING1', author: 'owner', body: '@greptile re-review', at: at('37') },
+      { id: 'cPING3', author: 'owner', body: '@greptile re-review', at: at('46') },
+      { id: 'i1', author: 'greptile-apps', body: 'Rows on both pages', at: at('43'), round: 'A', resolved: true },
+      { id: 'i2', author: 'owner', body: 'Split the steps.', at: at('46'), round: 'B', replyTo: 'i1' },
+    ],
+  };
+  expect(readyToMerge(s, ['cloudflare'])).toBe(true);
+  const without = (f: (s: PrStatus) => void) => {
+    const c = structuredClone(s);
+    f(c);
+    return readyToMerge(c, ['cloudflare']);
+  };
+  // the re-review not answered yet: only the deploy bot has written since
+  expect(without((c) => delete c.comments[1]!.edited)).toBe(false);
+  expect(without((c) => (c.comments[4]!.resolved = false))).toBe(false);
+  expect(without((c) => (c.checks[1]!.state = 'pending'))).toBe(false);
+  expect(without((c) => (c.mergeState = 'BLOCKED'))).toBe(false);
+  expect(without((c) => (c.mergeable = 'UNKNOWN'))).toBe(false);
+  // no reviewer asked for anything
+  expect(without((c) => (c.comments = []))).toBe(true);
 });

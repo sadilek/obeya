@@ -39,6 +39,8 @@ export interface PrState {
   reported: string[];
   /** The commit a conflict was last reported for. */
   conflictHead?: string;
+  /** The commit the PR was found ready to merge at; gone once something is left to do again. */
+  readyHead?: string;
   checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   /** The review as last seen, for the card. */
   review?: PrReviewEntry[];
@@ -871,7 +873,7 @@ function work(r: CardRow): Partial<Item> {
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
-    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
+    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead ? { ready: true } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice

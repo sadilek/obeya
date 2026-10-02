@@ -5,6 +5,12 @@ import type { PrReviewEntry, PrThread } from '../core/types';
 export interface PrStatus {
   state: 'OPEN' | 'MERGED' | 'CLOSED';
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
+  /**
+   * GitHub's verdict on merging now (`mergeStateStatus`): `CLEAN` when nothing stands in the way,
+   * `BLOCKED` while branch protection waits for something (an approval, a required check), `BEHIND`,
+   * `DIRTY`, `UNSTABLE`, `DRAFT`, `UNKNOWN` while GitHub still works it out.
+   */
+  mergeState?: string;
   /** The commit the checks ran on. */
   head: string;
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
@@ -50,6 +56,7 @@ function gh(cwd: string, ...args: string[]): string {
 interface GhPr {
   state: PrStatus['state'];
   mergeable: PrStatus['mergeable'];
+  mergeStateStatus?: string;
   headRefOid: string;
   author: { login: string };
   statusCheckRollup: { __typename: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string }[];
@@ -62,7 +69,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
   status(cwd, url) {
     const ref = parsePrUrl(url);
     if (!ref) throw new Error(`not a GitHub pull request URL: ${url}`);
-    const pr = JSON.parse(run(cwd, 'pr', 'view', url, '--json', 'state,mergeable,headRefOid,author,statusCheckRollup,comments,reviews')) as GhPr;
+    const pr = JSON.parse(run(cwd, 'pr', 'view', url, '--json', 'state,mergeable,mergeStateStatus,headRefOid,author,statusCheckRollup,comments,reviews')) as GhPr;
     const inline = JSON.parse(run(cwd, 'api', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`, '--paginate')) as {
       id: number;
       user: { login: string };
@@ -123,6 +130,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
     return {
       state: pr.state,
       mergeable: pr.mergeable,
+      ...(pr.mergeStateStatus ? { mergeState: pr.mergeStateStatus } : {}),
       head: pr.headRefOid,
       author: pr.author.login,
       checks,
@@ -200,6 +208,22 @@ export function reviewOf(s: PrStatus, skip: string[] = []): PrReviewEntry[] {
   }
   for (const r of rounds.values()) r.at = r.threads.reduce((a, t) => (t.at && t.at < a ? t.at : a), r.at);
   return entries.filter((e) => 'threads' in e || e.body).sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/**
+ * Whether the pull request only waits for the owner's merge: GitHub sees nothing in the way, every
+ * check has passed, every review thread is resolved, and whoever was asked for another look has
+ * answered since the author last asked (a review bot answers a re-review by rewriting its summary,
+ * often without a new comment). Comments by `skip` do not count as an answer.
+ */
+export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
+  if (s.state !== 'OPEN' || s.mergeable !== 'MERGEABLE') return false;
+  if (s.mergeState !== 'CLEAN' && s.mergeState !== 'HAS_HOOKS') return false;
+  if (s.checks.some((c) => c.state !== 'success')) return false;
+  const others = s.comments.filter((c) => c.author !== s.author && !skip.includes(c.author));
+  if (others.some((c) => c.id.startsWith('i') && !c.replyTo && !c.resolved)) return false;
+  const asked = s.comments.filter((c) => c.author === s.author && c.id.startsWith('c')).reduce((a, c) => (c.at && c.at > a ? c.at : a), '');
+  return !asked || others.some((c) => (c.edited ?? c.at ?? '') > asked);
 }
 
 const MAX_BODY = 3000;
