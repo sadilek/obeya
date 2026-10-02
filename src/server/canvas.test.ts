@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
@@ -52,6 +52,23 @@ describe('a canvas with several repositories', () => {
     canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], shown: [], notShown: [], findings: [] }) });
     expect(() => canvas.act(c.id, { action: 'share' })).toThrow('shares none');
     expect(() => canvas.act(c.id, { action: 'unshare' })).toThrow('not shared');
+  });
+
+  test('a share command in the configuration takes the place of the adapter\'s, for that repository', async () => {
+    canvas.shutdown();
+    const web = join(dir, 'web');
+    writeFileSync(join(web, 'share.ts'), `await Bun.stdin.text(); console.log('https://pages.example/' + process.argv[2]);`);
+    canvas = new CanvasRuntime(
+      { name: 'Produkt', repos: [{ path: web, clones: 1, share: 'share.ts' }, { path: join(dir, 'api'), clones: 1 }] },
+      { store: new Store(':memory:'), home: dir, runtime, forge: noForge, shareHoldMs: 0 },
+    );
+    expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([true, undefined]);
+    expect(canvas.repos[0]!.share).toEqual([process.execPath, join(web, 'share.ts')]);
+    const c = canvas.board.create({ kind: 'feature', title: 'Home', x: 0, y: 0 });
+    canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], shown: [], notShown: [], findings: [], page: { title: 'T', text: 'X.' } }) });
+    canvas.act(c.id, { action: 'share' });
+    for (let i = 0; i < 300 && canvas.board.item(c.id)!.share?.state !== 'shared'; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(canvas.board.item(c.id)!.share).toEqual({ state: 'shared', url: 'https://pages.example/publish' });
   });
 
   test("a card works in its repository's clone", () => {

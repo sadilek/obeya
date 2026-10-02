@@ -80,6 +80,20 @@ describe("Obeya's configuration", () => {
     expect(c.check({}).problems.map((p) => p.code)).toEqual(['invalid']);
   });
 
+  test("a repository's share command is checked: its program must be there, a script is found in the repository", () => {
+    const c = config('file', []);
+    writeFileSync(join(web, 'share.ts'), '');
+    const problems = (share: string) => c.check([{ repos: [{ path: web, share }] }]).problems.map((p) => p.code);
+    expect(problems('share.ts --site demos')).toEqual([]);
+    expect(problems('./share.ts')).toEqual([]);
+    expect(problems('git')).toEqual([]);
+    expect(problems('scripts/nowhere.sh')).toEqual(['shareCommand']);
+    expect(problems('no-such-program-anywhere publish')).toEqual(['shareCommand']);
+    // an empty one is no command: the adapter's counts, or demos are exported
+    expect(problems('  ')).toEqual([]);
+    expect(c.check([{ repos: [{ path: web, share: ' ' }] }]).canvases).toEqual([{ repos: [{ path: web }] }]);
+  });
+
   test("keeps a canvas's home repository: leaving it out is a problem, moving it is not", () => {
     store.ensureCanvas('produkt', 'Produkt');
     store.setSetting('produkt', 'home_repo', 'web');

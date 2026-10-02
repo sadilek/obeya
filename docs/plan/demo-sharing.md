@@ -30,7 +30,8 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
   directory under `~/demos/` (`demo.mp4`, `poster.jpg`, `captions.vtt`, `index.html`) and shows the
   demo on the card (`src/server/demo.ts`). Since W1 a video demo of an Acme card can be shared
   on `team-demos.pages.dev` (design: Architecture, Sharing a demo), and since W2 the page and
-  the card's pull request link each other. Obeya's own voice in and
+  the card's pull request link each other. Since W6 any repository can name its share command in
+  the configuration, and without one "Teilen" exports a ZIP or one HTML file. Obeya's own voice in and
   out is macOS-bound too (mlx-whisper, a JXA sidecar: `src/server/voice.ts`).
 - *Acme*: `docs.example.com` is the documentation on Cloudflare Pages behind Cloudflare Access,
   for `@example.com` only, on the free plan (up to 50 users; `the docs' hosting notes`).
@@ -141,7 +142,7 @@ demos in pull requests went with W2).
 - [ ] **W5:** Demos on Windows and Linux. Recording and cutting on all three platforms,
   faster-whisper for listening back, listening back optional; checked on a Linux machine and a
   Windows one. After W3; independent of W4.
-- [ ] **W6:** Sharing in general. The share command as configuration per repository; without one,
+- [x] **W6:** Sharing in general. The share command as configuration per repository; without one,
   an export as ZIP or a self-contained page. After W1.
 - [ ] **W7:** Setup. A check of the demo dependencies with install hints per platform, in settings
   and before recording; a guide in the repository. Last, once W4 and W5 say what is needed.

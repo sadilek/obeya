@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import type { CardState, ConfigProblemCode, DemoSettingsProblem, ErrorCode, NarrationLanguage, VoiceKind, Idea, Need, NextStep, Queue, OwnerHold, RestartReason } from '../core/types';
+import { type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason } from '../core/types';
 
 export const t = {
   kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
@@ -137,6 +137,7 @@ export const t = {
     noShare: 'Teilen lässt sich nur eine Video-Demo, und nur in einem Repository, das Demos teilt.',
     shareBusy: 'Die Seite wird gerade geteilt oder zurückgezogen.',
     notShared: 'Die Demo ist nicht geteilt.',
+    exportTooLarge: 'Das Video ist zu groß für eine einzelne HTML-Datei; als ZIP geht es.',
     landDirty: 'Nicht gelandet: Im Workspace liegen noch nicht committete Änderungen. Der Agent kümmert sich darum; danach landet die Arbeit ohne neue Freigabe.',
     landConflict: 'Nicht gelandet: Beim Rebase auf main gab es Konflikte. Der Agent löst sie; danach landet die Arbeit ohne neue Freigabe.',
     landEmpty: 'Nicht gelandet: Der Branch enthält keine Commits. Der Agent sieht nach; danach landet die Arbeit ohne neue Freigabe.',
@@ -189,7 +190,16 @@ export const t = {
   },
   share: {
     share: 'Teilen',
-    shareHint: 'Veröffentlicht das Video auf einer Seite für die Kollegen, hinter dem Team-Login',
+    shareHint: 'Veröffentlicht das Video auf einer Seite für die Kollegen, mit dem Befehl zum Teilen dieses Repositorys',
+    exportHint: 'Die Demo als Datei zum Weitergeben herunterladen',
+    exportIntro: 'Für dieses Repository ist kein Ziel zum Teilen eingerichtet (Konfiguration). Die Demo lässt sich als Seite herunterladen und weitergeben.',
+    zip: 'Als ZIP',
+    zipHint: 'Ein Ordner mit der Seite (index.html) und dem Video daneben',
+    html: 'Als HTML-Datei',
+    htmlHint: 'Eine einzige Datei mit Seite und Video, zum Verschicken',
+    tooLarge: (bytes: number) => `Für eine einzelne Datei ist das Video zu groß (${(bytes / 1024 / 1024).toFixed(1)} MB, höchstens ${EXPORT_HTML_MAX / 1024 / 1024} MB).`,
+    preparing: 'Wird vorbereitet …',
+    writingPage: 'Der Text der Seite wird zuerst geschrieben; das dauert etwas.',
     again: 'Neu teilen',
     againHint: 'Die geteilte Seite bekommt die neue Demo; der Link bleibt.',
     stop: 'Nicht mehr teilen',
@@ -254,6 +264,11 @@ export const t = {
     clonesMode: 'Agenten arbeiten in Klonen',
     clones: 'Klone anlegen',
     workspaces: 'Vorhandene Klone, einer pro Zeile',
+    share: 'Befehl zum Teilen von Demos',
+    shareAdapter: (adapter: string) => `leer: der des Adapters ${adapter}`,
+    shareNone: 'leer: Teilen exportiert eine Datei',
+    shareHint:
+      'Wird im Repository ausgeführt: mit „publish“ und der Seite als JSON auf stdin, gibt die URL der Seite aus; „withdraw <slug>“ nimmt sie herunter. Ein Skript (.ts, .js) läuft mit Obeyas Bun.',
     addRepo: '+ Repository',
     removeRepo: 'Repository entfernen',
     addCanvas: '+ Leinwand',
@@ -280,6 +295,7 @@ export const t = {
       sameId: 'Gleiche Kennung wie eine andere Leinwand: bitte einen anderen Namen geben.',
       homeMissing: 'Das Repository, mit dem die Leinwand angelegt wurde, fehlt; es muss dabeibleiben.',
       notClone: 'Ein Klon in der Liste ist kein git-Repository.',
+      shareCommand: 'Das Programm des Befehls zum Teilen gibt es nicht.',
       invalid: 'Die Konfiguration ist fehlerhaft.',
     } satisfies Record<ConfigProblemCode, string>,
     demo: {

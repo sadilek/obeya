@@ -224,6 +224,12 @@ export interface DemoPage {
 export const SHARE_HOLD_MS = 8000;
 
 /**
+ * The largest video exported as one HTML file (which holds it in base64, a third larger): such a
+ * file still goes by mail. A larger one is exported as a ZIP only.
+ */
+export const EXPORT_HTML_MAX = 15 * 1024 * 1024;
+
+/**
  * A card's shared demo page. `pending` until the hold is over, `publishing` while the share command
  * runs, `shared` once the page is up, `withdrawing` while it is taken down.
  */
@@ -262,7 +268,7 @@ export interface RepoRef {
   name: string;
   path: string;
   branch: string;
-  /** Its adapter can share video demos with colleagues (`demo.share`). */
+  /** It has a share target: video demos go to a page outside Obeya (the configuration's command, or the adapter's `demo.share`); without one they are exported as a file. */
   share?: boolean;
 }
 
@@ -426,6 +432,8 @@ export type ErrorCode =
   | 'shareBusy'
   /** Sharing: the demo is not shared. */
   | 'notShared'
+  /** Export: the video is too large for one HTML file. */
+  | 'exportTooLarge'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'
@@ -447,6 +455,12 @@ export interface RepoConfig {
   workspaces?: string[];
   /** Clones to create under Obeya's home (adapters that use clones). */
   clones?: number;
+  /**
+   * The command that shares a video demo on a page outside Obeya (`publish`, `withdraw <slug>`;
+   * `SharePage` in `src/server/share.ts`), as a command line: it takes the place of the adapter's.
+   * Without one, and without the adapter's, "Teilen" exports the demo as a file.
+   */
+  share?: string;
 }
 
 /** A canvas in Obeya's configuration. */
@@ -462,7 +476,7 @@ export interface CanvasConfig {
 export interface ResolvedCanvas {
   id: string;
   name: string;
-  repos: { id: string; adapter: string; workspaces: 'clones' | 'worktrees' }[];
+  repos: { id: string; adapter: string; workspaces: 'clones' | 'worktrees'; /** The adapter names a share command of its own. */ adapterShares?: boolean }[];
 }
 
 /** Something in a configuration that keeps Obeya from starting with it; `canvas` and `repo` count from 0. */
@@ -487,6 +501,8 @@ export type ConfigProblemCode =
   | 'homeMissing'
   /** A clone listed as a workspace that is no git repository. */
   | 'notClone'
+  /** A share command whose program is not there. */
+  | 'shareCommand'
   /** Malformed: a bug in whoever wrote it. */
   | 'invalid';
 

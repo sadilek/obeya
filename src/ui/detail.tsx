@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import type { CardAction, CardEvent, CardPatch, Demo, Item, NextStep, PrComment, PrReviewEntry, Question, RepoRef } from '../core/types';
+import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, type Item, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
@@ -101,8 +101,10 @@ export function Detail(p: Props) {
       </>
     );
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
-  // a video demo goes out to colleagues where the repository shares demos; drafts and prototypes stay here
-  const shares = !!item.demo && item.demo.kind !== 'html' && !item.prototypeOf && !!p.repos.find((r) => r.id === item.repo)?.share;
+  // a video demo goes to a page where the repository has a share target, else it is exported as a file; drafts and prototypes stay here
+  const target = !!p.repos.find((r) => r.id === item.repo)?.share;
+  const shareBox =
+    !!item.demo && item.demo.kind !== 'html' && !item.prototypeOf ? target || item.share ? <ShareBox item={item} act={act} /> : <ExportBox item={item} run={run} /> : null;
   // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
   const ideaThinking = !!p.from?.idea?.thinking;
   const prototypeActions = item.prototypeOf && (
@@ -279,14 +281,14 @@ export function Detail(p: Props) {
             )}
           </div>
           <Composer placeholder={t.compose.review} onSend={(text, images) => act({ action: 'message', text, images }, { close: false })} />
-          {shares && <ShareBox item={item} act={act} />}
+          {shareBox}
         </DemoView>
       )}
 
       {item.demo && (item.state === 'inPr' || item.state === 'approved' || item.state === 'live') && (
         <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={false}>
           <p className="hint">{t.demo.kept}</p>
-          {shares && <ShareBox item={item} act={act} />}
+          {shareBox}
         </DemoView>
       )}
 
@@ -833,6 +835,47 @@ function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDon
               {t.share.stop}
             </button>
           </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Teilen" where the repository has no share target: the demo as a file to pass on, a ZIP of its
+ * page with the video beside it, or one HTML file that holds everything (short videos only).
+ */
+function ExportBox({ item, run }: { item: Item; run: Run }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<'zip' | 'html' | null>(null);
+  const [size, setSize] = useState<number | null>(null);
+  useEffect(() => {
+    if (open) api.demoSize(item.id).then(setSize, () => {});
+  }, [open, item.id]);
+  const tooLarge = size !== null && size > EXPORT_HTML_MAX;
+  const go = (as: 'zip' | 'html') => {
+    setBusy(as);
+    void run(() => api.exportDemo(item.id, as), { close: false }).finally(() => setBusy(null));
+  };
+  return (
+    <div className="share">
+      {!open ? (
+        <button className="btn" title={t.share.exportHint} onClick={() => setOpen(true)}>
+          {t.share.share}
+        </button>
+      ) : (
+        <>
+          <p className="hint">{t.share.exportIntro}</p>
+          <div className="share-row">
+            <button className="btn" title={t.share.zipHint} disabled={!!busy} onClick={() => go('zip')}>
+              {busy === 'zip' ? t.share.preparing : t.share.zip}
+            </button>
+            <button className="btn" title={tooLarge ? t.share.tooLarge(size!) : t.share.htmlHint} disabled={!!busy || tooLarge} onClick={() => go('html')}>
+              {busy === 'html' ? t.share.preparing : t.share.html}
+            </button>
+          </div>
+          {tooLarge && <p className="hint">{t.share.tooLarge(size!)}</p>}
+          {busy && !item.demo?.page && <p className="hint">{t.share.writingPage}</p>}
         </>
       )}
     </div>

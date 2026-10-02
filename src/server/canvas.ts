@@ -21,7 +21,7 @@ import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import type { AgentRuntime } from './runtime';
 import { changesCode } from './self-update';
-import { Sharing } from './share';
+import { Sharing, shareArgv } from './share';
 import { type DueRestart, Workers } from './workers';
 import { type Landed, Workspaces } from './workspaces';
 
@@ -54,6 +54,8 @@ export interface RepoRuntime {
   ref: RepoRef;
   info: RepoInfo;
   adapter: RepoAdapter;
+  /** The command that shares its video demos (the configuration's, else the adapter's); null where they are exported. */
+  share: string[] | null;
   workspaces: Workspaces;
   workers: Workers;
   projectAgents: ProjectAgents;
@@ -101,6 +103,7 @@ export class CanvasRuntime {
       const adapter = adapters[i]!;
       const ref = refs[i]!;
       const isHome = ref.id === home;
+      const share = shareCommandOf(rc, info, adapter);
       const workspaces = new Workspaces(deps.store, id, {
         mode: adapter.workspaces,
         repoPath: info.path,
@@ -117,6 +120,7 @@ export class CanvasRuntime {
         runtime: deps.workerRuntime ?? deps.runtime,
         workspaces,
         adapter,
+        shares: !!share,
         repo: ref.id,
         preferences,
         onOwnerInput: (card, kind, text, context) => koordinator.learn(card, kind, text, context),
@@ -133,7 +137,7 @@ export class CanvasRuntime {
         imageFiles,
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       });
-      this.repos.push({ ref, info, adapter, workspaces, workers, projectAgents });
+      this.repos.push({ ref, info, adapter, share, workspaces, workers, projectAgents });
       if (deps.watch) {
         this.stops.push(watchPlanDocs(info.path, adapter, () => board.docsChanged()));
         if (adapter.land === 'pr') {
@@ -192,7 +196,7 @@ export class CanvasRuntime {
       forge: deps.forge,
       commandFor: (card) => {
         const r = this.repoOf(card);
-        return r.adapter.demo?.share ? { command: r.adapter.demo.share, cwd: r.info.path } : null;
+        return r.share ? { command: r.share, cwd: r.info.path } : null;
       },
       ...(deps.shareHoldMs !== undefined ? { holdMs: deps.shareHoldMs } : {}),
     });
@@ -578,7 +582,7 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
       throw new ConfigError('unknownAdapter', e instanceof Error ? e.message : String(e), i);
     }
   });
-  let refs = uniqueRefs(infos, adapters);
+  let refs = uniqueRefs(config.repos, infos, adapters);
   const id = config.id ? slug(config.id) : config.name ? slug(config.name) : adapters[0]!.canvasId(infos[0]!);
   // the home repository is fixed when the canvas is first served: bare plan references, cards
   // without a repository and the home workspace directory are its, whatever the order later
@@ -590,14 +594,14 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
     config = { ...config, repos: order.map((i) => config.repos[i]!) };
     infos = order.map((i) => infos[i]!);
     adapters = order.map((i) => adapters[i]!);
-    refs = uniqueRefs(infos, adapters);
+    refs = uniqueRefs(config.repos, infos, adapters);
   }
   const name = config.name ?? adapters[0]!.canvasName(infos[0]!);
   return { config, id, name, infos, adapters, refs, stored };
 }
 
 /** Repository ids unique on the canvas: the repository's name, with a number when two share one. */
-function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
+function uniqueRefs(configs: RepoConfig[], infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
   const seen = new Map<string, number>();
   return infos.map((info, i) => {
     const base = slug(repoName(info)) || `repo${i + 1}`;
@@ -608,9 +612,15 @@ function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
       name: i === 0 ? adapters[0]!.canvasName(info) : repoName(info),
       path: info.path,
       branch: info.branch,
-      ...(adapters[i]!.demo?.share ? { share: true } : {}),
+      ...(shareCommandOf(configs[i]!, info, adapters[i]!) ? { share: true } : {}),
     };
   });
+}
+
+/** A repository's share command: the configuration's, else the adapter's; null without either. */
+function shareCommandOf(config: RepoConfig, info: RepoInfo, adapter: RepoAdapter): string[] | null {
+  if (config.share?.trim()) return shareArgv(config.share, info.path);
+  return adapter.demo?.share ?? null;
 }
 
 function sameDir(a: string, b: string): boolean {

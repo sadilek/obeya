@@ -316,7 +316,7 @@ function CanvasBlock({ n, canvas, resolved, running, pin, adapters, problems, on
 interface RepoProps {
   repo: RepoConfig;
   home: boolean;
-  resolved?: { id: string; adapter: string; workspaces: 'clones' | 'worktrees' };
+  resolved?: { id: string; adapter: string; workspaces: 'clones' | 'worktrees'; adapterShares?: boolean };
   adapters: string[];
   problems: ConfigProblem[];
   onChange: (r: RepoConfig | null) => void;
@@ -371,6 +371,16 @@ function RepoRow({ repo, home, resolved, adapters, problems, onChange }: RepoPro
           </label>
         </>
       )}
+      <label title={t.config.shareHint}>
+        <span className="hint">{t.config.share}</span>
+        <input
+          className="c-path"
+          value={repo.share ?? ''}
+          placeholder={resolved?.adapterShares ? t.config.shareAdapter(resolved.adapter) : t.config.shareNone}
+          spellCheck={false}
+          onChange={(e) => onChange(without('share', e.target.value || undefined))}
+        />
+      </label>
       {problems.map((p, k) => (
         <p key={k} className="p-error">
           {t.config.problem[p.code]}

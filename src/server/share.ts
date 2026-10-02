@@ -2,15 +2,22 @@
 // repository's adapter names (`demo.share`). Obeya holds a share a few seconds for the owner to
 // take it back, writes the page's text when the worker did not, and runs the command:
 // `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`.
-// Once the card has a pull request, its description links the page and the page links it.
+// Once the card has a pull request, its description links the page and the page links it. The
+// command comes from the repository's configuration, else from its adapter. A repository with
+// neither exports the demo instead: the same page as a ZIP with its files, or as one HTML file.
 
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
-import { type Demo, type DemoPage, type Item, SHARE_HOLD_MS } from '../core/types';
+import { type Demo, type DemoPage, EXPORT_HTML_MAX, type Item, SHARE_HOLD_MS } from '../core/types';
 import { BadRequest, type Board, type PrState, type StoredShare } from './board';
+import { type DemoPageParts, day, demoPageHtml } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { branchName } from './workspaces';
+import { zip } from './zip';
 
 /** What the share command gets on stdin for `publish`; `withdraw` gets `slug` and `shared` only. */
 export interface SharePage {
@@ -64,7 +71,7 @@ export class Sharing {
     if (card.prototypeOf || !demo || demo.kind === 'html' || !this.o.commandFor(card)) throw new BadRequest('noShare', "the card has no video demo, or its repository shares none");
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
-    this.set(cardId, { ...(s ? atRest(s) : { slug: branchName(card.title, card.id).slice('obeya/'.length) }), state: 'pending' });
+    this.set(cardId, { ...(s ? atRest(s) : { slug: slugOf(card) }), state: 'pending' });
     const seconds = Math.round((this.o.holdMs ?? SHARE_HOLD_MS) / 1000);
     this.o.board.log(cardId, 'state', 'owner', s?.url ? `Neu teilen: Die Seite bekommt die neue Demo in ${seconds} s.` : `Teilen: Die Seite geht in ${seconds} s online.`);
     this.hold(cardId);
@@ -156,9 +163,7 @@ export class Sharing {
       dir = s.dir;
     } else {
       if (!demo || demo.kind === 'html' || !cmd) return back('Die Karte hat keine Video-Demo mehr, oder ihr Repository teilt keine.');
-      const page = demo.page ?? (await this.writePage(card, demo));
-      // the page's text stays with the demo, so it is not written again for the next share
-      if (!demo.page && this.demo(cardId)?.dir === demo.dir) this.o.board.work(cardId, { demo: JSON.stringify({ ...demo, page }) });
+      const page = await this.page(card, demo);
       shown = { title: page.title, text: page.text, chapters: demo.chapters };
       dir = demo.dir;
     }
@@ -208,6 +213,64 @@ export class Sharing {
     this.set(cardId, { slug: s.slug });
     if (r.err.trim() || r.out.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(`${r.out}\n${r.err}`));
     this.o.board.log(cardId, 'state', 'obeya', 'Die Seite ist zurückgezogen.');
+  }
+
+  /**
+   * The card's video demo as a file to pass on, for a repository without a share target: the page
+   * in a ZIP with the video, poster and captions beside it, or one HTML file that holds them all
+   * (videos up to EXPORT_HTML_MAX). Nothing leaves Obeya, so nothing is held.
+   */
+  async export(cardId: string, as: 'zip' | 'html'): Promise<{ name: string; type: string; data: Uint8Array<ArrayBuffer> }> {
+    const card = this.card(cardId);
+    const demo = this.demo(cardId);
+    const video = demo && join(demo.dir, 'demo.mp4');
+    if (card.prototypeOf || !demo || demo.kind === 'html' || !video || !existsSync(video)) throw new BadRequest('noShare', 'the card has no video demo');
+    const size = statSync(video).size;
+    if (as === 'html' && size > EXPORT_HTML_MAX)
+      throw new BadRequest('exportTooLarge', `the video is ${(size / 1024 / 1024).toFixed(1)} MiB; one HTML file takes at most ${EXPORT_HTML_MAX / 1024 / 1024} MiB`);
+    const page = await this.page(card, demo);
+    const slug = this.stored(cardId)?.slug ?? slugOf(card);
+    const file = (f: string) => (existsSync(join(demo.dir, f)) ? new Uint8Array(readFileSync(join(demo.dir, f))) : null);
+    const poster = file('poster.jpg');
+    const captions = file('captions.vtt');
+    const parts: Omit<DemoPageParts, 'video' | 'poster'> = {
+      title: page.title,
+      text: page.text,
+      chapters: demo.chapters,
+      pr: this.prOf(cardId),
+      when: `Demo vom ${day(statSync(video).mtime)}`,
+      tabTitle: page.title,
+      // a page opened from disk may not load a caption file
+      captions: { vtt: captions ? new TextDecoder().decode(captions) : 'WEBVTT\n' },
+    };
+    let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
+    if (as === 'html') {
+      const html = demoPageHtml({
+        ...parts,
+        video: { base64: Buffer.from(readFileSync(video)).toString('base64') },
+        ...(poster ? { poster: `data:image/jpeg;base64,${Buffer.from(poster).toString('base64')}` } : {}),
+      });
+      out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(html) };
+    } else {
+      const html = demoPageHtml({ ...parts, video: { src: 'demo.mp4' }, ...(poster ? { poster: 'poster.jpg' } : {}) });
+      const entries = [
+        { name: `${slug}/index.html`, data: new TextEncoder().encode(html) },
+        { name: `${slug}/demo.mp4`, data: new Uint8Array(readFileSync(video)) },
+        ...(poster ? [{ name: `${slug}/poster.jpg`, data: poster }] : []),
+        ...(captions ? [{ name: `${slug}/captions.vtt`, data: captions }] : []),
+      ];
+      out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
+    }
+    this.o.board.log(cardId, 'state', 'owner', `Exportiert als ${as === 'zip' ? 'ZIP' : 'HTML-Datei'}: ${out.name}`);
+    return out;
+  }
+
+  /** The page's title and text: the worker's, else written now and kept with the demo, so it is not written again. */
+  private async page(card: Item, demo: Demo & { dir: string }): Promise<DemoPage> {
+    if (demo.page) return demo.page;
+    const page = await this.writePage(card, demo);
+    if (this.demo(card.id)?.dir === demo.dir) this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, page }) });
+    return page;
   }
 
   /**
@@ -333,6 +396,32 @@ export function withDemoLink(body: string, url: string): string | null {
     return lines.join('\n');
   }
   return body.trim() ? `${body.trimEnd()}\n\n${line}\n` : `${line}\n`;
+}
+
+/** A card's page keeps this slug for good: a shared link stays the same, and an export is named by it. */
+const slugOf = (card: Item) => branchName(card.title, card.id).slice('obeya/'.length);
+
+/**
+ * A share command line as the configuration holds it, as argv: words split at spaces outside
+ * quotes. A program given as a path, and any script, is found in the repository (`~` is the home
+ * directory); a script (`.ts`, `.js`) runs with Obeya's own Bun, on every platform.
+ */
+export function shareArgv(line: string, repoPath: string): string[] {
+  const words = [...line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]!);
+  if (!words.length) return [];
+  let [program, ...rest] = words as [string, ...string[]];
+  program = program.replace(/^~(?=$|[\\/])/, homedir());
+  const script = /\.(m?[jt]sx?|cjs)$/.test(program);
+  if ((script || /[\\/]/.test(program)) && !isAbsolute(program)) program = resolve(repoPath, program);
+  return script ? [process.execPath, program, ...rest] : [program, ...rest];
+}
+
+/** Why a share command cannot run: its program is not there. */
+export function shareProblem(argv: string[]): string | null {
+  const program = argv[0] === process.execPath ? argv[1] : argv[0];
+  if (!program) return 'the share command is empty';
+  if (isAbsolute(program)) return existsSync(program) ? null : `the share command's program ${program} does not exist`;
+  return Bun.which(program) ? null : `the share command's program ${program} is not on the PATH`;
 }
 
 /** Runs the share command; never throws. */

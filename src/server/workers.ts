@@ -25,6 +25,8 @@ export interface WorkerOptions {
   runtime: AgentRuntime;
   workspaces: Workspaces;
   adapter: RepoAdapter;
+  /** The repository shares video demos on a page (the configuration's command or the adapter's); the adapter's alone when left out. */
+  shares?: boolean;
   permissionMode?: 'auto' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk' | 'default';
   /** The owner's preferences, added to every worker's instructions. */
   preferences?: () => string;
@@ -106,6 +108,11 @@ export class Workers {
   private restart: DueRestart | null = null;
 
   constructor(private o: WorkerOptions) {}
+
+  /** Whether a video demo here may go to a page for colleagues, which the worker then writes. */
+  private get shares(): boolean {
+    return this.o.shares ?? !!this.o.adapter.demo?.share;
+  }
 
   // ---------------------------------------------------------------- owner actions
 
@@ -685,7 +692,7 @@ export class Workers {
               not_shown: z.array(z.string()).describe('behaviours not in the demo, each with why'),
               findings: z.array(z.string()),
               question: z.string().optional().describe('only when something needs the owner beyond approve or feedback; the owner can answer it on the card before approving'),
-              ...(this.o.adapter.demo?.share
+              ...(this.shares
                 ? {
                     page: z
                       .object({ title: z.string(), text: z.string() })
@@ -730,7 +737,7 @@ export class Workers {
               const chapters = readChapters(d.dir, d.chapters ?? []);
               if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
               const page = d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000) } : undefined;
-              if (this.o.adapter.demo?.share && !page)
+              if (this.shares && !page)
                 return 'Not handed over: a video demo here needs its page (title and text) for colleagues, in case the owner shares it. Call ready_for_review again with demo.page.';
               demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...report, ...(page ? { page } : {}) });
             }
@@ -900,7 +907,7 @@ ${idea.idea.brief}` : '',
       parts.push(
         [
           `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review (with its report).`,
-          `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.o.adapter.demo.share ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+          `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
           "When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis), make an HTML artifact instead: an index.html in a new directory under ~/demos/ (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.",
           `Only when there is nothing to show at all (the task turned out to be done already, say), hand over with no_demo and why instead. That is the exception: the owner wants something to see.`,
         ].join(' '),

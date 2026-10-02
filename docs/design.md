@@ -235,8 +235,9 @@ the owner's language (`src/core/locale.ts`).
   another file.
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
-  adapter and whether workers use clones or worktrees; problems (no git repository, an unknown
-  adapter, two canvases with one id, a canvas's home repository left out) show at the field while
+  adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
+  the adapter's, or an export; see Sharing a demo); problems (no git repository, an unknown
+  adapter, two canvases with one id, a canvas's home repository left out, a share command whose program is not there) show at the field while
   editing and keep it from being saved. Saving writes the file and restarts Obeya once no worker is
   in the middle of a turn (as for new code); the page reloads. Started with repositories on the
   command line, Obeya shows those, and saving makes the file the configuration it restarts with.
@@ -521,14 +522,16 @@ the owner's language (`src/core/locale.ts`).
   with the summary and the reason, and a demo from an earlier handover leaves the card, since it
   showed other work. Artifacts stay in `~/demos/`, never in git; a pull request links a video demo
   only once it is shared (below).
-- **Sharing a demo** — a video demo on a card of a repository whose adapter names a share command
-  (`demo.share`; Acme) has "Teilen" beside the video, on waiting cards and on cards long done
-  (archived ones too); HTML artifacts and prototypes are not shared. Publishing goes outside Obeya,
+- **Sharing a demo** — every video demo has "Teilen" beside it, on waiting cards and on cards long
+  done (archived ones too); HTML artifacts and prototypes are not shared. Where it goes depends on
+  the repository's share target: the command line in its configuration (`share`, see
+  Configuration), else the command its adapter names (`demo.share`; Acme). With a target, the
+  demo is published on a page. Publishing goes outside Obeya,
   so "Teilen" holds 8 s (`SHARE_HOLD_MS`) with "Doch nicht" on the card before anything is
   uploaded. Then the card shows the link (open, copy) and "Nicht mehr teilen", which withdraws the
   page. A card that gets a new demo after sharing says the page still shows the earlier one and
   offers "Neu teilen"; nothing is replaced on its own. The page has a title and two to five
-  sentences for colleagues who have never seen Obeya: where the adapter shares, `ready_for_review`
+  sentences for colleagues who have never seen Obeya: where the repository has a target, `ready_for_review`
   takes them with a video demo (`demo.page`), and for a demo handed over before that a short
   read-only session writes them from the worker's last summary when the owner shares, kept with
   the demo afterwards. Obeya runs the command (`src/server/share.ts`) in the repository with
@@ -550,6 +553,18 @@ the owner's language (`src/core/locale.ts`).
   meanwhile; a PR reported while the page is going out gets a second round after it. A failure
   to read or edit the description goes into the card's log; the page stays shared. Withdrawing
   the page leaves the line in the description.
+  Without a target, "Teilen" exports the same page as a file to pass on (`Sharing.export`,
+  `GET …/cards/<id>/export?as=zip|html`): a ZIP with a folder named by the slug that holds
+  `index.html` with the video, poster and captions beside it, or one HTML file with the video in
+  base64, played from a blob so it seeks; only for videos up to 15 MiB (`EXPORT_HTML_MAX`, so the
+  file still goes by mail), the button says so for larger ones. Nothing leaves Obeya, so an export
+  is not held; the card's log names the file. Both pages carry their captions as cues in a script,
+  since Chrome does not load a `<track>` for a page opened from disk. The page (`src/server/demo-page.ts`)
+  is the one Acme's site shows, without its link to the overview. A share command from the
+  configuration runs like the adapter's; its words are split at spaces outside quotes, a program
+  given as a path and any script are found in the repository, and a script (`.ts`, `.js`) runs
+  with Obeya's own Bun, so the same line works on Windows. The ZIP is written by Obeya
+  (`src/server/zip.ts`, stored without compression: the video is compressed already).
   Acme's command (`src/adapters/team-share.ts`) keeps the site in `~/.obeya/team-share/site/` (a
   directory per demo with page, video, poster, captions and `meta.json`, and the overview, newest
   first) and deploys all of it with `wrangler pages deploy` to the Pages project `team-demos`,
@@ -568,7 +583,8 @@ the owner's language (`src/core/locale.ts`).
   rights in `cloudflare.env`. The command never creates the project itself.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   recipe for running the app in a demo (login, test data, migrations: `demo.howToRun`), where plan
-  docs live, which reviews run, the command that shares demos.
+  docs live, which reviews run, the command that shares demos (the
+  configuration's takes its place).
 
 ## Data
 

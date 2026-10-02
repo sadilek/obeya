@@ -23,6 +23,7 @@ import { BadRequest } from './board';
 import { ConfigError, resolveCanvas } from './canvas';
 import type { Store } from './db';
 import { repoInfo } from './repo';
+import { shareArgv, shareProblem } from './share';
 
 export const CONFIG_FILE = 'canvases.json';
 
@@ -49,6 +50,7 @@ const shape = z.array(
             adapter: z.string().optional(),
             workspaces: z.array(z.string()).optional(),
             clones: z.number().int().min(0).max(20).optional(),
+            share: z.string().optional(),
           })
           .strict(),
       ),
@@ -68,6 +70,7 @@ function tidy(canvases: z.infer<typeof shape>): CanvasConfig[] {
         ...(r.adapter?.trim() ? { adapter: r.adapter.trim() } : {}),
         ...(workspaces.length ? { workspaces } : {}),
         ...(r.clones ? { clones: r.clones } : {}),
+        ...(r.share?.trim() ? { share: r.share.trim() } : {}),
       };
     }),
   }));
@@ -168,6 +171,10 @@ export class Config {
           }
         }),
       );
+      c.repos.forEach((r, repo) => {
+        const wrong = r.share && shareProblem(shareArgv(r.share, resolve(r.path)));
+        if (wrong) problems.push({ code: 'shareCommand', canvas, repo, detail: wrong });
+      });
       try {
         const { id, name, adapters, refs, config } = resolveCanvas(c, this.o.store);
         // the repositories in the order given, though the home one runs first
@@ -176,7 +183,7 @@ export class Config {
           name,
           repos: c.repos.map((r) => {
             const i = config.repos.indexOf(r);
-            return { id: refs[i]!.id, adapter: adapters[i]!.name, workspaces: adapters[i]!.workspaces };
+            return { id: refs[i]!.id, adapter: adapters[i]!.name, workspaces: adapters[i]!.workspaces, ...(adapters[i]!.demo?.share ? { adapterShares: true } : {}) };
           }),
         };
       } catch (e) {

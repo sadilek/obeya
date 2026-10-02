@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
+import { EXPORT_HTML_MAX } from '../core/types';
 import type { Forge } from './forge';
-import { DEMO_MARKER, type SharePage, Sharing, withDemoLink } from './share';
+import { DEMO_MARKER, type SharePage, Sharing, shareArgv, shareProblem, withDemoLink } from './share';
 import { FakeRuntime } from './testing';
 
 let dir: string;
@@ -294,5 +295,89 @@ describe('the link in the pull request', () => {
     expect(withDemoLink('Text\n\n', 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n`);
     expect(withDemoLink('Siehe https://d/a/', 'https://d/a/')).toBeNull();
     expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}\n\nFooter`, 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n\nFooter`);
+  });
+});
+
+describe('exporting a demo, where the repository has no share target', () => {
+  /** A demo directory as the demo skill leaves it. */
+  function files(c: { id: string }, video = 'MP4DATA') {
+    const d = join(dir, `demo-${c.id}`);
+    writeFileSync(join(d, 'demo.mp4'), video);
+    writeFileSync(join(d, 'poster.jpg'), 'JPEG');
+    writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00.000 --> 00:02.500\nDer Export </script> beginnt.\n');
+  }
+
+  test('as a ZIP: the page in a folder with the video, poster and captions beside it', async () => {
+    const c = card('Ohne Ziel');
+    files(c);
+    const out = await sharing.export(c.id, 'zip');
+    const slug = 'ohne-ziel-' + c.id.slice(0, 6);
+    expect(out.name).toBe(`${slug}.zip`);
+    writeFileSync(join(dir, out.name), out.data);
+    // a ZIP every system opens: checked by unzip
+    const p = Bun.spawnSync(['unzip', '-o', '-d', join(dir, 'unzipped'), join(dir, out.name)]);
+    expect(p.exitCode).toBe(0);
+    const at = join(dir, 'unzipped', slug);
+    expect(readFileSync(join(at, 'demo.mp4'), 'utf8')).toBe('MP4DATA');
+    expect(readFileSync(join(at, 'poster.jpg'), 'utf8')).toBe('JPEG');
+    const html = readFileSync(join(at, 'index.html'), 'utf8');
+    expect(html).toContain('<h1>CSV-Export</h1>');
+    expect(html).toContain('<p>Vermieter laden Zählerstände als CSV.</p>');
+    expect(html).toContain('src="demo.mp4"');
+    expect(html).toContain('Vorher');
+    // the captions are in the page too, for a page opened from disk; they cannot end its script
+    expect(html).toContain('Der Export <\\/script> beginnt.');
+    expect(log(c.id).at(-1)).toBe(`Exportiert als ZIP: ${slug}.zip`);
+    // exporting publishes nothing
+    expect(calls()).toEqual([]);
+    expect(share(c.id)).toBeUndefined();
+  });
+
+  test('as one HTML file holding the video, for short videos only', async () => {
+    const c = card('Ohne Ziel');
+    files(c);
+    const out = await sharing.export(c.id, 'html');
+    const html = new TextDecoder().decode(out.data);
+    expect(out.name).toMatch(/^ohne-ziel-.*\.html$/);
+    expect(html).toContain(Buffer.from('MP4DATA').toString('base64'));
+    expect(html).toContain(`poster="data:image/jpeg;base64,${Buffer.from('JPEG').toString('base64')}"`);
+    expect(html).not.toContain('src="demo.mp4"');
+
+    const big = card('Lang');
+    files(big, 'x'.repeat(EXPORT_HTML_MAX + 1));
+    await expect(sharing.export(big.id, 'html')).rejects.toMatchObject({ code: 'exportTooLarge' });
+    expect((await sharing.export(big.id, 'zip')).name).toEndWith('.zip');
+  });
+
+  test('a demo without its page gets one written first, kept for the next time', async () => {
+    const c = card('Zähler', { page: undefined });
+    files(c);
+    const out = sharing.export(c.id, 'zip');
+    await until(() => runtime.sessions.length === 1);
+    runtime.last.call('page', { title: 'Zählerstände als CSV', text: 'Vermieter laden sie herunter.' });
+    runtime.last.emit({ type: 'idle' });
+    expect((await out).name).toEndWith('.zip');
+    expect(board.item(c.id)!.demo!.page).toEqual({ title: 'Zählerstände als CSV', text: 'Vermieter laden sie herunter.' });
+  });
+
+  test('only video demos', async () => {
+    const html = card('Logo', { kind: 'html' });
+    await expect(sharing.export(html.id, 'zip')).rejects.toMatchObject({ code: 'noShare' });
+    // a video demo whose file is gone
+    await expect(sharing.export(card('Weg').id, 'zip')).rejects.toMatchObject({ code: 'noShare' });
+  });
+});
+
+describe('a share command from the configuration', () => {
+  test('is split into words, its program found in the repository, a script run with Bun', () => {
+    expect(shareArgv('scripts/share.sh --site "Unsere Demos"', '/repo')).toEqual(['/repo/scripts/share.sh', '--site', 'Unsere Demos']);
+    expect(shareArgv('share.ts', '/repo')).toEqual([process.execPath, '/repo/share.ts']);
+    expect(shareArgv('~/bin/share', '/repo')).toEqual([join(homedir(), 'bin/share')]);
+    expect(shareArgv("rclone-share 'a b'", '/repo')).toEqual(['rclone-share', 'a b']);
+    expect(shareArgv('', '/repo')).toEqual([]);
+    expect(shareProblem(['git'])).toBeNull();
+    expect(shareProblem(['/nowhere/share'])).toContain('does not exist');
+    expect(shareProblem([process.execPath, '/nowhere/share.ts'])).toContain('does not exist');
+    expect(shareProblem([])).toContain('empty');
   });
 });

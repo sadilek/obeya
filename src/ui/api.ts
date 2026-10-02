@@ -17,16 +17,33 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) {
-    const body = await res.text();
-    let code: string | undefined;
-    let detail = body;
-    try {
-      ({ code, error: detail = body } = JSON.parse(body));
-    } catch {}
-    throw new ApiError(code, detail || `HTTP ${res.status}`);
-  }
+  await refused(res);
   return (res.status === 204 ? undefined : await res.json()) as T;
+}
+
+/** Throws the server's refusal as an ApiError. */
+async function refused(res: Response) {
+  if (res.ok) return;
+  const body = await res.text();
+  let code: string | undefined;
+  let detail = body;
+  try {
+    ({ code, error: detail = body } = JSON.parse(body));
+  } catch {}
+  throw new ApiError(code, detail || `HTTP ${res.status}`);
+}
+
+/** Saves a file the server makes, under the name it gives. */
+async function download(path: string, fallback: string) {
+  const res = await fetch(path);
+  await refused(res);
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallback;
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 const query = (where: Where) =>
@@ -55,6 +72,15 @@ export const api = {
   /** Has a restart that waits for workers go ahead now; false when none waits. */
   restartNow: () => call<{ restarting: boolean }>('POST', '/api/restart'),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
+  /** Downloads a card's video demo as a ZIP of its page with the files, or as one HTML file. */
+  exportDemo: (id: string, as: 'zip' | 'html') => download(at(`/cards/${id}/export?as=${as}`), `demo.${as}`),
+  /** The size of a card's demo video in bytes; null when unknown. */
+  demoSize: async (id: string) => {
+    const res = await fetch(at(`/cards/${id}/demo/demo.mp4`), { headers: { range: 'bytes=0-0' } });
+    await res.body?.cancel();
+    const total = Number(/\/(\d+)$/.exec(res.headers.get('content-range') ?? '')?.[1]);
+    return res.ok && total > 0 ? total : null;
+  },
   patch: (id: string, p: CardPatch) => call<void>('PATCH', at(`/cards/${id}`), p),
   remove: (id: string) => call<void>('DELETE', at(`/cards/${id}`)),
   restore: (id: string) => call<void>('POST', at(`/cards/${id}/restore`)),

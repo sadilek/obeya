@@ -194,6 +194,22 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
           }
         },
       },
+      // a video demo as a file to pass on, where the repository has no share target (`?as=zip|html`)
+      '/api/c/:canvas/cards/:id/export': {
+        GET: async (req) => {
+          const c = byId.get(req.params.canvas);
+          if (!c) return Response.json({ code: 'invalid', error: 'unknown canvas' }, { status: 404 });
+          const as = new URL(req.url).searchParams.get('as');
+          if (as !== 'zip' && as !== 'html') return Response.json({ code: 'invalid', error: 'as must be zip or html' }, { status: 400 });
+          try {
+            const f = await c.sharing.export(req.params.id, as);
+            return new Response(f.data, { headers: { 'content-type': f.type, 'content-disposition': `attachment; filename="${f.name}"`, 'cache-control': 'no-store' } });
+          } catch (e) {
+            if (e instanceof BadRequest) return Response.json({ code: e.code, error: e.message }, { status: 400 });
+            throw e;
+          }
+        },
+      },
       // what the owner said (audio) or typed, read by the Koordinator as one action
       '/api/c/:canvas/voice': {
         POST: on(async (c, req) => {

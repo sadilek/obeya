@@ -1,0 +1,130 @@
+// The page a video demo is shared on, for people who have never seen Obeya: title, text, the video
+// with its chapters and captions, the pull request. Acme's share command builds its site from it,
+// and a repository without a share target exports it (share.ts): as a ZIP with the video beside the
+// page, or as one HTML file with everything inside.
+
+export interface DemoPageParts {
+  title: string;
+  /** Paragraphs separated by blank lines. */
+  text: string;
+  chapters: [number, string][];
+  pr: string | null;
+  /** The line under the title (when it was shared). */
+  when: string;
+  /** The browser tab's title. */
+  tabTitle: string;
+  /** A link above the title (Acme: to all demos). */
+  top?: { href: string; text: string };
+  /** The video's URL, or its bytes in base64 for a page that holds everything. */
+  video: { src: string } | { base64: string };
+  poster?: string;
+  /**
+   * The captions' URL, or their text in the page: a page opened from disk may not load a `<track>`
+   * (Chrome treats `file:` as another origin), so those come as cues from a script.
+   */
+  captions: { src: string } | { vtt: string };
+}
+
+export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const paragraphs = (text: string) =>
+  text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${esc(p)}</p>`)
+    .join('\n');
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+/** Text inside a `<script>` element must not close it. */
+const inScript = (s: string) => s.replace(/<\//g, '<\\/');
+
+export const day = (at: Date | string) => new Date(at).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
+
+export const PAGE_STYLE = `
+  :root { --bg: #f4f2ee; --card: #fff; --ink: #1d1c1a; --muted: #75716a; --line: #e6e2da; --chip: #f1eee8; --accent: #0d9488; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #151412; --card: #1f1e1b; --ink: #eeeae3; --muted: #a39e94; --line: #34312c; --chip: #2a2825; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+  a { color: var(--accent); }
+  .top { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+  h1 { font-size: 28px; line-height: 1.25; margin: 0 0 6px; }
+  .when { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .text p { margin: 0 0 10px; max-width: 72ch; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; margin-top: 22px; align-items: start; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  video { width: 100%; border-radius: 12px; background: #000; display: block; }
+  ol { list-style: none; margin: 0; padding: 6px; background: var(--chip); border-radius: 12px; }
+  ol button { all: unset; cursor: pointer; display: flex; gap: 10px; width: 100%; padding: 7px 9px; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+  ol button:hover, ol button.on { background: var(--card); }
+  ol .t { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 34px; }
+  .pr { margin-top: 14px; font-size: 14px; }
+  ul.demos { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ul.demos a { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; color: var(--ink); text-decoration: none; }
+  ul.demos a:hover { border-color: var(--accent); }
+  ul.demos b { display: block; font-size: 17px; }
+  ul.demos span { color: var(--muted); font-size: 14px; }
+`;
+
+// the cues of captions held in the page, for a page opened from disk
+const CUES = `
+  const vtt = document.getElementById('captions').textContent;
+  const track = v.addTextTrack('captions', 'Deutsch', 'de');
+  const sec = (t) => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
+  for (const block of vtt.replace(/\\r/g, '').split(/\\n\\s*\\n/)) {
+    const lines = block.split('\\n');
+    const at = lines.findIndex((l) => l.includes('-->'));
+    if (at < 0) continue;
+    const [from, to] = lines[at].split('-->').map((s) => sec(s.trim().split(/\\s+/)[0]));
+    track.addCue(new VTTCue(from, to, lines.slice(at + 1).join('\\n')));
+  }
+`;
+
+// A host that serves no byte ranges (Cloudflare Pages answers a range request with the whole file)
+// leaves a video a browser cannot seek in (it jumps back): then the page loads the video once and
+// plays it from memory. A page opened from disk cannot fetch it and needs not.
+const SEEKABLE = (src: string) => `
+  const seekable = fetch(${JSON.stringify(src)}, { headers: { Range: 'bytes=0-' } }).then(async (r) => {
+    if (r.status === 206) return r.body?.cancel();
+    const url = URL.createObjectURL(await r.blob()), at = v.currentTime, playing = !v.paused;
+    v.src = url; v.currentTime = at;
+    if (playing) v.play();
+  }).catch(() => {});
+`;
+
+// the video's bytes held in the page, played from a blob so it can seek
+const BLOB = `
+  const b64 = document.getElementById('video').textContent.trim();
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  v.src = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+`;
+
+export function demoPageHtml(p: DemoPageParts): string {
+  const chapters = p.chapters.length
+    ? `<ol>${p.chapters.map(([at, title], i) => `<li><button data-at="${at}"${i === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
+    : '';
+  const src = 'src' in p.video ? ` src="${esc(p.video.src)}"` : '';
+  const track = 'src' in p.captions ? `<track kind="captions" src="${esc(p.captions.src)}" srclang="de" label="Deutsch">` : '';
+  return `<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}</style></head>
+<body><main>
+${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>
+<div class="when">${esc(p.when)}</div>
+<div class="text">${paragraphs(p.text)}</div>
+<div class="grid">
+  <video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}>${track}</video>
+  <div>${chapters}${p.pr ? `<div class="pr"><a href="${esc(p.pr)}">Pull Request ansehen</a></div>` : ''}</div>
+</div>
+</main>
+${'vtt' in p.captions ? `<script type="text/vtt" id="captions">${inScript(p.captions.vtt)}</script>\n` : ''}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>
+  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${'vtt' in p.captions ? CUES : ''}
+  bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
+  v.addEventListener('timeupdate', () => {
+    let on = 0; bs.forEach((b, i) => { if (Number(b.dataset.at) <= v.currentTime + 0.05) on = i; });
+    bs.forEach((b, i) => b.classList.toggle('on', i === on));
+  });
+</script>
+</body></html>
+`;
+}
