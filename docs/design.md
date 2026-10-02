@@ -203,13 +203,16 @@ the owner's language (`src/core/locale.ts`).
   references and workspace directory are the ones a single-repository canvas always had, so
   canvases keep their data. The others' plan docs are referenced as `<repo>:<path>`; the owner's
   cards carry their repository, chosen in the panel before work begins (home by default), and a
-  proposal or a cut package inherits it. The UI opens `?c=<canvas>`, the top-left pill switches,
+  proposal or a cut package inherits it. The UI opens `?c=<canvas>`, the pill after the logo switches,
   and on a canvas with several repositories every card names its own. Cards on other canvases that
   need the owner show as a count at their entry in the switcher and, while it is closed, as the sum
   on the pill; the server pushes every canvas's count to all of them when one changes.
 - **UI** — browser app, React + TypeScript. Custom canvas: camera with
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap, and a frosted top bar the
-  canvas slides under.
+  canvas slides under. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
+  and approved, "obeya" in Inter Bold as outlines) opens the bar, stands alone in the middle while
+  the page loads, above "offline" when the server is gone, and is the favicon; `bun
+  scripts/logo.tsx` writes it as the files in `src/ui/logo/`.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
   on the Claude Code login of the machine (tested without an API key: `apiKeySource: none`).
   A worker is one SDK session per card with streaming input, the repo's own settings and

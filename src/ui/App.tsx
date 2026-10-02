@@ -11,6 +11,7 @@ import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
 import { KoordinatorSheet } from './koordinator';
+import { Sign, Wordmark } from './logo';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
 import { CanvasPill, CardView, Edges, Links, Minimap, ProjectView, readingWidth, RestartPill, Sheet } from './parts';
@@ -22,7 +23,7 @@ export function App() {
   useEffect(() => {
     api.canvases().then(setCanvases, () => setFailed(true));
   }, []);
-  if (!canvases) return failed ? <div className="empty">{t.offline}</div> : null;
+  if (!canvases) return <Splash offline={failed} />;
   // the canvas in the address, else the first
   const wanted = new URLSearchParams(location.search).get('c');
   const current = canvases.find((c) => c.id === wanted) ?? canvases[0];
@@ -31,9 +32,19 @@ export function App() {
   return <Live canvases={canvases} />;
 }
 
+/** While the page loads, and after a restart until the canvas is back: the sign in the middle, above "offline" when the server cannot be reached. */
+function Splash({ offline }: { offline: boolean }) {
+  return (
+    <div id="splash">
+      <Sign size={56} />
+      {offline && <div>{t.offline}</div>}
+    </div>
+  );
+}
+
 function Live({ canvases }: { canvases: CanvasInfo[] }) {
   const { snapshot, online, restart, waiting } = useCanvas();
-  if (!snapshot) return online ? null : <div className="empty">{t.offline}</div>;
+  if (!snapshot) return <Splash offline={!online} />;
   return <Canvas snapshot={snapshot} online={online} restart={restart} canvases={canvases} waiting={waiting} />;
 }
 
@@ -717,12 +728,8 @@ function Canvas({
       {!items.length && <div className="empty">{t.empty}</div>}
       {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={reserve} onOpen={open} />}
       <header id="bar">
+        <Wordmark height={22} />
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
-        {snapshot.canvas.name.toLowerCase() !== 'obeya' && (
-          <div className="pill">
-            <b>Obeya</b>
-          </div>
-        )}
         <button className="pill" onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>
           + {t.newCard}
         </button>
