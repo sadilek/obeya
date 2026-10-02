@@ -499,6 +499,18 @@ export class Store {
     ).id;
   }
 
+  /** A rule the owner gives outright for the CLAUDE.md of the repository `target`: filed at once, without a proposal. */
+  fileRule(canvasId: string, text: string, cardId: string | null, target: string): number {
+    return (
+      this.db
+        .query(
+          `INSERT INTO preferences (canvas_id, text, card_id, created_at, state, target)
+           VALUES ($c, $text, $cardId, $now, 'filed', $target) RETURNING id`,
+        )
+        .get({ c: canvasId, text, cardId, now: now(), target }) as { id: number }
+    ).id;
+  }
+
   /** Changes or (with `null`) deletes a preference of the canvas; returns whether it existed. */
   setPreference(canvasId: string, id: number, text: string | null): boolean {
     const r =

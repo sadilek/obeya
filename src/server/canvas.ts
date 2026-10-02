@@ -243,6 +243,21 @@ export class CanvasRuntime {
     this.fileRules();
   }
 
+  /**
+   * A rule the owner gives outright, by „Merk dir: …“ or in the sheet: one of theirs, active at once,
+   * or with `repos` one for those repositories' CLAUDE.md, which goes straight into their cards
+   * „CLAUDE.md ergänzen“. `replaces`: the active rule it changes; `card`: the card open when it was said.
+   */
+  remember(text: string, o: { repos?: string[]; replaces?: number; card?: string } = {}) {
+    // the rule it changes may have been deleted in the meantime: then it is a new one
+    const replaces = o.replaces !== undefined && this.board.preferences('active').some((p) => p.id === o.replaces) ? o.replaces : undefined;
+    if (o.repos?.length) {
+      this.board.fileRule(text, o.repos, o.card ?? null, replaces);
+      this.fileRules();
+    } else if (replaces !== undefined) this.board.setPreference(replaces, text);
+    else this.board.addPreference(text, o.card ?? null);
+  }
+
   rejectRule(id: number) {
     this.board.rejectProposal(id);
     this.fileRules();
@@ -531,10 +546,7 @@ export class CanvasRuntime {
       case 'configure':
         return this.deps.config?.save(c.canvases);
       case 'remember':
-        // the rule it changes may have been deleted in the meantime: then it is a new one
-        if (c.replaces !== undefined && this.board.preferences('active').some((p) => p.id === c.replaces)) return this.board.setPreference(c.replaces, c.text);
-        this.board.addPreference(c.text, c.card ?? null);
-        return;
+        return this.remember(c.text, c);
     }
   }
 

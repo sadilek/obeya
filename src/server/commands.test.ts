@@ -344,6 +344,23 @@ describe('„Merk dir“', () => {
     await new Promise((r) => setTimeout(r, 40));
     expect(executed).toEqual([{ do: 'remember', text: 'Demos mit Ton.', replaces: ton }]);
   });
+
+  test('a rule about a repository is filed for its CLAUDE.md; the Koordinator knows the repositories', async () => {
+    const k = commander();
+    const heard = k.hear('merk dir: in Home Tests immer auf Deutsch', {});
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox.at(-1)).toContain('Repositories on this canvas (the first is the default for a new card): home (Home)');
+    expect(s.spec.tools.find((t) => t.name === 'act')!.description).toContain('„CLAUDE.md ergänzen“');
+    expect(s.call('act', { actions: [{ do: 'remember', text: 'Tests auf Deutsch.', repos: ['web'] }], confirm: '…' })).toContain('unknown repository web; the canvas has home');
+    s.call('act', { actions: [{ do: 'remember', text: 'Tests auf Deutsch.', repos: ['home', 'home'] }], confirm: 'Kommt in die CLAUDE.md von Home.' });
+    s.emit({ type: 'idle' });
+    const { token, confirm } = await heard;
+    expect(confirm).toBe('Kommt in die CLAUDE.md von Home.');
+    k.arm(token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'remember', text: 'Tests auf Deutsch.', repos: ['home'] }]);
+  });
 });
 
 describe('what the owner says to the Koordinator is offered for learning', () => {

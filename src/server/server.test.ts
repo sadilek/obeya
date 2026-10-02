@@ -393,6 +393,29 @@ describe('„Merk dir“', () => {
     run({ do: 'remember', text: 'Demos leise.', replaces: rule!.id });
     expect(board.preferences('active').map((p) => p.text)).toEqual(['Demos leise.']);
   });
+
+  test('a rule about a repository goes straight into its card „CLAUDE.md ergänzen“, which starts once no proposal waits', async () => {
+    const run = CanvasRuntime.prototype.run.bind(canvas);
+    const repo = board.canvas.repos[0]!.id;
+    const c = card();
+    const waiting = board.proposePreference('Fragen mit höchstens drei Optionen.', {});
+    const moved = board.addPreference('Tests auf Deutsch.');
+    // said with a card open, and moving one of the owner's rules
+    run({ do: 'remember', text: 'Tests auf Deutsch benennen.', repos: [repo], replaces: moved, card: c.id });
+    expect(board.preferences('active')).toEqual([]);
+    expect(board.preferences('filed')).toMatchObject([{ text: 'Tests auf Deutsch benennen.', target: repo, cardId: c.id }]);
+    const collect = board.collecting(repo)!;
+    expect(collect).toMatchObject({ title: 'CLAUDE.md ergänzen', repo });
+    expect(collect.body).toEndWith('- Tests auf Deutsch benennen.');
+    // written in the sheet; a proposal still waits, so the card collects on
+    expect((await post(api('/preferences'), JSON.stringify({ text: 'Commits auf Englisch.', target: repo }))).status).toBe(204);
+    expect(board.collecting(repo)!.body).toEndWith('- Tests auf Deutsch benennen.\n- Commits auf Englisch.');
+    expect(await codeOf(post(api('/preferences'), JSON.stringify({ text: 'X.', target: 'nope' })))).toBe('invalid');
+    expect(board.preferencesText()).toBe('');
+    canvas.rejectRule(waiting);
+    expect(board.item(collect.id)!.queue).toBeTruthy();
+    expect(board.collecting(repo)).toBeUndefined();
+  });
 });
 
 describe('a restart that waits', () => {

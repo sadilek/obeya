@@ -64,7 +64,8 @@ decisions are made in front of the wall.
   repository. Whatever is about a repository (its conventions, product requirements, tools, and
   taste in code even when it holds in every repository) belongs in that repository's CLAUDE.md,
   where it is versioned, colleagues see it and Claude Code follows it outside Obeya too. Such a
-  rule, once learned, goes there through a card (see the Koordinator).
+  rule goes there through a card (see the Koordinator): once accepted when learned, at once when
+  the owner writes or says it outright.
 
 ## Ideas
 
@@ -395,7 +396,7 @@ the owner's language (`src/core/locale.ts`).
   was stated and proposes it as a rule (the card's log says „Schlägt vor: …“), for the preference
   memory or, when it is about a repository, for that repository's CLAUDE.md (for each repository
   of the canvas when it holds in all of them; one proposal each); "Merk dir: …" by
-  voice records an active rule outright. What it learns from: answers, notes and feedback to
+  voice records a rule outright, sorted the same way. What it learns from: answers, notes and feedback to
   workers; an idea's discussion; the conversation with it (a reply or look-up at once, with its
   reply; a command once its undo window has passed, unless its words reach the learner another
   way, as a note or an idea's discussion do); and the text the owner writes in a card, once they
@@ -430,7 +431,8 @@ the owner's language (`src/core/locale.ts`).
   rule. Rejected proposals are kept (state `rejected` in `preferences`), so the learner can see
   them. A rule accepted for a CLAUDE.md (state `filed`) goes into its repository's open card
   „CLAUDE.md ergänzen“ (planned and not yet with the Koordinator; the setting `claude_md_card:<repo>`
-  names it), or into a new one when there is none; its worker writes the rules into the CLAUDE.md
+  names it), or into a new one when there is none; so does one the owner gives outright for a
+  repository, by voice or in the sheet's field for a new rule, which has the same „Gehört in“; its worker writes the rules into the CLAUDE.md
   in the style of what is there. These cards start by themselves, through the Koordinator like any
   start, once no proposal waits any more, whatever its place: a waiting one might yet be switched
   to theirs, so several rules go in together. The card lands like any other (in Acme, through a pull
@@ -458,9 +460,13 @@ the owner's language (`src/core/locale.ts`).
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
   one waits for, so "starte alle wartenden Karten" works. A reply answers questions too
   ("Was ist seit gestern passiert?"), as far as the cards and their history answer them.
-  "Merk dir: …" ("ab jetzt immer …") is remember: a rule every agent follows, active once the undo
-  window has passed, with the open card as its occasion; it may name the rule it changes, which
-  then takes the new text. The Koordinator gets the owner's rules, numbered, with every command,
+  "Merk dir: …" ("ab jetzt immer …") is remember, with the open card as its occasion, once the undo
+  window has passed. A rule on how agents work with the owner through Obeya becomes one of the
+  owner's, active at once; one about a repository („Merk dir: in Acme immer …“) goes, like a learned
+  one, into the card „CLAUDE.md ergänzen“ of the repositories it names (`repos`), without a
+  proposal, since the owner said it. The confirmation says which of the two it went to. It may name
+  the rule it changes, which then takes the new text, or, moved into a CLAUDE.md, goes. The
+  Koordinator always sees the canvas's repositories, one included. The Koordinator gets the owner's rules, numbered, with every command,
   and follows them itself too.
   With a card open, the Koordinator gets its worker's whole summary and the findings of its demo,
   so "lege eine Folgekarte für die ambient-Auffälligkeit an" makes a follow-up of that card with
@@ -658,7 +664,9 @@ the repository; the copy on the project is only for the archive).
   (unversioned, invisible outside Obeya), the Koordinator committing to the CLAUDE.md on accept (it
   only reads, and nothing goes to Acme's `main` directly). Accepted ones collect in one card per
   repository that starts once no proposal waits, so several go in together without the owner
-  starting it.
+  starting it. A rule the owner says outright („Merk dir: …“) or writes in the sheet is sorted the
+  same way and filed at once, without a proposal (2026-10-02): at first it always became a
+  preference, so repository rules said outright still landed there.
 - This page describes what is built; work in progress lives in plan docs, which the canvas shows as
   projects. The milestone list it once kept repeated what the canvas shows and went (2026-10-01).
 - Plan docs as projects: a doc in the adapter's plan directory is a project when its

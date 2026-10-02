@@ -245,7 +245,12 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       '/api/c/:canvas/command/undo': {
         POST: on(async (c, req) => click(c, { undone: c.commander.undo(((await req.json()) as { token: string }).token) })),
       },
-      '/api/c/:canvas/preferences': { POST: on(async (c, req) => ({ id: c.board.addPreference(((await req.json()) as { text: string }).text) })) },
+      '/api/c/:canvas/preferences': {
+        POST: on(async (c, req) => {
+          const { text, target } = (await req.json()) as { text: string; target?: string };
+          c.remember(text, target ? { repos: [target] } : {});
+        }),
+      },
       '/api/c/:canvas/preferences/:id': {
         PATCH: on(async (c, req) => c.board.setPreference(Number(req.params.id), ((await req.json()) as { text: string }).text)),
         DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),

@@ -19,8 +19,11 @@ export type Command = (
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string }
   /** Saves Obeya's configuration, which then starts again with it. */
   | { do: 'configure'; canvases: CanvasConfig[] }
-  /** Records a rule every agent follows, active at once; `replaces`: the rule (id) it changes, `card`: the card open when the owner said it. */
-  | { do: 'remember'; text: string; replaces?: number; card?: string }
+  /**
+   * Records a rule every agent follows, active at once, or with `repos` files it for those
+   * repositories' CLAUDE.md; `replaces`: the rule (id) it changes, `card`: the card open when the owner said it.
+   */
+  | { do: 'remember'; text: string; replaces?: number; card?: string; repos?: string[] }
 ) & {
   /** Screenshots that came with the command (image ids), on the actions that take them (`TAKES_IMAGES`). */
   images?: string[];
@@ -273,7 +276,7 @@ export class Commander {
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
             '- approve: approve work waiting for review. accept: take a proposed card and start it. dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
-            '- remember (no card): a rule the owner wants every agent to follow from now on („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts. It applies at once.',
+            "- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card „CLAUDE.md ergänzen“, whose worker writes it into the CLAUDE.md. confirm says where it goes („Gemerkt, gilt ab sofort für alle Agenten.“ / „Kommt in die CLAUDE.md von <repository name>, über die Karte „CLAUDE.md ergänzen“.“).",
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words, may be empty), park (for later), drop (it stays on the canvas with its brief). Building or planning an idea waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that building goes by a click once the reply is there.",
             '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
             'Texts as the owner meant them (fix obvious recognition errors).',
@@ -291,6 +294,7 @@ export class Commander {
                   start: z.boolean().optional(),
                   repo: z.string().optional(),
                   replaces: z.number().int().optional(),
+                  repos: z.array(z.string()).optional(),
                 }),
               )
               .min(1)
@@ -415,10 +419,15 @@ export class Commander {
       const text = a.text?.trim();
       if (!text) return 'the rule is missing';
       if (text.length > 500) return 'a rule has at most 500 characters';
-      if (a.replaces === undefined) return { do: 'remember', text };
+      const known = this.o.board.canvas.repos.map((r) => r.id);
+      const repos = [...new Set(a.repos ?? [])];
+      const unknown = repos.filter((r) => !known.includes(r));
+      if (unknown.length) return `unknown repository ${unknown.join(', ')}; the canvas has ${known.join(', ')}`;
+      const to = repos.length ? { repos } : {};
+      if (a.replaces === undefined) return { do: 'remember', text, ...to };
       const replaces = s.rules[a.replaces - 1];
       if (replaces === undefined) return `there is no rule ${a.replaces}; give the number of one of the owner's rules, or none`;
-      return { do: 'remember', text, replaces };
+      return { do: 'remember', text, replaces, ...to };
     }
     if (a.do === 'new_idea') {
       if (!a.title?.trim()) return 'a new idea needs a title';
@@ -640,9 +649,7 @@ export class Commander {
       rules.length
         ? `The owner's rules, which every agent follows (follow them yourself too):\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}`
         : 'The owner has recorded no rules yet.',
-      ...(this.o.board.canvas.repos.length > 1
-        ? [`Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name})`).join(', ')}`]
-        : []),
+      `Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name})`).join(', ')}`,
     ].join('\n\n');
   }
 }
@@ -658,6 +665,7 @@ interface ActionArgs {
   start?: boolean;
   repo?: string;
   replaces?: number;
+  repos?: string[];
 }
 
 /** How a step of a card's history reads. */

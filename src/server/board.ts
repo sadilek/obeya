@@ -589,6 +589,25 @@ export class Board {
   }
 
   /**
+   * A rule the owner gives outright for the CLAUDE.md of each of `repos`, said („Merk dir: …“) or
+   * written in the sheet: it goes into the repository's card „CLAUDE.md ergänzen“ at once, without
+   * a proposal. `replaces`: an active rule of the owner's it takes the place of.
+   */
+  fileRule(text: string, repos: string[], cardId: string | null = null, replaces?: number) {
+    const clean = checkPreference(text);
+    if (!repos.length) throw new BadRequest('invalid', 'no repository');
+    for (const r of repos) this.checkRepo(r);
+    this.store.db.transaction(() => {
+      if (replaces !== undefined) this.store.setPreference(this.canvas.id, replaces, null);
+      for (const repo of new Set(repos)) {
+        this.store.fileRule(this.canvas.id, clean, cardId, repo);
+        this.collect(repo, clean);
+      }
+    })();
+    this.changed();
+  }
+
+  /**
    * Adds an accepted rule to the repository's open card „CLAUDE.md ergänzen“: planned and not yet
    * with the Koordinator. Without one, a new card collects it.
    */

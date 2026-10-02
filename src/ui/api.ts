@@ -117,7 +117,8 @@ export const api = {
   command: (text: string, where: Where, images?: string[]) =>
     call<HeardReply>('POST', at(`/command${query(where)}`), { text, ...(images?.length ? { images } : {}) }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
-  addPreference: (text: string) => call<{ id: number }>('POST', at('/preferences'), { text }),
+  /** A rule of the owner's, active at once, or with `target` one for that repository's CLAUDE.md. */
+  addPreference: (text: string, target?: string) => call<void>('POST', at('/preferences'), { text, ...(target ? { target } : {}) }),
   /** Changes a preference, or deletes it with `null`. */
   setPreference: (id: number, text: string | null) =>
     text === null ? call<void>('DELETE', at(`/preferences/${id}`)) : call<void>('PATCH', at(`/preferences/${id}`), { text }),

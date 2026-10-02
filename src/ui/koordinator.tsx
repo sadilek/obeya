@@ -91,7 +91,7 @@ export function KoordinatorSheet({ on, items, preferences, repos, talk, onOpen, 
             <PreferenceRow key={p.id} p={p} />
           ))}
         </ul>
-        <NewPreference />
+        <NewPreference repos={repos} />
       </div>
     </aside>
   );
@@ -360,12 +360,22 @@ function PreferenceRow({ p }: { p: Preference }) {
   );
 }
 
-function NewPreference() {
+/** A rule the owner writes: one of theirs, active at once, or for a repository's CLAUDE.md, which goes into its card „CLAUDE.md ergänzen“. */
+function NewPreference({ repos }: { repos: RepoRef[] }) {
   const [text, setText] = useState('');
+  const [target, setTarget] = useState('');
+  const [filed, setFiled] = useState('');
+  const [error, setError] = useState('');
   const add = async () => {
     if (!text.trim()) return;
-    await api.addPreference(text.trim()).catch(() => {});
-    setText('');
+    try {
+      await api.addPreference(text.trim(), target || undefined);
+      setText('');
+      setError('');
+      setFiled(target ? t.koordinator.filed(repos.find((r) => r.id === target)?.name ?? target) : '');
+    } catch (e) {
+      setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
   };
   return (
     <div className="composer pref-new">
@@ -373,7 +383,10 @@ function NewPreference() {
         value={text}
         rows={1}
         placeholder={t.koordinator.addPlaceholder}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          setFiled('');
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -384,6 +397,19 @@ function NewPreference() {
       <button className="btn" disabled={!text.trim()} onClick={add}>
         {t.koordinator.add}
       </button>
+      <label className="target">
+        {t.koordinator.target}
+        <select value={target} onChange={(e) => setTarget(e.target.value)}>
+          <option value="">{t.koordinator.targetPreferences}</option>
+          {repos.map((r) => (
+            <option key={r.id} value={r.id}>
+              {t.koordinator.targetClaudeMd(r.name)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {filed && <span className="hint filed">{filed}</span>}
+      {error && <span className="p-error">{error}</span>}
     </div>
   );
 }
