@@ -2,11 +2,10 @@
 
 import { finished, type Item } from './types';
 
-export type Shape = 'feature' | 'bugfix' | 'chip' | 'project';
+export type Shape = 'card' | 'chip' | 'project';
 
 export const CARD_SIZE: Record<Exclude<Shape, 'project'>, readonly [number, number]> = {
-  feature: [300, 136],
-  bugfix: [230, 104],
+  card: [300, 136],
   chip: [196, 64],
 };
 
@@ -15,11 +14,11 @@ export const PROJECT_PAD = 30;
 export const PROJECT_HEAD = 78;
 const PROJECT_MIN: readonly [number, number] = [420, 150];
 const CHIPS_PER_ROW = 4;
-const FEATURES_PER_ROW = 3;
+const CARDS_PER_ROW = 3;
 export const GAP = 20;
 const PROJECT_GAP = 60;
 
-/** A delivered workstream shrinks to a chip; everything else shows at its kind's size. */
+/** A delivered workstream shrinks to a chip; every other card shows at the size of a card. */
 export function shapeOf(i: Pick<Item, 'kind' | 'state' | 'parent'>): Shape {
   if (i.kind === 'project') return 'project';
   if (i.parent && finished(i.state)) return 'chip';
@@ -76,7 +75,7 @@ export function placeWorkstreams(ws: { done: boolean }[], startY = PROJECT_HEAD)
   let y = startY;
   for (const [done, perRow, shape] of [
     [true, CHIPS_PER_ROW, 'chip'],
-    [false, FEATURES_PER_ROW, 'feature'],
+    [false, CARDS_PER_ROW, 'card'],
   ] as const) {
     const [w, h] = CARD_SIZE[shape];
     const idx = ws.map((_, i) => i).filter((i) => ws[i]!.done === done);

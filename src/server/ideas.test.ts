@@ -36,7 +36,7 @@ afterEach(() => {
 const settle = (ms = 5) => new Promise((r) => setTimeout(r, ms));
 const board = () => canvas.board;
 const item = (id: string) => board().item(id)!;
-const idea = (title = 'Export für Vermieter', body = 'Vermieter wollen ihre Zählerstände.') => board().create({ kind: 'feature', idea: true, title, body, x: 0, y: 0 });
+const idea = (title = 'Export für Vermieter', body = 'Vermieter wollen ihre Zählerstände.') => board().create({ idea: true, title, body, x: 0, y: 0 });
 const explorer = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'update_brief')).at(-1)!;
 const talk = (id: string) => board().events(id).filter((e) => e.kind === 'talk').map((e) => [e.author, e.text]);
 const turn = (s: FakeSession, reply: string, extra?: () => void) => {
@@ -137,7 +137,7 @@ describe('an idea', () => {
 
   test("a planned card's screenshots reach its exploration agent; built, the discussion's go to the task", () => {
     const task = canvas.images.save(new Uint8Array([1]), 'image/png');
-    const c = board().create({ kind: 'bugfix', title: 'Seite bricht um', x: 0, y: 0, images: [task] });
+    const c = board().create({ title: 'Seite bricht um', x: 0, y: 0, images: [task] });
     board().patch(c.id, { state: 'idea' });
     canvas.act(c.id, { action: 'discuss', text: 'Wie gehen wir das an?' });
     const s = explorer();
@@ -265,7 +265,7 @@ describe('an idea', () => {
     const s = new Store(path);
     s.ensureCanvas('c', 'C');
     const idea = JSON.stringify({ status: 'open', brief: '' });
-    const [answered, asked] = s.insert([0, 1].map((y) => ({ canvas_id: 'c', kind: 'feature' as const, state: 'idea' as const, idea, x: 0, y })));
+    const [answered, asked] = s.insert([0, 1].map((y) => ({ canvas_id: 'c', kind: 'card' as const, state: 'idea' as const, idea, x: 0, y })));
     const say = (card: string, author: 'owner' | 'explorer') => s.addEvent({ cardId: card, kind: 'talk', author, text: '…' });
     say(answered!.id, 'owner');
     say(answered!.id, 'explorer');
@@ -343,11 +343,11 @@ describe('an idea', () => {
     expect(item(i.id).idea!.status).toBe('dropped');
     canvas.act(i.id, { action: 'discuss', text: 'Doch nochmal.' });
     expect(item(i.id).idea!.status).toBe('open');
-    expect(() => canvas.act(board().create({ kind: 'feature', title: 'X', x: 0, y: 0 }).id, { action: 'park' })).toThrow('not an idea');
+    expect(() => canvas.act(board().create({ title: 'X', x: 0, y: 0 }).id, { action: 'park' })).toThrow('not an idea');
   });
 
   test('a planned card of the owner’s can become an idea first', () => {
-    const c = board().create({ kind: 'feature', title: 'Unklar', x: 0, y: 0 });
+    const c = board().create({ title: 'Unklar', x: 0, y: 0 });
     board().patch(c.id, { state: 'idea' });
     expect(item(c.id).idea).toEqual({ status: 'open', brief: '', thinking: false, yourTurn: false, questions: [] });
   });
@@ -694,7 +694,7 @@ describe('by voice', () => {
     const i = idea();
     const heard = canvas.commander.hear('eher als PDF', { card: i.id });
     await settle();
-    expect(reader().inbox[0]).toContain('[idea] feature "Export für Vermieter"');
+    expect(reader().inbox[0]).toContain('[idea] "Export für Vermieter"');
     reader().call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Eher als PDF.' }], confirm: 'An die Idee weitergegeben.' });
     expect(await heard).toEqual({ confirm: 'An die Idee weitergegeben.', quiet: true });
     expect(talk(i.id)).toEqual([['owner', 'Eher als PDF.']]);
@@ -747,7 +747,7 @@ describe('by voice', () => {
     const heard = canvas.commander.hear('bau diesen Prototyp', { card: prototype.id });
     await settle();
     expect(reader().inbox[0]).toContain(`"${prototype.title}" (prototype of K`);
-    const tag = reader().inbox[0]!.match(/(K\d+) \[working\] feature "Prototyp/)![1];
+    const tag = reader().inbox[0]!.match(/(K\d+) \[working\] "Prototyp/)![1];
     reader().call('act', { actions: [{ do: 'build', card: tag }], confirm: 'Die Idee wird auf diesem Prototyp gebaut.' });
     canvas.commander.arm((await heard).token!);
     await settle(30);

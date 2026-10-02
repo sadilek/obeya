@@ -22,7 +22,7 @@
 //     "files": { "src/cli.ts": "…" },
 //     "plans": { "docs/plan/werkzeug.md": "# Werkzeug\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n" },
 //     "cards": [
-//       { "key": "A", "kind": "feature", "title": "…", "body": "…", "x": 40, "y": 300,
+//       { "key": "A", "title": "…", "body": "…", "x": 40, "y": 300,
 //         "state": "working", "statusLine": "Tests laufen", "createdAgo": "2h" },
 //       { "key": "B", "title": "…", "queue": { "behind": ["A"], "reason": "Beide ändern src/cli.ts." },
 //         "scope": ["src/cli.ts"] },
@@ -43,7 +43,7 @@
 //       { "text": "…", "state": "proposed", "target": "<repo id>" }
 //     ]
 //   }
-// A card is created (kind defaults to feature, x and y to a free place; `idea`, `repo`, `from` as in
+// A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
 // into the database:
@@ -62,7 +62,6 @@ import type { CanvasSnapshot, Item } from '../src/core/types';
 
 interface StageCard {
   key?: string;
-  kind?: 'feature' | 'bugfix';
   title?: string;
   body?: string;
   x?: number;
@@ -209,7 +208,8 @@ for (const [i, c] of stage.cards.entries()) {
     // without a place: in rows of four below the plan docs (a follow-up goes below its card)
     const at = c.from || (c.x !== undefined && c.y !== undefined) ? {} : { x: 40 + 360 * (placed % 4), y: below + 220 * Math.floor(placed++ / 4) };
     const created = await api('POST', '/cards', {
-      kind: c.kind ?? 'feature',
+      // code before cards lost their kind (--code) still asks for one; later code ignores it
+      kind: 'feature',
       title: c.title ?? '',
       ...(c.body !== undefined ? { body: c.body } : {}),
       ...at,

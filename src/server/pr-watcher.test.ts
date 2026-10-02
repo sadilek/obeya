@@ -54,7 +54,7 @@ function commit(cardId: string) {
 
 /** A card through review and approval, with its PR reported. */
 async function inPr() {
-  const c = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+  const c = board.create({ title: 'Export', x: 0, y: 0 });
   workers.start(c.id);
   commit(c.id);
   runtime.last.call('ready_for_review', { summary: 'S' });
@@ -80,7 +80,7 @@ describe('the PR phase', () => {
   });
 
   test('a demo shared before approval is linked in the PR by the worker; pr_opened passes the PR on', async () => {
-    const c = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const c = board.create({ title: 'Export', x: 0, y: 0 });
     workers.start(c.id);
     commit(c.id);
     runtime.last.call('ready_for_review', { summary: 'S' });
@@ -92,7 +92,7 @@ describe('the PR phase', () => {
   });
 
   test('pr_opened before approval is refused', () => {
-    const c = board.create({ kind: 'feature', title: 'X', x: 0, y: 0 });
+    const c = board.create({ title: 'X', x: 0, y: 0 });
     workers.start(c.id);
     expect(runtime.last.call('pr_opened', { url: URL_ })).toContain('not approved');
   });

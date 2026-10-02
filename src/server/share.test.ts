@@ -82,7 +82,7 @@ function openPr(id: string, body = 'Exportiert Zählerstände.') {
 
 /** A card with a video demo, as a worker hands it over. */
 function card(title = 'Zählerstände exportieren', demo: Record<string, unknown> = {}) {
-  const c = board.create({ kind: 'feature', title, x: 0, y: 0 });
+  const c = board.create({ title, x: 0, y: 0 });
   const d = join(dir, `demo-${c.id}`);
   mkdirSync(d);
   board.work(c.id, {

@@ -33,20 +33,20 @@ beforeEach(() => {
 
 describe('the Koordinator remembers', () => {
   test('the conversation goes on in one session; card tags stay, and each command brings what happened since', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander();
     const first = await say(k, 'starte Export', 'act', { actions: [{ do: 'start', card: 'K1' }], confirm: '„Export“ startet.' });
-    expect(first.brief).toContain('K1 [planned] feature "Export"');
+    expect(first.brief).toContain('K1 [planned] "Export"');
     expect(first.brief).toContain('You have not talked with the owner before.');
 
-    board.create({ kind: 'bugfix', title: 'Login', x: 0, y: 0 });
+    board.create({ title: 'Login', x: 0, y: 0 });
     board.log(a.id, 'question', 'worker', 'CSV oder Excel?');
     const second = await say(k, 'und die andere auch', 'act', { actions: [{ do: 'start', card: 'K2' }], confirm: '„Login“ startet.' });
     expect(second.session).toBe(first.session);
     expect(runtime.sessions).toHaveLength(1);
     // Export keeps K1, the new card gets the next tag
-    expect(second.brief).toContain('K1 [planned] feature "Export"');
-    expect(second.brief).toContain('K2 [planned] bugfix "Login"');
+    expect(second.brief).toContain('K1 [planned] "Export"');
+    expect(second.brief).toContain('K2 [planned] "Login"');
     expect(second.brief).toContain("What happened on the canvas since the owner's last command:");
     expect(second.brief).toContain('K1 "Export": the agent asked: CSV oder Excel?');
     expect(second.brief).toContain('K2 "Login": new card');
@@ -54,7 +54,7 @@ describe('the Koordinator remembers', () => {
   });
 
   test('a command the owner takes back is told with the next one, and marked in the conversation', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'working' });
     const k = commander();
     const { heard } = await say(k, 'stopp Export', 'act', { actions: [{ do: 'stop', card: 'K1' }], confirm: '„Export“ angehalten.' });
@@ -68,13 +68,13 @@ describe('the Koordinator remembers', () => {
   });
 
   test('one sentence may hold several actions: one confirmation, one undo, run in order', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'waiting', need: 'review' });
     const k = commander();
     const { heard } = await say(k, 'gib das frei und mach ein Folge-Feature fürs Archiv', 'act', {
       actions: [
         { do: 'approve', card: 'K1' },
-        { do: 'new_card', kind: 'feature', title: 'Archiv', body: 'Folge von Export', start: false },
+        { do: 'new_card', title: 'Archiv', body: 'Folge von Export', start: false },
       ],
       confirm: '„Export“ freigegeben, „Archiv“ angelegt.',
     });
@@ -83,12 +83,12 @@ describe('the Koordinator remembers', () => {
     await new Promise((r) => setTimeout(r, 40));
     expect(executed).toEqual([
       { do: 'approve', card: a.id },
-      { do: 'newCard', kind: 'feature', title: 'Archiv', body: 'Folge von Export', start: false },
+      { do: 'newCard', title: 'Archiv', body: 'Folge von Export', start: false },
     ]);
   });
 
   test("the open card brings its whole summary and its demo's findings, so a follow-up carries what it is about", async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     const summary = `Export schreibt jetzt CSV. ${'Viel Kontext. '.repeat(40)}Ende der Zusammenfassung.`;
     const finding = 'Der `ambient`-Ton läuft nach dem Stopp weiter.';
     board.work(a.id, {
@@ -107,17 +107,17 @@ describe('the Koordinator remembers', () => {
     s.call('act', {
       actions: [
         { do: 'approve', card: 'K1' },
-        { do: 'new_card', card: 'K1', kind: 'bugfix', title: 'ambient-Ton stoppen', body: finding, start: false },
+        { do: 'new_card', card: 'K1', title: 'ambient-Ton stoppen', body: finding, start: false },
       ],
       confirm: '„Export“ freigegeben, Folgekarte „ambient-Ton stoppen“ angelegt.',
     });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
     await new Promise((r) => setTimeout(r, 40));
-    expect(executed[1]).toEqual({ do: 'newCard', kind: 'bugfix', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id });
+    expect(executed[1]).toEqual({ do: 'newCard', title: 'ambient-Ton stoppen', body: finding, start: false, from: a.id });
 
     // once a finding has its card, the Koordinator hears which
-    board.create({ kind: 'bugfix', title: 'ambient-Ton stoppen', body: finding, from: a.id });
+    board.create({ title: 'ambient-Ton stoppen', body: finding, from: a.id });
     const next = k.hear('und die zweite auch', { card: a.id });
     await settle();
     expect(runtime.last.inbox.at(-1)).toContain(`1. ${finding} (follow-up card: K2 "ambient-Ton stoppen")`);
@@ -128,7 +128,7 @@ describe('the Koordinator remembers', () => {
   });
 
   test('an action that does not fit the card is refused in the turn, so the Koordinator can answer instead', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'live' });
     const k = commander();
     const heard = k.hear('Was heißt abgeschlossen? Auf main sehe ich es nicht.', { card: a.id });
@@ -143,13 +143,13 @@ describe('the Koordinator remembers', () => {
   });
 
   test("the question in a demo report is the card's open question: a bare „ja“ answers it", async () => {
-    const a = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
+    const a = board.create({ title: 'Archiv', x: 0, y: 0 });
     board.work(a.id, { state: 'waiting', need: 'demo', demo: JSON.stringify({ dir: '/d', chapters: [], shown: [], notShown: [], findings: [], question: 'Alte Projekte nachtragen?' }) });
     const k = commander();
     const heard = k.hear('ja', { card: a.id });
     await settle();
     const s = runtime.last;
-    expect(s.inbox[0]).toContain('[waiting: demo] feature "Archiv" — open question in its demo report: Alte Projekte nachtragen?');
+    expect(s.inbox[0]).toContain('[waiting: demo] "Archiv" — open question in its demo report: Alte Projekte nachtragen?');
     expect(await s.call('act', { actions: [{ do: 'answer', card: 'K1', text: 'ja' }], confirm: 'Antwort an „Archiv“.' })).toContain('Done');
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
@@ -158,7 +158,7 @@ describe('the Koordinator remembers', () => {
   });
 
   test("an idea's suggested next step, with its agent's own answers, is in its line: „mach, was du vorschlägst“ takes it", async () => {
-    const a = board.create({ kind: 'feature', idea: true, title: 'Export', x: 0, y: 0 });
+    const a = board.create({ idea: true, title: 'Export', x: 0, y: 0 });
     board.setIdea(a.id, {
       yourTurn: true,
       questions: [{ text: 'Welches Format?', options: ['CSV', 'PDF'], pick: { options: ['CSV'], why: 'Excel.' } }],
@@ -167,38 +167,38 @@ describe('the Koordinator remembers', () => {
     const k = commander();
     const { brief } = await say(k, 'mach, was du vorschlägst', 'act', { actions: [{ do: 'discuss', card: 'K1', text: 'CSV' }], confirm: 'An „Export“: CSV.' });
     expect(brief).toContain(
-      'feature "Export" — its agent would have the owner answer its open questions (discuss) next: Das Format entscheidet den Rest. (its own answers: "Welches Format?" → CSV)',
+      '"Export" — its agent would have the owner answer its open questions (discuss) next: Das Format entscheidet den Rest. (its own answers: "Welches Format?" → CSV)',
     );
     board.setIdea(a.id, { questions: [], next: { step: 'prototype', why: 'Erst sehen.' } });
     const second = await say(k, 'und?', 'reply', { confirm: '…' });
-    expect(second.brief).toContain('feature "Export" — its agent would prototype next: Erst sehen.');
+    expect(second.brief).toContain('"Export" — its agent would prototype next: Erst sehen.');
   });
 
   test('a landed card whose agent finishes what remains still takes notes', async () => {
-    const a = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
+    const a = board.create({ title: 'Archiv', x: 0, y: 0 });
     board.work(a.id, { state: 'live', workspace: '/w', landed: '{}' });
     const k = commander();
     const { brief, heard } = await say(k, 'sag Archiv, es soll auch die alten Karten nachtragen', 'act', {
       actions: [{ do: 'note', card: 'K1', text: 'Auch die alten Karten nachtragen.' }],
       confirm: 'Weitergegeben.',
     });
-    expect(brief).toContain('K1 [live, its agent finishes what remains after the landing] feature "Archiv"');
+    expect(brief).toContain('K1 [live, its agent finishes what remains after the landing] "Archiv"');
     expect(heard.token).toBeDefined();
   });
 
   test('starting a queued card starts it now despite the likely conflict; one still being checked starts by itself', async () => {
-    const running = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const running = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(running.id, { state: 'working' });
-    const behind = board.create({ kind: 'feature', title: 'Archiv', x: 0, y: 0 });
+    const behind = board.create({ title: 'Archiv', x: 0, y: 0 });
     board.work(behind.id, { queue: JSON.stringify({ behind: [running.id], reason: 'beide ändern export.ts' }) });
-    const checking = board.create({ kind: 'bugfix', title: 'Login', x: 0, y: 0 });
+    const checking = board.create({ title: 'Login', x: 0, y: 0 });
     board.work(checking.id, { queue: JSON.stringify({ checking: true }) });
     const k = commander();
     const heard = k.hear('starte alle wartenden Karten', {});
     await settle();
     const s = runtime.last;
-    expect(s.inbox[0]).toContain('K2 [queued behind "Export"] feature "Archiv"');
-    expect(s.inbox[0]).toContain('K3 [queued: the Koordinator checks it for merge conflicts] bugfix "Login"');
+    expect(s.inbox[0]).toContain('K2 [queued behind "Export"] "Archiv"');
+    expect(s.inbox[0]).toContain('K3 [queued: the Koordinator checks it for merge conflicts] "Login"');
     const refused = await s.call('act', { actions: [{ do: 'start', card: 'K2' }, { do: 'start', card: 'K3' }], confirm: 'Beide starten.' });
     expect(refused).toContain('action 2 (start on K3): the Koordinator is still checking the card');
     s.call('act', { actions: [{ do: 'start', card: 'K2' }], confirm: '„Archiv“ startet trotz Überschneidung.' });
@@ -230,7 +230,7 @@ describe('the Koordinator remembers', () => {
   });
 
   test("the exchange goes into the open card's log; without an open card into the sheet", async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'working' });
     const k = commander();
     const heard = k.hear('halt ihn an', { card: a.id });
@@ -252,7 +252,7 @@ describe('the Koordinator remembers', () => {
   });
 
   test('a new session, after a restart, starts from the stored conversation and the canvas history', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     await say(commander(), 'starte Export', 'act', { actions: [{ do: 'start', card: 'K1' }], confirm: '„Export“ startet.' });
     board.log(a.id, 'state', 'obeya', 'Agent gestartet auf obeya/export.');
     board.log(a.id, 'activity', 'worker', 'Read src/app.ts');
@@ -269,7 +269,7 @@ describe('the Koordinator remembers', () => {
   });
 
   test('a long session makes way for a fresh one that starts from memory', async () => {
-    board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander(2);
     const one = await say(k, 'eins', 'reply', { confirm: 'Eins.' });
     await say(k, 'zwei', 'reply', { confirm: 'Zwei.' });
@@ -304,7 +304,7 @@ describe('the Koordinator remembers', () => {
 
 describe('„Merk dir“', () => {
   test('records a rule after the undo window, with the open card as its occasion; undo takes it back', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander();
     const heard = k.hear('Merk dir: Demos immer mit Ton', { card: a.id });
     await settle();
@@ -365,7 +365,7 @@ describe('„Merk dir“', () => {
 
 describe('what the owner says to the Koordinator is offered for learning', () => {
   test('a reply and a look-up at once; a command once it runs, not when taken back; words that reach the learner another way not again', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'working' });
     const heard: string[] = [];
     const k = new Commander({
@@ -382,7 +382,7 @@ describe('what the owner says to the Koordinator is offered for learning', () =>
 
     const started = k.hear('mach eine Karte für den Import und fang gleich an, Tests immer zuerst', { card: a.id });
     await settle();
-    runtime.last.call('act', { actions: [{ do: 'new_card', kind: 'feature', title: 'Import', body: 'Import, Tests zuerst', start: true }], confirm: 'Neue Karte „Import“.' });
+    runtime.last.call('act', { actions: [{ do: 'new_card', title: 'Import', body: 'Import, Tests zuerst', start: true }], confirm: 'Neue Karte „Import“.' });
     runtime.last.emit({ type: 'idle' });
     k.arm((await started).token!);
     expect(heard).toHaveLength(2);

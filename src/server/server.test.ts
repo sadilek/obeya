@@ -64,7 +64,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const until = async (done: () => unknown, ms = 3000) => {
   for (const end = Date.now() + ms; !(await done()); await sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
 };
-const card = () => board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
+const card = () => board.create({ title: 'A', x: 0, y: 0 });
 const post = (path: string, body: string) => fetch(new URL(path, server.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body });
 const codeOf = async (res: Promise<Response>) => ((await (await res).json()) as { code: string }).code;
 const api = (path: string) => `/api/c/main${path}`;
@@ -87,7 +87,7 @@ describe('refused requests', () => {
     expect(await codeOf(act('nope', { action: 'start' }))).toBe('unknownCard');
     expect(await codeOf(act(c.id, { action: 'fly' }))).toBe('invalid');
     expect(await codeOf(post(api(`/cards/${c.id}/act`), '{'))).toBe('invalid');
-    expect(await codeOf(post(api('/cards'), JSON.stringify({ kind: 'project', title: 'x', x: 0, y: 0 })))).toBe('invalid');
+    expect(await codeOf(post(api('/cards'), JSON.stringify({ title: 'x', x: 'links', y: 0 })))).toBe('invalid');
   });
 
   test('a card already with the Koordinator cannot be started again', async () => {
@@ -149,7 +149,7 @@ describe('voice', () => {
     expect(heardAudio).toEqual(['AUDIO']);
     expect(s.inbox[0]).toContain('"Neue Karte Export"');
     expect(s.spec).toMatchObject({ readOnly: true, effort: 'low' });
-    s.call('act', { actions: [{ do: 'new_card', kind: 'feature', title: 'Export', body: 'CSV', start: true }], confirm: 'Neue Karte „Export“, der Agent fängt an.' });
+    s.call('act', { actions: [{ do: 'new_card', title: 'Export', body: 'CSV', start: true }], confirm: 'Neue Karte „Export“, der Agent fängt an.' });
     s.emit({ type: 'idle' });
     const body = (await (await res).json()) as { confirm: string; token: string; audio?: string };
     expect(body.confirm).toBe('Neue Karte „Export“, der Agent fängt an.');
@@ -161,11 +161,11 @@ describe('voice', () => {
     expect(await speech.text()).toBe('WAV Neue Karte „Export“, der Agent fängt an.');
     expect(executed).toEqual([]);
     await until(() => executed.length);
-    expect(executed).toEqual([{ do: 'newCard', kind: 'feature', title: 'Export', body: 'CSV', start: true }]);
+    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'CSV', start: true }]);
   });
 
   test('a recording Whisper loops on is transcribed once more without the card titles', async () => {
-    board.create({ kind: 'feature', title: 'Export für Vermieter', x: 0, y: 0 });
+    board.create({ title: 'Export für Vermieter', x: 0, y: 0 });
     const prompts: string[] = [];
     whisper = (vocabulary) => (prompts.push(vocabulary), vocabulary ? 'Fall '.repeat(40) : 'Starte Export');
     const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
@@ -182,7 +182,7 @@ describe('voice', () => {
   });
 
   test('a recording Whisper is unsure of is transcribed once more without the card titles', async () => {
-    board.create({ kind: 'feature', title: 'Export für Vermieter', x: 0, y: 0 });
+    board.create({ title: 'Export für Vermieter', x: 0, y: 0 });
     const prompts: string[] = [];
     whisper = (vocabulary) => (prompts.push(vocabulary), vocabulary ? { text: 'www.pap.com', doubtful: true } : 'Starte Export');
     const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
@@ -296,14 +296,14 @@ describe('screenshots', () => {
 
   test("a card keeps its task's screenshots; unknown ones are refused", async () => {
     const { id } = (await (await upload(png)).json()) as { id: string };
-    const res = await post(api('/cards'), JSON.stringify({ kind: 'bugfix', title: 'Seite bricht um', x: 0, y: 0, images: [id] }));
+    const res = await post(api('/cards'), JSON.stringify({ title: 'Seite bricht um', x: 0, y: 0, images: [id] }));
     const c = (await res.json()) as { id: string };
     expect(board.item(c.id)!.images).toEqual([id]);
     const patch = (p: unknown) => fetch(new URL(api(`/cards/${c.id}`), server.url), { method: 'PATCH', body: JSON.stringify(p) });
     expect((await patch({ images: [] })).status).toBe(204);
     expect(board.item(c.id)!.images).toBeUndefined();
     expect(await codeOf(patch({ images: ['0000.png'] }))).toBe('invalid');
-    expect(await codeOf(post(api('/cards'), JSON.stringify({ kind: 'bugfix', title: 'x', x: 0, y: 0, images: 'a.png' })))).toBe('invalid');
+    expect(await codeOf(post(api('/cards'), JSON.stringify({ title: 'x', x: 0, y: 0, images: 'a.png' })))).toBe('invalid');
   });
 
   test("a typed command's screenshots go to the Koordinator and to the cards it creates or concerns", async () => {
@@ -318,7 +318,7 @@ describe('screenshots', () => {
     expect(k.inbox[0]).toContain('The owner attached a screenshot');
     k.call('act', {
       actions: [
-        { do: 'new_card', kind: 'bugfix', title: 'Seite bricht um', body: 'diese Seite bricht um' },
+        { do: 'new_card', title: 'Seite bricht um', body: 'diese Seite bricht um' },
         { do: 'note', card: 'K1', text: 'So sieht es aus.' },
         { do: 'stop', card: 'K1' },
       ],
@@ -327,7 +327,7 @@ describe('screenshots', () => {
     await res;
     await until(() => executed.length === 3, DELAY_MS + 3000);
     expect(executed).toEqual([
-      { do: 'newCard', kind: 'bugfix', title: 'Seite bricht um', body: 'diese Seite bricht um', start: false, images: [id] },
+      { do: 'newCard', title: 'Seite bricht um', body: 'diese Seite bricht um', start: false, images: [id] },
       { do: 'note', card: c.id, text: 'So sieht es aus.', images: [id] },
       { do: 'stop', card: c.id },
     ]);
@@ -345,10 +345,10 @@ describe('screenshots', () => {
     await until(() => koordinator()?.inbox.length);
     const k = koordinator()!;
     expect(k.images[0]).toEqual([canvas.images.path(id)!]);
-    k.call('act', { actions: [{ do: 'new_card', kind: 'bugfix', title: 'Export', body: 'bricht um' }], confirm: 'Neue Karte „Export“.' });
+    k.call('act', { actions: [{ do: 'new_card', title: 'Export', body: 'bricht um' }], confirm: 'Neue Karte „Export“.' });
     expect(await (await res).json()).not.toHaveProperty('unheard');
     await until(() => executed.length);
-    expect(executed).toEqual([{ do: 'newCard', kind: 'bugfix', title: 'Export', body: 'bricht um', start: false, images: [id] }]);
+    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'bricht um', start: false, images: [id] }]);
     expect(board.snapshot().talk.at(-1)).toMatchObject({ said: 'Neue Karte Export', images: [id] });
 
     whisper = () => '';
@@ -358,7 +358,7 @@ describe('screenshots', () => {
   test('a new card from a command keeps its screenshots; one said with a start goes to the task', async () => {
     const { id } = (await (await upload(png)).json()) as { id: string };
     const run = CanvasRuntime.prototype.run.bind(canvas);
-    run({ do: 'newCard', kind: 'bugfix', title: 'Seite bricht um', body: '', start: false, images: [id] });
+    run({ do: 'newCard', title: 'Seite bricht um', body: '', start: false, images: [id] });
     const made = board.snapshot().items.find((i) => i.title === 'Seite bricht um')!;
     expect(made.images).toEqual([id]);
     const c = card();
@@ -489,7 +489,7 @@ describe('cards that need the owner', () => {
     const other = join(dir, 'other');
     gitRepo(other);
     const second = new CanvasRuntime({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
-    const waiting = second.board.create({ kind: 'feature', title: 'B', x: 0, y: 0 });
+    const waiting = second.board.create({ title: 'B', x: 0, y: 0 });
     second.board.work(waiting.id, { state: 'waiting', need: 'review' });
     server.stop(true);
     server = serve([canvas, second], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0);
@@ -502,7 +502,7 @@ describe('cards that need the owner', () => {
 
     // a change on the other canvas reaches this one; one that leaves the counts alone does not
     second.board.patch(waiting.id, { title: 'B2' });
-    const c = second.board.create({ kind: 'feature', title: 'C', x: 0, y: 0 });
+    const c = second.board.create({ title: 'C', x: 0, y: 0 });
     second.board.work(c.id, { state: 'waiting', need: 'review' });
     await until(() => counts().length === 2);
     expect(counts()[1]).toEqual({ main: 0, other: 2 });

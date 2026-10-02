@@ -196,13 +196,13 @@ export class Board {
   }
 
   /** Cards that replace `id`, side by side where it was; they start planned, with their scope. */
-  replace(id: string, cards: { kind: 'bugfix' | 'feature'; title: string; body: string; files: string[] }[]): Item[] {
+  replace(id: string, cards: { title: string; body: string; files: string[] }[]): Item[] {
     const row = this.own(id);
     if (row.plan_ref) throw new BadRequest('planCard', 'plan cards are changed in the plan doc');
     const rows = this.store.insert(
       cards.map((c, n) => ({
         canvas_id: this.canvas.id,
-        kind: c.kind,
+        kind: 'card',
         state: 'planned' as const,
         title: c.title.slice(0, 200),
         body: c.body.slice(0, 20000),
@@ -239,7 +239,7 @@ export class Board {
     if (!from) return this.freeSpot();
     const b = boundsOf(from, items);
     const earlier = items.filter((i) => i.from === fromId && i.state !== 'proposal' && !i.prototypeOf).length;
-    return { x: b.x + 35 + earlier * (CARD_SIZE.feature[0] + GAP), y: b.y + b.h + 60 };
+    return { x: b.x + 35 + earlier * (CARD_SIZE.card[0] + GAP), y: b.y + b.h + 60 };
   }
 
   /** The worker's last summary of a card; it stays with the card until work on it starts again. */
@@ -249,14 +249,14 @@ export class Board {
   }
 
   /** A card an agent proposes, placed below the card it came from. */
-  propose(fromId: string, p: { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string }): Item {
+  propose(fromId: string, p: { title: string; reason: string; suggestion: string }): Item {
     const items = this.snapshot().items;
     const from = items.find((i) => i.id === fromId);
     const b = from ? boundsOf(from, items) : { x: 0, y: 0, w: 0, h: 0 };
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
-        kind: p.kind,
+        kind: 'card',
         state: 'proposal',
         title: p.title.slice(0, 200),
         body: `${p.reason}\n\n${p.suggestion}`.slice(0, 20000),
@@ -312,11 +312,11 @@ export class Board {
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
-        kind: 'feature',
+        kind: 'card',
         state: 'planned',
         title: title.slice(0, 200),
         body: body.slice(0, 20000),
-        x: b.x + 35 + prototypes * (CARD_SIZE.feature[0] + GAP),
+        x: b.x + 35 + prototypes * (CARD_SIZE.card[0] + GAP),
         y: b.y + b.h + 60,
         from_id: ideaId,
         prototype_of: ideaId,
@@ -619,7 +619,7 @@ export class Board {
       this.log(open.id, 'state', 'koordinator', `Regel aufgenommen: „${rule}“`);
       return;
     }
-    const card = this.create({ kind: 'feature', title: CLAUDE_MD_TITLE, body: `${CLAUDE_MD_TASK}\n\n- ${rule}`, repo, ...this.freeSpot() });
+    const card = this.create({ title: CLAUDE_MD_TITLE, body: `${CLAUDE_MD_TASK}\n\n- ${rule}`, repo, ...this.freeSpot() });
     this.setSetting(`${CLAUDE_MD_SETTING}${repo}`, card.id);
     this.log(card.id, 'state', 'koordinator', `Regel aufgenommen: „${rule}“`);
   }
@@ -642,7 +642,6 @@ export class Board {
   }
 
   create(n: NewCard): Item {
-    if (n.kind !== 'bugfix' && n.kind !== 'feature') throw new BadRequest('invalid', 'kind must be bugfix or feature');
     checkText(n.title, 'title', 200);
     if (n.body !== undefined) checkText(n.body, 'body', 20000);
     if (n.repo !== undefined && !this.canvas.repos.some((r) => r.id === n.repo)) throw new BadRequest('invalid', 'unknown repository');
@@ -659,7 +658,7 @@ export class Board {
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
-        kind: n.kind,
+        kind: 'card',
         state: n.idea ? 'idea' : 'planned',
         title: n.title,
         body: n.body ?? '',
@@ -676,12 +675,11 @@ export class Board {
 
   patch(id: string, p: CardPatch) {
     const row = this.own(id);
-    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'kind', 'title', 'body', 'state', 'need', 'repo', 'images'];
+    const allowed = row.plan_ref ? (row.kind === 'project' ? ['x', 'y'] : ['x', 'y', 'state', 'need']) : ['x', 'y', 'title', 'body', 'state', 'need', 'repo', 'images'];
     const bad = Object.keys(p).filter((k) => !allowed.includes(k));
     if (bad.length) throw new BadRequest('invalid', `cannot change ${bad.join(', ')} on this card`);
     if (p.x !== undefined) checkNumber(p.x, 'x');
     if (p.y !== undefined) checkNumber(p.y, 'y');
-    if (p.kind !== undefined && p.kind !== 'bugfix' && p.kind !== 'feature') throw new BadRequest('invalid', 'kind must be bugfix or feature');
     if (p.title !== undefined) checkText(p.title, 'title', 200);
     if (p.body !== undefined) checkText(p.body, 'body', 20000);
     if (p.images !== undefined) this.checkImages(p.images);
@@ -763,7 +761,7 @@ export class Board {
       const kids = items.filter((i) => i.parent === project.id);
       const startY = kids.length ? Math.max(...kids.map((k) => k.y + sizeOf(k, items)[1])) + GAP : PROJECT_HEAD;
       placeWorkstreams(missing, startY).forEach((pos, n) =>
-        add.push({ canvas_id: c, kind: 'feature', parent_id: project.id, plan_ref: `${doc.file}#${missing[n]!.key}`, ...pos }),
+        add.push({ canvas_id: c, kind: 'card', parent_id: project.id, plan_ref: `${doc.file}#${missing[n]!.key}`, ...pos }),
       );
     }
     if (add.length) this.store.insert(add);
@@ -773,7 +771,7 @@ export class Board {
     if (!fresh.length) return add.length > 0 || linked;
     const layouts = fresh.map((d) => {
       const pos = placeWorkstreams(d.workstreams);
-      const kids = pos.map((p, n) => ({ kind: 'feature' as const, state: d.workstreams[n]!.done ? ('live' as const) : ('planned' as const), parent: 'p', ...p }));
+      const kids = pos.map((p, n) => ({ kind: 'card' as const, state: d.workstreams[n]!.done ? ('live' as const) : ('planned' as const), parent: 'p', ...p }));
       return { doc: d, pos, size: projectSize(kids) };
     });
     const top = items.filter((i) => !i.parent);
@@ -781,7 +779,7 @@ export class Board {
     layouts.forEach(({ doc, pos }, n) => {
       const [project] = this.store.insert([{ canvas_id: c, kind: 'project', plan_ref: doc.file, ...at[n]! }]);
       this.store.insert(
-        doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'feature' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
+        doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'card' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
       );
     });
     this.linkOrigins(docs);

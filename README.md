@@ -6,7 +6,7 @@
 </h1>
 
 A spatial workspace for directing AI coding agents the way an engineering director directs a
-team. Every bugfix, feature and project is a card on one canvas. Agents do the work in the
+team. Every task and every project is a card on one canvas. Agents do the work in the
 background; you keep every essential decision — made by voice, from a narrated demo of the
 finished work, without reading code or cycling through terminals.
 

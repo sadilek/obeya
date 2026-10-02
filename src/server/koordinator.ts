@@ -13,7 +13,6 @@ import type { Workers } from './workers';
 import type { Change, Workspaces } from './workspaces';
 
 interface Package {
-  kind: 'bugfix' | 'feature';
   title: string;
   body: string;
   files: string[];
@@ -189,7 +188,7 @@ export class Koordinator {
               name: 'packages',
               description: 'Replace the card by these packages (2 to 6). Titles and bodies in German; files as in scope estimates.',
               schema: {
-                packages: z.array(z.object({ kind: z.enum(['bugfix', 'feature']), title: z.string(), body: z.string(), files: z.array(z.string()) })).min(2).max(6),
+                packages: z.array(z.object({ title: z.string(), body: z.string(), files: z.array(z.string()) })).min(2).max(6),
                 reason: z.string(),
               },
               run: (a) => finish({ packages: a.packages as Package[], reason: String(a.reason) }),
@@ -215,7 +214,7 @@ export class Koordinator {
             }
           },
         },
-        `The card: ${card.kind} "${card.title}".\n\n${card.body || '(no description)'}${this.o.preferences ? `\n\n${this.o.preferences()}` : ''}`,
+        `The card: "${card.title}".\n\n${card.body || '(no description)'}${this.o.preferences ? `\n\n${this.o.preferences()}` : ''}`,
       );
     });
   }
@@ -513,7 +512,7 @@ export class Koordinator {
         { name: 'nothing', description: 'Nothing lasting to record.', schema: {}, run: () => finish('Fine. End your turn now.') },
       ],
         [
-          card ? `Card${kind === 'talk' || kind === 'command' ? ' the owner had open' : ''}: ${card.kind} "${card.title}".` : '',
+          card ? `Card${kind === 'talk' || kind === 'command' ? ' the owner had open' : ''}: ${card.kind === 'project' ? 'project ' : ''}"${card.title}".` : '',
           ...around,
           question ? `The worker asked: ${question}` : '',
           overruled

@@ -64,7 +64,7 @@ describe('a question the Koordinator looks up', () => {
     expect(a.spec.system).toContain('project agent of the project "PR-Loop"');
     expect(a.inbox[0]).toContain('What would the worker do on W4');
     expect(a.inbox[0]).toContain('The task its worker would get if the owner started it now');
-    expect(a.inbox[0]).toContain('Your card: feature “Live auf Acme”.');
+    expect(a.inbox[0]).toContain('Your card: “Live auf Acme”.');
     expect(a.inbox[0]).toContain('Read its plan doc docs/plan/pr-loop.md first');
     expect(board().snapshot().talk).toEqual([]);
 
@@ -91,14 +91,14 @@ describe('a question the Koordinator looks up', () => {
   });
 
   test('about a card without a project: a thorough Koordinator turn answers, in the sheet when no card is open', async () => {
-    board().create({ kind: 'bugfix', title: 'Login', body: 'Login hängt.', x: 0, y: 0 });
+    board().create({ title: 'Login', body: 'Login hängt.', x: 0, y: 0 });
     const first = await say('was steht im plan zu login?', {}, 'reply', { confirm: 'Welche Karte?' });
-    const tag = /(K\d+) \[planned\] bugfix "Login"/.exec(first.brief)![1];
+    const tag = /(K\d+) \[planned\] "Login"/.exec(first.brief)![1];
     await say('was würde der agent bei login machen?', {}, 'look_up', { question: 'What would the worker do on Login?', card: tag, confirm: 'Moment, ich lese nach.' });
     const a = answerer();
     expect(a.spec.system).toContain('You are the Koordinator of Obeya');
     expect(a.spec.effort).toBe('medium');
-    expect(a.inbox[0]).toContain('Your card: bugfix “Login”.');
+    expect(a.inbox[0]).toContain('Your card: “Login”.');
     expect(board().snapshot().talk.at(-1)).toMatchObject({ said: 'was würde der agent bei login machen?', reply: 'Moment, ich lese nach.', question: 'What would the worker do on Login?' });
     expect(board().snapshot().talk.at(-1)!.answer).toBeUndefined();
 

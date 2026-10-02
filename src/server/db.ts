@@ -227,6 +227,8 @@ export const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN share TEXT;`,
   // a learned rule about a repository goes into its CLAUDE.md, not the preference memory
   `ALTER TABLE preferences ADD COLUMN target TEXT;`,
+  // bugfix and feature are one kind now: a card
+  `UPDATE cards SET kind = 'card' WHERE kind IN ('bugfix', 'feature');`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &

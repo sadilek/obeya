@@ -3,7 +3,7 @@
 import { type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason } from '../core/types';
 
 export const t = {
-  kind: { feature: 'Feature', bugfix: 'Bugfix', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
+  kind: { card: 'Karte', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
   state: {
     idea: 'Idee',
     proposal: 'Vorschlag eines Agenten',

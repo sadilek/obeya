@@ -497,7 +497,6 @@ export class CanvasRuntime {
       case 'newCard': {
         const at = c.from ? { from: c.from } : this.board.freeSpot();
         const card = this.board.create({
-          kind: c.kind,
           title: c.title,
           body: c.body,
           ...(c.repo ? { repo: c.repo } : {}),
@@ -509,7 +508,7 @@ export class CanvasRuntime {
         return;
       }
       case 'newIdea': {
-        const card = this.board.create({ kind: 'feature', idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot() });
+        const card = this.board.create({ idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot() });
         this.board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
         // the agent opens the discussion with what the owner said
         this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));

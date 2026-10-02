@@ -37,7 +37,7 @@ describe('plan docs', () => {
     board.docsChanged();
     expect(board.planDoc(p!.id).markdown).toBe('# A\n\nEdited\n');
     expect(() => board.planDoc(w1!.id)).toThrow(BadRequest);
-    const c = board.create({ kind: 'feature', title: 'Own', x: 0, y: 0 });
+    const c = board.create({ title: 'Own', x: 0, y: 0 });
     expect(() => board.planDoc(c.id)).toThrow(BadRequest);
   });
 
@@ -138,7 +138,7 @@ describe('the archive of projects', () => {
   });
 
   test('a project lists its decisions and those of the idea its doc was written from', () => {
-    const idea = board.create({ kind: 'feature', idea: true, title: 'Idee B', x: 0, y: 0 });
+    const idea = board.create({ idea: true, title: 'Idee B', x: 0, y: 0 });
     board.decide({ project_id: null, card_id: idea.id, question: 'Idee „Idee B“: wie weiter?', answer: 'Als Projekt.', by: 'owner' });
     board.work(idea.id, { state: 'live' });
     board.planDocsLanded(idea.id, ['docs/plan/b.md']);
@@ -165,10 +165,10 @@ describe('the archive of projects', () => {
   });
 
   test('a project takes the place of the idea it was written from; the idea goes once its worker is done', () => {
-    const idea = board.create({ kind: 'feature', idea: true, title: 'Idee B', x: 900, y: 40 });
-    const below = board.create({ kind: 'feature', title: 'Darunter', x: 900, y: 240 });
-    const beside = board.create({ kind: 'feature', title: 'Daneben', x: 1240, y: 40 });
-    const away = board.create({ kind: 'feature', title: 'Weit weg', x: 3000, y: 900 });
+    const idea = board.create({ idea: true, title: 'Idee B', x: 900, y: 40 });
+    const below = board.create({ title: 'Darunter', x: 900, y: 240 });
+    const beside = board.create({ title: 'Daneben', x: 1240, y: 40 });
+    const away = board.create({ title: 'Weit weg', x: 3000, y: 900 });
     board.work(idea.id, { state: 'live', landed: '{}', workspace: '/ws/1' });
     board.planDocsLanded(idea.id, ['docs/plan/b.md']);
     docs = [docA, docB];
@@ -200,7 +200,7 @@ describe('the archive of projects', () => {
   });
 
   test('only a card that was an idea becomes the origin of a project', () => {
-    const plain = board.create({ kind: 'feature', title: 'Kein Idee', x: 0, y: 0 });
+    const plain = board.create({ title: 'Kein Idee', x: 0, y: 0 });
     board.planDocsLanded(plain.id, ['docs/plan/b.md']);
     docs = [docA, docB];
     board.docsChanged();
@@ -212,10 +212,10 @@ describe('manual cards', () => {
   test('create, edit, delete and restore', () => {
     let changes = 0;
     board.onChange(() => changes++);
-    const c = board.create({ kind: 'bugfix', title: 'Fix it', x: 10, y: 20 });
-    expect(c).toMatchObject({ kind: 'bugfix', state: 'planned', title: 'Fix it', body: '', source: 'manual' });
-    board.patch(c.id, { title: 'Fix it now', kind: 'feature', body: 'Details' });
-    expect(board.snapshot().items.find((i) => i.id === c.id)).toMatchObject({ title: 'Fix it now', kind: 'feature', body: 'Details' });
+    const c = board.create({ title: 'Fix it', x: 10, y: 20 });
+    expect(c).toMatchObject({ kind: 'card', state: 'planned', title: 'Fix it', body: '', source: 'manual' });
+    board.patch(c.id, { title: 'Fix it now', body: 'Details' });
+    expect(board.snapshot().items.find((i) => i.id === c.id)).toMatchObject({ title: 'Fix it now', body: 'Details' });
     board.remove(c.id);
     expect(board.snapshot().items.some((i) => i.id === c.id)).toBe(false);
     board.restore(c.id);
@@ -224,32 +224,32 @@ describe('manual cards', () => {
   });
 
   test('a follow-up goes below the card it comes from, in its repository, and names it', () => {
-    const src = board.create({ kind: 'feature', title: 'Export', x: 100, y: 100 });
-    const a = board.create({ kind: 'bugfix', title: 'Ton bleibt an', body: 'Der ambient-Ton läuft nach dem Stopp weiter.', from: src.id });
+    const src = board.create({ title: 'Export', x: 100, y: 100 });
+    const a = board.create({ title: 'Ton bleibt an', body: 'Der ambient-Ton läuft nach dem Stopp weiter.', from: src.id });
     expect(a).toMatchObject({ state: 'planned', from: src.id, repo: src.repo, body: 'Der ambient-Ton läuft nach dem Stopp weiter.' });
     expect(a.x).toBe(135);
     expect(a.y).toBeGreaterThan(100);
     // the next one goes beside it
-    const b = board.create({ kind: 'bugfix', title: 'Noch eine', from: src.id });
+    const b = board.create({ title: 'Noch eine', from: src.id });
     expect(b.y).toBe(a.y);
     expect(b.x - a.x).toBeGreaterThan(boundsOf(a, board.snapshot().items).w);
-    expect(() => board.create({ kind: 'bugfix', title: 'x', from: 'nope' })).toThrow(BadRequest);
-    expect(() => board.create({ kind: 'feature', title: 'x', from: src.id, idea: true })).toThrow(BadRequest);
-    expect(() => board.create({ kind: 'feature', title: 'x' })).toThrow(BadRequest);
+    expect(() => board.create({ title: 'x', from: 'nope' })).toThrow(BadRequest);
+    expect(() => board.create({ title: 'x', from: src.id, idea: true })).toThrow(BadRequest);
+    expect(() => board.create({ title: 'x' })).toThrow(BadRequest);
   });
 
   test('rejects invalid input', () => {
-    expect(() => board.create({ kind: 'project' as never, title: 'x', x: 0, y: 0 })).toThrow(BadRequest);
-    expect(() => board.create({ kind: 'feature', title: 'x', x: Number.NaN, y: 0 })).toThrow(BadRequest);
-    const c = board.create({ kind: 'feature', title: 'x', x: 0, y: 0 });
+    expect(() => board.create({ title: 'x', x: Number.NaN, y: 0 })).toThrow(BadRequest);
+    const c = board.create({ title: 'x', x: 0, y: 0 });
+    expect(() => board.patch(c.id, { kind: 'project' } as never)).toThrow(BadRequest);
     expect(() => board.patch(c.id, { state: 'gone' as never })).toThrow(BadRequest);
     expect(() => board.patch('nope', { x: 1 })).toThrow(BadRequest);
   });
 
   test('untitled cards left over from a closed page are dropped on start', () => {
-    const fresh = board.create({ kind: 'feature', title: '', x: 0, y: 0 });
-    const old = board.create({ kind: 'feature', title: ' ', x: 0, y: 0 });
-    const kept = board.create({ kind: 'feature', title: 'Echt', x: 0, y: 0 });
+    const fresh = board.create({ title: '', x: 0, y: 0 });
+    const old = board.create({ title: ' ', x: 0, y: 0 });
+    const kept = board.create({ title: 'Echt', x: 0, y: 0 });
     store.db.query("UPDATE cards SET created_at = '2020-01-01T00:00:00.000Z' WHERE id IN ($a, $b)").run({ a: old.id, b: kept.id });
     const again = new Board(store, { id: 'acme', name: 'Acme', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => docs);
     const ids = again.snapshot().items.map((i) => i.id);
@@ -259,7 +259,7 @@ describe('manual cards', () => {
   });
 
   test('cards are persisted per canvas', () => {
-    board.create({ kind: 'feature', title: 'mine', x: 0, y: 0 });
+    board.create({ title: 'mine', x: 0, y: 0 });
     const other = new Board(store, { id: 'other', name: 'Other', repos: [{ id: 'home', name: 'Home', path: '/o', branch: 'main' }] }, () => []);
     expect(other.snapshot().items).toEqual([]);
   });
@@ -267,7 +267,7 @@ describe('manual cards', () => {
 
 describe('archive', () => {
   const done = (title: string) => {
-    const c = board.create({ kind: 'feature', title, x: 10, y: 20 });
+    const c = board.create({ title, x: 10, y: 20 });
     board.patch(c.id, { state: 'live' });
     return c;
   };
@@ -289,7 +289,7 @@ describe('archive', () => {
   });
 
   test('only finished cards of the owner go into the archive', () => {
-    const open = board.create({ kind: 'feature', title: 'Open', x: 0, y: 0 });
+    const open = board.create({ title: 'Open', x: 0, y: 0 });
     const w1 = board.snapshot().items.find((i) => i.label === 'W1')!;
     expect(() => board.archive([open.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
     expect(() => board.archive([w1.id])).toThrow(expect.objectContaining({ code: 'planCard' }));
@@ -298,7 +298,7 @@ describe('archive', () => {
   });
 
   test('a dropped idea goes into the archive with its brief, an open or parked one does not', () => {
-    const idea = board.create({ kind: 'feature', idea: true, title: 'Idee', x: 30, y: 40 });
+    const idea = board.create({ idea: true, title: 'Idee', x: 30, y: 40 });
     expect(() => board.archive([idea.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
     board.setIdea(idea.id, { status: 'parked' });
     expect(() => board.archive([idea.id])).toThrow(expect.objectContaining({ code: 'notDone' }));
@@ -318,7 +318,7 @@ describe('archive', () => {
   test('archiving everything finished leaves the rest on the canvas', () => {
     const a = done('A');
     const b = done('B');
-    const open = board.create({ kind: 'bugfix', title: 'Open', x: 0, y: 0 });
+    const open = board.create({ title: 'Open', x: 0, y: 0 });
     expect(board.archiveDone().sort()).toEqual([a.id, b.id].sort());
     expect(board.snapshot().items.some((i) => i.id === open.id)).toBe(true);
     expect(board.archived()).toHaveLength(2);

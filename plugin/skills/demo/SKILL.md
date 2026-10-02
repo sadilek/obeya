@@ -8,7 +8,7 @@ description: Present finished work to the owner as a narrated screen recording w
 The owner works at the level of a director with a large team: they do not define acceptance
 criteria, read diffs, or click through the app. They want to *see* the change, in the shortest
 complete way, and then approve it or give feedback. The output is a local page with a narrated
-video (1½–3 min) and a short report.
+video (30 s to 3 min, by the size of the change) and a short report.
 
 ## 1. Scope — what is "the change"
 
@@ -112,8 +112,8 @@ Narration — in the language and person of the demo settings, matter-of-fact. R
 and the person: the first person only when the voice is the owner's own, otherwise the work
 is presented without "I" or "we".
 - One scene per behaviour, 1–3 sentences each. Say what the viewer sees and why it matters,
-  never the implementation. Length follows the size of the change, never padded: a bugfix is
-  30–60 s (the broken behaviour, then the fixed one), a feature 1½–3 min,
+  never the implementation. Length follows the size of the change, never padded: a small one
+  30–60 s (for a fix: the broken behaviour, then the fixed one), a larger one 1½–3 min,
   a multi-commit project one demo per shipped workstream.
 - Open with the situation and what was missing; end with a one-sentence recap and a release
   recommendation (or what blocks it).

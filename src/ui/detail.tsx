@@ -883,7 +883,7 @@ function FollowUp({ finding, item, all, run }: { finding: string; item: Item; al
   return (
     <button
       className="follow-up"
-      onClick={() => run(() => api.create({ kind: 'bugfix', title: shortTitle(text), body: text, from: item.id }).then(() => {}), { close: false })}
+      onClick={() => run(() => api.create({ title: shortTitle(text), body: text, from: item.id }).then(() => {}), { close: false })}
     >
       + {t.demo.followUp}
     </button>
@@ -940,7 +940,6 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
 
 function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; onEdit: (p: CardPatch) => void }) {
   const [body, setBody] = useState(item.body);
-  const [kind, setKind] = useState(item.kind as 'feature' | 'bugfix');
   const [repo, setRepo] = useState(item.repo);
   const shots = useShotInput({ initial: item.images, onChange: (images) => onEdit({ images }) });
   return (
@@ -962,20 +961,6 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
             ))}
           </div>
         )}
-        <div className="seg">
-          {(['feature', 'bugfix'] as const).map((k) => (
-            <button
-              key={k}
-              className={k === kind ? 'on' : ''}
-              onClick={() => {
-                setKind(k);
-                onEdit({ kind: k });
-              }}
-            >
-              {t.kind[k]}
-            </button>
-          ))}
-        </div>
       </div>
       {/* the task's screenshots: the worker gets them with the task when it starts */}
       <div className={`p-body-field${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>

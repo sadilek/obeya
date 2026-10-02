@@ -4,7 +4,7 @@ import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/setti
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 
-export type CardKind = 'bugfix' | 'feature' | 'project';
+export type CardKind = 'card' | 'project';
 
 export const STATES = ['idea', 'proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live', 'done'] as const;
 export type CardState = (typeof STATES)[number];
@@ -323,7 +323,6 @@ export interface Preference {
 export type PreferenceState = 'proposed' | 'active' | 'rejected' | 'filed';
 
 export interface NewCard {
-  kind: 'bugfix' | 'feature';
   title: string;
   body?: string;
   /** Where it goes; left out for a follow-up, which goes below the card it comes from. */
@@ -342,7 +341,6 @@ export interface NewCard {
 export interface CardPatch {
   x?: number;
   y?: number;
-  kind?: 'bugfix' | 'feature';
   title?: string;
   body?: string;
   state?: CardState;

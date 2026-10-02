@@ -8,7 +8,7 @@ and the plan doc goes.
 ## Goal
 
 A spatial workspace for directing AI coding agents the way an engineering director directs a
-team: every bugfix, feature and project is a card on one canvas; agents do the work in the
+team: every task and every project is a card on one canvas; agents do the work in the
 background; the human keeps every essential decision — made by voice, from a narrated demo
 video, without reading code or cycling through terminals.
 
@@ -23,8 +23,8 @@ decisions are made in front of the wall.
   screen too small for everything shows a section of the canvas, never shrunken cards.
 - **Decisions, not supervision.** The owner is pulled in only for a decision: a demo to approve,
   a question only they can answer, a proposal. Everything else runs.
-- **Every change gets a demo.** Bugfixes 30–60 s, features 1½–3 min, projects one demo per
-  workstream. Backend behaviour is shown through the app's own inspection views; "covered by
+- **Every change gets a demo.** Its length follows the size of the change, not its kind: a small
+  one 30–60 s, a larger one 1½–3 min, never padded; projects one demo per workstream. Backend behaviour is shown through the app's own inspection views; "covered by
   tests" is no reason to leave it out. What is to be looked at rather than watched (logo drafts,
   a layout, variants side by side) is shown as an HTML artifact instead of a video. Only when there
   is nothing to show at all ("das gibt es schon") does the worker hand over without one, and says
@@ -37,8 +37,9 @@ decisions are made in front of the wall.
 ## Concepts
 
 - **Canvas** — a canvas spans one or more repositories; one Obeya serves several canvases.
-- **Cards** — `bugfix`, `feature`, `project`. A project is a container backed by a plan doc; its
-  workstreams are its child cards.
+- **Cards** — a card is a task; a `project` is a container backed by a plan doc, and its
+  workstreams are its child cards. Cards have no further kind: whether one fixes a bug or adds
+  something makes no difference to how it is worked on, so the owner does not pick one.
 - **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) →
   `approved` → `in PR` → `live`, or `done` when the work changed no code; an agent's `proposal`
   is started when accepted. An
@@ -194,7 +195,7 @@ Agents never talk to each other directly; the Obeya server is the mailbox, so ev
 visible on a card. A worker has four tools, served in-process: `report(status)`, a status line
 on the card; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
-or writes their own answer); `propose_card(kind, title, reason, suggestion)`; and
+or writes their own answer); `propose_card(title, reason, suggestion)`; and
 `ready_for_review(summary, demo | no_demo)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner. A turn that ends while the worker's own
 background work runs (a demo render, a test suite, a watcher it started) is no such turn: the work
@@ -735,7 +736,7 @@ the repository; the copy on the project is only for the archive).
 - A canvas belongs to a repository, not a checkout: the adapter names it (Acme: `acme`), so the
   clones share one. Adapters live in this repository (`src/adapters/`) and are picked by the
   `origin` URL; the generic one covers any repo with `docs/plan/`.
-- Card sizes are fixed per kind; a delivered workstream shrinks to a chip, a project wraps its
+- A card has one fixed size; a delivered workstream shrinks to a chip, a project wraps its
   children, and a workstream cannot be dragged out of its project. New projects are placed in a
   grid below the existing ones.
 - A card dragged to an edge of the view scrolls it that way, faster the nearer the edge, but only

@@ -36,7 +36,7 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
-const card = (title: string) => board.create({ kind: 'feature', title, x: 0, y: 0 });
+const card = (title: string) => board.create({ title, x: 0, y: 0 });
 const item = (id: string) => board.item(id)!;
 const estimates = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'scope'));
 const workerOf = (id: string) => runtime.sessions.find((s) => s.spec.cwd === board.row(id).workspace)!;
@@ -470,15 +470,15 @@ describe('Koordinator cuts a card', () => {
   const cutSession = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'packages')).at(-1)!;
 
   test('into packages that replace it, each with its scope', async () => {
-    const a = board.create({ kind: 'feature', title: 'Export', body: 'CSV und PDF', x: 100, y: 50 });
+    const a = board.create({ title: 'Export', body: 'CSV und PDF', x: 100, y: 50 });
     k.split(a.id);
     expect(item(a.id).queue).toMatchObject({ cutting: true });
     await settle();
     expect(cutSession().inbox[0]).toContain('CSV und PDF');
     cutSession().call('packages', {
       packages: [
-        { kind: 'feature', title: 'CSV-Export', body: 'CSV.', files: ['src/csv.ts'] },
-        { kind: 'feature', title: 'PDF-Export', body: 'PDF.', files: ['src/pdf.ts'] },
+        { title: 'CSV-Export', body: 'CSV.', files: ['src/csv.ts'] },
+        { title: 'PDF-Export', body: 'PDF.', files: ['src/pdf.ts'] },
       ],
       reason: 'Getrennte Dateien.',
     });
@@ -677,7 +677,7 @@ describe('preference memory', () => {
     expect(board.preferencesText()).toBe('');
     expect(board.snapshot().preferences).toEqual([]);
     const collect = board.collecting('home')!;
-    expect(collect).toMatchObject({ title: 'CLAUDE.md ergänzen', state: 'planned', kind: 'feature' });
+    expect(collect).toMatchObject({ title: 'CLAUDE.md ergänzen', state: 'planned', kind: 'card' });
     expect(collect.body).toEndWith('\n\n- Tests auf Deutsch benennen.');
 
     // the next learner knows it is on its way; a rule for the preferences can be moved to a CLAUDE.md, and back
@@ -717,7 +717,7 @@ describe('preference memory', () => {
     board.log(before.id, 'hint', 'owner', 'Frag nicht nach jedem Dateinamen.');
     board.undoTalk(board.addTalk('Starte alles.', 'Gestartet.'));
     board.addTalk('Wie weit ist der Export?', 'Fast fertig.');
-    const a = board.create({ kind: 'feature', title: 'Export', body: 'CSV-Export der Rechnungen.', x: 0, y: 0 });
+    const a = board.create({ title: 'Export', body: 'CSV-Export der Rechnungen.', x: 0, y: 0 });
     board.log(a.id, 'say', 'worker', 'Soll die Datei rechnungen.csv oder export.csv heißen?');
     board.log(a.id, 'activity', 'worker', 'Liest src/export.ts');
     board.log(a.id, 'hint', 'owner', 'Schon wieder: entscheide Dateinamen selbst.');
@@ -806,7 +806,7 @@ describe('Rückschau', () => {
     const a = card('Export');
     board.log(a.id, 'hint', 'owner', 'Bitte ohne Emojis.');
     board.log(a.id, 'state', 'owner', 'Trotz Überschneidung gestartet.');
-    const p = board.propose(a.id, { kind: 'feature', title: 'Emoji-Picker', reason: 'R.', suggestion: 'S.' });
+    const p = board.propose(a.id, { title: 'Emoji-Picker', reason: 'R.', suggestion: 'S.' });
     board.remove(p.id);
     board.undoTalk(board.addTalk('Lösch die Karte Export.', 'Mache ich.', a.id));
     board.rejectProposal(board.proposePreference('Commits auf Englisch.', { cardId: a.id, quote: 'Englisch bitte.' }));

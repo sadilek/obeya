@@ -55,7 +55,7 @@ function setup(adapter: RepoAdapter) {
 beforeEach(() => setup({ ...generic, land: 'main', workspaces: 'clones', setup: 'bun install', checks: ['bun test'] }));
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const manual = () => board.create({ kind: 'feature', title: 'Zählerstände exportieren', x: 0, y: 0 });
+const manual = () => board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
 const state = (id: string) => {
   const i = board.item(id)!;
   return i.need ? `${i.state}:${i.need}` : i.state;
@@ -66,7 +66,7 @@ describe('workers', () => {
   test("a follow-up's worker hears which card it comes from and that card's summary", () => {
     const src = manual();
     board.work(src.id, { state: 'live', detail: JSON.stringify({ summary: 'CSV-Export gebaut; Excel fehlt noch.' }) });
-    const c = board.create({ kind: 'bugfix', title: 'Excel-Export', body: 'Excel fehlt.', from: src.id });
+    const c = board.create({ title: 'Excel-Export', body: 'Excel fehlt.', from: src.id });
     workers.start(c.id);
     expect(runtime.last.inbox[0]).toContain('Excel fehlt.');
     expect(runtime.last.inbox[0]).toContain('This card follows up on the card “Zählerstände exportieren”. Its worker handed it over with this summary:\n\nCSV-Export gebaut; Excel fehlt noch.');
@@ -93,7 +93,7 @@ describe('workers', () => {
     const images = new Images(join(dir, 'images'));
     const shot = images.save(new Uint8Array([1, 2, 3]), 'image/png');
     workers = new Workers({ board, runtime, workspaces: spaces, adapter: generic, imageFiles: (ids = []) => ids.flatMap((i) => images.path(i) ?? []) });
-    const c = board.create({ kind: 'bugfix', title: 'Seite bricht um', x: 0, y: 0, images: [shot] });
+    const c = board.create({ title: 'Seite bricht um', x: 0, y: 0, images: [shot] });
     workers.start(c.id);
     expect(runtime.last.images[0]).toEqual([images.path(shot)!]);
     expect(runtime.last.inbox[0]).toContain(`The owner attached a screenshot to the card (shown with this message; files: ${images.path(shot)})`);
@@ -446,9 +446,9 @@ describe('workers', () => {
   test('a proposal lands below its source card', () => {
     const c = manual();
     workers.start(c.id);
-    runtime.last.call('propose_card', { kind: 'bugfix', title: 'Falsches Label', reason: 'Gesehen beim Testen.', suggestion: 'Umbenennen.' });
+    runtime.last.call('propose_card', { title: 'Falsches Label', reason: 'Gesehen beim Testen.', suggestion: 'Umbenennen.' });
     const p = board.snapshot().items.find((i) => i.state === 'proposal')!;
-    expect(p).toMatchObject({ kind: 'bugfix', title: 'Falsches Label', from: c.id });
+    expect(p).toMatchObject({ title: 'Falsches Label', from: c.id });
     expect(p.y).toBeGreaterThan(c.y);
     board.accept(p.id);
     expect(state(p.id)).toBe('planned');
@@ -690,7 +690,7 @@ describe('landing through a pull request', () => {
 describe('a prototype built on in a clone', () => {
   test('the idea takes over the clone and the branch, renamed; the clone is busy until it is done', () => {
     workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } });
-    const idea = board.create({ kind: 'feature', idea: true, title: 'Logo', x: 0, y: 0 });
+    const idea = board.create({ idea: true, title: 'Logo', x: 0, y: 0 });
     const prototype = board.addPrototype(idea.id, 'Prototyp: Logo', 'zeigen');
     workers.start(prototype.id);
     const path = board.row(prototype.id).workspace!;
@@ -705,7 +705,7 @@ describe('a prototype built on in a clone', () => {
     expect(git(path, 'log', '--format=%s', '-1')).toBe('Prototyp');
     expect(spaces.leasedBy(idea.id)).toBe(path);
     // the only clone is the idea's now
-    expect(() => spaces.lease(board.create({ kind: 'feature', title: 'X', x: 0, y: 0 }).id, 'obeya/x')).toThrow('all are leased');
+    expect(() => spaces.lease(board.create({ title: 'X', x: 0, y: 0 }).id, 'obeya/x')).toThrow('all are leased');
     // a prototype without a workspace has nothing to build on
     const bare = board.addPrototype(idea.id, 'Prototyp: leer', 'zeigen');
     expect(() => workers.buildOn(bare.id, board.item(idea.id)!)).toThrow(expect.objectContaining({ code: 'noWorkspace' }));
@@ -726,7 +726,7 @@ describe('a worktree per card', () => {
 
   test('cards work in parallel and land one after the other on main', async () => {
     const a = manual();
-    const b = board.create({ kind: 'bugfix', title: 'Zweite Karte', x: 0, y: 0 });
+    const b = board.create({ title: 'Zweite Karte', x: 0, y: 0 });
     workers.start(a.id);
     workers.start(b.id);
     const wa = board.row(a.id).workspace!;
@@ -749,7 +749,7 @@ describe('a worktree per card', () => {
   });
 
   test("an idea built on a prototype takes over its worktree and branch, and lands from there", async () => {
-    const idea = board.create({ kind: 'feature', idea: true, title: 'Logo', x: 0, y: 0 });
+    const idea = board.create({ idea: true, title: 'Logo', x: 0, y: 0 });
     const prototype = board.addPrototype(idea.id, 'Prototyp: Logo – Wortmarke', 'Wortmarke');
     workers.start(prototype.id);
     const path = board.row(prototype.id).workspace!;
@@ -785,7 +785,7 @@ describe('a worktree per card', () => {
 
   test('a rebase conflict goes back to the worker with the files; a blocked checkout stays with the owner', async () => {
     const a = manual();
-    const b = board.create({ kind: 'bugfix', title: 'Zweite Karte', x: 0, y: 0 });
+    const b = board.create({ title: 'Zweite Karte', x: 0, y: 0 });
     workers.start(a.id);
     workers.start(b.id);
     commitIn(board.row(a.id).workspace!, 'same.ts', 'A');
@@ -801,7 +801,7 @@ describe('a worktree per card', () => {
     expect(sb.inbox.at(-1)).toContain('conflicts in same.ts');
 
     // the owner has local edits in the Obeya checkout on a file the card changes
-    const c = board.create({ kind: 'feature', title: 'Dritte', x: 0, y: 0 });
+    const c = board.create({ title: 'Dritte', x: 0, y: 0 });
     workers.start(c.id);
     commitIn(board.row(c.id).workspace!, 'mine.ts', 'C');
     writeFileSync(join(main, 'mine.ts'), 'local edit');
@@ -820,7 +820,7 @@ describe('a worktree per card', () => {
     writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nEins.\n');
     const handOver = { summary: 'S', demo: { dir: demo, chapters: ['Eins'], shown: [], not_shown: [], findings: [] } };
     const a = manual();
-    const b = board.create({ kind: 'bugfix', title: 'Zweite Karte', x: 0, y: 0 });
+    const b = board.create({ title: 'Zweite Karte', x: 0, y: 0 });
     workers.start(a.id);
     workers.start(b.id);
     const wb = board.row(b.id).workspace!;
@@ -1000,7 +1000,7 @@ describe('a worktree per card', () => {
   });
 
   test("an idea's plan doc that lands is remembered for the project it becomes", async () => {
-    const i = board.create({ kind: 'feature', idea: true, title: 'Groß', x: 0, y: 0 });
+    const i = board.create({ idea: true, title: 'Groß', x: 0, y: 0 });
     board.work(i.id, { state: 'planned' });
     workers.start(i.id);
     const wi = board.row(i.id).workspace!;

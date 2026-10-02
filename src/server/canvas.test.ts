@@ -48,7 +48,7 @@ describe('a canvas with several repositories', () => {
 
   test('a repository whose adapter shares no demos offers no sharing', () => {
     expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([undefined, undefined]);
-    const c = canvas.board.create({ kind: 'feature', title: 'Home', x: 0, y: 0 });
+    const c = canvas.board.create({ title: 'Home', x: 0, y: 0 });
     canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], shown: [], notShown: [], findings: [] }) });
     expect(() => canvas.act(c.id, { action: 'share' })).toThrow('shares none');
     expect(() => canvas.act(c.id, { action: 'unshare' })).toThrow('not shared');
@@ -64,7 +64,7 @@ describe('a canvas with several repositories', () => {
     );
     expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([true, undefined]);
     expect(canvas.repos[0]!.share).toEqual([process.execPath, join(web, 'share.ts')]);
-    const c = canvas.board.create({ kind: 'feature', title: 'Home', x: 0, y: 0 });
+    const c = canvas.board.create({ title: 'Home', x: 0, y: 0 });
     canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], shown: [], notShown: [], findings: [], page: { title: 'T', text: 'X.' } }) });
     canvas.act(c.id, { action: 'share' });
     for (let i = 0; i < 300 && canvas.board.item(c.id)!.share?.state !== 'shared'; i++) await new Promise((r) => setTimeout(r, 10));
@@ -72,18 +72,18 @@ describe('a canvas with several repositories', () => {
   });
 
   test("a card works in its repository's clone", () => {
-    const home = canvas.board.create({ kind: 'feature', title: 'Home', x: 0, y: 0 });
-    const other = canvas.board.create({ kind: 'feature', title: 'Andere', x: 0, y: 0, repo: 'api' });
+    const home = canvas.board.create({ title: 'Home', x: 0, y: 0 });
+    const other = canvas.board.create({ title: 'Andere', x: 0, y: 0, repo: 'api' });
     expect([home.repo, other.repo]).toEqual(['web', 'api']);
     canvas.repoOf(other.id).workers.start(other.id);
     canvas.repoOf(home.id).workers.start(home.id);
     expect(canvas.board.row(other.id).workspace).toBe(join(dir, 'workspaces/produkt/api/1'));
     expect(canvas.board.row(home.id).workspace).toBe(join(dir, 'workspaces/produkt/1'));
-    expect(() => canvas.board.create({ kind: 'feature', title: 'X', x: 0, y: 0, repo: 'nope' })).toThrow();
+    expect(() => canvas.board.create({ title: 'X', x: 0, y: 0, repo: 'nope' })).toThrow();
   });
 
   test('cards of different repositories never wait for each other', async () => {
-    const a = canvas.board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
     canvas.act(a.id, { action: 'start' });
     await settle();
     expect(item(a.id).state).toBe('working');
@@ -96,13 +96,13 @@ describe('a canvas with several repositories', () => {
     };
     scopeCall(['src/index.ts']);
     await settle();
-    const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0, repo: 'api' });
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0, repo: 'api' });
     canvas.act(b.id, { action: 'start' });
     await settle();
     // nothing in progress in "api": B starts without an estimate first
     expect(item(b.id).state).toBe('working');
     // and a second card in "web" is judged against A only, and waits for it
-    const c = canvas.board.create({ kind: 'feature', title: 'C', x: 0, y: 0 });
+    const c = canvas.board.create({ title: 'C', x: 0, y: 0 });
     canvas.act(c.id, { action: 'start' });
     await settle();
     scopeCall(['src/index.ts']);
@@ -115,8 +115,8 @@ describe('a canvas with several repositories', () => {
   });
 
   test('accepting a proposal starts it', async () => {
-    const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0 });
-    const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
+    const p = canvas.board.propose(b.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
     canvas.act(p.id, { action: 'accept' });
     expect(item(p.id)).toMatchObject({ state: 'planned', queue: { checking: true } });
     await settle();
@@ -125,12 +125,12 @@ describe('a canvas with several repositories', () => {
   });
 
   test('a proposal can be edited, and accepted without starting', async () => {
-    const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0 });
-    const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });
-    canvas.board.patch(p.id, { title: 'Folgefehler im Export', body: 'Nur den Export.', kind: 'feature' });
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
+    const p = canvas.board.propose(b.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    canvas.board.patch(p.id, { title: 'Folgefehler im Export', body: 'Nur den Export.' });
     canvas.act(p.id, { action: 'accept', start: false });
     await settle();
-    expect(item(p.id)).toMatchObject({ state: 'planned', title: 'Folgefehler im Export', body: 'Nur den Export.', kind: 'feature' });
+    expect(item(p.id)).toMatchObject({ state: 'planned', title: 'Folgefehler im Export', body: 'Nur den Export.', kind: 'card' });
     expect(item(p.id).queue).toBeFalsy();
   });
 
@@ -158,8 +158,8 @@ describe('a canvas with several repositories', () => {
   });
 
   test('proposals keep the repository of the card they came from', () => {
-    const b = canvas.board.create({ kind: 'feature', title: 'B', x: 0, y: 0, repo: 'api' });
-    const p = canvas.board.propose(b.id, { kind: 'bugfix', title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0, repo: 'api' });
+    const p = canvas.board.propose(b.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
     expect(p.repo).toBe('api');
   });
 });
@@ -171,7 +171,7 @@ test('the home repository stays home when the configuration lists the repositori
   const api = repo('api', 'API');
   const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
   const first = new CanvasRuntime({ name: 'P', repos: [{ path: web }, { path: api }] }, deps);
-  const card = first.board.create({ kind: 'feature', title: 'Home-Karte', x: 0, y: 0 });
+  const card = first.board.create({ title: 'Home-Karte', x: 0, y: 0 });
   first.shutdown();
   const again = new CanvasRuntime({ name: 'P', repos: [{ path: api }, { path: web }] }, deps);
   expect(again.board.canvas.repos.map((r) => r.id)).toEqual(['web', 'api']);
@@ -187,7 +187,7 @@ test("the cards' workers run on their own runtime when one is given (a scratch O
   const workers = new FakeRuntime();
   canvas.shutdown();
   canvas = new CanvasRuntime({ repos: [{ path: web, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
-  const a = canvas.board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
+  const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
   canvas.act(a.id, { action: 'start' });
   await settle();
   expect(item(a.id).state).toBe('working');
@@ -234,7 +234,7 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   };
 
   // a new card: what the owner typed, once they pause
-  const a = canvas.board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+  const a = canvas.board.create({ title: 'Export', x: 0, y: 0 });
   canvas.patch(a.id, { body: 'CSV' });
   canvas.patch(a.id, { body: 'CSV, Spalten immer mit Einheit.' });
   await settle();
@@ -246,7 +246,7 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   await done();
 
   // a follow-up with a finding in it: at once when the owner acts on it, with the text it had before
-  const b = canvas.board.create({ kind: 'bugfix', title: 'Datum', body: 'Befund: Datum fehlt.', from: a.id });
+  const b = canvas.board.create({ title: 'Datum', body: 'Befund: Datum fehlt.', from: a.id });
   canvas.patch(b.id, { body: 'Befund: Datum fehlt.\n\nImmer ISO-Datum.' });
   canvas.act(b.id, { action: 'split' });
   await settle();
@@ -255,10 +255,10 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   await done();
 
   // typed back to what it was, or deleted while being written: nothing
-  const c = canvas.board.create({ kind: 'feature', title: 'C', body: 'Alt.', x: 0, y: 0 });
+  const c = canvas.board.create({ title: 'C', body: 'Alt.', x: 0, y: 0 });
   canvas.patch(c.id, { body: 'Neu.' });
   canvas.patch(c.id, { body: 'Alt.' });
-  const d = canvas.board.create({ kind: 'feature', title: 'D', x: 0, y: 0 });
+  const d = canvas.board.create({ title: 'D', x: 0, y: 0 });
   canvas.patch(d.id, { body: 'Weg damit.' });
   canvas.remove(d.id);
   await new Promise((r) => setTimeout(r, 50));
@@ -278,7 +278,7 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
 
 test('clicks in a card count towards the Rückschau, and words the learner reads count once', async () => {
   const count = () => canvas.board.setting('review_inputs');
-  const a = canvas.board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
+  const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
   canvas.press(a.id, { action: 'start' });
   expect(count()).toBe('1');
   await settle();

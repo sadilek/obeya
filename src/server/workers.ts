@@ -668,9 +668,9 @@ export class Workers {
         : {
             name: 'propose_card',
             description: `Propose a separate card for a problem you noticed that is outside your task, instead of fixing it here. Title, reason and suggestion in ${OWNER_LANGUAGE}.`,
-            schema: { kind: z.enum(['bugfix', 'feature']), title: z.string(), reason: z.string(), suggestion: z.string() },
+            schema: { title: z.string(), reason: z.string(), suggestion: z.string() },
             run: (a) => {
-              const p = this.o.board.propose(cardId, a as { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string });
+              const p = this.o.board.propose(cardId, a as { title: string; reason: string; suggestion: string });
               this.o.board.log(cardId, 'activity', 'worker', `Karte vorgeschlagen: ${p.title}`);
               return 'Proposed; the owner decides. Continue with your task.';
             },
@@ -899,7 +899,7 @@ Rules:
   }
 
   private briefing(card: Item, branch: string, resumed = false): string {
-    const parts = [`Your card: ${card.kind === 'bugfix' ? 'bugfix' : 'feature'} “${card.title}”.`];
+    const parts = [`Your card: “${card.title}”.`];
     const idea = card.prototypeOf ? this.o.board.item(card.prototypeOf) : undefined;
     if (card.prototypeOf)
       parts.push(
@@ -939,7 +939,7 @@ ${idea.idea.brief}` : '',
       parts.push(
         [
           `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review (with its report).`,
-          `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+          `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
           "When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis), make an HTML artifact instead: an index.html in a new directory under ~/demos/ (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.",
           `Only when there is nothing to show at all (the task turned out to be done already, say), hand over with no_demo and why instead. That is the exception: the owner wants something to see.`,
         ].join(' '),

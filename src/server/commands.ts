@@ -10,7 +10,7 @@ import type { AgentRuntime, AgentSession } from './runtime';
 
 export type Command = (
   /** `from`: the card it follows up on. */
-  | { do: 'newCard'; kind: 'bugfix' | 'feature'; title: string; body: string; start: boolean; repo?: string; from?: string }
+  | { do: 'newCard'; title: string; body: string; start: boolean; repo?: string; from?: string }
   | { do: 'newIdea'; title: string; body: string; repo?: string }
   /** `force` starts a card that waits behind others now, despite the likely merge conflict. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
@@ -244,7 +244,7 @@ export class Commander {
       .snapshot()
       .items.filter((i) => !finished(i.state))
       .map((i) => i.title.replace(/[`*_]/g, ''));
-    return ['Obeya, Koordinator, Karte, Workstream, Bugfix, Feature, Idee, Prototyp, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
+    return ['Obeya, Koordinator, Karte, Workstream, Idee, Prototyp, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
   }
 
   /** Starts the Koordinator's session ahead, so a command does not wait for its start-up. Called when the owner starts speaking. */
@@ -269,7 +269,7 @@ export class Commander {
           description: [
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
-            `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
+            `- new_card: a new card. title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to the Koordinator together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
             "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
@@ -288,7 +288,6 @@ export class Commander {
                   do: z.enum(ACTIONS),
                   card: z.string().optional(),
                   text: z.string().optional(),
-                  kind: z.enum(['bugfix', 'feature']).optional(),
                   title: z.string().optional(),
                   body: z.string().optional(),
                   start: z.boolean().optional(),
@@ -441,7 +440,7 @@ export class Commander {
       const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? a.repo : undefined;
       const from = a.card ? s.tags.get(a.card) : undefined;
       if (a.card && (!from || !this.o.board.item(from))) return `unknown tag ${a.card}; give the card a follow-up comes from, or none`;
-      return { do: 'newCard', kind: a.kind ?? 'feature', title: a.title.trim(), body: a.body ?? '', start: Boolean(a.start), ...(repo ? { repo } : {}), ...(from ? { from } : {}) };
+      return { do: 'newCard', title: a.title.trim(), body: a.body ?? '', start: Boolean(a.start), ...(repo ? { repo } : {}), ...(from ? { from } : {}) };
     }
     const id = a.card ? s.tags.get(a.card) : undefined;
     const card = id ? this.o.board.item(id) : undefined;
@@ -583,7 +582,7 @@ export class Commander {
               : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
       const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
-      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}`;
+      return `${tag(i.id)} [${state}] "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}`;
     };
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);
@@ -659,7 +658,6 @@ interface ActionArgs {
   do: Action;
   card?: string;
   text?: string;
-  kind?: 'bugfix' | 'feature';
   title?: string;
   body?: string;
   start?: boolean;
