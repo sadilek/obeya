@@ -148,7 +148,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
       '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },
       '/api/c/:canvas/cards/:id': {
-        PATCH: on(async (c, req) => c.board.patch(req.params.id!, (await req.json()) as CardPatch)),
+        PATCH: on(async (c, req) => c.patch(req.params.id!, (await req.json()) as CardPatch)),
         DELETE: on((c, req) => c.remove(req.params.id!)),
       },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.board.restore(req.params.id!)) },

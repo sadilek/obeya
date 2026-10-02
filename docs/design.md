@@ -203,7 +203,8 @@ next recording; one in which nothing was heard or understood leaves them there.
 A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff),
 which answers from the plan doc, the decision log and the preference memory. Only what needs the owner reaches the owner: product decisions, trade-offs, anything
 irreversible or external. An answer given on the owner's behalf stays visible on the card and
-can be overruled; overruling feeds the preference memory. Owner-facing text from agents is in
+can be overruled: the owner's next word on the card goes to the learner with the answer it may
+overrule, so overruling feeds the preference memory. Owner-facing text from agents is in
 the owner's language (`src/core/locale.ts`).
 
 ## Architecture
@@ -337,9 +338,15 @@ the owner's language (`src/core/locale.ts`).
   project's sheet names what each waiting workstream waits for. When the turn fails, each is judged
   on its own as if started alone; after a restart the joint turn runs again. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
-  without a project, and after each owner answer, note or feedback it decides whether a lasting
-  preference was stated and proposes it as a rule (the card's log says „Schlägt vor: …“); "Merk dir: …" by voice records
-  an active rule outright. Its
+  without a project, and after whatever the owner says it decides whether a lasting preference
+  was stated and proposes it as a rule (the card's log says „Schlägt vor: …“); "Merk dir: …" by
+  voice records an active rule outright. What it learns from: answers, notes and feedback to
+  workers; an idea's discussion; the conversation with it (a reply or look-up at once, with its
+  reply; a command once its undo window has passed, unless its words reach the learner another
+  way, as a note or an idea's discussion do); and the text the owner writes in a card, once they
+  pause typing for a minute or act on the card, with the text it had before (a proposal's, a
+  finding a follow-up quotes). The owner's first note, answer or feedback on a card after an answer
+  given in their name goes with that answer, which it may overrule. Its
   sheet (button or `K`) shows the queue, the cards in progress and the preferences; open
   proposals stand above the rules with their occasion (the card and the owner's words, or the
   Rückschau) and, for a change, the rule it changes. The owner accepts one, edits it before

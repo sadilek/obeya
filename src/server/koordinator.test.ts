@@ -31,7 +31,7 @@ beforeEach(() => {
   workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
   workers = new Workers({ board, runtime, workspaces, adapter });
-  k = new Koordinator({ board, runtime, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
+  k = new Koordinator({ board, runtime, home: main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -442,7 +442,7 @@ describe('Koordinator starts all workstreams of a project', () => {
   });
 
   test('the start waits a few seconds, in which the owner can take it back', async () => {
-    k = new Koordinator({ board, runtime, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 40 });
+    k = new Koordinator({ board, runtime, home: dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 40 });
     const { p, w2, w3, w4 } = project();
     k.request(p.id);
     await settle();
@@ -528,7 +528,7 @@ describe('Koordinator answers questions of cards without a project', () => {
 
   test('a fresh session after a number of questions, after a restart, and after a failure', async () => {
     const repoFor = () => ({ workers, workspaces, adapter: { ...generic, land: 'main' as const, workspaces: 'worktrees' as const, softPaths: [] }, path: dir });
-    k = new Koordinator({ board, runtime, repoFor, sessionQuestions: 2 });
+    k = new Koordinator({ board, runtime, home: dir, repoFor, sessionQuestions: 2 });
     const a = card('Export');
     const answer = async (id: string, text: string) => {
       const r = k.ask(item(a.id), { text, options: [] });
@@ -546,7 +546,7 @@ describe('Koordinator answers questions of cards without a project', () => {
     expect(await answer('k-2', 'Vier?')).toBe('k-2');
 
     // a restart: the session is not resumed
-    k = new Koordinator({ board, runtime, repoFor });
+    k = new Koordinator({ board, runtime, home: dir, repoFor });
     expect(await answer('k-3', 'Fünf?')).toBeUndefined();
 
     const r = k.ask(item(a.id), { text: 'Sechs?', options: [] });
@@ -582,7 +582,7 @@ describe('preference memory', () => {
 
   test('a lasting preference is proposed with its occasion and applies once the owner accepts it; a one-off is not', async () => {
     const a = card('Labels');
-    k.learn(item(a.id), 'answer', 'Präzise, auch wenn es länger wird. Das gilt immer.', 'Kurz oder präzise?');
+    k.learn(item(a.id), 'answer', 'Präzise, auch wenn es länger wird. Das gilt immer.', { question: 'Kurz oder präzise?' });
     await settle();
     expect(learnSession().inbox[0]).toContain('Kurz oder präzise?');
     await learn('propose', { rule: 'Beschriftungen: präzise vor kurz.' });
@@ -598,7 +598,7 @@ describe('preference memory', () => {
     expect(texts('active')).toEqual(['Beschriftungen: präzise vor kurz.']);
     expect(board.preferencesText()).toContain('- Beschriftungen: präzise vor kurz.');
 
-    k.learn(item(a.id), 'answer', 'Donnerstag.', 'Wann ist der Termin?');
+    k.learn(item(a.id), 'answer', 'Donnerstag.', { question: 'Wann ist der Termin?' });
     await settle();
     await learn('nothing', {});
     expect(board.preferences()).toHaveLength(1);
@@ -648,6 +648,30 @@ describe('preference memory', () => {
     expect(board.preferences()).toMatchObject([{ state: 'rejected' }, { state: 'rejected' }, { text: 'Commits auf Englisch.', state: 'active' }]);
   });
 
+  test('what the owner says without a card is read in the home checkout and proposed without one', async () => {
+    k.learn(null, 'talk', 'Warum fragt der Agent immer nach Kleinkram?', { reply: 'Weil die Karte offen lässt, wie weit er gehen soll.' });
+    await settle();
+    const brief = learnSession().inbox[0]!;
+    expect(learnSession().spec.cwd).toBe(board.canvas.repos[0]!.path);
+    expect(brief).not.toContain('Card');
+    expect(brief).toContain("The owner's question or remark to the Koordinator: Warum fragt der Agent immer nach Kleinkram?");
+    expect(brief).toContain('The Koordinator replied: Weil die Karte offen lässt');
+    await learn('propose', { rule: 'Kleinkram selbst entscheiden.' });
+    expect(board.preferences()).toEqual([{ id: 1, text: 'Kleinkram selbst entscheiden.', state: 'proposed', quote: 'Warum fragt der Agent immer nach Kleinkram?' }]);
+  });
+
+  test('the learner sees the answer an input may overrule, and the text a card had before the owner wrote in it', async () => {
+    const a = card('Export');
+    k.learn(item(a.id), 'note', 'Nein, CSV mit Semikolon.', { overruled: { question: 'Trennzeichen?', answer: 'Komma.', by: 'koordinator' } });
+    await settle();
+    expect(learnSession().inbox[0]).toContain("The worker asked: Trennzeichen?\nThe Koordinator answered it in the owner's name: Komma.");
+    await learn('nothing', {});
+    k.learn(item(a.id), 'card', 'Befund: Datum fehlt.\n\nImmer ISO-Datum.', { before: 'Befund: Datum fehlt.' });
+    await settle();
+    expect(learnSession().inbox[0]).toContain("Before the owner wrote in it, the card's text read:\nBefund: Datum fehlt.");
+    expect(learnSession().inbox[0]).toContain("The owner's text of a card they wrote, the task for an agent: Befund: Datum fehlt.");
+  });
+
   test('the rules stored before proposals existed stay active', () => {
     const path = join(dir, 'old.db');
     const old = new Database(path);
@@ -669,7 +693,7 @@ describe('preference memory', () => {
       workspaces,
       adapter: { ...generic, land: 'main', workspaces: 'worktrees', softPaths: [] },
       preferences: () => board.preferencesText(),
-      onOwnerInput: (_c, kind, text) => heard.push(`${kind}:${text}`),
+      onOwnerInput: (_c, kind, text, context) => heard.push(`${kind}:${text}${context.overruled ? ` (overrules ${context.overruled.by}: ${context.overruled.answer})` : ''}`),
     });
     const a = card('A');
     w.start(a.id);
@@ -680,7 +704,24 @@ describe('preference memory', () => {
     w.message(a.id, 'Bitte kleiner schneiden.');
     s.call('ready_for_review', { summary: 'S' });
     w.message(a.id, 'Noch die Einheit.');
-    expect(heard).toEqual(['answer:Ja.', 'note:Bitte kleiner schneiden.', 'feedback:Noch die Einheit.']);
+    // the owner's first word after an answer given in their name may overrule it; the next one does not
+    s.call('ask', { question: 'Komma?' });
+    w.answer(a.id, 'Ja, Komma.', 'koordinator');
+    w.message(a.id, 'Nein, Semikolon.');
+    w.message(a.id, 'Und eine Kopfzeile.');
+    // a question asked since is the card's last one
+    s.call('ask', { question: 'Datum?' });
+    w.answer(a.id, 'ISO.', 'project');
+    s.call('ask', { question: 'Zeitzone?' });
+    w.message(a.id, 'UTC.');
+    expect(heard).toEqual([
+      'answer:Ja.',
+      'note:Bitte kleiner schneiden.',
+      'feedback:Noch die Einheit.',
+      'note:Nein, Semikolon. (overrules koordinator: Ja, Komma.)',
+      'note:Und eine Kopfzeile.',
+      'note:UTC.',
+    ]);
   });
 });
 

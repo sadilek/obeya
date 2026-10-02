@@ -26,8 +26,24 @@ interface Planned {
   reason: string;
 }
 
-/** What the owner said that may hold a lasting preference. */
-export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea';
+/**
+ * What the owner said that may hold a lasting preference: to a worker (answer, note, feedback), in
+ * an idea's discussion, to the Koordinator in conversation (a command it carried out, or a question
+ * or remark it replied to), or in the text of a card they wrote.
+ */
+export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea' | 'command' | 'talk' | 'card';
+
+/** What the learner reads an input with. */
+export interface InputContext {
+  /** The question the owner answered. */
+  question?: string;
+  /** The answer given in the owner's name to the card's last question, which the input may overrule. */
+  overruled?: { question: string; answer: string; by: 'project' | 'koordinator' };
+  /** The Koordinator's reply to what the owner said to it. */
+  reply?: string;
+  /** The card's text before the owner wrote in it: a proposal's, a finding a follow-up quotes. */
+  before?: string;
+}
 
 export interface Scope {
   files: string[];
@@ -50,6 +66,8 @@ export interface KoordinatorOptions {
   runtime: AgentRuntime;
   /** The repository of a card; a canvas may span several. */
   repoFor: (card: Item) => RepoHands;
+  /** The checkout the Koordinator reads for what the owner says without a card (the home repository). */
+  home: string;
   /** The owner's recorded preferences, as agents read them. */
   preferences?: () => string;
   /** Worker questions one session answers; the next one starts fresh. */
@@ -259,21 +277,23 @@ export class Koordinator {
   }
 
   /**
-   * The owner answered, sent a note or gave feedback: if it states a lasting preference, propose
-   * it as a rule for every agent; the owner accepts it in the sheet. Runs in the background, one at
-   * a time.
+   * The owner said something (to a worker, in an idea, to the Koordinator, in a card's text): if it
+   * states a lasting preference, propose it as a rule for every agent; the owner accepts it in the
+   * sheet. `card` is the card it concerns, or the one open; none in a conversation without one.
+   * Runs in the background, one at a time.
    */
-  learn(card: Item, kind: OwnerInput, text: string, question?: string) {
+  learn(card: Item | null, kind: OwnerInput, text: string, context: InputContext = {}) {
     this.learning = this.learning
       .catch(() => {})
-      .then(() => this.distill(card, kind, text, question))
+      .then(() => this.distill(card, kind, text, context))
       .catch((e) => console.error('Koordinator (learning):', e));
   }
 
-  private distill(card: Item, kind: OwnerInput, text: string, question?: string): Promise<void> {
+  private distill(card: Item | null, kind: OwnerInput, text: string, context: InputContext): Promise<void> {
     const rules = this.o.board.preferences('active');
     const open = this.o.board.preferences('proposed');
     const rejected = this.o.board.preferences('rejected');
+    const { question, overruled, reply, before } = context;
     return new Promise((resolve) => {
       let done = false;
       const finish = (r: string) => {
@@ -285,7 +305,7 @@ export class Koordinator {
       };
       const session = this.o.runtime.start(
         {
-          cwd: this.o.repoFor(card).path,
+          cwd: card ? this.o.repoFor(card).path : this.o.home,
           readOnly: true,
           system: LEARN_SYSTEM,
           tools: [
@@ -299,8 +319,8 @@ export class Koordinator {
                 if (!r) return finish('Empty rule ignored.');
                 if (open.some((p) => p.text === r)) return finish('Already proposed. End your turn now.');
                 const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-                this.o.board.proposePreference(r, { cardId: card.id, quote: text }, old?.id);
-                this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
+                this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id);
+                if (card) this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
                 return finish('Proposed. End your turn now.');
               },
             },
@@ -314,9 +334,14 @@ export class Koordinator {
           },
         },
         [
-          `Card: ${card.kind} "${card.title}".`,
+          card ? `Card${kind === 'talk' || kind === 'command' ? ' the owner had open' : ''}: ${card.kind} "${card.title}".` : '',
           question ? `The worker asked: ${question}` : '',
-          `The owner's ${{ answer: 'answer', note: 'note to the worker', feedback: 'feedback on the finished work', idea: 'words in the discussion of an idea' }[kind]}: ${text}`,
+          overruled
+            ? `The worker asked: ${overruled.question}\nThe ${overruled.by === 'project' ? 'project agent' : 'Koordinator'} answered it in the owner's name: ${overruled.answer}\nWhat follows is the owner's first word on the card since. If it overrules that answer, the answer missed what the owner wants: that may be a lasting preference the answering agent should have known.`
+            : '',
+          before ? `Before the owner wrote in it, the card's text read:\n${before}` : '',
+          `The owner's ${INPUTS[kind]}: ${text}`,
+          reply ? `The Koordinator replied: ${reply}` : '',
           rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
           open.length ? `Proposals waiting for the owner (do not propose them again):\n${open.map((r) => `- ${r.text}`).join('\n')}` : '',
           rejected.length ? `Proposals the owner rejected (do not propose them again):\n${rejected.map((r) => `- ${r.text}`).join('\n')}` : '',
@@ -719,9 +744,20 @@ Call schedule exactly once, with every workstream once, in the order they should
 const LEARN_SYSTEM = `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's preference memory: short rules every agent follows, so the owner never has to say the same thing twice.
 
-You get one thing the owner said about a card. Decide whether it states a lasting preference that should guide future work on other cards too — about how to work, what to ask and what not, style, wording, testing, tools. Most answers only decide the case at hand: then call nothing.
+You get one thing the owner said: to the agent on a card, in the text of a card they wrote, or to you, the Koordinator, in conversation. Decide whether it states a lasting preference that should guide future work on other cards too — about how to work, what to ask and what not, style, wording, testing, tools. Most answers only decide the case at hand: then call nothing.
 If it does state one, call propose with a short, general rule in German ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what is already covered.
 `.trim();
+
+/** How the learner hears each kind of input. */
+const INPUTS: Record<OwnerInput, string> = {
+  answer: 'answer',
+  note: 'note to the worker',
+  feedback: 'feedback on the finished work',
+  idea: 'words in the discussion of an idea',
+  command: 'words to the Koordinator, which it carried out',
+  talk: 'question or remark to the Koordinator',
+  card: 'text of a card they wrote, the task for an agent',
+};
 
 const CUT_SYSTEM = `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers run at the same time, each on one card in its own workspace; cards whose changes would conflict on merge (the same code in the same files) have to wait for each other. The owner asks you to cut a card into work packages that can run in parallel.
