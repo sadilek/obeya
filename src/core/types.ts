@@ -14,6 +14,8 @@ export interface Question {
   options: string[];
   /** Several options may be chosen together. */
   multiple?: boolean;
+  /** What the asking agent would pick if it had to decide: some of the options, and why. */
+  pick?: { options: string[]; why: string };
 }
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
@@ -121,6 +123,15 @@ export interface Idea {
   yourTurn: boolean;
   /** The questions of the agent's latest reply, until the owner says something. */
   questions: Question[];
+  /** What the agent would do next in the owner's place, from its latest reply, until the owner says something. */
+  next?: NextStep;
+}
+
+/** The owner's next click on an idea: answer its questions, or one of the decisions on the card. */
+export const NEXT_STEPS = ['answer', 'build', 'planDoc', 'prototype', 'park', 'drop'] as const;
+export interface NextStep {
+  step: (typeof NEXT_STEPS)[number];
+  why: string;
 }
 
 export interface PullRequest {

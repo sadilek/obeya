@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import type { CanvasConfig, Item, Queue } from '../core/types';
+import type { CanvasConfig, Item, NextStep, Queue } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Config } from './config';
 import type { Moment } from './db';
@@ -31,6 +31,22 @@ export type Command = (
  * rule already: a command with one of them is not offered for learning again.
  */
 const LEARNED: Command['do'][] = ['note', 'answer', 'feedback', 'discuss', 'newIdea', 'remember'];
+
+/** An idea's suggested next step, as the Koordinator reads it: the action it would take, or answering the questions. */
+const NEXT_ACTION: Record<NextStep['step'], string> = {
+  answer: 'have the owner answer its open questions (discuss)',
+  build: 'build',
+  planDoc: 'plan_doc',
+  prototype: 'prototype',
+  park: 'park',
+  drop: 'drop',
+};
+
+/** The answers an idea's agent would give to its own open questions. */
+const picks = (i: Item) => {
+  const picked = (i.idea?.questions ?? []).filter((q) => q.pick).map((q) => `"${clip(q.text, 120)}" → ${q.pick!.options.join(', ')}`);
+  return picked.length ? ` (its own answers: ${picked.join('; ')})` : '';
+};
 
 /** The actions a command's screenshots go with: those that create a card, start one or say something to its agent. */
 const TAKES_IMAGES: Command['do'][] = ['newCard', 'newIdea', 'start', 'force', 'note', 'answer', 'feedback', 'discuss'];
@@ -536,7 +552,7 @@ export class Commander {
               : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
       const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
-      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}`;
+      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}`;
     };
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);
@@ -663,5 +679,5 @@ For each message, call act, reply or look_up once, then end your turn:
 All three take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
 When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent.
-When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). Wanting to think about something, rather than have it done, is new_idea.
+When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). "Mach, was du vorschlägst" on an idea takes the step its agent would take next, as its line says; when that is answering, discuss with its own answers. Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

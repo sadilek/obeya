@@ -21,6 +21,7 @@ import {
   type NewCard,
   type PreferenceState,
   type ProjectHistory,
+  type NextStep,
   type Question,
   STATES,
 } from '../core/types';
@@ -871,6 +872,7 @@ export interface StoredIdea {
   thinking?: boolean;
   yourTurn?: boolean;
   questions?: Question[];
+  next?: NextStep;
   /** Decided as a project: its worker writes the plan doc, and the project takes the card's place. */
   project?: boolean;
 }
@@ -885,7 +887,7 @@ function decided(r: CardRow): Pick<Item, 'brief' | 'becomesProject'> {
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
-  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [] };
+  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}) };
 }
 
 function checkPreference(v: unknown): string {
