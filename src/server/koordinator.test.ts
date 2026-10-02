@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
+import type { PlanDoc } from '../core/plan-doc';
 import { Board } from './board';
 import { MIGRATIONS, Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
@@ -17,13 +18,15 @@ let runtime: FakeRuntime;
 let workers: Workers;
 let workspaces: Workspaces;
 let k: Koordinator;
+let docs: PlanDoc[];
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-k-'));
   const main = join(dir, 'main');
   gitRepo(main);
   const store = new Store(':memory:');
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => []);
+  docs = [];
+  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs);
   const adapter = { ...generic, land: 'main' as const, workspaces: 'worktrees' as const, softPaths: ['docs/'] };
   workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
@@ -323,6 +326,113 @@ describe('Koordinator', () => {
     await settle();
     expect(item(b.id).state).toBe('working');
     expect(board.events(b.id).some((e) => e.kind === 'error' && e.text.includes('nicht schätzen'))).toBe(true);
+  });
+});
+
+describe('Koordinator starts all workstreams of a project', () => {
+  const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: `Text ${key}`, done, inReview: false });
+  const schedules = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'schedule'));
+  /** A project with W1 live and W2 to W4 planned. */
+  function project() {
+    docs = [{ file: 'docs/plan/p.md', title: 'P', goal: 'Ziel P', workstreams: [ws('W1', true), ws('W2'), ws('W3'), ws('W4')], markdown: '' }];
+    board.docsChanged();
+    const [p, , w2, w3, w4] = board.snapshot().items;
+    return { p: p!, w2: w2!, w3: w3!, w4: w4! };
+  }
+  /** Answers the latest open schedule: one entry per workstream, [card, files, waits for, reason]. */
+  async function schedule(entries: [string, string[], string[], string][]) {
+    await settle();
+    const s = schedules().at(-1)!;
+    const r = s.call('schedule', { workstreams: entries.map(([card, files, waits_for, reason]) => ({ card, files, waits_for, reason })) });
+    s.emit({ type: 'idle' });
+    await settle();
+    return r;
+  }
+
+  test('one turn sees them all with the plan doc and decides which start and which wait for what', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const { p, w2, w3, w4 } = project();
+    k.request(p.id);
+    // in the plan's order until the Koordinator has decided
+    expect([w2, w3, w4].map((w) => item(w.id).queue)).toEqual([0, 1, 2].map(() => expect.objectContaining({ checking: true, together: p.id })));
+    await settle();
+    expect(schedules()).toHaveLength(1);
+    expect(estimates()).toHaveLength(1);
+    const brief = schedules()[0]!.inbox[0]!;
+    expect(brief).toContain('plan doc docs/plan/p.md');
+    expect(brief).toContain('- K2: W2 "Titel W2" — Text W2');
+    expect(brief).toContain('- K1: "A"');
+    // W4 goes first, W2 builds on it, W3 collides with A
+    await schedule([
+      ['K4', ['src/w4.ts'], [], 'W4 ist unabhängig.'],
+      ['K2', ['src/w2.ts'], ['K4'], 'W2 baut auf der API aus W4 auf.'],
+      ['K3', ['src/a.ts'], ['K1'], 'W3 und „A“ ändern dieselbe Funktion.'],
+    ]);
+    expect(item(w4.id)).toMatchObject({ state: 'working', scope: ['src/w4.ts'] });
+    expect(item(w2.id)).toMatchObject({ state: 'planned', scope: ['src/w2.ts'], queue: { behind: [w4.id], reason: 'W2 baut auf der API aus W4 auf.' } });
+    expect(item(w3.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id] } });
+    expect(board.events(w2.id).at(-1)!.text).toBe('Koordinator: wartet auf W4 „Titel W4“. W2 baut auf der API aus W4 auf.');
+    // the Koordinator's order is the queue's
+    expect(k.ahead(item(w3.id)).map((i) => i.id)).toEqual([w2.id]);
+    expect(board.events(p.id).at(-1)!.text).toContain('1 von 3 Workstreams starten jetzt');
+
+    workers.stop(a.id);
+    await settle();
+    // what runs now is W4: W3 is judged again against it
+    expect(item(w3.id).queue).toMatchObject({ checking: true });
+  });
+
+  test('a workstream waits only for what comes before it, and every one has to be scheduled', async () => {
+    const { p, w2, w3, w4 } = project();
+    k.request(p.id);
+    await settle();
+    const s = schedules()[0]!;
+    expect(s.call('schedule', { workstreams: [{ card: 'K1', files: [], waits_for: [], reason: '' }] })).toContain('missing K2, K3');
+    await schedule([
+      ['K1', ['src/w2.ts'], ['K3'], 'Wartet auf W4.'],
+      ['K2', ['src/w3.ts'], ['K2'], ''],
+      ['K3', ['src/w4.ts'], ['K1'], 'Baut auf W2 auf.'],
+    ]);
+    expect(item(w2.id).state).toBe('working');
+    expect(item(w3.id).state).toBe('working');
+    expect(item(w4.id).queue).toMatchObject({ behind: [w2.id] });
+  });
+
+  test('without a schedule each is judged on its own', async () => {
+    const { p, w2, w3, w4 } = project();
+    k.request(p.id);
+    await settle();
+    schedules()[0]!.emit({ type: 'idle' });
+    await settle();
+    expect(board.events(p.id).at(-1)!.text).toContain('prüft sie einzeln');
+    expect(item(w2.id).state).toBe('working');
+    await scope(['src/w2.ts']);
+    await scope(['src/w3.ts']);
+    expect(item(w3.id).state).toBe('working');
+    expect(item(w4.id).queue).toMatchObject({ checking: true });
+  });
+
+  test('after a restart the joint turn runs again', async () => {
+    const { p, w2, w3 } = project();
+    board.work(w2.id, { queue: JSON.stringify({ checking: true, together: p.id, since: '1' }) });
+    board.work(w3.id, { queue: JSON.stringify({ checking: true, together: p.id, since: '2' }) });
+    k.resume();
+    await settle();
+    expect(schedules()).toHaveLength(1);
+    expect(schedules()[0]!.inbox[0]).toContain('Titel W3');
+    expect(schedules()[0]!.inbox[0]).not.toContain('Titel W4');
+  });
+
+  test('a single workstream starts as any card; none left to start is refused', async () => {
+    const { p, w2, w3 } = project();
+    k.request(w2.id);
+    k.request(w3.id);
+    k.request(p.id);
+    await settle();
+    expect(schedules()).toHaveLength(0);
+    expect(() => k.request(p.id)).toThrow(expect.objectContaining({ code: 'nothingToStart' }));
   });
 });
 

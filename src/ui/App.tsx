@@ -477,6 +477,17 @@ function Canvas({
     }
   }, []);
 
+  /** The project sheet's button: all planned workstreams go to the Koordinator together. */
+  const startAll = useCallback(async (p: Item, n: number) => {
+    try {
+      await api.act(p.id, { action: 'start' });
+      showAck(t.plan.startedAll(n));
+    } catch (e) {
+      if (!(e instanceof ApiError)) console.error(e);
+      showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  }, []);
+
   // ---------------------------------------------------------------- voice
   const where = (): Where => {
     const f = focusRef.current;
@@ -895,10 +906,12 @@ function Canvas({
       <Sheet
         project={sheetProject}
         kids={sheetKids}
+        all={items}
         on={sheetOn}
         reading={reading}
         onOpen={open}
         onRead={(r) => sheetProject && readPlan(sheetProject, r)}
+        onStartAll={startAll}
         els={sheetEls}
         version={snapshot}
       />

@@ -191,6 +191,27 @@ describe('the Koordinator remembers', () => {
     expect(executed).toEqual([{ do: 'force', card: behind.id }]);
   });
 
+  test('starting a project hands its planned workstreams to the Koordinator together', async () => {
+    const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: '', done, inReview: false });
+    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => [
+      { file: 'docs/plan/p.md', title: 'Export', goal: 'Ziel', workstreams: [ws('W1', true), ws('W2'), ws('W3')], markdown: '' },
+      { file: 'docs/plan/q.md', title: 'Fertig', goal: 'Ziel', workstreams: [ws('W1', true)], markdown: '' },
+    ]);
+    const [project] = board.snapshot().items;
+    const k = commander();
+    const heard = k.hear('starte alle Workstreams', { project: project!.id });
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain('The owner is looking at the project K1 "Export".');
+    expect(s.inbox[0]).toContain('Projects with workstreams to start:\nK1 [project] "Export" — planned workstreams not yet started: W2, W3');
+    expect(s.inbox[0]).not.toContain('"Fertig"');
+    s.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: 'Der Koordinator plant alle Workstreams von „Export“ ein.' });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'start', card: project!.id }]);
+  });
+
   test("the exchange goes into the open card's log; without an open card into the sheet", async () => {
     const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
     board.work(a.id, { state: 'working' });

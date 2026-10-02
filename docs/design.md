@@ -306,7 +306,15 @@ the owner's language (`src/core/locale.ts`).
   stopped it starts, or, while other work runs that may have started meanwhile, it is judged
   again — the owner can start it anyway. Cards whose turn comes together go in the order they came
   to the Koordinator, the one waiting longest first. On the canvas, a planned card and one waiting in the queue show a play button
-  while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
+  while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. A project's sheet starts all
+  its planned workstreams at once ("Alle N Workstreams starten", or by voice: start on the
+  project): they queue in the plan's order, and one Koordinator turn sees them together with the
+  plan doc, the cards in progress and those queued ahead. It puts them in an order and says for
+  each what it waits for: a workstream it builds on (until that one has landed) or one it would
+  likely conflict with; the rest start at once. A workstream may wait only for what comes before it
+  in that order, so none wait for each other, and the order is the queue's from then on. The
+  project's sheet names what each waiting workstream waits for. When the turn fails, each is judged
+  on its own as if started alone; after a restart the joint turn runs again. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
   without a project, and after each owner answer, note or feedback it decides whether a lasting
   preference was stated and proposes it as a rule (the card's log says „Schlägt vor: …“); "Merk dir: …" by voice records
@@ -507,6 +515,11 @@ the repository; the copy on the project is only for the archive).
 - A new card does not overtake a queued one it likely conflicts with: it queues behind it, also
   when that one waits for something far from done. Fairness over parallelism; the owner can still
   start it anyway.
+- A project's workstreams started together are scheduled in one Koordinator turn rather than
+  started one after the other through the single-card check (2026-10-02): workstreams of a plan
+  often build on each other, which a check for merge conflicts alone does not see, and only a turn
+  that sees all of them and the plan doc can choose the order. The workstreams that wait then go
+  the usual way: they start once what they wait for has landed, judged again against what runs.
 - Landing problems are classified: uncommitted work, rebase conflicts and empty branches go back
   to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
 - An approval holds through what the worker fixes to land it: main moving on is no reason to ask

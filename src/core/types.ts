@@ -123,8 +123,11 @@ export interface PullRequest {
   conflict: boolean;
 }
 
-/** `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting longest goes first. */
-export type Queue = ({ checking: true } | { cutting: true } | { behind: string[]; reason: string }) & { since?: string };
+/**
+ * `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting
+ * longest goes first. `together`: the project whose workstreams the Koordinator judges all at once.
+ */
+export type Queue = ({ checking: true; together?: string } | { cutting: true } | { behind: string[]; reason: string }) & { since?: string };
 
 /**
  * How a demo shows the work: a narrated `video` of something that happens, or an `html` artifact
@@ -256,6 +259,7 @@ export interface CardPatch {
 
 /** Owner actions on a card's work, posted to `/api/c/:canvas/cards/:id/act`. */
 export type CardAction =
+  /** On a project: all its planned workstreams go to the Koordinator, which orders them. */
   | { action: 'start' }
   | { action: 'stop' }
   /** `images`: ids of screenshots uploaded before (`POST /api/c/<canvas>/images`); with them the text may be empty. */
@@ -311,6 +315,8 @@ export type ErrorCode =
   | 'notIdea'
   /** A prototype for the idea is still running. */
   | 'prototypeRunning'
+  /** A project has no planned workstream left that is not already with the Koordinator. */
+  | 'nothingToStart'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'
