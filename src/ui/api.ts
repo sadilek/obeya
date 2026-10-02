@@ -212,9 +212,17 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
       };
     };
     connect();
+    // back from GitHub, say: the server looks at the pull requests now instead of at its next round
+    const back = () => {
+      if (document.visibilityState === 'visible' && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'back' } satisfies ClientMessage));
+    };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
     return () => {
       closed = true;
       clearTimeout(retry);
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', back);
       ws.close();
     };
   }, []);

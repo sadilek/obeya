@@ -440,7 +440,7 @@ describe('a restart that waits', () => {
     };
     const watching = await connect();
     const dictating = await connect();
-    const hold = (ws: WebSocket, hold: ClientMessage['hold']) => ws.send(JSON.stringify({ type: 'hold', hold } satisfies ClientMessage));
+    const hold = (ws: WebSocket, hold: Extract<ClientMessage, { type: 'hold' }>['hold']) => ws.send(JSON.stringify({ type: 'hold', hold } satisfies ClientMessage));
     const last = () => messages.filter((m): m is Extract<ServerMessage, { type: 'restart' }> => m.type === 'restart').at(-1)!.restart;
     hold(watching, ['video']);
     hold(dictating, ['voice']);

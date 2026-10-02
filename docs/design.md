@@ -295,7 +295,10 @@ the owner's language (`src/core/locale.ts`).
   not seen Obeya), and reports it with the tool `pr_opened(url)`. From then on it may push its
   branch, never merges, and ends its turn after each round instead of handing over again. Per
   repository a watcher polls every open PR through `gh` every two minutes (state, mergeability,
-  checks, conversation and review comments, inline comments), behind a small forge interface
+  checks, conversation and review comments, inline comments), and right away when the owner comes
+  back to an Obeya page (it becomes visible or gets the focus; at most once in 15 seconds): the
+  owner merges on GitHub and returns, and before, the card stood "in PR" for up to two minutes
+  after the merge (Acme's PR #821 on 2026-10-02: merged 12:12:40, seen 12:14:12). The watcher sits behind a small forge interface
   (`src/server/forge.ts`) so the loop is tested against a fake. New comments, failed checks (once
   per check and commit) and a conflict (once per commit) go to the worker as a message, which says
   what happened and leaves the how to the repository's ways (Acme: its `address-reviews` skill,

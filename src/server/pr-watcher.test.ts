@@ -199,6 +199,26 @@ describe('watching', () => {
     expect(state(id)).toBe('working');
   });
 
+  test('the owner coming back looks at the PRs right away, but not again within the gap', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    let asked = 0;
+    const counting = new PrWatcher(board, workers, { status: () => (asked++, status), body: () => '', setBody: () => {} }, () => dir);
+    counting.soon();
+    counting.soon();
+    await Bun.sleep(5);
+    expect(asked).toBe(1);
+
+    // merged on GitHub: the owner back in Obeya sees it without waiting for the next round
+    status.state = 'MERGED';
+    counting.soon(0);
+    expect(state(id)).toBe('inPr');
+    await Bun.sleep(5);
+    expect(asked).toBe(2);
+    expect(state(id)).toBe('live');
+  });
+
   test('a merge makes the card live and frees the clone; a close asks the owner', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });

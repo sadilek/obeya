@@ -9,6 +9,8 @@ import type { Workers } from './workers';
 export class PrWatcher {
   private timer: ReturnType<typeof setInterval> | undefined;
   private polling = false;
+  /** When the last round began. */
+  private polled = 0;
 
   constructor(
     private board: Board,
@@ -30,10 +32,21 @@ export class PrWatcher {
     clearInterval(this.timer);
   }
 
+  /**
+   * A round right away, unless one began within `gapMs`: the owner came back to Obeya, perhaps from
+   * merging on GitHub, and should not wait for the next tick to see it.
+   */
+  soon(gapMs = 15_000) {
+    if (this.polling || Date.now() - this.polled < gapMs) return;
+    this.polled = Date.now();
+    setTimeout(() => this.poll());
+  }
+
   /** One round over every card with an open pull request. */
   poll() {
     if (this.polling) return;
     this.polling = true;
+    this.polled = Date.now();
     try {
       for (const item of this.board.snapshot().items) {
         if (item.state !== 'inPr' && item.state !== 'waiting') continue;

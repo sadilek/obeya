@@ -73,6 +73,7 @@ export class CanvasRuntime {
   readonly sharing: Sharing;
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];
+  private prWatchers: PrWatcher[] = [];
   /** Cards the owner is writing in, with their text before; a pause in typing hands it to the learner. */
   private writing = new Map<string, { before: string; timer: ReturnType<typeof setTimeout> }>();
 
@@ -143,6 +144,7 @@ export class CanvasRuntime {
         if (adapter.land === 'pr') {
           const watcher = new PrWatcher(board, workers, deps.forge, (cardId) => board.row(cardId).workspace ?? info.path, adapter.prNoise, ref.id);
           watcher.start();
+          this.prWatchers.push(watcher);
           this.stops.push(() => watcher.stop());
         }
       }
@@ -548,6 +550,11 @@ export class CanvasRuntime {
   /** The cards whose worker is in the middle of a turn, which a restart would cut off. */
   busy(): string[] {
     return this.repos.flatMap((r) => r.workers.busyCards());
+  }
+
+  /** The owner came back to a page of this canvas: its open pull requests are looked at now. */
+  ownerBack() {
+    for (const w of this.prWatchers) w.soon();
   }
 
   /** Obeya is about to restart, or no longer is: the workers hear so and pause for it. */

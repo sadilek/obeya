@@ -565,8 +565,12 @@ export interface PendingRestart {
   owner: OwnerHold[];
 }
 
-/** UI → server over the WebSocket: what the owner does in this page that a restart waits for (sent on every change). */
-export type ClientMessage = { type: 'hold'; hold: OwnerHold[] };
+/** UI → server over the WebSocket. */
+export type ClientMessage =
+  /** What the owner does in this page that a restart waits for (sent on every change). */
+  | { type: 'hold'; hold: OwnerHold[] }
+  /** The owner came back to this page (from GitHub, say): what Obeya polls is looked at now. */
+  | { type: 'back' };
 
 /** Server → UI over the WebSocket. */
 export type ServerMessage =

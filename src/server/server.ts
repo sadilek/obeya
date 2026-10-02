@@ -283,6 +283,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         try {
           const msg = JSON.parse(String(text)) as ClientMessage;
           if (msg.type === 'hold' && Array.isArray(msg.hold)) restarter?.hold(ws.data.page, msg.hold.filter((h) => h === 'video' || h === 'voice'));
+          if (msg.type === 'back') byId.get(ws.data.canvas)?.ownerBack();
         } catch {}
       },
     },
