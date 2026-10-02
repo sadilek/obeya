@@ -142,7 +142,29 @@ export interface PullRequest {
   /** Checks on the PR's latest commit, as last seen. */
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   conflict: boolean;
+  /** The review as last seen, oldest first (`reviewOf` in the server's forge). */
+  review?: PrReviewEntry[];
 }
+
+/** A comment on a pull request; `mine` when the PR's author wrote it (the worker, in the owner's name). */
+export interface PrComment {
+  author: string;
+  mine?: boolean;
+  body: string;
+  at: string;
+  url?: string;
+}
+
+/** A reviewer's comment on the code and the replies in its thread. */
+export interface PrThread extends PrComment {
+  path?: string;
+  line?: number;
+  resolved: boolean;
+  replies: PrComment[];
+}
+
+/** A round of a reviewer's comments on the code, or a comment in the conversation. */
+export type PrReviewEntry = { author: string; mine?: boolean; at: string; threads: PrThread[] } | PrComment;
 
 /**
  * `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting

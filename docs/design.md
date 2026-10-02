@@ -303,7 +303,14 @@ the owner's language (`src/core/locale.ts`).
   conversation comments as `<name>`, and the watcher reads both as `<name>`. While the owner is
   asked, news waits. A merge makes the card `live` (After landing, below). The card shows the PR
   with its link, its checks (each linked to its run) and a conflict; folded, it reads
-  "PR #42 · 1 Check rot · Konflikt". Checked against real Acme pull requests (2026-10-01): `gh`
+  "PR #42 · 1 Check rot · Konflikt". Below the checks it shows the review as last polled, oldest
+  first: each round a reviewer left comments on the code in ("Runde 2 · greptile-apps · 3
+  Anmerkungen, 1 offen"), each comment folded to its first line with whether its thread is
+  resolved and how many replies it has, unfolded with the file, the comment and the replies (the
+  PR author's as "Agent"); between the rounds the conversation (a reviewer's summary, the
+  worker's requests for another round). Review bots write HTML into their Markdown: badges keep
+  their name (Greptile's "P1"), folded parts, code and diagrams go. Whether a thread is resolved
+  only GraphQL says, so the watcher asks that too. Checked against real Acme pull requests (2026-10-01): `gh`
   reads their state, checks and comments; the first Acme card carried through to the merge is still
   to come.
 - **After landing** — the worker is told its work is on main (or that its PR was merged) and may

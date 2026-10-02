@@ -100,6 +100,11 @@ describe('watching', () => {
     expect(sent[1]).toContain('- build: https://ci/1');
     expect(sent[2]).toContain('conflicts with its base branch');
     expect(board.item(id)!.pr).toMatchObject({ conflict: true, checks: status.checks });
+    // the card shows the review, without the noise
+    expect(board.item(id)!.pr!.review).toEqual([
+      { author: 'greptile', at: '', threads: [{ author: 'greptile', body: 'Null check missing.', at: '', path: 'src/a.ts', line: 3, resolved: false, replies: [] }] },
+      { author: 'owner', mine: true, body: 'Fixed in the latest push.', at: '' },
+    ]);
 
     watcher.poll();
     expect(runtime.last.inbox.length).toBe(before + 3);

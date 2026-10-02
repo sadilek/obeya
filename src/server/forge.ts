@@ -1,13 +1,30 @@
 // Where pull requests live. GitHub through the `gh` CLI; tests use a fake.
 
+import type { PrReviewEntry, PrThread } from '../core/types';
+
 export interface PrStatus {
   state: 'OPEN' | 'MERGED' | 'CLOSED';
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
   /** The commit the checks ran on. */
   head: string;
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
-  /** Conversation comments, review summaries and inline review comments, oldest first. */
-  comments: { id: string; author: string; body: string; path?: string; line?: number; url?: string }[];
+  /**
+   * Conversation comments, review summaries and inline review comments, oldest first. An inline
+   * comment's `round` is the review it came with; a reply names its thread's first comment in
+   * `replyTo`, and that first comment says whether the thread is `resolved`.
+   */
+  comments: {
+    id: string;
+    author: string;
+    body: string;
+    at?: string;
+    path?: string;
+    line?: number;
+    url?: string;
+    round?: string;
+    replyTo?: string;
+    resolved?: boolean;
+  }[];
   /** Who opened the PR (the owner's account; the worker's own replies carry it too). */
   author: string;
 }
@@ -34,8 +51,8 @@ interface GhPr {
   headRefOid: string;
   author: { login: string };
   statusCheckRollup: { __typename: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string }[];
-  comments: { id: string; author: { login: string }; body: string; url: string }[];
-  reviews: { id: string; author: { login: string }; body: string }[];
+  comments: { id: string; author: { login: string }; body: string; url: string; createdAt?: string }[];
+  reviews: { id: string; author: { login: string }; body: string; submittedAt?: string }[];
 }
 
 /** GitHub through a `gh` runner (the real CLI, or canned output in tests). */
@@ -51,7 +68,29 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       path: string;
       line: number | null;
       html_url: string;
+      created_at?: string;
+      pull_request_review_id?: number | null;
+      in_reply_to_id?: number | null;
     }[];
+    // whether a thread is resolved only GraphQL says; a thread is known by its first comment
+    const threads = JSON.parse(
+      run(
+        cwd,
+        'api',
+        'graphql',
+        '-F',
+        `owner=${ref.owner}`,
+        '-F',
+        `repo=${ref.repo}`,
+        '-F',
+        `number=${ref.number}`,
+        '-f',
+        'query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } } } }',
+      ),
+    ) as { data?: { repository?: { pullRequest?: { reviewThreads?: { nodes: { isResolved: boolean; comments: { nodes: { databaseId: number }[] } }[] } } } } };
+    const resolved = new Set(
+      (threads.data?.repository?.pullRequest?.reviewThreads?.nodes ?? []).filter((t) => t.isResolved).map((t) => t.comments.nodes[0]?.databaseId),
+    );
     const checks = (pr.statusCheckRollup ?? []).map((c) => {
       const name = c.name ?? c.context ?? 'check';
       const verdict = (c.conclusion ?? c.state ?? '').toUpperCase();
@@ -70,13 +109,110 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       author: pr.author.login,
       checks,
       comments: [
-        ...pr.comments.map((c) => ({ id: `c${c.id}`, author: c.author.login, body: c.body, url: c.url })),
-        ...pr.reviews.filter((r) => r.body.trim()).map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body })),
+        ...pr.comments.map((c) => ({ id: `c${c.id}`, author: c.author.login, body: c.body, ...(c.createdAt ? { at: c.createdAt } : {}), url: c.url })),
+        ...pr.reviews
+          .filter((r) => r.body.trim())
+          .map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body, ...(r.submittedAt ? { at: r.submittedAt } : {}) })),
         // the REST API names an app `<name>[bot]`, `gh pr view` plain `<name>`: one name for both
-        ...inline.map((c) => ({ id: `i${c.id}`, author: c.user.login.replace(/\[bot\]$/, ''), body: c.body, path: c.path, ...(c.line ? { line: c.line } : {}), url: c.html_url })),
+        ...inline.map((c) => ({
+          id: `i${c.id}`,
+          author: c.user.login.replace(/\[bot\]$/, ''),
+          body: c.body,
+          ...(c.created_at ? { at: c.created_at } : {}),
+          path: c.path,
+          ...(c.line ? { line: c.line } : {}),
+          url: c.html_url,
+          ...(c.pull_request_review_id ? { round: String(c.pull_request_review_id) } : {}),
+          ...(c.in_reply_to_id ? { replyTo: `i${c.in_reply_to_id}` } : { resolved: resolved.has(c.id) }),
+        })),
       ],
     };
   },
 });
 
 export const ghForge = makeGhForge(gh);
+
+/**
+ * What the card shows of a pull request's review, oldest first: each round a reviewer left comments
+ * on the code in, with the replies in each thread, and the conversation between the rounds.
+ * Comments by `skip` (bots that are not reviewers) are left out; `mine` marks the PR's author,
+ * which is the worker writing in the owner's name.
+ */
+export function reviewOf(s: PrStatus, skip: string[] = []): PrReviewEntry[] {
+  const shown = s.comments.filter((c) => !skip.includes(c.author));
+  const mine = (author: string) => (author === s.author ? { mine: true } : {});
+  const threads = new Map<string, PrThread>();
+  const rounds = new Map<string, Extract<PrReviewEntry, { threads: PrThread[] }>>();
+  const entries: PrReviewEntry[] = [];
+  for (const c of shown) {
+    if (c.replyTo || !c.id.startsWith('i')) continue;
+    const thread: PrThread = {
+      author: c.author,
+      ...mine(c.author),
+      body: readable(c.body),
+      at: c.at ?? '',
+      ...(c.path ? { path: c.path } : {}),
+      ...(c.line ? { line: c.line } : {}),
+      ...(c.url ? { url: c.url } : {}),
+      resolved: !!c.resolved,
+      replies: [],
+    };
+    threads.set(c.id, thread);
+    const key = c.round ?? c.id;
+    const round = rounds.get(key);
+    if (round) round.threads.push(thread);
+    else {
+      const r = { author: c.author, ...mine(c.author), at: c.at ?? '', threads: [thread] };
+      rounds.set(key, r);
+      entries.push(r);
+    }
+  }
+  for (const c of shown) {
+    const reply = { author: c.author, ...mine(c.author), body: readable(c.body), at: c.at ?? '' };
+    if (c.replyTo) threads.get(c.replyTo)?.replies.push(reply);
+    else if (!c.id.startsWith('i')) entries.push({ ...reply, ...(c.url ? { url: c.url } : {}) });
+  }
+  for (const r of rounds.values()) r.at = r.threads.reduce((a, t) => (t.at && t.at < a ? t.at : a), r.at);
+  return entries.filter((e) => 'threads' in e || e.body).sort((a, b) => a.at.localeCompare(b.at));
+}
+
+const MAX_BODY = 3000;
+/** Where `readable` took a part out. */
+const GONE = '\u0000';
+
+/**
+ * A comment as text the card renders: review bots write HTML (badges, folded prompts for other
+ * agents, diagrams) into their Markdown; the badges' names stay, code and folded parts go.
+ */
+export function readable(body: string): string {
+  let t = body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<details>[\s\S]*?<\/details>/gi, `\n${GONE}\n`)
+    .replace(/<picture>[\s\S]*?<\/picture>/gi, '')
+    .replace(/```[\s\S]*?(```|$)/g, `\n${GONE}\n`)
+    .replace(/<img\b[^>]*\balt="([^"]*)"[^>]*>/gi, '$1')
+    .replace(/<h\d[^>]*>([\s\S]*?)<\/h\d>/gi, '\n### $1\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\\([\\`*_{}\[\]()#+\-.!|])/g, '$1');
+  // headings become bold lines; a heading whose section went (a diagram, say) goes with it
+  const lines = t.split('\n').map((l) => l.trimEnd());
+  const out: string[] = [];
+  for (const [i, line] of lines.entries()) {
+    const h = /^#{1,6}\s+(.*)$/.exec(line.trim());
+    if (!h) {
+      if (line.trim() !== GONE) out.push(line);
+      continue;
+    }
+    const next = lines.slice(i + 1).find((l) => l.trim());
+    if (next && next.trim() !== GONE && !/^#{1,6}\s/.test(next.trim()) && h[1]!.trim()) out.push(`**${h[1]!.trim()}**`);
+  }
+  t = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return t.length > MAX_BODY ? `${t.slice(0, MAX_BODY).trimEnd()} …` : t;
+}

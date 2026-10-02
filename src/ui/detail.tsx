@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import type { CardAction, CardEvent, CardPatch, Demo, Item, NextStep, Question, RepoRef } from '../core/types';
+import type { CardAction, CardEvent, CardPatch, Demo, Item, NextStep, PrComment, PrReviewEntry, Question, RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
@@ -337,6 +337,7 @@ export function Detail(p: Props) {
           ) : (
             <div className="hint">{t.pr.noChecks}</div>
           )}
+          {item.pr.review && <PrReview entries={item.pr.review} />}
         </div>
       )}
       {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
@@ -1166,6 +1167,90 @@ function Log({ cardId, hideEmpty, skipTalk }: { cardId: string; hideEmpty?: bool
 }
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+/** The first line of a comment, for its folded view. */
+const firstLine = (md: string) => (md.split('\n').find((l) => l.trim()) ?? '').replace(/^\s*[-*+]\s+/, '').trim();
+
+/** Who wrote a PR comment: the PR's author is the worker, writing in the owner's name. */
+const who = (c: { author: string; mine?: boolean }) => (c.mine ? t.pr.agent : c.author);
+
+/**
+ * A pull request's review: each round a reviewer left comments on the code in, every comment
+ * folded to its first line with whether its thread is done; unfolded, the comment and the replies.
+ * Between the rounds the conversation (the requests for another round, the reviewer's summary).
+ */
+function PrReview({ entries }: { entries: PrReviewEntry[] }) {
+  let round = 0;
+  return (
+    <div className="pr-review">
+      <h5>{t.pr.review}</h5>
+      {entries.map((e, i) =>
+        'threads' in e ? (
+          <div key={i} className="pr-round">
+            <div className="pr-head">
+              <b>{t.pr.round(++round, who(e))}</b> · {time(e.at)} · {t.pr.threads(e.threads.length, e.threads.filter((th) => !th.resolved).length)}
+            </div>
+            {e.threads.map((th, j) => (
+              <details key={j} className={`pr-thread ${th.resolved ? 'resolved' : 'open'}`}>
+                <summary title={th.resolved ? t.pr.resolved : t.pr.open}>
+                  <span className="pr-first">
+                    <Inline md={firstLine(th.body)} />
+                  </span>
+                  {th.replies.length > 0 && <span className="pr-meta">{t.pr.replies(th.replies.length)}</span>}
+                </summary>
+                <div className="pr-body">
+                  {th.path && (
+                    <div className="pr-where">
+                      {th.url ? (
+                        <a href={th.url} target="_blank" rel="noreferrer">
+                          {th.path}
+                          {th.line ? `:${th.line}` : ''} ↗
+                        </a>
+                      ) : (
+                        th.path
+                      )}
+                    </div>
+                  )}
+                  <Body md={th.body} />
+                  {th.replies.map((r, k) => (
+                    <PrReply key={k} c={r} />
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        ) : (
+          <details key={i} className="pr-comment">
+            <summary>
+              <b>{who(e)}</b> · {time(e.at)} · <span className="pr-first">
+                <Inline md={firstLine(e.body)} />
+              </span>
+            </summary>
+            <div className="pr-body">
+              <Body md={e.body} />
+              {e.url && (
+                <a href={e.url} target="_blank" rel="noreferrer">
+                  {t.pr.onGithub} ↗
+                </a>
+              )}
+            </div>
+          </details>
+        ),
+      )}
+    </div>
+  );
+}
+
+function PrReply({ c }: { c: PrComment }) {
+  return (
+    <div className={`pr-reply${c.mine ? ' mine' : ''}`}>
+      <div className="pr-meta">
+        <b>{who(c)}</b> · {time(c.at)}
+      </div>
+      <Body md={c.body} />
+    </div>
+  );
+}
 
 /** Text from a plan doc or an agent: paragraphs, and list items as a checklist. */
 export function Body({ md }: { md: string }) {

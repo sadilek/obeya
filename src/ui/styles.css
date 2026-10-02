@@ -317,6 +317,29 @@ textarea.p-body:focus { border-color: var(--muted); }
 .checks li.failure::before { content: "✗"; color: #dc2626; }
 .checks li.pending::before { content: "○"; color: var(--muted); }
 .checks a { color: inherit; }
+.pr-review { margin-top: 12px; border-top: 1px solid color-mix(in srgb, var(--inPr) 30%, transparent); padding-top: 8px; font-size: 13px; }
+.pr-review h5 { margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pr-round { margin: 8px 0; }
+.pr-head { color: var(--muted); margin-bottom: 3px; }
+.pr-head b, .pr-comment summary b { color: var(--ink); font-weight: 600; }
+.pr-review details > summary { cursor: pointer; list-style: none; display: flex; gap: 6px; align-items: baseline; min-width: 0; padding: 2px 0; }
+.pr-review details > summary::-webkit-details-marker { display: none; }
+.pr-review details > summary::before { content: "▸"; color: var(--muted); font-size: 11px; flex: none; }
+.pr-review details[open] > summary::before { content: "▾"; }
+.pr-thread > summary::after { flex: none; order: -1; font-weight: 700; }
+.pr-thread.resolved > summary::after { content: "✓"; color: var(--approved); }
+.pr-thread.open > summary::after { content: "○"; color: var(--muted); }
+.pr-thread > summary::before { order: -2; }
+.pr-thread { margin-left: 2px; }
+.pr-first { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-comment summary { color: var(--muted); }
+.pr-meta { flex: none; color: var(--muted); font-size: 12px; }
+.pr-body { margin: 2px 0 8px 18px; padding: 6px 10px; background: var(--card); border-radius: 8px; border: 1px solid var(--line); }
+.pr-body .p-lead, .pr-body .p-list { font-size: 13px; margin: 4px 0; }
+.pr-body a { color: inherit; font-size: 12px; }
+.pr-where { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+.pr-reply { margin-top: 8px; padding-left: 10px; border-left: 3px solid var(--line); }
+.pr-reply.mine { border-left-color: var(--inPr); }
 .question.queue { border-color: var(--planned); background: var(--chip); }
 .question.no-demo { border-color: var(--planned); background: var(--chip); }
 .question.failed { border-color: #dc2626; background: color-mix(in srgb, #dc2626 6%, transparent); }

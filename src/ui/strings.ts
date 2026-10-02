@@ -167,6 +167,15 @@ export const t = {
     conflict: 'Konflikt mit dem Zielbranch; der Agent bringt den Branch auf Stand.',
     noChecks: 'Noch keine Checks.',
     opening: 'Der Agent öffnet den Pull Request.',
+    review: 'Review',
+    round: (n: number, author: string) => `Runde ${n} · ${author}`,
+    threads: (n: number, open: number) =>
+      `${n === 1 ? '1 Anmerkung' : `${n} Anmerkungen`}, ${open === 0 ? (n === 1 ? 'erledigt' : 'alle erledigt') : `${open} offen`}`,
+    replies: (n: number) => (n === 1 ? '1 Antwort' : `${n} Antworten`),
+    resolved: 'Erledigt',
+    open: 'Offen',
+    agent: 'Agent',
+    onGithub: 'Auf GitHub',
     short: (n: number, failed: number, conflict: boolean) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : ''].filter(Boolean).join(' · '),
   },

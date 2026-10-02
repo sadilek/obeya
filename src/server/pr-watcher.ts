@@ -2,7 +2,7 @@
 // worker: new review comments, failed checks, conflicts. A merge makes the card live.
 
 import type { Board, PrState } from './board';
-import type { Forge, PrStatus } from './forge';
+import { reviewOf, type Forge, type PrStatus } from './forge';
 import type { Workers } from './workers';
 
 export class PrWatcher {
@@ -56,7 +56,7 @@ export class PrWatcher {
 
   private react(cardId: string, state: string, pr: PrState, s: PrStatus) {
     if (s.state === 'MERGED') return this.workers.merged(cardId);
-    const next: PrState = { ...pr, checks: s.checks };
+    const next: PrState = { ...pr, checks: s.checks, review: reviewOf(s, this.noise) };
     // while the owner is being asked, news waits: it is passed on once the card is back in the PR
     if (state === 'inPr') {
       if (s.state === 'CLOSED') {

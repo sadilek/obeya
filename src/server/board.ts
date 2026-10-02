@@ -20,6 +20,7 @@ import {
   type Item,
   type NewCard,
   type PreferenceState,
+  type PrReviewEntry,
   type ProjectHistory,
   type NextStep,
   type Question,
@@ -39,6 +40,8 @@ export interface PrState {
   /** The commit a conflict was last reported for. */
   conflictHead?: string;
   checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
+  /** The review as last seen, for the card. */
+  review?: PrReviewEntry[];
 }
 
 /** What Obeya keeps about a card's shared demo page (share.ts). */
@@ -868,7 +871,7 @@ function work(r: CardRow): Partial<Item> {
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
-    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead } } : {}),
+    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice
