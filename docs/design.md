@@ -110,8 +110,8 @@ An idea is thought through on its card before anything is planned; no worker run
    takes the idea's place on the canvas (cards it would cover move aside, by as much as it outgrows
    the idea) and links back to it; the idea goes to the archive once its
    worker is done (put back, it stays). "Parken" and "Verwerfen" leave the card with its brief; talking
-   to it opens it again. A dropped idea can be archived ("Archivieren", not while a prototype of
-   it is on the canvas): in the archive it shows its brief and conversation read-only and can go back to its
+   to it opens it again. A dropped idea can be archived ("Archivieren" in it or its archive button on the canvas, as on
+   a finished card; not while a prototype of it is on the canvas, and then the button is not shown): in the archive it shows its brief and conversation read-only and can go back to its
    place, where talking to it opens it again. Decisions from the conversation go into the decision log; lasting
    preferences are learned by the Koordinator as before.
 
