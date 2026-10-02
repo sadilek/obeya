@@ -37,6 +37,8 @@ interface Live {
   speak: boolean;
   /** The turn only takes something into the brief: words without a reply are no reply. */
   quiet?: boolean;
+  /** The owner's preferences as the agent last heard them: in its instructions, or since then. */
+  preferences: string;
 }
 
 export class Explorers {
@@ -108,20 +110,30 @@ export class Explorers {
   }
 
   private launch(card: Item, message: string, resume: string | undefined, speak: boolean, images: string[], quiet = false) {
-    const live: Live = { session: undefined!, queue: [], replied: false, lastText: '', speak, quiet };
+    const preferences = this.o.preferences?.() ?? '';
+    const live: Live = { session: undefined!, queue: [], replied: false, lastText: '', speak, quiet, preferences };
     this.live.set(card.id, live);
     live.session = this.o.runtime.start(
       {
         cwd: this.o.pathFor(card),
         readOnly: true,
-        system: SYSTEM + (this.o.preferences?.() ? `\n\n${this.o.preferences()}` : ''),
+        system: SYSTEM + (preferences ? `\n\n${preferences}` : ''),
         tools: this.tools(card.id, live),
+        contextUpdate: () => this.preferencesUpdate(live),
         ...(resume ? { resume } : {}),
         onEvent: (e) => this.onEvent(card.id, live, e),
       },
       message,
       images,
     );
+  }
+
+  /** A preference learned or changed during the session reaches the agent once, with its next tool call. */
+  private preferencesUpdate(live: Live): string | undefined {
+    const now = this.o.preferences?.() ?? '';
+    if (now === live.preferences) return;
+    live.preferences = now;
+    return now ? `The owner's preferences changed during this conversation; they now read:\n\n${now}` : 'The owner withdrew their standing preferences; none apply any more.';
   }
 
   private onEvent(cardId: string, live: Live, e: AgentEvent) {

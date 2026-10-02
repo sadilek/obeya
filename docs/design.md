@@ -250,9 +250,9 @@ the owner's language (`src/core/locale.ts`).
   small runtime interface, so the orchestration is tested against a fake. Two SDK hooks ride on
   every session: before a Bash call, the refusal of long foreground sleeps; after every tool call,
   what changed since the session's instructions were built (`AgentSpec.contextUpdate`) goes to the
-  agent with that call's result. Workers use it for the owner's preferences: a preference learned
-  or changed while a worker runs reaches it once, at its next tool call, without a message or a
-  new turn.
+  agent with that call's result. Workers and idea agents use it for the owner's preferences: a
+  preference learned or changed while one runs reaches it once, at its next tool call, without a
+  message or a new turn.
 - **Workspaces** — per adapter. A pool of full clones leased by a card while it is worked on
   (Acme: csharpier finds no files inside a worktree, and parallel AppHosts per clone are proven),
   or a worktree per card (Obeya itself: any number in parallel), kept across stop and restart

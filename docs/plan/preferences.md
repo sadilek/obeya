@@ -25,10 +25,10 @@ accepts applies to every agent at once, not from its next session.
   clicks without text.
 - When the owner overrules an answer given in their name, the learner does not see the overruled
   answer, although `docs/design.md` (Communication) says overruling feeds the preference memory.
-- How rules reach agents: workers get them in their instructions and, since 2026-10-01, a changed
-  rule once at their next tool call (`AgentSpec.contextUpdate`); idea agents (`explorers.ts`) only
-  when their session starts or resumes; project agents, Koordinator questions, look-ups and cuts
-  with every message; the voice Koordinator (`commands.ts`) with every command, since W2.
+- How rules reach agents: workers and idea agents (`explorers.ts`) get them in their instructions
+  and a changed rule once at their next tool call (`AgentSpec.contextUpdate`); project agents,
+  Koordinator questions, look-ups and cuts with every message; the voice Koordinator
+  (`commands.ts`) with every command, since W2.
 - The Koordinator's sheet (`src/ui/koordinator.tsx`) lists the rules; they can be edited, deleted
   and added by hand.
 
@@ -89,7 +89,7 @@ Architecture: Koordinator; Communication: overruling).
 - [ ] **W4:** Learner with context. `distill` gets the card's body, the agent's last message, the
   owner's recent utterances, active rules, open and rejected proposals; `LEARN_SYSTEM` names the
   signals for a proposal and asks for few, good ones. After W1.
-- [ ] **W5:** Rules take effect at once for idea agents. `explorers.ts` passes changed rules through
+- [x] **W5:** Rules take effect at once for idea agents. `explorers.ts` passes changed rules through
   `contextUpdate` like workers do. Independent.
 - [ ] **W6:** Rückschau. A persisted counter of owner inputs (texts and clicks without text); after
   about 20, a Koordinator session reads the history since the last one and proposes rules with the
