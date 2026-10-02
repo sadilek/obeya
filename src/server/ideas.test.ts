@@ -241,6 +241,23 @@ describe('an idea', () => {
     expect(learn.inbox[0]).toContain('words in the discussion of an idea: Exporte immer als CSV.');
   });
 
+  test('a preference learned while its agent works reaches it once, with its next tool step', () => {
+    board().addPreference('Antworten auf Deutsch.');
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Lass uns das durchdenken.' });
+    const s = explorer();
+    expect(s.spec.system).toContain('- Antworten auf Deutsch.');
+    // what its instructions hold is nothing new
+    expect(s.toolStep()).toBeUndefined();
+    const id = board().addPreference('Varianten immer mit Aufwand.');
+    expect(s.toolStep()).toContain('- Varianten immer mit Aufwand.');
+    expect(s.toolStep()).toBeUndefined();
+    board().setPreference(id, null);
+    expect(s.toolStep()).not.toContain('Varianten immer mit Aufwand.');
+    // silently: no message, no new turn
+    expect(s.inbox).toHaveLength(1);
+  });
+
   test('"So bauen" starts it with the brief as its task', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Los.' });
