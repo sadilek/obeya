@@ -3,8 +3,12 @@
 import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec } from './runtime';
 import { git } from './workspaces';
+
+/** A forge for tests that never reach a pull request. */
+export const noForge: Forge = { status: () => ({}) as never, body: () => '', setBody: () => {} };
 
 /** A session whose tools and events the test drives. */
 export class FakeSession implements AgentSession {

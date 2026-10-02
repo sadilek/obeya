@@ -126,6 +126,7 @@ export class CanvasRuntime {
             ? { by: 'project', ask: (q) => projectAgents.ask(project, card, q) }
             : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
         },
+        onPrOpened: (cardId) => this.sharing.prOpened(cardId),
         onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
         onPrototypeAnswer: (prototype, question, answer, by) => this.prototypeAnswered(prototype, question, answer, by),
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
@@ -188,6 +189,7 @@ export class CanvasRuntime {
       board,
       runtime: deps.runtime,
       home: deps.home,
+      forge: deps.forge,
       commandFor: (card) => {
         const r = this.repoOf(card);
         return r.adapter.demo?.share ? { command: r.adapter.demo.share, cwd: r.info.path } : null;

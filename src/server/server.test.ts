@@ -9,7 +9,7 @@ import type { Command } from './commands';
 import { Store } from './db';
 import { Restarter } from './self-update';
 import { serve } from './server';
-import { FakeRuntime, gitRepo } from './testing';
+import { FakeRuntime, gitRepo, noForge } from './testing';
 import type { Transcript } from './voice';
 
 let dir: string;
@@ -33,7 +33,7 @@ beforeEach(() => {
   gitRepo(main);
   runtime = new FakeRuntime();
   // the generic adapter: clones, none registered; the canvas is named after the directory
-  canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => { throw new Error('no forge'); } }, commandDelayMs: DELAY_MS });
+  canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, commandDelayMs: DELAY_MS });
   board = canvas.board;
   executed = [];
   heardAudio = [];
@@ -465,7 +465,7 @@ describe('cards that need the owner', () => {
   test('are counted per canvas on every canvas, so the switcher points to the others', async () => {
     const other = join(dir, 'other');
     gitRepo(other);
-    const second = new CanvasRuntime({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: { status: () => { throw new Error('no forge'); } } });
+    const second = new CanvasRuntime({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
     const waiting = second.board.create({ kind: 'feature', title: 'B', x: 0, y: 0 });
     second.board.work(waiting.id, { state: 'waiting', need: 'review' });
     server.stop(true);

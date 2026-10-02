@@ -18,6 +18,8 @@ let runtime: FakeRuntime;
 let workers: Workers;
 let status: PrStatus;
 let watcher: PrWatcher;
+/** Cards whose PR the worker reported, as the canvas passes them to sharing. */
+let opened: string[];
 const URL_ = 'https://github.com/acme/app/pull/42';
 
 beforeEach(() => {
@@ -29,9 +31,10 @@ beforeEach(() => {
   const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
   workspaces.ensureClones(main, 1);
   runtime = new FakeRuntime();
-  workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' } });
+  opened = [];
+  workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' }, onPrOpened: (id) => opened.push(id) });
   status = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [], comments: [] };
-  const forge: Forge = { status: () => status };
+  const forge: Forge = { status: () => status, body: () => '', setBody: () => {} };
   watcher = new PrWatcher(board, workers, forge, () => main, ['deploy-bot']);
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -55,6 +58,8 @@ describe('the PR phase', () => {
     const id = await inPr();
     expect(state(id)).toBe('inPr');
     expect(runtime.last.inbox.at(-1)).toContain('goes out as a pull request');
+    // without a shared demo, the approval says nothing about one
+    expect(runtime.last.inbox.at(-1)).not.toContain('shared with the team');
     expect(runtime.last.closed).toBe(false);
     expect(runtime.last.call('pr_opened', { url: 'https://example.com/x' })).toContain('not a GitHub pull request');
     runtime.last.call('pr_opened', { url: URL_ });
@@ -63,6 +68,17 @@ describe('the PR phase', () => {
     const n = runtime.last.inbox.length;
     runtime.last.emit({ type: 'idle' });
     expect(runtime.last.inbox.length).toBe(n);
+  });
+
+  test('a demo shared before approval is linked in the PR by the worker; pr_opened passes the PR on', async () => {
+    const c = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    workers.start(c.id);
+    runtime.last.call('ready_for_review', { summary: 'S' });
+    board.work(c.id, { share: JSON.stringify({ slug: 'export', url: 'https://demos.example/export/', dir: '/d' }) });
+    await workers.approve(c.id);
+    expect(runtime.last.inbox.at(-1)).toContain('shared with the team on a page of its own: https://demos.example/export/. Link it');
+    runtime.last.call('pr_opened', { url: URL_ });
+    expect(opened).toEqual([c.id]);
   });
 
   test('pr_opened before approval is refused', () => {

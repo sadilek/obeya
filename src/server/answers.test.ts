@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import type { Focus } from './commands';
 import { Store } from './db';
-import { FakeRuntime, type FakeSession, gitRepo } from './testing';
+import { FakeRuntime, noForge, type FakeSession, gitRepo } from './testing';
 
 let dir: string;
 let main: string;
@@ -15,7 +15,7 @@ let canvas: CanvasRuntime;
 let spoken: [string | undefined, string][];
 
 const open = () => {
-  const c = new CanvasRuntime({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: { status: () => ({}) as never }, commandDelayMs: 10 });
+  const c = new CanvasRuntime({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10 });
   c.board.onSpeak((id, text) => spoken.push([id, text]));
   return c;
 };

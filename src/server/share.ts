@@ -2,11 +2,13 @@
 // repository's adapter names (`demo.share`). Obeya holds a share a few seconds for the owner to
 // take it back, writes the page's text when the worker did not, and runs the command:
 // `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`.
+// Once the card has a pull request, its description links the page and the page links it.
 
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { type Demo, type DemoPage, type Item, SHARE_HOLD_MS } from '../core/types';
 import { BadRequest, type Board, type PrState, type StoredShare } from './board';
+import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { branchName } from './workspaces';
 
@@ -33,6 +35,8 @@ export interface SharingOptions {
   commandFor: (card: Item) => { command: string[]; cwd: string } | null;
   /** Obeya's data directory, passed to the command as `OBEYA_HOME`. */
   home: string;
+  /** Where the card's pull request is, for the page's link in its description. */
+  forge: Forge;
   /** How long a share waits for the owner to take it back; SHARE_HOLD_MS by default. */
   holdMs?: number;
 }
@@ -60,7 +64,7 @@ export class Sharing {
     if (card.prototypeOf || !demo || demo.kind === 'html' || !this.o.commandFor(card)) throw new BadRequest('noShare', "the card has no video demo, or its repository shares none");
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
-    this.set(cardId, { slug: s?.slug ?? branchName(card.title, card.id).slice('obeya/'.length), ...(s?.url ? { url: s.url, dir: s.dir } : {}), state: 'pending' });
+    this.set(cardId, { ...(s ? atRest(s) : { slug: branchName(card.title, card.id).slice('obeya/'.length) }), state: 'pending' });
     const seconds = Math.round((this.o.holdMs ?? SHARE_HOLD_MS) / 1000);
     this.o.board.log(cardId, 'state', 'owner', s?.url ? `Neu teilen: Die Seite bekommt die neue Demo in ${seconds} s.` : `Teilen: Die Seite geht in ${seconds} s online.`);
     this.hold(cardId);
@@ -72,7 +76,7 @@ export class Sharing {
     if (s?.state === 'pending') {
       clearTimeout(this.holds.get(cardId));
       this.holds.delete(cardId);
-      this.set(cardId, { slug: s.slug, ...(s.url ? { url: s.url, dir: s.dir } : {}) });
+      this.set(cardId, atRest(s));
       this.o.board.log(cardId, 'state', 'owner', 'Teilen zurückgenommen.');
       return;
     }
@@ -81,6 +85,16 @@ export class Sharing {
     this.set(cardId, { ...s, state: 'withdrawing' });
     this.o.board.log(cardId, 'state', 'owner', 'Nicht mehr teilen: Die Seite wird zurückgezogen.');
     void serial(() => this.withdraw(cardId));
+  }
+
+  /**
+   * The card's pull request is open: a page shared before gets its link. A share under way picks
+   * it up when it is done.
+   */
+  prOpened(cardId: string) {
+    const s = this.stored(cardId);
+    const pr = this.prOf(cardId);
+    if (pr && s?.url && !s.state && s.pr !== pr) this.refresh(cardId);
   }
 
   /** After a restart: a share that was held or under way goes on, a withdrawal too. */
@@ -108,38 +122,75 @@ export class Sharing {
     );
   }
 
+  /** Publishes again what the page shows, with the pull request's link. */
+  private refresh(cardId: string) {
+    const s = this.stored(cardId);
+    if (!s?.url || s.state) return;
+    this.set(cardId, { ...s, state: 'publishing', refresh: true });
+    void serial(() => this.publish(cardId));
+  }
+
   private async publish(cardId: string) {
     const s = this.stored(cardId);
     const card = this.find(cardId);
     if (!s || (s.state !== 'pending' && s.state !== 'publishing') || !card) return;
     this.set(cardId, { ...s, state: 'publishing' });
+    const failed = s.refresh ? 'Der Link zum Pull Request ist nicht auf die Seite gekommen' : 'Nicht geteilt';
     const back = (why: string, out = '') => {
-      this.set(cardId, { slug: s.slug, ...(s.url ? { url: s.url, dir: s.dir } : {}) });
-      this.o.board.log(cardId, 'error', 'obeya', [why, out].filter(Boolean).join('\n\n'));
+      this.set(cardId, atRest(s));
+      this.o.board.log(cardId, 'error', 'obeya', [`${failed}: ${why}`, out].filter(Boolean).join('\n\n'));
     };
     const demo = this.demo(cardId);
     const cmd = this.o.commandFor(card);
-    if (!demo || demo.kind === 'html' || !cmd) return back('Nicht geteilt: Die Karte hat keine Video-Demo mehr, oder ihr Repository teilt keine.');
-    const page = demo.page ?? (await this.writePage(card, demo));
-    // the page's text stays with the demo, so it is not written again for the next share
-    if (!demo.page && this.demo(cardId)?.dir === demo.dir) this.o.board.work(cardId, { demo: JSON.stringify({ ...demo, page }) });
-    const pr = this.o.board.row(cardId).pr;
-    const input: SharePage = {
-      slug: s.slug,
-      title: page.title,
-      text: page.text,
-      chapters: demo.chapters,
-      pr: pr ? ((JSON.parse(pr) as PrState).url ?? null) : null,
-      dir: demo.dir,
-      shared: this.others(cardId, cmd.command),
-    };
+    let shown: NonNullable<StoredShare['shown']>;
+    let dir: string;
+    if (s.refresh) {
+      // the page as it is: a newer demo on the card waits for "Neu teilen"
+      const now = s.shown ?? (demo?.page && demo.dir === s.dir ? { ...demo.page, chapters: demo.chapters } : null);
+      if (!now || !s.dir || !cmd) {
+        this.set(cardId, atRest(s));
+        this.o.board.log(cardId, 'activity', 'obeya', 'Die geteilte Seite bekommt den Link zum Pull Request mit dem nächsten „Neu teilen“.');
+        return;
+      }
+      shown = now;
+      dir = s.dir;
+    } else {
+      if (!demo || demo.kind === 'html' || !cmd) return back('Die Karte hat keine Video-Demo mehr, oder ihr Repository teilt keine.');
+      const page = demo.page ?? (await this.writePage(card, demo));
+      // the page's text stays with the demo, so it is not written again for the next share
+      if (!demo.page && this.demo(cardId)?.dir === demo.dir) this.o.board.work(cardId, { demo: JSON.stringify({ ...demo, page }) });
+      shown = { title: page.title, text: page.text, chapters: demo.chapters };
+      dir = demo.dir;
+    }
+    const pr = this.prOf(cardId);
+    const input: SharePage = { slug: s.slug, ...shown, pr, dir, shared: this.others(cardId, cmd.command) };
     const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.cwd, this.o.home);
     const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
-    if (r.code !== 0 || !url) return back(r.code !== 0 ? `Nicht geteilt: Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).` : 'Nicht geteilt: Der Befehl zum Teilen hat keine URL ausgegeben.', tail(r.err || r.out));
-    this.set(cardId, { slug: s.slug, url, dir: demo.dir });
+    if (r.code !== 0 || !url) return back(r.code !== 0 ? `Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).` : 'Der Befehl zum Teilen hat keine URL ausgegeben.', tail(r.err || r.out));
+    this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}) });
     // stdout carries the URL, logged below; what the command says on the way is on stderr
     if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
-    this.o.board.log(cardId, 'state', 'obeya', `Geteilt: ${url}`);
+    this.o.board.log(cardId, 'state', 'obeya', s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
+    if (pr) this.linkPr(cardId, pr, url, cmd.cwd);
+    // the pull request was opened while the page went out: once more, with its link
+    const now = this.prOf(cardId);
+    if (now && now !== pr) this.refresh(cardId);
+  }
+
+  /**
+   * Puts the page's link into the pull request's description, unless it is there already (the
+   * worker put it there, or Obeya did before). A line of Obeya's own is found again by its marker.
+   */
+  private linkPr(cardId: string, pr: string, url: string, cwd: string) {
+    const n = parsePrUrl(pr)?.number;
+    try {
+      const body = withDemoLink(this.o.forge.body(cwd, pr), url);
+      if (body === null) return;
+      this.o.forge.setBody(cwd, pr, body);
+      this.o.board.log(cardId, 'state', 'obeya', `Den Link zur Demo in die Beschreibung von Pull Request #${n} eingetragen.`);
+    } catch (e) {
+      this.o.board.log(cardId, 'error', 'obeya', `Den Link zur Demo nicht in Pull Request #${n} eingetragen: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   private async withdraw(cardId: string) {
@@ -147,7 +198,7 @@ export class Sharing {
     const card = this.find(cardId);
     if (s?.state !== 'withdrawing' || !card) return;
     const back = (why: string, out = '') => {
-      this.set(cardId, { slug: s.slug, url: s.url, dir: s.dir });
+      this.set(cardId, atRest(s));
       this.o.board.log(cardId, 'error', 'obeya', [why, out].filter(Boolean).join('\n\n'));
     };
     const cmd = this.o.commandFor(card);
@@ -236,6 +287,12 @@ export class Sharing {
     }
   }
 
+  /** The card's pull request, once its worker opened it. */
+  private prOf(cardId: string): string | null {
+    const pr = this.o.board.row(cardId).pr;
+    return pr ? ((JSON.parse(pr) as PrState).url ?? null) : null;
+  }
+
   private demo(cardId: string): (Demo & { dir: string }) | null {
     const d = this.o.board.row(cardId).demo;
     return d ? (JSON.parse(d) as Demo & { dir: string }) : null;
@@ -256,6 +313,27 @@ const PAGE_SYSTEM = `You write the page on which a demo video of a change is sha
 - title: what changes, for a user of the product, in a few words (not the card's internal wording).
 - text: two to five sentences in ${OWNER_LANGUAGE}: what changes for the user and why. No findings, no test details, no internal process (cards, workers, demos, reviews), no markdown.
 Then end your turn. Read code only if the summary leaves unclear what the change does for the user.`;
+
+/** A share at rest: neither held, nor publishing, nor withdrawing. */
+function atRest({ state: _, refresh: __, ...s }: StoredShare): StoredShare {
+  return s;
+}
+
+/** Marks the line Obeya put into a pull request's description, so it is found again. */
+export const DEMO_MARKER = '<!-- obeya:demo -->';
+
+/** The description with a line linking the demo's page; null when it links the page already. */
+export function withDemoLink(body: string, url: string): string | null {
+  if (body.includes(url)) return null;
+  const line = `Demo-Video: ${url} ${DEMO_MARKER}`;
+  const lines = body.split('\n');
+  const i = lines.findIndex((l) => l.includes(DEMO_MARKER));
+  if (i >= 0) {
+    lines[i] = line;
+    return lines.join('\n');
+  }
+  return body.trim() ? `${body.trimEnd()}\n\n${line}\n` : `${line}\n`;
+}
 
 /** Runs the share command; never throws. */
 async function run(argv: string[], stdin: string, cwd: string, home: string): Promise<{ code: number; out: string; err: string }> {

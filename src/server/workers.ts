@@ -34,6 +34,8 @@ export interface WorkerOptions {
   repo?: string;
   /** Who answers the card's questions on the owner's behalf, if anyone. */
   advisor?: (card: Item) => Advisor | null;
+  /** The worker reported the card's pull request: a demo shared before gets its link. */
+  onPrOpened?: (cardId: string) => void;
   /** A prototype was handed over: the idea's agent hears the summary. */
   onPrototype?: (prototype: Item, summary: string, demo: string | undefined) => void;
   /** A question on a prototype was answered: the idea's agent hears both, so its brief holds them. */
@@ -190,12 +192,17 @@ export class Workers {
     const pr: PrState = { url: null, seen: [], reported: [] };
     this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, pr: JSON.stringify(pr) });
     this.o.board.log(cardId, 'state', 'owner', 'Freigegeben. Der Agent öffnet den Pull Request.');
+    // a demo shared later gets its line from Obeya once the pull request is open
+    const shared = card.share?.url;
     this.deliver(
       cardId,
       [
         'The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it (its own skills and conventions): from now on you may push this branch. Whoever reads the pull request has not seen Obeya, the card or the plan doc. Do not merge it; merging is not part of your task.',
+        shared ? `Your demo video is shared with the team on a page of its own: ${shared}. Link it in the pull request's description.` : '',
         'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask).',
-      ].join('\n\n'),
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
     );
   }
 
@@ -656,6 +663,7 @@ export class Workers {
           const pr = { ...(JSON.parse(row.pr) as PrState), url: String(url).trim(), number: ref.number };
           this.o.board.work(cardId, { pr: JSON.stringify(pr) });
           this.o.board.log(cardId, 'state', 'worker', `Pull Request #${ref.number} geöffnet.`);
+          this.o.onPrOpened?.(cardId);
           return 'Recorded. End your turn now; Obeya watches the pull request.';
         },
       },

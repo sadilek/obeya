@@ -1,5 +1,8 @@
 // Where pull requests live. GitHub through the `gh` CLI; tests use a fake.
 
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { PrReviewEntry, PrThread } from '../core/types';
 
 export interface PrStatus {
@@ -39,6 +42,10 @@ export interface PrStatus {
 
 export interface Forge {
   status(cwd: string, url: string): PrStatus;
+  /** The PR's description. */
+  body(cwd: string, url: string): string;
+  /** Replaces the PR's description. */
+  setBody(cwd: string, url: string, body: string): void;
 }
 
 /** A GitHub pull request URL: `https://github.com/<owner>/<repo>/pull/<n>`. */
@@ -160,6 +167,19 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
         })),
       ],
     };
+  },
+  body(cwd, url) {
+    return (JSON.parse(run(cwd, 'pr', 'view', url, '--json', 'body')) as { body: string }).body;
+  },
+  setBody(cwd, url, body) {
+    // a file, not an argument: a long description would pass Windows' limit on a command line
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-pr-body-'));
+    try {
+      writeFileSync(join(dir, 'body.md'), body);
+      run(cwd, 'pr', 'edit', url, '--body-file', join(dir, 'body.md'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   },
 });
 

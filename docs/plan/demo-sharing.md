@@ -27,7 +27,8 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
   `demo.required` and `demo.howToRun` (`src/adapters/acme.ts`). Obeya reads the handed-over
   directory under `~/demos/` (`demo.mp4`, `poster.jpg`, `captions.vtt`, `index.html`) and shows the
   demo on the card (`src/server/demo.ts`). Since W1 a video demo of an Acme card can be shared
-  on `team-demos.pages.dev` (design: Architecture, Sharing a demo). Obeya's own voice in and
+  on `team-demos.pages.dev` (design: Architecture, Sharing a demo), and since W2 the page and
+  the card's pull request link each other. Obeya's own voice in and
   out is macOS-bound too (mlx-whisper, a JXA sidecar: `src/server/voice.ts`).
 - *Acme*: `docs.example.com` is the documentation on Cloudflare Pages behind Cloudflare Access,
   for `@example.com` only, on the free plan (up to 50 users; `the docs' hosting notes`).
@@ -114,7 +115,8 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
   run before a worker records; a guide in the repository.
 
 Every package keeps `docs/design.md` current in the same change (Architecture: Demos, Repo adapter;
-Open questions on demos in pull requests and cloned voices go when W2 and W4 land).
+Open questions on demos in pull requests and cloned voices go when W2 and W4 land; the one on
+demos in pull requests went with W2).
 
 ## Workstreams
 
@@ -124,7 +126,7 @@ Open questions on demos in pull requests and cloned voices go when W2 and W4 lan
   summary for older demos; the Acme script with its site directory, page, overview and
   `wrangler pages deploy`. Tests against a fake share command. Needs the owner's one-time setup
   in Cloudflare (project, Access, token) before it can be tried live. Comes first.
-- [ ] **W2:** The link in the pull request. Into the description when the worker opens the PR, or
+- [x] **W2:** The link in the pull request. Into the description when the worker opens the PR, or
   added by Obeya when the PR already exists; the page published again with the PR's link. After W1.
 - [ ] **W3:** The demo pipeline in the Obeya repository. Director, overlay, voice code and skill
   without names or fixed paths; narration language and person from settings; project recipes in

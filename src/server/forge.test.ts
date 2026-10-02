@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, type PrStatus } from './forge';
 
 test('parsePrUrl', () => {
@@ -151,4 +152,20 @@ test('ready to merge: GitHub clean, checks green, threads resolved, the last re-
   expect(without((c) => (c.mergeable = 'UNKNOWN'))).toBe(false);
   // no reviewer asked for anything
   expect(without((c) => (c.comments = []))).toBe(true);
+});
+
+test('the description is read with gh pr view and replaced through a file', () => {
+  const calls: string[][] = [];
+  let written = '';
+  const forge = makeGhForge((_cwd, ...args) => {
+    calls.push(args);
+    if (args[1] === 'edit') written = readFileSync(args.at(-1)!, 'utf8');
+    return args[1] === 'view' ? JSON.stringify({ body: 'Text' }) : '';
+  });
+  const url = 'https://github.com/acme/app/pull/42';
+  expect(forge.body('/repo', url)).toBe('Text');
+  expect(calls[0]).toEqual(['pr', 'view', url, '--json', 'body']);
+  forge.setBody('/repo', url, 'Text\n\nDemo-Video: https://d/a/');
+  expect(calls[1]!.slice(0, 4)).toEqual(['pr', 'edit', url, '--body-file']);
+  expect(written).toBe('Text\n\nDemo-Video: https://d/a/');
 });

@@ -498,8 +498,8 @@ the owner's language (`src/core/locale.ts`).
   scripts run in an origin of their own, away from Obeya's API. A handover with `no_demo` (the
   reason) instead is the exception the worker's brief names as such: the card waits for review
   with the summary and the reason, and a demo from an earlier handover leaves the card, since it
-  showed other work. Artifacts stay in `~/demos/`, never in git, and are not linked from pull
-  requests yet (planned: [`docs/plan/demo-sharing.md`](plan/demo-sharing.md)).
+  showed other work. Artifacts stay in `~/demos/`, never in git; a pull request links a video demo
+  only once it is shared (below).
 - **Sharing a demo** — a video demo on a card of a repository whose adapter names a share command
   (`demo.share`; Acme) has "Teilen" beside the video, on waiting cards and on cards long done
   (archived ones too); HTML artifacts and prototypes are not shared. Publishing goes outside Obeya,
@@ -517,6 +517,18 @@ the owner's language (`src/core/locale.ts`).
   stays, so a link keeps working across publishing again. The command's stderr goes into the
   card's log, a failure with its output as an error, and the card stays as it was. A share held,
   publishing or withdrawing at a restart goes on after it.
+  The pull request and the page link each other. A demo shared before approval goes into the
+  worker's approval message with "link it in the description". Once a PR exists and the page is
+  out (in either order: `pr_opened` after sharing, or sharing a card whose PR is open or merged),
+  Obeya reads the description through the forge (`gh pr view --json body`) and, unless it
+  contains the page's URL already, adds a line `Demo-Video: <url> <!-- obeya:demo -->`
+  (`gh pr edit --body-file`); a later line of its own is found by the marker and replaced, not
+  added again. A page shared before the PR existed is published again with the PR's link: what
+  it showed then (title, text, chapters and demo directory, kept with the share), not a newer
+  demo on the card, which still waits for "Neu teilen". The card goes on showing the link
+  meanwhile; a PR reported while the page is going out gets a second round after it. A failure
+  to read or edit the description goes into the card's log; the page stays shared. Withdrawing
+  the page leaves the line in the description.
   Acme's command (`src/adapters/team-share.ts`) keeps the site in `~/.obeya/team-share/site/` (a
   directory per demo with page, video, poster, captions and `meta.json`, and the overview, newest
   first) and deploys all of it with `wrangler pages deploy` to the Pages project `team-demos`,
@@ -734,5 +746,5 @@ the repository; the copy on the project is only for the archive).
 - Which Acme clones may workers lease: the existing `~/dev/app2`–`app5`, or fresh ones?
 - A plan doc without a `## Workstreams` checklist is not shown (in Acme: `parsed-view.md`,
   whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
-- Demos in pull requests and sharing beyond the team (storage behind the team's login, narration
-  in a cloned voice): planned in [`docs/plan/demo-sharing.md`](plan/demo-sharing.md).
+- Demos for open source (the pipeline in the repository, voices as providers, Windows and Linux,
+  sharing beyond Acme): planned in [`docs/plan/demo-sharing.md`](plan/demo-sharing.md).

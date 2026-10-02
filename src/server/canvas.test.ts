@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
-import { FakeRuntime, gitRepo } from './testing';
+import { FakeRuntime, noForge, gitRepo } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -23,7 +23,7 @@ beforeEach(() => {
   runtime = new FakeRuntime();
   canvas = new CanvasRuntime(
     { name: 'Produkt', repos: [{ path: web, clones: 1 }, { path: api, clones: 1 }] },
-    { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => ({}) as never } },
+    { store: new Store(':memory:'), home: dir, runtime, forge: noForge },
   );
 });
 afterEach(() => {
@@ -129,7 +129,7 @@ test('the home repository stays home when the configuration lists the repositori
   const store = new Store(':memory:');
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
-  const deps = { store, home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } };
+  const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
   const first = new CanvasRuntime({ name: 'P', repos: [{ path: web }, { path: api }] }, deps);
   const card = first.board.create({ kind: 'feature', title: 'Home-Karte', x: 0, y: 0 });
   first.shutdown();
@@ -146,7 +146,7 @@ test("the cards' workers run on their own runtime when one is given (a scratch O
   const web = repo('web', 'Web');
   const workers = new FakeRuntime();
   canvas.shutdown();
-  canvas = new CanvasRuntime({ repos: [{ path: web, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: { status: () => ({}) as never } });
+  canvas = new CanvasRuntime({ repos: [{ path: web, clones: 1 }] }, { store: new Store(':memory:'), home: dir, runtime, workerRuntime: workers, forge: noForge });
   const a = canvas.board.create({ kind: 'feature', title: 'A', x: 0, y: 0 });
   canvas.act(a.id, { action: 'start' });
   await settle();
@@ -160,7 +160,7 @@ test('a clone registered for a repository must be one of it', () => {
   const web = repo('web', 'Web');
   const api = repo('api', 'API');
   git(dir, 'clone', '--quiet', api, join(dir, 'api-clone'));
-  const deps = { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } };
+  const deps = { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge };
   expect(() => new CanvasRuntime({ repos: [{ path: web, workspaces: [join(dir, 'api-clone')] }] }, deps)).toThrow('is not a clone of');
   canvas = new CanvasRuntime({ repos: [{ path: api, workspaces: [join(dir, 'api-clone')] }] }, deps);
   expect(canvas.repos[0]!.workspaces.list()).toHaveLength(1);
@@ -168,7 +168,7 @@ test('a clone registered for a repository must be one of it', () => {
 
 test('canvas ids read well', () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
-  const c = new CanvasRuntime({ name: 'Grüße & Maße', repos: [{ path: repo('g', 'G') }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } });
+  const c = new CanvasRuntime({ name: 'Grüße & Maße', repos: [{ path: repo('g', 'G') }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   expect(c.id).toBe('grusse-masse');
   canvas = c;
 });
@@ -176,7 +176,7 @@ test('canvas ids read well', () => {
 test('a single repository keeps its canvas id and bare plan references', () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
   const only = repo('solo', 'Solo');
-  const c = new CanvasRuntime({ repos: [{ path: only }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never } });
+  const c = new CanvasRuntime({ repos: [{ path: only }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
   expect(c.board.canvas.id).toBe('solo');
   expect(c.board.snapshot().items.find((i) => i.kind === 'project')!.plan!.file).toBe('docs/plan/plan.md');
   canvas = c;
@@ -186,7 +186,7 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   dir = mkdtempSync(join(tmpdir(), 'obeya-canvas-'));
   const web = repo('web', 'Web');
   canvas.shutdown();
-  canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: dir, runtime, forge: { status: () => ({}) as never }, writingPauseMs: 30 });
+  canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, writingPauseMs: 30 });
   const learners = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'propose'));
   const done = async () => {
     learners().at(-1)!.emit({ type: 'idle' });

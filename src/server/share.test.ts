@@ -4,13 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
-import { type SharePage, Sharing } from './share';
+import type { Forge } from './forge';
+import { DEMO_MARKER, type SharePage, Sharing, withDemoLink } from './share';
 import { FakeRuntime } from './testing';
 
 let dir: string;
 let board: Board;
 let runtime: FakeRuntime;
 let sharing: Sharing;
+/** The descriptions of the fake forge's pull requests, and each edit Obeya made. */
+let bodies: Map<string, string>;
+let edits: string[];
 /** Each call of the fake share command: its arguments and what it got on stdin. */
 const calls = () =>
   existsSync(join(dir, 'calls'))
@@ -37,6 +41,8 @@ beforeEach(() => {
   writeFileSync(join(dir, 'fake-share.ts'), FAKE);
   board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: dir, branch: 'main' }] }, () => []);
   runtime = new FakeRuntime();
+  bodies = new Map();
+  edits = [];
   sharing = make();
 });
 afterEach(() => {
@@ -50,8 +56,29 @@ function make(holdMs = 30) {
     runtime,
     home: join(dir, 'home'),
     holdMs,
+    forge,
     commandFor: (card) => (card.title.startsWith('Ohne') ? null : { command: [process.execPath, join(dir, 'fake-share.ts'), dir], cwd: dir }),
   });
+}
+
+const forge: Forge = {
+  status: () => ({}) as never,
+  body: (_cwd, url) => {
+    const b = bodies.get(url);
+    if (b === undefined) throw new Error(`gh pr view: no pull request ${url}`);
+    return b;
+  },
+  setBody: (_cwd, url, body) => {
+    bodies.set(url, body);
+    edits.push(url);
+  },
+};
+
+const PR = 'https://github.com/acme/app/pull/42';
+/** The worker opened the card's pull request, with a description of its own. */
+function openPr(id: string, body = 'Exportiert Zählerstände.') {
+  bodies.set(PR, body);
+  board.work(id, { pr: JSON.stringify({ url: PR, number: 42, seen: [], reported: [] }) });
 }
 
 /** A card with a video demo, as a worker hands it over. */
@@ -191,5 +218,81 @@ describe('sharing a demo', () => {
     sharing.resume();
     await until(() => share(c.id)?.state === 'shared');
     expect(calls()).toHaveLength(1);
+  });
+});
+
+describe('the link in the pull request', () => {
+  test('a page shared before the PR is published again with its link, and the description links the page', async () => {
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    expect(calls()[0]!.input.pr).toBeNull();
+    openPr(c.id);
+    sharing.prOpened(c.id);
+    // the card goes on showing the page while it goes out again
+    expect(share(c.id)).toMatchObject({ state: 'shared', url: expect.stringContaining('demos.example') });
+    await until(() => calls().length === 2);
+    await until(() => edits.length === 1);
+    const url = share(c.id)!.url!;
+    expect(calls()[1]!.input).toMatchObject({ slug: calls()[0]!.input.slug, title: 'CSV-Export', pr: PR });
+    expect(bodies.get(PR)).toBe(`Exportiert Zählerstände.\n\nDemo-Video: ${url} ${DEMO_MARKER}\n`);
+    expect(log(c.id)).toContain(`Die geteilte Seite verlinkt jetzt den Pull Request: ${url}`);
+    expect(log(c.id).at(-1)).toBe('Den Link zur Demo in die Beschreibung von Pull Request #42 eingetragen.');
+    // once: the PR is linked, and the description is not touched again
+    sharing.prOpened(c.id);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls()).toHaveLength(2);
+    expect(edits).toHaveLength(1);
+  });
+
+  test('a page shared after the PR links it at once; a description that links the page already stays', async () => {
+    const c = card();
+    openPr(c.id, 'Exportiert Zählerstände.\n\nDemo: https://demos.example/zahlerstande-exportieren-' + c.id.slice(0, 6) + '/');
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    expect(calls()).toHaveLength(1);
+    expect(calls()[0]!.input.pr).toBe(PR);
+    expect(edits).toEqual([]);
+  });
+
+  test('a PR opened while the page goes out gets a second round with its link', async () => {
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'publishing');
+    openPr(c.id);
+    sharing.prOpened(c.id);
+    await until(() => calls().length === 2 && edits.length === 1);
+    expect(calls().map((x) => x.input.pr)).toEqual([null, PR]);
+  });
+
+  test('a newer demo on the card is not put out with the link: the page goes out again as it is', async () => {
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    const newer = join(dir, 'newer');
+    mkdirSync(newer);
+    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [[0, 'Neu']], shown: [], notShown: [], findings: [], page: { title: 'CSV-Export 2', text: 'T.' } }) });
+    openPr(c.id);
+    sharing.prOpened(c.id);
+    await until(() => calls().length === 2);
+    expect(calls()[1]!.input).toMatchObject({ title: 'CSV-Export', chapters: [[0, 'Vorher']], dir: join(dir, `demo-${c.id}`), pr: PR });
+    await until(() => edits.length === 1);
+    expect(share(c.id)!.stale).toBe(true);
+  });
+
+  test('a description that cannot be read leaves the page shared, with the reason in the log', async () => {
+    const c = card();
+    board.work(c.id, { pr: JSON.stringify({ url: PR, number: 42, seen: [], reported: [] }) });
+    sharing.share(c.id);
+    await until(() => board.events(c.id).at(-1)!.kind === 'error');
+    expect(share(c.id)!.state).toBe('shared');
+    expect(log(c.id).at(-1)).toContain('nicht in Pull Request #42 eingetragen: gh pr view: no pull request');
+  });
+
+  test('withDemoLink adds a line once and replaces its own', () => {
+    expect(withDemoLink('', 'https://d/a/')).toBe(`Demo-Video: https://d/a/ ${DEMO_MARKER}\n`);
+    expect(withDemoLink('Text\n\n', 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n`);
+    expect(withDemoLink('Siehe https://d/a/', 'https://d/a/')).toBeNull();
+    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}\n\nFooter`, 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n\nFooter`);
   });
 });

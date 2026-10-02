@@ -7,7 +7,7 @@ import { CanvasRuntime } from './canvas';
 import { Config, readConfigFile } from './config';
 import { Store } from './db';
 import { serve } from './server';
-import { FakeRuntime, gitRepo } from './testing';
+import { FakeRuntime, noForge, gitRepo } from './testing';
 
 let dir: string;
 let store: Store;
@@ -126,7 +126,7 @@ describe('the configuration over HTTP', () => {
   let canvas: CanvasRuntime;
   beforeEach(() => {
     const c = config('args', [{ repos: [{ path: web }] }], ['web']);
-    canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: { status: () => ({}) as never }, config: c });
+    canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c });
     server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker: { speak: async () => null } }, 0, false, c);
   });
   afterEach(() => {
