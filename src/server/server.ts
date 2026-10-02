@@ -223,6 +223,10 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
         PATCH: on(async (c, req) => c.board.setPreference(Number(req.params.id), ((await req.json()) as { text: string }).text)),
         DELETE: on((c, req) => c.board.setPreference(Number(req.params.id), null)),
       },
+      '/api/c/:canvas/preferences/:id/accept': {
+        POST: on(async (c, req) => c.board.acceptProposal(Number(req.params.id), ((await req.json().catch(() => ({}))) as { text?: string }).text)),
+      },
+      '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => c.board.rejectProposal(Number(req.params.id))) },
       '/api/c/:canvas/ws': (req, server) =>
         byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID() } })
           ? undefined

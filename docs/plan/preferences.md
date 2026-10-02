@@ -15,7 +15,7 @@ accepts applies to every agent at once, not from its next session.
   session per utterance with `LEARN_SYSTEM`. The prompt is strict on purpose ("Most answers only
   decide the case at hand"). The session sees the card's title, the question if any, the text and
   the rules so far; not the card's body, its log or earlier utterances, so it cannot notice a
-  repetition. What it recognises applies at once; the card's log says "Merkt sich: …".
+  repetition. What it recognises is proposed (W1); the card's log says "Schlägt vor: …".
 - Sources (`OwnerInput`, wired in `src/server/canvas.ts`): notes and feedback to workers, the
   owner's own answers to worker and demo questions (option clicks included), the discussion of an
   idea. Spoken commands the Koordinator turns into a note, answer, feedback or discussion on a card
@@ -74,7 +74,7 @@ Architecture: Koordinator; Communication: overruling).
 
 ## Workstreams
 
-- [ ] **W1:** Proposals. State, occasion and `replaces` on `preferences`, with the stored rules
+- [x] **W1:** Proposals. State, occasion and `replaces` on `preferences`, with the stored rules
   migrated as active; `distill` records proposals ("Schlägt vor: …"); agents read active rules
   only; the sheet shows open proposals with their occasion (accept, edit then accept, reject); the
   count on the Koordinator button (`App.tsx`). Tests in `koordinator.test.ts`. Comes first: W3, W4

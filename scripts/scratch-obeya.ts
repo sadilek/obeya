@@ -35,6 +35,11 @@
 //       { "key": "E", "title": "…", "from": "C" },
 //       { "key": "P", "project": "docs/plan/werkzeug.md", "x": 0, "y": 0 },
 //       { "key": "W1", "workstream": "W1", "state": "working", "statusLine": "…" }
+//     ],
+//     "preferences": [
+//       { "key": "R", "text": "Beschriftungen: präzise vor kurz." },
+//       { "text": "…", "state": "proposed", "card": "A", "quote": "…", "replaces": "R" },
+//       { "text": "…", "state": "proposed", "review": true }
 //     ]
 //   }
 // A card is created (kind defaults to feature, x and y to a free place; `idea`, `repo`, `from` as in
@@ -44,7 +49,8 @@
 // state, need, statusLine, summary, noDemo, question, demo, queue (`behind` by key; `since` defaults to
 // now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago? }]),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
-// "3d" ago.
+// "3d" ago. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys.
+// What a learned rule's occasion is (card, quote, review) and `replaces` need code that has them.
 
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
@@ -89,6 +95,7 @@ interface Stage {
   files?: Record<string, string>;
   plans?: Record<string, string>;
   cards: StageCard[];
+  preferences?: { key?: string; text: string; state?: string; card?: string; quote?: string; review?: boolean; replaces?: string }[];
 }
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -256,6 +263,22 @@ for (const [i, c] of stage.cards.entries()) {
       author: e.author,
       text: e.text,
     });
+}
+const prefIds: Record<string, number> = {};
+for (const [i, p] of (stage.preferences ?? []).entries()) {
+  const row: Record<string, string | number | null> = {
+    canvas_id: canvas,
+    text: p.text,
+    created_at: new Date().toISOString(),
+    card_id: p.card ? (ids[p.card] ?? fail(`preference ${p.key ?? i}: card ${p.card} does not exist`)) : null,
+  };
+  if (p.state !== undefined) row.state = p.state;
+  if (p.quote !== undefined) row.quote = p.quote;
+  if (p.review) row.review = 1;
+  if (p.replaces !== undefined) row.replaces = prefIds[p.replaces] ?? fail(`preference ${p.key ?? i}: replaces ${p.replaces}, which comes later or does not exist`);
+  const keys = Object.keys(row);
+  const r = db.query(`INSERT INTO preferences (${keys.join(', ')}) VALUES (${keys.map((k) => `$${k}`).join(', ')}) RETURNING id`).get(row) as { id: number };
+  if (p.key) prefIds[p.key] = r.id;
 }
 db.close();
 // the server keeps a snapshot of the canvas: a change through the API makes it read the database anew

@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { CardEvent, CardKind, CardState, Need, Preference, Talk } from '../core/types';
+import type { CardEvent, CardKind, CardState, Need, Preference, PreferenceState, Talk } from '../core/types';
 
 export interface CardRow {
   id: string;
@@ -199,6 +199,12 @@ export const MIGRATIONS = [
    ALTER TABLE cards ADD COLUMN plan_docs TEXT;`,
   // a spike is called a prototype now
   `ALTER TABLE cards RENAME COLUMN spike_of TO prototype_of;`,
+  // a learned rule is a proposal until the owner accepts it; the rules kept so far stay active
+  `ALTER TABLE preferences ADD COLUMN state TEXT NOT NULL DEFAULT 'active';
+   ALTER TABLE preferences ADD COLUMN quote TEXT;
+   ALTER TABLE preferences ADD COLUMN review INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE preferences ADD COLUMN replaces INTEGER REFERENCES preferences(id);
+   ALTER TABLE preferences ADD COLUMN decided_at TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -406,21 +412,53 @@ export class Store {
 
   // ---------------------------------------------------------------- preferences
 
-  preferences(canvasId: string): Preference[] {
+  /** The canvas's preferences, oldest first: those in the given states, or all. */
+  preferences(canvasId: string, states?: PreferenceState[]): Preference[] {
     return (
-      this.db.query('SELECT id, text, card_id FROM preferences WHERE canvas_id = $c AND deleted_at IS NULL ORDER BY id').all({ c: canvasId }) as {
+      this.db.query('SELECT * FROM preferences WHERE canvas_id = $c AND deleted_at IS NULL ORDER BY id').all({ c: canvasId }) as {
         id: number;
         text: string;
         card_id: string | null;
+        state: PreferenceState;
+        quote: string | null;
+        review: number;
+        replaces: number | null;
       }[]
-    ).map((r) => ({ id: r.id, text: r.text, ...(r.card_id ? { cardId: r.card_id } : {}) }));
+    )
+      .filter((r) => !states || states.includes(r.state))
+      .map((r) => ({
+        id: r.id,
+        text: r.text,
+        state: r.state,
+        ...(r.card_id ? { cardId: r.card_id } : {}),
+        ...(r.quote ? { quote: r.quote } : {}),
+        ...(r.review ? { review: true } : {}),
+        ...(r.replaces !== null ? { replaces: r.replaces } : {}),
+      }));
   }
 
-  addPreference(canvasId: string, text: string, cardId: string | null): number {
+  addPreference(
+    canvasId: string,
+    text: string,
+    cardId: string | null,
+    proposal?: { quote?: string; review?: boolean; replaces?: number },
+  ): number {
     return (
       this.db
-        .query('INSERT INTO preferences (canvas_id, text, card_id, created_at) VALUES ($c, $text, $cardId, $now) RETURNING id')
-        .get({ c: canvasId, text, cardId, now: now() }) as { id: number }
+        .query(
+          `INSERT INTO preferences (canvas_id, text, card_id, created_at, state, quote, review, replaces)
+           VALUES ($c, $text, $cardId, $now, $state, $quote, $review, $replaces) RETURNING id`,
+        )
+        .get({
+          c: canvasId,
+          text,
+          cardId,
+          now: now(),
+          state: proposal ? 'proposed' : 'active',
+          quote: proposal?.quote ?? null,
+          review: proposal?.review ? 1 : 0,
+          replaces: proposal?.replaces ?? null,
+        }) as { id: number }
     ).id;
   }
 
@@ -431,6 +469,15 @@ export class Store {
         ? this.db.query('UPDATE preferences SET deleted_at = $now WHERE id = $id AND canvas_id = $c AND deleted_at IS NULL').run({ id, c: canvasId, now: now() })
         : this.db.query('UPDATE preferences SET text = $text WHERE id = $id AND canvas_id = $c AND deleted_at IS NULL').run({ id, c: canvasId, text });
     return r.changes > 0;
+  }
+
+  /** Accepts or rejects an open proposal; returns whether there was one. */
+  decideProposal(canvasId: string, id: number, state: 'active' | 'rejected'): boolean {
+    return (
+      this.db
+        .query(`UPDATE preferences SET state = $state, decided_at = $now WHERE id = $id AND canvas_id = $c AND state = 'proposed' AND deleted_at IS NULL`)
+        .run({ id, c: canvasId, state, now: now() }).changes > 0
+    );
   }
 
   // ---------------------------------------------------------------- the Koordinator's memory

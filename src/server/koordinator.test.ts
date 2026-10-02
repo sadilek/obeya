@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import { Board } from './board';
-import { Store } from './db';
+import { MIGRATIONS, Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
 import { FakeRuntime, type FakeSession, gitRepo } from './testing';
 import { Workers } from './workers';
@@ -431,34 +432,92 @@ describe('Koordinator answers questions of cards without a project', () => {
 });
 
 describe('preference memory', () => {
-  const learnSession = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'remember')).at(-1)!;
+  const learnSession = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'propose')).at(-1)!;
+  const learn = async (tool: string, args: Record<string, unknown>) => {
+    learnSession().call(tool, args);
+    learnSession().emit({ type: 'idle' });
+    await settle();
+  };
+  const texts = (...states: ('proposed' | 'active' | 'rejected')[]) => board.preferences(...states).map((p) => p.text);
 
-  test('a lasting preference becomes a rule; a refinement replaces it; a one-off does not', async () => {
+  test('a lasting preference is proposed with its occasion and applies once the owner accepts it; a one-off is not', async () => {
     const a = card('Labels');
     k.learn(item(a.id), 'answer', 'Präzise, auch wenn es länger wird. Das gilt immer.', 'Kurz oder präzise?');
     await settle();
     expect(learnSession().inbox[0]).toContain('Kurz oder präzise?');
-    learnSession().call('remember', { rule: 'Beschriftungen: präzise vor kurz.' });
-    learnSession().emit({ type: 'idle' });
-    await settle();
-    expect(board.preferences().map((p) => p.text)).toEqual(['Beschriftungen: präzise vor kurz.']);
-    expect(board.events(a.id).at(-1)!.text).toBe('Merkt sich: „Beschriftungen: präzise vor kurz.“');
+    await learn('propose', { rule: 'Beschriftungen: präzise vor kurz.' });
+    expect(board.preferences()).toEqual([
+      { id: 1, text: 'Beschriftungen: präzise vor kurz.', state: 'proposed', cardId: a.id, quote: 'Präzise, auch wenn es länger wird. Das gilt immer.' },
+    ]);
+    expect(board.events(a.id).at(-1)!.text).toBe('Schlägt vor: „Beschriftungen: präzise vor kurz.“');
+    // agents do not follow it yet, and the next learner does not count it among the rules
+    expect(board.preferencesText()).toBe('');
+    expect(board.snapshot().preferences.map((p) => p.state)).toEqual(['proposed']);
 
-    k.learn(item(a.id), 'feedback', 'Und immer mit Einheit.');
-    await settle();
-    expect(learnSession().inbox[0]).toContain('1. Beschriftungen: präzise vor kurz.');
-    learnSession().call('remember', { rule: 'Beschriftungen: präzise vor kurz, immer mit Einheit.', replaces: 1 });
-    learnSession().emit({ type: 'idle' });
-    await settle();
-    expect(board.preferences().map((p) => p.text)).toEqual(['Beschriftungen: präzise vor kurz, immer mit Einheit.']);
+    board.acceptProposal(1);
+    expect(texts('active')).toEqual(['Beschriftungen: präzise vor kurz.']);
+    expect(board.preferencesText()).toContain('- Beschriftungen: präzise vor kurz.');
 
     k.learn(item(a.id), 'answer', 'Donnerstag.', 'Wann ist der Termin?');
     await settle();
-    learnSession().call('nothing', {});
-    learnSession().emit({ type: 'idle' });
-    await settle();
+    await learn('nothing', {});
     expect(board.preferences()).toHaveLength(1);
-    expect(board.preferencesText()).toContain('- Beschriftungen: präzise vor kurz, immer mit Einheit.');
+  });
+
+  test('a learned change to a rule takes its place once accepted, in the owner\'s words if they edit it', async () => {
+    board.addPreference('Tests immer auf Deutsch benennen.');
+    const old = board.addPreference('Beschriftungen: präzise vor kurz.');
+    const a = card('Labels');
+    k.learn(item(a.id), 'feedback', 'Und immer mit Einheit.');
+    await settle();
+    expect(learnSession().inbox[0]).toContain('2. Beschriftungen: präzise vor kurz.');
+    await learn('propose', { rule: 'Beschriftungen: präzise vor kurz, mit Einheit.', replaces: 2 });
+    const [p] = board.preferences('proposed');
+    expect(p).toMatchObject({ replaces: old, quote: 'Und immer mit Einheit.' });
+    // until then, the old rule stands
+    expect(board.preferencesText()).toEndWith('- Beschriftungen: präzise vor kurz.');
+
+    board.acceptProposal(p!.id, 'Beschriftungen: präzise vor kurz, Zahlen immer mit Einheit.');
+    expect(texts('active')).toEqual(['Tests immer auf Deutsch benennen.', 'Beschriftungen: präzise vor kurz, Zahlen immer mit Einheit.']);
+    expect(texts()).not.toContain('Beschriftungen: präzise vor kurz.');
+    expect(() => board.acceptProposal(p!.id)).toThrow();
+  });
+
+  test('a rejected proposal is kept but applies nowhere; a rule the owner writes applies at once', async () => {
+    const a = card('A');
+    k.learn(item(a.id), 'note', 'Bitte nie wieder Emojis.');
+    await settle();
+    await learn('propose', { rule: 'Keine Emojis in Texten.' });
+    const [p] = board.preferences('proposed');
+    board.rejectProposal(p!.id);
+    expect(texts('rejected')).toEqual(['Keine Emojis in Texten.']);
+    // the learner sees it, and the proposals still waiting, so neither comes back
+    board.proposePreference('Commits auf Englisch.', { cardId: a.id });
+    k.learn(item(a.id), 'note', 'Wirklich keine Emojis, und Commits auf Englisch.');
+    await settle();
+    expect(learnSession().inbox[0]).toContain('rejected (do not propose them again):\n- Keine Emojis in Texten.');
+    expect(learnSession().inbox[0]).toContain('waiting for the owner (do not propose them again):\n- Commits auf Englisch.');
+    await learn('propose', { rule: 'Commits auf Englisch.' });
+    expect(texts('proposed')).toEqual(['Commits auf Englisch.']);
+    board.rejectProposal(board.preferences('proposed')[0]!.id);
+    expect(board.snapshot().preferences).toEqual([]);
+    expect(board.preferencesText()).toBe('');
+    expect(() => board.rejectProposal(p!.id)).toThrow();
+
+    board.addPreference('Commits auf Englisch.');
+    expect(board.preferences()).toMatchObject([{ state: 'rejected' }, { state: 'rejected' }, { text: 'Commits auf Englisch.', state: 'active' }]);
+  });
+
+  test('the rules stored before proposals existed stay active', () => {
+    const path = join(dir, 'old.db');
+    const old = new Database(path);
+    const before = MIGRATIONS.findIndex((m) => m.includes('ADD COLUMN state'));
+    for (const m of MIGRATIONS.slice(0, before)) old.run(m);
+    old.run(`PRAGMA user_version = ${before}`);
+    old.run(`INSERT INTO canvases (id, name, created_at) VALUES ('c', 'C', 'now')`);
+    old.run(`INSERT INTO preferences (canvas_id, text, created_at) VALUES ('c', 'Antworten auf Deutsch.', 'now')`);
+    old.close();
+    expect(new Store(path).preferences('c')).toEqual([{ id: 1, text: 'Antworten auf Deutsch.', state: 'active' }]);
   });
 
   test('workers get the rules, and what the owner tells them is offered for learning', async () => {

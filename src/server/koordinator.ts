@@ -215,8 +215,9 @@ export class Koordinator {
   }
 
   /**
-   * The owner answered, sent a note or gave feedback: if it states a lasting preference, keep it
-   * as a rule for every agent. Runs in the background, one at a time.
+   * The owner answered, sent a note or gave feedback: if it states a lasting preference, propose
+   * it as a rule for every agent; the owner accepts it in the sheet. Runs in the background, one at
+   * a time.
    */
   learn(card: Item, kind: OwnerInput, text: string, question?: string) {
     this.learning = this.learning
@@ -226,7 +227,9 @@ export class Koordinator {
   }
 
   private distill(card: Item, kind: OwnerInput, text: string, question?: string): Promise<void> {
-    const rules = this.o.board.preferences();
+    const rules = this.o.board.preferences('active');
+    const open = this.o.board.preferences('proposed');
+    const rejected = this.o.board.preferences('rejected');
     return new Promise((resolve) => {
       let done = false;
       const finish = (r: string) => {
@@ -243,17 +246,18 @@ export class Koordinator {
           system: LEARN_SYSTEM,
           tools: [
             {
-              name: 'remember',
-              description: 'Record a lasting preference as one short rule in German. Pass replaces with the number of an existing rule it refines or contradicts.',
+              name: 'propose',
+              description:
+                'Propose a lasting preference to the owner as one short rule in German. Pass replaces with the number of a recorded rule it refines or contradicts.',
               schema: { rule: z.string(), replaces: z.number().int().optional() },
               run: ({ rule, replaces }) => {
                 const r = String(rule).trim().slice(0, 500);
                 if (!r) return finish('Empty rule ignored.');
+                if (open.some((p) => p.text === r)) return finish('Already proposed. End your turn now.');
                 const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
-                if (old) this.o.board.setPreference(old.id, r);
-                else this.o.board.addPreference(r, card.id);
-                this.o.board.log(card.id, 'state', 'koordinator', `Merkt sich: „${r}“`);
-                return finish('Recorded. End your turn now.');
+                this.o.board.proposePreference(r, { cardId: card.id, quote: text }, old?.id);
+                this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
+                return finish('Proposed. End your turn now.');
               },
             },
             { name: 'nothing', description: 'Nothing lasting to record.', schema: {}, run: () => finish('Fine. End your turn now.') },
@@ -270,6 +274,8 @@ export class Koordinator {
           question ? `The worker asked: ${question}` : '',
           `The owner's ${{ answer: 'answer', note: 'note to the worker', feedback: 'feedback on the finished work', idea: 'words in the discussion of an idea' }[kind]}: ${text}`,
           rules.length ? `Rules recorded so far:\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}` : 'No rules recorded so far.',
+          open.length ? `Proposals waiting for the owner (do not propose them again):\n${open.map((r) => `- ${r.text}`).join('\n')}` : '',
+          rejected.length ? `Proposals the owner rejected (do not propose them again):\n${rejected.map((r) => `- ${r.text}`).join('\n')}` : '',
         ]
           .filter(Boolean)
           .join('\n\n'),
@@ -515,7 +521,7 @@ const LEARN_SYSTEM = `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's preference memory: short rules every agent follows, so the owner never has to say the same thing twice.
 
 You get one thing the owner said about a card. Decide whether it states a lasting preference that should guide future work on other cards too — about how to work, what to ask and what not, style, wording, testing, tools. Most answers only decide the case at hand: then call nothing.
-If it does state one, call remember with a short, general rule in German ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."). If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not record what is already covered.
+If it does state one, call propose with a short, general rule in German ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what is already covered.
 `.trim();
 
 const CUT_SYSTEM = `

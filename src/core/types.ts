@@ -203,13 +203,25 @@ export interface Talk {
   answerBy?: 'koordinator' | 'project';
 }
 
-/** A lasting preference of the owner, learned by the Koordinator or written by the owner. */
+/**
+ * A lasting preference of the owner, learned by the Koordinator or written by the owner. A learned
+ * one is a proposal until the owner accepts it; agents follow active ones only.
+ */
 export interface Preference {
   id: number;
   text: string;
+  state: PreferenceState;
   /** The card whose exchange it was learned from. */
   cardId?: string;
+  /** What the owner said there that it was learned from. */
+  quote?: string;
+  /** Proposed by the Rückschau over many exchanges, not from one. */
+  review?: boolean;
+  /** The active rule a proposal would change. */
+  replaces?: number;
 }
+
+export type PreferenceState = 'proposed' | 'active' | 'rejected';
 
 export interface NewCard {
   kind: 'bugfix' | 'feature';

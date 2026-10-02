@@ -93,6 +93,9 @@ export const api = {
   /** Changes a preference, or deletes it with `null`. */
   setPreference: (id: number, text: string | null) =>
     text === null ? call<void>('DELETE', at(`/preferences/${id}`)) : call<void>('PATCH', at(`/preferences/${id}`), { text }),
+  /** Accepts a proposed preference, in the owner's words when they changed it. */
+  acceptProposal: (id: number, text?: string) => call<void>('POST', at(`/preferences/${id}/accept`), text === undefined ? {} : { text }),
+  rejectProposal: (id: number) => call<void>('POST', at(`/preferences/${id}/reject`)),
 };
 
 // Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.

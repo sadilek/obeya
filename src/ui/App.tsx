@@ -724,6 +724,7 @@ function Canvas({
   // ---------------------------------------------------------------- keys
   const attention = items.filter(needsYou);
   const queuedCount = items.filter((i) => i.state === 'planned' && i.queue).length;
+  const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length;
   const doneCount = items.filter((i) => i.source === 'manual' && i.state === 'live').length;
   async function archiveDone() {
     const { ids } = await api.archiveDone();
@@ -843,7 +844,16 @@ function Canvas({
           </button>
           <button className={kOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleKoordinator}>
             {t.koordinator.button}
-            {queuedCount > 0 && <span className="n">{queuedCount}</span>}
+            {queuedCount > 0 && (
+              <span className="n" title={t.koordinator.queuedCount(queuedCount)}>
+                {queuedCount}
+              </span>
+            )}
+            {proposalCount > 0 && (
+              <span className="n prop" title={t.koordinator.proposalsCount(proposalCount)}>
+                {proposalCount}
+              </span>
+            )}
           </button>
           {attention.length > 0 && (
             <button className="pill" id="attention" onClick={nextAttention}>
