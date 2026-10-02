@@ -81,7 +81,10 @@ export const CardView = memo(
         </div>
         <div className={item.title ? 'ttl' : 'ttl untitled'}>{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div>
         {meta && <div className="meta">{meta}</div>}
-        <div className="state">{stateLabel(item)}</div>
+        <div className="state">
+          {stateLabel(item)}
+          {item.buildProposal && ` · ${t.idea.proposesBuild}`}
+        </div>
         {needsYou(item) && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}
         {startable && (
           <button

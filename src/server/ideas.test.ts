@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { MIGRATIONS, Store } from './db';
-import { FakeRuntime, type FakeSession, gitRepo } from './testing';
+import { FakeRuntime, type FakeSession, gitRepo, identify } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -14,8 +14,8 @@ let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 let spoken: [string | undefined, string][];
 
-const open = () =>
-  new CanvasRuntime({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: { status: () => ({}) as never }, commandDelayMs: 10 });
+const open = (clones = 1) =>
+  new CanvasRuntime({ repos: [{ path: main, clones }] }, { store, home: dir, runtime, forge: { status: () => ({}) as never }, commandDelayMs: 10 });
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-ideas-'));
@@ -302,25 +302,47 @@ describe('an idea', () => {
 });
 
 describe('a prototype', () => {
-  const demoDir = () => {
-    const d = join(dir, 'demo');
+  const demoDir = (name = 'demo') => {
+    const d = join(dir, name);
     mkdirSync(d, { recursive: true });
     writeFileSync(join(d, 'demo.mp4'), '0');
     writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00:00.351 --> 00:00:10.000\nSo sähe es aus.\n');
     return d;
   };
-  const worker = () => runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+  const workers = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'ready_for_review'));
+  const worker = () => workers()[0]!;
+  const prototypes = (ideaId: string) =>
+    board()
+      .snapshot()
+      .items.filter((x) => x.prototypeOf === ideaId);
+  const archived = (id: string) => board().archived().find((i) => i.id === id);
+  /** The prototype's worker commits something on its branch, as a real one would. */
+  const commit = (cardId: string, file: string) => {
+    const ws = board().row(cardId).workspace!;
+    identify(ws);
+    writeFileSync(join(ws, file), 'prototyp\n');
+    git(ws, 'add', '.');
+    git(ws, 'commit', '--quiet', '-m', `Prototyp ${file}`);
+  };
+  /** The worker asks, and the Koordinator passes the question on to the owner. */
+  const ask = async (s: FakeSession, question: string, options: string[]) => {
+    s.call('ask', { question, options });
+    await settle();
+    const advisor = runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'escalate')).at(-1)!;
+    advisor.call('escalate', { question, options });
+    await settle();
+  };
+  const handOver = (s: FakeSession, summary: string, demo = 'demo') =>
+    s.call('ready_for_review', { summary, demo: { dir: demoDir(demo), chapters: ['Knopf'], shown: ['Knopf'], not_shown: [], findings: [] } });
 
-  test('builds a throwaway prototype whose demo shows on the idea, and never lands', () => {
+  test('builds a throwaway prototype whose demo shows on the idea; discarded, it goes into the archive', () => {
     const i = idea();
     board().setIdea(i.id, { brief: '**Ziel:** CSV-Export.' });
     canvas.act(i.id, { action: 'discuss', text: 'Zeig mal.' });
     turn(explorer(), 'Ein Prototyp hilft.');
-    canvas.act(i.id, { action: 'prototype', text: 'Den Export-Knopf' });
-    const prototype = board()
-      .snapshot()
-      .items.find((x) => x.prototypeOf === i.id)!;
-    expect(prototype).toMatchObject({ state: 'working', title: 'Prototyp: Export für Vermieter', from: i.id, body: 'Den Export-Knopf' });
+    canvas.act(i.id, { action: 'prototype', text: 'Den Export-Knopf. Oben rechts in der Leiste.' });
+    const [prototype] = prototypes(i.id);
+    expect(prototype).toMatchObject({ state: 'working', title: 'Prototyp: Export für Vermieter – Den Export-Knopf', from: i.id, body: 'Den Export-Knopf. Oben rechts in der Leiste.' });
     expect(item(i.id).state).toBe('idea');
     // while the prototype is built, the owner waits for it, not the idea for the owner
     expect(item(i.id).idea).toMatchObject({ yourTurn: false, thinking: false });
@@ -330,24 +352,178 @@ describe('a prototype', () => {
     expect(w.inbox[0]).not.toContain('Before ready_for_review, run');
     // a prototype never lands, so it holds no files for the Koordinator
     expect(canvas.koordinator.inProgress()).toEqual([]);
-    expect(() => canvas.act(i.id, { action: 'prototype' })).toThrow('still running');
 
-    const ws = board().row(prototype.id).workspace!;
-    const branch = board().row(prototype.id).branch!;
-    w.call('ready_for_review', { summary: 'Knopf gebaut.', demo: { dir: demoDir(), chapters: ['Knopf'], shown: ['Knopf'], not_shown: [], findings: [] } });
-    expect(item(i.id).demo).toMatchObject({ chapters: [[0, 'Knopf']] });
-    expect(board().demoFiles(i.id)).toEqual({ dir: join(dir, 'demo'), kind: 'video' });
+    const ws = board().row(prototype!.id).workspace!;
+    const branch = board().row(prototype!.id).branch!;
+    handOver(w, 'Knopf gebaut.');
+    // the demo stays the prototype's, and shows on the idea under its title
+    expect(item(i.id).demo).toBeUndefined();
+    expect(item(i.id).prototypes).toMatchObject([{ id: prototype!.id, title: prototype!.title, demo: { chapters: [[0, 'Knopf']] } }]);
     expect(explorer().inbox.at(-1)).toContain('Knopf gebaut.');
+    expect(explorer().inbox.at(-1)).toContain(prototype!.title);
     turn(explorer(), 'Der Knopf trägt; nimmst du ihn?');
     expect(item(i.id).idea).toMatchObject({ yourTurn: true });
-    expect(item(prototype.id)).toMatchObject({ state: 'waiting', need: 'demo' });
+    expect(item(prototype!.id)).toMatchObject({ state: 'waiting', need: 'demo' });
 
-    canvas.act(prototype.id, { action: 'approve' });
-    expect(board().item(prototype.id)).toBeUndefined();
+    // approving a prototype is having seen enough: it is discarded
+    canvas.act(prototype!.id, { action: 'approve' });
+    expect(board().item(prototype!.id)).toBeUndefined();
+    expect(git(main, 'branch', '--list', branch)).toBe('');
     expect(git(ws, 'branch', '--list', branch)).toBe('');
-    expect(canvas.repos[0]!.workspaces.leasedBy(prototype.id)).toBeNull();
-    // the idea keeps the demo
-    expect(item(i.id).demo).toBeDefined();
+    expect(canvas.repos[0]!.workspaces.leasedBy(prototype!.id)).toBeNull();
+    // in the archive with its demo, summary and log, and it stays there
+    expect(archived(prototype!.id)).toMatchObject({ prototypeEnd: 'discarded', summary: 'Knopf gebaut.', demo: { chapters: [[0, 'Knopf']] } });
+    expect(board().demoFiles(prototype!.id)).toEqual({ dir: join(dir, 'demo'), kind: 'video' });
+    expect(board().events(prototype!.id).at(-1)!.text).toContain('Verworfen');
+    expect(() => board().unarchive(prototype!.id)).toThrow(expect.objectContaining({ code: 'prototypeEnded' }));
+    // the idea still shows its demo
+    expect(item(i.id).prototypes).toMatchObject([{ id: prototype!.id, prototypeEnd: 'discarded', demo: { chapters: [[0, 'Knopf']] } }]);
+    expect(board().events(i.id).at(-1)!.text).toContain('verworfen');
+  });
+
+  test('several run side by side, each with its approach, and the idea shows every demo', () => {
+    canvas.shutdown();
+    canvas = open(3);
+    const i = idea('Logo für Obeya');
+    canvas.act(i.id, { action: 'prototype', text: 'Wortmarke: der Name in eigener Schrift' });
+    canvas.act(i.id, { action: 'prototype', text: 'Bildmarke' });
+    canvas.act(i.id, { action: 'prototype' });
+    const all = prototypes(i.id);
+    expect(all.map((p) => p.title)).toEqual(['Prototyp: Logo für Obeya – Wortmarke', 'Prototyp: Logo für Obeya – Bildmarke', 'Prototyp: Logo für Obeya']);
+    expect(all.every((p) => p.state === 'working')).toBe(true);
+    // side by side below the idea, not on top of each other
+    expect(new Set(all.map((p) => p.y)).size).toBe(1);
+    expect(all[1]!.x - all[0]!.x).toBeGreaterThan(200);
+    handOver(workers()[0]!, 'Wortmarke.', 'a');
+    handOver(workers()[1]!, 'Bildmarke.', 'b');
+    expect(item(i.id).prototypes!.map((p) => [p.title, !!p.demo])).toEqual([
+      ['Prototyp: Logo für Obeya – Wortmarke', true],
+      ['Prototyp: Logo für Obeya – Bildmarke', true],
+      ['Prototyp: Logo für Obeya', false],
+    ]);
+    // a running prototype keeps a dropped idea on the canvas
+    canvas.act(i.id, { action: 'drop' });
+    expect(() => board().archive([i.id])).toThrow(expect.objectContaining({ code: 'prototypeRunning' }));
+  });
+
+  test('a second prototype with the same approach is numbered', () => {
+    canvas.shutdown();
+    canvas = open(2);
+    const i = idea();
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    canvas.act(prototypes(i.id)[0]!.id, { action: 'discard' });
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    expect(prototypes(i.id).map((p) => p.title)).toEqual(['Prototyp: Export für Vermieter – Knopf (2)']);
+  });
+
+  test('"Diesen Prototyp bauen" builds the idea on its branch; the others are discarded', async () => {
+    canvas.shutdown();
+    canvas = open(3);
+    const i = idea();
+    board().setIdea(i.id, { brief: '**Ziel:** CSV-Export.' });
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    canvas.act(i.id, { action: 'prototype', text: 'Menü' });
+    const [chosen, other] = prototypes(i.id);
+    const [w, wOther] = workers();
+    commit(chosen!.id, 'knopf.txt');
+    commit(other!.id, 'menu.txt');
+    // the chosen one's worker asked the owner something on its card
+    await ask(w!, 'Knopf oben oder unten?', ['oben', 'unten']);
+    canvas.act(chosen!.id, { action: 'answer', text: 'oben' });
+    handOver(w!, 'Knopf oben gebaut; Export als CSV.');
+    const ws = board().row(chosen!.id).workspace!;
+    const otherWs = board().row(other!.id).workspace!;
+    const otherBranch = board().row(other!.id).branch!;
+
+    canvas.act(chosen!.id, { action: 'buildPrototype' });
+    // the idea is the feature now, in the prototype's workspace, on its branch under the idea's name
+    const built = item(i.id);
+    expect(built).toMatchObject({ state: 'planned', body: '**Ziel:** CSV-Export.', builtOn: chosen!.id });
+    expect(built.idea).toBeUndefined();
+    const row = board().row(i.id);
+    expect(row.workspace).toBe(ws);
+    expect(row.branch).toMatch(/^obeya\/export-fur-vermieter-/);
+    expect(git(ws, 'branch', '--show-current')).toBe(row.branch!);
+    expect(git(ws, 'log', '--format=%s', '-1')).toBe('Prototyp knopf.txt');
+    expect(canvas.repos[0]!.workspaces.leasedBy(i.id)).toBe(ws);
+    // the chosen prototype goes into the archive as built, its worker stopped
+    expect(w!.closed).toBe(true);
+    expect(archived(chosen!.id)).toMatchObject({ prototypeEnd: 'built', summary: 'Knopf oben gebaut; Export als CSV.' });
+    expect(canvas.repos[0]!.workspaces.leasedBy(chosen!.id)).toBeNull();
+    // the other one is discarded with its code
+    expect(wOther!.closed).toBe(true);
+    expect(archived(other!.id)).toMatchObject({ prototypeEnd: 'discarded' });
+    expect(git(otherWs, 'branch', '--list', otherBranch)).toBe('');
+    expect(prototypes(i.id)).toEqual([]);
+    expect(board().decisions(null).at(-1)).toMatchObject({ card_id: i.id, answer: `So bauen, auf Prototyp „${chosen!.title}“.` });
+
+    // its worker goes on from the branch: the brief, the prototype's handover and the owner's answers
+    await settle();
+    expect(item(i.id).state).toBe('working');
+    const builder = workers().at(-1)!;
+    expect(builder.spec.cwd).toBe(ws);
+    const brief = builder.inbox[0]!;
+    expect(brief).toContain('**Ziel:** CSV-Export.');
+    expect(brief).toContain('throwaway prototype');
+    expect(brief).toContain('production quality');
+    expect(brief).toContain('Knopf oben gebaut; Export als CSV.');
+    expect(brief).toContain('- Knopf oben oder unten? → oben');
+    expect(brief).toContain(`You are on branch ${row.branch}, which holds the prototype's commits`);
+    expect(builder.spec.tools.some((t) => t.name === 'propose_card')).toBe(true);
+  });
+
+  test("a prototype's worker proposes building the idea on it instead of making cards", () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    const [prototype] = prototypes(i.id);
+    const w = worker();
+    expect(w.spec.tools.some((t) => t.name === 'propose_card')).toBe(false);
+    expect(w.spec.system).toContain('propose_build');
+    expect(w.call('propose_build', { reason: 'Der Owner hat den Knopf gewählt.' })).toContain('owner decides');
+    expect(item(prototype!.id).buildProposal).toBe('Der Owner hat den Knopf gewählt.');
+    expect(board().snapshot().items.filter((x) => x.state === 'proposal')).toEqual([]);
+    // accepting it is "Diesen Prototyp bauen"
+    canvas.act(prototype!.id, { action: 'buildPrototype' });
+    expect(item(i.id)).toMatchObject({ state: 'planned', builtOn: prototype!.id });
+    expect(archived(prototype!.id)!.buildProposal).toBeUndefined();
+  });
+
+  test("its questions and the owner's answers reach the idea's agent, for the brief only", async () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Los.' });
+    turn(explorer(), 'Ein Prototyp?');
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    const [prototype] = prototypes(i.id);
+    await ask(worker(), 'Welche Farbe?', ['Blau', 'Grün']);
+    canvas.act(prototype!.id, { action: 'answer', text: 'Blau' });
+    const s = explorer();
+    expect(s.inbox.at(-1)).toContain('„Welche Farbe?“');
+    expect(s.inbox.at(-1)).toContain('The owner answered: Blau');
+    // what it says on the way is no reply: the owner is not asked again
+    s.call('update_brief', { brief: '**Entscheidungen:** Blau.' });
+    s.emit({ type: 'text', text: 'Im Stand festgehalten.' });
+    s.emit({ type: 'idle' });
+    expect(item(i.id).idea).toMatchObject({ brief: '**Entscheidungen:** Blau.', yourTurn: false, thinking: false });
+    expect(talk(i.id).at(-1)).toEqual(['explorer', 'Ein Prototyp?']);
+  });
+
+  test('"So bauen" discards the prototypes still on the canvas', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    const [prototype] = prototypes(i.id);
+    canvas.act(i.id, { action: 'build' });
+    expect(archived(prototype!.id)).toMatchObject({ prototypeEnd: 'discarded' });
+    expect(item(i.id).builtOn).toBeUndefined();
+  });
+
+  test('deleting a prototype discards it into the archive, workspace and all', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    const [prototype] = prototypes(i.id);
+    canvas.remove(prototype!.id);
+    expect(archived(prototype!.id)).toMatchObject({ prototypeEnd: 'discarded' });
+    expect(canvas.repos[0]!.workspaces.leasedBy(prototype!.id)).toBeNull();
+    expect(() => canvas.act(i.id, { action: 'buildPrototype' })).toThrow('not a prototype');
   });
 });
 
@@ -379,6 +555,22 @@ describe('by voice', () => {
     expect(await heard).toEqual({ confirm: 'An die Idee weitergegeben.', quiet: true });
     expect(talk(i.id)).toEqual([['owner', 'Eher als PDF.']]);
     expect(explorer().inbox[0]).toContain('Eher als PDF.');
+  });
+
+  test('"bau diesen Prototyp" on a prototype builds its idea on it', async () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
+    const prototype = board()
+      .snapshot()
+      .items.find((x) => x.prototypeOf === i.id)!;
+    const heard = canvas.commander.hear('bau diesen Prototyp', { card: prototype.id });
+    await settle();
+    expect(reader().inbox[0]).toContain(`"${prototype.title}" (prototype of K`);
+    const tag = reader().inbox[0]!.match(/(K\d+) \[working\] feature "Prototyp/)![1];
+    reader().call('act', { actions: [{ do: 'build', card: tag }], confirm: 'Die Idee wird auf diesem Prototyp gebaut.' });
+    canvas.commander.arm((await heard).token!);
+    await settle(30);
+    expect(item(i.id)).toMatchObject({ builtOn: prototype.id });
   });
 
   test('deciding on an idea waits for undo like any command', async () => {

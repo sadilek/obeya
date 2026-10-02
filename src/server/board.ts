@@ -239,6 +239,11 @@ export class Board {
     this.store.addDecision({ canvas_id: this.canvas.id, ...d });
   }
 
+  /** The decisions taken on one card, oldest first. */
+  decisionsOn(cardId: string): Decision[] {
+    return this.store.cardDecisions(this.canvas.id, cardId).map(toDecision);
+  }
+
   /** A project's decisions, or with `null` those of standalone cards. */
   decisions(projectId: string | null) {
     return this.store.decisions(this.canvas.id, projectId);
@@ -263,7 +268,7 @@ export class Board {
     this.work(id, { idea: JSON.stringify({ ...this.idea(id), ...fields }) });
   }
 
-  /** A card whose worker builds a throwaway prototype for the idea; placed below it. */
+  /** A card whose worker builds a throwaway prototype for the idea; placed below it, beside the prototypes already there. */
   addPrototype(ideaId: string, title: string, body: string): Item {
     const items = this.snapshot().items;
     const idea = items.find((i) => i.id === ideaId);
@@ -276,8 +281,8 @@ export class Board {
         state: 'planned',
         title: title.slice(0, 200),
         body: body.slice(0, 20000),
-        x: b.x + 35 + prototypes * 30,
-        y: b.y + b.h + 60 + prototypes * 30,
+        x: b.x + 35 + prototypes * (CARD_SIZE.feature[0] + GAP),
+        y: b.y + b.h + 60,
         from_id: ideaId,
         prototype_of: ideaId,
         repo: idea && idea.repo !== this.home ? idea.repo : null,
@@ -285,6 +290,24 @@ export class Board {
     ]);
     this.changed();
     return toItems([row!], [], this.home)[0]!;
+  }
+
+  /** The prototype's worker proposes to build the idea on it; the owner accepts on the prototype's card. */
+  proposeBuild(id: string, reason: string) {
+    const row = this.own(id);
+    if (!row.prototype_of) throw new BadRequest('notPrototype', 'not a prototype');
+    this.work(id, { prototype: JSON.stringify({ ...storedPrototype(row), proposal: reason } satisfies StoredPrototype) });
+  }
+
+  /**
+   * A prototype has served its purpose: discarded or built, it goes into the archive with its log,
+   * demo and summary, and never comes back. Its workspace is no longer its own.
+   */
+  endPrototype(id: string, end: 'discarded' | 'built') {
+    const row = this.own(id);
+    if (!row.prototype_of) throw new BadRequest('notPrototype', 'not a prototype');
+    const { proposal: _, ...kept } = storedPrototype(row);
+    this.work(id, { prototype: JSON.stringify({ ...kept, end } satisfies StoredPrototype), archived_at: new Date().toISOString(), need: null, status_line: null, workspace: null, queue: null });
   }
 
   // ---------------------------------------------------------------- the Koordinator's memory
@@ -365,6 +388,8 @@ export class Board {
     const row = this.own(id);
     if (row.plan_ref) throw new BadRequest('planCard', 'a project comes back when its plan doc does');
     if (!row.archived_at) throw new BadRequest('notArchived', 'the card is not archived');
+    // a new attempt is a new prototype
+    if (row.prototype_of) throw new BadRequest('prototypeEnded', 'a discarded or built prototype stays in the archive');
     this.store.update(id, { archived_at: null });
     this.changed();
   }
@@ -380,7 +405,7 @@ export class Board {
     const projects = rows.filter((r) => r.plan_ref);
     const docs = projects.map((r) => JSON.parse(r.plan!) as PlanDoc);
     const kids = this.store.children(projects.map((r) => r.id));
-    const items = toItems([...rows, ...kids], docs, this.home);
+    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home));
     return rows.flatMap((r) => {
       const at = { archivedAt: r.archived_at! };
       const own = items.find((i) => i.id === r.id);
@@ -433,8 +458,20 @@ export class Board {
       this.keepDocs(docs);
       items = toItems(this.store.cards(this.canvas.id), docs, this.home);
     }
+    items = this.withPrototypes(items);
     this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id, ['proposed', 'active']), talk: this.store.talk(this.canvas.id, SHEET_TALK, true) };
     return this.cache;
+  }
+
+  /** Ideas, and cards that were ideas, with their prototypes, wherever these are: on the canvas or in the archive. */
+  private withPrototypes(items: Item[]): Item[] {
+    const rows = this.store.prototypes(this.canvas.id);
+    if (!rows.length) return items;
+    const prototypes = toItems(rows, [], this.home).map((p, n) => (rows[n]!.archived_at ? { ...p, archivedAt: rows[n]!.archived_at! } : p));
+    return items.map((i) => {
+      const own = prototypes.filter((p) => p.prototypeOf === i.id);
+      return own.length ? { ...i, prototypes: own } : i;
+    });
   }
 
   // ---------------------------------------------------------------- preferences
@@ -728,7 +765,8 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         repo: r.repo ?? home,
         ...work(r),
         ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? decided(r) : {}),
-        ...(r.prototype_of ? { prototypeOf: r.prototype_of } : {}),
+        ...(r.prototype_of ? { prototypeOf: r.prototype_of, ...prototypeOf(r) } : {}),
+        ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
       });
       continue;
@@ -809,6 +847,21 @@ function work(r: CardRow): Partial<Item> {
     ...(r.branch ? { branch: r.branch } : {}),
     ...(r.landed && r.workspace ? { finishing: true } : {}),
   };
+}
+
+/** What is stored of a prototype: how it ended, once it did, and its worker's proposal to build the idea on it. */
+interface StoredPrototype {
+  end?: 'discarded' | 'built';
+  proposal?: string;
+}
+
+const storedPrototype = (r: CardRow): StoredPrototype => (r.prototype ? (JSON.parse(r.prototype) as StoredPrototype) : {});
+
+/** A prototype's end and proposal; an ended one keeps the summary it was handed over with. */
+function prototypeOf(r: CardRow): Partial<Item> {
+  const p = storedPrototype(r);
+  const summary = p.end && r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
+  return { ...(p.end ? { prototypeEnd: p.end } : {}), ...(p.proposal && !p.end ? { buildProposal: p.proposal } : {}), ...(summary ? { summary } : {}) };
 }
 
 /** What is stored of an idea; `thinking` while its agent works on a reply, `yourTurn` once it replied. */

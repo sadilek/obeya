@@ -607,6 +607,31 @@ describe('landing through a pull request', () => {
   });
 });
 
+describe('a prototype built on in a clone', () => {
+  test('the idea takes over the clone and the branch, renamed; the clone is busy until it is done', () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' } });
+    const idea = board.create({ kind: 'feature', idea: true, title: 'Logo', x: 0, y: 0 });
+    const prototype = board.addPrototype(idea.id, 'Prototyp: Logo', 'zeigen');
+    workers.start(prototype.id);
+    const path = board.row(prototype.id).workspace!;
+    const old = board.row(prototype.id).branch!;
+    writeFileSync(join(path, 'logo.svg'), '<svg/>');
+    git(path, 'add', '.');
+    git(path, 'commit', '--quiet', '-m', 'Prototyp');
+    const moved = workers.buildOn(prototype.id, board.item(idea.id)!);
+    expect(moved.path).toBe(path);
+    expect(git(path, 'branch', '--show-current')).toBe(moved.branch);
+    expect(git(path, 'branch', '--list', old)).toBe('');
+    expect(git(path, 'log', '--format=%s', '-1')).toBe('Prototyp');
+    expect(spaces.leasedBy(idea.id)).toBe(path);
+    // the only clone is the idea's now
+    expect(() => spaces.lease(board.create({ kind: 'feature', title: 'X', x: 0, y: 0 }).id, 'obeya/x')).toThrow('all are leased');
+    // a prototype without a workspace has nothing to build on
+    const bare = board.addPrototype(idea.id, 'Prototyp: leer', 'zeigen');
+    expect(() => workers.buildOn(bare.id, board.item(idea.id)!)).toThrow(expect.objectContaining({ code: 'noWorkspace' }));
+  });
+});
+
 describe('a worktree per card', () => {
   beforeEach(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -639,6 +664,41 @@ describe('a worktree per card', () => {
     }
     // B was rebased onto A before the fast-forward
     expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['B', 'A', 'init']);
+    expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
+    expect(git(main, 'branch', '--list', 'obeya/*')).toBe('');
+  });
+
+  test("an idea built on a prototype takes over its worktree and branch, and lands from there", async () => {
+    const idea = board.create({ kind: 'feature', idea: true, title: 'Logo', x: 0, y: 0 });
+    const prototype = board.addPrototype(idea.id, 'Prototyp: Logo – Wortmarke', 'Wortmarke');
+    workers.start(prototype.id);
+    const path = board.row(prototype.id).workspace!;
+    const old = board.row(prototype.id).branch!;
+    commitIn(path, 'logo.svg', 'Prototyp Wortmarke');
+    const moved = workers.buildOn(prototype.id, board.item(idea.id)!);
+    // the worktree stays where it is; its branch now has the idea's name
+    expect(moved.path).toBe(path);
+    expect(moved.branch).toMatch(/^obeya\/logo-/);
+    expect(git(path, 'branch', '--show-current')).toBe(moved.branch);
+    expect(git(main, 'branch', '--list', old)).toBe('');
+    expect(spaces.leasedBy(idea.id)).toBe(path);
+    expect(spaces.leasedBy(prototype.id)).toBeNull();
+    expect(board.item(prototype.id)).toBeUndefined();
+    expect(board.archived().find((i) => i.id === prototype.id)).toMatchObject({ prototypeEnd: 'built' });
+
+    board.work(idea.id, { state: 'planned', workspace: moved.path, branch: moved.branch, built_on: prototype.id });
+    workers.start(idea.id);
+    expect(board.row(idea.id).workspace).toBe(path);
+    const session = runtime.last;
+    expect(session.spec.cwd).toBe(path);
+    commitIn(path, 'logo.test.ts', 'Logo mit Tests');
+    session.call('ready_for_review', { summary: 'S' });
+    session.emit({ type: 'idle' });
+    await workers.approve(idea.id);
+    expect(state(idea.id)).toBe('live');
+    session.emit({ type: 'idle' });
+    // the prototype's commits are part of what landed; worktree and branch are gone
+    expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['Logo mit Tests', 'Prototyp Wortmarke', 'init']);
     expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
     expect(git(main, 'branch', '--list', 'obeya/*')).toBe('');
   });

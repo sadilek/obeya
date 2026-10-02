@@ -60,6 +60,10 @@ export interface CardRow {
   plan: string | null;
   /** JSON: the plan docs (plan references) the landed work of a card that was an idea added. */
   plan_docs: string | null;
+  /** JSON, prototypes only: how it ended (`end`, once archived) and its worker's proposal to build the idea on it (`proposal`). */
+  prototype: string | null;
+  /** A card that was an idea and is built on the branch of one of its prototypes: that prototype. */
+  built_on: string | null;
 }
 
 
@@ -205,6 +209,9 @@ export const MIGRATIONS = [
    ALTER TABLE preferences ADD COLUMN review INTEGER NOT NULL DEFAULT 0;
    ALTER TABLE preferences ADD COLUMN replaces INTEGER REFERENCES preferences(id);
    ALTER TABLE preferences ADD COLUMN decided_at TEXT;`,
+  // a discarded or built prototype goes into the archive; an idea may be built on a prototype's branch
+  `ALTER TABLE cards ADD COLUMN prototype TEXT;
+   ALTER TABLE cards ADD COLUMN built_on TEXT REFERENCES cards(id);`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -238,6 +245,8 @@ export type RowUpdate = Partial<
     | 'plan'
     | 'plan_docs'
     | 'from_id'
+    | 'prototype'
+    | 'built_on'
   >
 >;
 
@@ -284,6 +293,11 @@ export class Store {
   /** The cards whose landed work added plan docs, on the canvas or archived. */
   withPlanDocs(canvasId: string): CardRow[] {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND plan_docs IS NOT NULL').all({ c: canvasId }) as CardRow[];
+  }
+
+  /** The canvas's prototypes, on the canvas or archived, the oldest first. */
+  prototypes(canvasId: string): CardRow[] {
+    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND prototype_of IS NOT NULL ORDER BY created_at, rowid').all({ c: canvasId }) as CardRow[];
   }
 
   /** The workstreams of the given projects. */

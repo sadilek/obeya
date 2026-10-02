@@ -33,8 +33,10 @@ export interface WorkerOptions {
   repo?: string;
   /** Who answers the card's questions on the owner's behalf, if anyone. */
   advisor?: (card: Item) => Advisor | null;
-  /** A prototype was handed over: the idea gets the demo and the summary. */
+  /** A prototype was handed over: the idea's agent hears the summary. */
   onPrototype?: (prototype: Item, summary: string, demo: string | undefined) => void;
+  /** A question on a prototype was answered: the idea's agent hears both, so its brief holds them. */
+  onPrototypeAnswer?: (prototype: Item, question: string, answer: string, by: 'owner' | Adviser) => void;
   /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
   backgroundGrace?: number;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
@@ -155,6 +157,7 @@ export class Workers {
     this.o.board.log(cardId, 'answer', by, text, undefined, images.map((f) => basename(f)));
     this.recordDecision(card, q, text || '(Screenshot)', by);
     if (by === 'owner' && text) this.o.onOwnerInput?.(card, 'answer', text, q);
+    if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', by);
     const from = { owner: 'from the owner', project: 'from the project agent, on the owner\u2019s behalf', koordinator: 'from the Koordinator, on the owner\u2019s behalf' }[by];
     this.deliver(cardId, `Answer to your question (${from}):\n\n${text}${imageNote(images)}`, images);
   }
@@ -167,6 +170,7 @@ export class Workers {
     this.o.board.log(card.id, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
     this.recordDecision(card, q, text || '(Screenshot)', 'owner');
     if (text) this.o.onOwnerInput?.(card, 'answer', text, q);
+    if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', 'owner');
     this.deliver(
       card.id,
       `The owner answered the question in your demo report („${q}“). The card still waits for their approval of what you handed over:\n\n${text}${imageNote(images)}`,
@@ -177,7 +181,8 @@ export class Workers {
   async approve(cardId: string) {
     const card = this.card(cardId);
     if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
-    if (card.prototypeOf) return this.discard(card);
+    // a prototype never lands: approving it is having seen enough
+    if (card.prototypeOf) return this.endPrototype(cardId, 'discarded');
     if (this.o.adapter.land === 'main') return this.land(cardId, 'owner');
     // the worker opens the PR the way the repository does it, then Obeya watches it
     const pr: PrState = { url: null, seen: [], reported: [] };
@@ -272,18 +277,44 @@ export class Workers {
       .map((f) => (home ? f : `${this.o.repo}:${f}`));
   }
 
-  /** A prototype has served its purpose: it is thrown away with its card; the idea keeps the demo. */
-  private discard(card: Item) {
-    this.end(card.id);
-    this.bump(card.id);
+  /**
+   * A prototype has served its purpose, whatever its state: its worker stops and the card goes into
+   * the archive with its log, demo and summary. Discarded, its workspace and branch are thrown away;
+   * built, they went to its idea before (`buildOn`).
+   */
+  endPrototype(cardId: string, end: 'discarded' | 'built', by: 'owner' | 'obeya' = 'owner') {
+    const card = this.card(cardId);
+    if (!card.prototypeOf) throw new BadRequest('notPrototype', 'not a prototype');
+    this.end(cardId);
+    this.bump(cardId);
     try {
-      this.o.workspaces.discard(card.id, this.o.board.row(card.id).branch ?? '');
+      this.o.workspaces.discard(cardId, this.o.board.row(cardId).branch ?? '');
     } catch (e) {
       // the card goes anyway; a leftover worktree does no harm
       console.error('discarding a prototype:', e);
     }
-    this.o.board.remove(card.id);
-    if (this.o.board.item(card.prototypeOf!)) this.o.board.log(card.prototypeOf!, 'state', 'owner', `Prototyp „${card.title}“ verworfen; die Demo bleibt hier.`);
+    const idea = this.o.board.card(card.prototypeOf);
+    this.o.board.log(cardId, 'state', by, end === 'built' ? `Gebaut: Die Idee „${idea?.title ?? ''}“ wird auf diesem Prototyp gebaut.` : 'Verworfen; der Code ist weg, Demo und Log bleiben im Archiv.');
+    this.o.board.endPrototype(cardId, end);
+    if (end === 'discarded' && this.o.board.item(card.prototypeOf)) this.o.board.log(card.prototypeOf, 'state', by, `Prototyp „${card.title}“ verworfen; er liegt mit seiner Demo im Archiv.`);
+  }
+
+  /**
+   * The idea is built on this prototype: its workspace and branch (renamed for the idea) go to the
+   * idea, and the prototype ends as built. Returns the workspace and branch the idea has now.
+   */
+  buildOn(prototypeId: string, idea: Item): { path: string; branch: string } {
+    const row = this.o.board.row(prototypeId);
+    if (!row.workspace || !row.branch) throw new BadRequest('noWorkspace', 'the prototype has no workspace to build on');
+    let moved: { path: string; branch: string };
+    try {
+      moved = this.o.workspaces.transfer(prototypeId, idea.id, row.branch, branchName(idea.title, idea.id));
+    } catch (e) {
+      if (e instanceof WorkspaceError) throw new BadRequest(e.code, e.message);
+      throw e;
+    }
+    this.endPrototype(prototypeId, 'built');
+    return moved;
   }
 
   /** The card's pull request was merged: the work is live, the workspace free. */
@@ -395,8 +426,8 @@ export class Workers {
     live.session = this.o.runtime.start(
       {
         cwd: row.workspace,
-        system: this.system(preferences),
-        tools: this.tools(cardId, live),
+        system: this.system(preferences, !!row.prototype_of),
+        tools: this.tools(cardId, live, !!row.prototype_of),
         contextUpdate: () => this.preferencesUpdate(live),
         ...(resume ? { resume } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
@@ -558,7 +589,7 @@ export class Workers {
 
   // ---------------------------------------------------------------- the worker's tools
 
-  private tools(cardId: string, live: Live): AgentTool[] {
+  private tools(cardId: string, live: Live, prototype: boolean): AgentTool[] {
     const handOver = () => {
       live.handedOver = true;
       live.nudged = false;
@@ -588,16 +619,28 @@ export class Workers {
           return END_TURN;
         },
       },
-      {
-        name: 'propose_card',
-        description: `Propose a separate card for a problem you noticed that is outside your task, instead of fixing it here. Title, reason and suggestion in ${OWNER_LANGUAGE}.`,
-        schema: { kind: z.enum(['bugfix', 'feature']), title: z.string(), reason: z.string(), suggestion: z.string() },
-        run: (a) => {
-          const p = this.o.board.propose(cardId, a as { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string });
-          this.o.board.log(cardId, 'activity', 'worker', `Karte vorgeschlagen: ${p.title}`);
-          return 'Proposed; the owner decides. Continue with your task.';
-        },
-      },
+      // a prototype makes no cards of its own: what it proposes is building its idea on it
+      prototype
+        ? {
+            name: 'propose_build',
+            description: `Propose that the idea be built on this prototype: a worker then goes on from your branch, takes over what carries and brings it to production quality, and the idea's other prototypes are discarded. Use it when your approach convinced (the owner said so, or it clearly settles the idea). It shows on your card, where the owner accepts it or not. reason: why, in ${OWNER_LANGUAGE}, a sentence or two.`,
+            schema: { reason: z.string() },
+            run: ({ reason }) => {
+              this.o.board.proposeBuild(cardId, clip(String(reason).trim(), 2000));
+              this.o.board.log(cardId, 'activity', 'worker', `Schlägt vor, die Idee auf diesem Prototyp zu bauen: ${clip(String(reason).trim(), 300)}`);
+              return 'Shown on your card; the owner decides. Continue with your task.';
+            },
+          }
+        : {
+            name: 'propose_card',
+            description: `Propose a separate card for a problem you noticed that is outside your task, instead of fixing it here. Title, reason and suggestion in ${OWNER_LANGUAGE}.`,
+            schema: { kind: z.enum(['bugfix', 'feature']), title: z.string(), reason: z.string(), suggestion: z.string() },
+            run: (a) => {
+              const p = this.o.board.propose(cardId, a as { kind: 'bugfix' | 'feature'; title: string; reason: string; suggestion: string });
+              this.o.board.log(cardId, 'activity', 'worker', `Karte vorgeschlagen: ${p.title}`);
+              return 'Proposed; the owner decides. Continue with your task.';
+            },
+          },
       {
         name: 'pr_opened',
         description: 'After the owner approved: report the pull request you opened for this card (its GitHub URL). Then end your turn; Obeya watches it.',
@@ -740,14 +783,14 @@ export class Workers {
 
   // ---------------------------------------------------------------- prompts
 
-  private system(preferences: string): string {
+  private system(preferences: string, prototype = false): string {
     return `
 You are a worker agent directed through Obeya, a canvas on which the owner directs coding agents like an engineering director directs a team. You work on exactly one card, in a workspace of the repository (a clone or worktree) that belongs to that card, on your own branch. Other workers may work on other cards at the same time in their own workspaces.
 
 The owner does not watch you work and does not read code. They see your card: status lines, questions, and your summary at the end. Talk to them only through the Obeya tools:
 - report: a short status line at milestones.
 - ask: a decision that is not yours (product behaviour, trade-offs, anything irreversible or external). Make routine judgement calls yourself. After ask, end your turn; the answer arrives as the next message.
-- propose_card: a separate problem you noticed; do not widen your task.
+${prototype ? '- propose_build: propose that the idea be built on your prototype, once it convinced. You make no other cards; mention other problems you noticed in your summary.' : '- propose_card: a separate problem you noticed; do not widen your task.'}
 - ready_for_review: the work is committed and the checks pass. Then end your turn.
 
 Obeya's messages tell you what happened: feedback, an answer, a note from the owner, a landing that failed, your work landing. What to do about it is yours to judge. Approved work lands (or goes out as a pull request) and Obeya tells you once it is on main; your session ends with the turn after that, so whatever was waiting for the landing can still be done then.
@@ -755,7 +798,7 @@ Obeya's messages tell you what happened: feedback, an answer, a note from the ow
 Rules:
 - Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.
 - Follow the repository's own instructions (CLAUDE.md and docs).
-- Owner-facing text (report, ask, propose_card, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete. What you write between tool calls also shows in the card's log for the owner: keep it brief and in ${OWNER_LANGUAGE} too.
+- Owner-facing text (report, ask, ${prototype ? 'propose_build' : 'propose_card'}, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete. What you write between tool calls also shows in the card's log for the owner: keep it brief and in ${OWNER_LANGUAGE} too.
 - Wait for anything external (a deploy, a CI run, a point in time, a process to finish) in the background: run_in_background or Monitor, then end your turn; Obeya wakes you when it finishes or fires. Never wait with sleep or a polling loop in the foreground: a note from the owner reaches you only once the running command is done.
 - When a note from the owner arrives, answer it in a sentence or two of text (it shows in the card's log): what you change because of it, or why nothing. If it is unclear what they want, ask.
 `.trim() + (preferences ? `\n\n${preferences}` : '');
@@ -778,8 +821,9 @@ Rules:
     if (card.prototypeOf)
       parts.push(
         [
-          `This card is a throwaway prototype for the idea “${idea?.title ?? ''}”, so the owner can see the idea before deciding on it. It never lands; approving it throws it away.`,
-          'So build only what the demo needs to show, as quickly as you can: no tests, no polish, no docs or plan changes, and do not run the checks. Commit it on your branch anyway, so the demo can be reproduced. The demo only needs to make the idea visible: a video of 30–60 s, or an HTML artifact when the idea is something to look at (drafts of a logo, say).',
+          `This card is a throwaway prototype for the idea “${idea?.title ?? ''}”, so the owner can see the idea before deciding on it; other prototypes may try other approaches beside it. It never lands itself: the owner either discards it (its code is thrown away, its demo stays in the archive) or has the idea built on its branch, by a worker who takes over what carries and brings it to production quality.`,
+          'So build only what the demo needs to show, as quickly as you can: no tests, no polish, no docs or plan changes, and do not run the checks. Commit it on your branch anyway, so the demo can be reproduced and the idea can be built on it. The demo only needs to make the idea visible: a video of 30–60 s, or an HTML artifact when the idea is something to look at (drafts of a logo, say).',
+          "Your questions and the owner's answers also reach the idea's exploration agent, so ask on this card; the idea will not ask them again.",
           idea?.idea?.brief ? `The idea as discussed so far:
 
 ${idea.idea.brief}` : '',
@@ -788,6 +832,7 @@ ${idea.idea.brief}` : '',
           .join('\n\n'),
       );
     if (card.body.trim()) parts.push(card.body.trim());
+    if (card.builtOn) parts.push(this.builtOnPrototype(card.builtOn));
     const from = card.from && !card.prototypeOf ? this.o.board.item(card.from) ?? this.o.board.archived().find((i) => i.id === card.from) : undefined;
     if (from) {
       const summary = this.o.board.summary(from.id)?.trim();
@@ -799,9 +844,11 @@ ${idea.idea.brief}` : '',
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
     parts.push(
-      resumed
-        ? `You are on branch ${branch}, which already holds earlier work on this card: look at its log and diff first and go on from there.`
-        : `You are on branch ${branch}, fresh from the default branch.`,
+      card.builtOn
+        ? `You are on branch ${branch}, which holds the prototype's commits (and any earlier work on this card): look at its log and diff first.`
+        : resumed
+          ? `You are on branch ${branch}, which already holds earlier work on this card: look at its log and diff first and go on from there.`
+          : `You are on branch ${branch}, fresh from the default branch.`,
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
     if (this.o.adapter.checks?.length && !card.prototypeOf) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
@@ -815,6 +862,20 @@ ${idea.idea.brief}` : '',
         ].join(' '),
       );
     return parts.join('\n\n');
+  }
+
+  /** What the worker of an idea built on a prototype hears of it: what the branch holds, the prototype's handover and the owner's answers on it. */
+  private builtOnPrototype(prototypeId: string): string {
+    const prototype = this.o.board.card(prototypeId);
+    const summary = this.o.board.summary(prototypeId)?.trim();
+    const answers = this.o.board.decisionsOn(prototypeId);
+    return [
+      `The owner chose to build this idea on its prototype “${prototype?.title ?? ''}”, and your branch is that prototype's. It is a throwaway prototype: built quickly to show the idea, without tests, polish or docs, with shortcuts. Take over what carries and bring it to production quality: tests, the repository's checks, the design doc and other docs, shortcuts removed. Rewrite or drop what does not hold up; nothing on the branch counts as reviewed code. The task is the idea's brief above; the prototype is a means to it, not the result.`,
+      summary ? `The prototype's worker handed it over with this summary:\n\n${summary}` : '',
+      answers.length ? `What the owner answered on the prototype:\n${answers.map((d) => `- ${d.question} → ${d.answer}`).join('\n')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   private card(id: string): Item {

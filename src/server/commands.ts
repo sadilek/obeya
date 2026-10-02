@@ -14,6 +14,8 @@ export type Command = (
   | { do: 'newIdea'; title: string; body: string; repo?: string }
   /** `force` starts a card that waits behind others now, despite the likely merge conflict. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
+  /** On a prototype: build its idea on it, or throw it away. */
+  | { do: 'buildPrototype' | 'discard'; card: string }
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string }
   /** Saves Obeya's configuration, which then starts again with it. */
   | { do: 'configure'; canvases: CanvasConfig[] }
@@ -236,7 +238,8 @@ export class Commander {
             '- approve: approve work waiting for review. accept: take a proposed card and start it. dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
             '- remember (no card): a rule the owner wants every agent to follow from now on („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts. It applies at once.',
-            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it; text: what it should show, may be empty), park (for later), drop (it stays on the canvas with its brief).",
+            "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words, may be empty), park (for later), drop (it stays on the canvas with its brief).",
+            '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
             'Texts as the owner meant them (fix obvious recognition errors).',
           ].join('\n'),
           schema: {
@@ -380,6 +383,7 @@ export class Commander {
     if (!card) return `unknown tag ${a.card ?? '(none)'}`;
     const reviewable = card.state === 'waiting' && (card.need === 'review' || card.need === 'demo');
     const is = `it is ${card.need ? `${card.state}: ${card.need}` : card.state}`;
+    if (card.prototypeOf && (a.do === 'build' || a.do === 'drop')) return { do: a.do === 'build' ? 'buildPrototype' : 'discard', card: card.id };
     if (['discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop'].includes(a.do) !== (card.state === 'idea'))
       return card.state === 'idea' ? `the card is an idea: discuss it, or build, plan_doc, prototype, park or drop it` : `only an idea can be discussed, built, prototyped, parked or dropped (${is})`;
     switch (a.do) {
@@ -511,7 +515,8 @@ export class Commander {
               ? 'live, its agent finishes what remains after the landing'
               : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
-      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}`;
+      const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
+      return `${tag(i.id)} [${state}] ${i.kind} "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}`;
     };
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);

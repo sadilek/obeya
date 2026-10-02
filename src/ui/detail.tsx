@@ -69,7 +69,51 @@ export function Detail(p: Props) {
         {error && <p className="p-error">{error}</p>}
       </>
     );
+  if (item.prototypeEnd)
+    return (
+      <>
+        <div className="p-kind">{kind}</div>
+        <div className="p-title">
+          <Inline md={item.title} />
+        </div>
+        <div className="p-state">
+          ● {stateLabel(item)}
+          {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
+        </div>
+        <p className="hint ended">{t.idea.endedLong[item.prototypeEnd](plain(p.from?.title ?? ''))}</p>
+        {item.demo ? (
+          <DemoView item={item} summary={item.summary ?? ''} demo={item.demo} autoplay={false}>
+            {null}
+          </DemoView>
+        ) : (
+          item.summary && (
+            <div className="question review">
+              <h4>{t.summary}</h4>
+              <Body md={item.summary} />
+            </div>
+          )
+        )}
+        <Log cardId={item.id} />
+        <details className="p-task">
+          <summary>{t.task}</summary>
+          <Body md={item.body} />
+        </details>
+      </>
+    );
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
+  // a prototype is discarded or its idea built on it, never approved or deleted
+  const prototypeActions = item.prototypeOf && (
+    <>
+      {item.branch && (
+        <button className="btn primary" onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
+          {t.idea.buildPrototype}
+        </button>
+      )}
+      <button className="btn" onClick={() => act({ action: 'discard' }, { close: true, ack: t.idea.discarded })}>
+        {t.idea.discard}
+      </button>
+    </>
+  );
 
   return (
     <>
@@ -122,6 +166,20 @@ export function Detail(p: Props) {
       )}
 
       {item.prototypeOf && <p className="hint">{t.idea.prototypeOf(plain(p.from?.title ?? ''))}</p>}
+      {item.buildProposal && (
+        <div className="question proposal">
+          <h4>{t.idea.buildProposal}</h4>
+          <div className="q-text">{item.buildProposal}</div>
+          <div className="actions">
+            <button className="btn primary" onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
+              {t.idea.acceptBuild}
+            </button>
+          </div>
+        </div>
+      )}
+      {item.builtOn && (
+        <p className="hint">{t.idea.builtOn(plain(item.prototypes?.find((x) => x.id === item.builtOn)?.title ?? ''))}</p>
+      )}
       {p.from && !item.prototypeOf && item.state !== 'proposal' && <p className="hint">{t.followUpOf(plain(p.from.title))}</p>}
 
       {item.state === 'planned' && !item.queue && <LastFailure cardId={item.id} />}
@@ -142,12 +200,13 @@ export function Detail(p: Props) {
               <button className="btn primary" onClick={() => act({ action: 'start' }, { close: false })}>
                 {t.start}
               </button>
-              {item.source === 'manual' && (
+              {prototypeActions}
+              {item.source === 'manual' && !item.prototypeOf && (
                 <>
                   <button className="btn" onClick={() => act({ action: 'split' }, { close: false })}>
                     {t.split}
                   </button>
-                  {!item.prototypeOf && !item.branch && (
+                  {!item.branch && (
                     <button
                       className="btn"
                       onClick={async () => {
@@ -205,12 +264,11 @@ export function Detail(p: Props) {
         >
           {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
-            <button
-              className="btn primary"
-              onClick={() => act({ action: 'approve' }, { close: true, ack: item.prototypeOf ? t.idea.discarded : t.approved })}
-            >
-              {item.prototypeOf ? t.idea.discard : t.approve}
-            </button>
+            {prototypeActions || (
+              <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
+                {t.approve}
+              </button>
+            )}
           </div>
           <Composer placeholder={t.compose.review} onSend={(text, images) => act({ action: 'message', text, images }, { close: false })} />
         </DemoView>
@@ -235,9 +293,11 @@ export function Detail(p: Props) {
             </div>
           )}
           <div className="actions">
-            <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
-              {t.approve}
-            </button>
+            {prototypeActions || (
+              <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
+                {t.approve}
+              </button>
+            )}
           </div>
         </>
       )}
@@ -298,6 +358,7 @@ export function Detail(p: Props) {
               <Body md={item.brief} />
             </div>
           )}
+          <PrototypeDemos item={item} />
           <Conversation item={item} past />
         </>
       )}
@@ -329,6 +390,8 @@ export function Detail(p: Props) {
           </p>
           {(item.state === 'working' || item.state === 'waiting' || item.finishing) && (
             <div className="actions">
+              {/* a prototype that waits for review has its decision beside the demo */}
+              {item.prototypeOf && !(item.state === 'waiting' && item.need !== 'question') && prototypeActions}
               <button className="btn" onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
                 {t.stop}
               </button>
@@ -375,7 +438,8 @@ function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardActio
             <h4>{t.idea.brief}</h4>
             {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
           </div>
-          {item.demo && (
+          {/* a demo copied onto the idea, from before every prototype kept its own */}
+          {item.demo && !item.prototypes?.length && (
             <>
               <h4 className="p-h">{t.idea.prototypeDemo}</h4>
               <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
@@ -383,6 +447,7 @@ function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardActio
               </DemoView>
             </>
           )}
+          <PrototypeDemos item={item} />
         </div>
         <div className="idea-talk">
           {/* the questions stand under the agent's reply, in the conversation; the owner's words go with their picks */}
@@ -442,6 +507,32 @@ function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardActio
           </button>
         </div>
       )}
+    </>
+  );
+}
+
+/** The demos of an idea's prototypes, each under its title and how it stands; the latest one open. */
+function PrototypeDemos({ item }: { item: Item }) {
+  const all = item.prototypes ?? [];
+  if (!all.length) return null;
+  const latest = all.filter((p) => p.demo).at(-1);
+  return (
+    <>
+      <h4 className="p-h">{t.idea.prototypes}</h4>
+      {all.map((p) => (
+        <details key={p.id} className="prototype-demo" open={p === latest}>
+          <summary>
+            <Inline md={p.title} /> <span className="hint">· {stateLabel(p)}</span>
+          </summary>
+          {p.demo ? (
+            <DemoView item={p} summary={p.summary ?? ''} demo={p.demo} autoplay={false}>
+              <p className="hint">{t.idea.prototypeKept}</p>
+            </DemoView>
+          ) : (
+            <p className="hint">{t.idea.prototypeNoDemo}</p>
+          )}
+        </details>
+      ))}
     </>
   );
 }

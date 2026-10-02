@@ -35,6 +35,8 @@ interface Live {
   lastText: string;
   /** The owner spoke: the reply is summed up aloud. */
   speak: boolean;
+  /** The turn only takes something into the brief: words without a reply are no reply. */
+  quiet?: boolean;
 }
 
 export class Explorers {
@@ -56,11 +58,14 @@ export class Explorers {
     this.send(card, `The owner says:\n\n${text}${imageNote(images)}`, spoken, images);
   }
 
-  /** Obeya tells the agent something the owner did not say (a prototype's result). */
-  tell(cardId: string, text: string) {
+  /**
+   * Obeya tells the agent something the owner did not say (a prototype's result). `quiet`: it is
+   * for the brief only (an answer given on a prototype), and the turn's words are no reply.
+   */
+  tell(cardId: string, text: string, quiet = false) {
     const card = this.o.board.item(cardId);
     if (!card || card.state !== 'idea') return;
-    this.send(card, text, false);
+    this.send(card, text, false, [], quiet);
   }
 
   /** Ends the idea's session; its id stays, so the conversation can go on later. */
@@ -86,23 +91,24 @@ export class Explorers {
     this.live.clear();
   }
 
-  private send(card: Item, message: string, spoken: boolean, images: string[] = []) {
+  private send(card: Item, message: string, spoken: boolean, images: string[] = [], quiet = false) {
     const live = this.live.get(card.id);
     if (live) {
+      // queued, it goes in with whatever else came, which may well need a reply
       live.queue.push({ text: message, images });
       live.speak ||= spoken;
       return;
     }
     const row = this.o.board.row(card.id);
     this.o.board.setIdea(card.id, { thinking: true });
-    if (row.session_id) return this.launch(card, message, row.session_id, spoken, images);
+    if (row.session_id) return this.launch(card, message, row.session_id, spoken, images, quiet);
     // a planned card that became an idea brings the screenshots of its task
     const shots = this.o.imageFiles?.(card.images) ?? [];
-    this.launch(card, `${this.briefing(card, shots)}\n\n${message}`, undefined, spoken, [...shots, ...images]);
+    this.launch(card, `${this.briefing(card, shots)}\n\n${message}`, undefined, spoken, [...shots, ...images], quiet);
   }
 
-  private launch(card: Item, message: string, resume: string | undefined, speak: boolean, images: string[]) {
-    const live: Live = { session: undefined!, queue: [], replied: false, lastText: '', speak };
+  private launch(card: Item, message: string, resume: string | undefined, speak: boolean, images: string[], quiet = false) {
+    const live: Live = { session: undefined!, queue: [], replied: false, lastText: '', speak, quiet };
     this.live.set(card.id, live);
     live.session = this.o.runtime.start(
       {
@@ -138,10 +144,11 @@ export class Explorers {
         this.close(cardId);
         break;
       case 'idle': {
-        // a turn without reply still said something: that is the reply
-        if (!live.replied && live.lastText.trim()) this.answer(cardId, live.lastText.trim());
+        // a turn without reply still said something: that is the reply, unless the turn was for the brief only
+        if (!live.replied && !live.quiet && live.lastText.trim()) this.answer(cardId, live.lastText.trim());
         live.replied = false;
         live.lastText = '';
+        live.quiet = false;
         if (live.queue.length) {
           const queued = live.queue.splice(0);
           live.session.send(
@@ -248,7 +255,7 @@ Tools, within a turn in this order:
 - update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Ist-Stand** (what the code does today, when it matters), **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
 - reply, last: your turn in the conversation, and spoken, its summary for the ear. Exactly once per message, then end your turn.
 
-The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype built, park it or drop it. You may suggest one of these when the time has come.
+The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype built, park it or drop it. You may suggest one of these when the time has come. Several prototypes may try different approaches side by side; you hear each one's result, and the questions their workers asked with the owner's answers, which belong in the brief like answers given here. Once one convinces, the owner builds the idea on that prototype's branch.
 Owner-facing text is in ${OWNER_LANGUAGE}.
 `.trim();
 

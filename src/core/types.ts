@@ -69,8 +69,16 @@ export interface Item {
   archivedAt?: string;
   /** Ideas only: what the discussion has settled so far. */
   idea?: Idea;
-  /** A prototype's idea: the throwaway prototype is built for it and never lands. */
+  /** A prototype's idea: the throwaway prototype is built for it and never lands itself. */
   prototypeOf?: string;
+  /** A prototype in the archive: discarded (its code thrown away), or built (its idea was built on its branch). */
+  prototypeEnd?: 'discarded' | 'built';
+  /** A prototype whose worker proposes to build the idea on it: why, in its words. */
+  buildProposal?: string;
+  /** Ideas: their prototypes, on the canvas or in the archive, the oldest first; each shows its demo on the idea. */
+  prototypes?: Item[];
+  /** A card that was an idea and is built on the branch of one of its prototypes: that prototype. */
+  builtOn?: string;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
   /** Screenshots the owner attached to the card's task; its worker gets them at the start. */
@@ -289,8 +297,12 @@ export type CardAction =
   | { action: 'planDoc' }
   | { action: 'park' }
   | { action: 'drop' }
-  /** Ideas: a worker builds a throwaway prototype and shows it as a demo on the idea. */
-  | { action: 'prototype'; text?: string };
+  /** Ideas: a worker builds a throwaway prototype and shows it as a demo on the idea; several may run side by side. */
+  | { action: 'prototype'; text?: string }
+  /** Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are discarded. */
+  | { action: 'buildPrototype' }
+  /** Prototypes: thrown away, into the archive with log, demo and summary. */
+  | { action: 'discard' };
 
 /**
  * Why the server refused a request. The server sends the code and an English detail
@@ -324,6 +336,10 @@ export type ErrorCode =
   | 'prototypeRunning'
   /** A project has no planned workstream left that is not already with the Koordinator. */
   | 'nothingToStart'
+  /** The action is for a prototype on the canvas, and the card is none. */
+  | 'notPrototype'
+  /** A discarded or built prototype stays in the archive; a new attempt is a new prototype. */
+  | 'prototypeEnded'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'
