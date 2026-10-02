@@ -55,10 +55,10 @@ decisions are made in front of the wall.
     whose changes are likely to conflict on merge, and does not run those at the same time but
     queues them.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
-  ("billing changes always get the Codex review", "labels: precise over short"). Shared by all
-  agents, maintained by the Chief of Staff. A learned rule, or a learned change to a rule, is a
-  proposal until the owner accepts it; agents follow active rules only. A rule the owner writes
-  is active at once.
+  ("billing changes always get the Codex review", "labels: precise over short"), or said outright
+  ("Merk dir: …"). Shared by all agents, maintained by the Chief of Staff. A learned rule, or a
+  learned change to a rule, is a proposal until the owner accepts it; agents follow active rules
+  only. A rule the owner writes or says outright is active at once.
 
 ## Ideas
 
@@ -309,7 +309,8 @@ the owner's language (`src/core/locale.ts`).
   while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
   into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
   without a project, and after each owner answer, note or feedback it decides whether a lasting
-  preference was stated and proposes it as a rule (the card's log says „Schlägt vor: …“). Its
+  preference was stated and proposes it as a rule (the card's log says „Schlägt vor: …“); "Merk dir: …" by voice records
+  an active rule outright. Its
   sheet (button or `K`) shows the queue, the cards in progress and the preferences; open
   proposals stand above the rules with their occasion (the card and the owner's words, or the
   Rückschau) and, for a change, the rule it changes. The owner accepts one, edits it before
@@ -331,12 +332,17 @@ the owner's language (`src/core/locale.ts`).
   recording that runs on unheld) and the owner hears „Das Mikrofon war noch nicht bereit“. A quick, low-effort Koordinator turn reads
   the transcript as speech that may be misheard and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
-  approve, accept, dismiss, cut, stop; on ideas: discuss, build, plan doc, prototype, park, drop),
+  approve, accept, dismiss, cut, stop, remember; on ideas: discuss, build, plan doc, prototype,
+  park, drop),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
   one waits for, so "starte alle wartenden Karten" works. A reply answers questions too
   ("Was ist seit gestern passiert?"), as far as the cards and their history answer them.
+  "Merk dir: …" ("ab jetzt immer …") is remember: a rule every agent follows, active once the undo
+  window has passed, with the open card as its occasion; it may name the rule it changes, which
+  then takes the new text. The Koordinator gets the owner's rules, numbered, with every command,
+  and follows them itself too.
   With a card open, the Koordinator gets its worker's whole summary and the findings of its demo,
   so "lege eine Folgekarte für die ambient-Auffälligkeit an" makes a follow-up of that card with
   the finding as its text. One confirmation covers all actions; they run in order a few

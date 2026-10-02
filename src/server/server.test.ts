@@ -379,6 +379,22 @@ describe('screenshots', () => {
   });
 });
 
+describe('„Merk dir“', () => {
+  test('adds a rule, changes the one it replaces, and adds it anew when that one is gone', () => {
+    const run = CanvasRuntime.prototype.run.bind(canvas);
+    const c = card();
+    run({ do: 'remember', text: 'Demos ohne Ton.', card: c.id });
+    const [rule] = board.preferences('active');
+    expect(rule).toMatchObject({ text: 'Demos ohne Ton.', cardId: c.id, state: 'active' });
+    expect(board.preferencesText()).toContain('- Demos ohne Ton.');
+    run({ do: 'remember', text: 'Demos mit Ton.', replaces: rule!.id });
+    expect(board.preferences('active').map((p) => p.text)).toEqual(['Demos mit Ton.']);
+    board.setPreference(rule!.id, null);
+    run({ do: 'remember', text: 'Demos leise.', replaces: rule!.id });
+    expect(board.preferences('active').map((p) => p.text)).toEqual(['Demos leise.']);
+  });
+});
+
 describe('a restart that waits', () => {
   test('shows on the canvas with the cards it waits for, and goes ahead at the owner\'s word', async () => {
     let busy = [

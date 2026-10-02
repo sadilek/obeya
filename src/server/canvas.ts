@@ -376,6 +376,11 @@ export class CanvasRuntime {
         return this.act(c.card, { action: c.do });
       case 'configure':
         return this.deps.config?.save(c.canvases);
+      case 'remember':
+        // the rule it changes may have been deleted in the meantime: then it is a new one
+        if (c.replaces !== undefined && this.board.preferences('active').some((p) => p.id === c.replaces)) return this.board.setPreference(c.replaces, c.text);
+        this.board.addPreference(c.text, c.card ?? null);
+        return;
     }
   }
 

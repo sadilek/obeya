@@ -17,6 +17,8 @@ export type Command = (
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string }
   /** Saves Obeya's configuration, which then starts again with it. */
   | { do: 'configure'; canvases: CanvasConfig[] }
+  /** Records a rule every agent follows, active at once; `replaces`: the rule (id) it changes, `card`: the card open when the owner said it. */
+  | { do: 'remember'; text: string; replaces?: number; card?: string }
 ) & {
   /** Screenshots that came with the command (image ids), on the actions that take them (`TAKES_IMAGES`). */
   images?: string[];
@@ -71,6 +73,8 @@ interface Session {
   read: number;
   /** Up to when it knows the canvas's history (ISO time). */
   since: string;
+  /** The rules as numbered in the latest message (their ids), for `remember` to name the one it changes. */
+  rules: number[];
   /** The command being read. */
   reading?: {
     finish: (commands: Command[], confirm: string, lookUp?: LookUp) => string;
@@ -84,7 +88,7 @@ type LookUp = { question: string; about?: string };
 type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp };
 
 /** The actions `act` takes, as the Koordinator names them. */
-const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop'] as const;
+const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop', 'remember'] as const;
 type Action = (typeof ACTIONS)[number];
 
 /** Actions in one command, at most: "start all queued cards" may name many. */
@@ -116,8 +120,12 @@ export class Commander {
   async hear(transcript: string, focus: Focus, images: string[] = []): Promise<Heard> {
     const decision = await this.interpret(transcript, focus, images);
     const { confirm, lookUp } = decision;
-    const commands = images.length ? decision.commands.map((c) => (TAKES_IMAGES.includes(c.do) ? { ...c, images } : c)) : decision.commands;
     const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
+    const commands = decision.commands.map((c) => {
+      // a rule said with a card open has that card as its occasion
+      if (c.do === 'remember') return card ? { ...c, card } : c;
+      return images.length && TAKES_IMAGES.includes(c.do) ? { ...c, images } : c;
+    });
     if (lookUp) {
       // nothing to take back: the answer follows once it is looked up
       const about = lookUp.about ?? card ?? (focus.project && this.o.board.item(focus.project) ? focus.project : undefined);
@@ -205,7 +213,7 @@ export class Commander {
 
   /** A session whose tools act on whatever command it is reading. */
   private open(): Session {
-    const s: Session = { agent: null as unknown as AgentSession, ended: false, tags: new Map(), tagOf: new Map(), read: 0, since: '' };
+    const s: Session = { agent: null as unknown as AgentSession, ended: false, tags: new Map(), tagOf: new Map(), read: 0, since: '', rules: [] };
     const finish = (commands: Command[], confirm: string, lookUp?: LookUp) => (s.reading ? s.reading.finish(commands, confirm, lookUp) : 'No command to read.');
     const repos = this.o.board.canvas.repos;
     const config = this.o.config;
@@ -227,6 +235,7 @@ export class Commander {
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
             '- approve: approve work waiting for review. accept: take a proposed card and start it. dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
+            '- remember (no card): a rule the owner wants every agent to follow from now on („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts. It applies at once.',
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it; text: what it should show, may be empty), park (for later), drop (it stays on the canvas with its brief).",
             'Texts as the owner meant them (fix obvious recognition errors).',
           ].join('\n'),
@@ -242,6 +251,7 @@ export class Commander {
                   body: z.string().optional(),
                   start: z.boolean().optional(),
                   repo: z.string().optional(),
+                  replaces: z.number().int().optional(),
                 }),
               )
               .min(1)
@@ -342,6 +352,15 @@ export class Commander {
 
   /** One action as a command, or why it cannot be done. */
   private command(a: ActionArgs, s: Session): Command | string {
+    if (a.do === 'remember') {
+      const text = a.text?.trim();
+      if (!text) return 'the rule is missing';
+      if (text.length > 500) return 'a rule has at most 500 characters';
+      if (a.replaces === undefined) return { do: 'remember', text };
+      const replaces = s.rules[a.replaces - 1];
+      if (replaces === undefined) return `there is no rule ${a.replaces}; give the number of one of the owner's rules, or none`;
+      return { do: 'remember', text, replaces };
+    }
     if (a.do === 'new_idea') {
       if (!a.title?.trim()) return 'a new idea needs a title';
       const repos = this.o.board.canvas.repos;
@@ -527,6 +546,8 @@ export class Commander {
     s.read++;
     s.since = now;
     const news = this.news.splice(0);
+    const rules = this.o.board.preferences('active');
+    s.rules = rules.map((r) => r.id);
     const focused = focus.card ? relevant.find((i) => i.id === focus.card) : undefined;
     const project = focus.project ? items.find((i) => i.id === focus.project) : undefined;
     return [
@@ -541,6 +562,9 @@ export class Commander {
         : []),
       focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused, tag)}` : project ? `The owner is looking at the project "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
       `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
+      rules.length
+        ? `The owner's rules, which every agent follows (follow them yourself too):\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}`
+        : 'The owner has recorded no rules yet.',
       ...(this.o.board.canvas.repos.length > 1
         ? [`Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name})`).join(', ')}`]
         : []),
@@ -558,6 +582,7 @@ interface ActionArgs {
   body?: string;
   start?: boolean;
   repo?: string;
+  replaces?: number;
 }
 
 /** How a step of a card's history reads. */
@@ -600,5 +625,6 @@ For each message, call act, reply or look_up once, then end your turn:
 - look_up, when the answer needs reading: what an agent would do on a card ("Was würde der Agent hier machen, wenn ich starte?"), what the plan says, how or why something works. Never reply that you cannot know or predict it; look it up. The answer follows in a few seconds.
 All three take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Karte „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgekarte „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
+When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent.
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

@@ -28,7 +28,7 @@ accepts applies to every agent at once, not from its next session.
 - How rules reach agents: workers get them in their instructions and, since 2026-10-01, a changed
   rule once at their next tool call (`AgentSpec.contextUpdate`); idea agents (`explorers.ts`) only
   when their session starts or resumes; project agents, Koordinator questions, look-ups and cuts
-  with every message; the voice Koordinator (`commands.ts`) not at all.
+  with every message; the voice Koordinator (`commands.ts`) with every command, since W2.
 - The Koordinator's sheet (`src/ui/koordinator.tsx`) lists the rules; they can be edited, deleted
   and added by hand.
 
@@ -79,7 +79,7 @@ Architecture: Koordinator; Communication: overruling).
   only; the sheet shows open proposals with their occasion (accept, edit then accept, reject); the
   count on the Koordinator button (`App.tsx`). Tests in `koordinator.test.ts`. Comes first: W3, W4
   and W6 build on it.
-- [ ] **W2:** "Merk dir". A `remember` action in `commands.ts` records an active rule at once,
+- [x] **W2:** "Merk dir". A `remember` action in `commands.ts` records an active rule at once,
   undone like any other command; the voice Koordinator gets the active rules with every command.
   Command tests. Independent of W1.
 - [ ] **W3:** More sources. New `OwnerInput` kinds for the conversation with the Koordinator

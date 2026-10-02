@@ -264,6 +264,50 @@ describe('the Koordinator remembers', () => {
   });
 });
 
+describe('„Merk dir“', () => {
+  test('records a rule after the undo window, with the open card as its occasion; undo takes it back', async () => {
+    const a = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
+    const k = commander();
+    const heard = k.hear('Merk dir: Demos immer mit Ton', { card: a.id });
+    await settle();
+    runtime.last.call('act', { actions: [{ do: 'remember', text: 'Demos immer mit Ton.' }], confirm: 'Gemerkt: Demos immer mit Ton.' });
+    runtime.last.emit({ type: 'idle' });
+    const { token } = await heard;
+    k.arm(token!);
+    expect(executed).toEqual([]);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'remember', text: 'Demos immer mit Ton.', card: a.id }]);
+
+    const { heard: again } = await say(k, 'merk dir, nie mehr auf Englisch', 'act', { actions: [{ do: 'remember', text: 'Nie auf Englisch.' }], confirm: 'Gemerkt.' });
+    expect(k.undo(again.token!)).toBe(true);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toHaveLength(1);
+  });
+
+  test('every command brings the rules, numbered; replaces names the rule a new one changes', async () => {
+    const k = commander();
+    const none = await say(k, 'was gibt es?', 'reply', { confirm: 'Nichts.' });
+    expect(none.brief).toContain('The owner has recorded no rules yet.');
+
+    board.addPreference('Beschriftungen: präzise vor kurz.');
+    // a proposal the owner has not accepted is no rule yet
+    board.proposePreference('Commits auf Englisch.', { quote: 'Commits bitte auf Englisch' });
+    const ton = board.addPreference('Demos ohne Ton.');
+    const heard = k.hear('merk dir, Demos doch mit Ton', {});
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox.at(-1)).toContain("The owner's rules, which every agent follows (follow them yourself too):\n1. Beschriftungen: präzise vor kurz.\n2. Demos ohne Ton.");
+    expect(s.inbox.at(-1)).not.toContain('Commits auf Englisch.');
+    expect(s.call('act', { actions: [{ do: 'remember', text: 'Demos mit Ton.', replaces: 3 }], confirm: '…' })).toContain('there is no rule 3');
+    expect(s.call('act', { actions: [{ do: 'remember', text: ' ' }], confirm: '…' })).toContain('the rule is missing');
+    s.call('act', { actions: [{ do: 'remember', text: 'Demos mit Ton.', replaces: 2 }], confirm: 'Geändert: Demos mit Ton.' });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'remember', text: 'Demos mit Ton.', replaces: ton }]);
+  });
+});
+
 describe("the Koordinator and Obeya's configuration", () => {
   const view = { file: '/h/canvases.json', source: 'file', canvases: [{ name: 'Obeya', repos: [{ path: '/r' }] }], running: ['obeya'] } as unknown as ConfigView;
   const config = {
