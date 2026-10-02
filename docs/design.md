@@ -40,7 +40,8 @@ decisions are made in front of the wall.
 - **Cards** — `bugfix`, `feature`, `project`. A project is a container backed by a plan doc; its
   workstreams are its child cards.
 - **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) →
-  `approved` → `in PR` → `live`; an agent's `proposal` is started when accepted. An
+  `approved` → `in PR` → `live`, or `done` when the work changed no code; an agent's `proposal`
+  is started when accepted. An
   adapter that does not require demos lets a worker hand over with a written summary alone:
   `waiting: review`. An idea is `open`, `parked` or `dropped`.
 - **Agents**
@@ -163,7 +164,13 @@ An idea is thought through on its card before anything is planned; no worker run
    Where work lands on `main` (Obeya), approval lands it at once.
 5. Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its
    work is on main and may finish what was waiting for that (a data migration, say) before its
-   session ends.
+   session ends. Work that changed nothing in the repository (the task wanted a demo, an analysis,
+   an answer) has nothing to land: approving it makes the card `done` ("Erledigt") without a pull
+   request or a landing, and its worker finishes the same way. A worker whose approved work turns
+   out to change nothing (its branch emptied after the approval) closes the card itself with
+   `close_unchanged`, which Obeya refuses while the workspace holds commits or uncommitted
+   changes. Before, such a card waited in `in PR` for a pull request that could never come
+   (Acme's demo card "Export bisher", 2026-10-02).
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card or
    its archive button on the canvas, shown while the pointer is on it, or all finished ones at
    once in the archive), or when a prototype ends (discarded or built; Ideas, 4). The archive
@@ -675,6 +682,11 @@ the repository; the copy on the project is only for the archive).
   answer it.
 - Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
+- Work without a change to the code ends in a state of its own, `done` ("Erledigt"), not `live`
+  (2026-10-02): nothing went live. Whether there is anything to land Obeya reads from the
+  workspace on approval, rather than from the worker's word; the worker's `close_unchanged` only
+  covers work whose branch emptied after the approval. The owner still approves such work: its
+  demo or summary is the result.
 - Learned rules are proposals the owner accepts first, rather than stored silently as at first
   (2026-10-02): the owner wants to see every learned rule before it applies. Open proposals count
   on the Koordinator button only, not among the cards that need the owner nor on the cards. The
@@ -757,13 +769,13 @@ the repository; the copy on the project is only for the archive).
   often build on each other, which a check for merge conflicts alone does not see, and only a turn
   that sees all of them and the plan doc can choose the order. The workstreams that wait then go
   the usual way: they start once what they wait for has landed, judged again against what runs.
-- Landing problems are classified: uncommitted work, rebase conflicts and empty branches go back
-  to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
+- Landing problems are classified: uncommitted work, rebase conflicts and branches emptied by the
+  rebase (their commits are on main already) go back to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
 - An approval holds through what the worker fixes to land it: main moving on is no reason to ask
   the owner again. Feedback, a stop or a blocked Obeya checkout take it back.
 - Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
   for developers.
-- The owner archives only their own cards, and only once `live`, or an idea once dropped (a parked
+- The owner archives only their own cards, and only once `live` or `done`, or an idea once dropped (a parked
   one is meant to come back, so it stays in sight); "all finished ones at once" leaves dropped
   ideas alone. A workstream stays with its
   project, where a delivered one is already a chip, and goes into the archive with it. Archiving

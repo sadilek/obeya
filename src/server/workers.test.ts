@@ -632,6 +632,59 @@ describe('landing through a pull request', () => {
     expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
     expect(board.row(c.id).branch).toBeTruthy();
   });
+
+  test('approving work that changed nothing makes the card done: no pull request, the worker hears so and finishes', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const s = runtime.last;
+    s.call('ready_for_review', { summary: 'Demo aufgenommen, keine Code-Änderung.' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('done');
+    expect(board.item(c.id)!.pr).toBeUndefined();
+    expect(board.item(c.id)!.finishing).toBe(true);
+    expect(s.inbox.at(-1)).toContain('nothing lands and there is no pull request: the card is done');
+    expect(board.events(c.id).at(-1)!.text).toContain('erledigt');
+    // a question while it finishes, answered, returns the card to done, not live
+    s.call('ask', { question: 'Stack stoppen?' });
+    s.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:question');
+    expect(s.closed).toBe(false);
+    workers.answer(c.id, 'Ja.');
+    expect(state(c.id)).toBe('done');
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(spaces.list().every((w) => !w.card_id)).toBe(true);
+    // done counts as finished: it can be archived
+    board.archive([c.id]);
+    expect(board.item(c.id)).toBeUndefined();
+  });
+
+  test('a worker whose approved work turns out to change nothing closes the card itself instead of opening a pull request', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const s = runtime.last;
+    expect(s.call('close_unchanged', {})).toContain('only work the owner approved');
+    const clone = board.row(c.id).workspace!;
+    writeFileSync(join(clone, 'x.ts'), '');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'X');
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('inPr');
+    // with work on the branch, it goes out as a pull request
+    expect(s.call('close_unchanged', {})).toContain('holds commits');
+    git(clone, 'reset', '--quiet', '--hard', 'HEAD~1');
+    expect(s.call('close_unchanged', {})).toContain('the card is done');
+    expect(state(c.id)).toBe('done');
+    expect(board.item(c.id)!.pr).toBeUndefined();
+    expect(board.events(c.id).at(-1)).toMatchObject({ author: 'worker', text: 'Ohne Änderung am Code abgeschlossen: erledigt.' });
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(board.row(c.id).workspace).toBeNull();
+  });
 });
 
 describe('a prototype built on in a clone', () => {
@@ -914,6 +967,22 @@ describe('a worktree per card', () => {
     expect(resumed.closed).toBe(true);
     expect(board.row(c.id).workspace).toBeNull();
     expect(board.row(c.id).landed).toBeNull();
+  });
+
+  test('approving work without commits lands nothing: the card is done, main untouched, worktree and branch go', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const branch = board.row(c.id).branch!;
+    const s = runtime.last;
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('done');
+    expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
+    expect(git(main, 'branch', '--list', branch)).toBe('');
   });
 
   test('stopping a worker that finishes after the landing frees its worktree; the card stays live', async () => {

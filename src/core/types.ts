@@ -6,8 +6,11 @@ export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/sk
 
 export type CardKind = 'bugfix' | 'feature' | 'project';
 
-export const STATES = ['idea', 'proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live'] as const;
+export const STATES = ['idea', 'proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live', 'done'] as const;
 export type CardState = (typeof STATES)[number];
+
+/** A card whose work is over: `live` once it landed, `done` when it needed no change to the code (a demo, an analysis). */
+export const finished = (s: CardState) => s === 'live' || s === 'done';
 
 /** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M4). */
 export type Need = 'demo' | 'question' | 'review';

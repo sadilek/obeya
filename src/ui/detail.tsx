@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, type Item, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
+import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
@@ -100,7 +100,7 @@ export function Detail(p: Props) {
         </details>
       </>
     );
-  const worked = ['working', 'waiting', 'approved', 'inPr', 'live'].includes(item.state) && !!item.branch;
+  const worked = ['working', 'waiting', 'approved', 'inPr', 'live', 'done'].includes(item.state) && !!item.branch;
   // a video demo goes to a page where the repository has a share target, else it is exported as a file; drafts and prototypes stay here
   const target = !!p.repos.find((r) => r.id === item.repo)?.share;
   const shareBox =
@@ -285,7 +285,7 @@ export function Detail(p: Props) {
         </DemoView>
       )}
 
-      {item.demo && (item.state === 'inPr' || item.state === 'approved' || item.state === 'live') && (
+      {item.demo && (item.state === 'inPr' || item.state === 'approved' || finished(item.state)) && (
         <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={false}>
           <p className="hint">{t.demo.kept}</p>
           {shareBox}
@@ -345,7 +345,7 @@ export function Detail(p: Props) {
       )}
       {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
 
-      {item.finishing && item.state === 'live' && <p className="hint">{t.finishingLong}</p>}
+      {item.finishing && finished(item.state) && <p className="hint">{item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
 
       {(item.state === 'working' || item.state === 'inPr' || (item.state === 'waiting' && item.need === 'review') || item.finishing) && (
         <Composer
@@ -355,7 +355,7 @@ export function Detail(p: Props) {
         />
       )}
 
-      {item.state === 'live' && item.source === 'manual' && !item.finishing && (
+      {finished(item.state) && item.source === 'manual' && !item.finishing && (
         <div className="actions">
           <ArchiveButton item={item} run={run} />
         </div>

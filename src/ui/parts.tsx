@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import { type CanvasInfo, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
+import { type CanvasInfo, finished, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
 import { api } from './api';
 import type { Cam } from './camera';
 import { Doc, Inline, plain } from './markdown';
@@ -45,7 +45,7 @@ export const CardView = memo(
     // a dropped idea without a prototype on the canvas
     const archivable =
       !item.archivedAt &&
-      ((item.state === 'live' && item.source === 'manual' && !item.finishing) || (item.idea?.status === 'dropped' && !prototyped));
+      ((finished(item.state) && item.source === 'manual' && !item.finishing) || (item.idea?.status === 'dropped' && !prototyped));
     const kind =
       item.label ??
       (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.becomesProject ? t.kind.becomesProject : item.prototypeOf ? t.kind.prototype : t.kind[item.kind]);
@@ -237,7 +237,7 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
 
 export const ProjectView = memo(
   function ProjectView({ item, b, kids, onStartAll }: { item: Item; b: Bounds; kids: Item[]; onStartAll: (project: Item, count: number) => void }) {
-    const live = kids.filter((k) => k.state === 'live').length;
+    const live = kids.filter((k) => finished(k.state)).length;
     const waiting = kids.filter(needsYou).length;
     const startable = kids.filter((k) => k.state === 'planned' && !k.queue).length;
     return (

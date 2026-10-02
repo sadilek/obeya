@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -10,7 +10,7 @@ import type { Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
 import { FakeRuntime, gitRepo } from './testing';
 import { Workers } from './workers';
-import { Workspaces } from './workspaces';
+import { git, Workspaces } from './workspaces';
 
 let dir: string;
 let board: Board;
@@ -44,10 +44,19 @@ const state = (id: string) => {
   return i.need ? `${i.state}:${i.need}` : i.state;
 };
 
+/** Work on the card's branch, so approving it goes out as a pull request. */
+function commit(cardId: string) {
+  const clone = board.row(cardId).workspace!;
+  writeFileSync(join(clone, 'export.ts'), '');
+  git(clone, 'add', '.');
+  git(clone, 'commit', '--quiet', '-m', 'Export');
+}
+
 /** A card through review and approval, with its PR reported. */
 async function inPr() {
   const c = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
   workers.start(c.id);
+  commit(c.id);
   runtime.last.call('ready_for_review', { summary: 'S' });
   await workers.approve(c.id);
   return c.id;
@@ -73,6 +82,7 @@ describe('the PR phase', () => {
   test('a demo shared before approval is linked in the PR by the worker; pr_opened passes the PR on', async () => {
     const c = board.create({ kind: 'feature', title: 'Export', x: 0, y: 0 });
     workers.start(c.id);
+    commit(c.id);
     runtime.last.call('ready_for_review', { summary: 'S' });
     board.work(c.id, { share: JSON.stringify({ slug: 'export', url: 'https://demos.example/export/', dir: '/d' }) });
     await workers.approve(c.id);

@@ -1,6 +1,6 @@
 // Card sizes and default placement. Cards keep a fixed, readable size; a project wraps its children.
 
-import type { Item } from './types';
+import { finished, type Item } from './types';
 
 export type Shape = 'feature' | 'bugfix' | 'chip' | 'project';
 
@@ -22,7 +22,7 @@ const PROJECT_GAP = 60;
 /** A delivered workstream shrinks to a chip; everything else shows at its kind's size. */
 export function shapeOf(i: Pick<Item, 'kind' | 'state' | 'parent'>): Shape {
   if (i.kind === 'project') return 'project';
-  if (i.parent && i.state === 'live') return 'chip';
+  if (i.parent && finished(i.state)) return 'chip';
   return i.kind;
 }
 

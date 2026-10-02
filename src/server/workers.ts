@@ -53,6 +53,8 @@ export interface WorkerOptions {
 /** What is stored while landed work's worker finishes (`CardRow.landed`). */
 interface LandedState {
   commit?: string;
+  /** Nothing landed: the work changed nothing in the repository, and the card is `done` rather than `live`. */
+  unchanged?: boolean;
   /** Obeya starts again for the landing. */
   restarts?: boolean;
   /** The worker waits for that restart. */
@@ -164,7 +166,7 @@ export class Workers {
     const row = this.o.board.row(cardId);
     const question = row.detail ? (JSON.parse(row.detail).question as Question | undefined) : undefined;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
-    this.o.board.work(cardId, { state: row.landed ? 'live' : row.pr ? 'inPr' : 'working', need: null, detail: null });
+    this.o.board.work(cardId, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
     this.o.board.log(cardId, 'answer', by, text, undefined, images.map((f) => basename(f)));
     this.recordDecision(card, q, text || '(Screenshot)', by);
     if (by === 'owner' && text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
@@ -194,6 +196,8 @@ export class Workers {
     if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) return this.endPrototype(cardId, 'discarded');
+    // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open
+    if (!this.o.workspaces.hasWork(cardId)) return this.close(cardId, 'owner');
     if (this.o.adapter.land === 'main') return this.land(cardId, 'owner');
     // the worker opens the PR the way the repository does it, then Obeya watches it
     const pr: PrState = { url: null, seen: [], reported: [] };
@@ -259,6 +263,19 @@ export class Workers {
   }
 
   /**
+   * Approved work that changed nothing in the repository: nothing lands, and the card is `done`.
+   * Its worker hears so and may finish what remains, as after a landing.
+   */
+  private close(cardId: string, by: 'owner' | 'worker') {
+    this.bump(cardId);
+    this.o.board.work(cardId, { state: 'done', need: null, detail: null, status_line: null, approved_at: null, pr: null, landed: JSON.stringify({ unchanged: true } satisfies LandedState) });
+    this.o.board.log(cardId, 'state', by, by === 'owner' ? 'Freigegeben. Ohne Änderung am Code gibt es nichts zu landen: erledigt.' : 'Ohne Änderung am Code abgeschlossen: erledigt.');
+    // the worker that closed it is told by the tool's result, and its turn's end finishes it
+    if (by === 'owner')
+      this.afterLanding(cardId, `The owner approved your work. It changed nothing in the repository, so nothing lands and there is no pull request: the card is done.\n\n${AFTER_LANDING}`);
+  }
+
+  /**
    * Landed work's worker hears about it and may finish what remains (a migration, say) in its
    * workspace, which stays until then. Without a session to tell, the workspace goes at once.
    */
@@ -279,7 +296,7 @@ export class Workers {
       // the card is done either way; a leftover worktree does no harm
       console.error('freeing a landed workspace:', e);
     }
-    this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, ...(row.state === 'waiting' ? { state: 'live', need: null, detail: null } : {}) });
+    this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, ...(row.state === 'waiting' ? { state: row.landed ? landedState(row.landed) : 'live', need: null, detail: null } : {}) });
     this.o.board.workDone(cardId);
   }
 
@@ -395,7 +412,7 @@ export class Workers {
   private resumeLanded(card: Item, stored: string, session: string | null) {
     const l = JSON.parse(stored) as LandedState;
     if (!session) return this.finish(card.id);
-    this.o.board.work(card.id, { landed: JSON.stringify({ ...(l.commit ? { commit: l.commit } : {}) } satisfies LandedState) });
+    this.o.board.work(card.id, { landed: JSON.stringify({ ...(l.commit ? { commit: l.commit } : {}), ...(l.unchanged ? { unchanged: true } : {}) } satisfies LandedState) });
     // an open question waits for its answer, which resumes the session
     if (card.state === 'waiting') return;
     this.launch(card.id, l.restarts ? `Obeya has started again and runs main with your change now. ${RESTARTED}` : RESTARTED, session);
@@ -586,7 +603,7 @@ export class Workers {
       live.busy = true;
       live.session.send(
         card.state === 'inPr'
-          ? 'Your turn ended, and Obeya has no pull request for this card yet (pr_opened).'
+          ? 'Your turn ended, and Obeya has no pull request for this card yet (pr_opened), nor did you close it as needing none (close_unchanged).'
           : 'Your turn ended without a handover (ready_for_review) or a question (ask), so the card still shows you at work. Should you end your turn again like this, Obeya passes your last words to the owner as a question.',
       );
       return;
@@ -759,6 +776,21 @@ export class Workers {
         },
       },
       {
+        name: 'close_unchanged',
+        description: `After the owner approved: your work changed nothing in the repository (no commits, nothing uncommitted), because the task needed no change to the code (a demo, an analysis, an answer). Then nothing lands and there is no pull request to open: this closes the card as done instead. Then end your turn.`,
+        schema: {},
+        run: () => {
+          const row = this.o.board.row(cardId);
+          if (row.landed) return 'Not recorded: the card is finished already.';
+          const pr = row.pr ? (JSON.parse(row.pr) as PrState) : null;
+          if (!row.approved_at && !(pr && !pr.url)) return 'Not recorded: only work the owner approved can be closed, and only before its pull request is open. Hand it over with ready_for_review first.';
+          if (this.o.workspaces.hasWork(cardId))
+            return 'Not recorded: your branch holds commits or uncommitted changes. Work that changes the repository lands (or goes out as a pull request); throw away what is not meant to land first, if nothing is.';
+          this.close(cardId, 'worker');
+          return `Recorded: the card is done. ${AFTER_LANDING}`;
+        },
+      },
+      {
         name: 'after_restart',
         description: 'Only after your work has landed and Obeya said it starts again for it: what remains needs Obeya to run your change. Then end your turn; Obeya tells you once it runs your change.',
         schema: {},
@@ -844,7 +876,7 @@ The owner does not watch you work and does not read code. They see your card: st
 ${prototype ? '- propose_build: propose that the idea be built on your prototype, once it convinced. You make no other cards; mention other problems you noticed in your summary.' : '- propose_card: a separate problem you noticed; do not widen your task.'}
 - ready_for_review: the work is committed and the checks pass. Then end your turn.
 
-Obeya's messages tell you what happened: feedback, an answer, a note from the owner, a landing that failed, your work landing. What to do about it is yours to judge. Approved work lands (or goes out as a pull request) and Obeya tells you once it is on main; your session ends with the turn after that, so whatever was waiting for the landing can still be done then.
+Obeya's messages tell you what happened: feedback, an answer, a note from the owner, a landing that failed, your work landing. What to do about it is yours to judge. Approved work lands (or goes out as a pull request) and Obeya tells you once it is on main; your session ends with the turn after that, so whatever was waiting for the landing can still be done then. Work that changed nothing in the repository (the task needed only a demo, an analysis or an answer) lands nothing: approving it makes the card done, and Obeya tells you so the same way.
 
 Rules:
 - Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.
@@ -967,5 +999,8 @@ export function describeTool(name: string, input: Record<string, unknown>): stri
       return name;
   }
 }
+
+/** The state a finished card goes back to after a question: `done` when nothing landed, else `live`. */
+const landedState = (landed: string) => ((JSON.parse(landed) as LandedState).unchanged ? 'done' : 'live');
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);

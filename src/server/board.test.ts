@@ -242,7 +242,7 @@ describe('manual cards', () => {
     expect(() => board.create({ kind: 'project' as never, title: 'x', x: 0, y: 0 })).toThrow(BadRequest);
     expect(() => board.create({ kind: 'feature', title: 'x', x: Number.NaN, y: 0 })).toThrow(BadRequest);
     const c = board.create({ kind: 'feature', title: 'x', x: 0, y: 0 });
-    expect(() => board.patch(c.id, { state: 'done' as never })).toThrow(BadRequest);
+    expect(() => board.patch(c.id, { state: 'gone' as never })).toThrow(BadRequest);
     expect(() => board.patch('nope', { x: 1 })).toThrow(BadRequest);
   });
 

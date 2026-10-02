@@ -25,6 +25,7 @@ import {
   type NextStep,
   type Question,
   STATES,
+  finished,
 } from '../core/types';
 import type { CardRow, DecisionRow, NewRow, RowUpdate, Store } from './db';
 import type { Images } from './images';
@@ -415,7 +416,7 @@ export class Board {
         if (this.snapshot().items.some((i) => i.prototypeOf === id)) throw new BadRequest('prototypeRunning', 'a prototype for this idea is still running');
         continue;
       }
-      if (row.state !== 'live') throw new BadRequest('notDone', 'only a live card can be archived');
+      if (!row.state || !finished(row.state)) throw new BadRequest('notDone', 'only a finished card (live or done) can be archived');
       if (row.landed && row.workspace) throw new BadRequest('notDone', 'its agent still finishes what remains after the landing');
     }
     const at = new Date().toISOString();
@@ -426,7 +427,7 @@ export class Board {
   /** Archives every finished card of the owner's on the canvas; returns their ids. */
   archiveDone(): string[] {
     const ids = this.snapshot()
-      .items.filter((i) => i.source === 'manual' && i.state === 'live' && !i.finishing)
+      .items.filter((i) => i.source === 'manual' && finished(i.state) && !i.finishing)
       .map((i) => i.id);
     if (ids.length) this.archive(ids);
     return ids;

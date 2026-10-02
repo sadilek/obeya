@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import type { CanvasConfig, Item, NextStep, Queue } from '../core/types';
+import { type CanvasConfig, finished, type Item, type NextStep, type Queue } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Config } from './config';
 import type { Moment } from './db';
@@ -242,7 +242,7 @@ export class Commander {
   vocabulary(): string {
     const titles = this.o.board
       .snapshot()
-      .items.filter((i) => i.state !== 'live')
+      .items.filter((i) => !finished(i.state))
       .map((i) => i.title.replace(/[`*_]/g, ''));
     return ['Obeya, Koordinator, Karte, Workstream, Bugfix, Feature, Idee, Prototyp, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
   }
@@ -271,7 +271,7 @@ export class Commander {
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
             `- new_card: a new card. kind, title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to the Koordinator together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
-            "- note: text to the agent working on a card (working, in PR, waiting, or live while its agent finishes after the landing); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
+            "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
             '- approve: approve work waiting for review. accept: take a proposed card and start it. dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
@@ -558,7 +558,7 @@ export class Commander {
   /** The message for one command: what the Koordinator needs to know besides what it already knows. */
   private brief(s: Session, transcript: string, focus: Focus, shots = 0): string {
     const items = this.o.board.snapshot().items;
-    const relevant = items.filter((i) => i.kind !== 'project' && (i.state !== 'live' || i.finishing || i.id === focus.card));
+    const relevant = items.filter((i) => i.kind !== 'project' && (!finished(i.state) || i.finishing || i.id === focus.card));
     const tag = (id: string) => {
       let t = s.tagOf.get(id);
       if (!t) {
@@ -579,7 +579,7 @@ export class Commander {
             : i.idea?.thinking
               ? 'idea, its agent is working on its reply'
             : i.finishing
-              ? 'live, its agent finishes what remains after the landing'
+              ? `${i.state}, its agent finishes what remains${i.state === 'done' ? ' (nothing to land: the work changed no code)' : ' after the landing'}`
               : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
       const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
@@ -700,7 +700,7 @@ function when(iso: string): string {
 const SYSTEM = `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents by voice. Each message brings what the owner just said, transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary.
 
-This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Card tags (K1, K2, …) stay the same throughout this conversation. No agent works on a planned or live card; a workstream of a project takes its state from the project's plan doc (checked off there means live).
+This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Card tags (K1, K2, …) stay the same throughout this conversation. No agent works on a planned, live or done card (done: finished without any change to the code, so nothing landed); a workstream of a project takes its state from the project's plan doc (checked off there means live).
 
 For each message, call act, reply or look_up once, then end your turn:
 - act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgekarte …" is approve and new_card, with the open card as the one it follows up on): leave none out.

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type Item, needsYou, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Item, needsYou, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
 import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
 import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
@@ -752,7 +752,7 @@ function Canvas({
   const attention = items.filter(needsYou);
   const queuedCount = items.filter((i) => i.state === 'planned' && i.queue).length;
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length;
-  const doneCount = items.filter((i) => i.source === 'manual' && i.state === 'live').length;
+  const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
   async function archiveDone() {
     const { ids } = await api.archiveDone();
     if (ids.length) showAck(t.archive.archivedMany(ids.length), () => Promise.all(ids.map((id) => api.unarchive(id))));

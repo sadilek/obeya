@@ -13,11 +13,14 @@ export const t = {
     approved: 'Freigegeben',
     inPr: 'Im PR',
     live: 'Live',
+    done: 'Erledigt',
   } satisfies Record<CardState, string>,
   need: { demo: 'Demo bereit', question: 'Frage an dich', review: 'Bereit zur Abnahme' } satisfies Record<Need, string>,
   demoWithQuestion: 'Demo bereit, mit Frage',
   finishing: 'Live · Agent erledigt den Rest',
   finishingLong: 'Auf main. Der Agent erledigt noch, was nach dem Landen ansteht; danach endet seine Sitzung.',
+  finishingDone: 'Erledigt · Agent räumt auf',
+  finishingDoneLong: 'Ohne Änderung am Code gibt es nichts zu landen. Der Agent erledigt noch, was ansteht; danach endet seine Sitzung.',
   proposalMark: '✦ Vorschlag · ',
   progress: (live: number, all: number) => `${live} von ${all} live`,
   needsYou: 'brauchen dich',
@@ -126,7 +129,7 @@ export const t = {
     unknownPreference: 'Diese Präferenz gibt es nicht mehr.',
     imageType: 'Das ist kein Bild, das der Agent lesen kann (PNG, JPEG, GIF oder WebP).',
     imageTooLarge: 'Das Bild ist zu groß, auch verkleinert.',
-    notDone: 'Archivieren lässt sich nur eine eigene Karte, die live ist, oder eine verworfene Idee.',
+    notDone: 'Archivieren lässt sich nur eine eigene Karte, die live oder erledigt ist, oder eine verworfene Idee.',
     notArchived: 'Die Karte liegt nicht mehr im Archiv.',
     notIdea: 'Die Karte ist keine Idee (mehr).',
     ideaThinking: 'Der Agent arbeitet noch an seiner Antwort. Bauen oder Planen geht, sobald sie da ist.',
@@ -508,8 +511,8 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; finishing?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
   i.prototypeEnd
     ? t.idea.ended[i.prototypeEnd]
-    : i.finishing && i.state === 'live'
-    ? t.finishing
+    : i.finishing && (i.state === 'live' || i.state === 'done')
+    ? i.state === 'done' ? t.finishingDone : t.finishing
     : i.idea
     ? i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking
       ? t.idea.yourTurn
