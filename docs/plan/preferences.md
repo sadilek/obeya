@@ -12,10 +12,11 @@ accepts applies to every agent at once, not from its next session.
 ## Where it stands
 
 - Learning runs through `Koordinator.learn` → `distill` (`src/server/koordinator.ts`): one reading
-  session per utterance with `LEARN_SYSTEM`. The prompt is strict on purpose ("Most answers only
-  decide the case at hand"). The session sees the card's title, the question if any, the text and
-  the rules so far; not the card's body, its log or earlier utterances, so it cannot notice a
-  repetition. What it recognises is proposed (W1); the card's log says "Schlägt vor: …".
+  session per utterance with `LEARN_SYSTEM`. It sees the card's title and text, the agent's last
+  message before the input, what the owner said in the last three days, the question if any, the
+  rules and the open and rejected proposals (W4). The prompt names the signals for a proposal
+  and allows one per input. What it recognises is proposed (W1); the card's log says
+  "Schlägt vor: …".
 - Sources (`OwnerInput`, wired in `src/server/canvas.ts`): notes and feedback to workers, the
   owner's own answers to worker and demo questions (option clicks included), the discussion of an
   idea, the conversation with the Koordinator (`Commander.hear`: reply and look_up at once, a
@@ -87,7 +88,7 @@ Architecture: Koordinator; Communication: overruling).
   (`Commander.hear`: commands without a card, reply, look_up), the text of new cards and ideas
   (voice and canvas), and overruling an answer given in the owner's name, with that answer as
   context. After W1, so the new sources yield proposals, not silent rules.
-- [ ] **W4:** Learner with context. `distill` gets the card's body, the agent's last message, the
+- [x] **W4:** Learner with context. `distill` gets the card's body, the agent's last message, the
   owner's recent utterances, active rules, open and rejected proposals; `LEARN_SYSTEM` names the
   signals for a proposal and asks for few, good ones. After W1.
 - [x] **W5:** Rules take effect at once for idea agents. `explorers.ts` passes changed rules through

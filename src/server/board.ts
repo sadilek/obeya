@@ -349,6 +349,11 @@ export class Board {
     return this.store.timeline(this.canvas.id, since, limit);
   }
 
+  /** What the owner said after `since` (ISO time), oldest first, at most the latest `limit`. */
+  utterances(since: string, limit: number) {
+    return this.store.utterances(this.canvas.id, since, limit);
+  }
+
   accept(id: string) {
     if (this.own(id).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     this.store.update(id, { state: 'planned' });

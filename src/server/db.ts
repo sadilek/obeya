@@ -76,6 +76,15 @@ export interface Moment {
   text: string;
 }
 
+/** Something the owner said: to an agent (`hint` a note or feedback, `answer`), in an idea (`talk`), to the Koordinator (`say`). */
+export interface Utterance {
+  at: string;
+  kind: 'hint' | 'answer' | 'talk' | 'say';
+  text: string;
+  cardId?: string;
+  title?: string;
+}
+
 export interface DecisionRow {
   id: number;
   canvas_id: string;
@@ -561,6 +570,29 @@ export class Store {
         )
         .all({ c: canvasId, since, limit }) as Moment[]
     ).reverse();
+  }
+
+  /**
+   * What the owner said after `since` (ISO time), oldest first, at most the latest `limit`: notes,
+   * feedback and answers to agents, an idea's discussion, and what they said to the Koordinator
+   * (unless taken back).
+   */
+  utterances(canvasId: string, since: string, limit: number): Utterance[] {
+    return (
+      this.db
+        .query(
+          `SELECT at, cardId, title, kind, text FROM (
+             SELECT e.at, e.card_id AS cardId, c.title, e.kind, e.text, e.id AS seq FROM events e JOIN cards c ON c.id = e.card_id
+             WHERE c.canvas_id = $c AND e.author = 'owner' AND e.kind IN ('hint', 'answer', 'talk') AND e.at > $since
+             UNION ALL
+             SELECT t.at, t.card_id, c.title, 'say', t.said, t.id FROM talk t LEFT JOIN cards c ON c.id = t.card_id
+             WHERE t.canvas_id = $c AND t.undone = 0 AND t.at > $since
+           ) ORDER BY at DESC, seq DESC LIMIT $limit`,
+        )
+        .all({ c: canvasId, since, limit }) as { at: string; cardId: string | null; title: string | null; kind: Utterance['kind']; text: string }[]
+    )
+      .reverse()
+      .map((r) => ({ at: r.at, kind: r.kind, text: r.text, ...(r.cardId ? { cardId: r.cardId } : {}), ...(r.title ? { title: r.title } : {}) }));
   }
 
   // ---------------------------------------------------------------- settings

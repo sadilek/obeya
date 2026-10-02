@@ -4,9 +4,10 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import { type Item, type Question, type Queue, START_ALL_HOLD_MS } from '../core/types';
+import { type CardEvent, type Item, type Question, type Queue, START_ALL_HOLD_MS } from '../core/types';
 import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
+import type { Utterance } from './db';
 import type { AgentRuntime } from './runtime';
 import type { Workers } from './workers';
 import type { Change, Workspaces } from './workspaces';
@@ -283,17 +284,42 @@ export class Koordinator {
    * Runs in the background, one at a time.
    */
   learn(card: Item | null, kind: OwnerInput, text: string, context: InputContext = {}) {
+    // what surrounded the input is read now: by its turn, the agent may have answered it
+    const around = this.around(card, kind, text, context);
     this.learning = this.learning
       .catch(() => {})
-      .then(() => this.distill(card, kind, text, context))
+      .then(() => this.distill(card, kind, text, context, around))
       .catch((e) => console.error('Koordinator (learning):', e));
   }
 
-  private distill(card: Item | null, kind: OwnerInput, text: string, context: InputContext): Promise<void> {
+  /** What the learner reads an input in: the card's text, the agent's last message before it, what the owner said in the last days. */
+  private around(card: Item | null, kind: OwnerInput, text: string, { question }: InputContext): string[] {
+    // a card deleted meanwhile has no log to read
+    const events = card && this.o.board.item(card.id) ? this.o.board.events(card.id) : [];
+    // the newest first; a question the owner answered is shown as such
+    const said = question ? undefined : events.find((e) => AGENTS.includes(e.author) && SAYS.includes(e.kind));
+    const recent = this.o.board.utterances(new Date(Date.now() - RECENT_DAYS * 86_400_000).toISOString(), RECENT_UTTERANCES + 1);
+    // the input itself is among them, as the newest with its words (a card's text is not)
+    const self = recent.findLastIndex((u) => u.text === text);
+    if (self >= 0) recent.splice(self, 1);
+    return [
+      card?.body && kind !== 'card' ? `The card's text:\n${clip(card.body, 1500)}` : '',
+      recent.length
+        ? `What the owner said in the last ${RECENT_DAYS} days, oldest first:\n${recent
+            .slice(-RECENT_UTTERANCES)
+            .map((u) => `- ${u.at.slice(0, 10)}, ${UTTERED[u.kind]}${u.title ? ` on "${u.title}"` : ''}: ${clip(u.text, 300)}`)
+            .join('\n')}`
+        : '',
+      said ? `The ${said.author === 'explorer' ? 'idea agent' : 'agent'}'s last message on the card before it:\n${clip(said.text, 1500)}` : '',
+    ];
+  }
+
+  private distill(card: Item | null, kind: OwnerInput, text: string, context: InputContext, around: string[]): Promise<void> {
     const rules = this.o.board.preferences('active');
     const open = this.o.board.preferences('proposed');
     const rejected = this.o.board.preferences('rejected');
     const { question, overruled, reply, before } = context;
+    let proposed = false;
     return new Promise((resolve) => {
       let done = false;
       const finish = (r: string) => {
@@ -317,9 +343,11 @@ export class Koordinator {
               run: ({ rule, replaces }) => {
                 const r = String(rule).trim().slice(0, 500);
                 if (!r) return finish('Empty rule ignored.');
+                if (proposed) return finish('One proposal per input. End your turn now.');
                 if (open.some((p) => p.text === r)) return finish('Already proposed. End your turn now.');
                 const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
                 this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id);
+                proposed = true;
                 if (card) this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
                 return finish('Proposed. End your turn now.');
               },
@@ -335,6 +363,7 @@ export class Koordinator {
         },
         [
           card ? `Card${kind === 'talk' || kind === 'command' ? ' the owner had open' : ''}: ${card.kind} "${card.title}".` : '',
+          ...around,
           question ? `The worker asked: ${question}` : '',
           overruled
             ? `The worker asked: ${overruled.question}\nThe ${overruled.by === 'project' ? 'project agent' : 'Koordinator'} answered it in the owner's name: ${overruled.answer}\nWhat follows is the owner's first word on the card since. If it overrules that answer, the answer missed what the owner wants: that may be a lasting preference the answering agent should have known.`
@@ -744,9 +773,35 @@ Call schedule exactly once, with every workstream once, in the order they should
 const LEARN_SYSTEM = `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's preference memory: short rules every agent follows, so the owner never has to say the same thing twice.
 
-You get one thing the owner said: to the agent on a card, in the text of a card they wrote, or to you, the Koordinator, in conversation. Decide whether it states a lasting preference that should guide future work on other cards too — about how to work, what to ask and what not, style, wording, testing, tools. Most answers only decide the case at hand: then call nothing.
-If it does state one, call propose with a short, general rule in German ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what is already covered.
+You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you, the Koordinator, in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting preference that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
+
+Signals for one:
+- It is phrased generally: "immer", "nie", "ab jetzt", "grundsätzlich", "jedes Mal", "bei so etwas".
+- It corrects how an agent works rather than what it builds: the agent asked what it could have decided itself, skipped a check, wrote in a style the owner does not want, went beyond its task. The agent's last message shows what the owner reacts to.
+- It repeats something the owner said before, on this card or another: said twice, it should not need saying a third time.
+- It overrules an answer given in the owner's name: the agent that answered lacked a rule.
+Not a preference: deciding the case at hand (an option, a name, a date, what this card should do), approving, asking how things stand, correcting a fact. Most of what the owner says is like that: then call nothing.
+
+Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in German, in the owner's terms and without the occasion ("Beschriftungen: präzise vor kurz.", "Abrechnungsänderungen bekommen immer das Codex-Review."); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
 `.trim();
+
+/** How far back the learner reads what the owner said, and at most how much of it. */
+const RECENT_DAYS = 3;
+const RECENT_UTTERANCES = 30;
+
+/** Who on a card speaks for an agent, and in which of its log lines. */
+const AGENTS: CardEvent['author'][] = ['worker', 'explorer'];
+const SAYS: CardEvent['kind'][] = ['say', 'question', 'review', 'report', 'talk'];
+
+/** How the learner hears what the owner said in the last days. */
+const UTTERED: Record<Utterance['kind'], string> = {
+  hint: 'to the agent',
+  answer: "answering the agent's question",
+  talk: "in an idea's discussion",
+  say: 'to the Koordinator',
+};
+
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 /** How the learner hears each kind of input. */
 const INPUTS: Record<OwnerInput, string> = {

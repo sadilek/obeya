@@ -353,7 +353,13 @@ the owner's language (`src/core/locale.ts`).
   way, as a note or an idea's discussion do); and the text the owner writes in a card, once they
   pause typing for a minute or act on the card, with the text it had before (a proposal's, a
   finding a follow-up quotes). The owner's first note, answer or feedback on a card after an answer
-  given in their name goes with that answer, which it may overrule. Its
+  given in their name goes with that answer, which it may overrule. The learner reads an input with
+  the card's text, what the owner said in the last three days (notes, feedback and answers to
+  agents, ideas' discussions, the conversation with the Koordinator; at most 30), the agent's last
+  message before it (taken when the input arrives, not when the learner's turn comes), the active
+  rules and the open and rejected proposals. Its prompt names the signals for a proposal: phrased
+  generally ("immer", "nie", "ab jetzt"), a correction of how an agent works, a repetition of
+  something said before, an overruled answer; it makes at most one proposal per input. Its
   sheet (button or `K`) shows the queue, the cards in progress and the preferences; open
   proposals stand above the rules with their occasion (the card and the owner's words, or the
   Rückschau) and, for a change, the rule it changes. The owner accepts one, edits it before

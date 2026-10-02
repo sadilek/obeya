@@ -672,6 +672,35 @@ describe('preference memory', () => {
     expect(learnSession().inbox[0]).toContain("The owner's text of a card they wrote, the task for an agent: Befund: Datum fehlt.");
   });
 
+  test('the learner reads an input with the card, what the owner said in the last days and the agent\'s last message, and proposes once', async () => {
+    const before = card('Import');
+    board.log(before.id, 'hint', 'owner', 'Frag nicht nach jedem Dateinamen.');
+    board.undoTalk(board.addTalk('Starte alles.', 'Gestartet.'));
+    board.addTalk('Wie weit ist der Export?', 'Fast fertig.');
+    const a = board.create({ kind: 'feature', title: 'Export', body: 'CSV-Export der Rechnungen.', x: 0, y: 0 });
+    board.log(a.id, 'say', 'worker', 'Soll die Datei rechnungen.csv oder export.csv heißen?');
+    board.log(a.id, 'activity', 'worker', 'Liest src/export.ts');
+    board.log(a.id, 'hint', 'owner', 'Schon wieder: entscheide Dateinamen selbst.');
+    k.learn(item(a.id), 'note', 'Schon wieder: entscheide Dateinamen selbst.');
+    // the worker answers before the learner's turn: the learner still reads what the note answered
+    board.log(a.id, 'say', 'worker', 'Gut, export.csv.');
+    await settle();
+    const brief = learnSession().inbox[0]!;
+    expect(brief).toContain("The card's text:\nCSV-Export der Rechnungen.");
+    expect(brief).toContain("The agent's last message on the card before it:\nSoll die Datei rechnungen.csv oder export.csv heißen?");
+    const recent = brief.slice(brief.indexOf('What the owner said in the last'), brief.indexOf("The agent's last message"));
+    expect(recent).toContain('to the agent on "Import": Frag nicht nach jedem Dateinamen.');
+    expect(recent).toContain('to the Koordinator: Wie weit ist der Export?');
+    // neither what was taken back nor the input itself
+    expect(recent).not.toContain('Starte alles.');
+    expect(recent).not.toContain('Schon wieder');
+    expect(brief).toContain("The owner's note to the worker: Schon wieder: entscheide Dateinamen selbst.");
+
+    learnSession().call('propose', { rule: 'Dateinamen entscheidet der Agent selbst.' });
+    await learn('propose', { rule: 'Nicht nach Kleinkram fragen.' });
+    expect(texts('proposed')).toEqual(['Dateinamen entscheidet der Agent selbst.']);
+  });
+
   test('the rules stored before proposals existed stay active', () => {
     const path = join(dir, 'old.db');
     const old = new Database(path);
