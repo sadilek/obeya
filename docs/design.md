@@ -291,7 +291,12 @@ the owner's language (`src/core/locale.ts`).
   per check and commit) and a conflict (once per commit) go to the worker as a message, which says
   what happened and leaves the how to the repository's ways (Acme: its `address-reviews` skill,
   which merges `main` instead of rebasing, replies on and resolves threads, and asks Greptile for a
-  re-review after each push); the owner's log gets a line for each. Comments by the PR's author
+  re-review after each push). Whatever the way, each review comment gets a reply in its own
+  thread (what changed, or why not) and the thread is resolved unless the worker still wants the
+  reviewer's answer; one summary comment for all is not enough. The owner's log gets a line for
+  each event. Checked on Acme's PR #821 (2026-10-02): all five Greptile threads got their own reply
+  and were resolved before the re-review ping; a page opened earlier showed the ping but neither
+  the replies nor the resolutions until reloaded. Comments by the PR's author
   (the worker replying in the owner's name) and by accounts the adapter names as noise (Acme: the
   Cloudflare deploy bot) are skipped; an app's inline comments come as `<name>[bot]`, its
   conversation comments as `<name>`, and the watcher reads both as `<name>`. While the owner is
