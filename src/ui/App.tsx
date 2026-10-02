@@ -109,6 +109,8 @@ function Canvas({
     for (const i of items) if (i.parent) m.set(i.parent, [...(m.get(i.parent) ?? []), i]);
     return m;
   }, [items]);
+  // ideas with a prototype on the canvas, which stay out of the archive until it ends
+  const prototyped = useMemo(() => new Set(items.flatMap((i) => (i.prototypeOf ? [i.prototypeOf] : []))), [items]);
   const all: Bounds = useMemo(() => unionBounds(placed.map((p) => p.b)) ?? { x: 0, y: 0, w: 1000, h: 600 }, [placed]);
   // what the view keeps in sight: the cards, and a project only while it holds none
   const content = useMemo(() => placed.filter(({ item }) => !kidsOf.has(item.id)).map((p) => p.b), [placed, kidsOf]);
@@ -466,7 +468,7 @@ function Canvas({
     }
   }, []);
 
-  /** The archive button on a finished card: takes it off the canvas, with a moment to undo. */
+  /** The archive button on a finished card or a dropped idea: takes it off the canvas, with a moment to undo. */
   const archiveCard = useCallback(async (i: Item) => {
     try {
       await api.archive(i.id);
@@ -838,6 +840,7 @@ function Canvas({
                 lifted={item.id === openId}
                 dragging={item.id === dragId}
                 pop={item.id === popId}
+                prototyped={prototyped.has(item.id)}
                 showRepo={snapshot.canvas.repos.length > 1}
                 els={els}
                 onStart={startCard}

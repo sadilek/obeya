@@ -25,22 +25,27 @@ interface CardProps {
   lifted: boolean;
   dragging: boolean;
   pop: boolean;
+  /** A prototype of this idea is on the canvas, which keeps the idea from the archive. */
+  prototyped: boolean;
   els: Map<string, HTMLElement>;
   /** Starts a planned card, or one queued behind others despite the likely conflict. */
   onStart: (item: Item) => void;
-  /** Takes a finished card off the canvas into the archive. */
+  /** Takes a finished card or a dropped idea off the canvas into the archive. */
   onArchive: (item: Item) => void;
 }
 
 const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, showRepo, els, onStart, onArchive }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive }: CardProps) {
     const shape = shapeOf(item);
     // a card the Koordinator is checking or cutting has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
-    // as "Archivieren" in the unfolded card: a finished card of the owner's whose agent is done
-    const archivable = item.state === 'live' && item.source === 'manual' && !item.finishing && !item.archivedAt;
+    // as "Archivieren" in the unfolded card: a finished card of the owner's whose agent is done, or
+    // a dropped idea without a prototype on the canvas
+    const archivable =
+      !item.archivedAt &&
+      ((item.state === 'live' && item.source === 'manual' && !item.finishing) || (item.idea?.status === 'dropped' && !prototyped));
     const kind =
       item.label ??
       (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.becomesProject ? t.kind.becomesProject : item.prototypeOf ? t.kind.prototype : t.kind[item.kind]);
@@ -124,7 +129,7 @@ export const CardView = memo(
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive,
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive,
 );
 
 /**
