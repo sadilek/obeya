@@ -62,8 +62,8 @@ export function Detail(p: Props) {
     return (
       <>
         <div className="p-kind">{kind}</div>
-        <ManualTitle item={item} onEdit={p.onEdit} />
-        <IdeaView item={item} act={act} onDelete={p.onDelete} />
+        {item.archivedAt ? <div className="p-title">{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div> : <ManualTitle item={item} onEdit={p.onEdit} />}
+        <IdeaView item={item} act={act} run={run} onDelete={p.onDelete} />
         {error && <p className="p-error">{error}</p>}
       </>
     );
@@ -279,7 +279,11 @@ export function Detail(p: Props) {
         />
       )}
 
-      {item.state === 'live' && item.source === 'manual' && !item.finishing && <ArchiveButton item={item} run={run} />}
+      {item.state === 'live' && item.source === 'manual' && !item.finishing && (
+        <div className="actions">
+          <ArchiveButton item={item} run={run} />
+        </div>
+      )}
 
       {error && <p className="p-error">{error}</p>}
 
@@ -351,7 +355,7 @@ export function Detail(p: Props) {
  * An idea under discussion: the brief its agent keeps on top, a prototype's demo when there is one,
  * then the conversation, and the owner's decisions.
  */
-function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; onDelete: () => void }) {
+function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; run: Run; onDelete: () => void }) {
   const idea = item.idea!;
   const [prototyping, setPrototyping] = useState(false);
   const answer = usePicks(idea.questions);
@@ -360,6 +364,7 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
       <div className="p-state">
         ● {stateLabel(item)}
         {idea.thinking && <span className="p-status"> · {t.author.explorer} {t.idea.thinking}</span>}
+        {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
       </div>
       {/* the brief is what stays; the conversation beside it is how it came about */}
       <div className="idea-grid">
@@ -379,17 +384,28 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
         </div>
         <div className="idea-talk">
           {/* the questions stand under the agent's reply, in the conversation; the owner's words go with their picks */}
-          <Conversation item={item} questions={<Questions questions={idea.questions} heading={idea.questions.length > 1 ? t.ask.questions : t.ask.question} {...answer} />} />
-          <Composer
-            placeholder={idea.questions.length ? t.ask.words : t.idea.compose}
-            button={idea.questions.length ? t.ask.send : t.send}
-            allowEmpty={answer.picked}
-            onSend={(words, images) => act({ action: 'discuss', text: answerText(idea.questions, answer.picks, words, true), images }, { close: false })}
-          />
+          {/* an archived idea is read only: it comes back onto the canvas before anyone talks to it again */}
+          {item.archivedAt ? (
+            <Conversation item={item} past />
+          ) : (
+            <>
+              <Conversation item={item} questions={<Questions questions={idea.questions} heading={idea.questions.length > 1 ? t.ask.questions : t.ask.question} {...answer} />} />
+              <Composer
+                placeholder={idea.questions.length ? t.ask.words : t.idea.compose}
+                button={idea.questions.length ? t.ask.send : t.send}
+                allowEmpty={answer.picked}
+                onSend={(words, images) => act({ action: 'discuss', text: answerText(idea.questions, answer.picks, words, true), images }, { close: false })}
+              />
+            </>
+          )}
         </div>
       </div>
-      {idea.status !== 'open' && <p className="hint">{t.idea.reopen}</p>}
-      {prototyping ? (
+      {idea.status !== 'open' && !item.archivedAt && <p className="hint">{t.idea.reopen}</p>}
+      {item.archivedAt ? (
+        <div className="actions">
+          <ArchiveButton item={item} run={run} />
+        </div>
+      ) : prototyping ? (
         <Composer
           placeholder={t.idea.prototypePlaceholder}
           button={t.idea.prototypeGo}
@@ -418,6 +434,7 @@ function IdeaView({ item, act, onDelete }: { item: Item; act: (a: CardAction, do
               {t.idea.drop}
             </button>
           )}
+          {idea.status === 'dropped' && <ArchiveButton item={item} run={run} />}
           <button className="btn danger" onClick={onDelete}>
             {t.delete}
           </button>
@@ -655,24 +672,17 @@ function FollowUp({ finding, item, all, run }: { finding: string; item: Item; al
   );
 }
 
-/** Takes a finished card into the archive, or an archived one back onto the canvas. */
-function ArchiveButton({ item, run }: { item: Item; run: (fn: () => Promise<void>, done: ActDone) => Promise<void> }) {
+/** Takes a finished card or a dropped idea into the archive, or an archived one back onto the canvas. */
+function ArchiveButton({ item, run }: { item: Item; run: Run }) {
   const title = plain(item.title);
-  return (
-    <div className="actions">
-      {item.archivedAt ? (
-        <button className="btn" onClick={() => run(() => api.unarchive(item.id), { close: true, ack: t.archive.unarchived(title) })}>
-          {t.archive.unarchive}
-        </button>
-      ) : (
-        <button
-          className="btn"
-          onClick={() => run(() => api.archive(item.id), { close: true, ack: t.archive.archived(title), undo: () => api.unarchive(item.id) })}
-        >
-          {t.archive.archive}
-        </button>
-      )}
-    </div>
+  return item.archivedAt ? (
+    <button className="btn" onClick={() => run(() => api.unarchive(item.id), { close: true, ack: t.archive.unarchived(title) })}>
+      {t.archive.unarchive}
+    </button>
+  ) : (
+    <button className="btn" onClick={() => run(() => api.archive(item.id), { close: true, ack: t.archive.archived(title), undo: () => api.unarchive(item.id) })}>
+      {t.archive.archive}
+    </button>
   );
 }
 

@@ -1,9 +1,9 @@
-// The archive: finished cards taken off the canvas and projects whose plan doc is gone, the most
-// recently archived first. A project's workstreams belong to it and are not listed on their own.
+// The archive: finished cards and dropped ideas taken off the canvas and projects whose plan doc is
+// gone, the most recently archived first. A project's workstreams belong to it and are not listed on their own.
 
 import type { Item } from '../core/types';
 import { plain } from './markdown';
-import { t } from './strings';
+import { stateLabel, t } from './strings';
 
 interface Props {
   on: boolean;
@@ -50,7 +50,7 @@ export function ArchiveSheet({ on, archived, done, onOpen, onArchiveDone, els }:
                     <button className="a-card" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
                       <span className="a-ttl">{plain(i.title)}</span>
                       <span className="hint">
-                        {t.kind[i.kind]}
+                        {i.idea ? stateLabel(i) : t.kind[i.kind]}
                         {i.kind === 'project' && ` · ${t.archive.workstreams(archived.filter((x) => x.parent === i.id).length)}`}
                       </span>
                     </button>
