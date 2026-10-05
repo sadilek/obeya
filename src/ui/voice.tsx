@@ -52,6 +52,7 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
     if (held.current !== null || rec.current) return;
     const pressed = performance.now();
     held.current = pressed;
+    hush(true);
     const target = where();
     api.warmVoice();
     let m;
@@ -68,6 +69,7 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
     } catch {
       mic.current = null;
       held.current = null;
+      hush(false);
       onHeard({ confirm: t.voice.noMic });
       return;
     }
@@ -103,6 +105,7 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
 
   function stop() {
     held.current = null;
+    hush(false);
     const r = rec.current;
     if (!r) return;
     rec.current = null;
@@ -263,14 +266,23 @@ export function PushToTalk({ phase, level, flat, target, shots, onDown }: { phas
   );
 }
 
-/** Plays a spoken confirmation; the previous one stops. Nothing is said while a demo video plays. */
+/**
+ * Plays a spoken confirmation; the previous one stops. Nothing is said while a demo video plays or
+ * the owner holds the microphone.
+ */
 let playing: HTMLAudioElement | null = null;
+let micHeld = false;
 export function play(audio: string | undefined) {
   playing?.pause();
-  if (!audio || videoPlaying()) return;
+  if (!audio || micHeld || videoPlaying()) return;
   playing = new Audio(audio);
   playing.play().catch(() => {});
 }
 const videoPlaying = () => [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended);
 // a video the owner starts silences what is being said ('play' does not bubble, so listen on the way down)
 addEventListener('play', (e) => e.target instanceof HTMLVideoElement && playing?.pause(), true);
+/** Pressing the microphone cuts off what is being said, which would otherwise be recorded too. */
+function hush(held: boolean) {
+  micHeld = held;
+  if (held) playing?.pause();
+}

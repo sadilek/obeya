@@ -634,8 +634,8 @@ the owner's language (`src/core/locale.ts`).
 - **Voice out** — the default system voice speaks the confirmation, which the browser plays: a
   JXA sidecar keeps the macOS synthesizer loaded (about half a second a sentence), with `say` as
   the fallback. While a demo video plays nothing is said (the owner often gives a command and
-  turns to the next demo); a video that starts cuts off what is being said. The written
-  confirmation still shows.
+  turns to the next demo), nor while the owner holds the microphone; a video that starts or a press
+  of the microphone cuts off what is being said. The written confirmation still shows.
 - **Demos** — the demo skill's pipeline (scripted walkthrough, narrated video, report) is part of
   the repository: `plugin/` is a Claude Code plugin named `obeya` whose skill `demo`
   (`plugin/skills/demo/`) holds the instructions (`SKILL.md`, paths through `${CLAUDE_SKILL_DIR}`),
