@@ -127,8 +127,7 @@ is presented without "I" or "we".
   never the implementation. Length follows the size of the change, never padded: a small one
   30–60 s (for a fix: the broken behaviour, then the fixed one), a larger one 1½–3 min,
   a multi-commit project one demo per shipped workstream.
-- Open with the situation and what was missing; end with a one-sentence recap and a release
-  recommendation (or what blocks it).
+- Open with the situation and what was missing; end with a one-sentence recap.
 - Behaviour that varies between runs (timings, a model's output, a bug that shows only
   sometimes) is measured before the narration is written, and narrated so it holds in any take
   ("several seconds", "mostly"), not with the value of one run. Other agents load the same

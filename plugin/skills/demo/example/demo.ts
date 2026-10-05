@@ -44,7 +44,7 @@ await runDemo(
       },
       {
         title: 'Recap',
-        say: 'The filter makes the open orders one click away. Ready to release.',
+        say: 'The filter makes the open orders one click away.',
       },
     ],
     report: {
