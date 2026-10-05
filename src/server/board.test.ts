@@ -327,3 +327,133 @@ describe('archive', () => {
     expect(board.archiveDone()).toEqual([]);
   });
 });
+
+describe('groups', () => {
+  const groupOf = (id: string) => board.item(id)!.group;
+
+  test('a new group takes its first cards and a colour no other group has', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const b = board.create({ title: 'B', x: 400, y: 0 });
+    const g1 = board.createGroup('  Abrechnung ', [a.id]);
+    const g2 = board.createGroup('Infra', [b.id]);
+    expect(g1.name).toBe('Abrechnung');
+    expect(g1.hue).not.toBe(g2.hue);
+    expect(board.snapshot().groups).toEqual([g1, g2]);
+    expect([groupOf(a.id), groupOf(b.id)]).toEqual([g1.id, g2.id]);
+  });
+
+  test('a name a group has already puts the cards into that group', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const b = board.create({ title: 'B', x: 400, y: 0 });
+    const g = board.createGroup('Abrechnung', [a.id]);
+    expect(board.createGroup('abrechnung', [b.id])).toEqual(g);
+    expect(board.snapshot().groups).toHaveLength(1);
+    expect(groupOf(b.id)).toBe(g.id);
+  });
+
+  test('cards move between groups and out of them; a group no card belongs to goes', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const b = board.create({ title: 'B', x: 400, y: 0 });
+    const g1 = board.createGroup('Eins', [a.id, b.id]);
+    const g2 = board.createGroup('Zwei', [a.id]);
+    board.group([b.id], g2.id);
+    expect(board.snapshot().groups.map((g) => g.id)).toEqual([g2.id]);
+    expect(() => board.group([a.id], g1.id)).toThrow(BadRequest);
+    board.group([a.id], null);
+    expect(groupOf(a.id)).toBeUndefined();
+    expect(groupOf(b.id)).toBe(g2.id);
+  });
+
+  test('a group with only archived cards stays, and they come back in it', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const b = board.create({ title: 'B', x: 400, y: 0 });
+    const g = board.createGroup('Alt', [a.id]);
+    board.work(a.id, { state: 'live' });
+    board.archive([a.id]);
+    board.group([b.id], null);
+    expect(board.snapshot().groups.map((x) => x.id)).toEqual([g.id]);
+    board.unarchive(a.id);
+    expect(groupOf(a.id)).toBe(g.id);
+  });
+
+  test('a project is grouped as a whole: a workstream stands for it and colours with it', () => {
+    const [p, w1, w2] = board.snapshot().items;
+    const g = board.createGroup('Plan', [w1!.id]);
+    expect([groupOf(p!.id), groupOf(w1!.id), groupOf(w2!.id)]).toEqual([g.id, g.id, g.id]);
+    board.group([w2!.id], null);
+    expect(groupOf(p!.id)).toBeUndefined();
+  });
+
+  test('proposals, follow-ups, packages and prototypes come into the group of the card they come from', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const idea = board.create({ idea: true, title: 'Idee', x: 800, y: 0 });
+    const g = board.createGroup('Familie', [a.id, idea.id]);
+    const proposal = board.propose(a.id, { title: 'Vorschlag', task: 't', reason: 'r' });
+    const followUp = board.create({ title: 'Folge', from: a.id });
+    const prototype = board.addPrototype(idea.id, 'Prototyp', 'b');
+    const packages = board.replace(followUp.id, [
+      { title: 'P1', body: '', files: [] },
+      { title: 'P2', body: '', files: [] },
+    ]);
+    expect([proposal, prototype, ...packages].map((i) => groupOf(i.id))).toEqual([g.id, g.id, g.id, g.id]);
+    // from a workstream: its project's group
+    const w = board.snapshot().items.find((i) => i.label === 'W2')!;
+    const h = board.createGroup('Projekt', [w.id]);
+    expect(groupOf(board.create({ title: 'Folge W2', from: w.id }).id)).toBe(h.id);
+    // once there, a card's group is its own
+    board.group([a.id], null);
+    expect(groupOf(proposal.id)).toBe(g.id);
+  });
+
+  test('a project written from an idea takes its group', () => {
+    const idea = board.create({ idea: true, title: 'Idee B', x: 900, y: 40 });
+    const g = board.createGroup('Ideen', [idea.id]);
+    board.work(idea.id, { state: 'live', landed: '{}', workspace: '/ws/1' });
+    board.planDocsLanded(idea.id, ['docs/plan/b.md']);
+    docs = [docA, docB];
+    board.docsChanged();
+    expect(board.snapshot().items.find((i) => i.title === 'B')!.group).toBe(g.id);
+  });
+
+  test('renaming keeps the cards; a name another group has is refused', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const b = board.create({ title: 'B', x: 400, y: 0 });
+    const g = board.createGroup('Alt', [a.id]);
+    board.createGroup('Anders', [b.id]);
+    board.renameGroup(g.id, 'Neu');
+    expect(board.snapshot().groups[0]).toMatchObject({ id: g.id, name: 'Neu' });
+    expect(groupOf(a.id)).toBe(g.id);
+    expect(() => board.renameGroup(g.id, 'anders')).toThrow(BadRequest);
+    board.renameGroup(g.id, 'NEU');
+    expect(board.snapshot().groups[0]!.name).toBe('NEU');
+  });
+
+  test('rejects invalid input', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const code = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (e) {
+        return (e as BadRequest).code;
+      }
+    };
+    expect(code(() => board.createGroup('  ', [a.id]))).toBe('emptyText');
+    expect(code(() => board.createGroup('x'.repeat(61), [a.id]))).toBe('invalid');
+    expect(code(() => board.createGroup('Leer', []))).toBe('invalid');
+    expect(code(() => board.createGroup('X', ['nope']))).toBe('unknownCard');
+    expect(code(() => board.createGroup('X', 'a' as unknown as string[]))).toBe('invalid');
+    expect(code(() => board.group([a.id], 'nope'))).toBe('unknownGroup');
+    expect(code(() => board.renameGroup('nope', 'X'))).toBe('unknownGroup');
+    expect(board.snapshot().groups).toEqual([]);
+  });
+
+  test('groups are kept per canvas', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const g = board.createGroup('Hier', [a.id]);
+    const other = new Board(store, { id: 'other', name: 'Other', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => []);
+    const b = other.create({ title: 'B', x: 0, y: 0 });
+    expect(other.snapshot().groups).toEqual([]);
+    expect(() => other.group([b.id], g.id)).toThrow(BadRequest);
+    expect(() => other.group([a.id], null)).toThrow(BadRequest);
+  });
+});

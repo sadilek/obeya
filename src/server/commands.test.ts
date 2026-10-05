@@ -556,3 +556,39 @@ describe('Arbeitsrückschau on request', () => {
     ]);
   });
 });
+
+describe('groups by voice', () => {
+  test('the Koordinator sees the groups and puts cards into one, takes them out and renames one', async () => {
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
+    const b = board.create({ title: 'Rabatt', x: 400, y: 0 });
+    const g = board.createGroup('Abrechnung', [a.id]);
+    const k = commander();
+    const heard = k.hear('Rabatt gehört auch zur Abrechnung, und benenne Abrechnung in Billing um', {});
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain('K1 [planned] "Export" (group "Abrechnung")');
+    expect(s.inbox[0]).toContain('K2 [planned] "Rabatt"\n');
+    expect(s.inbox[0]).toContain('Groups on the canvas: "Abrechnung"');
+    expect(s.call('act', { actions: [{ do: 'group', cards: ['K2'] }], confirm: '…' })).toContain("the group's name is missing");
+    expect(s.call('act', { actions: [{ do: 'group', cards: ['K9'], text: 'X' }], confirm: '…' })).toContain('unknown tag K9');
+    expect(s.call('act', { actions: [{ do: 'rename_group', group: 'Einkauf', text: 'X' }], confirm: '…' })).toContain('there is no group Einkauf; the canvas has "Abrechnung"');
+    s.call('act', {
+      actions: [
+        { do: 'group', cards: ['K2'], text: ' Abrechnung ' },
+        { do: 'group', card: 'K1', group: 'Neu' },
+        { do: 'ungroup', cards: ['K1', 'K2'] },
+        { do: 'rename_group', group: 'abrechnung', text: 'Billing' },
+      ],
+      confirm: '„Rabatt“ gehört jetzt zur Abrechnung, die Billing heißt.',
+    });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([
+      { do: 'group', cards: [b.id], name: 'Abrechnung' },
+      { do: 'group', cards: [a.id], name: 'Neu' },
+      { do: 'ungroup', cards: [a.id, b.id] },
+      { do: 'renameGroup', group: g.id, name: 'Billing' },
+    ]);
+  });
+});

@@ -43,6 +43,13 @@ decisions are made in front of the wall.
   to how it is worked on, so the owner does not pick one. A task's card names no kind either (that
   it is one shows); the others say what they are (idea, prototype, workstream number, project).
   The UI and the Koordinator say *Aufgabe* and *Folgeaufgabe*, never *Karte*.
+- **Groups** — besides by place, the owner sorts the canvas by group: a group has a name and a
+  colour, and a card belongs to none or one. A project belongs to one as a whole, with its
+  workstreams. A proposal, a follow-up, a package cut from a card and a prototype come into the group
+  of the card they come from, a project written from an idea into the idea's; after that the group
+  is the card's own. Moving a card never changes its group: a card in another group's territory
+  stands there as an island. A group exists while a card belongs to it, on the canvas or in the
+  archive; the last card leaving it ends it.
 - **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) →
   `approved` → `in PR` → `live`, or `done` when the work changed no code; an agent's `proposal`
   is started when accepted. An
@@ -316,6 +323,33 @@ the owner's language (`src/core/locale.ts`).
   and approved, "obeya" in Inter Bold as outlines) opens the bar, stands alone in the middle while
   the page loads, above "offline" when the server is gone, and is the favicon; `bun
   scripts/logo.tsx` writes it as the files in `src/ui/logo/`.
+- **Groups on the canvas** (`src/ui/groups.tsx`, `src/ui/territory.ts`) — each group shows as a
+  territory behind its cards: a soft, slightly glowing outline over a faint area in the group's
+  colour, with a dotted line inside along the cards. Group colours appear only there and in the
+  minimap, never on a card, so they do not compete with the states' colours. Zoomed far out, the
+  groups' names stand pale over their territories. A territory is the contour of an energy field
+  (Bubble Sets): the group's cards pull, near cards are linked so they share one territory (not
+  across another card), and every other card pushes back; where two groups meet, the stronger
+  holds the ground, which makes a card amid another group an island. The browser computes it with
+  `d3-contour`, each group on its own grid around its cards on one 16 px lattice, and computes a
+  group's field again only when something within its reach moved, its contour only when its own
+  or a neighbour's field changed; one that took longer than 8 ms makes the next wait, so a dragged
+  card keeps the frame rate and its territory follows a little later. At rest nothing is computed
+  and nothing moves. When cards change group, wherever the change comes from (the colour ring, the
+  Koordinator, another page), a wave runs out from where it was assigned (else from the cards'
+  middle), reaches the cards one after the other, and their territory springs out a little too far
+  and settles; a light runs once along the new edge. Measured in headless Chrome on 100 cards in
+  four groups that all overlap (2026-10-05): the first computation 21 ms, a move that changes all
+  four 5 ms (median; 14 ms at most), dragging at 60 fps, nothing at rest.
+  Assigning: Shift + drag on the canvas draws a lasso (without Shift it pans as before), a right
+  click on a card takes that card (a workstream: its project); either opens a ring of colour balls
+  at the pointer with the groups, "+" (a new group, named in place) and "∅" (none). Moving towards
+  a ball picks it, a click takes it, Escape closes the ring. By voice, the Koordinator's `group`
+  (cards into a group by name, a new name creates it), `ungroup` and `rename_group`; it sees each
+  card's group and the canvas's groups. The API: `POST /api/c/<canvas>/groups` (name and first
+  cards; a name a group has already takes that group), `PATCH …/groups/<id>` (name), `POST
+  …/assign` (cards and a group, `null` for none); the snapshot carries the groups, every card its
+  group.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
   on the Claude Code login of the machine (tested without an API key: `apiKeySource: none`).
   A worker is one SDK session per card with streaming input, the repo's own settings and
@@ -556,7 +590,7 @@ the owner's language (`src/core/locale.ts`).
   early would keep the browser's microphone indicator on all the time. A quick, low-effort Koordinator turn reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
-  approve, accept, dismiss, cut, stop, remember, Arbeitsrückschau; on ideas: discuss, build, plan doc, prototype,
+  approve, accept, dismiss, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
   park, drop; on prototypes: build on it, discard),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
@@ -583,7 +617,7 @@ the owner's language (`src/core/locale.ts`).
   agent: note, answer or feedback, in the owner's own words (a single such action carries the
   whole transcript, whatever the Koordinator wrote), and spoken words reach it with the remark
   that speech recognition may have misheard them. Only what clearly asks Obeya for something
-  (approve, stop, start, a follow-up, remember, an action on another card, a question about the
+  (approve, stop, start, a follow-up, remember, grouping cards, an action on another card, a question about the
   canvas) goes elsewhere; `commands.live.test.ts` checks this against the real model
   (`OBEYA_LIVE=1`). Typing goes the same way as speaking: the Koordinator's sheet, and the fields
   on a card (note, answer, feedback, an idea's conversation) post to the Koordinator, which learns
@@ -860,7 +894,7 @@ card events (the log, with an error code where the UI words it and the owner's s
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
 reply, the screenshots that came with it, the open card, whether it was taken back; a looked-up
-question, the card it is about, its answer and who gave it), per-canvas settings (the home repository; the Rückschau's count and when its history begins; per repository the Arbeitsrückschau's count and when it last ran), the friction noted on each card's runs (per repository), and on a card the Arbeitsrückschau proposed what it rests on.
+question, the card it is about, its answer and who gave it), groups (name, colour) and the group of each card, per-canvas settings (the home repository; the Rückschau's count and when its history begins; per repository the Arbeitsrückschau's count and when it last ran), the friction noted on each card's runs (per repository), and on a card the Arbeitsrückschau proposed what it rests on.
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
 (`canvases.json`), Acme's shared demo site and its Cloudflare credentials (`team-share/`).
@@ -953,6 +987,13 @@ the repository; the copy on the project is only for the archive).
   grid below the existing ones. A proposal or follow-up goes below the card it came from, or, when
   something is in the way there (for a workstream: its own project), to the nearest spot clear of
   every card and project (2026-10-05).
+- Groups show as contours behind the cards, drawn in SVG, rather than a WebGL shader (2026-10-05).
+  Three prototypes were built: a shader with waving "plasma" areas, one with territories and a
+  drifting honeycomb, and contours. All ran smoothly at about 30 cards; the owner chose the
+  contours, which are calm, need no WebGL and cost nothing at rest, over the shaders' livelier
+  look, which costs frames all the time. The territories animate only when something changes.
+- A group ends with its last card instead of being deleted on its own: it is made by putting cards
+  into it, so there is never an empty group to clean up, and the colour ring stays short.
 - The dashed line from a proposal, follow-up or prototype to its card joins the sides that face
   each other (left and right when the two stand more beside than above each other) and runs above
   projects but below cards, so a line from a workstream stays visible over its project

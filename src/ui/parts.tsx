@@ -5,6 +5,7 @@ import { type Bounds, shapeOf } from '../core/layout';
 import { type CanvasInfo, finished, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
 import { api } from './api';
 import type { Cam } from './camera';
+import type { Shape } from './groups';
 import { Doc, Inline, plain } from './markdown';
 import { stateLabel, t } from './strings';
 
@@ -534,7 +535,19 @@ export function Edges({ cam, targets, rightReserve, onOpen }: { cam: Cam; target
   );
 }
 
-export function Minimap({ cam, all, placed, onJump }: { cam: Cam; all: Bounds; placed: { item: Item; b: Bounds }[]; onJump: (wx: number, wy: number) => void }) {
+export function Minimap({
+  cam,
+  all,
+  placed,
+  territories,
+  onJump,
+}: {
+  cam: Cam;
+  all: Bounds;
+  placed: { item: Item; b: Bounds }[];
+  territories: Shape[];
+  onJump: (wx: number, wy: number) => void;
+}) {
   const W = 210;
   const H = 130;
   const pad = 10;
@@ -550,6 +563,11 @@ export function Minimap({ cam, all, placed, onJump }: { cam: Cam; all: Bounds; p
       }}
     >
       <svg viewBox={`0 0 ${W} ${H}`}>
+        <g transform={`translate(${ox} ${oy}) scale(${k})`}>
+          {territories.map(({ g, t: x }) => (
+            <path key={g.id} className="mterr" d={x.main} fillRule="evenodd" style={{ '--h': g.hue } as React.CSSProperties} />
+          ))}
+        </g>
         {placed.map(({ item, b }) => (
           <rect
             key={item.id}

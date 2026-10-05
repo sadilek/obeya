@@ -10,12 +10,14 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/d3-contour": "^3.0.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "typescript": "^7.0.2"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.285",
+    "d3-contour": "^4.0.2",
     "playwright-core": "1.61.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

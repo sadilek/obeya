@@ -49,6 +49,8 @@ const CASES: [string, string, boolean, Command['do'][], boolean][] = [
   ['inPr', 'Rebase bitte auf main', false, ['note'], true],
   ['inPr', 'Merk dir: in diesem Repo nie force pushen', true, ['remember'], false],
   ['finishing', 'Räum danach den Branch auf', true, ['note'], true],
+  ['working', 'pack das in die Gruppe Abrechnung', false, ['group'], false],
+  ['review', 'Export und Login gehören zur Gruppe Konto', true, ['group'], false],
 ];
 
 /** What the Koordinator makes of one sentence: the actions as they run, and whether it went out at once. */
@@ -74,7 +76,7 @@ test.skipIf(!process.env.OBEYA_LIVE)(
     const results = await Promise.all(CASES.map(async ([state, text, typed, want, quiet]) => ({ state, text, typed, want, quiet, got: await hear(state, text, typed) })));
     const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(r.want) || r.got.quiet !== r.quiet);
     for (const r of results)
-      console.log(`${wrong.includes(r) ? '✗' : '✓'} [${r.state}] ${r.typed ? 'getippt' : 'gesprochen'} „${r.text}“ → ${r.got.did.join(', ') || 'reply'}${r.got.quiet ? ' (sofort)' : ''} · ${JSON.stringify(r.got.executed.map((c) => ('text' in c ? c.text : 'title' in c ? c.title : '')))} · ${r.got.confirm}${r.got.confirm !== 'Das habe ich nicht verstanden.' ? '' : ` · Sitzung: ${r.got.said.join(' ').slice(0, 200)}`}`);
+      console.log(`${wrong.includes(r) ? '✗' : '✓'} [${r.state}] ${r.typed ? 'getippt' : 'gesprochen'} „${r.text}“ → ${r.got.did.join(', ') || 'reply'}${r.got.quiet ? ' (sofort)' : ''} · ${JSON.stringify(r.got.executed.map((c) => ('text' in c ? c.text : 'title' in c ? c.title : 'name' in c ? c.name : '')))} · ${r.got.confirm}${r.got.confirm !== 'Das habe ich nicht verstanden.' ? '' : ` · Sitzung: ${r.got.said.join(' ').slice(0, 200)}`}`);
     expect(wrong.map((r) => `[${r.state}] ${r.text}`)).toEqual([]);
   },
   300_000,

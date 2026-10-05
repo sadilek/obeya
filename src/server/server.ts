@@ -199,6 +199,20 @@ export function serve(
         PATCH: on(async (c, req) => c.patch(req.params.id!, (await req.json()) as CardPatch)),
         DELETE: on((c, req) => click(c, c.remove(req.params.id!))),
       },
+      // groups: a new one with its first cards, a new name, and cards put into one (`group: null`: none)
+      '/api/c/:canvas/groups': {
+        POST: on(async (c, req) => {
+          const { name, cards } = ((await req.json()) ?? {}) as { name?: string; cards?: string[] };
+          return c.board.createGroup(name, cards);
+        }),
+      },
+      '/api/c/:canvas/groups/:id': { PATCH: on(async (c, req) => c.board.renameGroup(req.params.id!, (((await req.json()) ?? {}) as { name?: string }).name)) },
+      '/api/c/:canvas/assign': {
+        POST: on(async (c, req) => {
+          const { cards, group } = ((await req.json()) ?? {}) as { cards?: string[]; group?: string | null };
+          return c.board.group(cards, group ?? null);
+        }),
+      },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.board.restore(req.params.id!)) },
       '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
       '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },

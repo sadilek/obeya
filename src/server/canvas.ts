@@ -593,6 +593,12 @@ export class CanvasRuntime {
         return this.remember(c.text, c);
       case 'workRetro':
         return this.workRetro.now(c.repo);
+      case 'group':
+        return void this.board.createGroup(c.name, c.cards);
+      case 'ungroup':
+        return this.board.group(c.cards, null);
+      case 'renameGroup':
+        return this.board.renameGroup(c.group, c.name);
     }
   }
 

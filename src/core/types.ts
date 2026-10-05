@@ -110,6 +110,19 @@ export interface Item {
   brief?: string;
   /** A card that was an idea, decided as a project: its worker writes the plan doc, and the project takes its place. */
   becomesProject?: boolean;
+  /** The group the card belongs to (a `Group` id); a workstream's is its project's. */
+  group?: string;
+}
+
+/**
+ * A group of cards on the canvas, shown as a coloured territory behind them. It exists while a card
+ * belongs to it (on the canvas or in the archive).
+ */
+export interface Group {
+  id: string;
+  name: string;
+  /** Its colour's hue, 0–359. */
+  hue: number;
 }
 
 /**
@@ -314,6 +327,8 @@ export interface RepoRef {
 export interface CanvasSnapshot {
   canvas: CanvasInfo;
   items: Item[];
+  /** The canvas's groups, the oldest first. */
+  groups: Group[];
   preferences: Preference[];
   /** The owner's latest exchanges with the Koordinator without an open card (those with one are in its log). */
   talk: Talk[];
@@ -469,6 +484,8 @@ export type CardAction =
  */
 export type ErrorCode =
   | 'unknownCard'
+  /** A group that no card belongs to any more, so it is gone. */
+  | 'unknownGroup'
   | 'project'
   | 'notPlanned'
   | 'queued'

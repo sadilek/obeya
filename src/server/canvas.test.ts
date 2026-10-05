@@ -331,3 +331,18 @@ test('clicks in a card count towards the Rückschau, and words the learner reads
   expect(() => canvas.press(a.id, { action: 'dismiss' })).toThrow();
   expect(count()).toBe('2');
 });
+
+describe('groups by voice', () => {
+  test('a command puts cards into a group by name, a new one or the one there is, takes them out, and renames it', async () => {
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    await canvas.run({ do: 'group', cards: [a.id], name: 'Abrechnung' });
+    await canvas.run({ do: 'group', cards: [b.id], name: 'abrechnung' });
+    const [g] = canvas.board.snapshot().groups;
+    expect([item(a.id).group, item(b.id).group]).toEqual([g!.id, g!.id]);
+    await canvas.run({ do: 'renameGroup', group: g!.id, name: 'Billing' });
+    await canvas.run({ do: 'ungroup', cards: [a.id] });
+    expect(canvas.board.snapshot().groups).toEqual([{ ...g!, name: 'Billing' }]);
+    expect(item(a.id).group).toBeUndefined();
+  });
+});

@@ -70,6 +70,16 @@ export interface CardRow {
   built_on: string | null;
   /** JSON: the demo's page for colleagues (`StoredShare` in share.ts); its slug stays once it was shared. */
   share: string | null;
+  /** The group the card belongs to; a project's covers its workstreams, whose own stays null. */
+  group_id: string | null;
+}
+
+export interface GroupRow {
+  id: string;
+  canvas_id: string;
+  name: string;
+  hue: number;
+  created_at: string;
 }
 
 
@@ -247,10 +257,19 @@ export const MIGRATIONS = [
    CREATE INDEX friction_repo ON friction (canvas_id, repo, at);
    ALTER TABLE cards ADD COLUMN retro TEXT;`,
   `ALTER TABLE cards ADD COLUMN proposal TEXT;`,
+  // groups of cards, shown as coloured territories behind them
+  `CREATE TABLE groups (
+     id TEXT PRIMARY KEY,
+     canvas_id TEXT NOT NULL REFERENCES canvases(id),
+     name TEXT NOT NULL,
+     hue INTEGER NOT NULL,
+     created_at TEXT NOT NULL
+   );
+   ALTER TABLE cards ADD COLUMN group_id TEXT REFERENCES groups(id);`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro' | 'proposal'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro' | 'proposal' | 'group_id'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -284,6 +303,7 @@ export type RowUpdate = Partial<
     | 'built_on'
     | 'share'
     | 'proposal'
+    | 'group_id'
   >
 >;
 
@@ -366,8 +386,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -391,6 +411,7 @@ export class Store {
           images: r.images ?? null,
           retro: r.retro ?? null,
           proposal: r.proposal ?? null,
+          group_id: r.group_id ?? null,
           now: now(),
         });
         return id;
@@ -404,6 +425,46 @@ export class Store {
     if (!keys.length) return;
     const set = keys.map((k) => `${k} = $${k}`).join(', ');
     this.db.query(`UPDATE cards SET ${set}, updated_at = $now WHERE id = $id`).run({ ...fields, id, now: now() });
+  }
+
+  // ---------------------------------------------------------------- groups
+
+  /** The canvas's groups, the oldest first. */
+  groups(canvasId: string): GroupRow[] {
+    return this.db.query('SELECT * FROM groups WHERE canvas_id = $c ORDER BY created_at, rowid').all({ c: canvasId }) as GroupRow[];
+  }
+
+  group(id: string): GroupRow | null {
+    return (this.db.query('SELECT * FROM groups WHERE id = $id').get({ id }) as GroupRow | null) ?? null;
+  }
+
+  addGroup(canvasId: string, name: string, hue: number): GroupRow {
+    const id = crypto.randomUUID();
+    this.db.query('INSERT INTO groups (id, canvas_id, name, hue, created_at) VALUES ($id, $c, $name, $hue, $now)').run({ id, c: canvasId, name, hue, now: now() });
+    return this.group(id)!;
+  }
+
+  renameGroup(id: string, name: string) {
+    this.db.query('UPDATE groups SET name = $name WHERE id = $id').run({ id, name });
+  }
+
+  /** Puts the cards into the group, or with `null` into none. */
+  setGroup(cardIds: string[], groupId: string | null) {
+    const stmt = this.db.query('UPDATE cards SET group_id = $g, updated_at = $now WHERE id = $id');
+    this.db.transaction(() => cardIds.forEach((id) => stmt.run({ id, g: groupId, now: now() })))();
+  }
+
+  /** Removes the groups no card belongs to, on the canvas or in the archive; returns how many. */
+  dropEmptyGroups(canvasId: string): number {
+    return this.db.transaction(() => {
+      // a deleted card that comes back has no group any more
+      this.db
+        .query('UPDATE cards SET group_id = NULL WHERE canvas_id = $c AND deleted_at IS NOT NULL AND group_id IS NOT NULL')
+        .run({ c: canvasId });
+      return this.db
+        .query('DELETE FROM groups WHERE canvas_id = $c AND id NOT IN (SELECT group_id FROM cards WHERE canvas_id = $c AND group_id IS NOT NULL)')
+        .run({ c: canvasId }).changes;
+    })();
   }
 
   // ---------------------------------------------------------------- events

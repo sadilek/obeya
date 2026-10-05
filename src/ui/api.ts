@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, DemoSettingsView, DemoVoiceCheck, SetupCheck, CardEvent, CardPatch, Item, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, CardEvent, CardPatch, Item, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -103,6 +103,10 @@ export const api = {
   /** Archives every finished card of the owner's on the canvas. */
   archiveDone: () => call<{ ids: string[] }>('POST', at('/archive')),
   act: (id: string, a: CardAction) => call<void>('POST', at(`/cards/${id}/act`), a),
+  /** A new group with the cards in it; a name a group has already puts them into that one. */
+  createGroup: (name: string, cards: string[]) => call<Group>('POST', at('/groups'), { name, cards }),
+  /** Puts the cards into the group, or with `null` into none. */
+  assign: (cards: string[], group: string | null) => call<void>('POST', at('/assign'), { cards, group }),
   /** Stores a screenshot for a message; the message names it by the id. */
   uploadImage: async (image: Blob) => {
     const res = await fetch(at('/images'), { method: 'POST', headers: { 'content-type': image.type }, body: image });

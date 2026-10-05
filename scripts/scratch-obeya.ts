@@ -42,7 +42,8 @@
 //       { "text": "…", "state": "proposed", "card": "A", "quote": "…", "replaces": "R" },
 //       { "text": "…", "state": "proposed", "review": true },
 //       { "text": "…", "state": "proposed", "target": "<repo id>" }
-//     ]
+//     ],
+//     "groups": [{ "name": "Abrechnung", "cards": ["A", "B", "P"] }]
 //   }
 // A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
@@ -55,6 +56,8 @@
 // `files`, say); the server then starts from a configuration file in <dir>. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
 // `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
 // What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
+// Groups are created through the API with their cards (keys; a workstream stands for its project),
+// in their colours by order.
 
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
@@ -101,6 +104,7 @@ interface Stage {
   plans?: Record<string, string>;
   cards: StageCard[];
   preferences?: { key?: string; text: string; state?: string; card?: string; quote?: string; review?: boolean; replaces?: string; target?: string }[];
+  groups?: { name: string; cards: string[] }[];
 }
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -299,6 +303,9 @@ if (first) {
   const c = ((await api('GET', '/canvas')) as CanvasSnapshot).items.find((x: Item) => x.id === idOf(first, stage.cards.indexOf(first)))!;
   await api('PATCH', `/cards/${c.id}`, { x: c.x, y: c.y });
 }
+
+for (const g of stage.groups ?? [])
+  await api('POST', '/groups', { name: g.name, cards: g.cards.map((k) => ids[k] ?? fail(`group ${g.name}: card ${k} does not exist`)) });
 
 const staged = { url: `${base}/?c=${canvas}`, port, dir, canvas, pid: server.pid, log, cards: ids };
 writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));

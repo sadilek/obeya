@@ -630,3 +630,56 @@ button.link:hover { text-decoration: underline; }
 .card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
 .card .dep-tag { position: absolute; left: 14px; top: -10px; padding: 1px 8px; border-radius: 9px; font-size: 11px; font-weight: 600;
   background: var(--waiting); color: #fff; white-space: nowrap; pointer-events: none; }
+
+/* ---------------------------------------------------------------- groups: territories behind the cards
+   Colours only as area and edge, never on the card, so they do not compete with the states' colours.
+   At rest nothing moves; a change sends a wave and a light along the edge, and the territory springs. */
+:root { --tl: 54%; --ta: .10; --tel: 44%; --tea: .7; --tga: .09; --tna: .17; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tl: 60%; --ta: .13; --tel: 66%; --tea: .85; --tga: .20; --tna: .22; } }
+:root[data-theme="dark"] { --tl: 60%; --ta: .13; --tel: 66%; --tea: .85; --tga: .20; --tna: .22; }
+#gnames { position: absolute; left: 0; top: 0; z-index: 5; overflow: visible; pointer-events: none; }
+#territories { position: absolute; left: 0; top: 0; z-index: 0; overflow: visible; pointer-events: none; }
+.terr .area { fill: hsl(var(--h) 80% var(--tl) / var(--ta)); transition: fill .4s; }
+.z-far .terr .area { fill: hsl(var(--h) 80% var(--tl) / calc(var(--ta) * 1.7)); }
+.terr .glow { fill: none; stroke: hsl(var(--h) 90% var(--tl) / var(--tga)); stroke-width: calc(10px / var(--s)); stroke-linejoin: round; }
+.terr .edge { fill: none; stroke: hsl(var(--h) 75% var(--tel) / var(--tea)); stroke-width: calc(1.8px / var(--s)); stroke-linejoin: round; }
+.terr .inner { fill: none; stroke: hsl(var(--h) 70% var(--tel) / .45); stroke-width: calc(1.2px / var(--s)); stroke-dasharray: 1 9; stroke-linecap: round; }
+.terr .streak { fill: none; stroke: hsl(var(--h) 95% 72%); stroke-width: calc(3px / var(--s)); stroke-linecap: round; stroke-dasharray: 9 91;
+  filter: drop-shadow(0 0 4px hsl(var(--h) 95% 60%)); opacity: 0; animation: streak 1.4s ease-in-out both; }
+@keyframes streak { 0% { stroke-dashoffset: 0; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { stroke-dashoffset: -100; opacity: 0; } }
+@keyframes halo-drift { to { stroke-dashoffset: -100; } }
+@media (prefers-reduced-motion: reduce) { .wave, .terr .streak { display: none; } }
+#minimap .mterr { fill: hsl(var(--h) 80% var(--tl) / calc(var(--ta) * 3.5)); }
+.wave { fill: none; stroke: hsl(var(--h) 85% var(--tl)); stroke-width: 3; opacity: 0; r: 0;
+  animation: wave 1.5s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes wave { 0% { r: 20px; opacity: .9; stroke-width: 10px; } 100% { r: 420px; opacity: 0; stroke-width: 1px; } }
+.sel { fill: none; stroke: var(--ink); stroke-width: calc(2px / var(--s)); stroke-dasharray: 6 5; opacity: .55; animation: halo-drift 4s linear infinite; }
+.gname { font-weight: 800; letter-spacing: .14em; text-transform: uppercase; text-anchor: middle; dominant-baseline: central;
+  fill: hsl(var(--h) 60% var(--tel) / var(--tna)); opacity: 0; transition: opacity .5s; }
+.z-far .gname { opacity: 1; }
+
+#lasso { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 40; pointer-events: none; }
+#lasso .lfill { fill: color-mix(in srgb, var(--working) 8%, transparent); }
+#lasso .lglow { fill: none; stroke: color-mix(in srgb, var(--working) 25%, transparent); stroke-width: 9; stroke-linejoin: round; }
+#lasso .lline { fill: none; stroke: var(--working); stroke-width: 2; stroke-dasharray: 7 6; stroke-linejoin: round; animation: halo-drift 3s linear infinite; }
+#lasso .lhead { fill: var(--working); }
+
+#ringback { position: fixed; inset: 0; z-index: 70; cursor: crosshair; }
+.ring { position: absolute; width: 0; height: 0; }
+.ring .rhalo { position: absolute; left: -112px; top: -112px; width: 224px; height: 224px; border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 80%, transparent) 55%, transparent);
+  transform: scale(.3); opacity: 0; transition: transform .25s, opacity .25s; }
+.ring.open .rhalo { transform: scale(1); opacity: 1; }
+.ball { position: absolute; left: -19px; top: -19px; width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center; font: 600 20px/1 system-ui; color: var(--muted);
+  background: radial-gradient(circle at 35% 30%, hsl(var(--h) 90% 78%), hsl(var(--h) 75% 52%) 60%, hsl(var(--h) 70% 38%));
+  box-shadow: 0 0 0 2px var(--bg), 0 4px 14px hsl(var(--h) 70% 40% / .35);
+  transform: translate(0, 0) scale(.2); opacity: 0; transition: transform .32s cubic-bezier(.3,1.5,.5,1), opacity .2s, box-shadow .2s; }
+.ring.open .ball { transform: translate(var(--bx), var(--by)) scale(1); opacity: 1; }
+.ring.open .ball.hot { transform: translate(calc(var(--bx) * 1.12), calc(var(--by) * 1.12)) scale(1.3);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 5px hsl(var(--h) 80% 55% / .5), 0 0 26px hsl(var(--h) 90% 55% / .8); }
+.ball.new, .ball.none { background: var(--card); box-shadow: 0 0 0 1.5px var(--line), 0 4px 12px rgba(0,0,0,.12); }
+.ring.open .ball.new.hot, .ring.open .ball.none.hot { box-shadow: 0 0 0 2px var(--ink); color: var(--ink); }
+.rcap { position: absolute; left: -60px; width: 120px; top: -9px; text-align: center; font: 600 13px/18px system-ui; color: var(--ink); white-space: nowrap; }
+.rname { position: absolute; left: -80px; top: -16px; width: 160px; height: 32px; box-sizing: border-box; border-radius: 16px; border: 1.5px solid var(--working);
+  background: var(--card); color: var(--ink); font: 14px system-ui; padding: 0 12px; text-align: center; outline: none; box-shadow: 0 0 18px color-mix(in srgb, var(--working) 40%, transparent); }

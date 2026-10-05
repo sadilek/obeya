@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Item, needsYou, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
 import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
+import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail, hasAgent } from './detail';
@@ -106,6 +107,7 @@ function Canvas({
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const placed = useMemo(() => items.map((item) => ({ item, b: boundsOf(item, items) })), [items]);
+  const territories = useTerritories(placed, snapshot.groups);
   const kidsOf = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const i of items) if (i.parent) m.set(i.parent, [...(m.get(i.parent) ?? []), i]);
@@ -601,6 +603,35 @@ function Canvas({
   const [dragId, setDragId] = useState<string | null>(null);
   // the card the pointer is on, for the waits around it
   const [hoverId, setHoverId] = useState<string | null>(null);
+  // Shift + drag on the canvas draws a lasso; the colour ring then puts what it caught into a group
+  const lassoRef = useRef<Pos[] | null>(null);
+  const [lasso, setLasso] = useState<Pos[]>([]);
+  const [ring, setRing] = useState<{ at: Pos; ids: string[] } | null>(null);
+  async function assignGroup(to: { group: string | null } | { name: string }) {
+    const r = ring!;
+    setRing(null);
+    setLasso([]);
+    // the territory grows from the pointer, or from the one card it is for
+    const one = r.ids.length === 1 ? placed.find((p) => p.item.id === r.ids[0])?.b : undefined;
+    growFrom(r.ids, one ? { x: one.x + one.w / 2, y: one.y + one.h / 2 } : toWorld(camRef.current, r.at.x, r.at.y));
+    try {
+      if ('name' in to) await api.createGroup(to.name, r.ids);
+      else await api.assign(r.ids, to.group);
+    } catch (e) {
+      if (!(e instanceof ApiError)) console.error(e);
+      showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  }
+  /** A right click on a card opens the colour ring for it; a workstream's is its project's. */
+  function onContextMenu(e: React.MouseEvent) {
+    if (focusRef.current) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.item');
+    let i = el && byId(el.dataset.id!);
+    if (i?.parent) i = byId(i.parent);
+    if (!i) return;
+    e.preventDefault();
+    setRing({ at: { x: e.clientX, y: e.clientY }, ids: [i.id] });
+  }
   // the strip on the right a sheet covers, which neither edge indicators nor dragging count as view
   const readingNow = !!reading && focus?.type === 'project';
   const reserve = focus || kOn || aOn || cOn ? (readingNow ? sheetW.read : sheetW.sheet) + 30 : 0;
@@ -657,6 +688,9 @@ function Canvas({
       const content = unionBounds(rest.map((x) => boundsOf(x, rest))) ?? b;
       const grab = toWorld(camRef.current, e.clientX, e.clientY);
       dragRef.current = { id: i.id, x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, grab, start: { x: i.x, y: i.y }, limit: dragLimit(content, b), moved: false, frame: 0, last: 0 };
+    } else if (e.shiftKey) {
+      lassoRef.current = [{ x: e.clientX, y: e.clientY }];
+      setLasso(lassoRef.current);
     } else {
       panRef.current = { x: e.clientX, y: e.clientY };
       setPanning(true);
@@ -690,6 +724,11 @@ function Canvas({
   }
 
   function onPointerMove(e: React.PointerEvent) {
+    if (lassoRef.current) {
+      lassoRef.current = [...lassoRef.current, { x: e.clientX, y: e.clientY }];
+      setLasso(lassoRef.current);
+      return;
+    }
     const d = dragRef.current;
     if (d) {
       d.px = e.clientX;
@@ -712,7 +751,19 @@ function Canvas({
     p.y = e.clientY;
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: React.PointerEvent) {
+    const l = lassoRef.current;
+    if (l) {
+      lassoRef.current = null;
+      const c = camRef.current;
+      // what the lasso caught: each card whose middle lies inside, a workstream as its project
+      const ids = [
+        ...new Set(placed.filter(({ b }) => inside({ x: c.x + (b.x + b.w / 2) * c.s, y: c.y + (b.y + b.h / 2) * c.s }, l)).map(({ item }) => item.parent ?? item.id)),
+      ];
+      if (ids.length) setRing({ at: { x: e.clientX, y: e.clientY }, ids });
+      else setLasso([]);
+      return;
+    }
     const d = dragRef.current;
     if (d) {
       cancelAnimationFrame(d.frame);
@@ -834,8 +885,10 @@ function Canvas({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onDoubleClick={onDoubleClick}
+        onContextMenu={onContextMenu}
       >
         <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
+          <TerritoryLayer {...territories} selected={ring ? placed.filter((p) => ring.ids.includes(p.item.id)).map((p) => p.b) : []} />
           <Links placed={placed} />
           {deps && <DepLinks placed={placed} edges={deps.edges} />}
           {placed.map(({ item, b }) =>
@@ -859,9 +912,21 @@ function Canvas({
               />
             ),
           )}
+          <GroupNames shapes={territories.shapes} />
         </div>
       </div>
       {!items.length && <div className="empty">{t.empty}</div>}
+      {!ring && <Lasso pts={lasso} />}
+      {ring && (
+        <Ring
+          at={ring.at}
+          count={ring.ids.length}
+          groups={snapshot.groups}
+          onPick={(group) => assignGroup({ group })}
+          onCreate={(name) => assignGroup({ name })}
+          onClose={() => (setRing(null), setLasso([]))}
+        />
+      )}
       {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={reserve} onOpen={open} />}
       <header id="bar">
         <Wordmark height={22} />
@@ -901,7 +966,7 @@ function Canvas({
           )}
         </div>
       </header>
-      <Minimap cam={cam} all={all} placed={placed} onJump={(wx, wy) => !focusRef.current && fly(kept({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s }), 500)} />
+      <Minimap cam={cam} all={all} placed={placed} territories={territories.shapes} onJump={(wx, wy) => !focusRef.current && fly(kept({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s }), 500)} />
       <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
       <div id="panel" ref={panelRef}>
         <button className="close" title={t.close} onClick={() => closeCard()}>

@@ -27,6 +27,10 @@ export type Command = (
   | { do: 'remember'; text: string; replaces?: number; card?: string; repos?: string[] }
   /** Runs the Arbeitsrückschau of a repository now. */
   | { do: 'workRetro'; repo: string }
+  /** Puts the cards into the group of that name, a new one when the canvas has none of that name. */
+  | { do: 'group'; cards: string[]; name: string }
+  | { do: 'ungroup'; cards: string[] }
+  | { do: 'renameGroup'; group: string; name: string }
 ) & {
   /** Screenshots that came with the command (image ids), on the actions that take them (`TAKES_IMAGES`). */
   images?: string[];
@@ -142,7 +146,7 @@ type LookUp = { question: string; about?: string };
 type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp };
 
 /** The actions `act` takes, as the Koordinator names them. */
-const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro'] as const;
+const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group'] as const;
 type Action = (typeof ACTIONS)[number];
 
 /** Actions in one command, at most: "start all queued cards" may name many. */
@@ -305,6 +309,7 @@ export class Commander {
             "- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card „CLAUDE.md ergänzen“, whose worker writes it into the CLAUDE.md. confirm says where it goes („Gemerkt, gilt ab sofort für alle Agenten.“ / „Kommt in die CLAUDE.md von <repository name>, über die Aufgabe „CLAUDE.md ergänzen“.“).",
             "- work_retro (no card): the Arbeitsrückschau of a repository, now („Mach eine Arbeitsrückschau für Acme“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill) or CLAUDE.md lines for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself every 10 finished cards of a repository. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. „Ich mache die Arbeitsrückschau für Acme; Vorschläge erscheinen als Karten.“",
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words; empty: one prototype for each variant its agent planned that has none running yet, all at once, or without planned variants one of the idea as it stands), park (for later), drop (it stays on the canvas with its brief). Building or planning an idea waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that building goes by a click once the reply is there.",
+            `- group: put cards into a group, shown on the canvas as a coloured territory behind them. cards: their tags; text: the group's name (group is only for rename_group), one the canvas has (see the list) or a new one, which is then created. A card is in one group at most, so this takes it out of its group. A workstream stands for its project: the whole project goes into the group. ungroup: take cards (cards) out of their group. rename_group: group the group's current name, text its new name. A group no card belongs to any more goes. confirm e.g. „„Export“ und „Rabatt“ gehören jetzt zur Gruppe Abrechnung.“`,
             '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
             "Texts for a card's agent (note, answer, feedback) in the owner's own words, not rephrased: all they said, or with several actions in one sentence the part for that action. Other texts (a new card's body, a rule, talk to an idea) as the owner meant them (fix obvious recognition errors).",
           ].join('\n'),
@@ -321,6 +326,8 @@ export class Commander {
                   repo: z.string().optional(),
                   replaces: z.number().int().optional(),
                   repos: z.array(z.string()).optional(),
+                  cards: z.array(z.string()).optional(),
+                  group: z.string().optional(),
                 }),
               )
               .min(1)
@@ -461,6 +468,32 @@ export class Commander {
       const open = a.card ? this.o.board.item(s.tags.get(a.card) ?? '')?.repo : undefined;
       return { do: 'workRetro', repo: a.repo ?? open ?? repos[0]!.id };
     }
+    if (a.do === 'group' || a.do === 'ungroup') {
+      const tags = [...new Set([...(a.cards ?? []), ...(a.card ? [a.card] : [])])];
+      if (!tags.length) return 'name the cards with cards (their tags)';
+      const cards: string[] = [];
+      for (const t of tags) {
+        const id = s.tags.get(t);
+        if (!id || !this.o.board.item(id)) return `unknown tag ${t}`;
+        cards.push(id);
+      }
+      if (a.do === 'ungroup') return { do: 'ungroup', cards };
+      // the name may come where rename_group takes the group
+      const name = (a.text || a.group)?.replace(/\s+/g, ' ').trim();
+      if (!name) return "the group's name is missing (text)";
+      if (name.length > 60) return "a group's name has at most 60 characters";
+      return { do: 'group', cards, name };
+    }
+    if (a.do === 'rename_group') {
+      const groups = this.o.board.snapshot().groups;
+      const g = groups.find((x) => x.name.toLowerCase() === a.group?.trim().toLowerCase());
+      if (!g) return `there is no group ${a.group ?? '(none named)'}; the canvas has ${groups.map((x) => `"${x.name}"`).join(', ') || 'none'}`;
+      const name = a.text?.replace(/\s+/g, ' ').trim();
+      if (!name) return 'the new name is missing (text)';
+      if (name.length > 60) return "a group's name has at most 60 characters";
+      if (groups.some((x) => x.id !== g.id && x.name.toLowerCase() === name.toLowerCase())) return `there is a group "${name}" already`;
+      return { do: 'renameGroup', group: g.id, name };
+    }
     if (a.do === 'new_idea') {
       if (!a.title?.trim()) return 'a new idea needs a title';
       const repos = this.o.board.canvas.repos;
@@ -577,7 +610,8 @@ export class Commander {
 
   /** The message for one command: what the Koordinator needs to know besides what it already knows. */
   private brief(s: Session, transcript: string, focus: Focus, input: Input, shots = 0): string {
-    const items = this.o.board.snapshot().items;
+    const { items, groups: groupList } = this.o.board.snapshot();
+    const groups = new Map(groupList.map((g) => [g.id, g.name]));
     const relevant = items.filter((i) => i.kind !== 'project' && (!finished(i.state) || i.finishing || i.id === focus.card));
     const tag = (id: string) => {
       let t = s.tagOf.get(id);
@@ -603,7 +637,8 @@ export class Commander {
               : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
       const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
-      return `${tag(i.id)} [${state}] "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.proposal ? ` — proposed ${i.proposal.idea ? 'idea' : 'task'}${i.proposal.questions.length ? `, open questions: ${i.proposal.questions.map((q) => q.text).join(' | ')}` : ''}` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}${i.idea?.variants.length ? ` — prototypes its agent planned: ${i.idea.variants.map((v) => v.approach).join(', ')}` : ''}`;
+      const group = i.group ? groups.get(i.group) : undefined;
+      return `${tag(i.id)} [${state}] "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${group ? ` (group "${group}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.proposal ? ` — proposed ${i.proposal.idea ? 'idea' : 'task'}${i.proposal.questions.length ? `, open questions: ${i.proposal.questions.map((q) => q.text).join(' | ')}` : ''}` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}${i.idea?.variants.length ? ` — prototypes its agent planned: ${i.idea.variants.map((v) => v.approach).join(', ')}` : ''}`;
     };
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);
@@ -668,6 +703,7 @@ export class Commander {
       focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused)}` : project ? `The owner is looking at the project ${tag(project.id)} "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
       `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
       ...(projects.length ? [`Projects with workstreams to start:\n${projects.join('\n')}`] : []),
+      `Groups on the canvas: ${groupList.map((g) => `"${g.name}"`).join(', ') || '(none yet)'}`,
       rules.length
         ? `The owner's rules, which every agent follows (follow them yourself too):\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}`
         : 'The owner has recorded no rules yet.',
@@ -687,6 +723,8 @@ interface ActionArgs {
   repo?: string;
   replaces?: number;
   repos?: string[];
+  cards?: string[];
+  group?: string;
 }
 
 /** How a step of a card's history reads. */
@@ -732,6 +770,6 @@ All three take confirm: one short German sentence (two at most for an answer or 
 In German, a card is an „Aufgabe“ (a follow-up: „Folgeaufgabe“), an idea „Idee“, a project „Projekt“; never say „Karte“. The owner may still say „Karte“ and means the same.
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
 When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent. Decide where it goes: only a rule on how the agents work with the owner through Obeya, whatever the repository, is one of the owner's rules (no repos); anything about a repository (named, "hier", "in diesem Repo", or about its code, UI, wording, tests, tools or product) goes into that repository's CLAUDE.md: pass repos. Leave the place out of the rule's text, and say in confirm where it went (for a CLAUDE.md: into the repository's card „CLAUDE.md ergänzen“, which writes it into the file).
-When an agent works on the open card (working, in PR, waiting, or finishing what remains), what the owner says is, in doubt, for that agent: note, or answer when the card has an open question, or feedback when it waits for review. Pass their words as they are; the agent learns whether they were spoken. Talking to the agent ("mach …", "kannst du …", "warum hast du …"), a remark on the work, a bare answer: all for the agent. Only what clearly asks something of Obeya goes elsewhere: approve, stop, start, a follow-up or new card, a new idea, remember, an action on another card, or a question to you about the canvas (reply or look_up).
+When an agent works on the open card (working, in PR, waiting, or finishing what remains), what the owner says is, in doubt, for that agent: note, or answer when the card has an open question, or feedback when it waits for review. Pass their words as they are; the agent learns whether they were spoken. Talking to the agent ("mach …", "kannst du …", "warum hast du …"), a remark on the work, a bare answer: all for the agent. Only what clearly asks something of Obeya goes elsewhere: approve, stop, start, a follow-up or new card, a new idea, remember, grouping cards, an action on another card, or a question to you about the canvas (reply or look_up).
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). "Mach, was du vorschlägst" on an idea takes the step its agent would take next, as its line says; when that is answering, discuss with its own answers. Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

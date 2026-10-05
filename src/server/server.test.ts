@@ -120,6 +120,33 @@ describe('archive', () => {
   });
 });
 
+describe('groups', () => {
+  test('are created with cards, renamed and assigned, and every page hears of it', async () => {
+    const [a, b] = [card(), card()];
+    const messages: ServerMessage[] = [];
+    const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
+    ws.onmessage = (e) => messages.push(JSON.parse(e.data));
+    await until(() => ws.readyState === WebSocket.OPEN && messages.some((m) => m.type === 'snapshot'));
+    const g = (await (await post(api('/groups'), JSON.stringify({ name: 'Abrechnung', cards: [a.id] }))).json()) as { id: string; name: string; hue: number };
+    expect(g).toMatchObject({ name: 'Abrechnung', hue: expect.any(Number) });
+    const patch = (id: string, body: string) => fetch(new URL(api(`/groups/${id}`), server.url), { method: 'PATCH', headers: { 'content-type': 'application/json' }, body });
+    expect((await patch(g.id, JSON.stringify({ name: 'Billing' }))).status).toBe(204);
+    expect((await post(api('/assign'), JSON.stringify({ cards: [b.id], group: g.id }))).status).toBe(204);
+    await until(() => {
+      const last = messages.findLast((m) => m.type === 'snapshot');
+      return last?.type === 'snapshot' && last.snapshot.items.find((i) => i.id === b.id)?.group === g.id;
+    });
+    const last = messages.findLast((m) => m.type === 'snapshot') as Extract<ServerMessage, { type: 'snapshot' }>;
+    expect(last.snapshot.groups).toEqual([{ ...g, name: 'Billing' }]);
+    expect((await post(api('/assign'), JSON.stringify({ cards: [a.id, b.id], group: null }))).status).toBe(204);
+    expect(board.snapshot().groups).toEqual([]);
+    expect(await codeOf(patch(g.id, JSON.stringify({ name: 'X' })))).toBe('unknownGroup');
+    expect(await codeOf(post(api('/groups'), JSON.stringify({ name: '', cards: [a.id] })))).toBe('emptyText');
+    expect(await codeOf(post(api('/assign'), 'null'))).toBe('invalid');
+    ws.close();
+  });
+});
+
 describe('plan docs', () => {
   test("a project's plan doc is read as written; other cards have none", async () => {
     const md = '# Export\n\n## Goal\n\nCSV for landlords.\n\n## Workstreams\n\n- [ ] **W1:** CSV. Columns as in `docs/x.md`.\n\n## Notes\n\nMore.\n';

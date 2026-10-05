@@ -16,6 +16,7 @@ import {
   type Decision,
   type DemoKind,
   type ErrorCode,
+  type Group,
   type Idea,
   type Item,
   type NewCard,
@@ -30,7 +31,7 @@ import {
   STATES,
   finished,
 } from '../core/types';
-import type { CardRow, DecisionRow, Friction, FrictionNote, NewRow, RowUpdate, Store } from './db';
+import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewRow, RowUpdate, Store } from './db';
 import type { Images } from './images';
 
 /** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
@@ -242,6 +243,7 @@ export class Board {
         x: row.x + (n % 3) * 330,
         y: row.y + Math.floor(n / 3) * 170,
         repo: row.repo,
+        group_id: row.group_id,
         // every package may need the screenshots of the task it came from
         images: row.images,
       })),
@@ -318,6 +320,7 @@ export class Board {
         from_id: fromId,
         repo: from && from.repo !== this.home ? from.repo : null,
         proposal: JSON.stringify(proposal),
+        group_id: from?.group ?? null,
       },
     ]);
     this.changed();
@@ -420,6 +423,7 @@ export class Board {
         y: b.y + b.h + 60,
         from_id: ideaId,
         prototype_of: ideaId,
+        group_id: idea?.group ?? null,
         ...(variant ? { prototype: JSON.stringify({ variant } satisfies StoredPrototype) } : {}),
         repo: idea && idea.repo !== this.home ? idea.repo : null,
       },
@@ -622,6 +626,7 @@ export class Board {
     this.cache = {
       canvas: this.canvas,
       items,
+      groups: this.store.groups(this.canvas.id).map(toGroup),
       preferences: this.store.preferences(this.canvas.id, ['proposed', 'active']),
       talk: this.store.talk(this.canvas.id, SHEET_TALK, true),
       ...(reshare ? { reshare } : {}),
@@ -784,6 +789,67 @@ export class Board {
     this.changed();
   }
 
+  // ---------------------------------------------------------------- groups
+
+  /** Puts the cards into the group, or with `null` into none; a workstream stands for its project. */
+  group(cardIds: unknown, groupId: string | null) {
+    const ids = this.groupable(cardIds);
+    if (groupId !== null) this.ownGroup(groupId);
+    this.store.setGroup(ids, groupId);
+    this.store.dropEmptyGroups(this.canvas.id);
+    this.changed();
+  }
+
+  /**
+   * A new group with the cards in it, in the first colour no group has. A name a group has already
+   * (in any case) puts the cards into that group.
+   */
+  createGroup(name: unknown, cardIds: unknown): Group {
+    const n = this.groupName(name);
+    const ids = this.groupable(cardIds);
+    if (!ids.length) throw new BadRequest('invalid', 'a group needs a card');
+    const groups = this.store.groups(this.canvas.id);
+    const g = groups.find((x) => x.name.toLowerCase() === n.toLowerCase()) ?? this.store.addGroup(this.canvas.id, n, nextHue(groups.map((x) => x.hue)));
+    this.store.setGroup(ids, g.id);
+    this.store.dropEmptyGroups(this.canvas.id);
+    this.changed();
+    return toGroup(g);
+  }
+
+  renameGroup(id: string, name: unknown) {
+    this.ownGroup(id);
+    const n = this.groupName(name);
+    if (this.store.groups(this.canvas.id).some((g) => g.id !== id && g.name.toLowerCase() === n.toLowerCase()))
+      throw new BadRequest('invalid', `there is a group named ${n} already`);
+    this.store.renameGroup(id, n);
+    this.changed();
+  }
+
+  /** The group a card's new offspring (a proposal, a follow-up, a package, a prototype) goes into. */
+  private groupOf(r: CardRow): string | null {
+    if (r.group_id) return r.group_id;
+    return r.parent_id ? (this.store.card(r.parent_id)?.group_id ?? null) : null;
+  }
+
+  /** The cards, each own: workstreams give their project, every card once. */
+  private groupable(cardIds: unknown): string[] {
+    if (!Array.isArray(cardIds) || !cardIds.every((id) => typeof id === 'string')) throw new BadRequest('invalid', 'cards must be a list of card ids');
+    return [...new Set(cardIds.map((id) => this.own(id)).map((r) => r.parent_id ?? r.id))];
+  }
+
+  private ownGroup(id: unknown): GroupRow {
+    const g = typeof id === 'string' ? this.store.group(id) : null;
+    if (!g || g.canvas_id !== this.canvas.id) throw new BadRequest('unknownGroup', 'unknown group');
+    return g;
+  }
+
+  private groupName(name: unknown): string {
+    checkText(name, 'name', 60);
+    const n = (name as string).replace(/\s+/g, ' ').trim();
+    if (!n) throw new BadRequest('emptyText', 'a group needs a name');
+    return n;
+  }
+
   create(n: NewCard): Item {
     checkText(n.title, 'title', 200);
     if (n.body !== undefined) checkText(n.body, 'body', 20000);
@@ -807,7 +873,7 @@ export class Board {
         body: n.body ?? '',
         ...at,
         repo: repo && repo !== this.home ? repo : null,
-        ...(from ? { from_id: from.id } : {}),
+        ...(from ? { from_id: from.id, group_id: this.groupOf(from) } : {}),
         images: n.images?.length ? JSON.stringify(n.images) : null,
         ...(n.idea ? { idea: JSON.stringify({ status: 'open', brief: '' } satisfies StoredIdea) } : {}),
       },
@@ -968,6 +1034,8 @@ export class Board {
       else if (pw > iw && b.x >= idea.x + iw && b.y < idea.y + ph && b.y + b.h > idea.y) moves.push([i.id, { x: i.x + pw - iw, y: i.y }]);
     }
     this.store.db.transaction(() => moves.forEach(([id, at]) => this.store.update(id, at)))();
+    // the project stands for the idea in its group too
+    if (idea.group && !project.group) this.store.setGroup([project.id], idea.group);
   }
 
   /**
@@ -997,6 +1065,8 @@ export function repoOfRef(ref: string, home: string): string {
 
 export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] {
   const docByFile = new Map(docs.map((d) => [d.file, d]));
+  // a project's group covers its workstreams
+  const groupOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.group_id ? [[r.id, r.group_id]] : [])));
   const projects: Item[] = [];
   const workstreams: { item: Item; order: number }[] = [];
   const manual: Item[] = [];
@@ -1020,6 +1090,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
         ...(r.retro ? { retro: r.retro } : {}),
         ...(r.proposal && r.state === 'proposal' ? { proposal: JSON.parse(r.proposal) as Proposal } : {}),
+        ...(r.group_id ? { group: r.group_id } : {}),
       });
       continue;
     }
@@ -1039,6 +1110,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         repo: repoOfRef(doc.file, home),
         plan: { file: doc.file, goal: doc.goal },
         ...(r.from_id ? { origin: r.from_id } : {}),
+        ...(r.group_id ? { group: r.group_id } : {}),
       });
       continue;
     }
@@ -1064,6 +1136,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         repo: repoOfRef(r.plan_ref, home),
         ...(w.label ? { label: w.label } : {}),
         ...work(r),
+        ...(groupOf.get(r.parent_id) ? { group: groupOf.get(r.parent_id)! } : {}),
       },
     });
   }
@@ -1191,6 +1264,15 @@ function ideaOf(r: CardRow): Idea {
 function checkPreference(v: unknown): string {
   if (typeof v !== 'string' || !v.trim() || v.length > 500) throw new BadRequest('emptyText', 'a preference is a non-empty string of at most 500 characters');
   return v.trim();
+}
+
+const toGroup = (g: GroupRow): Group => ({ id: g.id, name: g.name, hue: g.hue });
+
+/** Group colours, apart from each other and from the states' colours on the cards; then the golden angle. */
+const HUES = [200, 28, 150, 280, 345, 55, 175, 100];
+export function nextHue(used: number[]): number {
+  const free = HUES.find((h) => !used.includes(h));
+  return free ?? Math.round((used.length * 137.508) % 360);
 }
 
 function checkText(v: unknown, name: string, max: number) {

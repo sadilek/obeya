@@ -25,7 +25,14 @@ export const t = {
   progress: (live: number, all: number) => `${live} von ${all} live`,
   needsYou: 'brauchen dich',
   newCard: 'Neue Aufgabe',
-  keys: 'Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Doppelklick: neue Aufgabe · K: Koordinator · A: Archiv · Leertaste halten: sprechen',
+  keys: 'Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Doppelklick: neue Aufgabe · Umschalt + Ziehen oder Rechtsklick: Gruppe · K: Koordinator · A: Archiv · Leertaste halten: sprechen',
+  /** The colour ring that puts cards into a group. */
+  groups: {
+    cards: (n: number) => (n === 1 ? '1 Aufgabe' : `${n} Aufgaben`),
+    create: 'Neue Gruppe',
+    none: 'Keine Gruppe',
+    name: 'Name der Gruppe',
+  },
   close: 'Schließen (Esc)',
   sheetGrip: 'Breite ziehen · Doppelklick: zurück auf die Standardbreite',
   planSheet: 'Projekt · Plan',
@@ -133,6 +140,7 @@ export const t = {
   /** Why the server refused an action; `invalid` is also the text for anything unknown. */
   error: {
     unknownCard: 'Das gibt es nicht mehr.',
+    unknownGroup: 'Diese Gruppe gibt es nicht mehr.',
     project: 'Ein Projekt wird über seine Workstreams bearbeitet, nicht als Ganzes.',
     notPlanned: 'Nur eine geplante Aufgabe kann gestartet werden.',
     queued: 'Die Aufgabe liegt schon beim Koordinator.',
