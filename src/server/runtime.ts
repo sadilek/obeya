@@ -136,11 +136,17 @@ export const sdkRuntime: AgentRuntime = {
 /** A foreground command may sleep this long; anything longer keeps the owner's notes from the agent. */
 export const FOREGROUND_SLEEP_LIMIT = 30;
 
+/** Short waits the refusal suggests; both pass it (tested), the first also where `timeout` is missing (macOS). */
+export const BOUNDED_WAITS = [
+  'for i in $(seq 1 15); do curl -sf localhost:3000 && break; sleep 2; done',
+  "timeout 30 bash -c 'until curl -sf localhost:3000; do sleep 2; done'",
+];
+
 /**
  * Refuses a foreground Bash command that sleeps longer than the limit: a message sent meanwhile
  * reaches the agent only once the command is done.
  */
-function refuseForegroundWait(input: HookInput): HookJSONOutput {
+export function refuseForegroundWait(input: HookInput): HookJSONOutput {
   if (input.hook_event_name !== 'PreToolUse') return {};
   const { command, run_in_background } = (input.tool_input ?? {}) as { command?: unknown; run_in_background?: unknown };
   if (run_in_background || typeof command !== 'string' || foregroundSleep(command) <= FOREGROUND_SLEEP_LIMIT) return {};
@@ -148,7 +154,7 @@ function refuseForegroundWait(input: HookInput): HookJSONOutput {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'deny',
-      permissionDecisionReason: `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. Wait in the background instead: run it with run_in_background, or watch for the condition with Monitor, and end your turn; you are woken when it finishes or fires. A short wait may stay in the foreground if bounded, e.g. \`timeout ${FOREGROUND_SLEEP_LIMIT} …\`.`,
+      permissionDecisionReason: `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. Wait in the background instead: run it with run_in_background, or watch for the condition with Monitor, and end your turn; you are woken when it finishes or fires. A short wait may stay in the foreground if bounded to ${FOREGROUND_SLEEP_LIMIT} seconds, e.g. \`${BOUNDED_WAITS[0]}\` or, where \`timeout\` is installed, \`${BOUNDED_WAITS[1]}\`.`,
     },
   };
 }
@@ -160,22 +166,21 @@ function withContext(event: 'PostToolUse' | 'PostToolUseFailure', text: string |
 /**
  * How many seconds a shell command sleeps in the foreground, read from the command line alone:
  * `sleep` with its durations (`sleep 90`, `sleep 5m`, `sleep 1m 30s`), times the iterations of the
- * loop it is in (a `for` over a word list, `seq` or `{a..b}`; `while` and `until` have no bound),
- * capped by a leading `timeout N`. What runs behind `&` does not count. Commands that only sleep
+ * loop it is in (a `for` over a word list, `seq` or `{a..b}`; `while` and `until` have no bound).
+ * A command that `timeout N` starts counts at most N, wherever it stands (`cd app && timeout 30 bash
+ * -c 'until …; do sleep 2; done'`). What runs behind `&` does not count. Commands that only sleep
  * inside scripts or programs they call are not seen.
  */
 export function foregroundSleep(command: string): number {
   // redirections such as 2>&1 are words, not `&`
-  const tokens = command.replace(/['"`]/g, ' ').match(/\d*[<>]&\d*-?|&>>?|&&|\|\||[;&|(){}\n]|[^\s;&|(){}<>]+|[<>]+/g) ?? [];
+  const tokens = boundTimeouts(command).replace(/['"`]/g, ' ').match(/\d*[<>]&\d*-?|&>>?|&&|\|\||[;&|(){}\n]|[^\s;&|(){}<>]+|[<>]+/g) ?? [];
   // per open loop or group (and the command line itself): seconds of finished commands, and of the one in progress
   type Frame = { done: number; current: number; iterations: number; closer: string };
   const stack: Frame[] = [{ done: 0, current: 0, iterations: 1, closer: '' }];
   const top = () => stack.at(-1)!;
-  let cap = Infinity;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i]!;
-    if (t === 'timeout' && i === 0 && /^\d+(\.\d+)?[smhd]?$/.test(tokens[1] ?? '')) cap = seconds(tokens[1]!);
-    else if (t === 'sleep') {
+    if (t === 'sleep') {
       let s = 0;
       while (i + 1 < tokens.length && /^(\d+(\.\d+)?[smhd]?|inf(inity)?)$/.test(tokens[i + 1]!)) s += seconds(tokens[++i]!);
       top().current += s;
@@ -203,7 +208,58 @@ export function foregroundSleep(command: string): number {
     const body = f.done + f.current + total;
     total = body > 0 ? body * f.iterations : 0;
   }
-  return Math.min(total, cap);
+  return total;
+}
+
+/** `timeout` (or coreutils' `gtimeout` on macOS) where a command begins: variables set for it, options, then the duration. */
+const TIMEOUT = /^(?:\w+=\S*\s+)*g?timeout(?:\s+(?:-[ks]\s*\S+|--?[a-zA-Z][\w-]*(?:=\S+)?))*\s+(\d+(?:\.\d+)?[smhd]?)(?=\s)/;
+
+/** Words after which a command begins, as after `;`. */
+const COMMAND_BEFORE = new Set(['do', 'then', 'else', 'elif', '!', 'time']);
+
+/**
+ * The command line with each command that `timeout N` starts replaced by a `sleep` as long as it
+ * can wait: N, or less if what it runs sleeps less (`timeout 0` sets no bound). Quotes count here,
+ * so a loop handed to `bash -c '…'` stays in the command it belongs to.
+ */
+function boundTimeouts(command: string): string {
+  let out = '';
+  let start = true;
+  for (let i = 0; i < command.length; ) {
+    const rest = command.slice(i);
+    const t = start ? TIMEOUT.exec(rest) : null;
+    if (t) {
+      const end = i + commandEnd(rest);
+      const bound = seconds(t[1]!) || Infinity;
+      out += `sleep ${Math.min(bound, foregroundSleep(command.slice(i + t[0].length, end)))} `;
+      i = end;
+      start = false;
+      continue;
+    }
+    const unit = rest.match(/^(?:[ \t]+|\d*[<>]&\d*-?|&>>?|[<>]+|[;&|(){}\n]|'[^']*'?|"(?:\\.|[^"\\])*"?|\\.|[^\s;&|(){}<>'"\\]+)/)?.[0] ?? rest[0]!;
+    out += unit;
+    i += unit.length;
+    if (/^[;&|({\n]$/.test(unit)) start = true;
+    else if (!/^[ \t]+$/.test(unit) && !/^\d*[<>]/.test(unit)) start = COMMAND_BEFORE.has(unit);
+  }
+  return out;
+}
+
+/** Where the command at the start of `text` ends: at `;`, `&`, `|`, a line break or a `)` it did not open, outside quotes. */
+function commandEnd(text: string): number {
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!;
+    if (c === '\\') i++;
+    else if (c === "'") i = text.indexOf("'", i + 1) < 0 ? text.length : text.indexOf("'", i + 1);
+    else if (c === '"') {
+      for (i++; i < text.length && text[i] !== '"'; i++) if (text[i] === '\\') i++;
+    } else if (c === '(') depth++;
+    else if (c === ')' && depth-- === 0) return i;
+    else if (c === '&' && (/[<>]/.test(text[i - 1] ?? '') || text[i + 1] === '>')) continue;
+    else if (/[;&|\n]/.test(c) && depth === 0) return i;
+  }
+  return text.length;
 }
 
 function seconds(d: string): number {

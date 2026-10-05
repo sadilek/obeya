@@ -229,7 +229,9 @@ wait for anything external (a deploy, a CI run, a point in time) in the backgrou
 (`run_in_background`, Monitor) and end their turn, which a note starts again at once. A Bash
 command in the foreground that sleeps longer than 30 seconds (`sleep N`, a polling loop without a
 bound, counted from the command line by `foregroundSleep` in `src/server/runtime.ts`) is refused
-with that reason; a leading `timeout N` bounds it. A worker answers a note in its log, saying what
+with that reason. `timeout N` (or `gtimeout`) bounds the command it starts, wherever that stands
+in the line (`cd app && timeout 28 bash -c 'until …; do sleep 2; done'`); the refusal names two
+bounded waits that pass it, one without `timeout`, which macOS lacks. A worker answers a note in its log, saying what
 it changes or why nothing, and asks when the note is unclear.
 
 Obeya's messages to a worker say what happened — feedback, an answer, a note, a landing that
