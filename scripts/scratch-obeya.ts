@@ -20,7 +20,7 @@
 // The stage file (JSON; every field but `cards` optional):
 //   {
 //     "port": 4480, "dir": "/tmp/obeya-scratch-4480", "adapter": "obeya", "clones": 2,
-//     "share": "share.ts",
+//     "share": "share.ts", "poolCheckout": true,
 //     "files": { "src/cli.ts": "…" },
 //     "plans": { "docs/plan/werkzeug.md": "# Werkzeug\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n" },
 //     "cards": [
@@ -55,7 +55,10 @@
 // workspace (true: the card holds the next free clone, for an adapter that works in clones),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
 // "3d" ago. `"adapter": ""` names none: the repository's own (`.obeya/adapter/` among `files`) or the generic one. `share` is the repository's share command as the configuration holds it (a script among
-// `files`, say); the server then starts from a configuration file in <dir>. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
+// `files`, say); `poolCheckout` makes the repository's checkout a workspace of the pool too
+// (`workspaces` in the configuration), as a pool of clones often has it, with a bare origin in
+// <dir>; with either, the server
+// starts from a configuration file in <dir>. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
 // `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
 // What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
 // Groups are created through the API with their cards (keys; a workstream stands for its project),
@@ -104,6 +107,8 @@ interface Stage {
   clones?: number;
   /** The repository's share command, as in the configuration. */
   share?: string;
+  /** The repository's checkout is a workspace of the pool too. */
+  poolCheckout?: boolean;
   files?: Record<string, string>;
   plans?: Record<string, string>;
   cards: StageCard[];
@@ -153,6 +158,13 @@ for (const [path, text] of Object.entries(files)) {
 run('git', ['init', '-q', '-b', 'main'], repo);
 run('git', ['add', '-A'], repo);
 run('git', ['-c', 'user.name=Scratch', '-c', 'user.email=scratch@example.com', 'commit', '-qm', 'init'], repo);
+// a workspace of the pool is a clone of the repository's origin, the checkout included
+if (stage.poolCheckout) {
+  run('git', ['clone', '-q', '--bare', repo, join(dir, 'scratch.git')], dir);
+  run('git', ['remote', 'add', 'origin', join(dir, 'scratch.git')], repo);
+  run('git', ['fetch', '-q', 'origin'], repo);
+  run('git', ['branch', '-q', '-u', 'origin/main'], repo);
+}
 
 // the code it runs
 let code = ROOT;
@@ -176,11 +188,31 @@ const out = openSync(log, 'a');
 // not supervised: a scratch Obeya restarts itself only when asked to
 const supervised = args.includes('--restarts');
 const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')), OBEYA_HOME: home };
-// a share command lives in the configuration, which the command line cannot give
+// a share command and a pool's workspaces live in the configuration, which the command line cannot give
 const configFile = join(dir, 'canvases.json');
-if (stage.share)
-  writeFileSync(configFile, JSON.stringify([{ repos: [{ path: repo, ...(stage.adapter === '' ? {} : { adapter: stage.adapter ?? 'obeya' }), ...(stage.clones ? { clones: stage.clones } : {}), share: stage.share }] }], null, 2));
-const canvasArgs = stage.share ? ['--config', configFile] : [repo, ...(stage.adapter === '' ? [] : ['--adapter', stage.adapter ?? 'obeya']), ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
+const configured = !!stage.share || !!stage.poolCheckout;
+if (configured)
+  writeFileSync(
+    configFile,
+    JSON.stringify(
+      [
+        {
+          repos: [
+            {
+              path: repo,
+              ...(stage.adapter === '' ? {} : { adapter: stage.adapter ?? 'obeya' }),
+              ...(stage.clones ? { clones: stage.clones } : {}),
+              ...(stage.poolCheckout ? { workspaces: [repo] } : {}),
+              ...(stage.share ? { share: stage.share } : {}),
+            },
+          ],
+        },
+      ],
+      null,
+      2,
+    ),
+  );
+const canvasArgs = configured ? ['--config', configFile] : [repo, ...(stage.adapter === '' ? [] : ['--adapter', stage.adapter ?? 'obeya']), ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
 const server = spawn(
   process.execPath,
   ['src/server/main.ts', ...canvasArgs, '--port', String(port), ...(supervised ? [] : ['--dev']), ...(idle && canIdle ? ['--idle-workers'] : [])],
