@@ -27,6 +27,8 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
 - UI strings live in one place, `src/ui/strings.ts` (German first, English later).
 - A button that is easy to click by accident and sets a lot in motion gets an undo. What is easy
   to reverse afterwards gets no undo window with a wait: it takes effect at once.
+- Prompts and skills for agents: fix unwanted behaviour by removing the instruction that causes
+  it, not by adding a prohibition. Forbid nothing an agent would not do without being told to.
 - The colleagues use Windows or Linux: features must work there; macOS-only tools (e.g. `say`)
   only as an additional option.
 - Demo videos and voice recordings never go into git.
