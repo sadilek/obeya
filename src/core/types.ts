@@ -361,8 +361,9 @@ export type CardAction =
   | { action: 'start' }
   | { action: 'stop' }
   /** `images`: ids of screenshots uploaded before (`POST /api/c/<canvas>/images`); with them the text may be empty. */
-  | { action: 'message'; text: string; images?: string[] }
-  | { action: 'answer'; text: string; images?: string[] }
+  /** `spoken`: the words came through speech recognition, which the agent is told. */
+  | { action: 'message'; text: string; spoken?: boolean; images?: string[] }
+  | { action: 'answer'; text: string; spoken?: boolean; images?: string[] }
   | { action: 'approve' }
   /** Start a queued card although it may collide. */
   | { action: 'force' }

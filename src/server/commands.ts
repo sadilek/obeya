@@ -16,7 +16,8 @@ export type Command = (
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
   /** On a prototype: build its idea on it, or throw it away. */
   | { do: 'buildPrototype' | 'discard'; card: string }
-  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string }
+  /** `spoken`: the words came through speech recognition (the default), not typed. */
+  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string; spoken?: boolean }
   /** Saves Obeya's configuration, which then starts again with it. */
   | { do: 'configure'; canvases: CanvasConfig[] }
   /**
@@ -54,14 +55,17 @@ const picks = (i: Item) => {
 /** The actions a command's screenshots go with: those that create a card, start one or say something to its agent. */
 const TAKES_IMAGES: Command['do'][] = ['newCard', 'newIdea', 'start', 'force', 'note', 'answer', 'feedback', 'discuss'];
 
+/** Actions whose text goes to a card's agent. */
+const TO_AGENT: Command['do'][] = ['note', 'answer', 'feedback', 'discuss'];
+
 export interface Heard {
   /** What the owner hears and reads back. */
   confirm: string;
   /** Takes the actions back while they wait; absent when there was nothing to do. */
   token?: string;
   /**
-   * Said to the idea the owner has open: it is already part of the conversation there, which is
-   * confirmation enough, so nothing is spoken back.
+   * Said to the agent of the card the owner has open (a note, an answer, talk to an idea): it went
+   * out at once and stands in the card's log or conversation, which is confirmation enough.
    */
   quiet?: boolean;
 }
@@ -69,6 +73,22 @@ export interface Heard {
 export interface Focus {
   card?: string;
   project?: string;
+}
+
+/** The field on the open card a typed command came from. */
+export type Field = 'note' | 'answer' | 'feedback' | 'discuss';
+const FIELDS: Record<Field, string> = {
+  note: "the field for a note to the card's agent",
+  answer: "the field for an answer to the card's open question",
+  feedback: "the field for feedback on the card's work",
+  discuss: "the idea's conversation",
+};
+export const isField = (f: unknown): f is Field => typeof f === 'string' && f in FIELDS;
+
+/** How the owner gave a command: spoken (the default) or typed, and then in which field of the open card. */
+export interface Input {
+  typed?: boolean;
+  field?: Field;
 }
 
 export interface CommanderOptions {
@@ -153,14 +173,17 @@ export class Commander {
    * owner hears back. The exchange goes into the open card's log, or without one into the
    * Koordinator's sheet. Screenshots (image ids) go with the actions that create or concern a card.
    */
-  async hear(transcript: string, focus: Focus, images: string[] = []): Promise<Heard> {
-    const decision = await this.interpret(transcript, focus, images);
+  async hear(transcript: string, focus: Focus, images: string[] = [], input: Input = {}): Promise<Heard> {
+    const decision = await this.interpret(transcript, focus, images, input);
     const { confirm, lookUp } = decision;
     const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
-    const commands = decision.commands.map((c) => {
+    // the open card's agent gets what was said to it in the owner's words, however the Koordinator put them
+    const verbatim = decision.commands.length === 1 && ['note', 'answer', 'feedback'].includes(decision.commands[0]!.do);
+    const commands = decision.commands.map((c): Command => {
       // a rule said with a card open has that card as its occasion
       if (c.do === 'remember') return card ? { ...c, card } : c;
-      return images.length && TAKES_IMAGES.includes(c.do) ? { ...c, images } : c;
+      const told = TO_AGENT.includes(c.do) && 'text' in c ? { ...c, spoken: !input.typed, ...(verbatim && c.card === card ? { text: transcript } : {}) } : c;
+      return images.length && TAKES_IMAGES.includes(c.do) ? { ...told, images } : told;
     });
     if (lookUp) {
       // nothing to take back: the answer follows once it is looked up
@@ -174,11 +197,12 @@ export class Commander {
       this.o.onOwnerInput?.(card, 'talk', transcript, confirm);
       return { confirm };
     }
+    // a note or an answer to the open card's agent, or talk to the open idea, goes out at once and
+    // stands in the card's log or conversation, which is confirmation enough
+    const quiet = commands.length > 0 && commands.every((c) => ['note', 'answer', 'discuss'].includes(c.do) && 'card' in c && c.card === card);
     // talking about an idea changes nothing that would need taking back: it goes on at once
-    const talking = commands.filter((c) => c.do === 'discuss');
-    const rest = commands.filter((c) => c.do !== 'discuss');
-    // said to the open idea, it stands in the idea's conversation, which is confirmation enough
-    const quiet = talking.length > 0 && !rest.length && talking.every((c) => 'card' in c && c.card === card);
+    const talking = quiet ? commands : commands.filter((c) => c.do === 'discuss');
+    const rest = commands.filter((c) => !talking.includes(c));
     const talk = this.o.board.addTalk(transcript, confirm, card ?? null, undefined, images);
     if (card && !quiet) {
       this.o.board.log(card, 'say', 'owner', transcript, undefined, images);
@@ -271,7 +295,7 @@ export class Commander {
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
             `- new_card: a new card. title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to the Koordinator together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
-            "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Only instructions for the agent, never a question the owner asks you.",
+            "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Whatever the owner says to the agent: an instruction, a remark on its work, a question to it; never a question the owner asks you about the canvas.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary); the agent works on it again.',
             '- approve: approve work waiting for review. accept: take a proposed card and start it. dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
@@ -279,7 +303,7 @@ export class Commander {
             "- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card „CLAUDE.md ergänzen“, whose worker writes it into the CLAUDE.md. confirm says where it goes („Gemerkt, gilt ab sofort für alle Agenten.“ / „Kommt in die CLAUDE.md von <repository name>, über die Aufgabe „CLAUDE.md ergänzen“.“).",
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words, may be empty), park (for later), drop (it stays on the canvas with its brief). Building or planning an idea waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that building goes by a click once the reply is there.",
             '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
-            'Texts as the owner meant them (fix obvious recognition errors).',
+            "Texts for a card's agent (note, answer, feedback) in the owner's own words, not rephrased: all they said, or with several actions in one sentence the part for that action. Other texts (a new card's body, a rule, talk to an idea) as the owner meant them (fix obvious recognition errors).",
           ].join('\n'),
           schema: {
             actions: z
@@ -494,14 +518,14 @@ export class Commander {
     return { do: a.do, card: card.id };
   }
 
-  private interpret(transcript: string, focus: Focus, images: string[]): Promise<Decision> {
+  private interpret(transcript: string, focus: Focus, images: string[], input: Input): Promise<Decision> {
     return new Promise((decide, fail) => {
-      this.turns = this.turns.then(() => this.read(transcript, focus, images, decide)).catch(fail);
+      this.turns = this.turns.then(() => this.read(transcript, focus, images, input, decide)).catch(fail);
     });
   }
 
   /** Reads one command; settles when the turn has ended, while the decision goes out as soon as it is taken. */
-  private async read(transcript: string, focus: Focus, images: string[], decide: (d: Decision) => void, retry = true): Promise<void> {
+  private async read(transcript: string, focus: Focus, images: string[], input: Input, decide: (d: Decision) => void, retry = true): Promise<void> {
     const warmed = this.session && !this.session.ended ? this.session : null;
     const s = warmed ?? (this.session = this.open());
     let decided = false;
@@ -517,12 +541,12 @@ export class Commander {
       };
     });
     const files = this.o.imageFiles?.(images) ?? [];
-    s.agent.send(this.brief(s, transcript, focus, files.length), files);
+    s.agent.send(this.brief(s, transcript, focus, input, files.length), files);
     const error = await ended;
     s.reading = undefined;
     if (error && !decided) {
       // a session that waited or talked before may have gone stale: read the command once more in a fresh one
-      if (warmed && retry) return this.read(transcript, focus, images, decide, false);
+      if (warmed && retry) return this.read(transcript, focus, images, input, decide, false);
       throw error;
     }
     if (!decided) decide({ commands: [], confirm: 'Das habe ich nicht verstanden.' });
@@ -555,7 +579,7 @@ export class Commander {
   }
 
   /** The message for one command: what the Koordinator needs to know besides what it already knows. */
-  private brief(s: Session, transcript: string, focus: Focus, shots = 0): string {
+  private brief(s: Session, transcript: string, focus: Focus, input: Input, shots = 0): string {
     const items = this.o.board.snapshot().items;
     const relevant = items.filter((i) => i.kind !== 'project' && (!finished(i.state) || i.finishing || i.id === focus.card));
     const tag = (id: string) => {
@@ -636,7 +660,9 @@ export class Commander {
       `Now: ${when(now)}.`,
       ...history,
       ...news,
-      `The owner said (speech recognition, may contain errors): "${transcript}"`,
+      input.typed
+        ? `The owner typed${focused && input.field ? ` into ${FIELDS[input.field]}` : ''} (as written, no recognition errors): "${transcript}"`
+        : `The owner said (speech recognition, may contain errors): "${transcript}"`,
       ...(shots
         ? [
             `The owner attached ${shots === 1 ? 'a screenshot' : `${shots} screenshots`} (shown below). Obeya gives ${shots === 1 ? 'it' : 'them'} to every new_card, new_idea, start, note, answer, feedback and discuss action you take for this message; a title for a new card may say what ${shots === 1 ? 'it shows' : 'they show'}.`,
@@ -696,7 +722,7 @@ function when(iso: string): string {
 }
 
 const SYSTEM = `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents by voice. Each message brings what the owner just said, transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents by voice or typing. Each message brings what the owner just said or typed. Speech is transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary. Typed text stands as written.
 
 This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Card tags (K1, K2, …) stay the same throughout this conversation. No agent works on a planned, live or done card (done: finished without any change to the code, so nothing landed); a workstream of a project takes its state from the project's plan doc (checked off there means live).
 
@@ -708,5 +734,6 @@ All three take confirm: one short German sentence (two at most for an answer or 
 In German, a card is an „Aufgabe“ (a follow-up: „Folgeaufgabe“), an idea „Idee“, a project „Projekt“; never say „Karte“. The owner may still say „Karte“ and means the same.
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
 When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent. Decide where it goes: only a rule on how the agents work with the owner through Obeya, whatever the repository, is one of the owner's rules (no repos); anything about a repository (named, "hier", "in diesem Repo", or about its code, UI, wording, tests, tools or product) goes into that repository's CLAUDE.md: pass repos. Leave the place out of the rule's text, and say in confirm where it went (for a CLAUDE.md: into the repository's card „CLAUDE.md ergänzen“, which writes it into the file).
+When an agent works on the open card (working, in PR, waiting, or finishing what remains), what the owner says is, in doubt, for that agent: note, or answer when the card has an open question, or feedback when it waits for review. Pass their words as they are; the agent learns whether they were spoken. Talking to the agent ("mach …", "kannst du …", "warum hast du …"), a remark on the work, a bare answer: all for the agent. Only what clearly asks something of Obeya goes elsewhere: approve, stop, start, a follow-up or new card, a new idea, remember, an action on another card, or a question to you about the canvas (reply or look_up).
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). "Mach, was du vorschlägst" on an idea takes the step its agent would take next, as its line says; when that is answering, discuss with its own answers. Wanting to think about something, rather than have it done, is new_idea.
 `.trim();

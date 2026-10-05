@@ -328,7 +328,7 @@ describe('screenshots', () => {
     await until(() => executed.length === 3, DELAY_MS + 3000);
     expect(executed).toEqual([
       { do: 'newCard', title: 'Seite bricht um', body: 'diese Seite bricht um', start: false, images: [id] },
-      { do: 'note', card: c.id, text: 'So sieht es aus.', images: [id] },
+      { do: 'note', card: c.id, text: 'So sieht es aus.', spoken: false, images: [id] },
       { do: 'stop', card: c.id },
     ]);
     expect(board.snapshot().talk.at(-1)).toMatchObject({ said: 'Neue Karte: diese Seite bricht um, und sag A, dass es so aussieht', images: [id] });

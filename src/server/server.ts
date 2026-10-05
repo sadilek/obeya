@@ -8,7 +8,7 @@ import { type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, n
 import index from '../ui/index.html';
 import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
-import type { Focus, Heard } from './commands';
+import { type Focus, type Heard, type Input, isField } from './commands';
 import type { Config } from './config';
 import { serveDemoFile } from './demo';
 import type { Restarter } from './self-update';
@@ -112,7 +112,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
     }
   };
   /** `null`: Whisper heard nothing it could write down, which the Koordinator should not guess from. */
-  const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = []) => {
+  const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = [], input: Input = {}) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
     console.log(`heard on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
     // nothing heard or understood: screenshots shown with it stay in the browser for the next try
@@ -120,7 +120,7 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       text === null
         ? { confirm: 'Das habe ich nicht verstanden.', unheard: true }
         : text
-          ? await c.commander.hear(text, focus, images)
+          ? await c.commander.hear(text, focus, images, input)
           : { confirm: 'Ich habe nichts gehört.', unheard: true };
     // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
@@ -248,11 +248,12 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
       },
       '/api/c/:canvas/command': {
         POST: on(async (c, req) => {
-          const { text, images } = (await req.json()) as { text: string; images?: string[] };
+          // `field`: typed into that field of the open card rather than into the Koordinator's sheet
+          const { text, images, field } = (await req.json()) as { text: string; images?: string[]; field?: unknown };
           if (typeof text !== 'string' || !text.trim()) throw new BadRequest('emptyText', 'text must be a non-empty string');
           // screenshots pasted into the typed command go to the cards it creates or concerns
           c.images.resolve(images);
-          return heard(c, text.trim(), focusOf(req), images ?? []);
+          return heard(c, text.trim(), focusOf(req), images ?? [], { typed: true, ...(isField(field) ? { field } : {}) });
         }),
       },
       '/api/c/:canvas/command/undo': {

@@ -87,6 +87,8 @@ export interface DueRestart {
 
 /** A render or a test suite finishes well within this; a turn that waits longer counts as ended. */
 const BACKGROUND_GRACE = 10 * 60_000;
+/** Said of the owner's words when they came through speech recognition. */
+export const SPOKEN = 'spoken, so speech recognition may have misheard words';
 
 const END_TURN = 'Recorded. End your turn now without further work; the reply arrives as your next message.';
 
@@ -139,7 +141,7 @@ export class Workers {
   }
 
   /** A hint while the worker runs, or feedback on its review; `images` are screenshot files the owner attached. */
-  message(cardId: string, text: string, images: string[] = []) {
+  message(cardId: string, text: string, images: string[] = [], spoken = false) {
     const card = this.card(cardId);
     const overruled = this.overruled(cardId);
     if (card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) {
@@ -149,19 +151,19 @@ export class Workers {
       if (text) this.o.onOwnerInput?.(card, 'feedback', text, overruled ? { overruled } : {});
       this.deliver(
         cardId,
-        `Feedback from the owner instead of an approval; the card is back with you${card.need === 'demo' ? ', and your demo stays on it until you hand over another' : ''}:\n\n${text}${imageNote(images)}`,
+        `Feedback from the owner instead of an approval${spoken ? ` (${SPOKEN})` : ''}; the card is back with you${card.need === 'demo' ? ', and your demo stays on it until you hand over another' : ''}:\n\n${text}${imageNote(images)}`,
         images,
       );
     } else if (card.state === 'working' || card.state === 'inPr' || (card.state === 'waiting' && card.need === 'question') || card.finishing) {
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
       if (text) this.o.onOwnerInput?.(card, 'note', text, overruled ? { overruled } : {});
-      this.deliver(cardId, `A note from the owner (it does not stop you; adjust your plan if it changes anything, and say briefly what you change or why nothing):\n\n${text}${imageNote(images)}`, images);
+      this.deliver(cardId, `A note from the owner${spoken ? ` (${SPOKEN})` : ''} (it does not stop you; adjust your plan if it changes anything, and say briefly what you change or why nothing):\n\n${text}${imageNote(images)}`, images);
     } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
 
-  answer(cardId: string, text: string, by: 'owner' | Adviser = 'owner', images: string[] = []) {
+  answer(cardId: string, text: string, by: 'owner' | Adviser = 'owner', images: string[] = [], spoken = false) {
     const card = this.card(cardId);
-    if (card.state === 'waiting' && card.need === 'demo' && card.question && by === 'owner') return this.answerDemo(card, text, images);
+    if (card.state === 'waiting' && card.need === 'demo' && card.question && by === 'owner') return this.answerDemo(card, text, images, spoken);
     if (!(card.state === 'waiting' && card.need === 'question') && by === 'owner') throw new BadRequest('noQuestion', 'the card has no open question');
     const row = this.o.board.row(cardId);
     const question = row.detail ? (JSON.parse(row.detail).question as Question | undefined) : undefined;
@@ -172,11 +174,11 @@ export class Workers {
     if (by === 'owner' && text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', by);
     const from = { owner: 'from the owner', project: 'from the project agent, on the owner\u2019s behalf', koordinator: 'from the Koordinator, on the owner\u2019s behalf' }[by];
-    this.deliver(cardId, `Answer to your question (${from}):\n\n${text}${imageNote(images)}`, images);
+    this.deliver(cardId, `Answer to your question (${from}${spoken ? `; ${SPOKEN}` : ''}):\n\n${text}${imageNote(images)}`, images);
   }
 
   /** The question in a demo report, answered: the worker hears it, and the demo still waits for approval. */
-  private answerDemo(card: Item, text: string, images: string[]) {
+  private answerDemo(card: Item, text: string, images: string[], spoken: boolean) {
     const q = card.question!.text;
     const demo = JSON.parse(this.o.board.row(card.id).demo!) as Record<string, unknown>;
     this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)' }) });
@@ -186,7 +188,7 @@ export class Workers {
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', 'owner');
     this.deliver(
       card.id,
-      `The owner answered the question in your demo report („${q}“). The card still waits for their approval of what you handed over:\n\n${text}${imageNote(images)}`,
+      `The owner answered the question in your demo report („${q}“)${spoken ? ` (${SPOKEN})` : ''}. The card still waits for their approval of what you handed over:\n\n${text}${imageNote(images)}`,
       images,
     );
   }

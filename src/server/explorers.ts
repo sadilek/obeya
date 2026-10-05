@@ -12,7 +12,7 @@ import { decisionLog, toQuestion } from './advisor';
 import { BadRequest, type Board, type Message, type Unread } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { imageNote } from './images';
-import { describeTool } from './workers';
+import { describeTool, SPOKEN } from './workers';
 
 export interface ExplorerOptions {
   board: Board;
@@ -59,7 +59,7 @@ export class Explorers {
     this.o.board.log(cardId, 'talk', 'owner', text, undefined, images.map((f) => basename(f)));
     this.o.board.setIdea(cardId, { yourTurn: false, questions: [], next: undefined });
     if (text) this.o.onOwnerInput?.(card, text);
-    this.send(card, `The owner says:\n\n${text}${imageNote(images)}`, spoken, images);
+    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${text}${imageNote(images)}`, spoken, images);
   }
 
   /** A planned card became an idea: its agent opens the discussion with what the card says, before the owner writes. */

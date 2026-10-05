@@ -305,9 +305,9 @@ export class CanvasRuntime {
       case 'stop':
         return this.repoOf(cardId).workers.stop(cardId);
       case 'message':
-        return this.repoOf(cardId).workers.message(cardId, text.trim(), images);
+        return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken);
       case 'answer':
-        return this.repoOf(cardId).workers.answer(cardId, text.trim(), 'owner', images);
+        return this.repoOf(cardId).workers.answer(cardId, text.trim(), 'owner', images, !!a.spoken);
       case 'approve':
         return this.repoOf(cardId).workers.approve(cardId);
       case 'accept':
@@ -518,7 +518,7 @@ export class CanvasRuntime {
         return;
       }
       case 'discuss':
-        return this.act(c.card, { action: 'discuss', text: c.text, spoken: true, ...(c.images ? { images: c.images } : {}) });
+        return this.act(c.card, { action: 'discuss', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
       case 'prototype':
         return this.act(c.card, { action: 'prototype', text: c.text });
       case 'buildPrototype':
@@ -536,9 +536,9 @@ export class CanvasRuntime {
         return this.act(c.card, { action: c.do });
       case 'note':
       case 'feedback':
-        return this.act(c.card, { action: 'message', text: c.text, ...(c.images ? { images: c.images } : {}) });
+        return this.act(c.card, { action: 'message', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
       case 'answer':
-        return this.act(c.card, { action: 'answer', text: c.text, ...(c.images ? { images: c.images } : {}) });
+        return this.act(c.card, { action: 'answer', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
       case 'approve':
       case 'accept':
       case 'dismiss':
