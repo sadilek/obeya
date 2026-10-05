@@ -57,6 +57,19 @@ describe('voices', () => {
     expect(installState({ language: 'de', voice: 'qwen3' }, home).missing).toEqual([onMlx() ? 'Qwen3-TTS (MLX)' : 'Qwen3-TTS (PyTorch)']);
   });
 
+  test('Qwen3-TTS stays loaded for a render; Piper, say and the own command run once per clip', () => {
+    for (const s of [{ language: 'de', voice: 'qwen3' }, { language: 'en', voice: 'qwen3', reference: '/x/me.wav' }] as const) {
+      const spec = voiceSpec(s, home);
+      if (spec.kind !== 'command' || !spec.argv || !spec.serve) throw new Error('Qwen3-TTS has no serve command');
+      // the same voice, model and language as one clip, just without a WAV of its own
+      expect(spec.serve).toEqual([...spec.argv.slice(0, -2), '--serve']);
+      expect(spec.argv.slice(-2)).toEqual(['--out', '{out}']);
+    }
+    for (const voice of ['piper', 'say', 'command'] as const) {
+      expect(voiceSpec({ language: 'de', voice, command: 'speak' }, home)).not.toHaveProperty('serve');
+    }
+  });
+
   test('the own command runs through the shell and takes the machine like a clone; services need nothing installed', () => {
     expect(voiceSpec({ language: 'de', voice: 'command', command: 'speak --fast' }, home)).toEqual({
       kind: 'command',

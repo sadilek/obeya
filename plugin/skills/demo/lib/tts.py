@@ -3,9 +3,13 @@
 The voice comes as a spec from `voices.ts`, one of two kinds:
 
 - `command`: run once per clip, the text on stdin. Either `argv`, run directly with `{out}`
-  replaced by the WAV to write (Piper, the Qwen3-TTS helper `qwen3.py`, macOS `say`), or
-  `shell`, the owner's own command, which writes the WAV to `$DEMO_WAV` (or prints the path of
-  the one it wrote as its last line). `$DEMO_LANGUAGE` says the narration language.
+  replaced by the WAV to write (Piper, macOS `say`), or `shell`, the owner's own command, which
+  writes the WAV to `$DEMO_WAV` (or prints the path of the one it wrote as its last line).
+  `$DEMO_LANGUAGE` says the narration language. A voice that loads a large model and can stay
+  loaded (the Qwen3-TTS helper `qwen3.py`) has `serve` as well: that command starts once, on the
+  first clip to synthesise, and answers clip by clip and take by take over its stdin and stdout,
+  one JSON line each way (the protocol is in `qwen3.py`). If it dies, the render stops with its
+  stderr.
 - `http`: a request from a template, for Gemini, OpenAI, ElevenLabs, Azure, or the owner's own
   endpoint (`http`: POST `{"text", "language"}` as JSON, audio back). The key comes from the
   service's environment variable, else from the key file in the spec.
@@ -41,10 +45,12 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 import wave
+from collections import deque
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -175,7 +181,7 @@ class QuotaExhausted(Exception):
 
 
 class CommandVoice:
-    """A program run once per clip: Piper, Qwen3-TTS, `say`, or the owner's own command."""
+    """A program run once per clip: Piper, `say`, or the owner's own command."""
 
     #: Takes cost only time on this machine.
     max_takes = MAX_TAKES
@@ -207,6 +213,81 @@ class CommandVoice:
                 sys.exit(f"the voice command wrote no WAV: neither $DEMO_WAV ({raw}) nor a path on its last line")
         to_wav(produced, target)
         raw.unlink(missing_ok=True)
+
+
+class ServedVoice:
+    """A voice that stays loaded for the whole render: started on the first clip, asked per take."""
+
+    max_takes = MAX_TAKES
+
+    def __init__(self, spec: dict, language: str) -> None:
+        self._argv = spec["serve"]
+        self._language = language
+        self.tag = spec["tag"]
+        self._process: subprocess.Popen | None = None
+        self._stderr: deque[str] = deque(maxlen=40)
+        self._drain: threading.Thread | None = None
+
+    def _start(self) -> None:
+        started = time.monotonic()
+        env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+        try:
+            self._process = subprocess.Popen(self._argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                             env=env, text=True, encoding="utf-8", errors="replace")
+        except OSError as failed:
+            sys.exit(f"the voice did not start: {failed}")
+        # stderr is read all along, so a chatty voice never blocks on a full pipe; its tail says
+        # why when the voice dies.
+        self._drain = threading.Thread(target=lambda: self._stderr.extend(self._process.stderr), daemon=True)
+        self._drain.start()
+        self._reply()
+        print(f"narration: voice loaded in {time.monotonic() - started:.1f} s", file=sys.stderr, flush=True)
+
+    def _died(self) -> None:
+        code = self._process.wait()
+        self._drain.join(timeout=5)
+        sys.exit(f"the voice stopped ({code}): {''.join(self._stderr).strip()[-1500:]}")
+
+    def _reply(self) -> dict:
+        while True:
+            line = self._process.stdout.readline()
+            if not line:
+                self._died()
+            try:
+                reply = json.loads(line)
+            except ValueError:
+                reply = None
+            if isinstance(reply, dict):
+                return reply
+            # Not the protocol: something printed where it should not have. Shown, not fatal.
+            print(f"voice: {line.rstrip()}", file=sys.stderr)
+
+    def synthesize(self, text: str, target: Path) -> None:
+        if self._process is None:
+            self._start()
+        raw = target.with_name(f"{target.stem}.raw.wav")
+        raw.unlink(missing_ok=True)
+        try:
+            self._process.stdin.write(json.dumps({"text": text, "out": str(raw), "language": self._language}) + "\n")
+            self._process.stdin.flush()
+        except (BrokenPipeError, OSError):
+            self._died()
+        reply = self._reply()
+        if "error" in reply or not raw.exists():
+            sys.exit(f"the voice failed: {reply.get('error') or f'it wrote no WAV at {raw}'}")
+        print(f"narration: synthesised in {reply.get('seconds', '?')} s", file=sys.stderr, flush=True)
+        to_wav(raw, target)
+        raw.unlink(missing_ok=True)
+
+    def close(self) -> None:
+        """Its stdin ends, and with it the voice."""
+        if self._process is None:
+            return
+        self._process.stdin.close()
+        try:
+            self._process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            self._process.kill()
 
 
 class HttpVoice:
@@ -309,7 +390,9 @@ class HttpVoice:
 
 
 def make_voice(spec: dict, language: str):
-    return CommandVoice(spec, language) if spec["kind"] == "command" else HttpVoice(spec, language)
+    if spec["kind"] == "http":
+        return HttpVoice(spec, language)
+    return ServedVoice(spec, language) if spec.get("serve") else CommandVoice(spec, language)
 
 
 class Ear:
@@ -419,28 +502,14 @@ def take_option(args: list[str], name: str) -> str | None:
     return value
 
 
-def main() -> None:
-    # Heard texts carry umlauts; a Windows pipe would otherwise encode stderr in its code page.
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    args = sys.argv[1:]
-    lock = take_option(args, "--lock")
-    listen = take_option(args, "--listen") or "mlx"
-    if lock:
-        hold_lock(lock)
-    if args[0] == "--sample":
-        spec_file, language, text, target = args[1:5]
-        make_voice(json.loads(Path(spec_file).read_text(encoding="utf-8")), language).synthesize(text, Path(target))
-        return
-    spec = json.loads(Path(args[0]).read_text(encoding="utf-8"))
-    language = args[1]
-    jobs = json.loads(Path(args[2]).read_text(encoding="utf-8"))
-    out = Path(args[3])
-    out.mkdir(parents=True, exist_ok=True)
-    if language not in LANGUAGE_NAMES:
-        sys.exit(f"unknown narration language {language!r}; known: {', '.join(LANGUAGE_NAMES)}")
-    voice = make_voice(spec, language)
+def close(voice) -> None:
+    """Ends a voice that stays loaded; the others have nothing running between clips."""
+    if isinstance(voice, ServedVoice):
+        voice.close()
+
+
+def narrate(voice, language: str, jobs: list[dict], out: Path, ear: Ear) -> None:
     voice_tag = voice.tag
-    ear = Ear(listen, language)
 
     def score(text: str, heard: str) -> float:
         a, b = spoken_letters(text, language), spoken_letters(heard, language)
@@ -499,6 +568,35 @@ def main() -> None:
         json.dumps({"clips": results, "unchecked": unchecked}, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+
+def main() -> None:
+    # Heard texts carry umlauts; a Windows pipe would otherwise encode stderr in its code page.
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    args = sys.argv[1:]
+    lock = take_option(args, "--lock")
+    listen = take_option(args, "--listen") or "mlx"
+    if lock:
+        hold_lock(lock)
+    if args[0] == "--sample":
+        spec_file, language, text, target = args[1:5]
+        voice = make_voice(json.loads(Path(spec_file).read_text(encoding="utf-8")), language)
+        try:
+            voice.synthesize(text, Path(target))
+        finally:
+            close(voice)
+        return
+    spec = json.loads(Path(args[0]).read_text(encoding="utf-8"))
+    language = args[1]
+    jobs = json.loads(Path(args[2]).read_text(encoding="utf-8"))
+    out = Path(args[3])
+    out.mkdir(parents=True, exist_ok=True)
+    if language not in LANGUAGE_NAMES:
+        sys.exit(f"unknown narration language {language!r}; known: {', '.join(LANGUAGE_NAMES)}")
+    voice = make_voice(spec, language)
+    try:
+        narrate(voice, language, jobs, out, Ear(listen, language))
+    finally:
+        close(voice)
 
 if __name__ == "__main__":
     main()

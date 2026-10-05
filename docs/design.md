@@ -566,9 +566,22 @@ the owner's language (`src/core/locale.ts`).
   under `voices/` in Obeya's home, Piper's voice files beside it, Qwen3's models in the Hugging
   Face cache, where a model downloaded before counts as installed (`node lib/voices.ts install`
   does the same without Obeya). A render refuses a voice that is not installed and says how to
-  install it. The sheet also plays a sentence in the voice being chosen ("Anhören"). Local voices
+  install it. The sheet also plays a sentence in the voice being chosen ("Anhören"). A voice that
+  can stay loaded says so in its spec (`serve`, so far only Qwen3-TTS: `qwen3.py --serve`): `tts.py`
+  starts it once per render (and once per "Anhören"), on the first clip that is not cached, and
+  asks it clip by clip and take by take over its stdin and stdout, one JSON line each way (text,
+  WAV, language; a ready line once the model is loaded, then `ok` or `error` per clip). Model,
+  reference and transcript load once instead of per clip and take: three clips with a clone, no
+  cache, listening back with Whisper, went from 25.8 s to 15.8 s on an Apple Silicon Mac (a warm
+  start with the model costs about 2 s, about 4 s beside a loaded Whisper, a cold one 17 s;
+  synthesis about 2–4 s per clip either way; measured 2026-10-05). The libraries print on stdout too, so
+  the server moves fd 1 to stderr and keeps a duplicate of it for the protocol alone; a line that
+  is not the protocol is shown and skipped. A voice that dies stops the render with the tail of
+  its stderr instead of hanging. The protocol does not depend on `tts.py` being the other end, so
+  a voice server held by Obeya across renders can speak it unchanged. Piper, `say` and the
+  owner's command still run once per clip. Local voices
   that load a large model (Qwen3-TTS, the owner's command) synthesise one at a time on the
-  machine: `tts.py --lock ~/.cache/demo-skill/tts.lock` holds the file locked while it runs
+  machine (the served voice lives inside that turn): `tts.py --lock ~/.cache/demo-skill/tts.lock` holds the file locked while it runs
   (`flock`, on Windows a byte-range lock through `msvcrt`; it works beside an older `lockf -k` on
   the same file). The owner's clone is such a command: it
   runs in the owner's voice project (Stimmzwilling, `scripts/demo_voice.py`) and never leaves the

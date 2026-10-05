@@ -1,8 +1,8 @@
 // The voice providers: what each needs installed, how Obeya installs it, and the spec `tts.py`
 // synthesises with. Every voice is text in, WAV out. A local one runs as a command (Piper, the
-// Qwen3-TTS helper `qwen3.py`, macOS `say`, the owner's own command); a hosted one is an HTTP
-// request `tts.py` makes from a template (Gemini, OpenAI, ElevenLabs, Azure, or the owner's own
-// endpoint).
+// Qwen3-TTS helper `qwen3.py`, macOS `say`, the owner's own command), once per clip, or once per
+// render for one that can stay loaded (Qwen3-TTS); a hosted one is an HTTP request `tts.py`
+// makes from a template (Gemini, OpenAI, ElevenLabs, Azure, or the owner's own endpoint).
 //
 // Piper and Qwen3-TTS are installed on request into `voices/` in Obeya's home, each in a Python
 // environment of its own made by uv; Piper's voice files go beside it, Qwen3's models into the
@@ -45,6 +45,12 @@ export type VoiceSpec =
       tag: string;
       /** Loads a large model: one such synthesis at a time on the machine. */
       heavy: boolean;
+      /**
+       * The voice can stay loaded: this command starts once per render and answers clip by clip
+       * over its stdin and stdout (the protocol is in `qwen3.py`). Without it, `argv` or `shell`
+       * runs once per clip.
+       */
+      serve?: string[];
     }
   | {
       kind: 'http';
@@ -200,9 +206,11 @@ export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
       const reference = s.reference && expandHome(s.reference);
       const repo = qwen3Model(!!reference);
       const who = reference ? ['--reference', reference] : ['--speaker', s.voiceName || QWEN3_SPEAKER];
+      const run = [envPython(dir), path.join(LIB, 'qwen3.py'), '--model', repo, '--language', s.language, ...who];
       return {
         kind: 'command',
-        argv: [envPython(dir), path.join(LIB, 'qwen3.py'), '--model', repo, '--language', s.language, ...who, '--out', '{out}'],
+        argv: [...run, '--out', '{out}'],
+        serve: [...run, '--serve'],
         tag: `qwen3|${repo}|${reference ?? s.voiceName ?? QWEN3_SPEAKER}`,
         heavy: true,
       };
