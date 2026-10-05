@@ -412,6 +412,8 @@ describe('exporting a demo, where the repository has no share target', () => {
     expect(html).toContain('Vorher');
     // the captions are in the page too, for a page opened from disk; they cannot end its script
     expect(html).toContain('Der Export <\\/script> beginnt.');
+    // a big play button over the video, so a click anywhere on it starts it
+    expect(html).toContain('<button class="start" aria-label="Abspielen">');
     expect(log(c.id).at(-1)).toBe(`Exportiert als ZIP: ${slug}.zip`);
     // exporting publishes nothing
     expect(calls()).toEqual([]);

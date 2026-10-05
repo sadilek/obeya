@@ -53,6 +53,12 @@ export const PAGE_STYLE = `
   .grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; margin-top: 22px; align-items: start; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
   video { width: 100%; border-radius: 12px; background: #000; display: block; }
+  .player { position: relative; }
+  .start { all: unset; position: absolute; inset: 0 0 56px 0; cursor: pointer; display: grid; place-items: center; }
+  .start[hidden] { display: none; }
+  .start span { margin-top: 56px; width: 88px; height: 88px; border-radius: 50%; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; transition: transform 0.15s, background 0.15s; }
+  .start:hover span { background: rgba(0, 0, 0, 0.8); transform: scale(1.06); }
+  .start svg { width: 36px; height: 36px; margin-left: 6px; fill: #fff; }
   ol { list-style: none; margin: 0; padding: 6px; background: var(--chip); border-radius: 12px; }
   ol button { all: unset; cursor: pointer; display: flex; gap: 10px; width: 100%; padding: 7px 9px; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
   ol button:hover, ol button.on { background: var(--card); }
@@ -113,13 +119,18 @@ ${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a><
 <div class="when">${esc(p.when)}</div>
 <div class="text">${paragraphs(p.text)}</div>
 <div class="grid">
-  <video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}>${track}</video>
+  <div class="player"><video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}>${track}</video><button class="start" aria-label="Abspielen"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
   <div>${chapters}${p.pr ? `<div class="pr"><a href="${esc(p.pr)}">Pull Request ansehen</a></div>` : ''}</div>
 </div>
 </main>
 ${'vtt' in p.captions ? `<script type="text/vtt" id="captions">${inScript(p.captions.vtt)}</script>\n` : ''}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>
   const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${'vtt' in p.captions ? CUES : ''}
   bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
+  // a big play button over the video until it first plays: a click anywhere on it but its
+  // controls starts it, instead of the small button in the corner
+  const start = document.querySelector('.start');
+  start.addEventListener('click', () => v.play());
+  v.addEventListener('play', () => { start.hidden = true; });
   v.addEventListener('timeupdate', () => {
     let on = 0; bs.forEach((b, i) => { if (Number(b.dataset.at) <= v.currentTime + 0.05) on = i; });
     bs.forEach((b, i) => b.classList.toggle('on', i === on));

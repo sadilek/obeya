@@ -712,7 +712,11 @@ the owner's language (`src/core/locale.ts`).
   file still goes by mail), the button says so for larger ones. Nothing leaves Obeya, so an export
   is not held; the card's log names the file. Both pages carry their captions as cues in a script,
   since Chrome does not load a `<track>` for a page opened from disk. The page (`src/server/demo-page.ts`)
-  is the one Acme's site shows, without its link to the overview. A share command from the
+  is the one Acme's site shows, without its link to the overview. Its video waits with a big play
+  button over it until it first plays: a click anywhere on the video but its controls starts it,
+  rather than the small button in the corner. It does not start on its own: browsers play sound
+  only after a click on the page (in Obeya, the click that opens the card), so it could only start
+  muted, which the owner did not want. A share command from the
   configuration runs like the adapter's; its words are split at spaces outside quotes, a program
   given as a path and any script are found in the repository, and a script (`.ts`, `.js`) runs
   with Obeya's own Bun, so the same line works on Windows. The ZIP is written by Obeya
