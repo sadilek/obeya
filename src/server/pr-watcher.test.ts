@@ -115,6 +115,7 @@ describe('the PR phase', () => {
     await inPr();
     // the turn that handed over ends, then the one the approval started
     runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'text', text: 'Ich pushe den Branch.' });
     runtime.last.emit({ type: 'idle' });
     expect(runtime.last.inbox.at(-1)).toContain('no pull request for this card yet');
   });

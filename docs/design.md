@@ -210,7 +210,10 @@ or writes their own answer); `propose_card(title, reason, suggestion)`; and
 then its last words become a question to the owner. A turn that ends while the worker's own
 background work runs (a demo render, a test suite, a watcher it started) is no such turn: the work
 wakes the worker when it finishes or fires, so Obeya waits, and only after ten minutes without a
-sign of life does it nudge. A
+sign of life does it nudge. So does a turn in which the worker said and did nothing: a session
+resumed after a restart first ends a turn of its own over what the previous one left (a
+background command the restart stopped), and counting that would use up the nudge before the
+worker's own turn, whose status line would then reach the owner as a question. A
 worker that went to the owner for having stopped and then works on by itself takes that question
 back. The owner can send a note at any time; it reaches the worker without stopping it. The SDK
 hands a waiting message to the agent only after its running tool call, so a note never cuts a

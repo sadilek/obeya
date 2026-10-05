@@ -67,6 +67,11 @@ interface Live {
   session: AgentSession;
   /** Whether the worker called `ask` or `ready_for_review` in the current turn. */
   handedOver: boolean;
+  /**
+   * Whether the worker said or did anything in the current turn. A resumed session may first end a
+   * turn of its own, over what the previous session left (a background command the restart stopped).
+   */
+  acted: boolean;
   nudged: boolean;
   lastText: string;
   /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
@@ -457,7 +462,7 @@ export class Workers {
     const row = this.o.board.row(cardId);
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
     const preferences = this.o.preferences?.() ?? '';
-    const live: Live = { session: undefined!, handedOver: false, nudged: false, lastText: '', busy: true, stalled: false, preferences };
+    const live: Live = { session: undefined!, handedOver: false, acted: false, nudged: false, lastText: '', busy: true, stalled: false, preferences };
     this.live.set(cardId, live);
     message = this.withRestart(live, message);
     live.session = this.o.runtime.start(
@@ -530,6 +535,7 @@ export class Workers {
     clearTimeout(live.waiting);
     live.waiting = undefined;
     if (e.type === 'text' || e.type === 'tool') this.resumed(cardId, live);
+    if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.acted = true;
     switch (e.type) {
       case 'session':
         this.o.board.work(cardId, { session_id: e.id });
@@ -565,23 +571,21 @@ export class Workers {
   /**
    * A turn that ends without handing over gets one nudge; after that the owner is asked. A turn
    * that ends while the worker's background work runs (a demo render, say) waits for that work
-   * to wake the worker instead, unless nothing happens for a long while.
+   * to wake the worker instead, unless nothing happens for a long while; so does a turn in which
+   * the worker did nothing, as it never ended a turn of its own there.
    */
-  private turnEnded(cardId: string, live: Live, background: number) {
+  private turnEnded(cardId: string, live: Live, background: number, waited = false) {
     const handedOver = live.handedOver;
+    const acted = live.acted || waited;
     live.handedOver = false;
+    live.acted = false;
     const card = this.o.board.item(cardId);
     if (!card) return;
     const row = this.o.board.row(cardId);
     if (background > 0) {
       // the background work still belongs to the turn, whatever the card's state (a worker may ask
       // while its render runs): a restart now would cut it off
-      live.busy = true;
-      live.waiting = setTimeout(() => {
-        live.waiting = undefined;
-        live.busy = false;
-        if (this.live.get(cardId) === live) this.turnEnded(cardId, live, 0);
-      }, this.o.backgroundGrace ?? BACKGROUND_GRACE);
+      this.waitForWorker(cardId, live);
       if (!handedOver) return;
     }
     if (handedOver) {
@@ -603,6 +607,12 @@ export class Workers {
       this.o.board.log(cardId, 'state', 'obeya', 'Pausiert bis zum Neustart von Obeya.');
       return;
     }
+    if (!acted && !live.nudged) {
+      // the worker's own turn is still to come; should it not, it counts as ended after a while
+      // (silence after a nudge, though, is the worker having stopped)
+      this.waitForWorker(cardId, live);
+      return;
+    }
     if (!live.nudged) {
       live.nudged = true;
       live.busy = true;
@@ -616,6 +626,16 @@ export class Workers {
     live.nudged = false;
     live.stalled = true;
     this.toOwner(cardId, { text: live.lastText ? clip(live.lastText, 1200) : 'Der Agent hat angehalten, ohne fertig zu sein.', options: [] });
+  }
+
+  /** Waits for a sign of life from the worker; without one for a long while, its turn counts as ended. */
+  private waitForWorker(cardId: string, live: Live) {
+    live.busy = true;
+    live.waiting = setTimeout(() => {
+      live.waiting = undefined;
+      live.busy = false;
+      if (this.live.get(cardId) === live) this.turnEnded(cardId, live, 0, true);
+    }, this.o.backgroundGrace ?? BACKGROUND_GRACE);
   }
 
   /** A worker that went to the owner for having stopped and then works on by itself takes the question back. */

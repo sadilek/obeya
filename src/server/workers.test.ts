@@ -111,6 +111,7 @@ describe('workers', () => {
     expect(workers.busyCards()).toEqual([]);
     workers.answer(c.id, 'CSV');
     expect(workers.busy()).toBe(true);
+    runtime.last.emit({ type: 'text', text: 'Dann CSV.' });
     runtime.last.emit({ type: 'idle' });
     // the nudge starts a turn as well
     expect(workers.busy()).toBe(true);
@@ -249,6 +250,35 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toBe('Ich komme nicht an die Datenbank.');
   });
 
+  test('a turn in which the worker did nothing does not use up its nudge', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 });
+    const c = manual();
+    workers.start(c.id);
+    const before = runtime.last.inbox.length;
+    // a resumed session first ends a turn over what the previous one left, before the worker's own
+    runtime.last.emit({ type: 'idle' });
+    expect(runtime.last.inbox.length).toBe(before);
+    expect(workers.busy()).toBe(true);
+    runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'node demo.ts' } });
+    runtime.last.emit({ type: 'text', text: 'Die Demo wird neu gerendert.' });
+    runtime.last.emit({ type: 'idle', background: 1 });
+    await Bun.sleep(20);
+    // the render outlasted the wait: the worker is nudged, its status is no question to the owner
+    expect(state(c.id)).toBe('working');
+    expect(runtime.last.inbox.at(-1)).toContain('ready_for_review');
+  });
+
+  test('a turn in which the worker did nothing counts as ended after a while', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 });
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'idle' });
+    await Bun.sleep(20);
+    expect(runtime.last.inbox.at(-1)).toContain('ready_for_review');
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:question');
+  });
+
   test('a turn that ends while background work runs waits for it, not for the owner', () => {
     const c = manual();
     workers.start(c.id);
@@ -332,6 +362,7 @@ describe('workers', () => {
   test('a worker that stopped and then works on by itself takes its question back', () => {
     const c = manual();
     workers.start(c.id);
+    runtime.last.emit({ type: 'text', text: 'Ich komme nicht weiter.' });
     runtime.last.emit({ type: 'idle' });
     runtime.last.emit({ type: 'idle' });
     expect(state(c.id)).toBe('waiting:question');
