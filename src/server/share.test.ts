@@ -383,7 +383,7 @@ describe('sharing many outdated pages again at once', () => {
   test('a card with a newer demo gets its page as it shows, the newer demo still waits for "Neu teilen"', async () => {
     const [c] = await outdated(1);
     const shown = join(dir, `demo-${c!.id}`);
-    board.work(c!.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], shown: [], notShown: [], findings: [], page: { title: 'Neu', text: 'Neu.' } }) });
+    board.work(c!.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], page: { title: 'Neu', text: 'Neu.' } }) });
     expect(reshare()).toEqual({ outdated: 1 });
     sharing.reshareMany(null);
     await until(() => reshare()?.run?.left === 0);
