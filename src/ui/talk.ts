@@ -51,26 +51,22 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
 
 /**
  * A card's events as its conversation: what the owner says, the agents' replies, questions and
- * handovers, each with the steps that led to it, and the state changes between them. A worker's
- * note that got no `reply` is answered by its last words before the owner's next message, or
- * before the end once it no longer works (`working`). `asking`: the question the card waits on.
+ * handovers, each with the steps that led to it, and the state changes between them. What the
+ * owner says to a worker that does not `reply` is answered by the first words it says after it.
+ * `asking`: the question the card waits on.
  */
-export function talkTurns(events: CardEvent[], opts: { asking?: Question; working?: boolean } = {}): Talk {
+export function talkTurns(events: CardEvent[], opts: { asking?: Question } = {}): Talk {
   const shown: Turn[] = [];
   let steps: CardEvent[] = [];
   // the owner said something to the agent, and the worker has not answered yet
   let open = false;
-  const derive = () => {
-    if (!open) return;
-    const i = steps.findLastIndex((s) => s.kind === 'say' && s.author === 'worker');
-    if (i < 0) return;
-    shown.push({ e: steps[i]!, steps: steps.slice(0, i) });
-    steps = steps.slice(i + 1);
-    open = false;
-  };
   events.forEach((e, i) => {
     const where = place(e, events[i - 1]);
-    if (where === 'step') steps.push(e);
+    if (where === 'step' && open && e.kind === 'say' && e.author === 'worker') {
+      shown.push({ e, steps });
+      steps = [];
+      open = false;
+    } else if (where === 'step') steps.push(e);
     else if (where === 'line' || where === 'aside') shown.push({ e, steps: [], ...(where === 'line' ? { line: true as const } : {}) });
     else if (where === 'agent') {
       // a turn that ended without a reply took its last words as the reply
@@ -80,12 +76,10 @@ export function talkTurns(events: CardEvent[], opts: { asking?: Question; workin
     } else {
       // a spoken command that became a note or an answer stands once, as that
       if (e.kind === 'say' && duplicate(events, i)) return;
-      derive();
       shown.push({ e, steps: [] });
       if (toAgent(e)) open = true;
     }
   });
-  if (!opts.working) derive();
   for (const turn of shown) if (turn.e.kind === 'question') Object.assign(turn, outcome(events, turn.e));
   const asked = opts.asking ? openQuestion(shown, opts.asking) : undefined;
   if (asked) {

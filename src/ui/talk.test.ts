@@ -15,7 +15,7 @@ test("an idea's conversation folds the agent's steps under the reply they led to
   const restart = ev('state', 'obeya', 'Neu gestartet');
   const again = ev('talk', 'owner', 'Und weiter?');
   const reading = ev('activity', 'explorer', 'Liest ui/detail.tsx');
-  const { shown, pending } = talkTurns([owner, read, thought, decided, reply, err, restart, again, reading], { working: true });
+  const { shown, pending } = talkTurns([owner, read, thought, decided, reply, err, restart, again, reading]);
   expect(shown).toEqual([
     { e: owner, steps: [] },
     { e: reply, steps: [read, thought, decided] },
@@ -53,28 +53,20 @@ test("a task's conversation: the owner's words, the worker's replies and handove
   expect(pending).toEqual([]);
 });
 
-test("a note the worker did not reply to is answered by its last words before the owner's next message", () => {
+test('a note the worker did not reply to is answered by the first words it says after it', () => {
+  const read = ev('activity', 'worker', 'Liest server/export.ts');
   const note = ev('hint', 'owner', 'Bitte auch Excel.');
-  const ok = ev('say', 'worker', 'Verstanden, ich baue Excel ein.');
   const edit = ev('activity', 'worker', 'Ändert server/export.ts');
-  const last = ev('say', 'worker', 'Excel ist drin, die Tests laufen.');
-  const test1 = ev('activity', 'worker', '$ bun test');
-  const next = ev('hint', 'owner', 'Und PDF?');
-  const thinking = ev('say', 'worker', 'Prüfe, ob es eine PDF-Bibliothek gibt.');
-  const events = [note, ok, edit, last, test1, next, thinking];
-  expect(talkTurns(events, { working: true })).toEqual({
-    shown: [
-      { e: note, steps: [] },
-      { e: last, steps: [ok, edit] },
-      { e: next, steps: [] },
-    ],
-    pending: [test1, thinking],
-  });
-  // once the worker no longer works, its last words are the reply too
-  expect(talkTurns(events).shown.at(-1)).toEqual({ e: thinking, steps: [test1] });
+  const ok = ev('say', 'worker', 'Verstanden, ich baue Excel ein.');
+  const later = ev('say', 'worker', 'Excel ist drin, die Tests laufen.');
+  const review = ev('review', 'worker', 'CSV und Excel.');
+  expect(talkTurns([read, note, edit, ok, later], {}).shown).toEqual([
+    { e: note, steps: [] },
+    { e: ok, steps: [read, edit] },
+  ]);
+  expect(talkTurns([read, note, edit, ok, later, review]).shown.at(-1)).toEqual({ e: review, steps: [later] });
   // words from before anything was said to the worker are no reply
-  const start = [ev('say', 'worker', 'Ich lese mich ein.'), ev('activity', 'worker', 'Liest README.md')];
-  expect(talkTurns(start).shown).toEqual([]);
+  expect(talkTurns([ev('say', 'worker', 'Ich lese mich ein.'), read]).shown).toEqual([]);
 });
 
 test('a spoken note stands once; the Koordinator confirms in the steps and answers what it looked up in the conversation', () => {

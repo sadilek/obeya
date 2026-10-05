@@ -689,7 +689,7 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [events, working, asked]);
-  const turns = useMemo(() => (events ? talkTurns(events, { asking, working }) : null), [events, asked, working]);
+  const turns = useMemo(() => (events ? talkTurns(events, { asking }) : null), [events, asked]);
   if (!events || !turns) return null;
   if (hideEmpty && !turns.shown.length && !turns.pending.length) return null;
   const agent = idea ? t.author.explorer : t.author.worker;
@@ -726,6 +726,12 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
         ) : (
           (turns.pending.length > 0 || (turns.asked?.steps.length ?? 0) > 0) && (
             <div className={`msg by-${idea ? 'explorer' : 'worker'}`}>
+              {/* how the worker came to the question it waits on */}
+              {turns.asked && (
+                <div className="who">
+                  {agent} · {t.talk.question} <span className="t">{time(turns.asked.e.at)}</span>
+                </div>
+              )}
               <Steps steps={[...(turns.asked?.steps ?? []), ...turns.pending]} />
             </div>
           )

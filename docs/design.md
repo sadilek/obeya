@@ -31,7 +31,7 @@ decisions are made in front of the wall.
   why.
 - **Voice first, mouse welcome.** Push-to-talk anywhere; buttons for the obvious actions. No live
   transcript: a short confirmation, written and spoken, with undo. What was said and answered
-  stays in the log of the open card, or in the Koordinator's sheet.
+  stays in the conversation of the open card, or in the Koordinator's sheet.
 - **Repo-agnostic core.** Project specifics live in a per-repo adapter, which a repository can
   carry itself (`.obeya/adapter/`).
 
@@ -223,10 +223,10 @@ An idea is thought through on its card before anything is planned; no worker run
    (button or `A`) lists archived cards
    by day, the most recently archived first, as small cards on a timeline with the time they were
    archived; one unfolds from its card as on the canvas and can go back to the place it had. An
-   ended prototype cannot: it shows, read-only, how it ended, its demo, summary and log.
+   ended prototype cannot: it shows, read-only, how it ended, its demo and conversation.
 7. A project ends when its plan doc goes (done, deleted): it moves into the
    archive with its workstreams, which are not listed on their own. Its sheet then shows, read-only,
-   the goal and the workstreams as the doc last stood; each workstream unfolds with its log and demo.
+   the goal and the workstreams as the doc last stood; each workstream unfolds with its conversation and demo.
    When the same file comes back, the project returns to its place. Every project's sheet, live or
    archived, lists its decisions and links the idea its plan doc was written from: when an idea's
    "Plan-Doc" card lands and its diff adds a doc in the plan directory, the project from that doc
@@ -237,8 +237,9 @@ An idea is thought through on its card before anything is planned; no worker run
 ## Communication
 
 Agents never talk to each other directly; the Obeya server is the mailbox, so every exchange is
-visible on a card. A worker has four tools, served in-process: `report(status)`, a status line
-on the card; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
+visible on a card. A worker has five tools, served in-process: `report(status)`, a status line
+on the card; `reply(text)`, its answer to a note or feedback in the card's conversation, which
+does not end its turn; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
 or writes their own answer); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1); and
 `ready_for_review(summary, demo | no_demo)`, whose summary is the report the owner reads. A turn that ends without `ask` or `ready_for_review` gets one nudge,
@@ -271,8 +272,28 @@ with that reason. `timeout N` (or `gtimeout`) bounds the command it starts, wher
 in the line (`cd app && timeout 28 bash -c 'until …; do sleep 2; done'`). The text of a heredoc
 is data (a script written with `cat > f <<'EOF'`, a commit message) and counts only when a shell
 runs it (`bash <<EOF`, `cat <<EOF | sh`, `ssh host <<EOF`). The refusal names two
-bounded waits that pass it, one without `timeout`, which macOS lacks. A worker answers a note in its log, saying what
-it changes or why nothing, and asks when the note is unclear.
+bounded waits that pass it, one without `timeout`, which macOS lacks. A worker answers a note or
+feedback with `reply`, saying what it changes or why nothing, and asks when the note is unclear.
+A note while the card waits on the worker's question takes that question back: the card goes back
+to work (in its pull request, or finishing after the landing, where it was), and the worker hears
+that its question („…“) is withdrawn, goes on if the note settled it and asks anew if not. The
+note is no answer, so nothing goes into the decision log. Feedback on a demo whose report asks a
+question leaves that question as it is.
+
+Every card shows its exchanges as a conversation („Gespräch“), the way an idea does (`talkTurns`
+in `src/ui/talk.ts`). Messages are what the owner says (notes, answers, feedback, spoken or typed,
+with screenshots; a spoken command that became a note stands once, as the note), the worker's
+questions with their options and the pick, its replies, its handovers (the last one with its demo
+report's question), and what the Koordinator looked up for the owner; small lines between them are
+the state changes (started, pull request opened, approved, landed, stopped, errors). Everything
+else folds away under the agent's next message as „Verlauf“: tool calls, thoughts, status lines,
+the Koordinator's confirmations, Obeya's notes (restarts, sessions, what happens on the pull
+request). A note the worker answered without `reply` (a card from before it, a worker that forgot)
+is answered by the first words the worker said after it. While the worker works, its latest step
+shows; the question the card waits on stands at the end with its options, and the answer field
+under it; a question a note took back stays, without options, „Durch deinen Hinweis erledigt“.
+Demo, pull request and buttons stay above it. A card that was an idea continues the idea's
+conversation in the same list.
 
 Obeya's messages to a worker say what happened — feedback, an answer, a note, a landing that
 failed, the landing — not step by step what to do: workers are full agents. Whether a demo is
@@ -651,7 +672,7 @@ the owner's language (`src/core/locale.ts`).
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
   confirmation, since the conversation shows it. The same holds for a note or an answer to the
   agent of the open card, alone in what the owner said: it goes out at once and quietly, and the
-  card's log shows it under „Du“. Feedback on work waiting for review keeps the confirmation and
+  card's conversation shows it under „Du“. Feedback on work waiting for review keeps the confirmation and
   the undo window, as does every command to Obeya. With an agent on the open card (working, in a
   pull request, waiting, waiting for review, or finishing what remains), what the owner says is, in doubt, for that
   agent: note, answer or feedback, in the owner's own words (a single such action carries the
@@ -662,8 +683,8 @@ the owner's language (`src/core/locale.ts`).
   (`OBEYA_LIVE=1`). Typing goes the same way as speaking: the Koordinator's sheet, and the fields
   on a card (note, answer, feedback, an idea's conversation) post to the Koordinator, which learns
   that the words are typed and in which field; only clicks on answer options go straight to the
-  agent. What the owner said and the Koordinator's confirmation go into the log of
-  the card that was open, and "Zurückgenommen." when taken back; with no card open, the sheet
+  agent. What the owner said and the Koordinator's confirmation go into the conversation of
+  the card that was open (the confirmation folded away, and the words once when they became a note or an answer), and "Zurückgenommen." when taken back; with no card open, the sheet
   shows the conversation, newest last, in all the height the rest of the sheet leaves free (360px
   at least, unless it is shorter; with less room the sheet scrolls). Talk to an open idea is the exception: its conversation already holds it.
 - **Looked-up questions** — a question that needs reading ("Was würde der Agent hier machen, wenn
@@ -1145,9 +1166,16 @@ the repository; the copy on the project is only for the archive).
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
   to an idea is the exception: it only adds to a conversation. So are a note and an answer to the
-  agent of the open card (2026-10-05): they only add to what the agent knows, the card's log shows
+  agent of the open card (2026-10-05): they only add to what the agent knows, the card's conversation shows
   them, and waiting for a confirmation would keep the owner from going on. Feedback on waiting
   work keeps the undo window, since it sends the work back.
+- A card shows a conversation instead of its log (2026-10-05): the owner reads what was said and
+  decided, not every tool call, which stays a click away under each message. Rejected: the
+  conversation beside the log (every message twice). A worker answers notes with a tool of its
+  own (`reply`); its last words before the owner's next message would often be "Ich committe
+  jetzt", and a small model summing up each turn costs on every turn for nothing `reply` does not
+  do. A note withdraws an open question rather than counting as its answer, which would put a
+  remark into the decision log as a decision.
 - Typed and spoken words take one way, through the Koordinator (2026-10-05). Two ways with almost
   the same behaviour (the card's field straight to the agent, speech through the Koordinator)
   meant "gib frei" or "Merk dir" worked spoken but not typed. Rejected: everything straight to the
