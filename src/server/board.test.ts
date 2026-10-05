@@ -15,7 +15,7 @@ let board: Board;
 beforeEach(() => {
   store = new Store(':memory:');
   docs = [docA];
-  board = new Board(store, { id: 'acme', name: 'Acme', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => docs);
+  board = new Board(store, { id: 'shop', name: 'Shop', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => docs);
 });
 
 describe('plan docs', () => {
@@ -253,7 +253,7 @@ describe('manual cards', () => {
     const old = board.create({ title: ' ', x: 0, y: 0 });
     const kept = board.create({ title: 'Echt', x: 0, y: 0 });
     store.db.query("UPDATE cards SET created_at = '2020-01-01T00:00:00.000Z' WHERE id IN ($a, $b)").run({ a: old.id, b: kept.id });
-    const again = new Board(store, { id: 'acme', name: 'Acme', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => docs);
+    const again = new Board(store, { id: 'shop', name: 'Shop', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => docs);
     const ids = again.snapshot().items.map((i) => i.id);
     expect(ids).toContain(fresh.id);
     expect(ids).toContain(kept.id);

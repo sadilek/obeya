@@ -193,7 +193,7 @@ describe('watching', () => {
     status.changedAt = '2026-10-02T12:49:20Z';
     status.comments = [
       { id: 'cSUM', author: 'greptile', body: 'Confidence Score: 3/5', at: '2026-10-02T12:44:56Z' },
-      { id: 'i1', author: 'greptile', body: 'Permissions can remain active', at: '2026-10-02T12:45:00Z', round: 'A', resolved: true },
+      { id: 'i1', author: 'greptile', body: 'Session tokens can remain active', at: '2026-10-02T12:45:00Z', round: 'A', resolved: true },
       { id: 'i2', author: 'owner', body: 'Fixed in bbb.', at: '2026-10-02T12:52:13Z', round: 'B', replyTo: 'i1' },
     ];
     // what the worker was told already
@@ -246,7 +246,7 @@ describe('watching', () => {
     runtime.last.call('pr_opened', { url: URL_ });
     runtime.last.emit({ type: 'idle' });
     runtime.last.emit({ type: 'idle' });
-    // what an Obeya that left the merge to the owner kept (Acme's PR #823, ready since Saturday)
+    // what an Obeya that left the merge to the owner kept (a real PR, ready for two days)
     board.work(id, { pr: JSON.stringify({ ...JSON.parse(board.row(id).pr!), readyHead: 'aaa' }) });
     watcher.poll();
     expect(merges).toEqual(['aaa']);

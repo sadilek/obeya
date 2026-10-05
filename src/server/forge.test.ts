@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { confidence, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, type PrStatus } from './forge';
 
 test('parsePrUrl', () => {
-  expect(parsePrUrl('https://github.com/example-org/acme/pull/813')).toEqual({ owner: 'example-org', repo: 'acme', number: 813 });
+  expect(parsePrUrl('https://github.com/example-org/app/pull/813')).toEqual({ owner: 'example-org', repo: 'app', number: 813 });
   expect(parsePrUrl('https://github.com/a/b/issues/1')).toBeNull();
 });
 
@@ -112,12 +112,12 @@ test('the review: rounds of threads with their replies, and the conversation bet
 });
 
 test('a review bot’s HTML becomes text: badges by name, folded and code parts gone', () => {
-  // as Greptile writes them on Acme's PR #821
+  // as Greptile writes them on a real PR
   expect(
     readable(
-      '<a href="#"><img alt="P1" src="https://x/p1.svg" align="top"></a> **Rows remain on both pages** Step 5 adds\\-on.\n\n<details><summary>Prompt To Fix With AI</summary>\n\nfix it\n</details>',
+      '<a href="#"><img alt="P1" src="https://x/p1.svg" align="top"></a> **Sessions remain on both servers** Step 5 adds\\-on.\n\n<details><summary>Prompt To Fix With AI</summary>\n\nfix it\n</details>',
     ),
-  ).toBe('P1 **Rows remain on both pages** Step 5 adds-on.');
+  ).toBe('P1 **Sessions remain on both servers** Step 5 adds-on.');
   expect(
     readable(
       '<!-- greptile_summary -->\n\n<h2><a href="r"><picture><img alt="Retrigger" src="r.svg"></picture></a>Confidence Score: 5/5</h2>\n\nSafe&nbsp;to merge\\.\n\n<h3>Diagram</h3>\n\n```mermaid\nflowchart LR\n```\n\n<sub>Reviews (4)</sub>',
@@ -127,7 +127,7 @@ test('a review bot’s HTML becomes text: badges by name, folded and code parts 
 });
 
 test('ready to merge: GitHub clean, checks green, threads resolved, the last re-review request answered', () => {
-  // Acme's PR #821 on 2026-10-02: Greptile answered the third re-review request by rewriting its
+  // a real PR on 2026-10-02: Greptile answered the third re-review request by rewriting its
   // summary to 5/5, with no new comment
   const at = (m: string) => `2026-10-02T08:${m}:00Z`;
   const s: PrStatus = {
@@ -142,7 +142,7 @@ test('ready to merge: GitHub clean, checks green, threads resolved, the last re-
       { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: at('34'), edited: at('49') },
       { id: 'cPING1', author: 'owner', body: '@greptile re-review', at: at('37') },
       { id: 'cPING3', author: 'owner', body: '@greptile re-review', at: at('46') },
-      { id: 'i1', author: 'greptile-apps', body: 'Rows on both pages', at: at('43'), round: 'A', resolved: true },
+      { id: 'i1', author: 'greptile-apps', body: 'Sessions on both servers', at: at('43'), round: 'A', resolved: true },
       { id: 'i2', author: 'owner', body: 'Split the steps.', at: at('46'), round: 'B', replyTo: 'i1' },
     ],
   };
@@ -179,7 +179,7 @@ test('a push since the review is not ready to merge until the reviewer has seen 
     comments: [
       { id: 'cDEPLOY', author: 'cloudflare', body: 'Deployed', at: '2026-10-02T12:40:45Z', edited: '2026-10-02T12:53:00Z' },
       { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 3/5', at: '2026-10-02T12:44:56Z' },
-      { id: 'i1', author: 'greptile-apps', body: 'Permissions can remain active', at: '2026-10-02T12:45:00Z', round: 'A', resolved: true },
+      { id: 'i1', author: 'greptile-apps', body: 'Session tokens can remain active', at: '2026-10-02T12:45:00Z', round: 'A', resolved: true },
       { id: 'i2', author: 'owner', body: 'Fixed in ae384ff.', at: '2026-10-02T12:52:13Z', round: 'B', replyTo: 'i1' },
     ],
   };

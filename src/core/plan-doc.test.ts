@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import { cutTitle, parsePlanDoc } from './plan-doc';
 
-const doc = `# \`csv-export\`
+const doc = `# \`image-cache\`
 
 > Living plan doc.
 
 ## Goal
 
-Let landlords export meter readings:
-one file per month.
+Serve images from a cache:
+resize each one once, at upload.
 
 Second paragraph is not part of the goal.
 
@@ -16,12 +16,12 @@ Second paragraph is not part of the goal.
 
 Intro text.
 
-- [x] **W1:** \`csv_export\` asset type — [#12](https://example.com/12)
-- [ ] **W2 (in review):** Dispatch. Cheapest block, with a
+- [x] **W1:** \`image_cache\` table — [#12](https://example.com/12)
+- [ ] **W2 (in review):** Eviction. Oldest first, with a
   wrapped continuation line.
 - [ ] **W3 — Security hardening (no schema change).** Close the leaks.
 - [ ] **W4:** migrate the readers.
-  - [x] Stromsteuer — done,
+  - [x] Thumbnails — done,
     wrapped.
   - [ ] Forecasting.
 - [ ] **WP — Portal MVP.** Ships early.
@@ -36,11 +36,11 @@ Intro text.
 `;
 
 describe('parsePlanDoc', () => {
-  const p = parsePlanDoc('docs/plan/csv-export.md', doc)!;
+  const p = parsePlanDoc('docs/plan/image-cache.md', doc)!;
 
   test('reads title and first goal paragraph', () => {
-    expect(p.title).toBe('csv-export');
-    expect(p.goal).toBe('Let landlords export meter readings: one file per month.');
+    expect(p.title).toBe('image-cache');
+    expect(p.goal).toBe('Serve images from a cache: resize each one once, at upload.');
   });
 
   test('takes top-level checklist items of the workstreams section only', () => {
@@ -49,11 +49,11 @@ describe('parsePlanDoc', () => {
 
   test('splits label, title and body', () => {
     const [w1, w2, w3, w4, wp, un] = p.workstreams;
-    expect(w1).toMatchObject({ label: 'W1', title: '`csv_export` asset type', body: '[#12](https://example.com/12)', done: true });
-    expect(w2).toMatchObject({ title: 'Dispatch', body: 'Cheapest block, with a wrapped continuation line.', done: false, inReview: true });
+    expect(w1).toMatchObject({ label: 'W1', title: '`image_cache` table', body: '[#12](https://example.com/12)', done: true });
+    expect(w2).toMatchObject({ title: 'Eviction', body: 'Oldest first, with a wrapped continuation line.', done: false, inReview: true });
     expect(w3).toMatchObject({ title: 'Security hardening (no schema change)', body: 'Close the leaks.' });
     expect(w4!.title).toBe('Migrate the readers');
-    expect(w4!.body).toBe('- [x] Stromsteuer — done, wrapped.\n- [ ] Forecasting.');
+    expect(w4!.body).toBe('- [x] Thumbnails — done, wrapped.\n- [ ] Forecasting.');
     expect(wp).toMatchObject({ label: 'WP', title: 'Portal MVP' });
     expect(un).toMatchObject({ title: 'Unlabelled item', body: 'with details' });
     expect(un!.label).toBeUndefined();

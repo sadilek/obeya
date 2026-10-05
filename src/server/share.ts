@@ -14,6 +14,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
+import { KIT_PATH } from '../adapters';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
@@ -46,7 +47,7 @@ export interface SharingOptions {
   runtime: AgentRuntime;
   /** The share command of the card's repository (argv) and where it runs; null when it shares none. */
   commandFor: (card: Item) => { command: string[]; cwd: string } | null;
-  /** Obeya's data directory, passed to the command as `OBEYA_HOME`. */
+  /** Obeya's data directory, passed to the command as `OBEYA_HOME` (with `OBEYA_KIT`, the helpers an adapter's command imports). */
   home: string;
   /** Where the card's pull request is, for the page's link in its description. */
   forge: Forge;
@@ -609,7 +610,7 @@ export function shareProblem(argv: string[]): string | null {
 /** Runs the share command; never throws. */
 async function run(argv: string[], stdin: string, cwd: string, home: string): Promise<{ code: number; out: string; err: string }> {
   try {
-    const p = Bun.spawn(argv, { cwd, stdin: new Blob([stdin]), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OBEYA_HOME: home }, timeout: COMMAND_TIMEOUT });
+    const p = Bun.spawn(argv, { cwd, stdin: new Blob([stdin]), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OBEYA_HOME: home, OBEYA_KIT: KIT_PATH }, timeout: COMMAND_TIMEOUT });
     const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     return { code, out, err };
   } catch (e) {

@@ -364,7 +364,7 @@ export const t = {
       noCanvas: 'Obeya braucht mindestens eine Leinwand.',
       noRepo: 'Eine Leinwand braucht mindestens ein Repository.',
       notRepo: 'Unter diesem Pfad liegt kein git-Repository.',
-      unknownAdapter: 'Diesen Adapter gibt es nicht.',
+      unknownAdapter: 'Diesen Adapter gibt es nicht, oder sein Modul lädt nicht.',
       sameId: 'Gleiche Kennung wie eine andere Leinwand: bitte einen anderen Namen geben.',
       homeMissing: 'Das Repository, mit dem die Leinwand angelegt wurde, fehlt; es muss dabeibleiben.',
       notClone: 'Ein Klon in der Liste ist kein git-Repository.',

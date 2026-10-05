@@ -195,7 +195,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
   merge(cwd, url, head) {
     const ref = parsePrUrl(url);
     if (!ref) throw new Error(`not a GitHub pull request URL: ${url}`);
-    // the repository's own merge methods (Acme allows squash only); squash first where it allows several
+    // the repository's own merge methods (some allow squash only); squash first where it allows several
     const allows = JSON.parse(run(cwd, 'api', `repos/${ref.owner}/${ref.repo}`, '--jq', '{squash: .allow_squash_merge, merge: .allow_merge_commit, rebase: .allow_rebase_merge}')) as Record<string, boolean>;
     const method = (['squash', 'merge', 'rebase'] as const).find((m) => allows[m] !== false) ?? 'squash';
     // no --delete-branch: that also switches branches in the workspace; the repository deletes merged branches or not

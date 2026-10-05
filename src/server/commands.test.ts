@@ -555,19 +555,19 @@ describe("the Koordinator and Obeya's configuration", () => {
 
 describe('Arbeitsrückschau on request', () => {
   test('runs for the repository the owner names, else the first; an unknown one is refused', async () => {
-    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }, { id: 'acme', name: 'Acme', path: '/o', branch: 'main' }] }, () => []);
+    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }, { id: 'app', name: 'App', path: '/o', branch: 'main' }] }, () => []);
     const k = commander();
-    const heard = k.hear('Mach eine Arbeitsrückschau für Acme', {});
+    const heard = k.hear('Mach eine Arbeitsrückschau für App', {});
     await settle();
     const s = runtime.last;
     expect(s.spec.tools.find((t) => t.name === 'act')!.description).toContain('- work_retro (no card)');
     expect(s.call('act', { actions: [{ do: 'work_retro', repo: 'shop' }], confirm: '…' })).toContain('unknown repository shop');
-    s.call('act', { actions: [{ do: 'work_retro', repo: 'acme' }, { do: 'work_retro' }], confirm: 'Ich mache die Arbeitsrückschau für Acme.' });
+    s.call('act', { actions: [{ do: 'work_retro', repo: 'app' }, { do: 'work_retro' }], confirm: 'Ich mache die Arbeitsrückschau für App.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
     await new Promise((r) => setTimeout(r, 40));
     expect(executed).toEqual([
-      { do: 'workRetro', repo: 'acme' },
+      { do: 'workRetro', repo: 'app' },
       { do: 'workRetro', repo: 'home' },
     ]);
   });

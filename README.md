@@ -12,7 +12,7 @@ finished work, without reading code or cycling through terminals.
 
 The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls.
 
-**Status:** M7 (M5 built, its live run on Acme pending) — canvases spanning one or more
+**Status:** M7 (M5 built, its live run on a real repository pending) — canvases spanning one or more
 repositories, agents that work on their cards (a worker per card in its own clone or worktree, questions routed through a project agent
 or the Koordinator), a Koordinator that queues colliding cards, cuts large ones and learns the
 owner's preferences, every change coming back as a narrated demo on its card, pull requests
@@ -23,11 +23,11 @@ See [`docs/design.md`](docs/design.md).
 
 ```bash
 bun install
-bun start ~/dev/app5            # canvas of that repository on http://127.0.0.1:4417
-bun start ~/dev/app5 ~/dev/app-web --name Acme   # one canvas, two repositories
+bun start ~/dev/shop            # canvas of that repository on http://127.0.0.1:4417
+bun start ~/dev/shop ~/dev/shop-web --name Shop   # one canvas, two repositories
 bun start                       # the canvases in ~/.obeya/canvases.json (see src/server/main.ts)
 bun start --config other.json   # those of another file
-bun run dev ~/dev/app5          # same, with hot reload
+bun run dev ~/dev/shop          # same, with hot reload
 bun test && bun run typecheck
 ```
 

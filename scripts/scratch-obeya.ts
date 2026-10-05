@@ -54,7 +54,7 @@
 // now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago? }]),
 // workspace (true: the card holds the next free clone, for an adapter that works in clones),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
-// "3d" ago. `share` is the repository's share command as the configuration holds it (a script among
+// "3d" ago. `"adapter": ""` names none: the repository's own (`.obeya/adapter/` among `files`) or the generic one. `share` is the repository's share command as the configuration holds it (a script among
 // `files`, say); the server then starts from a configuration file in <dir>. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
 // `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
 // What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
@@ -179,8 +179,8 @@ const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => 
 // a share command lives in the configuration, which the command line cannot give
 const configFile = join(dir, 'canvases.json');
 if (stage.share)
-  writeFileSync(configFile, JSON.stringify([{ repos: [{ path: repo, adapter: stage.adapter ?? 'obeya', ...(stage.clones ? { clones: stage.clones } : {}), share: stage.share }] }], null, 2));
-const canvasArgs = stage.share ? ['--config', configFile] : [repo, '--adapter', stage.adapter ?? 'obeya', ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
+  writeFileSync(configFile, JSON.stringify([{ repos: [{ path: repo, ...(stage.adapter === '' ? {} : { adapter: stage.adapter ?? 'obeya' }), ...(stage.clones ? { clones: stage.clones } : {}), share: stage.share }] }], null, 2));
+const canvasArgs = stage.share ? ['--config', configFile] : [repo, ...(stage.adapter === '' ? [] : ['--adapter', stage.adapter ?? 'obeya']), ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
 const server = spawn(
   process.execPath,
   ['src/server/main.ts', ...canvasArgs, '--port', String(port), ...(supervised ? [] : ['--dev']), ...(idle && canIdle ? ['--idle-workers'] : [])],

@@ -48,7 +48,7 @@ describe("Obeya's configuration", () => {
     const c = config('args', [{ name: 'Produkt', repos: [{ path: web }, { path: api, adapter: 'obeya' }] }], ['produkt']);
     const v = c.view();
     expect(v).toMatchObject({ file, source: 'args', running: ['produkt'], problems: [], restarting: false, server: { port: 4417, restarts: true } });
-    expect(v.adapters).toContain('acme');
+    expect(v.adapters).toContain('obeya');
     expect(v.resolved).toEqual([
       {
         id: 'produkt',

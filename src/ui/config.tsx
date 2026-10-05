@@ -521,7 +521,8 @@ function RepoRow({ repo, home, resolved, adapters, problems, onChange }: RepoPro
       <div className="c-row">
         <select value={repo.adapter ?? ''} onChange={(e) => onChange(without('adapter', e.target.value || undefined))} title={t.config.adapter}>
           <option value="">{t.config.adapterAuto(repo.adapter ? undefined : resolved?.adapter)}</option>
-          {adapters.map((a) => (
+          {/* a module's path from the file: kept as it is, the sheet offers only the built-in ones */}
+          {(repo.adapter && !adapters.includes(repo.adapter) ? [...adapters, repo.adapter] : adapters).map((a) => (
             <option key={a} value={a}>
               {a}
             </option>

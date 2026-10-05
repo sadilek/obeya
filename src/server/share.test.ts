@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { KIT_PATH } from '../adapters';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { EXPORT_HTML_MAX } from '../core/types';
@@ -25,7 +26,7 @@ const calls = () =>
     ? readFileSync(join(dir, 'calls'), 'utf8')
         .split('\n')
         .slice(0, -1)
-        .map((l) => JSON.parse(l) as { args: string[]; input: SharePage & { shared: string[] }; home: string })
+        .map((l) => JSON.parse(l) as { args: string[]; input: SharePage & { shared: string[] }; home: string; kit: string })
     : [];
 
 // prints the page's URL, or fails with some output while the file `fail` exists; `version` is not logged in `calls`
@@ -36,7 +37,7 @@ const args = process.argv.slice(3);
 // the version of its pages while the file \`version\` holds one, else none
 if (args[0] === 'version') { if (existsSync(dir + '/version')) console.log(require('node:fs').readFileSync(dir + '/version', 'utf8')); process.exit(existsSync(dir + '/version') ? 0 : 1); }
 const input = JSON.parse(await Bun.stdin.text());
-appendFileSync(dir + '/calls', JSON.stringify({ args, input, home: process.env.OBEYA_HOME }) + '\\n');
+appendFileSync(dir + '/calls', JSON.stringify({ args, input, home: process.env.OBEYA_HOME, kit: process.env.OBEYA_KIT }) + '\\n');
 if (existsSync(dir + '/fail')) { console.error('upload refused: token expired'); process.exit(2); }
 console.error('Uploading 3 files');
 if (args[0] === 'publish') console.log('https://demos.example/' + input.slug + '/');
@@ -118,6 +119,8 @@ describe('sharing a demo', () => {
     expect(call!.args).toEqual(['publish']);
     expect(call!.input).toEqual({ slug, kind: 'video', title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.', chapters: [[0, 'Vorher']], pr: null, dir: join(dir, `demo-${c.id}`), shared: [] });
     expect(call!.home).toBe(join(dir, 'home'));
+    // the helpers an adapter's command imports
+    expect(call!.kit).toBe(KIT_PATH);
     // the command's output goes into the card's log
     expect(log(c.id)).toContain('Uploading 3 files');
     expect(log(c.id).at(-1)).toBe(`Geteilt: https://demos.example/${slug}/`);

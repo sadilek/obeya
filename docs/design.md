@@ -32,7 +32,8 @@ decisions are made in front of the wall.
 - **Voice first, mouse welcome.** Push-to-talk anywhere; buttons for the obvious actions. No live
   transcript: a short confirmation, written and spoken, with undo. What was said and answered
   stays in the log of the open card, or in the Koordinator's sheet.
-- **Repo-agnostic core.** Project specifics live in a per-repo adapter. The first adapter is Acme.
+- **Repo-agnostic core.** Project specifics live in a per-repo adapter, which a repository can
+  carry itself (`.obeya/adapter/`).
 
 ## Concepts
 
@@ -143,7 +144,7 @@ An idea is thought through on its card before anything is planned; no worker run
    The decision log says "So bauen, auf Prototyp „…“". Either way the idea's other prototypes are
    discarded, so one card remains. "Als Projekt planen" starts a
    worker on the idea's card the same way, which keeps its title and shows as "Idee → Projekt": it
-   writes a plan doc with workstreams, which lands like any change (Acme: a PR). The project then
+   writes a plan doc with workstreams, which lands like any change (a PR, say). The project then
    takes the idea's place on the canvas (cards it would cover move aside, by as much as it outgrows
    the idea) and links back to it; the idea goes to the archive once its
    worker is done (put back, it stays). "Parken" and "Verwerfen" leave the card with its brief; talking
@@ -192,7 +193,7 @@ An idea is thought through on its card before anything is planned; no worker run
    and that card's summary. A question in the demo report is an
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
    the answer, and the demo keeps waiting for approval.
-4. Where work lands through pull requests (Acme), approval puts the card `in PR`: its worker opens
+4. Where work lands through pull requests, approval puts the card `in PR`: its worker opens
    the PR and Obeya carries it through the merge, which it does itself. Review comments, failed checks and conflicts go to the
    worker; only what needs judgement — a review comment that questions a decision, a conflict with
    product meaning — comes back to the owner as a question on the card, and the answer returns it
@@ -209,7 +210,7 @@ An idea is thought through on its card before anything is planned; no worker run
    out to change nothing (its branch emptied after the approval) closes the card itself with
    `close_unchanged`, which Obeya refuses while the workspace holds commits or uncommitted
    changes. Before, such a card waited in `in PR` for a pull request that could never come
-   (Acme's demo card "Export bisher", 2026-10-02).
+   (a demo card on 2026-10-02).
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card or
    its archive button on the canvas, shown while the pointer is on it, or all finished ones at
    once in the archive), or when a prototype ends (discarded or built; Ideas, 4). The archive
@@ -365,14 +366,14 @@ the owner's language (`src/core/locale.ts`).
   preference learned or changed while one runs reaches it once, at its next tool call, without a
   message or a new turn.
 - **Workspaces** — per adapter. A pool of full clones leased by a card while it is worked on
-  (Acme: csharpier finds no files inside a worktree, and parallel AppHosts per clone are proven),
+  (for a repository whose tools break inside a worktree, or that runs its own app stack per clone),
   or a worktree per card (Obeya itself: any number in parallel), kept across stop and restart
   until the card's work has landed. Clones come from `--workspace <path>` or `--clones <n>`.
   For each repository that uses clones, the top bar shows the pool ("Workspaces", a dot per clone,
   filled while a card holds it, and "2 frei" or "alle belegt"); over it, the cards that hold one and
   how many wait for one. The snapshot carries the pools (`workspaces`): leases change only with a
   card, so they ride on its updates. Worktrees are never short, so a canvas of only those shows none.
-- **Landing** — per adapter. `pr` (Acme): approval leaves the branch for the PR loop. `main`
+- **Landing** — per adapter. `pr`: approval leaves the branch for the PR loop. `main`
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
   is `live`. Commits that conflict one by one but not as a whole land squashed into one commit.
   Uncommitted work or a real conflict sends the card back to its worker with the approval kept:
@@ -385,19 +386,19 @@ the owner's language (`src/core/locale.ts`).
   checks, conversation and review comments, inline comments), and right away when the owner comes
   back to an Obeya page (it becomes visible or gets the focus; at most once in 15 seconds): the
   owner merges on GitHub and returns, and before, the card stood "in PR" for up to two minutes
-  after the merge (Acme's PR #821 on 2026-10-02: merged 12:12:40, seen 12:14:12). The watcher sits behind a small forge interface
+  after the merge (a PR on 2026-10-02: merged 12:12:40, seen 12:14:12). The watcher sits behind a small forge interface
   (`src/server/forge.ts`) so the loop is tested against a fake. New comments, failed checks (once
   per check and commit) and a conflict (once per commit) go to the worker as a message, which says
-  what happened and leaves the how to the repository's ways (Acme: its `address-reviews` skill,
-  which merges `main` instead of rebasing, replies on and resolves threads, and asks Greptile for a
+  what happened and leaves the how to the repository's ways (say, a skill of its own
+  that merges `main` instead of rebasing, replies on and resolves threads, and asks Greptile for a
   re-review after each push). Whatever the way, each review comment gets a reply in its own
   thread (what changed, or why not) and the thread is resolved unless the worker still wants the
   reviewer's answer; one summary comment for all is not enough. The owner's log gets a line for
-  each event. Checked on Acme's PR #821 (2026-10-02): all five Greptile threads got their own reply
+  each event. Checked on a real PR (2026-10-02): all five Greptile threads got their own reply
   and were resolved before the re-review ping; a page opened earlier showed the ping but neither
   the replies nor the resolutions until reloaded. Comments by the PR's author
-  (the worker replying in the owner's name) and by accounts the adapter names as noise (Acme: the
-  Cloudflare deploy bot) are skipped; an app's inline comments come as `<name>[bot]`, its
+  (the worker replying in the owner's name) and by accounts the adapter names as noise (a deploy
+  preview bot, say) are skipped; an app's inline comments come as `<name>[bot]`, its
   conversation comments as `<name>`, and the watcher reads both as `<name>`. While the owner is
   asked, news waits. Once nothing is left for the worker, the card needs the owner: "Bereit zum
   Mergen" (once in the log, on the card and folded) when GitHub sees nothing in the way
@@ -405,8 +406,8 @@ the owner's language (`src/core/locale.ts`).
   is not in a turn, a reviewer who wrote has written since the PR's own changes last changed (the
   committer date of its newest commit that is not a merge: merging the base in brings changes
   reviewed there, mostly elsewhere in the code), and whoever the PR's author last asked for another look has answered since. A
-  review bot often answers a re-review only by rewriting its summary (Greptile's new score, on Acme's
-  PR #821 on 2026-10-02, with no new comment), so a rewrite counts as an answer; before, the watcher
+  review bot often answers a re-review only by rewriting its summary (Greptile's new score, on a
+  PR on 2026-10-02, with no new comment), so a rewrite counts as an answer; before, the watcher
   waited for new comments only and the card stood "in PR" with nothing left to do. A review older
   than the changes is about an older state: a PR (2026-10-02) went in on Greptile's 3/5 of its first
   commit, since the worker pushed its fixes, replied in the threads and resolved them, but asked for
@@ -418,11 +419,11 @@ the owner's language (`src/core/locale.ts`).
   summary) Obeya does not merge: the card needs the owner ("Bereit zum Mergen · Review nur 3/5"),
   who merges on GitHub or tells the worker what is missing; a new review at 4/5 or better lets Obeya
   merge again. Once ready,
-  Obeya merges the PR itself (`gh pr merge` with the method the repository allows, Acme: squash, and
+  Obeya merges the PR itself (`gh pr merge` with the method the repository allows, squash first, and
   `--match-head-commit`, so a push since is never merged unchecked) and the card is `live` (After
   landing, below) in the same round. Before, Obeya left the merge to the owner on GitHub, and a
-  ready PR stood for days with the card saying only "Bereit zum Mergen" (Acme's PR #823, ready
-  2026-10-03, still open 2026-10-05). When GitHub refuses the merge (branch protection wanting a
+  ready PR stood for days with the card saying only "Bereit zum Mergen" (one PR ready
+  2026-10-03 was still open 2026-10-05). When GitHub refuses the merge (branch protection wanting a
   human approval, say), the card says why ("Obeya konnte nicht mergen: …") and needs the owner, who
   merges on GitHub; Obeya tries again each round, so it goes through once the reason is gone.
   Anything new for the worker takes the readiness back. The card shows the PR
@@ -435,9 +436,8 @@ the owner's language (`src/core/locale.ts`).
   worker's requests for another round; a comment rewritten since, like Greptile's summary each
   round, stands where it was last changed). Review bots write HTML into their Markdown: badges keep
   their name (Greptile's "P1"), folded parts, code and diagrams go. Whether a thread is resolved
-  and when a comment was last changed only GraphQL says, so the watcher asks that too. Checked against real Acme pull requests (2026-10-01): `gh`
-  reads their state, checks and comments; the first Acme card carried through to the merge is still
-  to come.
+  and when a comment was last changed only GraphQL says, so the watcher asks that too. Checked against real pull requests (2026-10-01): `gh`
+  reads their state, checks and comments.
 - **After landing** — the worker is told its work is on main (or that its PR was merged) and may
   finish what remains, in its workspace, which stays at what landed until then (the card is `live`,
   "Agent erledigt den Rest"; notes reach it, "Anhalten" ends it). Ending a turn with nothing to wait
@@ -547,8 +547,8 @@ the owner's language (`src/core/locale.ts`).
   repository, by voice or in the sheet's field for a new rule, which has the same „Gehört in“; its worker writes the rules into the CLAUDE.md
   in the style of what is there. These cards start by themselves, through the Koordinator like any
   start, once no proposal waits any more, whatever its place: a waiting one might yet be switched
-  to theirs, so several rules go in together. The card lands like any other (in Acme, through a pull
-  request); until then the rule applies to no agent, and afterwards through the CLAUDE.md alone. The Koordinator
+  to theirs, so several rules go in together. The card lands like any other (through a pull
+  request where work lands that way); until then the rule applies to no agent, and afterwards through the CLAUDE.md alone. The Koordinator
   button counts open proposals (violet, beside the grey count of queued cards); they do not
   count among the cards that need the owner and do not show on cards.
 - **Arbeitsrückschau** (`src/server/work-retro.ts`, `src/server/transcript.ts`) — Obeya looks back
@@ -589,7 +589,7 @@ the owner's language (`src/core/locale.ts`).
     CLAUDE.md, which goes the way of the Rückschau's rules (a proposal for „CLAUDE.md von <repo>“,
     then the card „CLAUDE.md ergänzen“). Nothing is created silently and nothing starts by itself;
     skills of the user (`~/.claude/skills`) are out of scope. The owner can ask the Koordinator
-    for it at once („Mach eine Arbeitsrückschau für Acme“, the action `work_retro`): it reads the
+    for it at once („Mach eine Arbeitsrückschau für den Shop“, the action `work_retro`): it reads the
     notes since the last one, the count starts again, and the owner hears what came of it.
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
   audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
@@ -617,7 +617,7 @@ the owner's language (`src/core/locale.ts`).
   ("Was ist seit gestern passiert?"), as far as the cards and their history answer them.
   "Merk dir: …" ("ab jetzt immer …") is remember, with the open card as its occasion, once the undo
   window has passed. A rule on how agents work with the owner through Obeya becomes one of the
-  owner's, active at once; one about a repository („Merk dir: in Acme immer …“) goes, like a learned
+  owner's, active at once; one about a repository („Merk dir: im Shop immer …“) goes, like a learned
   one, into the card „CLAUDE.md ergänzen“ of the repositories it names (`repos`), without a
   proposal, since the owner said it. The confirmation says which of the two it went to. It may name
   the rule it changes, which then takes the new text, or, moved into a CLAUDE.md, goes. The
@@ -793,12 +793,12 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   machine is `docs/demo-setup.md`. Not tried yet (2026-10-05): Edge as the fallback, a voice
   command through `cmd.exe`, Qwen3-TTS through PyTorch (no machine with a GPU); Obeya itself on
   Windows and its own voice in and out outside macOS are separate, larger questions. How to run each project's app
-  for a demo is the adapter's `demo.howToRun` (Acme: AppHost, login, QA customer, migrations;
+  for a demo is the adapter's `demo.howToRun` (say, the app stack, login, test data, migrations;
   Obeya: the scratch instance); without Obeya, `bun lib/recipe.ts` in a repository prints it. The
   worker records once the change is committed and checked, as the adapter says how to run the
   app (Obeya: a scratch instance from the worktree, staged by `scripts/scratch-obeya.ts` from a
   stage file before every take, its workers idle (`--idle-workers`) unless the change is about
-  agents; Acme: the clone's AppHost), and hands over the directory and chapter titles with `ready_for_review`.
+  agents; elsewhere, say, the clone's own app stack), and hands over the directory and chapter titles with `ready_for_review`.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
   the card's demo (range requests). The card shows it with approve and feedback
   beside the video; feedback asks for a new render. When the result is something to look at
@@ -820,7 +820,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   page, at most 30 steps (an artifact as high as its window would grow on), and "In eigenem
   Fenster öffnen" shows it alone. Where it goes depends on
   the repository's share target: the command line in its configuration (`share`, see
-  Configuration), else the command its adapter names (`demo.share`; Acme). With a target, the
+  Configuration), else the command its adapter names (`demo.share`). With a target, the
   demo is published on a page. "Teilen" publishes right away, without a hold to take it back:
   "Nicht mehr teilen" withdraws the page just as easily (until 2026-10-02 it held 8 s with "Doch
   nicht"). Once the page is up, the card shows the link (open, copy) and "Nicht mehr teilen". A
@@ -839,15 +839,15 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   card's log, a failure with its output as an error, and the card stays as it was. A share held,
   publishing or withdrawing at a restart goes on after it.
   Obeya keeps with each share the version the command said right after publishing it, and asks
-  each command with pages out for its version at startup (Obeya restarts when its own code changes,
-  Acme's command included), after each of its calls, and when the owner comes back to a page of
+  each command with pages out for its version at startup (Obeya restarts when its own code changes),
+  after each of its calls, and when the owner comes back to a page of
   the canvas (at most once a minute: a command from another repository changes without a restart). A page published with another version, or
   before commands said theirs (until 2026-10-05), shows that pages are made differently now and
   offers "Erneut teilen" beside "Nicht mehr teilen": the same demo published again under the same
   link. A card with a newer demo offers only "Neu teilen", which brings both. Each page is brought
-  up to date on its own card: Acme's command wrote every page afresh with each call until
-  2026-10-05, which updated all of them unseen and would take long with hundreds of pages. Acme's
-  command prints a hash of a sample page as its code writes it: only a change that shows on the
+  up to date on its own card: the first share command wrote every page afresh with each call until
+  2026-10-05, which updated all of them unseen and would take long with hundreds of pages. A
+  command may print a hash of a sample page as its code writes it: only a change that shows on the
   pages counts. Many at once go from the Koordinator's sheet: while pages are outdated, a purple
   entry says how many („N geteilte Demos sind veraltet“, archived cards' included) and shares
   again the newest 20 of them (or 10, 50, 100, all), newest by the demo's video file. They go out
@@ -859,7 +859,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   "Ausblenden". The run is kept (setting `reshare`), so it goes on after a restart; a page shared
   again on its own meanwhile, withdrawn or deleted drops out of it. It is not counted on the
   Koordinator button: the cards offer "Erneut teilen" each, and nothing is lost by leaving them.
-  A page published again with the same video keeps its date („Geteilt am“) on Acme's site, so the
+  A page published again with the same video keeps its date („Geteilt am“) on a site that shows it, so the
   overview keeps its order when pages are brought up to date or get their PR's link; a new video
   dates it anew.
   The pull request and the page link each other. A demo shared before approval goes into the
@@ -884,7 +884,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   `index.html` alone, which the handover notes (`single`), else the button says it goes as a ZIP. Nothing leaves Obeya, so an export
   is not held; the card's log names the file. Both pages carry their captions as cues in a script,
   since Chrome does not load a `<track>` for a page opened from disk. The page (`src/server/demo-page.ts`)
-  is the one Acme's site shows, without its link to the overview. Its video waits with a big play
+  is the one a share command publishes (the adapter kit, `src/adapters/kit.ts`, hands it to
+  the command), without its link to the overview. Its video waits with a big play
   button over it until it first plays: a click anywhere on the video but its controls starts it,
   rather than the small button in the corner. It does not start on its own: browsers play sound
   only after a click on the page (in Obeya, the click that opens the card), so it could only start
@@ -893,27 +894,38 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   given as a path and any script are found in the repository, and a script (`.ts`, `.js`) runs
   with Obeya's own Bun, so the same line works on Windows. The ZIP is written by Obeya
   (`src/server/zip.ts`, stored without compression: the video is compressed already).
-  Acme's command (`src/adapters/team-share.ts`) keeps the site in `~/.obeya/team-share/site/` (a
-  directory per demo with page, video, poster, captions and `meta.json` (an artifact's files in
-  `artifact/` instead), and the overview, newest first) and deploys all of it with `wrangler pages deploy` to the Pages project `team-demos`,
-  behind the same Cloudflare Access policy as the docs (`@example.com`). Account ID and API
-  token are in `~/.obeya/team-share/cloudflare.env`. Pages serves no byte ranges (a range request
-  gets the whole file with 200), and a browser cannot seek in a video streamed that way: the
-  chapters and the progress bar jumped back to the start. The page therefore asks for a range
-  first and, getting the whole file, plays the video from memory. A call writes its own page and
-  the overview; the other pages stay as they were written (their `meta.json` keeps what a page
-  shows). It refuses files over 25 MiB (the Pages limit; the largest demo so far was 11 MB, a larger one would need R2 behind Access)
-  and a site that lacks a page Obeya has as shared (a lost directory would take them offline), and
-  puts the directory back when a deployment fails. The owner sets it up once in Cloudflare (done
-  2026-10-02), in this order: the Pages project `team-demos` (under Pages: the dashboard's plain
-  "Create" makes a Worker on `workers.dev` instead); then the Access application for
-  `team-demos.pages.dev` and `*.team-demos.pages.dev` with the docs' policy, whose domain Access
-  offers to pick only once the project exists (no free text); and an API token with Pages edit
-  rights in `cloudflare.env`. The command never creates the project itself.
+  A repository's own share command (in its `.obeya/adapter/`, see Repo adapter) cannot import
+  Obeya's files by a relative path: Obeya runs it with `OBEYA_KIT` beside `OBEYA_HOME`, the path
+  of `src/adapters/kit.ts`, from which it imports the page templates, so its pages are the export's.
+  A command that publishes to a static host keeps its site in a directory of its own under Obeya's
+  home and deploys all of it with each call; the first one (2026-10-02, moved into its repository
+  on 2026-10-05) writes its own page and the overview, refuses files over the host's limit and a
+  site that lacks a page Obeya has as shared (a lost directory would take them offline), and puts
+  the directory back when a deployment fails. Such a host may serve no byte ranges (Cloudflare
+  Pages answers a range request with the whole file and 200), and a browser cannot seek in a video
+  streamed that way: the chapters and the progress bar jumped back to the start. The page
+  therefore asks for a range first and, getting the whole file, plays the video from memory.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   recipe for running the app in a demo (login, test data, migrations: `demo.howToRun`), where plan
   docs live, which reviews run, the command that shares demos (the
-  configuration's takes its place).
+  configuration's takes its place). A repository carries its own adapter in `.obeya/adapter/`
+  (`index.ts` and what it needs beside it), like `.vscode/` or `.claude/`: whoever runs Obeya on a
+  clone gets it, and it is versioned and reviewed with the code it describes. Obeya picks a
+  repository's adapter in this order (`src/adapters/index.ts`): the one the configuration names
+  (`adapter`: a built-in one's name, or the path of a module, relative to the repository), the
+  repository's own, the first built-in one that matches (`obeya` by its `origin`, else
+  `generic`). The repository's own comes from its default branch, not the checkout: the clones a
+  canvas works in are on cards' branches, and one from before the adapter changed (or came) would
+  have another one or none. The default branch is the local one where it has all of `origin`'s,
+  else `origin`'s as last fetched. Its files are written once per version (the git tree's id)
+  into the repository's git directory, `.git/obeya/adapter-<tree>/`, out of reach of checkouts and
+  `git clean`, and an earlier version's go; a change to the adapter takes effect when Obeya next
+  resolves the canvas (a start, a saved configuration). The module's default export is the adapter
+  or a function that makes it from Obeya's helpers (`kit`: the generic adapter, the demo page
+  templates, `esc`, `day`), so it imports nothing of Obeya's; Obeya loads it with `require` and
+  fills what it leaves out from the generic adapter. An adapter that does not load is a
+  configuration problem at the repository ("Diesen Adapter gibt es nicht, oder sein Modul lädt
+  nicht."). Until 2026-10-05 every adapter lived in this repository, a project's included.
 
 ## Data
 
@@ -933,7 +945,8 @@ reply, the screenshots that came with it, the open card, whether it was taken ba
 question, the card it is about, its answer and who gave it), groups (name, colour) and the group of each card, per-canvas settings (the home repository; the Rückschau's count and when its history begins; per repository the Arbeitsrückschau's count and when it last ran), the friction noted on each card's runs (per repository), and on a card the Arbeitsrückschau proposed what it rests on.
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
-(`canvases.json`), Acme's shared demo site and its Cloudflare credentials (`team-share/`).
+(`canvases.json`), and what a repository's share command keeps there (a demo site, its
+credentials).
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository; the copy on the project is only for the archive).
@@ -952,9 +965,9 @@ the repository; the copy on the project is only for the archive).
   waiting. At first Obeya left the merge to the owner.
 - The worker opens and tends its PR the way the repository does it, rather than Obeya scripting
   the steps (2026-10-01): Obeya's first version told it to rebase and push with
-  `--force-with-lease`, while Acme merges `main` into a PR branch, never force-pushes, and has its
-  own skill for review comments. Obeya says what happened on the PR, the repository says how to
-  answer it.
+  `--force-with-lease`, while the first repository it opened PRs in merges `main` into a PR branch,
+  never force-pushes, and has its own skill for review comments. Obeya says what happened on the
+  PR, the repository says how to answer it.
 - Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
 - Work without a change to the code ends in a state of its own, `done` ("Erledigt"), not `live`
@@ -980,7 +993,7 @@ the repository; the copy on the project is only for the archive).
   and unseen by colleagues and by Claude Code outside Obeya. Rejected: not learning repository
   rules (what the owner says would be lost), preferences scoped to a repository in the database
   (unversioned, invisible outside Obeya), the Koordinator committing to the CLAUDE.md on accept (it
-  only reads, and nothing goes to Acme's `main` directly). Accepted ones collect in one card per
+  only reads, and where work lands through PRs nothing goes to `main` directly). Accepted ones collect in one card per
   repository that starts once no proposal waits, so several go in together without the owner
   starting it. A rule the owner says outright („Merk dir: …“) or writes in the sheet is sorted the
   same way and filed at once, without a proposal (2026-10-02): at first it always became a
@@ -1009,15 +1022,16 @@ the repository; the copy on the project is only for the archive).
   plan directory and the nearest directory above it: git removes the plan directory with its last
   doc, and the directory's own watch then reports nothing (M5 stayed on the canvas until a
   restart). Reading old content
-  from the git history instead was rejected as fragile (PRs and clones on Acme, renames); it served
+  from the git history instead was rejected as fragile (PRs and clones, renames); it served
   only once, to backfill Obeya's own projects from before
   (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a doc missing only for a moment (a branch
   switch in the checkout) sends the project to the archive and back; a renamed doc makes a new
   project and leaves the old one archived. A project from before the doc was kept has nothing to
   show and stays hidden.
-- A canvas belongs to a repository, not a checkout: the adapter names it (Acme: `acme`), so the
-  clones share one. Adapters live in this repository (`src/adapters/`) and are picked by the
-  `origin` URL; the generic one covers any repo with `docs/plan/`.
+- A canvas belongs to a repository, not a checkout: the adapter names it, so the clones share
+  one. A project's adapter lives in its own repository (`.obeya/adapter/`, read from the default
+  branch; see Repo adapter), not in Obeya's, which is open source: until 2026-10-05 adapters lived
+  here and were picked by the `origin` URL. The generic one covers any repo with `docs/plan/`.
 - A card has one fixed size; a delivered workstream shrinks to a chip, a project wraps its
   children, and a workstream cannot be dragged out of its project. New projects are placed in a
   grid below the existing ones. A proposal or follow-up goes below the card it came from, or, when
@@ -1167,7 +1181,6 @@ the repository; the copy on the project is only for the archive).
 - Plan-doc sync: Obeya reads plan docs and never writes them; workers tick off their workstream
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
 - Plan docs are read from the working tree of the checkout Obeya is started on. Fine for Obeya,
-  where work lands there; for Acme, whose work lands through PRs, read them from `origin/main`?
-- Which Acme clones may workers lease: the existing `~/dev/app2`–`app5`, or fresh ones?
-- A plan doc without a `## Workstreams` checklist is not shown (in Acme: `parsed-view.md`,
-  whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
+  where work lands there; for a repository whose work lands through PRs, read them from `origin/main`?
+- A plan doc without a `## Workstreams` checklist is not shown (its tasks under other headings,
+  say). Fix such docs, or show them as projects without cards?

@@ -207,7 +207,7 @@ it carries the owner's cloned voice.
 
 ## How to run the app
 
-Under Obeya, the worker's brief says how to run the app of its repository for a demo (Obeya's repo
-adapters hold these recipes). Without Obeya, ask it: `bun ${CLAUDE_SKILL_DIR}/lib/recipe.ts`, run
+Under Obeya, the worker's brief says how to run the app of its repository for a demo (repo adapters hold
+these recipes: the repository's own in `.obeya/adapter/`, or one of Obeya's). Without Obeya, ask it: `bun ${CLAUDE_SKILL_DIR}/lib/recipe.ts`, run
 in the repository, prints the recipe when an adapter knows the repository. Otherwise the
 repository's own docs (CLAUDE.md, README) say how to start it.

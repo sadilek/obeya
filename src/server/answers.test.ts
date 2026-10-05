@@ -23,7 +23,7 @@ const open = () => {
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-answers-'));
   main = join(dir, 'main');
-  gitRepo(main, { 'docs/plan/pr-loop.md': '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live auf Acme. Mit dem Go des Owners.\n' });
+  gitRepo(main, { 'docs/plan/pr-loop.md': '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live im Shop. Mit dem Go des Owners.\n' });
   store = new Store(':memory:');
   runtime = new FakeRuntime();
   spoken = [];
@@ -64,7 +64,7 @@ describe('a question the Koordinator looks up', () => {
     expect(a.spec.system).toContain('project agent of the project "PR-Loop"');
     expect(a.inbox[0]).toContain('What would the worker do on W4');
     expect(a.inbox[0]).toContain('The task its worker would get if the owner started it now');
-    expect(a.inbox[0]).toContain('Your card: “Live auf Acme”.');
+    expect(a.inbox[0]).toContain('Your card: “Live im Shop”.');
     expect(a.inbox[0]).toContain('Read its plan doc docs/plan/pr-loop.md first');
     expect(board().snapshot().talk).toEqual([]);
 

@@ -1,6 +1,6 @@
 // The page a demo is shared on, for people who have never seen Obeya: title, text, the video with
-// its chapters and captions (or an HTML artifact in a frame), the pull request. Acme's share command
-// builds its site from it, and a repository without a share target exports it (share.ts): as a ZIP
+// its chapters and captions (or an HTML artifact in a frame), the pull request. A repository's share
+// command builds its site from it (through the adapter kit), and a repository without a share target exports it (share.ts): as a ZIP
 // with the video or the artifact beside the page, or as one HTML file with everything inside.
 
 import { type Dirent, existsSync, readdirSync } from 'node:fs';
@@ -16,7 +16,7 @@ export interface DemoPageParts {
   when: string;
   /** The browser tab's title. */
   tabTitle: string;
-  /** A link above the title (Acme: to all demos). */
+  /** A link above the title (say, to all demos). */
   top?: { href: string; text: string };
   /** The video's URL, or its bytes in base64 for a page that holds everything. */
   video: { src: string } | { base64: string };

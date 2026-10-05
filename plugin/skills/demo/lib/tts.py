@@ -61,7 +61,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 #: A take whose transcript matches at least this well is kept without trying another. Whisper
-#: itself splits compounds ("Wasserkraft" → "Wasser Kraft"), so a perfect clip rarely scores 1.0.
+#: itself splits compounds ("Leuchtturm" → "Leucht Turm"), so a perfect clip rarely scores 1.0.
 GOOD_MATCH = 0.95
 MAX_TAKES = 3
 

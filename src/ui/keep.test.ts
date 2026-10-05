@@ -10,7 +10,7 @@ const kept = (at: number): Kept => ({ at, card: 'c1', sheet: 'koordinator', scro
 test('what a reload kept comes back once, on its canvas', () => {
   const s = store();
   keep(s, 'obeya', kept(1000));
-  expect(takeKept(s, 'acme', 2000)).toBeNull();
+  expect(takeKept(s, 'shop', 2000)).toBeNull();
   expect(takeKept(s, 'obeya', 2000)).toEqual(kept(1000));
   expect(takeKept(s, 'obeya', 2000)).toBeNull();
 });
