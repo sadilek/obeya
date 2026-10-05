@@ -48,6 +48,8 @@ export interface WorkerOptions {
   imageFiles?: (ids?: string[]) => string[];
   /** Whether Obeya starts again for work that landed: it runs from this repository's checkout and the work changed code. */
   restartsFor?: (landed: Landed) => boolean;
+  /** Added to every worker's environment: where Obeya is (`OBEYA_URL`), for a demo's narration. */
+  env?: Record<string, string>;
 }
 
 /** What is stored while landed work's worker finishes (`CardRow.landed`). */
@@ -464,6 +466,7 @@ export class Workers {
         system: this.system(preferences, !!row.prototype_of),
         tools: this.tools(cardId, live, !!row.prototype_of),
         ...(this.o.adapter.demo ? { plugins: [OBEYA_PLUGIN] } : {}),
+        ...(this.o.env ? { env: this.o.env } : {}),
         contextUpdate: () => this.preferencesUpdate(live),
         ...(resume ? { resume } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),

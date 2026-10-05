@@ -1,12 +1,15 @@
 // The line protocol between `tts.py` and a voice that stays loaded (`qwen3.py --serve`), against
 // fake voices: one that counts its starts, one that dies, and Qwen3's own server with a fake
-// mlx-audio that prints where the protocol runs. Python through uv, as a render runs it.
+// mlx-audio that prints where the protocol runs; and the same voice held by Obeya across renders
+// (`src/server/narration.ts`). Python through uv, as a render runs it.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { NarrationHost } from '../../../../src/server/narration';
+import { serve } from '../../../../src/server/server';
 
 const LIB = import.meta.dirname;
 const python = (args: string[], env: Record<string, string> = {}, input?: string) =>
@@ -20,7 +23,7 @@ const python = (args: string[], env: Record<string, string> = {}, input?: string
 /** A voice that serves until its stdin ends, writing a short silent WAV per request. */
 const FAKE_VOICE = String.raw`
 import json, os, sys, wave
-log = os.environ["FAKE_LOG"]
+log = os.environ.get("FAKE_LOG") or sys.argv[1]
 open(log, "a").write("start\n")
 print("loading weights ...", flush=True)  # a library talking on stdout: not the protocol
 answer = lambda reply: (sys.stdout.write(json.dumps(reply) + "\n"), sys.stdout.flush())
@@ -85,6 +88,77 @@ describe('a voice that stays loaded', () => {
     expect(loading.status).not.toBe(0);
     expect(loading.stderr).toContain('cannot load the model');
   });
+});
+
+describe('a voice Obeya holds', () => {
+  const UV = ['uv', 'run', '--quiet', '--no-project', '--with', 'numpy', 'python'];
+  /** A render while this process serves Obeya: spawned, not spawnSync, which would block the server. */
+  const render = (out: string, env: Record<string, string>, extra: string[] = []) =>
+    new Promise<{ status: number | null; stderr: string }>((resolve) => {
+      const child = spawn(UV[0]!, [...UV.slice(1), join(LIB, 'tts.py'), ...(extra.includes('--listen') ? [] : ['--listen', 'off']), ...extra, join(dir, 'spec.json'), 'de', join(dir, 'jobs.json'), join(dir, out)], {
+        env: { ...process.env, ...env },
+      });
+      let stderr = '';
+      child.stderr.on('data', (b: Buffer) => (stderr += b.toString()));
+      child.on('close', (status) => resolve({ status, stderr }));
+    });
+  let host: NarrationHost;
+  let server: ReturnType<typeof serve>;
+  beforeEach(() => {
+    host = new NarrationHost({ argv: () => [...UV, join(dir, 'voice.py'), join(dir, 'log')] });
+    server = serve([], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker: { speak: async () => null } }, 0, false, undefined, undefined, host);
+    const spec = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8'));
+    writeFileSync(join(dir, 'spec.json'), JSON.stringify({ ...spec, host: { speaker: 'ryan' } }));
+  });
+  afterEach(() => {
+    server.stop(true);
+    host.stop();
+  });
+
+  test('loads once for parallel renders, which take turns clip by clip, and stays loaded for the next', async () => {
+    const env = { OBEYA_URL: server.url.href };
+    const [a, b] = await Promise.all([render('a', env), render('b', env)]);
+    expect([a.status, b.status]).toEqual([0, 0]);
+    expect(a.stderr).toMatch(/synthesised by Obeya in [\d.]+ s/);
+    for (const out of ['a', 'b']) expect(JSON.parse(readFileSync(join(dir, out, 'tts.json'), 'utf8')).clips).toHaveLength(3);
+    // the second render's clips came between the first's
+    const clips = log().slice(1);
+    expect(clips.toSorted()).toEqual(['de:Drei.', 'de:Drei.', 'de:Eins.', 'de:Eins.', 'de:Zwei.', 'de:Zwei.']);
+    expect(clips.slice(0, 2)).toEqual(['de:Eins.', 'de:Eins.']);
+    rmSync(join(dir, 'a'), { recursive: true });
+    expect((await render('a', env)).status).toBe(0);
+    expect(log().filter((l) => l === 'start')).toHaveLength(1);
+  }, 60_000);
+
+  // the lock is held here with flock, which Windows lacks
+  test.skipIf(process.platform === 'win32')('a render does not wait for the machine to synthesise through Obeya, and falls back to its own voice without Obeya', async () => {
+    // another render holds the lock, as one with a model of its own or with Whisper does
+    const lock = join(dir, 'tts.lock');
+    const holder = spawn(UV[0]!, [...UV.slice(1), '-c', `import fcntl, sys, time\nf = open(${JSON.stringify(lock)}, "a+b")\nfcntl.flock(f, fcntl.LOCK_EX)\nprint("held", flush=True)\ntime.sleep(60)`]);
+    await new Promise((resolve) => holder.stdout.once('data', resolve));
+    try {
+      const held = await render('a', { OBEYA_URL: server.url.href }, ['--lock', lock]);
+      expect(held.status).toBe(0);
+      expect(held.stderr).not.toContain('waiting for it');
+      // listening back, it synthesises every clip first and waits only to load Whisper
+      const listening = render('c', { OBEYA_URL: server.url.href }, ['--lock', lock, '--listen', 'mlx']).then((r) => ({ ...r, finished: performance.now() }));
+      for (let i = 0; i < 200 && log().length < 7; i++) await Bun.sleep(50);
+      expect(log()).toHaveLength(7);
+      await Bun.sleep(300);
+      const released = performance.now();
+      holder.kill();
+      const r = await listening;
+      expect(r.finished).toBeGreaterThan(released);
+      expect(r.stderr).toContain('waiting for it');
+    } finally {
+      holder.kill();
+    }
+    const alone = await render('b', { OBEYA_URL: 'http://127.0.0.1:9', FAKE_LOG: join(dir, 'log') });
+    expect(alone.status).toBe(0);
+    expect(alone.stderr).toContain('Obeya does not hold the voice, it is not reachable');
+    expect(alone.stderr).toMatch(/voice loaded in [\d.]+ s/);
+    expect(log().filter((l) => l === 'start')).toHaveLength(2);
+  }, 90_000);
 });
 
 describe('qwen3.py --serve', () => {

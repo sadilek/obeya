@@ -46,6 +46,8 @@ export interface CanvasDeps {
   config?: Config;
   /** How long the owner stops typing in a card before what they wrote counts as written. */
   writingPauseMs?: number;
+  /** Added to every worker's environment (`OBEYA_URL`). */
+  workerEnv?: Record<string, string>;
 }
 
 export interface RepoRuntime {
@@ -135,6 +137,7 @@ export class CanvasRuntime {
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
         imageFiles,
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
+        ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       });
       this.repos.push({ ref, info, adapter, share, workspaces, workers, projectAgents });
       if (deps.watch) {

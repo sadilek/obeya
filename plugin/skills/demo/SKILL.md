@@ -163,8 +163,11 @@ match. Listening back can be off in the settings ("Erzählung mit Whisper gegenh
 Whisper that cannot be loaded turns it off for that render; then the review table says "not heard
 back" and the report page "nicht gegengehört": name that in the report's `findings`. A voice that
 loads a large model (Qwen3-TTS, the owner's command) takes 7–12 GB with Whisper, so only one such
-demo synthesises at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it"
-and wait, which is expected, not a hang. Recording uses the local Chrome, else Edge, else
+demo loads it at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it"
+and wait, which is expected, not a hang. Under Obeya (`OBEYA_URL` set), Obeya holds Qwen3-TTS
+loaded for all demos and for about 5 minutes after the last clip: the narration then logs
+"synthesised by Obeya", parallel demos take turns clip by clip, and only listening back waits for
+the lock. Recording uses the local Chrome, else Edge, else
 Playwright's own Chromium (`DEMO_CHROME` names another; headless screencast, 1440×900); it runs
 on macOS, Linux and Windows. A failing scene leaves `.work/failure.png`.
 

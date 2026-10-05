@@ -49,6 +49,7 @@ function setup(adapter: RepoAdapter) {
     workspaces,
     adapter,
     advisor: (card) => (card.parent ? { by: 'project', ask: async () => projectReply! } : null),
+    env: { OBEYA_URL: 'http://127.0.0.1:4417' },
   });
 }
 
@@ -490,12 +491,14 @@ describe('handing over with a demo', () => {
   };
   const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, shown: ['Export'], not_shown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
 
-  test('the worker gets the demo skill from the plugin that comes with Obeya, and its brief names it', () => {
+  test('the worker gets the demo skill from the plugin that comes with Obeya, its brief names it, and it knows where Obeya is', () => {
     rmSync(dir, { recursive: true, force: true });
     setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start' } });
     const c = manual();
     workers.start(c.id);
     expect(runtime.last.spec.plugins).toEqual([OBEYA_PLUGIN]);
+    // a demo's narration finds Obeya, which holds the voice across renders
+    expect(runtime.last.spec.env).toEqual({ OBEYA_URL: 'http://127.0.0.1:4417' });
     expect(existsSync(join(OBEYA_PLUGIN, 'skills', 'demo', 'SKILL.md'))).toBe(true);
     expect(runtime.last.inbox[0]).toContain(`recorded with the demo skill (\`${DEMO_SKILL}\`)`);
   });

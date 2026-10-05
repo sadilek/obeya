@@ -37,6 +37,8 @@ export interface AgentSpec {
   /** Directories of local Claude Code plugins loaded into the session (skills, mainly). */
   plugins?: string[];
   permissionMode?: PermissionMode;
+  /** Added to the agent's environment (Obeya's own, cleaned). */
+  env?: Record<string, string>;
   /** How much the model thinks; low for quick turns such as reading a spoken command. */
   effort?: 'low' | 'medium' | 'high';
   /**
@@ -92,7 +94,7 @@ export const sdkRuntime: AgentRuntime = {
           : { allowedTools: ownTools, permissionMode: spec.permissionMode ?? 'auto' }),
         ...(spec.resume ? { resume: spec.resume } : {}),
         ...(spec.effort ? { effort: spec.effort } : {}),
-        env: cleanEnv(),
+        env: { ...cleanEnv(), ...spec.env },
         hooks: {
           PreToolUse: [{ matcher: 'Bash', hooks: [async (input) => refuseForegroundWait(input)] }],
           PostToolUse: [{ hooks: [async () => withContext('PostToolUse', spec.contextUpdate?.())] }],

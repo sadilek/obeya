@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installState, onMlx, voiceSpec } from './voices.ts';
+import { installState, onMlx, qwen3Serve, voiceSpec } from './voices.ts';
 
 let home: string;
 let hub: string;
@@ -64,6 +64,9 @@ describe('voices', () => {
       // the same voice, model and language as one clip, just without a WAV of its own
       expect(spec.serve).toEqual([...spec.argv.slice(0, -2), '--serve']);
       expect(spec.argv.slice(-2)).toEqual(['--out', '{out}']);
+      // what Obeya runs to hold it across renders is the same command
+      expect(spec.host).toEqual('reference' in s ? { reference: '/x/me.wav' } : { speaker: 'ryan' });
+      expect(qwen3Serve(spec.host!, s.language, home)).toEqual(spec.serve);
     }
     for (const voice of ['piper', 'say', 'command'] as const) {
       expect(voiceSpec({ language: 'de', voice, command: 'speak' }, home)).not.toHaveProperty('serve');

@@ -1,7 +1,8 @@
 // The voice providers: what each needs installed, how Obeya installs it, and the spec `tts.py`
 // synthesises with. Every voice is text in, WAV out. A local one runs as a command (Piper, the
 // Qwen3-TTS helper `qwen3.py`, macOS `say`, the owner's own command), once per clip, or once per
-// render for one that can stay loaded (Qwen3-TTS); a hosted one is an HTTP request `tts.py`
+// render for one that can stay loaded (Qwen3-TTS), which a running Obeya holds loaded across
+// renders instead (`src/server/narration.ts`); a hosted one is an HTTP request `tts.py`
 // makes from a template (Gemini, OpenAI, ElevenLabs, Azure, or the owner's own endpoint).
 //
 // Piper and Qwen3-TTS are installed on request into `voices/` in Obeya's home, each in a Python
@@ -34,6 +35,12 @@ const qwen3Model = (clone: boolean) =>
 /** `say`'s voice per language when the settings name none. */
 export const SAY_VOICES: Record<NarrationLanguage, string> = { de: 'Anna', en: 'Samantha' };
 
+/** A Qwen3 voice: a clone of a reference clip (its transcript beside it), or a stock speaker. */
+export interface HeldVoice {
+  reference?: string;
+  speaker?: string;
+}
+
 /** What `tts.py` gets: a command to run per clip, or a service to call. */
 export type VoiceSpec =
   | {
@@ -51,6 +58,11 @@ export type VoiceSpec =
        * runs once per clip.
        */
       serve?: string[];
+      /**
+       * Obeya can hold this voice loaded across renders: `tts.py` asks Obeya for each clip when
+       * `OBEYA_URL` is set, and serves it itself otherwise (or when Obeya does not answer).
+       */
+      host?: HeldVoice;
     }
   | {
       kind: 'http';
@@ -98,9 +110,9 @@ function hfModelPresent(repo: string) {
 }
 
 /** Runs a program to its end, its output line by line into `log`; rejects with the last lines. */
-function exec(cmd: string, args: string[], log: (line: string) => void): Promise<void> {
+function exec(cmd: string, args: string[], log: (line: string) => void, env?: Record<string, string>): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env: { ...process.env, ...env } } : {}) });
     const tail: string[] = [];
     const take = (b: Buffer) => {
       for (const line of b.toString().split(/\r?\n|\r/)) {
@@ -192,6 +204,15 @@ export async function installVoice(s: DemoSettings, log: (line: string) => void 
   }
 }
 
+/** `qwen3.py` for a clone of `reference` or a stock `speaker`, before `--out` or `--serve`. */
+function qwen3Command(voice: HeldVoice, language: NarrationLanguage, home: string) {
+  const who = voice.reference ? ['--reference', voice.reference] : ['--speaker', voice.speaker || QWEN3_SPEAKER];
+  return [envPython(path.join(voicesHome(home), 'qwen3')), path.join(LIB, 'qwen3.py'), '--model', qwen3Model(!!voice.reference), '--language', language, ...who];
+}
+
+/** The command Obeya holds a Qwen3 voice with across renders (`src/server/narration.ts`). */
+export const qwen3Serve = (voice: HeldVoice, language: NarrationLanguage, home = obeyaHome()) => [...qwen3Command(voice, language, home), '--serve'];
+
 /** The spec `tts.py` synthesises the voice of these settings with. */
 export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
   const keyFile = s.keyFile ? expandHome(s.keyFile) : undefined;
@@ -202,16 +223,15 @@ export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
       return { kind: 'command', argv: [envPython(dir), '-m', 'piper', '-m', path.join(dir, `${name}.onnx`), '-f', '{out}'], tag: `piper|${name}`, heavy: false };
     }
     case 'qwen3': {
-      const dir = path.join(voicesHome(home), 'qwen3');
       const reference = s.reference && expandHome(s.reference);
-      const repo = qwen3Model(!!reference);
-      const who = reference ? ['--reference', reference] : ['--speaker', s.voiceName || QWEN3_SPEAKER];
-      const run = [envPython(dir), path.join(LIB, 'qwen3.py'), '--model', repo, '--language', s.language, ...who];
+      const voice = reference ? { reference } : { speaker: s.voiceName || QWEN3_SPEAKER };
+      const run = qwen3Command(voice, s.language, home);
       return {
         kind: 'command',
         argv: [...run, '--out', '{out}'],
         serve: [...run, '--serve'],
-        tag: `qwen3|${repo}|${reference ?? s.voiceName ?? QWEN3_SPEAKER}`,
+        host: voice,
+        tag: `qwen3|${qwen3Model(!!reference)}|${reference ?? s.voiceName ?? QWEN3_SPEAKER}`,
         heavy: true,
       };
     }
@@ -246,22 +266,25 @@ export const SAMPLE_TEXT: Record<NarrationLanguage, string> = {
 
 /**
  * Synthesises one sample with `tts.py`, without listening back, into `out`. For the settings
- * sheet, so the owner hears a voice before choosing it.
+ * sheet, so the owner hears a voice before choosing it; with `obeyaUrl`, Obeya holds a voice that
+ * can stay loaded, so the next sample (and the next render) skips loading it.
  */
-export function sample(s: DemoSettings, out: string, home = obeyaHome()): Promise<void> {
+export function sample(s: DemoSettings, out: string, home = obeyaHome(), obeyaUrl?: string): Promise<void> {
   const spec = voiceSpec(s, home);
   const specFile = `${out}.spec.json`;
   fs.writeFileSync(specFile, JSON.stringify(spec));
   const lock = spec.kind === 'command' && spec.heavy ? ['--lock', TTS_LOCK] : [];
   const args = ['run', '--quiet', '--no-project', 'python', path.join(LIB, 'tts.py'), ...lock, '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
-  return exec('uv', args, () => {}).finally(() => fs.rmSync(specFile, { force: true }));
+  return exec('uv', args, () => {}, obeyaUrl ? { OBEYA_URL: obeyaUrl } : undefined).finally(() => fs.rmSync(specFile, { force: true }));
 }
 
 /**
- * One on-device synthesis at a time: each loads a voice model (and the render Whisper, 7–12 GB in
- * all), and parallel demos from several agents swapped the machine to a halt. `tts.py --lock`
- * holds it (flock, on Windows a byte-range lock); the system drops it when its holder dies, so no
- * stale lock survives a crash.
+ * One large model loaded by a render at a time on the machine: each loaded a voice model (and the
+ * render Whisper, 7–12 GB in all), and parallel demos from several agents swapped the machine to a
+ * halt. `tts.py --lock` holds it (flock, on Windows a byte-range lock) from the moment it loads a
+ * model itself: at once for a voice it runs, but for a voice Obeya holds only once Whisper is to
+ * listen back, so parallel renders synthesise turn by turn through Obeya and listen one after the
+ * other. The system drops the lock when its holder dies, so no stale lock survives a crash.
  */
 export const TTS_LOCK = path.join(os.homedir(), '.cache', 'demo-skill', 'tts.lock');
 

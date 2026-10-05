@@ -603,13 +603,33 @@ the owner's language (`src/core/locale.ts`).
   synthesis about 2–4 s per clip either way; measured 2026-10-05). The libraries print on stdout too, so
   the server moves fd 1 to stderr and keeps a duplicate of it for the protocol alone; a line that
   is not the protocol is shown and skipped. A voice that dies stops the render with the tail of
-  its stderr instead of hanging. The protocol does not depend on `tts.py` being the other end, so
-  a voice server held by Obeya across renders can speak it unchanged. Piper, `say` and the
-  owner's command still run once per clip. Local voices
-  that load a large model (Qwen3-TTS, the owner's command) synthesise one at a time on the
-  machine (the served voice lives inside that turn): `tts.py --lock ~/.cache/demo-skill/tts.lock` holds the file locked while it runs
-  (`flock`, on Windows a byte-range lock through `msvcrt`; it works beside an older `lockf -k` on
-  the same file). The owner's clone is such a command: it
+  its stderr instead of hanging. Piper, `say` and the owner's command still run once per clip.
+  Under Obeya the Qwen3 voice lives longer than a render: Obeya holds it as a child process of
+  its server (`src/server/narration.ts`), since the server runs all along and on every platform.
+  The spec says which voice Obeya may hold (`host`: the reference clip or the stock speaker; the
+  server builds the command itself from that, never takes one from a request), and Obeya sets
+  `OBEYA_URL` (`http://127.0.0.1:<port>`) for its workers and for the settings sheet's sample.
+  `tts.py` then sends each clip to `POST /api/narration/clip` (`{voice, text, out, language}`,
+  JSON only, so a page elsewhere cannot send one without asking first; `out` an absolute
+  `.wav`) and gets `ok` with the seconds or `error` back. The clips of all renders wait in one
+  queue and are served one at a time; each render asks for its next clip only once the last is
+  done, so parallel renders take turns clip by clip (throughput stays that of one GPU). The
+  voice starts with the first clip and runs on for 5 minutes after the queue empties
+  (`NARRATION_IDLE_MS`), then its stdin ends; a clip for another voice (reference, speaker or
+  language) ends it at once, and Obeya's shutdown kills it. Between server and voice runs the
+  line protocol above, unchanged. What it saves is a model load per render or "Anhören" within
+  those 5 minutes: about 2 s warm, 17 s cold, at the cost of 3–4 GB held meanwhile. Without
+  `OBEYA_URL`, or when Obeya does not answer (not running, restarting, an older Obeya without the
+  endpoint), `tts.py` loads the voice itself as before. One large model per render at a time on
+  the machine (Qwen3-TTS, the owner's command; with Whisper 7–12 GB each, and parallel demos had
+  swapped the machine to a halt): `tts.py --lock ~/.cache/demo-skill/tts.lock` takes the file's
+  lock before the process loads such a model itself and holds it to its end (`flock`, on Windows
+  a byte-range lock through `msvcrt`; it works beside an older `lockf -k` on the same file). A
+  voice it runs itself takes it at once. A voice Obeya holds takes it only to load Whisper, and
+  `tts.py` synthesises the first take of every clip before it hears any: parallel renders
+  synthesise turn by turn through Obeya, then listen back one after the other, with one voice
+  model and one Whisper in memory; retakes go through Obeya while the lock is held. Without
+  listening back such a render takes no lock at all. The owner's clone is such a command: it
   runs in the owner's voice project (Stimmzwilling, `scripts/demo_voice.py`) and never leaves the
   machine. Voices are not labelled as generated, a clone included: the whole demo is generated,
   and that is clear from where it is shown. The person follows from "Das ist meine eigene

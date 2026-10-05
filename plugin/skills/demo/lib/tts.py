@@ -9,7 +9,10 @@ The voice comes as a spec from `voices.ts`, one of two kinds:
   loaded (the Qwen3-TTS helper `qwen3.py`) has `serve` as well: that command starts once, on the
   first clip to synthesise, and answers clip by clip and take by take over its stdin and stdout,
   one JSON line each way (the protocol is in `qwen3.py`). If it dies, the render stops with its
-  stderr.
+  stderr. Such a voice with `host` as well is held by Obeya across renders when `OBEYA_URL` says
+  where Obeya runs: each clip goes to `POST $OBEYA_URL/api/narration/clip` and waits its turn
+  behind other renders' clips (`src/server/narration.ts`). An Obeya that cannot be reached, or
+  does not hold voices, leaves the voice to this process, as without Obeya.
 - `http`: a request from a template, for Gemini, OpenAI, ElevenLabs, Azure, or the owner's own
   endpoint (`http`: POST `{"text", "language"}` as JSON, audio back). The key comes from the
   service's environment variable, else from the key file in the spec.
@@ -28,8 +31,11 @@ is the one part of a demo nobody re-reads. When Whisper is off or fails to load,
 kept unheard and `unchecked` says why. Results land in `<out_dir>/tts.json`:
 `{"clips": [{"id", "file", "seconds", "heard", "match"}], "unchecked": null | reason}`.
 
-`--lock <file>` holds that file locked while it runs, for voices that load a large model: one
-such synthesis at a time on the machine, the others wait.
+`--lock <file>` takes that file's lock before this process loads a large model and holds it to
+the end, for voices that load one: one such render at a time on the machine, the others wait. A
+voice it runs itself takes the lock at once; a voice Obeya holds takes it only when Whisper is to
+load, after the first take of every clip: parallel renders then synthesise turn by turn through
+Obeya and listen back one after the other, with one voice model and one Whisper in memory.
 
     python tts.py [--lock <file>] --sample <spec.json> <language> <text> <out.wav>
 
@@ -229,6 +235,7 @@ class ServedVoice:
         self._drain: threading.Thread | None = None
 
     def _start(self) -> None:
+        hold_lock()
         started = time.monotonic()
         env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
         try:
@@ -288,6 +295,57 @@ class ServedVoice:
             self._process.wait(timeout=30)
         except subprocess.TimeoutExpired:
             self._process.kill()
+
+
+class HeldVoice:
+    """A voice Obeya holds loaded across renders (`$OBEYA_URL`), else served by this process."""
+
+    max_takes = MAX_TAKES
+
+    def __init__(self, spec: dict, language: str, url: str) -> None:
+        self._host = spec["host"]
+        self._language = language
+        self._url = f"{url.rstrip('/')}/api/narration/clip"
+        self._local = ServedVoice(spec, language)
+        self._here = False
+        self.tag = spec["tag"]
+        # Obeya is on this machine: no proxy in between.
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def _ask(self, text: str, raw: Path) -> dict | None:
+        """Obeya's reply, or None when Obeya cannot be reached or does not hold voices."""
+        body = json.dumps({"voice": self._host, "text": text, "out": str(raw), "language": self._language}).encode()
+        request = urllib.request.Request(self._url, data=body, headers={"Content-Type": "application/json"})
+        try:
+            with self._opener.open(request, timeout=3600) as response:
+                return json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                why = "it does not hold voices"
+            else:
+                sys.exit(f"Obeya refused the clip ({error.code}): {error.read().decode(errors='replace')[:600]}")
+        except (OSError, ValueError) as error:  # not running, or restarting midway
+            why = f"it is not reachable ({error})"
+        print(f"narration: Obeya does not hold the voice, {why}; loading it here", file=sys.stderr, flush=True)
+        return None
+
+    def synthesize(self, text: str, target: Path) -> None:
+        if not self._here:
+            raw = target.with_name(f"{target.stem}.raw.wav")
+            raw.unlink(missing_ok=True)
+            reply = self._ask(text, raw)
+            if reply is not None:
+                if "error" in reply or not raw.exists():
+                    sys.exit(f"the voice failed: {reply.get('error') or f'it wrote no WAV at {raw}'}")
+                print(f"narration: synthesised by Obeya in {reply.get('seconds', '?')} s", file=sys.stderr, flush=True)
+                to_wav(raw, target)
+                raw.unlink(missing_ok=True)
+                return
+            self._here = True
+        self._local.synthesize(text, target)
+
+    def close(self) -> None:
+        self._local.close()
 
 
 class HttpVoice:
@@ -392,6 +450,8 @@ class HttpVoice:
 def make_voice(spec: dict, language: str):
     if spec["kind"] == "http":
         return HttpVoice(spec, language)
+    if spec.get("serve") and spec.get("host") and os.environ.get("OBEYA_URL"):
+        return HeldVoice(spec, language, os.environ["OBEYA_URL"])
     return ServedVoice(spec, language) if spec.get("serve") else CommandVoice(spec, language)
 
 
@@ -413,6 +473,7 @@ class Ear:
     def hear(self, wav: Path) -> str | None:
         if self.unchecked:
             return None
+        hold_lock()
         try:
             return self._mlx(wav) if self._backend == "mlx" else self._faster(wav)
         except Exception as failed:  # not installed, the model not downloadable, out of memory
@@ -457,12 +518,17 @@ class Ear:
             return self._faster(wav, device="cpu")
 
 
+_lock_file: str | None = None
 _held_lock = None
 
 
-def hold_lock(file: str) -> None:
-    """Takes `file`'s lock for the rest of this process; the system drops it when the process ends."""
+def hold_lock() -> None:
+    """Takes the `--lock` file's lock for the rest of this process, once; the system drops it when
+    the process ends. Without `--lock`, nothing."""
     global _held_lock
+    if _lock_file is None or _held_lock is not None:
+        return
+    file = _lock_file
     Path(file).parent.mkdir(parents=True, exist_ok=True)
     handle = open(file, "a+b")
     if os.name == "nt":
@@ -480,7 +546,7 @@ def hold_lock(file: str) -> None:
     try:
         attempt()
     except OSError:
-        print("narration: another demo is synthesising, waiting for it (expected, not a hang)", file=sys.stderr, flush=True)
+        print("narration: another demo has a large model loaded, waiting for it (expected, not a hang)", file=sys.stderr, flush=True)
         since = time.monotonic()
         while True:
             time.sleep(1)
@@ -504,7 +570,7 @@ def take_option(args: list[str], name: str) -> str | None:
 
 def close(voice) -> None:
     """Ends a voice that stays loaded; the others have nothing running between clips."""
-    if isinstance(voice, ServedVoice):
+    if isinstance(voice, (ServedVoice, HeldVoice)):
         voice.close()
 
 
@@ -515,9 +581,25 @@ def narrate(voice, language: str, jobs: list[dict], out: Path, ear: Ear) -> None
         a, b = spoken_letters(text, language), spoken_letters(heard, language)
         return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
 
+    def key_of(job: dict) -> str:
+        return hashlib.sha1(f"{voice_tag}\n{job['text']}".encode()).hexdigest()[:16]
+
+    # The first take of every clip comes before any is heard: Whisper loads (and a voice Obeya
+    # holds takes the machine's lock) only once all of them are synthesised.
+    first_takes: set[str] = set()
+    for job in jobs:
+        key = key_of(job)
+        if (out / f"{key}.wav").exists() or key in first_takes:
+            continue
+        try:
+            voice.synthesize(job["text"], out / f"{key}.take1.wav")
+        except QuotaExhausted as exhausted:
+            sys.exit(f"{exhausted}; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
+        first_takes.add(key)
+
     results = []
     for job in jobs:
-        key = hashlib.sha1(f"{voice_tag}\n{job['text']}".encode()).hexdigest()[:16]
+        key = key_of(job)
         wav = out / f"{key}.wav"
         heard_file = wav.with_suffix(".heard.txt")
         if not wav.exists():
@@ -526,13 +608,12 @@ def narrate(voice, language: str, jobs: list[dict], out: Path, ear: Ear) -> None
             best: tuple[float, str | None, Path] | None = None
             for take in range(1, voice.max_takes + 1):
                 candidate = out / f"{key}.take{take}.wav"
-                try:
-                    voice.synthesize(job["text"], candidate)
-                except QuotaExhausted as exhausted:
-                    if best is None:
-                        sys.exit(f"{exhausted}; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
-                    print(f"{job['id']}: {exhausted}, keeping take {take - 1}", file=sys.stderr)
-                    break
+                if take > 1:
+                    try:
+                        voice.synthesize(job["text"], candidate)
+                    except QuotaExhausted as exhausted:
+                        print(f"{job['id']}: {exhausted}, keeping take {take - 1}", file=sys.stderr)
+                        break
                 heard = ear.hear(candidate)
                 if heard is None:
                     best = best or (0.0, None, candidate)
@@ -573,13 +654,15 @@ def main() -> None:
     # Heard texts carry umlauts; a Windows pipe would otherwise encode stderr in its code page.
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     args = sys.argv[1:]
-    lock = take_option(args, "--lock")
+    global _lock_file
+    _lock_file = take_option(args, "--lock")
     listen = take_option(args, "--listen") or "mlx"
-    if lock:
-        hold_lock(lock)
     if args[0] == "--sample":
         spec_file, language, text, target = args[1:5]
         voice = make_voice(json.loads(Path(spec_file).read_text(encoding="utf-8")), language)
+        # a command voice may load a model with every clip; a served one takes the lock as it starts
+        if isinstance(voice, CommandVoice):
+            hold_lock()
         try:
             voice.synthesize(text, Path(target))
         finally:
@@ -593,6 +676,8 @@ def main() -> None:
     if language not in LANGUAGE_NAMES:
         sys.exit(f"unknown narration language {language!r}; known: {', '.join(LANGUAGE_NAMES)}")
     voice = make_voice(spec, language)
+    if isinstance(voice, CommandVoice):
+        hold_lock()
     try:
         narrate(voice, language, jobs, out, Ear(listen, language))
     finally:

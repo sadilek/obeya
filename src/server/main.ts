@@ -24,10 +24,12 @@ import { type CanvasConfig, CanvasRuntime } from './canvas';
 import { Config, CONFIG_FILE, expand, expandConfig, readConfigFile } from './config';
 import { Store } from './db';
 import { ghForge } from './forge';
+import { NarrationHost } from './narration';
 import { idleRuntime, sdkRuntime } from './runtime';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, Restarter, watchOwnCode } from './self-update';
 import { serve } from './server';
 import { SpeechSidecar, WhisperSidecar } from './voice';
+import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -126,6 +128,9 @@ const restart = (reason: RestartReason, why: string) => {
   if (!restarter.due()) console.log(`Obeya: ${why}; restarting${busy().length ? ' once no worker is in the middle of a turn' : ''}`);
   restarter.request(reason);
 };
+// where this Obeya answers: a demo's narration asks it for the voice it holds loaded (narration.ts)
+const url = `http://127.0.0.1:${values.port}`;
+const narration = new NarrationHost({ argv: (voice, language) => qwen3Serve(voice, language, home), log: (line) => console.log(line) });
 const config = new Config({
   file: configFile,
   source,
@@ -133,6 +138,7 @@ const config = new Config({
   store,
   running: () => canvases.map((c) => c.id),
   server: { port: Number(values.port), home, permissionMode: values['permission-mode'] },
+  narrationUrl: url,
   ...(process.env.OBEYA_SUPERVISED
     ? {
         restart: () => {
@@ -155,6 +161,7 @@ canvases = configs.map(
       watch: true,
       ownCheckout: own,
       config,
+      workerEnv: { OBEYA_URL: url },
     }),
 );
 const ids = canvases.map((c) => c.id);
@@ -168,11 +175,12 @@ const shutdown = (code: number) => {
   for (const c of canvases) c.shutdown();
   transcriber.stop();
   speaker.stop();
+  narration.stop();
   process.exit(code);
 };
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => shutdown(0));
 
-server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev, config, restarter);
+server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev, config, restarter, narration);
 console.log(`Obeya on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'})`);
 if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
 for (const c of canvases) {

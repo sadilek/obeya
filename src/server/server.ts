@@ -11,6 +11,7 @@ import type { CanvasRuntime } from './canvas';
 import { type Focus, type Heard, type Input, isField } from './commands';
 import type { Config } from './config';
 import { serveDemoFile } from './demo';
+import { type NarrationHost, parseClipRequest } from './narration';
 import type { Restarter } from './self-update';
 import { looping, silence, type Speaker, type Transcriber } from './voice';
 
@@ -21,7 +22,15 @@ export interface Voice {
   speaker: Speaker;
 }
 
-export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice, port: number, development = false, config?: Config, restarter?: Restarter) {
+export function serve(
+  canvases: CanvasRuntime[],
+  { transcriber, speaker }: Voice,
+  port: number,
+  development = false,
+  config?: Config,
+  restarter?: Restarter,
+  narration?: NarrationHost,
+) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
   const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string; page: string }>>>(canvases.map((c) => [c.id, new Set()]));
@@ -166,6 +175,19 @@ export function serve(canvases: CanvasRuntime[], { transcriber, speaker }: Voice
             (wav) => new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } }),
             (e) => handle(() => Promise.reject(e)),
           );
+        },
+      },
+      // a demo's narration clip, in the voice Obeya holds loaded across renders (narration.ts); it
+      // writes a file, so only as JSON, which a page elsewhere cannot send without asking first
+      '/api/narration/clip': {
+        POST: async (req, srv) => {
+          if (!narration) return new Response('Not found', { status: 404 });
+          if (!req.headers.get('content-type')?.startsWith('application/json')) return Response.json({ code: 'invalid', error: 'JSON only' }, { status: 415 });
+          const request = parseClipRequest(await req.json().catch(() => null));
+          if (typeof request === 'string') return Response.json({ code: 'invalid', error: request }, { status: 400 });
+          // the clip waits its turn behind other renders' clips, maybe behind loading the model
+          srv.timeout(req, 0);
+          return Response.json(await narration.clip(request));
         },
       },
       '/api/config/check': { POST: async (req) => (config ? handle(async () => config.check(await req.json())) : new Response('Not found', { status: 404 })) },
