@@ -7,11 +7,11 @@ import { api, ApiError } from './api';
 import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
-import type { Heard } from './voice';
 
 interface Props {
   on: boolean;
-  onHeard: (h: Heard) => void;
+  /** A command typed in the sheet: read like a spoken one, with its line above the microphone. */
+  onTell: (text: string, images?: string[]) => void;
   items: Item[];
   preferences: Preference[];
   /** The canvas's repositories, whose CLAUDE.md a proposal may go into. */
@@ -20,7 +20,7 @@ interface Props {
   onOpen: (i: Item) => void;
 }
 
-export function KoordinatorSheet({ on, items, preferences, repos, talk, onOpen, onHeard }: Props) {
+export function KoordinatorSheet({ on, items, preferences, repos, talk, onOpen, onTell }: Props) {
   const queued = items.filter((i) => i.state === 'planned' && i.queue);
   const running = items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project');
   const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
@@ -32,7 +32,7 @@ export function KoordinatorSheet({ on, items, preferences, repos, talk, onOpen, 
       <h2>{t.koordinator.title}</h2>
       <Conversation talk={talk} />
       <div className="k-rest">
-        <TellKoordinator onHeard={onHeard} />
+        <TellKoordinator onTell={onTell} />
 
         {proposals.length > 0 && (
           <>
@@ -175,22 +175,15 @@ function Conversation({ talk }: { talk: Talk[] }) {
 }
 
 /** A command in writing, for when speaking is not possible; its screenshots go to the cards it creates or concerns. */
-function TellKoordinator({ onHeard }: { onHeard: (h: Heard) => void }) {
+function TellKoordinator({ onTell }: { onTell: (text: string, images?: string[]) => void }) {
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
   const shots = useShotInput();
-  const ready = !!text.trim() && !busy && !shots.uploading;
-  const send = async () => {
+  const ready = !!text.trim() && !shots.uploading;
+  const send = () => {
     if (!ready) return;
-    setBusy(true);
-    try {
-      onHeard(await api.command(text.trim(), null, shots.images));
-      setText('');
-      shots.clear();
-    } catch (e) {
-      onHeard({ confirm: e instanceof ApiError ? errorText(e.code) : t.offlineError });
-    }
-    setBusy(false);
+    onTell(text.trim(), shots.images.length ? shots.images : undefined);
+    setText('');
+    shots.clear();
   };
   return (
     <div className={`composer tell${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>

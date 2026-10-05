@@ -3,7 +3,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
 import { answerText, toggle } from './answer';
-import { ApiError, api, at, holdRestart, onCardEvent } from './api';
+import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
 import { Inline, plain, shortTitle } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
@@ -12,6 +12,12 @@ import { talkTurns } from './talk';
 
 /** What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open. */
 export type ActDone = { close: true; ack: string; undo?: () => unknown } | { close: false };
+
+/** Whether an agent is on the card, so what the owner says with it open is, in doubt, for that agent. */
+export const hasAgent = (i: Item) => ['working', 'inPr', 'waiting'].includes(i.state) || !!i.finishing;
+
+/** Words typed into a field of the card: the Koordinator reads them like spoken ones, and the panel does not wait. */
+type Tell = (text: string, images: string[] | undefined, field: Field) => void;
 
 interface Props {
   item: Item;
@@ -29,6 +35,7 @@ interface Props {
   onDone: (d: ActDone) => void;
   /** Reads the plan doc of a workstream's project, at the workstream. */
   onReadPlan: (project: Item, mark?: string) => void;
+  onTell: Tell;
 }
 
 export function Detail(p: Props) {
@@ -47,6 +54,9 @@ export function Detail(p: Props) {
     }
   };
   const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
+  // who reads what is typed here, as under the microphone
+  const listener = (hasAgent(item) ? t.voice.agent : t.voice.card)(plain(item.title));
+  const tell = (field: Field) => async (text: string, images?: string[]) => p.onTell(text, images, field);
   const repo = p.repos.length > 1 ? (p.repos.find((r) => r.id === item.repo)?.name ?? item.repo) : '';
   // a plain task says nothing of its kind
   const kind = [
@@ -71,7 +81,7 @@ export function Detail(p: Props) {
       <>
         {kind && <div className="p-kind">{kind}</div>}
         {item.archivedAt ? <div className="p-title">{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div> : <ManualTitle item={item} onEdit={p.onEdit} />}
-        <IdeaView item={item} act={act} run={run} onDelete={p.onDelete} />
+        <IdeaView item={item} act={act} run={run} onDelete={p.onDelete} onTell={p.onTell} />
         {error && <p className="p-error">{error}</p>}
       </>
     );
@@ -272,7 +282,9 @@ export function Detail(p: Props) {
           questions={item.question ? [item.question] : []}
           heading={t.questionFromWorker}
           placeholder={item.question?.options.length ? t.ask.words : t.compose.question}
+          listener={listener}
           onSend={(text, images) => act({ action: 'answer', text, images }, { close: true, ack: t.answered })}
+          onWords={tell('answer')}
         />
       )}
 
@@ -283,14 +295,15 @@ export function Detail(p: Props) {
           run={run}
           summary={item.summary ?? ''}
           demo={item.demo}
-          onAnswer={(text, images) => act({ action: 'answer', text, images }, { close: false })}
+          onAnswer={tell('answer')}
+          listener={listener}
         >
           {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
             {prototypeActions || approveButton}
           </div>
           {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
-          <Composer placeholder={t.compose.review} onSend={(text, images) => act({ action: 'message', text, images }, { close: false })} />
+          <Composer placeholder={t.compose.review} listener={listener} onSend={tell('feedback')} />
           {shareBox}
         </DemoView>
       )}
@@ -358,7 +371,8 @@ export function Detail(p: Props) {
         <Composer
           key={`${item.state}:${item.need ?? ''}`}
           placeholder={item.need === 'review' ? t.compose.review : t.compose.working}
-          onSend={(text, images) => act({ action: 'message', text, images }, { close: false })}
+          listener={listener}
+          onSend={tell(item.need === 'review' ? 'feedback' : 'note')}
         />
       )}
 
@@ -441,7 +455,7 @@ export function Detail(p: Props) {
  * An idea under discussion: the brief its agent keeps on top, a prototype's demo when there is one,
  * then the conversation, and the owner's decisions.
  */
-function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; run: Run; onDelete: () => void }) {
+function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; run: Run; onDelete: () => void; onTell: Tell }) {
   const idea = item.idea!;
   const [prototyping, setPrototyping] = useState(false);
   const answer = usePicks(idea.questions);
@@ -485,7 +499,13 @@ function IdeaView({ item, act, run, onDelete }: { item: Item; act: (a: CardActio
                 placeholder={idea.questions.length ? t.ask.words : t.idea.compose}
                 button={idea.questions.length ? t.ask.send : t.send}
                 allowEmpty={answer.picked}
-                onSend={(words, images) => act({ action: 'discuss', text: answerText(idea.questions, answer.picks, words, true), images }, { close: false })}
+                listener={t.voice.idea(plain(item.title))}
+                // picked options go to the agent as they are; words alone go through the Koordinator, like spoken ones
+                onSend={async (words, images) =>
+                  answer.picked
+                    ? act({ action: 'discuss', text: answerText(idea.questions, answer.picks, words, true), images }, { close: false })
+                    : onTell(words, images, 'discuss')
+                }
               />
             </>
           )}
@@ -681,6 +701,7 @@ function DemoView({
   children,
   autoplay = true,
   onAnswer,
+  listener,
 }: {
   item: Item;
   all?: Item[];
@@ -691,6 +712,8 @@ function DemoView({
   autoplay?: boolean;
   /** Answers the report's open question; without it the question only shows. */
   onAnswer?: (text: string, images?: string[]) => Promise<void>;
+  /** Who reads what the owner types into the answer field. */
+  listener?: string;
 }) {
   const cardId = item.id;
   const video = useRef<HTMLVideoElement>(null);
@@ -756,7 +779,7 @@ function DemoView({
                   {t.demo.yourAnswer}: {demo.answer}
                 </p>
               ) : (
-                onAnswer && <Composer placeholder={t.demo.answerPlaceholder} onSend={onAnswer} />
+                onAnswer && <Composer placeholder={t.demo.answerPlaceholder} listener={listener} onSend={onAnswer} />
               )}
             </div>
           )}
@@ -1008,7 +1031,16 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
 // ------------------------------------------------------------------ talking to the worker
 
 /** A worker's question with its answer options, and the composer for the owner's own words: both go out as one answer. */
-function Answer(p: { questions: Question[]; heading: string; placeholder: string; onSend: (text: string, images?: string[]) => Promise<void> }) {
+function Answer(p: {
+  questions: Question[];
+  heading: string;
+  placeholder: string;
+  listener: string;
+  /** The options picked, with the owner's words: straight to the agent. */
+  onSend: (text: string, images?: string[]) => Promise<void>;
+  /** Words alone: read by the Koordinator, like spoken ones. */
+  onWords: (text: string, images?: string[]) => Promise<void>;
+}) {
   const answer = usePicks(p.questions);
   return (
     <>
@@ -1017,7 +1049,8 @@ function Answer(p: { questions: Question[]; heading: string; placeholder: string
         placeholder={p.placeholder}
         button={p.questions.length ? t.ask.send : t.send}
         allowEmpty={answer.picked}
-        onSend={(words, images) => p.onSend(answerText(p.questions, answer.picks, words), images)}
+        listener={p.listener}
+        onSend={(words, images) => (answer.picked ? p.onSend(answerText(p.questions, answer.picks, words), images) : p.onWords(words, images))}
       />
     </>
   );
@@ -1083,12 +1116,15 @@ function Composer({
   button = t.send,
   allowEmpty = false,
   noImages = false,
+  listener,
 }: {
   placeholder: string;
   onSend: (text: string, images?: string[]) => Promise<void>;
   button?: string;
   allowEmpty?: boolean;
   noImages?: boolean;
+  /** Who reads what is typed (the Koordinator, or the card's agent through it); it then gets ready while the owner types. */
+  listener?: string;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1111,6 +1147,7 @@ function Composer({
           value={text}
           placeholder={placeholder}
           rows={2}
+          onFocus={listener ? () => api.warmVoice() : undefined}
           onChange={(e) => setText(e.target.value)}
           onPaste={shots.onPaste}
           onKeyDown={(e) => {
@@ -1126,6 +1163,7 @@ function Composer({
         {button}
       </button>
       {shots.error && <p className="p-error c-error">{shots.error}</p>}
+      {listener && <div className="c-listener">→ {listener}</div>}
     </div>
   );
 }

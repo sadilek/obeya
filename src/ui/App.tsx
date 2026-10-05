@@ -7,7 +7,8 @@ import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type It
 import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
 import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
-import { type ActDone, Detail } from './detail';
+import { type ActDone, Detail, hasAgent } from './detail';
+import type { Field } from './api';
 import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
 import { KoordinatorSheet } from './koordinator';
@@ -15,7 +16,7 @@ import { depsOf } from './deps';
 import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './keep';
 import { Sign, Wordmark } from './logo';
 import { imageFiles, useShotInput } from './shots';
-import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
+import { type Heard, PushToTalk, play, ToldList, usePushToTalk, useTold, type Where } from './voice';
 import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_GAP, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
@@ -513,21 +514,23 @@ function Canvas({
   // a command that makes a card: when it appears, the camera goes there
   const newCardWatch = useRef<{ known: Set<string>; until: number } | null>(null);
   function onHeard(h: Heard) {
-    // said to the open idea: the conversation shows it
+    // said to the open card's agent or idea: the card shows it
     if (h.quiet) return;
-    showAck(
-      h.confirm,
-      h.token
-        ? async () => {
-            const { undone } = await api.undo(h.token!);
-            if (!undone) showAck(t.voice.tooLate);
-          }
-        : undefined,
-      h.undoMs,
-    );
     play(h.audio);
     if (h.token && !focusRef.current) newCardWatch.current = { known: new Set(itemsRef.current.map((i) => i.id)), until: Date.now() + 20_000 };
   }
+  const told = useTold(onHeard);
+  /** Hands a command for `target` on, with its line above the microphone. */
+  const tellAbout = (target: Where, label: string | null, request: () => Promise<Heard>) => {
+    const i = target ? itemsRef.current.find((x) => x.id === ('card' in target ? target.card : target.project)) : undefined;
+    const title = plain(i?.title ?? '');
+    return told.tell(label ?? (i ? `„${title}“` : t.voice.koordinator), target && 'card' in target && i ? { id: i.id, title } : undefined, request);
+  };
+  /** Words typed on a card, in its idea or in the Koordinator's sheet: read by the Koordinator like spoken ones. */
+  const tellTyped = useCallback((text: string, images: string[] | undefined, target: Where, field?: Field) => {
+    const words = text.replace(/\s+/g, ' ');
+    void tellAbout(target, `„${words.length > 40 ? `${words.slice(0, 39)}…` : words}“`, () => api.command(text, target, images, field));
+  }, []);
   useEffect(() => {
     const w = newCardWatch.current;
     if (!w) return;
@@ -555,7 +558,7 @@ function Canvas({
   );
   // screenshots for the next recording: picked beside the mic, dropped on it, or pasted (⌘V) anywhere but in a text field
   const voiceShots = useShotInput();
-  const ptt = usePushToTalk(where, onHeard, voiceShots);
+  const ptt = usePushToTalk(where, (target, request) => tellAbout(target, null, request), (h) => showAck(h.confirm), voiceShots);
   const pttRef = useRef(ptt);
   pttRef.current = ptt;
   const voiceShotsRef = useRef(voiceShots);
@@ -583,7 +586,7 @@ function Canvas({
   const focusItem = focus ? (items.find((i) => i.id === focus.id) ?? archived.find((i) => i.id === focus.id)) : undefined;
   const target =
     focus?.type === 'card'
-      ? (focusItem?.state === 'idea' ? t.voice.idea : t.voice.card)(plain(focusItem?.title ?? ''))
+      ? (focusItem?.state === 'idea' ? t.voice.idea : focusItem && hasAgent(focusItem) ? t.voice.agent : t.voice.card)(plain(focusItem?.title ?? ''))
       : focus?.type === 'project'
         ? t.voice.project(plain(focusItem?.title ?? ''))
         : t.voice.koordinator;
@@ -919,6 +922,7 @@ function Canvas({
                 flush={flushEdit}
                 onDelete={deleteOpen}
                 onDone={onDone}
+                onTell={(text, images, field) => tellTyped(text, images, { card: openItem.id }, field)}
               />
             )}
           </div>
@@ -926,7 +930,7 @@ function Canvas({
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
       <ConfigSheet on={cOn} />
-      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} repos={snapshot.canvas.repos} talk={snapshot.talk} onOpen={open} onHeard={onHeard} />
+      <KoordinatorSheet on={kOn} items={items} preferences={snapshot.preferences} repos={snapshot.canvas.repos} talk={snapshot.talk} onOpen={open} onTell={(text, images) => tellTyped(text, images, null)} />
       <PushToTalk phase={ptt.phase} level={ptt.level} flat={ptt.flat} target={target} shots={voiceShots} onDown={ptt.start} />
       <Sheet
         project={sheetProject}
@@ -951,18 +955,22 @@ function Canvas({
         onPointerCancel={onGripUp}
         onDoubleClick={() => setWidths((ws) => ({ ...ws, [gripKind]: gripKind === 'sheet' ? SHEET_W : null }))}
       />
-      <div id="ack" className={ackOn ? 'on' : undefined}>
-        <span>{ack?.text}</span>
-        {ack?.undo && (
-          <button
-            onClick={() => {
-              ack.undo?.();
-              setAckOn(false);
-            }}
-          >
-            {t.undo}
-          </button>
-        )}
+      {/* commands on their way and confirmations, stacked above the microphone */}
+      <div id="acks">
+        <ToldList told={told.told} open={focus?.type === 'card' ? focus.id : undefined} onUndo={told.undo} />
+        <div id="ack" className={`ack${ackOn ? ' on' : ''}`}>
+          <span>{ack?.text}</span>
+          {ack?.undo && (
+            <button
+              onClick={() => {
+                ack.undo?.();
+                setAckOn(false);
+              }}
+            >
+              {t.undo}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

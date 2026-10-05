@@ -166,6 +166,8 @@ export const t = {
     hold: 'Halten zum Sprechen (Leertaste)',
     koordinator: 'Koordinator',
     card: (title: string) => `Koordinator · Aufgabe: ${title}`,
+    /** A card an agent works on: what the owner says goes to it, unless it is a command to Obeya. */
+    agent: (title: string) => `Agent · Aufgabe: ${title}`,
     idea: (title: string) => `Koordinator · Idee: ${title}`,
     project: (title: string) => `Koordinator · Projekt: ${title}`,
     noMic: 'Kein Mikrofon: der Browser hat den Zugriff nicht erlaubt.',
@@ -174,6 +176,10 @@ export const t = {
     failed: 'Das hat nicht geklappt; bitte noch einmal.',
     typePlaceholder: 'Dem Koordinator schreiben, z. B. „Neue Aufgabe: …“',
     tooLate: 'Zu spät: das ist schon passiert.',
+    /** A command while the Koordinator reads it: the card it was said to, or the words typed. */
+    reading: (what: string) => `${what} · wird verstanden …`,
+    /** A confirmation about a card other than the open one starts with it. */
+    about: (title: string) => `„${title}“: `,
     attach: 'Screenshot für die nächste Sprachnachricht – oder mit ⌘V einfügen oder auf das Mikrofon ziehen',
   },
   pr: {

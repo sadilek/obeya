@@ -58,6 +58,8 @@ export function setCanvas(id: string) {
 export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
 
 type Where = { card: string } | { project: string } | null;
+/** The field on a card words were typed into, which tells the Koordinator what they were meant as. */
+export type Field = 'note' | 'answer' | 'feedback' | 'discuss';
 type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string; quiet?: boolean; unheard?: boolean };
 
 export const api = {
@@ -121,9 +123,9 @@ export const api = {
   },
   /** The owner started speaking (or typing a command): Obeya gets ready to read it. */
   warmVoice: () => fetch(at('/voice/warm'), { method: 'POST' }).catch(() => {}),
-  /** The same, typed. */
-  command: (text: string, where: Where, images?: string[]) =>
-    call<HeardReply>('POST', at(`/command${query(where)}`), { text, ...(images?.length ? { images } : {}) }),
+  /** The same, typed; `field`: the field of the open card it was typed into. */
+  command: (text: string, where: Where, images?: string[], field?: Field) =>
+    call<HeardReply>('POST', at(`/command${query(where)}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}) }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
   /** A rule of the owner's, active at once, or with `target` one for that repository's CLAUDE.md. */
   addPreference: (text: string, target?: string) => call<void>('POST', at('/preferences'), { text, ...(target ? { target } : {}) }),

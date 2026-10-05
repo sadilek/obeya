@@ -86,7 +86,9 @@ An idea is thought through on its card before anything is planned; no worker run
    with answer options, shown under its reply as radio buttons, or checkboxes when several fit
    together; the owner picks, may add their own words, and both go out as one message that names
    each question. The owner types in the
-   panel or holds Space with the idea open; the reply stands in the panel, and only its short
+   panel or holds Space with the idea open; both go through the Koordinator, which passes the
+   words on as talk to the idea at once (picked options go straight to the agent, with the words
+   beside them). The reply stands in the panel, and only its short
    summary is spoken, when the owner spoke. What the agent read and thought on the way to a reply
    folds away under that reply ("Verlauf"), for whoever wants to follow it. With every reply the
    agent also says what it would do in the owner's place: the option it would pick for each of its
@@ -470,7 +472,7 @@ the owner's language (`src/core/locale.ts`).
   shows „Das Mikrofon liefert keinen Ton.“ under the mic. The first press after a page load opens
   the microphone (about 0.2–0.3 s); let go before it is open, nothing is recorded (rather than a
   recording that runs on unheld) and the owner hears „Das Mikrofon war noch nicht bereit“. A quick, low-effort Koordinator turn reads
-  the transcript as speech that may be misheard and either acts or replies. Acting takes one or
+  the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
   approve, accept, dismiss, cut, stop, remember; on ideas: discuss, build, plan doc, prototype,
   park, drop; on prototypes: build on it, discard),
@@ -492,8 +494,20 @@ the owner's language (`src/core/locale.ts`).
   the finding as its text. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
-  confirmation, since the conversation shows it. The same commands can be typed in the
-  Koordinator's sheet. What the owner said and the Koordinator's confirmation go into the log of
+  confirmation, since the conversation shows it. The same holds for a note or an answer to the
+  agent of the open card, alone in what the owner said: it goes out at once and quietly, and the
+  card's log shows it under „Du“. Feedback on work waiting for review keeps the confirmation and
+  the undo window, as does every command to Obeya. With an agent on the open card (working, in a
+  pull request, waiting, or finishing what remains), what the owner says is, in doubt, for that
+  agent: note, answer or feedback, in the owner's own words (a single such action carries the
+  whole transcript, whatever the Koordinator wrote), and spoken words reach it with the remark
+  that speech recognition may have misheard them. Only what clearly asks Obeya for something
+  (approve, stop, start, a follow-up, remember, an action on another card, a question about the
+  canvas) goes elsewhere; `commands.live.test.ts` checks this against the real model
+  (`OBEYA_LIVE=1`). Typing goes the same way as speaking: the Koordinator's sheet, and the fields
+  on a card (note, answer, feedback, an idea's conversation) post to the Koordinator, which learns
+  that the words are typed and in which field; only clicks on answer options go straight to the
+  agent. What the owner said and the Koordinator's confirmation go into the log of
   the card that was open, and "Zurückgenommen." when taken back; with no card open, the sheet
   shows the conversation, newest last, in all the height the rest of the sheet leaves free (360px
   at least, unless it is shorter; with less room the sheet scrolls). Talk to an open idea is the exception: its conversation already holds it.
@@ -508,7 +522,14 @@ the owner's language (`src/core/locale.ts`).
   was open, else in the Koordinator's sheet; what the agent reads shows on the open card meanwhile.
   The Koordinator hears the answer with the next command, and it is part of its stored memory. A
   question still open at a restart is looked up again.
-- **Voice latency** — pressing Space (or focusing the typed command) gets everything ready while
+- **Commands on their way** — after letting go of Space the microphone is free at once, and the
+  owner may navigate or speak again: the target is fixed when the key goes down. Each recording,
+  and each typed command while the Koordinator reads it, has its own small line above the
+  microphone („„Export“ · wird verstanden …“), which becomes its confirmation with „Rückgängig“,
+  or disappears when it went out quietly. Several stack, oldest first, and the server reads them
+  one after the other. A confirmation that arrives while another card is open starts with the card
+  it is about.
+- **Voice latency** — pressing Space (or focusing a typed command's field) gets everything ready while
   the owner speaks: the Whisper sidecar starts and loads its model, the speech sidecar starts, and
   the Koordinator's session starts up if it is not running (one that fails is replaced once, for
   the same command). The written confirmation comes back as
@@ -520,8 +541,9 @@ the owner's language (`src/core/locale.ts`).
 - **Koordinator memory** — the owner's commands go to one ongoing Koordinator session per canvas,
   one after the other, so it understands "die andere auch" or "nein, die von vorhin". It sees a
   card's open question, also one in a demo report, so a bare "ja" to it is an answer, not an
-  approval. Under the mic the UI names who listens: the Koordinator, and the card, idea or project
-  in focus ("Koordinator · Aufgabe: …"). Card tags
+  approval. Under the mic, and under a card's text field, the UI names who listens: the agent when
+  one works on the open card ("Agent · Aufgabe: …"), else the Koordinator and the card, idea or
+  project in focus ("Koordinator · Aufgabe: …"). Card tags
   (`K1`, …) stay fixed for the session. Each command brings the cards as they are now and what
   happened since the previous one (state changes, questions, answers, hand-overs, the owner's
   notes, errors, new cards; not the workers' steps); a command the owner took back is told with the
@@ -857,7 +879,17 @@ the repository; the copy on the project is only for the archive).
   instead of holding the restart off, so new code is not held back by a page that is merely open.
 - Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
   for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
-  to an idea is the exception: it only adds to a conversation.
+  to an idea is the exception: it only adds to a conversation. So are a note and an answer to the
+  agent of the open card (2026-10-05): they only add to what the agent knows, the card's log shows
+  them, and waiting for a confirmation would keep the owner from going on. Feedback on waiting
+  work keeps the undo window, since it sends the work back.
+- Typed and spoken words take one way, through the Koordinator (2026-10-05). Two ways with almost
+  the same behaviour (the card's field straight to the agent, speech through the Koordinator)
+  meant "gib frei" or "Merk dir" worked spoken but not typed. Rejected: everything straight to the
+  agent (Obeya's commands would stop working, and planned or finished cards have no agent), two
+  keys (the owner would choose who listens before every sentence), and dictating into the field
+  for the owner to send (a step more). Typed words cost the Koordinator's two seconds too, but
+  nobody waits for them.
 - An agent's question to the owner is a first-class thing with answer options, not prose: the
   owner answers with a click, and their own words are always possible beside the options. The
   answer travels as text (question and pick), so the conversation reads the same later and a
