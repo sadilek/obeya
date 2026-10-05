@@ -572,6 +572,11 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
   const [chosen, setChosen] = useState(() => variants.filter((v) => !running.has(v.approach)).map((v) => v.approach));
   const [own, setOwn] = useState(false);
   const n = chosen.length + (own ? 1 : 0);
+  // the choice opens below the conversation, often out of sight
+  const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, []);
   return (
     <>
       {variants.length > 0 && (
@@ -615,6 +620,7 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
           )
         }
       />
+      <div ref={end} className="prototype-end" />
     </>
   );
 }
