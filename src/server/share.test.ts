@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KIT_PATH } from '../adapters';
@@ -7,8 +7,9 @@ import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { EXPORT_HTML_MAX } from '../core/types';
 import type { Forge } from './forge';
-import { DEMO_MARKER, parseVersions, type SharePage, Sharing, shareArgv, shareProblem, withDemoLink } from './share';
-import { FakeRuntime } from './testing';
+import { DEMO_MARKER, parseVersions, SHARE_CWD, type SharePage, Sharing, shareArgv, shareProblem, withDemoLink } from './share';
+import { FakeRuntime, gitRepo } from './testing';
+import { git } from './workspaces';
 
 let dir: string;
 let board: Board;
@@ -26,18 +27,21 @@ const calls = () =>
     ? readFileSync(join(dir, 'calls'), 'utf8')
         .split('\n')
         .slice(0, -1)
-        .map((l) => JSON.parse(l) as { args: string[]; input: SharePage & { shared: string[] }; home: string; kit: string })
+        .map((l) => JSON.parse(l) as { args: string[]; input: SharePage & { shared: string[] }; home: string; kit: string; cwd: string; repo: string })
     : [];
 
-// prints the page's URL, or fails with some output while the file `fail` exists; `version` is not logged in `calls`
+// prints the page's URL, or fails with some output while the file `fail` exists; `version` is not logged in `calls`.
+// Like `wrangler pages deploy`, it leaves its cache in its working directory.
 const FAKE = `
-const { appendFileSync, existsSync } = require('node:fs');
+const { appendFileSync, existsSync, mkdirSync, writeFileSync } = require('node:fs');
 const dir = ${'process.argv[2]'};
 const args = process.argv.slice(3);
 // the version of its pages while the file \`version\` holds one, else none
 if (args[0] === 'version') { if (existsSync(dir + '/version')) console.log(require('node:fs').readFileSync(dir + '/version', 'utf8')); process.exit(existsSync(dir + '/version') ? 0 : 1); }
 const input = JSON.parse(await Bun.stdin.text());
-appendFileSync(dir + '/calls', JSON.stringify({ args, input, home: process.env.OBEYA_HOME, kit: process.env.OBEYA_KIT }) + '\\n');
+mkdirSync('.wrangler/cache', { recursive: true });
+writeFileSync('.wrangler/cache/pages.json', '{}');
+appendFileSync(dir + '/calls', JSON.stringify({ args, input, home: process.env.OBEYA_HOME, kit: process.env.OBEYA_KIT, cwd: process.cwd(), repo: process.env.OBEYA_REPO }) + '\\n');
 if (existsSync(dir + '/fail')) { console.error('upload refused: token expired'); process.exit(2); }
 console.error('Uploading 3 files');
 if (args[0] === 'publish') console.log('https://demos.example/' + input.slug + '/');
@@ -56,13 +60,13 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-function make() {
+function make(repo = dir) {
   return new Sharing({
     board,
     runtime,
     home: join(dir, 'home'),
     forge,
-    commandFor: (card) => (card.title.startsWith('Ohne') ? null : { command: [process.execPath, join(dir, 'fake-share.ts'), dir], cwd: dir }),
+    commandFor: (card) => (card.title.startsWith('Ohne') ? null : { command: [process.execPath, join(dir, 'fake-share.ts'), dir], repo }),
   });
 }
 
@@ -121,6 +125,9 @@ describe('sharing a demo', () => {
     expect(call!.home).toBe(join(dir, 'home'));
     // the helpers an adapter's command imports
     expect(call!.kit).toBe(KIT_PATH);
+    // it runs under Obeya's home, and learns the checkout from the environment
+    expect(call!.cwd).toBe(realpathSync(join(dir, 'home', SHARE_CWD)));
+    expect(call!.repo).toBe(dir);
     // the command's output goes into the card's log
     expect(log(c.id)).toContain('Uploading 3 files');
     expect(log(c.id).at(-1)).toBe(`Geteilt: https://demos.example/${slug}/`);
@@ -134,6 +141,19 @@ describe('sharing a demo', () => {
     sharing.share(c.id);
     await until(() => share(c.id)?.state === 'shared');
     expect(share(c.id)!.url).toBe(`https://demos.example/${slug}/`);
+  });
+
+  test('a command that leaves files in its working directory leaves the checkout clean, so its workspace can still be leased', async () => {
+    const repo = gitRepo(join(dir, 'checkout'));
+    sharing = make(repo);
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    sharing.unshare(c.id);
+    await until(() => !share(c.id));
+    expect(calls().map((c) => c.repo)).toEqual([repo, repo]);
+    expect(git(repo, 'status', '--porcelain')).toBe('');
+    expect(existsSync(join(dir, 'home', SHARE_CWD, '.wrangler/cache/pages.json'))).toBe(true);
   });
 
   test('a newer demo is not shared on its own: the card says so, and "Neu teilen" replaces the page', async () => {

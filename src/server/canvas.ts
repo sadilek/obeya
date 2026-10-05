@@ -208,7 +208,7 @@ export class CanvasRuntime {
       forge: deps.forge,
       commandFor: (card) => {
         const r = this.repoOf(card);
-        return r.share ? { command: r.share, cwd: r.info.path } : null;
+        return r.share ? { command: r.share, repo: r.info.path } : null;
       },
     });
     this.sharing.resume();

@@ -1,6 +1,7 @@
 // Sharing a card's demo with colleagues, a video or an HTML artifact: a page outside Obeya, published
 // by the command the repository's adapter names (`demo.share`). Obeya writes the page's text when
-// the worker did not, and runs the command:
+// the worker did not, and runs the command in a directory under Obeya's home (not in the checkout,
+// often a workspace of the pool too), with the checkout in `OBEYA_REPO`:
 // `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`; and,
 // where the command knows it, `version`, which prints the version of the pages it writes (the
 // video pages', then `html:<version>` for artifact pages where those differ): a page published with
@@ -10,7 +11,7 @@
 // command comes from the repository's configuration, else from its adapter. A repository with
 // neither exports the demo instead: the same page as a ZIP with its files, or as one HTML file.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -42,12 +43,28 @@ export interface SharePage {
   shared: string[];
 }
 
+/** A repository's share command (argv), and the repository's checkout, passed to it as `OBEYA_REPO`. */
+export interface ShareCommand {
+  command: string[];
+  repo: string;
+}
+
+/**
+ * Where share commands run, under Obeya's home: not in the checkout, which is often a workspace
+ * of the pool too, and a file a command leaves in its working directory (`wrangler pages deploy`
+ * writes its cache there) would keep the workspace from being leased until someone cleans up.
+ */
+export const SHARE_CWD = 'share';
+
 export interface SharingOptions {
   board: Board;
   runtime: AgentRuntime;
-  /** The share command of the card's repository (argv) and where it runs; null when it shares none. */
-  commandFor: (card: Item) => { command: string[]; cwd: string } | null;
-  /** Obeya's data directory, passed to the command as `OBEYA_HOME` (with `OBEYA_KIT`, the helpers an adapter's command imports). */
+  /** The share command of the card's repository; null when it shares none. */
+  commandFor: (card: Item) => ShareCommand | null;
+  /**
+   * Obeya's data directory, passed to the command as `OBEYA_HOME` (with `OBEYA_KIT`, the helpers an
+   * adapter's command imports); the command runs in a directory of it (`SHARE_CWD`).
+   */
   home: string;
   /** Where the card's pull request is, for the page's link in its description. */
   forge: Forge;
@@ -211,7 +228,7 @@ export class Sharing {
    * make a difference.
    */
   async checkVersions() {
-    const commands = new Map<string, { command: string[]; cwd: string }>();
+    const commands = new Map<string, ShareCommand>();
     for (const r of this.o.board.sharedRows()) {
       const card = this.find(r.id);
       const cmd = card && (JSON.parse(r.share!) as StoredShare).url ? this.o.commandFor(card) : null;
@@ -224,8 +241,8 @@ export class Sharing {
    * The version of the pages the command writes, which changes whenever its pages would come out
    * different; null when it says none.
    */
-  private async version(cmd: { command: string[]; cwd: string }): Promise<Versions | null> {
-    const r = await run([...cmd.command, 'version'], '', cmd.cwd, this.o.home);
+  private async version(cmd: ShareCommand): Promise<Versions | null> {
+    const r = await run([...cmd.command, 'version'], '', cmd.repo, this.o.home);
     return r.code === 0 ? parseVersions(r.out) : null;
   }
 
@@ -287,7 +304,7 @@ export class Sharing {
     }
     const pr = this.prOf(cardId);
     const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, dir, shared: this.others(cardId, cmd.command) };
-    const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.cwd, this.o.home);
+    const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.repo, this.o.home);
     const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
     if (r.code !== 0 || !url) return back(r.code !== 0 ? `Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).` : 'Der Befehl zum Teilen hat keine URL ausgegeben.', tail(r.err || r.out));
     const versions = await this.version(cmd);
@@ -297,7 +314,7 @@ export class Sharing {
     // stdout carries the URL, logged below; what the command says on the way is on stderr
     if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
     this.o.board.log(cardId, 'state', 'obeya', s.again ? `Erneut geteilt: ${url}` : s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
-    if (pr) this.linkPr(cardId, pr, url, cmd.cwd, shown.kind);
+    if (pr) this.linkPr(cardId, pr, url, cmd.repo, shown.kind);
     // the pull request was opened while the page went out: once more, with its link
     const now = this.prOf(cardId);
     if (now && now !== pr) this.refresh(cardId);
@@ -330,7 +347,7 @@ export class Sharing {
     };
     const cmd = this.o.commandFor(card);
     if (!cmd) return back('Nicht zurückgezogen: Das Repository der Aufgabe teilt keine Demos mehr.');
-    const r = await run([...cmd.command, 'withdraw', s.slug], JSON.stringify({ slug: s.slug, shared: this.others(cardId, cmd.command) }), cmd.cwd, this.o.home);
+    const r = await run([...cmd.command, 'withdraw', s.slug], JSON.stringify({ slug: s.slug, shared: this.others(cardId, cmd.command) }), cmd.repo, this.o.home);
     if (r.code !== 0) return back(`Nicht zurückgezogen: Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).`, tail(r.err || r.out));
     const versions = await this.version(cmd);
     this.set(cardId, { slug: s.slug });
@@ -437,7 +454,7 @@ export class Sharing {
       let page: DemoPage | null = null;
       const session = this.o.runtime.start(
         {
-          cwd: cmd?.cwd ?? this.o.home,
+          cwd: cmd?.repo ?? this.o.home,
           readOnly: true,
           effort: 'low',
           system: PAGE_SYSTEM,
@@ -607,10 +624,13 @@ export function shareProblem(argv: string[]): string | null {
   return Bun.which(program) ? null : `the share command's program ${program} is not on the PATH`;
 }
 
-/** Runs the share command; never throws. */
-async function run(argv: string[], stdin: string, cwd: string, home: string): Promise<{ code: number; out: string; err: string }> {
+/** Runs the share command in `SHARE_CWD` under Obeya's home; never throws. */
+async function run(argv: string[], stdin: string, repo: string, home: string): Promise<{ code: number; out: string; err: string }> {
   try {
-    const p = Bun.spawn(argv, { cwd, stdin: new Blob([stdin]), stdout: 'pipe', stderr: 'pipe', env: { ...process.env, OBEYA_HOME: home, OBEYA_KIT: KIT_PATH }, timeout: COMMAND_TIMEOUT });
+    const cwd = join(home, SHARE_CWD);
+    mkdirSync(cwd, { recursive: true });
+    const env = { ...process.env, OBEYA_HOME: home, OBEYA_KIT: KIT_PATH, OBEYA_REPO: repo };
+    const p = Bun.spawn(argv, { cwd, stdin: new Blob([stdin]), stdout: 'pipe', stderr: 'pipe', env, timeout: COMMAND_TIMEOUT });
     const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     return { code, out, err };
   } catch (e) {

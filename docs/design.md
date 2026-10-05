@@ -842,8 +842,12 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   sentences for colleagues who have never seen Obeya: where the repository has a target, `ready_for_review`
   takes them with every demo (`demo.page`), and for a demo handed over before that a short
   read-only session writes them from the worker's last summary when the owner shares, kept with
-  the demo afterwards. Obeya runs the command (`src/server/share.ts`) in the repository with
-  `OBEYA_HOME` set, one call at a time: `publish` with the page as JSON on stdin (slug, kind
+  the demo afterwards. Obeya runs the command (`src/server/share.ts`) with `OBEYA_HOME` set and
+  the repository's checkout in `OBEYA_REPO`, one call at a time, in `share/` under Obeya's home:
+  until 2026-10-05 it ran in the checkout, which is often a workspace of the pool too, and the
+  cache `wrangler pages deploy` leaves in its working directory kept that workspace from being
+  leased after every share ("jeder freie hat nicht committete Änderungen"). The calls are
+  `publish` with the page as JSON on stdin (slug, kind
   `video` or `html`, title, text, chapters, PR URL, demo directory, and the slugs of the other
   pages it has shared), which prints the page's URL; `withdraw <slug>`; and `version`, which prints
   the version of the pages the command writes (a command that does not know it fails or prints
@@ -905,7 +909,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   only after a click on the page (in Obeya, the click that opens the card), so it could only start
   muted, which the owner did not want. A share command from the
   configuration runs like the adapter's; its words are split at spaces outside quotes, a program
-  given as a path and any script are found in the repository, and a script (`.ts`, `.js`) runs
+  given as a path and any script are found in the repository (what the command itself needs from
+  there it finds through `OBEYA_REPO`), and a script (`.ts`, `.js`) runs
   with Obeya's own Bun, so the same line works on Windows. The ZIP is written by Obeya
   (`src/server/zip.ts`, stored without compression: the video is compressed already).
   A repository's own share command (in its `.obeya/adapter/`, see Repo adapter) cannot import
@@ -960,7 +965,7 @@ question, the card it is about, its answer and who gave it), groups (name, colou
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
 (`canvases.json`), and what a repository's share command keeps there (a demo site, its
-credentials).
+credentials), with `share/`, the directory share commands run in.
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository; the copy on the project is only for the archive).
