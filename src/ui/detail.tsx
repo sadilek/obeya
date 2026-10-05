@@ -117,10 +117,9 @@ export function Detail(p: Props) {
       </>
     );
   const worked = ['working', 'waiting', 'approved', 'inPr', 'live', 'done'].includes(item.state) && !!item.branch;
-  // a video demo goes to a page where the repository has a share target, else it is exported as a file; drafts and prototypes stay here
+  // a demo, video or HTML artifact, goes to a page where the repository has a share target, else it is exported as a file; prototypes stay here
   const target = !!p.repos.find((r) => r.id === item.repo)?.share;
-  const shareBox =
-    !!item.demo && item.demo.kind !== 'html' && !item.prototypeOf ? target || item.share ? <ShareBox item={item} act={act} /> : <ExportBox item={item} run={run} /> : null;
+  const shareBox = !!item.demo && !item.prototypeOf ? target || item.share ? <ShareBox item={item} act={act} /> : <ExportBox item={item} run={run} /> : null;
   // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
   const ideaThinking = !!p.from?.idea?.thinking;
   const prototypeActions = item.prototypeOf && (
@@ -899,7 +898,7 @@ function DemoView({
 }
 
 /**
- * Sharing the video with colleagues: "Teilen" publishes it right away, then the page's link with
+ * Sharing the demo with colleagues: "Teilen" publishes it right away, then the page's link with
  * "Nicht mehr teilen"; "Neu teilen" once the card has a newer demo than the page, "Erneut teilen"
  * once the share command writes pages differently than when it published this one.
  */
@@ -910,7 +909,7 @@ function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDon
   return (
     <div className="share">
       {!s ? (
-        <button className="btn" title={t.share.shareHint} onClick={() => go('share')}>
+        <button className="btn" title={item.demo?.kind === 'html' ? t.share.shareHintHtml : t.share.shareHint} onClick={() => go('share')}>
           {t.share.share}
         </button>
       ) : s.state === 'publishing' || s.state === 'withdrawing' ? (
@@ -961,16 +960,19 @@ function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDon
 
 /**
  * "Teilen" where the repository has no share target: the demo as a file to pass on, a ZIP of its
- * page with the video beside it, or one HTML file that holds everything (short videos only).
+ * page with the video or the HTML artifact beside it, or one HTML file that holds everything
+ * (short videos, artifacts that are their index.html alone).
  */
 function ExportBox({ item, run }: { item: Item; run: Run }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<'zip' | 'html' | null>(null);
   const [size, setSize] = useState<number | null>(null);
+  const artifact = item.demo?.kind === 'html';
   useEffect(() => {
-    if (open) api.demoSize(item.id).then(setSize, () => {});
-  }, [open, item.id]);
+    if (open && !artifact) api.demoSize(item.id).then(setSize, () => {});
+  }, [open, item.id, artifact]);
   const tooLarge = size !== null && size > EXPORT_HTML_MAX;
+  const notAlone = artifact && !item.demo?.single;
   const go = (as: 'zip' | 'html') => {
     setBusy(as);
     void run(() => api.exportDemo(item.id, as), { close: false }).finally(() => setBusy(null));
@@ -985,14 +987,20 @@ function ExportBox({ item, run }: { item: Item; run: Run }) {
         <>
           <p className="hint">{t.share.exportIntro}</p>
           <div className="share-row">
-            <button className="btn" title={t.share.zipHint} disabled={!!busy} onClick={() => go('zip')}>
+            <button className="btn" title={artifact ? t.share.zipHintHtml : t.share.zipHint} disabled={!!busy} onClick={() => go('zip')}>
               {busy === 'zip' ? t.share.preparing : t.share.zip}
             </button>
-            <button className="btn" title={tooLarge ? t.share.tooLarge(size!) : t.share.htmlHint} disabled={!!busy || tooLarge} onClick={() => go('html')}>
+            <button
+              className="btn"
+              title={tooLarge ? t.share.tooLarge(size!) : notAlone ? t.share.notAlone : artifact ? t.share.htmlHintHtml : t.share.htmlHint}
+              disabled={!!busy || tooLarge || notAlone}
+              onClick={() => go('html')}
+            >
               {busy === 'html' ? t.share.preparing : t.share.html}
             </button>
           </div>
           {tooLarge && <p className="hint">{t.share.tooLarge(size!)}</p>}
+          {notAlone && <p className="hint">{t.share.notAlone}</p>}
           {busy && !item.demo?.page && <p className="hint">{t.share.writingPage}</p>}
         </>
       )}

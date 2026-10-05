@@ -804,10 +804,16 @@ the owner's language (`src/core/locale.ts`).
   scripts run in an origin of their own, away from Obeya's API. A handover with `no_demo` (the
   reason) instead is the exception the worker's brief names as such: the card waits for review
   with the summary and the reason, and a demo from an earlier handover leaves the card, since it
-  showed other work. Artifacts stay in `~/demos/`, never in git; a pull request links a video demo
+  showed other work. Artifacts stay in `~/demos/`, never in git; a pull request links a demo
   only once it is shared (below).
-- **Sharing a demo** — every video demo has "Teilen" beside it, on waiting cards and on cards long
-  done (archived ones too); HTML artifacts and prototypes are not shared. Where it goes depends on
+- **Sharing a demo** — every demo, video or HTML artifact, has "Teilen" beside it, on waiting cards
+  and on cards long done (archived ones too); prototypes are not shared. HTML artifacts are shared
+  since 2026-10-05: an analysis with charts is background for a pull request as much as a video.
+  Their page has the same title and text above the artifact, which sits in a sandboxed frame (its
+  scripts reach neither the page nor the site); the copy of its `index.html` beside the page tells
+  the page its height (`postMessage`), so the frame grows to it instead of scrolling inside the
+  page, at most 30 steps (an artifact as high as its window would grow on), and "In eigenem
+  Fenster öffnen" shows it alone. Where it goes depends on
   the repository's share target: the command line in its configuration (`share`, see
   Configuration), else the command its adapter names (`demo.share`; Acme). With a target, the
   demo is published on a page. "Teilen" publishes right away, without a hold to take it back:
@@ -815,13 +821,15 @@ the owner's language (`src/core/locale.ts`).
   nicht"). Once the page is up, the card shows the link (open, copy) and "Nicht mehr teilen". A
   card that gets a new demo after sharing says the page still shows the earlier one and offers "Neu teilen"; nothing is replaced on its own. The page has a title and two to five
   sentences for colleagues who have never seen Obeya: where the repository has a target, `ready_for_review`
-  takes them with a video demo (`demo.page`), and for a demo handed over before that a short
+  takes them with every demo (`demo.page`), and for a demo handed over before that a short
   read-only session writes them from the worker's last summary when the owner shares, kept with
   the demo afterwards. Obeya runs the command (`src/server/share.ts`) in the repository with
-  `OBEYA_HOME` set, one call at a time: `publish` with the page as JSON on stdin (slug, title,
-  text, chapters, PR URL, demo directory, and the slugs of the other pages it has shared), which
-  prints the page's URL; `withdraw <slug>`; and `version`, which prints the version of the pages
-  the command writes (a command that does not know it fails or prints nothing). The slug comes from the card's title and id once and
+  `OBEYA_HOME` set, one call at a time: `publish` with the page as JSON on stdin (slug, kind
+  `video` or `html`, title, text, chapters, PR URL, demo directory, and the slugs of the other
+  pages it has shared), which prints the page's URL; `withdraw <slug>`; and `version`, which prints
+  the version of the pages the command writes (a command that does not know it fails or prints
+  nothing): the video pages' first, then `html:<version>` for artifact pages, so a change to one
+  kind of page marks only those (a command that says one version marks both). The slug comes from the card's title and id once and
   stays, so a link keeps working across publishing again. The command's stderr goes into the
   card's log, a failure with its output as an error, and the card stays as it was. A share held,
   publishing or withdrawing at a restart goes on after it.
@@ -854,6 +862,7 @@ the owner's language (`src/core/locale.ts`).
   out (in either order: `pr_opened` after sharing, or sharing a card whose PR is open or merged),
   Obeya reads the description through the forge (`gh pr view --json body`) and, unless it
   contains the page's URL already, adds a line `Demo-Video: <url> <!-- obeya:demo -->`
+  (`Demo-Seite:` for an artifact)
   (`gh pr edit --body-file`); a later line of its own is found by the marker and replaced, not
   added again. A page shared before the PR existed is published again with the PR's link: what
   it showed then (title, text, chapters and demo directory, kept with the share), not a newer
@@ -865,7 +874,9 @@ the owner's language (`src/core/locale.ts`).
   `GET …/cards/<id>/export?as=zip|html`): a ZIP with a folder named by the slug that holds
   `index.html` with the video, poster and captions beside it, or one HTML file with the video in
   base64, played from a blob so it seeks; only for videos up to 15 MiB (`EXPORT_HTML_MAX`, so the
-  file still goes by mail), the button says so for larger ones. Nothing leaves Obeya, so an export
+  file still goes by mail), the button says so for larger ones. An artifact goes into the ZIP in
+  `artifact/` beside the page; into one HTML file (as the frame's `srcdoc`) only when it is its
+  `index.html` alone, which the handover notes (`single`), else the button says it goes as a ZIP. Nothing leaves Obeya, so an export
   is not held; the card's log names the file. Both pages carry their captions as cues in a script,
   since Chrome does not load a `<track>` for a page opened from disk. The page (`src/server/demo-page.ts`)
   is the one Acme's site shows, without its link to the overview. Its video waits with a big play
@@ -878,8 +889,8 @@ the owner's language (`src/core/locale.ts`).
   with Obeya's own Bun, so the same line works on Windows. The ZIP is written by Obeya
   (`src/server/zip.ts`, stored without compression: the video is compressed already).
   Acme's command (`src/adapters/team-share.ts`) keeps the site in `~/.obeya/team-share/site/` (a
-  directory per demo with page, video, poster, captions and `meta.json`, and the overview, newest
-  first) and deploys all of it with `wrangler pages deploy` to the Pages project `team-demos`,
+  directory per demo with page, video, poster, captions and `meta.json` (an artifact's files in
+  `artifact/` instead), and the overview, newest first) and deploys all of it with `wrangler pages deploy` to the Pages project `team-demos`,
   behind the same Cloudflare Access policy as the docs (`@example.com`). Account ID and API
   token are in `~/.obeya/team-share/cloudflare.env`. Pages serves no byte ranges (a range request
   gets the whole file with 200), and a browser cannot seek in a video streamed that way: the

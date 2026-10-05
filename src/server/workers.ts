@@ -9,6 +9,7 @@ import type { DemoKind, DemoPage, Item, Question, RestartReason } from '../core/
 import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
 import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
+import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import type { InputContext } from './koordinator';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
@@ -767,7 +768,7 @@ export class Workers {
                       .object({ title: z.string(), text: z.string() })
                       .optional()
                       .describe(
-                        `video only, required for one: the page on which the owner may share the video with colleagues, in ${OWNER_LANGUAGE}. They know the product but have never seen Obeya, this card or the plan doc. title: what changes, in a few words; text: two to five sentences on what changes for the user and why, without findings, tests or internal process`,
+                        `required: the page on which the owner may share the demo (the video, or the HTML artifact below the text) with colleagues, in ${OWNER_LANGUAGE}. They know the product but have never seen Obeya, this card or the plan doc. title: what changes, in a few words; text: two to five sentences on what changes for the user and why, without findings, tests or internal process`,
                       ),
                   }
                 : {}),
@@ -798,16 +799,18 @@ export class Workers {
           if (d) {
             const kind = d.kind ?? 'video';
             const report = d.question ? { question: d.question } : {};
+            const page = d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000) } : undefined;
+            if (this.shares && !page)
+              return 'Not handed over: a demo here needs its page (title and text) for colleagues, in case the owner shares it. Call ready_for_review again with demo.page.';
             if (kind === 'html') {
               const wrong = checkArtifact(d.dir);
               if (wrong) return `Not handed over: ${wrong}. Fix the artifact, then call ready_for_review again.`;
-              demoJson = JSON.stringify({ kind, dir: d.dir, chapters: [], ...report });
+              // an artifact that is its index.html alone also goes out as one HTML file
+              const single = artifactFiles(d.dir).length === 1;
+              demoJson = JSON.stringify({ kind, dir: d.dir, chapters: [], ...report, ...(page ? { page } : {}), ...(single ? { single } : {}) });
             } else {
               const chapters = readChapters(d.dir, d.chapters ?? []);
               if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
-              const page = d.page && d.page.title.trim() && d.page.text.trim() ? { title: clip(d.page.title.trim(), 200), text: clip(d.page.text.trim(), 2000) } : undefined;
-              if (this.shares && !page)
-                return 'Not handed over: a video demo here needs its page (title and text) for colleagues, in case the owner shares it. Call ready_for_review again with demo.page.';
               demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...report, ...(page ? { page } : {}) });
             }
           }
@@ -992,7 +995,7 @@ ${idea.idea.brief}` : '',
       parts.push(
         [
           `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review.`,
-          `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
+          `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ' The owner may share the demo, a video or an HTML artifact, with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
           "When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis), make an HTML artifact instead: an index.html in a new directory under ~/demos/ (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.",
           `Only when there is nothing to show at all (the task turned out to be done already, say), hand over with no_demo and why instead. That is the exception: the owner wants something to see.`,
         ].join(' '),

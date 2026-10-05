@@ -1,7 +1,10 @@
-// The page a video demo is shared on, for people who have never seen Obeya: title, text, the video
-// with its chapters and captions, the pull request. Acme's share command builds its site from it,
-// and a repository without a share target exports it (share.ts): as a ZIP with the video beside the
-// page, or as one HTML file with everything inside.
+// The page a demo is shared on, for people who have never seen Obeya: title, text, the video with
+// its chapters and captions (or an HTML artifact in a frame), the pull request. Acme's share command
+// builds its site from it, and a repository without a share target exports it (share.ts): as a ZIP
+// with the video or the artifact beside the page, or as one HTML file with everything inside.
+
+import { type Dirent, existsSync, readdirSync } from 'node:fs';
+import { join, relative } from 'node:path';
 
 export interface DemoPageParts {
   title: string;
@@ -69,6 +72,9 @@ export const PAGE_STYLE = `
   ul.demos a:hover { border-color: var(--accent); }
   ul.demos b { display: block; font-size: 17px; }
   ul.demos span { color: var(--muted); font-size: 14px; }
+  .artifact { margin-top: 22px; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .artifact iframe { display: block; width: 100%; height: 80vh; border: 0; }
+  .links { margin-top: 10px; font-size: 14px; display: flex; gap: 18px; }
 `;
 
 // the cues of captions held in the page, for a page opened from disk
@@ -105,6 +111,72 @@ const BLOB = `
   v.src = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
 `;
 
+/** The page of an HTML artifact: title and text above it, the artifact in a frame below. */
+export interface ArtifactPageParts {
+  title: string;
+  /** Paragraphs separated by blank lines. */
+  text: string;
+  pr: string | null;
+  when: string;
+  tabTitle: string;
+  top?: { href: string; text: string };
+  /** The artifact's page beside this one, or its HTML for a page that holds everything. */
+  artifact: { src: string } | { html: string };
+}
+
+/**
+ * The artifact runs in a sandboxed frame, an origin of its own, so its scripts reach neither the
+ * page nor the site. The frame grows to the artifact's height where the artifact says it
+ * (`withHeightReport`); without that it stays at 80 % of the window and scrolls.
+ */
+export function artifactPageHtml(p: ArtifactPageParts): string {
+  const frame =
+    'src' in p.artifact
+      ? `<iframe src="${esc(p.artifact.src)}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="${esc(p.title)}"></iframe>`
+      : `<iframe srcdoc="${esc(withHeightReport(p.artifact.html))}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="${esc(p.title)}"></iframe>`;
+  const links = [
+    'src' in p.artifact ? `<a href="${esc(p.artifact.src)}" target="_blank" rel="noopener">In eigenem Fenster öffnen</a>` : '',
+    p.pr ? `<a href="${esc(p.pr)}">Pull Request ansehen</a>` : '',
+  ].filter(Boolean);
+  return `<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}</style></head>
+<body><main>
+${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>
+<div class="when">${esc(p.when)}</div>
+<div class="text">${paragraphs(p.text)}</div>
+${links.length ? `<div class="links">${links.join('')}</div>\n` : ''}<div class="artifact">${frame}</div>
+</main>
+<script>
+  // an artifact as high as its window (100vh plus a margin) would grow with each step: it stops after a few
+  const f = document.querySelector('.artifact iframe');
+  let steps = 0;
+  addEventListener('message', (e) => {
+    const h = e.source === f.contentWindow && e.data && e.data.obeyaHeight;
+    if (typeof h === 'number' && h > 0 && steps++ < 30) f.style.height = Math.min(Math.ceil(h), 30000) + 'px';
+  });
+</script>
+</body></html>
+`;
+}
+
+/** The artifact's height, sent to the page around it whenever it changes: there the frame grows to it. */
+const HEIGHT_REPORT = `<script>(() => {
+  let last = 0;
+  const say = () => {
+    const h = document.documentElement.scrollHeight;
+    if (Math.abs(h - last) > 2) { last = h; parent.postMessage({ obeyaHeight: h }, '*'); }
+  };
+  addEventListener('load', say);
+  new ResizeObserver(say).observe(document.documentElement);
+})();</script>`;
+
+/** The artifact's page with its height report, at the end of its body (or of the page, without one). */
+export function withHeightReport(html: string): string {
+  const at = html.toLowerCase().lastIndexOf('</body>');
+  return at < 0 ? html + HEIGHT_REPORT : html.slice(0, at) + HEIGHT_REPORT + html.slice(at);
+}
+
 export function demoPageHtml(p: DemoPageParts): string {
   const chapters = p.chapters.length
     ? `<ol>${p.chapters.map(([at, title], i) => `<li><button data-at="${at}"${i === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
@@ -138,4 +210,17 @@ ${'vtt' in p.captions ? `<script type="text/vtt" id="captions">${inScript(p.capt
 </script>
 </body></html>
 `;
+}
+
+/** An HTML artifact's directory on a page, beside the page's `index.html`. */
+export const ARTIFACT_DIR = 'artifact';
+
+/** The files of an HTML artifact's directory, relative to it, without hidden ones. */
+export function artifactFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return (readdirSync(dir, { recursive: true, withFileTypes: true }) as Dirent[])
+    .filter((e) => e.isFile())
+    .map((e) => relative(dir, join(e.parentPath, e.name)).split('\\').join('/'))
+    .filter((f) => !f.split('/').some((p) => p.startsWith('.')))
+    .sort();
 }

@@ -55,7 +55,7 @@ export interface RepoRuntime {
   ref: RepoRef;
   info: RepoInfo;
   adapter: RepoAdapter;
-  /** The command that shares its video demos (the configuration's, else the adapter's); null where they are exported. */
+  /** The command that shares its demos (the configuration's, else the adapter's); null where they are exported. */
   share: string[] | null;
   workspaces: Workspaces;
   workers: Workers;
@@ -72,7 +72,7 @@ export class CanvasRuntime {
   /** Screenshots the owner attaches to what they write. */
   readonly images: Images;
   readonly answers: Answers;
-  /** Video demos shared with colleagues, through the share command of the card's repository. */
+  /** Demos shared with colleagues, through the share command of the card's repository. */
   readonly sharing: Sharing;
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];

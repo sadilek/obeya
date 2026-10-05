@@ -6,7 +6,7 @@ import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { EXPORT_HTML_MAX } from '../core/types';
 import type { Forge } from './forge';
-import { DEMO_MARKER, type SharePage, Sharing, shareArgv, shareProblem, withDemoLink } from './share';
+import { DEMO_MARKER, parseVersions, type SharePage, Sharing, shareArgv, shareProblem, withDemoLink } from './share';
 import { FakeRuntime } from './testing';
 
 let dir: string;
@@ -116,7 +116,7 @@ describe('sharing a demo', () => {
     expect(share(c.id)).toEqual({ state: 'shared', url: `https://demos.example/${slug}/` });
     const [call] = calls();
     expect(call!.args).toEqual(['publish']);
-    expect(call!.input).toEqual({ slug, title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.', chapters: [[0, 'Vorher']], pr: null, dir: join(dir, `demo-${c.id}`), shared: [] });
+    expect(call!.input).toEqual({ slug, kind: 'video', title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.', chapters: [[0, 'Vorher']], pr: null, dir: join(dir, `demo-${c.id}`), shared: [] });
     expect(call!.home).toBe(join(dir, 'home'));
     // the command's output goes into the card's log
     expect(log(c.id)).toContain('Uploading 3 files');
@@ -179,9 +179,16 @@ describe('sharing a demo', () => {
     expect(calls().at(-1)!.input.shared).toEqual([calls()[0]!.input.slug]);
   });
 
-  test('only video demos, only where the repository shares, never twice at once', () => {
-    const html = card('Logo', { kind: 'html' });
-    expect(() => sharing.share(html.id)).toThrow(BadRequest);
+  test('an HTML artifact goes out as a page too, and the pull request names it as a page', async () => {
+    const c = card('Auswertung', { kind: 'html', chapters: [], page: { title: 'Verlust und Zapfung', text: 'Geschätzt aus den Messdaten.' } });
+    openPr(c.id);
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    expect(calls()[0]!.input).toMatchObject({ kind: 'html', title: 'Verlust und Zapfung', chapters: [], pr: PR, dir: join(dir, `demo-${c.id}`) });
+    expect(bodies.get(PR)).toContain(`Demo-Seite: ${share(c.id)!.url} ${DEMO_MARKER}`);
+  });
+
+  test('only where the repository shares, never twice at once', () => {
     const none = card('Ohne Teilen');
     expect(() => sharing.share(none.id)).toThrow(BadRequest);
     const c = card();
@@ -241,6 +248,19 @@ describe('a page published with an earlier version of the command', () => {
     expect(share(c.id)!.outdated).toBeUndefined();
     expect(stored(c.id).version).toBe('v2');
     expect(calls().at(-1)!.input).toMatchObject({ slug: calls()[0]!.input.slug, dir: join(dir, `demo-${c.id}`) });
+  });
+
+  test('video and artifact pages each have their version: a change to one marks only its pages', async () => {
+    version('v1 html:h1');
+    const v = card();
+    const h = card('Auswertung', { kind: 'html', chapters: [] });
+    sharing.share(v.id);
+    sharing.share(h.id);
+    await until(() => share(v.id)?.state === 'shared' && share(h.id)?.state === 'shared');
+    expect([stored(v.id).version, stored(h.id).version]).toEqual(['v1', 'h1']);
+    version('v1 html:h2');
+    await sharing.checkVersions();
+    expect([share(v.id)!.outdated, share(h.id)!.outdated]).toEqual([undefined, true]);
   });
 
   test('a page shared before commands said their version counts as earlier; without one nothing is marked', async () => {
@@ -483,11 +503,18 @@ describe('the link in the pull request', () => {
     expect(log(c.id).at(-1)).toContain('nicht in Pull Request #42 eingetragen: gh pr view: no pull request');
   });
 
+  test('parseVersions: the video pages\' version first, then the artifact pages\'', () => {
+    expect(parseVersions('abc')).toEqual({ video: 'abc' });
+    expect(parseVersions('noise\nabc html:def\n')).toEqual({ video: 'abc', html: 'def' });
+    expect(parseVersions('')).toBeNull();
+  });
+
   test('withDemoLink adds a line once and replaces its own', () => {
     expect(withDemoLink('', 'https://d/a/')).toBe(`Demo-Video: https://d/a/ ${DEMO_MARKER}\n`);
     expect(withDemoLink('Text\n\n', 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n`);
     expect(withDemoLink('Siehe https://d/a/', 'https://d/a/')).toBeNull();
     expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}\n\nFooter`, 'https://d/a/')).toBe(`Text\n\nDemo-Video: https://d/a/ ${DEMO_MARKER}\n\nFooter`);
+    expect(withDemoLink(`Text\n\nDemo-Video: https://d/old/ ${DEMO_MARKER}`, 'https://d/a/', 'html')).toBe(`Text\n\nDemo-Seite: https://d/a/ ${DEMO_MARKER}`);
   });
 });
 
@@ -555,10 +582,34 @@ describe('exporting a demo, where the repository has no share target', () => {
     expect(board.item(c.id)!.demo!.page).toEqual({ title: 'Zählerstände als CSV', text: 'Vermieter laden sie herunter.' });
   });
 
-  test('only video demos', async () => {
-    const html = card('Logo', { kind: 'html' });
-    await expect(sharing.export(html.id, 'zip')).rejects.toMatchObject({ code: 'noShare' });
-    // a video demo whose file is gone
+  test('an HTML artifact: beside its page in the ZIP, in one HTML file only when it is its index.html alone', async () => {
+    const c = card('Ohne Ziel', { kind: 'html', chapters: [], page: { title: 'Auswertung', text: 'Verlust aus den Messdaten.' } });
+    const d = join(dir, `demo-${c.id}`);
+    writeFileSync(join(d, 'index.html'), '<html><body><h2>Graph</h2></body></html>');
+    const one = new TextDecoder().decode((await sharing.export(c.id, 'html')).data);
+    expect(one).toContain('<h1>Auswertung</h1>');
+    // the artifact in a sandboxed frame, telling the page its height
+    expect(one).toContain('srcdoc="&lt;html&gt;&lt;body&gt;&lt;h2&gt;Graph&lt;/h2&gt;');
+    expect(one).toContain('obeyaHeight');
+    expect(one).toContain('sandbox="allow-scripts');
+
+    mkdirSync(join(d, 'data'));
+    writeFileSync(join(d, 'data', 'chart.js'), 'draw()');
+    writeFileSync(join(d, '.DS_Store'), 'x');
+    await expect(sharing.export(c.id, 'html')).rejects.toMatchObject({ code: 'exportNotAlone' });
+    const out = await sharing.export(c.id, 'zip');
+    writeFileSync(join(dir, out.name), out.data);
+    expect(Bun.spawnSync(['unzip', '-o', '-d', join(dir, 'unzipped'), join(dir, out.name)]).exitCode).toBe(0);
+    const at = join(dir, 'unzipped', out.name.replace(/\.zip$/, ''));
+    expect(readFileSync(join(at, 'index.html'), 'utf8')).toContain('<iframe src="artifact/index.html"');
+    expect(readFileSync(join(at, 'artifact/data/chart.js'), 'utf8')).toBe('draw()');
+    expect(readFileSync(join(at, 'artifact/index.html'), 'utf8')).toMatch(/<h2>Graph<\/h2><script>[\s\S]*obeyaHeight[\s\S]*<\/script><\/body>/);
+    expect(existsSync(join(at, 'artifact/.DS_Store'))).toBe(false);
+  });
+
+  test('no demo, no export', async () => {
+    // an artifact without its page, a video demo whose file is gone
+    await expect(sharing.export(card('Logo', { kind: 'html' }).id, 'zip')).rejects.toMatchObject({ code: 'noShare' });
     await expect(sharing.export(card('Weg').id, 'zip')).rejects.toMatchObject({ code: 'noShare' });
   });
 });

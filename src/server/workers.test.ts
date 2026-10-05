@@ -598,18 +598,28 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.demo!.chapters).toHaveLength(2);
   });
 
-  test('where demos are shared, a video comes with its page for colleagues, kept with the demo', () => {
+  test('where demos are shared, a video or an artifact comes with its page for colleagues, kept with the demo', () => {
     rmSync(dir, { recursive: true, force: true });
     setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start', share: ['share'] } });
     const c = manual();
     workers.start(c.id);
-    expect(runtime.last.inbox[0]).toContain('share a video with colleagues');
+    expect(runtime.last.inbox[0]).toContain('share the demo, a video or an HTML artifact, with colleagues');
     const d = demoDir();
     expect(runtime.last.call('ready_for_review', { summary: 'S', demo: demo(d) })).toContain('needs its page');
     expect(state(c.id)).toBe('working');
     const page = { title: 'Zählerstände als CSV', text: 'Vermieter laden die Zählerstände jetzt als CSV herunter.' };
     expect(runtime.last.call('ready_for_review', { summary: 'S', demo: { ...demo(d), page } })).toContain('End your turn');
     expect(board.item(c.id)!.demo!.page).toEqual(page);
+
+    const a = join(dir, 'auswertung');
+    Bun.spawnSync(['mkdir', '-p', a]);
+    writeFileSync(join(a, 'index.html'), '<h2>Graph</h2>');
+    const html = { kind: 'html', dir: a, shown: ['Graph'], not_shown: [], findings: [] };
+    workers.message(c.id, 'Bitte als Auswertung.');
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: html })).toContain('needs its page');
+    expect(runtime.last.call('ready_for_review', { summary: 'S', demo: { ...html, page } })).toContain('End your turn');
+    // its index.html alone: it also goes out as one HTML file
+    expect(board.item(c.id)!.demo).toMatchObject({ kind: 'html', page, single: true });
   });
 
   test('a broken demo or a missing required one is refused, and the worker keeps the card', () => {

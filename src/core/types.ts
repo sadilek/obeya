@@ -267,6 +267,8 @@ export interface Demo {
   answer?: string;
   /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */
   page?: DemoPage;
+  /** An HTML artifact that is its `index.html` alone: it also goes out as one HTML file. */
+  single?: true;
 }
 
 export interface DemoPage {
@@ -322,7 +324,7 @@ export interface RepoRef {
   name: string;
   path: string;
   branch: string;
-  /** It has a share target: video demos go to a page outside Obeya (the configuration's command, or the adapter's `demo.share`); without one they are exported as a file. */
+  /** It has a share target: demos go to a page outside Obeya (the configuration's command, or the adapter's `demo.share`); without one they are exported as a file. */
   share?: boolean;
   /** Its workers work in a pool of clones (else a worktree per card, as many as there are cards). */
   clones?: boolean;
@@ -533,7 +535,7 @@ export type ErrorCode =
   | 'notPrototype'
   /** A discarded or built prototype stays in the archive; a new attempt is a new prototype. */
   | 'prototypeEnded'
-  /** Sharing: the card has no video demo, or its repository shares none. */
+  /** Sharing: the card has no demo, or its repository shares none. */
   | 'noShare'
   /** Sharing: the page is being published or withdrawn right now. */
   | 'shareBusy'
@@ -545,6 +547,8 @@ export type ErrorCode =
   | 'nothingOutdated'
   /** Export: the video is too large for one HTML file. */
   | 'exportTooLarge'
+  /** Export: the HTML artifact loads files beside its page, so it does not fit one HTML file. */
+  | 'exportNotAlone'
   /** Approval could not land the work on main. */
   | 'landDirty'
   | 'landConflict'
@@ -571,7 +575,7 @@ export interface RepoConfig {
   /** Clones to create under Obeya's home (adapters that use clones). */
   clones?: number;
   /**
-   * The command that shares a video demo on a page outside Obeya (`publish`, `withdraw <slug>`;
+   * The command that shares a demo on a page outside Obeya (`publish`, `withdraw <slug>`;
    * `SharePage` in `src/server/share.ts`), as a command line: it takes the place of the adapter's.
    * Without one, and without the adapter's, "Teilen" exports the demo as a file.
    */

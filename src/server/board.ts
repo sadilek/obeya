@@ -68,7 +68,7 @@ export interface StoredShare {
   url?: string;
   dir?: string;
   /** What the published page says, so it can be published again with the PR's link when the card has a newer demo by then. */
-  shown?: { title: string; text: string; chapters: [number, string][] };
+  shown?: { title: string; text: string; chapters: [number, string][]; /** Absent on pages from before HTML artifacts were shared: videos. */ kind?: DemoKind };
   /** The pull request the published page links. */
   pr?: string;
   /** While `publishing`: the page goes out again as it is, now with the PR's link; the card shows it as shared meanwhile. */

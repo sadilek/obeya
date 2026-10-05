@@ -1,10 +1,11 @@
-// Sharing a card's video demo with colleagues: a page outside Obeya, published by the command the
-// repository's adapter names (`demo.share`). Obeya writes the page's text when the worker did not,
-// and runs the command:
+// Sharing a card's demo with colleagues, a video or an HTML artifact: a page outside Obeya, published
+// by the command the repository's adapter names (`demo.share`). Obeya writes the page's text when
+// the worker did not, and runs the command:
 // `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`; and,
-// where the command knows it, `version`, which prints the version of the pages it writes: a page
-// published with another one is offered to share again ("Erneut teilen"), on its card, or many at
-// once from the Koordinator's sheet.
+// where the command knows it, `version`, which prints the version of the pages it writes (the
+// video pages', then `html:<version>` for artifact pages where those differ): a page published with
+// another one is offered to share again ("Erneut teilen"), on its card, or many at once from the
+// Koordinator's sheet.
 // Once the card has a pull request, its description links the page and the page links it. The
 // command comes from the repository's configuration, else from its adapter. A repository with
 // neither exports the demo instead: the same page as a ZIP with its files, or as one HTML file.
@@ -14,9 +15,9 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
-import { type Demo, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
+import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
-import { type DemoPageParts, day, demoPageHtml } from './demo-page';
+import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoPageHtml, withHeightReport } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { branchName } from './workspaces';
@@ -28,11 +29,13 @@ export interface SharePage {
   slug: string;
   title: string;
   text: string;
-  /** Seconds and title of each scene. */
+  /** A video, or an HTML artifact (since 2026-10-05; absent from commands' input before). */
+  kind: DemoKind;
+  /** Seconds and title of each scene; none for an artifact. */
   chapters: [number, string][];
   /** The card's pull request, once it has one. */
   pr: string | null;
-  /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`. */
+  /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`; an artifact's `index.html` and the files it loads. */
   dir: string;
   /** The slugs of the other pages Obeya has stored as shared through this command: the site must still hold them. */
   shared: string[];
@@ -69,13 +72,13 @@ export class Sharing {
   constructor(private o: SharingOptions) {}
 
   /**
-   * "Teilen" or "Neu teilen": the card's video demo is published right away. There is no hold to
+   * "Teilen" or "Neu teilen": the card's demo is published right away. There is no hold to
    * take it back: "Nicht mehr teilen" withdraws the page just as easily.
    */
   share(cardId: string) {
     const card = this.card(cardId);
     const demo = this.demo(cardId);
-    if (card.prototypeOf || !demo || demo.kind === 'html' || !this.o.commandFor(card)) throw new BadRequest('noShare', "the card has no video demo, or its repository shares none");
+    if (card.prototypeOf || !demo || !this.o.commandFor(card)) throw new BadRequest('noShare', 'the card has no demo, or its repository shares none');
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     this.set(cardId, { ...(s ? atRest(s) : { slug: slugOf(card) }), state: 'publishing' });
@@ -132,7 +135,7 @@ export class Sharing {
     if (!rows.length) throw new BadRequest('nothingOutdated', 'no shared page is outdated');
     const made = (r: (typeof rows)[number]) => {
       const dir = (JSON.parse(r.share!) as StoredShare).dir;
-      return dir ? (statOr(join(dir, 'demo.mp4')) ?? statOr(dir) ?? 0) : 0;
+      return dir ? (statOr(join(dir, 'demo.mp4')) ?? statOr(join(dir, 'index.html')) ?? statOr(dir) ?? 0) : 0;
     };
     const queue = rows
       .map((r) => ({ id: r.id, at: made(r) }))
@@ -220,18 +223,19 @@ export class Sharing {
    * The version of the pages the command writes, which changes whenever its pages would come out
    * different; null when it says none.
    */
-  private async version(cmd: { command: string[]; cwd: string }): Promise<string | null> {
+  private async version(cmd: { command: string[]; cwd: string }): Promise<Versions | null> {
     const r = await run([...cmd.command, 'version'], '', cmd.cwd, this.o.home);
-    return (r.code === 0 && r.out.trim().split('\n').at(-1)?.trim().split(/\s+/)[0]) || null;
+    return r.code === 0 ? parseVersions(r.out) : null;
   }
 
   /** Marks each page at rest shared through the command as published with another version than its current one, or not. */
-  private mark(command: string[], current: string | null) {
+  private mark(command: string[], versions: Versions | null) {
     const key = JSON.stringify(command);
     for (const r of this.o.board.sharedRows()) {
       const s = JSON.parse(r.share!) as StoredShare;
       const card = this.find(r.id);
       if (!s.url || s.state || !card || JSON.stringify(this.o.commandFor(card)?.command) !== key) continue;
+      const current = versionOf(versions, s.shown?.kind);
       const outdated = !!current && s.version !== current;
       if (outdated !== !!s.outdated) {
         const { outdated: _, ...rest } = s;
@@ -265,7 +269,7 @@ export class Sharing {
     let dir: string;
     if (s.refresh) {
       // the page as it is: a newer demo on the card waits for "Neu teilen"
-      const now = s.shown ?? (demo?.page && demo.dir === s.dir ? { ...demo.page, chapters: demo.chapters } : null);
+      const now = s.shown ?? (demo?.page && demo.dir === s.dir ? { ...demo.page, chapters: demo.chapters, kind: demo.kind ?? 'video' } : null);
       if (!now || !s.dir || !cmd) {
         if (s.again) return back('Die Demo, die die Seite zeigt, ist nicht mehr da; „Neu teilen“ bringt die der Aufgabe.');
         this.set(cardId, atRest(s));
@@ -275,23 +279,24 @@ export class Sharing {
       shown = now;
       dir = s.dir;
     } else {
-      if (!demo || demo.kind === 'html' || !cmd) return back('Die Aufgabe hat keine Video-Demo mehr, oder ihr Repository teilt keine.');
+      if (!demo || !cmd) return back('Die Aufgabe hat keine Demo mehr, oder ihr Repository teilt keine.');
       const page = await this.page(card, demo);
-      shown = { title: page.title, text: page.text, chapters: demo.chapters };
+      shown = { title: page.title, text: page.text, chapters: demo.chapters, kind: demo.kind ?? 'video' };
       dir = demo.dir;
     }
     const pr = this.prOf(cardId);
-    const input: SharePage = { slug: s.slug, ...shown, pr, dir, shared: this.others(cardId, cmd.command) };
+    const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, dir, shared: this.others(cardId, cmd.command) };
     const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.cwd, this.o.home);
     const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
     if (r.code !== 0 || !url) return back(r.code !== 0 ? `Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).` : 'Der Befehl zum Teilen hat keine URL ausgegeben.', tail(r.err || r.out));
-    const current = await this.version(cmd);
+    const versions = await this.version(cmd);
+    const current = versionOf(versions, shown.kind);
     this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}), ...(current ? { version: current } : {}) });
-    this.mark(cmd.command, current);
+    this.mark(cmd.command, versions);
     // stdout carries the URL, logged below; what the command says on the way is on stderr
     if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
     this.o.board.log(cardId, 'state', 'obeya', s.again ? `Erneut geteilt: ${url}` : s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
-    if (pr) this.linkPr(cardId, pr, url, cmd.cwd);
+    if (pr) this.linkPr(cardId, pr, url, cmd.cwd, shown.kind);
     // the pull request was opened while the page went out: once more, with its link
     const now = this.prOf(cardId);
     if (now && now !== pr) this.refresh(cardId);
@@ -302,10 +307,10 @@ export class Sharing {
    * Puts the page's link into the pull request's description, unless it is there already (the
    * worker put it there, or Obeya did before). A line of Obeya's own is found again by its marker.
    */
-  private linkPr(cardId: string, pr: string, url: string, cwd: string) {
+  private linkPr(cardId: string, pr: string, url: string, cwd: string, kind: DemoKind = 'video') {
     const n = parsePrUrl(pr)?.number;
     try {
-      const body = withDemoLink(this.o.forge.body(cwd, pr), url);
+      const body = withDemoLink(this.o.forge.body(cwd, pr), url, kind);
       if (body === null) return;
       this.o.forge.setBody(cwd, pr, body);
       this.o.board.log(cardId, 'state', 'obeya', `Den Link zur Demo in die Beschreibung von Pull Request #${n} eingetragen.`);
@@ -326,23 +331,25 @@ export class Sharing {
     if (!cmd) return back('Nicht zurückgezogen: Das Repository der Aufgabe teilt keine Demos mehr.');
     const r = await run([...cmd.command, 'withdraw', s.slug], JSON.stringify({ slug: s.slug, shared: this.others(cardId, cmd.command) }), cmd.cwd, this.o.home);
     if (r.code !== 0) return back(`Nicht zurückgezogen: Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).`, tail(r.err || r.out));
-    const current = await this.version(cmd);
+    const versions = await this.version(cmd);
     this.set(cardId, { slug: s.slug });
-    this.mark(cmd.command, current);
+    this.mark(cmd.command, versions);
     if (r.err.trim() || r.out.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(`${r.out}\n${r.err}`));
     this.o.board.log(cardId, 'state', 'obeya', 'Die Seite ist zurückgezogen.');
   }
 
   /**
-   * The card's video demo as a file to pass on, for a repository without a share target: the page
-   * in a ZIP with the video, poster and captions beside it, or one HTML file that holds them all
-   * (videos up to EXPORT_HTML_MAX). Nothing leaves Obeya, so nothing is held.
+   * The card's demo as a file to pass on, for a repository without a share target: the page in a
+   * ZIP with the video, poster and captions beside it, or one HTML file that holds them all (videos
+   * up to EXPORT_HTML_MAX). An HTML artifact goes beside its page in the ZIP, or into the one file
+   * when it is its `index.html` alone. Nothing leaves Obeya, so nothing is held.
    */
   async export(cardId: string, as: 'zip' | 'html'): Promise<{ name: string; type: string; data: Uint8Array<ArrayBuffer> }> {
     const card = this.card(cardId);
     const demo = this.demo(cardId);
+    if (demo?.kind === 'html' && !card.prototypeOf) return this.exportArtifact(card, demo, as);
     const video = demo && join(demo.dir, 'demo.mp4');
-    if (card.prototypeOf || !demo || demo.kind === 'html' || !video || !existsSync(video)) throw new BadRequest('noShare', 'the card has no video demo');
+    if (card.prototypeOf || !demo || !video || !existsSync(video)) throw new BadRequest('noShare', 'the card has no demo');
     const size = statSync(video).size;
     if (as === 'html' && size > EXPORT_HTML_MAX)
       throw new BadRequest('exportTooLarge', `the video is ${(size / 1024 / 1024).toFixed(1)} MiB; one HTML file takes at most ${EXPORT_HTML_MAX / 1024 / 1024} MiB`);
@@ -380,6 +387,31 @@ export class Sharing {
       out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
     }
     this.o.board.log(cardId, 'state', 'owner', `Exportiert als ${as === 'zip' ? 'ZIP' : 'HTML-Datei'}: ${out.name}`);
+    return out;
+  }
+
+  private async exportArtifact(card: Item, demo: Demo & { dir: string }, as: 'zip' | 'html') {
+    const files = artifactFiles(demo.dir);
+    if (!files.includes('index.html')) throw new BadRequest('noShare', 'the card has no demo');
+    if (as === 'html' && files.length > 1) throw new BadRequest('exportNotAlone', 'the artifact loads files beside its index.html; it goes out as a ZIP only');
+    const page = await this.page(card, demo);
+    const slug = this.stored(card.id)?.slug ?? slugOf(card);
+    const index = readFileSync(join(demo.dir, 'index.html'), 'utf8');
+    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), when: `Demo vom ${day(statSync(join(demo.dir, 'index.html')).mtime)}`, tabTitle: page.title };
+    let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
+    if (as === 'html') {
+      out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { html: index } })) };
+    } else {
+      const entries = [
+        { name: `${slug}/index.html`, data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` } })) },
+        ...files.map((f) => ({
+          name: `${slug}/${ARTIFACT_DIR}/${f}`,
+          data: f === 'index.html' ? new TextEncoder().encode(withHeightReport(index)) : new Uint8Array(readFileSync(join(demo.dir, f))),
+        })),
+      ];
+      out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
+    }
+    this.o.board.log(card.id, 'state', 'owner', `Exportiert als ${as === 'zip' ? 'ZIP' : 'HTML-Datei'}: ${out.name}`);
     return out;
   }
 
@@ -431,7 +463,11 @@ export class Sharing {
           `The card: “${plainText(card.title)}”.`,
           card.body.trim() ? `Its task:\n${card.body.trim().slice(0, 3000)}` : '',
           summary ? `What its worker handed over:\n${summary.slice(0, 4000)}` : '',
-          demo.chapters.length ? `The demo video's chapters: ${demo.chapters.map(([, t]) => t).join(' · ')}` : '',
+          demo.kind === 'html'
+            ? 'The demo is a page to look at (an HTML artifact: charts, a comparison, an analysis), not a video.'
+            : demo.chapters.length
+              ? `The demo video's chapters: ${demo.chapters.map(([, t]) => t).join(' · ')}`
+              : '',
         ]
           .filter(Boolean)
           .join('\n\n'),
@@ -490,7 +526,7 @@ export class Sharing {
   }
 }
 
-const PAGE_SYSTEM = `You write the page on which a demo video of a change is shared with colleagues of the team. They have never seen the tool the change was planned in, its cards or plan docs; they know the product. Read the card's task and its worker's summary, and call the tool page once with:
+const PAGE_SYSTEM = `You write the page on which the demo of a change (a video, or a page with charts or an analysis) is shared with colleagues of the team. They have never seen the tool the change was planned in, its cards or plan docs; they know the product. Read the card's task and its worker's summary, and call the tool page once with:
 - title: what changes, for a user of the product, in a few words (not the card's internal wording).
 - text: two to five sentences in ${OWNER_LANGUAGE}: what changes for the user and why. No findings, no test details, no internal process (cards, workers, demos, reviews), no markdown.
 Then end your turn. Read code only if the summary leaves unclear what the change does for the user.`;
@@ -513,9 +549,9 @@ function statOr(path: string): number | null {
 export const DEMO_MARKER = '<!-- obeya:demo -->';
 
 /** The description with a line linking the demo's page; null when it links the page already. */
-export function withDemoLink(body: string, url: string): string | null {
+export function withDemoLink(body: string, url: string, kind: DemoKind = 'video'): string | null {
   if (body.includes(url)) return null;
-  const line = `Demo-Video: ${url} ${DEMO_MARKER}`;
+  const line = `${kind === 'html' ? 'Demo-Seite' : 'Demo-Video'}: ${url} ${DEMO_MARKER}`;
   const lines = body.split('\n');
   const i = lines.findIndex((l) => l.includes(DEMO_MARKER));
   if (i >= 0) {
@@ -524,6 +560,25 @@ export function withDemoLink(body: string, url: string): string | null {
   }
   return body.trim() ? `${body.trimEnd()}\n\n${line}\n` : `${line}\n`;
 }
+
+/**
+ * The versions a share command says its pages are written in: the first word for video pages (and
+ * for all, from a command that says one only), `html:<version>` for artifact pages.
+ */
+export interface Versions {
+  video: string;
+  html?: string;
+}
+
+export function parseVersions(out: string): Versions | null {
+  const words = out.trim().split('\n').at(-1)?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (!words[0]) return null;
+  const html = words.find((w) => w.startsWith('html:'))?.slice('html:'.length);
+  return { video: words[0], ...(html ? { html } : {}) };
+}
+
+/** The version a page of the kind is written in now. */
+const versionOf = (v: Versions | null, kind: DemoKind = 'video') => (v ? (kind === 'html' ? (v.html ?? v.video) : v.video) : null);
 
 /** A card's page keeps this slug for good: a shared link stays the same, and an export is named by it. */
 const slugOf = (card: Item) => branchName(card.title, card.id).slice('obeya/'.length);
