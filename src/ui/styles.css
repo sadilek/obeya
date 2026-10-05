@@ -678,11 +678,11 @@ button.link:hover { text-decoration: underline; }
 #lasso .lhead { fill: var(--working); }
 
 #ringback { position: fixed; inset: 0; z-index: 70; cursor: crosshair; }
-.ring { position: absolute; width: 0; height: 0; }
-.ring .rhalo { position: absolute; left: -112px; top: -112px; width: 224px; height: 224px; border-radius: 50%;
+#ringback .ring { position: absolute; width: 0; height: 0; }
+#ringback .ring .rhalo { position: absolute; left: -112px; top: -112px; width: 224px; height: 224px; border-radius: 50%;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 80%, transparent) 55%, transparent);
   transform: scale(.3); opacity: 0; transition: transform .25s, opacity .25s; }
-.ring.open .rhalo { transform: scale(1); opacity: 1; }
+#ringback .ring.open .rhalo { transform: scale(1); opacity: 1; }
 .ball { position: absolute; left: -19px; top: -19px; width: 38px; height: 38px; border-radius: 50%;
   display: grid; place-items: center; font: 600 20px/1 system-ui; color: var(--muted);
   background: radial-gradient(circle at 35% 30%, hsl(var(--h) 90% 78%), hsl(var(--h) 75% 52%) 60%, hsl(var(--h) 70% 38%));
