@@ -33,8 +33,12 @@ export function looping(text: string): boolean {
   return /(.{1,60}?)\1{5}/u.test(plain);
 }
 
-/** What Whisper writes for a recording without speech instead of a loop: there was nothing to hear. */
-export const silence = (text: string) => /^(vielen dank|danke fürs zuschauen|untertitel(ung)? (im auftrag )?des zdf.*)[.!]?$/i.test(text.trim());
+/**
+ * What Whisper writes for a recording without speech instead of a loop: there was nothing to hear.
+ * „Musik“, sure of itself and without the card titles, came from a 0.6 s press with room noise only.
+ */
+export const silence = (text: string) =>
+  /^[[(*]?(vielen dank|danke fürs zuschauen|musik|untertitel(ung)? (im auftrag )?des zdf.*)[.!]?[\])*]?$/i.test(text.trim());
 
 const VOICE = join(import.meta.dir, '../../voice');
 

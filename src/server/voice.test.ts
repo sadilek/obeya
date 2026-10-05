@@ -35,6 +35,6 @@ test('a loop is one word, phrase or syllable six times in a row, whatever the ca
 });
 
 test("Whisper's words for silence are told from a command", () => {
-  for (const s of ['Vielen Dank.', ' vielen Dank ', 'Untertitelung des ZDF, 2020', 'Danke fürs Zuschauen!']) expect(silence(s)).toBe(true);
-  for (const s of ['Vielen Dank, das war gut.', 'Danke, gib das frei.']) expect(silence(s)).toBe(false);
+  for (const s of ['Vielen Dank.', ' vielen Dank ', 'Untertitelung des ZDF, 2020', 'Danke fürs Zuschauen!', 'Musik', '[Musik]', '*Musik*']) expect(silence(s)).toBe(true);
+  for (const s of ['Vielen Dank, das war gut.', 'Danke, gib das frei.', 'Musik im Demo-Video leiser.']) expect(silence(s)).toBe(false);
 });

@@ -26,7 +26,10 @@ from mlx_whisper.audio import SAMPLE_RATE, load_audio
 
 MODEL = os.environ.get("OBEYA_WHISPER_MODEL", "mlx-community/whisper-large-v3-turbo")
 # below this peak a working microphone delivers nothing, not even room noise (about -40 to -55 dBFS on
-# the AT2020USB+), while speech peaks far above it: the recording is not transcribed, it has nothing to hear
+# the AT2020USB+), while speech peaks far above it: the recording is not transcribed, it has nothing to hear.
+# Not higher: the recordings Whisper failed on in five days of log (presses of a second or two with room
+# noise or a breath) peaked at -5 to -45 dBFS, among speech (-8 dBFS at the lowest); the two passes in the
+# server already make them "nothing heard" or "not understood".
 QUIET_DBFS = -60
 # Whisper's own thresholds for a failed decode (its defaults for compression_ratio_threshold and logprob_threshold)
 LOOPING, UNSURE = 2.4, -1.0
