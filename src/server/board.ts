@@ -44,6 +44,8 @@ export interface PrState {
   reported: string[];
   /** The commit a conflict was last reported for. */
   conflictHead?: string;
+  /** The commit the worker was last told its reviewers have not seen. */
+  staleHead?: string;
   /** The commit the PR was found ready to merge at; gone once something is left to do again. */
   readyHead?: string;
   /** Why GitHub refused Obeya's merge of the ready PR: then the owner merges. */

@@ -183,6 +183,40 @@ describe('watching', () => {
     expect(runtime.last.inbox.at(-1)).toContain('pull request was merged');
   });
 
+  test('a push the reviewer has not seen is not merged: the worker is asked to request a new review, once per commit', async () => {
+    // a PR on 2026-10-02: the fix after Greptile's 3/5 was pushed without a re-review request
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.head = 'bbb';
+    status.headAt = '2026-10-02T12:49:20Z';
+    status.comments = [
+      { id: 'cSUM', author: 'greptile', body: 'Confidence Score: 3/5', at: '2026-10-02T12:44:56Z' },
+      { id: 'i1', author: 'greptile', body: 'Permissions can remain active', at: '2026-10-02T12:45:00Z', round: 'A', resolved: true },
+      { id: 'i2', author: 'owner', body: 'Fixed in bbb.', at: '2026-10-02T12:52:13Z', round: 'B', replyTo: 'i1' },
+    ];
+    // what the worker was told already
+    board.work(id, { pr: JSON.stringify({ ...JSON.parse(board.row(id).pr!), seen: ['cSUM', 'i1'] }) });
+    watcher.poll();
+    expect(merges).toEqual([]);
+    expect(runtime.last.inbox.at(-1)).toContain('nobody asked for another look');
+    expect(board.events(id).at(-1)!.text).toBe('Neuer Stand seit dem letzten Review, um ein neues hat niemand gebeten. Der Agent fragt danach.');
+    // said once for this commit
+    runtime.last.emit({ type: 'idle' });
+    const inbox = runtime.last.inbox.length;
+    watcher.poll();
+    expect(runtime.last.inbox.length).toBe(inbox);
+    // the worker asks; the reviewer answers by rewriting its summary
+    status.comments.push({ id: 'cPING', author: 'owner', body: '@greptile re-review', at: '2026-10-02T12:53:00Z' });
+    watcher.poll();
+    expect(merges).toEqual([]);
+    status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 5/5', edited: '2026-10-02T12:57:00Z' };
+    watcher.poll();
+    expect(merges).toEqual(['bbb']);
+    expect(state(id)).toBe('live');
+  });
+
   test('a PR found ready before Obeya merged is merged on the next round', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });

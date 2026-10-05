@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, type PrStatus } from './forge';
+import { lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, type PrStatus } from './forge';
 
 test('parsePrUrl', () => {
   expect(parsePrUrl('https://github.com/example-org/acme/pull/813')).toEqual({ owner: 'example-org', repo: 'acme', number: 813 });
@@ -37,6 +37,7 @@ test('gh output becomes a PR status', () => {
             pullRequest: {
               reviewThreads: { nodes: [{ isResolved: true, comments: { nodes: [{ databaseId: 7 }] } }] },
               comments: { nodes: [{ id: 'IC_1', updatedAt: '2026-10-02T08:09:00Z' }] },
+              commits: { nodes: [{ commit: { committedDate: '2026-10-02T07:58:00Z' } }] },
             },
           },
         },
@@ -54,6 +55,7 @@ test('gh output becomes a PR status', () => {
     mergeable: 'CONFLICTING',
     mergeState: 'DIRTY',
     head: 'abc',
+    headAt: '2026-10-02T07:58:00Z',
     author: 'owner',
     checks: [
       { name: 'build', state: 'failure', url: 'https://ci/1' },
@@ -152,6 +154,41 @@ test('ready to merge: GitHub clean, checks green, threads resolved, the last re-
   expect(without((c) => (c.mergeable = 'UNKNOWN'))).toBe(false);
   // no reviewer asked for anything
   expect(without((c) => (c.comments = []))).toBe(true);
+  // the head commit is older than the reviewer's last word; one made after it is not reviewed yet
+  expect(without((c) => (c.headAt = at('45')))).toBe(true);
+  expect(without((c) => (c.headAt = at('50')))).toBe(false);
+});
+
+test('a push since the review is not ready to merge until the reviewer has seen it', () => {
+  // a PR on 2026-10-02: Greptile rated the first commit 3/5; the worker pushed a fix,
+  // replied in the threads and resolved them, but asked for no new review, and the PR was merged
+  const s: PrStatus = {
+    state: 'OPEN',
+    mergeable: 'MERGEABLE',
+    mergeState: 'CLEAN',
+    head: 'ae384ff',
+    headAt: '2026-10-02T12:49:20Z',
+    author: 'owner',
+    checks: [{ name: 'CI', state: 'success' }],
+    comments: [
+      { id: 'cDEPLOY', author: 'cloudflare', body: 'Deployed', at: '2026-10-02T12:40:45Z', edited: '2026-10-02T12:53:00Z' },
+      { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 3/5', at: '2026-10-02T12:44:56Z' },
+      { id: 'i1', author: 'greptile-apps', body: 'Permissions can remain active', at: '2026-10-02T12:45:00Z', round: 'A', resolved: true },
+      { id: 'i2', author: 'owner', body: 'Fixed in ae384ff.', at: '2026-10-02T12:52:13Z', round: 'B', replyTo: 'i1' },
+    ],
+  };
+  expect(reviewStale(s, ['cloudflare'])).toBe(true);
+  expect(readyToMerge(s, ['cloudflare'])).toBe(false);
+  // asked, not answered yet
+  s.comments.push({ id: 'cPING', author: 'owner', body: '@greptile re-review', at: '2026-10-02T12:53:00Z' });
+  expect(lastAsked(s)).toBe('2026-10-02T12:53:00Z');
+  expect(readyToMerge(s, ['cloudflare'])).toBe(false);
+  // the reviewer rewrites its summary
+  s.comments[1]!.edited = '2026-10-02T12:57:00Z';
+  expect(reviewStale(s, ['cloudflare'])).toBe(false);
+  expect(readyToMerge(s, ['cloudflare'])).toBe(true);
+  // a PR no reviewer wrote on waits for nobody
+  expect(reviewStale({ ...s, comments: [s.comments[0]!] }, ['cloudflare'])).toBe(false);
 });
 
 test('the description is read with gh pr view and replaced through a file', () => {

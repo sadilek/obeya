@@ -3,7 +3,7 @@
 // merges it (the owner's approval covered that); a merge makes the card live.
 
 import type { Board, PrState } from './board';
-import { readyToMerge, reviewOf, type Forge, type PrStatus } from './forge';
+import { lastAsked, readyToMerge, reviewOf, reviewStale, type Forge, type PrStatus } from './forge';
 import type { Workers } from './workers';
 
 export class PrWatcher {
@@ -84,7 +84,7 @@ export class PrWatcher {
           cardId,
           comments.length === 1 ? `Neuer Review-Kommentar von ${comments[0]!.author}, an den Agenten weitergegeben.` : `${comments.length} neue Review-Kommentare, an den Agenten weitergegeben.`,
           [
-            'New review comments on your pull request. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or leave it where a change is not right, and push). Each comment gets a reply in its own thread, not one comment for all: what you changed, or why not. Then resolve each thread, unless you still want the reviewer’s answer. End your turn. Use ask if one questions a decision only the owner can make.',
+            'New review comments on your pull request. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or leave it where a change is not right, and push). Each comment gets a reply in its own thread, not one comment for all: what you changed, or why not. Then resolve each thread, unless you still want the reviewer’s answer. Once you pushed, ask the reviewers for a new review the way the repository does it: Obeya merges only on a review of the latest commit. End your turn. Use ask if one questions a decision only the owner can make.',
             ...comments.map((c) => `- ${c.author}${c.path ? ` on ${c.path}${c.line ? `:${c.line}` : ''}` : ''}${c.url ? ` (${c.url})` : ''}:\n${c.body}`),
           ].join('\n\n'),
         );
@@ -107,7 +107,17 @@ export class PrWatcher {
         );
       } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
       // ready only while the worker has nothing in hand: what it was told may still change the PR
-      if (!comments.length && !failed.length && !this.workers.busyCards().includes(cardId) && readyToMerge(s, this.noise)) {
+      const idle = !comments.length && !failed.length && !this.workers.busyCards().includes(cardId);
+      // a push the reviewer has not seen, and nobody asked for another look: the worker asks, once per commit
+      if (idle && reviewStale(s, this.noise) && lastAsked(s) < s.headAt! && pr.staleHead !== s.head) {
+        next.staleHead = s.head;
+        this.workers.prEvent(
+          cardId,
+          'Neuer Stand seit dem letzten Review, um ein neues hat niemand gebeten. Der Agent fragt danach.',
+          'Your pull request has commits its reviewers have not seen: their last word is older than the head commit, and nobody asked for another look since. Their verdict is about an older state, so Obeya does not merge on it. Ask them for a new review the way the repository does it (its own skill or script for this, if it has one; otherwise a comment mentioning the review bot), and end your turn.',
+        );
+      }
+      if (idle && readyToMerge(s, this.noise)) {
         if (pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya mergt.');
         next.readyHead = s.head;
         // the owner's approval covered the merge: Obeya merges, and tries again each round while GitHub refuses
