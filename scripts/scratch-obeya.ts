@@ -14,7 +14,8 @@
 // for commits on this checkout when it runs this checkout's code) and, unless
 // --real-workers, with --idle-workers: a started card is in progress without an agent. The
 // Koordinator and voice are real. --code <commit> runs that commit's code (`git archive`, with
-// this checkout's node_modules) in <dir>/code.
+// this checkout's node_modules) in <dir>/code; that starts cold and on a busy machine takes well
+// over half a minute, so the script waits up to 5 minutes for the server while its process lives.
 //
 // The stage file (JSON; every field but `cards` optional):
 //   {
