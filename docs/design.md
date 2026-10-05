@@ -654,7 +654,20 @@ the owner's language (`src/core/locale.ts`).
   agent writing the narration; `DEMO_VOICE` overrides the voice for one render (another provider,
   never the owner's own, or a `.wav` that Qwen3-TTS clones). Settings from before the providers
   carry over: `gemini` keeps its key file, `clone` becomes the owner's own command, still to be
-  written. How to run each project's app
+  written. What a render needs on the machine is checked by `lib/setup.ts`: Node 22.18 or newer
+  (TypeScript without flags), Playwright and a browser (found where Playwright looks), ffmpeg
+  with libx264, uv (which brings Python), the voice, and Whisper (in uv's cache and the Hugging
+  Face cache, else fetched by the first render, about 1.6 GB: not missing, only later). Each
+  missing piece comes with how to install it on this platform (Homebrew, winget, the Linux
+  family's package manager from `/etc/os-release`, else a page). The settings sheet shows the
+  check below the demo settings ("Was Demos auf diesem Rechner brauchen", the voice left out
+  since it has its own lines), again when listening back is switched, after an installation and
+  on "Erneut prüfen"; a render runs it before anything else and stops with the whole list
+  (`--narration` leaves out the browser); `node lib/setup.ts` prints it for an agent, which
+  installs a voice itself but asks the owner for system software. The guide for setting up a
+  machine is `docs/demo-setup.md`. Not tried yet (2026-10-05): Edge as the fallback, a voice
+  command through `cmd.exe`, Qwen3-TTS through PyTorch (no machine with a GPU); Obeya itself on
+  Windows and its own voice in and out outside macOS are separate, larger questions. How to run each project's app
   for a demo is the adapter's `demo.howToRun` (Acme: AppHost, login, QA customer, migrations;
   Obeya: the scratch instance); without Obeya, `bun lib/recipe.ts` in a repository prints it. The
   worker records once the change is committed and checked, as the adapter says how to run the
@@ -740,7 +753,7 @@ the owner's language (`src/core/locale.ts`).
   chapters and the progress bar jumped back to the start. The page therefore asks for a range
   first and, getting the whole file, plays the video from memory. A call writes its own page and
   the overview; the other pages stay as they were written (their `meta.json` keeps what a page
-  shows). It refuses files over 25 MiB (the Pages limit)
+  shows). It refuses files over 25 MiB (the Pages limit; the largest demo so far was 11 MB, a larger one would need R2 behind Access)
   and a site that lacks a page Obeya has as shared (a lost directory would take them offline), and
   puts the directory back when a deployment fails. The owner sets it up once in Cloudflare (done
   2026-10-02), in this order: the Pages project `team-demos` (under Pages: the dashboard's plain
@@ -985,5 +998,3 @@ the repository; the copy on the project is only for the archive).
 - Which Acme clones may workers lease: the existing `~/dev/app2`–`app5`, or fresh ones?
 - A plan doc without a `## Workstreams` checklist is not shown (in Acme: `parsed-view.md`,
   whose tasks sit under other headings). Fix such docs, or show them as projects without cards?
-- Demos for open source (the pipeline in the repository, voices as providers, Windows and Linux,
-  sharing beyond Acme): planned in [`docs/plan/demo-sharing.md`](plan/demo-sharing.md).

@@ -1,6 +1,6 @@
 // Every UI string. German first; an English table follows the same shape.
 
-import { type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason } from '../core/types';
+import { type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId } from '../core/types';
 
 export const t = {
   kind: { task: 'Aufgabe', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
@@ -389,6 +389,30 @@ export const t = {
         noTranscript: 'Neben der Stimmprobe fehlt ihr Transkript (gleicher Name, .txt).',
         notHere: '„say“ gibt es nur auf einem Mac.',
       } satisfies Record<DemoSettingsProblem, string>,
+    },
+    setup: {
+      title: 'Was Demos auf diesem Rechner brauchen',
+      hint: (platform: string) => `Geprüft auf ${platform}. Fehlt etwas, bricht eine Aufnahme gleich am Anfang ab und nennt, was fehlt und wie man es installiert.`,
+      guide: 'Anleitung im Repository:',
+      names: {
+        node: 'Node.js',
+        playwright: 'Playwright',
+        browser: 'Browser zum Aufnehmen',
+        ffmpeg: 'ffmpeg (Schnitt)',
+        uv: 'uv (bringt Python mit)',
+        voice: 'Stimme',
+        whisper: 'Whisper (Gegenhören)',
+      } satisfies Record<SetupId, string>,
+      there: 'da',
+      missing: 'fehlt',
+      needs: (found: string, need: string) => `${found}, braucht ${need}`,
+      later: (size: string) => `wird bei der ersten Aufnahme geladen (etwa ${size})`,
+      off: 'aus (siehe oben)',
+      install: 'Im Terminal:',
+      more: 'Mehr dazu',
+      ready: 'Alles da: Agenten können Demos aufnehmen.',
+      recheck: 'Erneut prüfen',
+      checking: 'Prüfe …',
     },
   },
   restart: {

@@ -3,6 +3,7 @@
 import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
+export type { SetupCheck, SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 
 export type CardKind = 'task' | 'project';
 

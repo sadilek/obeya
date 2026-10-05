@@ -164,8 +164,10 @@ export function serve(
         GET: () => (config ? Response.json(config.demo()) : new Response('Not found', { status: 404 })),
         PUT: async (req) => (config ? handle(async () => config.saveDemo(await req.json())) : new Response('Not found', { status: 404 })),
       },
-      // a voice as the owner chooses it: checked, installed (in the background), heard in a sample
+      // a voice as the owner chooses it: checked, installed (in the background), heard in a sample;
+      // and what else a render needs on this machine
       '/api/demo-settings/check': { POST: async (req) => (config ? handle(async () => config.checkDemo(await req.json())) : new Response('Not found', { status: 404 })) },
+      '/api/demo-settings/setup': { POST: async (req) => (config ? handle(async () => config.demoSetup(await req.json())) : new Response('Not found', { status: 404 })) },
       '/api/demo-settings/install': { POST: async (req) => (config ? handle(async () => config.installDemoVoice(await req.json())) : new Response('Not found', { status: 404 })) },
       '/api/demo-settings/sample': {
         POST: async (req) => {

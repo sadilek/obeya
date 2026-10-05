@@ -67,6 +67,14 @@ costs more than a restart of one service.
 
 ## 3. Explore before scripting
 
+First check that this machine can record: `node ${CLAUDE_SKILL_DIR}/lib/setup.ts` lists Node,
+Playwright and a browser, ffmpeg, uv (it brings Python), the voice of the settings and Whisper,
+and under each missing piece how to install it on this platform (`docs/demo-setup.md` in the
+Obeya repository says more). A render runs the same check and stops at once with that list. A
+voice that is not installed you may install yourself (`node ${CLAUDE_SKILL_DIR}/lib/voices.ts
+install`, a download into Obeya's home). System software (Node, a browser, ffmpeg, uv) is the
+owner's to install: ask them with the lines the check printed, rather than installing it.
+
 Look at the real UI first: find the pages, the stable locators (ids, roles, exact texts) and what
 each state looks like. For a look through Playwright, put `explore.ts` in the demo directory and
 run `node explore.ts`:
@@ -154,7 +162,8 @@ default) or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or 
 a key file. The settings live in `demo.json` in Obeya's home (`OBEYA_HOME`, else `~/.obeya`);
 Obeya's settings sheet edits them, installs Piper and Qwen3-TTS, and plays a sample. A voice that
 is not installed stops the render with how to install it: from the settings sheet, or
-`node ${CLAUDE_SKILL_DIR}/lib/voices.ts install`. `DEMO_VOICE=<provider>` renders in another
+`node ${CLAUDE_SKILL_DIR}/lib/voices.ts install`; so does anything else the render needs
+(`lib/setup.ts`, section 3). `DEMO_VOICE=<provider>` renders in another
 voice; `DEMO_VOICE=<path>.wav` clones that clip with Qwen3-TTS (its exact transcript beside it as
 `.txt`). Clips are cached by voice and text, so re-runs after a
 visual fix skip synthesis. Each clip is transcribed back with Whisper (mlx-whisper on Apple

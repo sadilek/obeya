@@ -3,7 +3,7 @@
 // read-only.
 
 import { useEffect, useRef, useState } from 'react';
-import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, NarrationLanguage, RepoConfig, VoiceKind } from '../core/types';
+import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, NarrationLanguage, RepoConfig, SetupCheck, SetupItem, VoiceKind } from '../core/types';
 import { api, ApiError } from './api';
 import { errorText, t } from './strings';
 
@@ -350,6 +350,74 @@ function DemoBlock({ on }: { on: boolean }) {
           )}
         </div>
         {status && <p className="hint c-status">{status}</p>}
+      </section>
+      <SetupBlock draft={draft} installing={installing} />
+    </>
+  );
+}
+
+const PLATFORMS: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
+
+/**
+ * What a render needs on this machine besides the voice (that has its own lines above), each
+ * missing piece with how to install it here. Checked again for the voice's listening back as it
+ * is being chosen, after an installation, and on request.
+ */
+function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: boolean }) {
+  const [setup, setSetup] = useState<SetupCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+  const s = t.config.setup;
+  const recheck = () => {
+    setChecking(true);
+    return api.demoSetup(draft).then(setSetup, console.error).finally(() => setChecking(false));
+  };
+  useEffect(() => {
+    if (!installing) recheck();
+  }, [draft.listenBack, installing]);
+  if (!setup) return null;
+  const items = setup.items.filter((i) => i.id !== 'voice');
+  const state = (i: SetupItem) => {
+    if (i.state === 'later') return s.later(megabytes(i.mb ?? 0));
+    if (i.state === 'off') return s.off;
+    if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
+    return i.found ?? s.there;
+  };
+  return (
+    <>
+      <h4 className="p-h">{s.title}</h4>
+      <section className="c-canvas c-setup">
+        <p className="hint">{s.hint(`${PLATFORMS[setup.platform] ?? setup.platform} (${setup.arch})`)}</p>
+        <ul>
+          {items.map((i) => (
+            <li key={i.id} className={i.state}>
+              <span className="c-mark" aria-hidden>
+                {{ ok: '✓', missing: '✗', later: '…', off: '–' }[i.state]}
+              </span>
+              <span className="c-name">{s.names[i.id]}</span>
+              <span className="hint">{state(i)}</span>
+              {i.state === 'missing' && i.install && (
+                <div className="c-how">
+                  {!!i.install.commands.length && <span className="hint">{s.install}</span>}
+                  {i.install.commands.map((c) => (
+                    <code key={c}>{c}</code>
+                  ))}
+                  {i.install.url && (
+                    <a href={i.install.url} target="_blank" rel="noreferrer">
+                      {s.more}
+                    </a>
+                  )}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+        {!items.some((i) => i.state === 'missing') && <p className="hint">{s.ready}</p>}
+        <p className="hint">
+          {s.guide} <code>docs/demo-setup.md</code>
+        </p>
+        <button className="btn small" disabled={checking} onClick={recheck}>
+          {checking ? s.checking : s.recheck}
+        </button>
       </section>
     </>
   );

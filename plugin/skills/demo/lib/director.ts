@@ -9,7 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { type NarrationLanguage, readDemoSettings, withVoice } from './settings.ts';
-import { installState, onMlx, TTS_LOCK, voiceSpec } from './voices.ts';
+import { checkSetup, describeSetup, whisperKit } from './setup.ts';
+import { TTS_LOCK, voiceSpec } from './voices.ts';
 
 export interface Scene {
   /** Chapter title in the player. */
@@ -284,12 +285,9 @@ function run(cmd: string, args: string[], opts: { cwd?: string } = {}) {
  */
 function whisper(): { backend: 'mlx' | 'faster' | 'off'; uvArgs: string[]; unchecked?: string } {
   if (SETTINGS.listenBack === false) return { backend: 'off', uvArgs: [] };
-  // faster-whisper's CTranslate2 has wheels for released Pythons only, so not for the newest one uv may pick.
-  const [backend, uvArgs, probe] = onMlx()
-    ? (['mlx', ['--with', 'mlx-whisper'], 'mlx_whisper'] as const)
-    : (['faster', ['--python', '3.12', '--with', 'faster-whisper'], 'faster_whisper'] as const);
+  const { backend, uvArgs, module: probe } = whisperKit();
   const r = spawnSync('uv', ['run', '--quiet', '--no-project', ...uvArgs, 'python', '-c', `import ${probe}`], { encoding: 'utf8' });
-  if (r.status === 0) return { backend, uvArgs: [...uvArgs] };
+  if (r.status === 0) return { backend, uvArgs };
   const why = (r.error?.message ?? r.stderr ?? '').trim().split('\n').at(-1);
   return { backend: 'off', uvArgs: [], unchecked: `${probe.replace('_', '-')} could not be loaded: ${why}` };
 }
@@ -298,10 +296,6 @@ function synthesize(scenes: Scene[], dir: string): Narration {
   const jobs = scenes.map((s, i) => ({ id: `s${i + 1}`, text: s.say }));
   const jobsFile = path.join(dir, 'jobs.json');
   fs.writeFileSync(jobsFile, JSON.stringify(jobs));
-  const install = installState(SETTINGS);
-  if (!install.installed) {
-    throw new Error(`the voice ${SETTINGS.voice} is not installed (missing ${install.missing.join(', ')}, about ${install.mb} MB): install it in Obeya's settings, or run \`node ${path.join(LIB, 'voices.ts')} install\``);
-  }
   const spec = voiceSpec(SETTINGS);
   const specFile = path.join(dir, 'voice.json');
   fs.writeFileSync(specFile, JSON.stringify(spec));
@@ -439,6 +433,9 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   const work = path.join(outDir, '.work');
   fs.mkdirSync(work, { recursive: true });
   holdRenderLock(work);
+  // Everything the render needs is there before it starts, or it stops with the whole list.
+  const setup = await checkSetup(SETTINGS, { narrationOnly: process.argv.includes('--narration') });
+  if (setup.items.some((i) => i.state === 'missing')) throw new Error(`cannot render yet:\n${describeSetup(setup)}`);
   const framesDir = path.join(work, 'frames');
   fs.rmSync(framesDir, { recursive: true, force: true });
   fs.mkdirSync(framesDir, { recursive: true });

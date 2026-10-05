@@ -503,6 +503,18 @@ label.c-row input { width: 64px; }
 .c-install .hint { margin: 0; }
 .c-install code { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .c-status { margin-top: 8px; }
+/* what demos need on this machine: one line per piece, how to install a missing one below it */
+.c-setup > .hint:first-child { margin-top: 0; }
+.c-setup ul { list-style: none; padding: 0; margin: 6px 0; }
+.c-setup li { display: grid; grid-template-columns: 16px auto 1fr; column-gap: 8px; align-items: baseline; padding: 3px 0; font-size: 13px; }
+.c-setup li .hint { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.c-mark { font-weight: 700; text-align: center; color: var(--approved); }
+.c-setup li.missing .c-mark { color: #dc2626; }
+.c-setup li.later .c-mark, .c-setup li.off .c-mark { color: var(--muted); }
+.c-setup li.missing .c-name { font-weight: 600; }
+.c-how { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; margin: 3px 0 4px; }
+.c-how code { padding: 2px 6px; border-radius: 5px; background: var(--card); border: 1px solid var(--line); user-select: all; }
+.c-how a { font-size: 12px; }
 .c-server { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; }
 .c-server dt { color: var(--muted); }
 .c-server dd { margin: 0; min-width: 0; }

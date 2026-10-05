@@ -39,4 +39,6 @@ The canvases and their repositories can be seen and changed in the app ("Konfigu
 telling the Koordinator; saving writes `canvases.json` and restarts Obeya with it.
 
 Voice needs a Python with `mlx_whisper` (`OBEYA_WHISPER_PYTHON=/path/to/python`); without it
-Obeya runs the sidecar through `uv run --with mlx-whisper`. Demos need the `demo` skill.
+Obeya runs the sidecar through `uv run --with mlx-whisper`. Demos are recorded by the skill in
+`plugin/`, which Obeya gives its workers; what a machine needs for them (Node, a browser, ffmpeg,
+uv, a voice) is in [`docs/demo-setup.md`](docs/demo-setup.md), checked in the app's settings.

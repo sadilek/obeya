@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, DemoSettingsView, DemoVoiceCheck, CardEvent, CardPatch, Item, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, DemoSettingsView, DemoVoiceCheck, SetupCheck, CardEvent, CardPatch, Item, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -72,6 +72,7 @@ export const api = {
   demoSettings: () => call<DemoSettingsView>('GET', '/api/demo-settings'),
   saveDemoSettings: (settings: DemoSettings) => call<DemoSettingsView>('PUT', '/api/demo-settings', settings),
   checkDemoVoice: (settings: DemoSettings) => call<DemoVoiceCheck>('POST', '/api/demo-settings/check', settings),
+  demoSetup: (settings: DemoSettings) => call<SetupCheck>('POST', '/api/demo-settings/setup', settings),
   installDemoVoice: (settings: DemoSettings) => call<DemoSettingsView>('POST', '/api/demo-settings/install', settings),
   /** One sentence in the voice, as a WAV to play. */
   async demoVoiceSample(settings: DemoSettings): Promise<Blob> {

@@ -100,12 +100,13 @@ function hfHub() {
   return path.join(process.env.HF_HOME || path.join(os.homedir(), '.cache', 'huggingface'), 'hub');
 }
 
-function hfModelPresent(repo: string) {
+/** Whether a model is in the Hugging Face cache: its config and its weights (safetensors, or CTranslate2's `model.bin`). */
+export function hfModelPresent(repo: string) {
   const snapshots = path.join(hfHub(), `models--${repo.replace('/', '--')}`, 'snapshots');
   if (!fs.existsSync(snapshots)) return false;
   return fs.readdirSync(snapshots).some((snap) => {
     const files = fs.readdirSync(path.join(snapshots, snap));
-    return files.includes('config.json') && files.some((f) => f.endsWith('.safetensors'));
+    return files.includes('config.json') && files.some((f) => f.endsWith('.safetensors') || f === 'model.bin');
   });
 }
 

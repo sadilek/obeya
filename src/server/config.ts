@@ -20,6 +20,7 @@ import {
   VOICES,
   writeDemoSettings,
 } from '../../plugin/skills/demo/lib/settings.ts';
+import { checkSetup, type SetupCheck } from '../../plugin/skills/demo/lib/setup.ts';
 import { installState, installVoice, KEY_ENV, sample } from '../../plugin/skills/demo/lib/voices.ts';
 import { BadRequest } from './board';
 import { ConfigError, resolveCanvas } from './canvas';
@@ -250,6 +251,11 @@ export class Config {
   /** A voice as the owner is choosing it, before it is saved. */
   checkDemo(input: unknown): DemoVoiceCheck {
     return this.voiceCheck(parseDemo(input));
+  }
+
+  /** What a render with these settings needs on this machine, and how to install what is missing. */
+  demoSetup(input: unknown): Promise<SetupCheck> {
+    return checkSetup(parseDemo(input), { home: this.o.server.home });
   }
 
   private voiceJob?: VoiceInstallJob;
