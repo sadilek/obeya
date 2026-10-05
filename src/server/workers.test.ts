@@ -533,7 +533,7 @@ describe('handing over with a demo', () => {
     writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00:00.350 --> 00:00:05.000\nA.\n\n00:00:06.350 --> 00:00:09.000\nB.\n');
     return d;
   };
-  const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, shown: ['Export'], not_shown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
+  const demo = (d: string, chapters = ['Vorher', 'Nachher']) => ({ dir: d, chapters, question: 'Semikolon oder Komma?' });
 
   test('the worker gets the demo skill from the plugin that comes with Obeya, its brief names it, and it knows where Obeya is', () => {
     rmSync(dir, { recursive: true, force: true });
@@ -553,7 +553,7 @@ describe('handing over with a demo', () => {
     const d = demoDir();
     expect(runtime.last.call('ready_for_review', { summary: 'S', demo: demo(d) })).toContain('End your turn');
     expect(state(c.id)).toBe('waiting:demo');
-    expect(board.item(c.id)!.demo).toEqual({ kind: 'video', chapters: [[0, 'Vorher'], [6, 'Nachher']], shown: ['Export'], notShown: ['PDF: nicht betroffen'], findings: [], question: 'Semikolon oder Komma?' });
+    expect(board.item(c.id)!.demo).toEqual({ kind: 'video', chapters: [[0, 'Vorher'], [6, 'Nachher']], question: 'Semikolon oder Komma?' });
     expect(board.item(c.id)!.summary).toBe('S');
     expect(board.demoFiles(c.id)).toEqual({ dir: d, kind: 'video' });
     workers.message(c.id, 'Bitte mit Kopfzeile.');
@@ -631,14 +631,14 @@ describe('handing over with a demo', () => {
     workers.start(c.id);
     const d = join(dir, 'logos');
     Bun.spawnSync(['mkdir', '-p', join(d, 'img')]);
-    const html = { kind: 'html', dir: d, shown: ['Drei Logo-Entwürfe'], not_shown: [], findings: [] };
+    const html = { kind: 'html', dir: d };
     expect(runtime.last.call('ready_for_review', { summary: 'S', demo: html })).toContain('index.html is missing');
     expect(state(c.id)).toBe('working');
     writeFileSync(join(d, 'index.html'), '<img src="img/a.svg">');
     writeFileSync(join(d, 'img', 'a.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
     expect(runtime.last.call('ready_for_review', { summary: 'S', demo: html })).toContain('End your turn');
     expect(state(c.id)).toBe('waiting:demo');
-    expect(board.item(c.id)!.demo).toEqual({ kind: 'html', chapters: [], shown: ['Drei Logo-Entwürfe'], notShown: [], findings: [] });
+    expect(board.item(c.id)!.demo).toEqual({ kind: 'html', chapters: [] });
     expect(board.demoFiles(c.id)).toEqual({ dir: d, kind: 'html' });
   });
 
@@ -869,7 +869,7 @@ describe('a worktree per card', () => {
     mkdirSync(demo);
     writeFileSync(join(demo, 'demo.mp4'), '0');
     writeFileSync(join(demo, 'captions.vtt'), 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nEins.\n');
-    const handOver = { summary: 'S', demo: { dir: demo, chapters: ['Eins'], shown: [], not_shown: [], findings: [] } };
+    const handOver = { summary: 'S', demo: { dir: demo, chapters: ['Eins'] } };
     const a = manual();
     const b = board.create({ title: 'Zweite Karte', x: 0, y: 0 });
     workers.start(a.id);

@@ -6,7 +6,7 @@ const store = () => {
   const m = new Map<string, string>();
   return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
 };
-const demo = (at: number): Demo => ({ chapters: [[0, 'Start'], [at, 'Ende']], shown: [], notShown: [], findings: [] });
+const demo = (at: number): Demo => ({ chapters: [[0, 'Start'], [at, 'Ende']] });
 
 test("a card's demo plays on its own only the first time the card is opened", () => {
   const s = store();

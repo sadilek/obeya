@@ -246,9 +246,6 @@ export interface Demo {
   kind?: DemoKind;
   /** Seconds and title of each scene; none for an HTML artifact. */
   chapters: [number, string][];
-  shown: string[];
-  notShown: string[];
-  findings: string[];
   /** A question only the owner can answer, beyond "approve or give feedback". */
   question?: string;
   /** The owner's answer to it; the demo keeps waiting for approval. */

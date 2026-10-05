@@ -749,7 +749,7 @@ export class Workers {
       },
       {
         name: 'ready_for_review',
-        description: `Hand the finished work to the owner, after committing it, running the checks${this.o.adapter.demo ? ' and making the demo' : ''}. The summary (in ${OWNER_LANGUAGE}) says what changed from the user's point of view, what you verified and how, and anything the owner should know. ${this.o.adapter.demo?.required ? 'The demo is required: ' : 'With a demo, pass '}a video's directory and chapter titles in scene order, or an HTML artifact's directory, with its report (in ${OWNER_LANGUAGE}); without a new one, the demo already on the card stands. Only when there is nothing to show at all, pass no_demo instead. Then end your turn.`,
+        description: `Hand the finished work to the owner, after committing it, running the checks${this.o.adapter.demo ? ' and making the demo' : ''}. The summary (in ${OWNER_LANGUAGE}) is the whole report the owner reads: what changed from the user's point of view and what they really need to know (something left open or not verified, a decision you took for them), in a few short paragraphs at most. A problem you noticed outside the task goes to propose_card, not into the summary. ${this.o.adapter.demo?.required ? 'The demo is required: ' : 'With a demo, pass '}a video's directory and chapter titles in scene order, or an HTML artifact's directory, with its report (in ${OWNER_LANGUAGE}); without a new one, the demo already on the card stands. Only when there is nothing to show at all, pass no_demo instead. Then end your turn.`,
         schema: {
           summary: z.string(),
           demo: z
@@ -760,9 +760,6 @@ export class Workers {
                 .describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at, for results that are seen rather than watched happening"),
               dir: z.string().describe('absolute path of the demo: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
               chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
-              shown: z.array(z.string()),
-              not_shown: z.array(z.string()).describe('behaviours not in the demo, each with why'),
-              findings: z.array(z.string()),
               question: z.string().optional().describe('only when something needs the owner beyond approve or feedback; the owner can answer it on the card before approving'),
               ...(this.shares
                 ? {
@@ -784,7 +781,7 @@ export class Workers {
         run: ({ summary, demo, no_demo }) => {
           const s = clip(String(summary), 6000);
           const d = demo as
-            | { kind?: DemoKind; dir: string; chapters?: string[]; shown: string[]; not_shown: string[]; findings: string[]; question?: string; page?: DemoPage }
+            | { kind?: DemoKind; dir: string; chapters?: string[]; question?: string; page?: DemoPage }
             | undefined;
           const none = typeof no_demo === 'string' && no_demo.trim() ? clip(no_demo.trim(), 1000) : undefined;
           const row = this.o.board.row(cardId);
@@ -800,7 +797,7 @@ export class Workers {
           let demoJson: string | undefined;
           if (d) {
             const kind = d.kind ?? 'video';
-            const report = { shown: d.shown, notShown: d.not_shown, findings: d.findings, ...(d.question ? { question: d.question } : {}) };
+            const report = d.question ? { question: d.question } : {};
             if (kind === 'html') {
               const wrong = checkArtifact(d.dir);
               if (wrong) return `Not handed over: ${wrong}. Fix the artifact, then call ready_for_review again.`;
@@ -994,7 +991,7 @@ ${idea.idea.brief}` : '',
     if (this.o.adapter.demo)
       parts.push(
         [
-          `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review (with its report).`,
+          `${this.o.adapter.demo.required ? 'Then show' : 'Where it helps the owner, show'} the owner the result, so they can judge at a glance whether the work is done, and hand it over with ready_for_review.`,
           `Usually that is a demo of the change, recorded with the demo skill (\`${DEMO_SKILL}\`) as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ' The owner may share a video with colleagues of the team on a page of its own: hand it over with that page (title, text), written for them.' : ''} How to run the app for the demo: ${this.o.adapter.demo.howToRun}`,
           "When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis), make an HTML artifact instead: an index.html in a new directory under ~/demos/ (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.",
           `Only when there is nothing to show at all (the task turned out to be done already, say), hand over with no_demo and why instead. That is the exception: the owner wants something to see.`,

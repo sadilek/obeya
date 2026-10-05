@@ -101,6 +101,10 @@ Defects the demo uncovers:
 Either way, what needs the owner's judgement — a product or wording question, a trade-off, a
 pre-existing issue outside the change — goes into `findings`.
 
+Under Obeya, the card shows the video and the worker's handover summary, not the report page:
+what the owner needs to know goes into that summary, a problem worth a card of its own into a
+proposal (`propose_card`).
+
 ## 4. Write the demo script
 
 Create `~/demos/<repo-dir>-<slug>/demo.ts` (model: the newest demo of the same repository under

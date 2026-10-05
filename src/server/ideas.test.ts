@@ -487,7 +487,7 @@ describe('a prototype', () => {
     await settle();
   };
   const handOver = (s: FakeSession, summary: string, demo = 'demo') =>
-    s.call('ready_for_review', { summary, demo: { dir: demoDir(demo), chapters: ['Knopf'], shown: ['Knopf'], not_shown: [], findings: [] } });
+    s.call('ready_for_review', { summary, demo: { dir: demoDir(demo), chapters: ['Knopf'] } });
 
   test('builds a throwaway prototype whose demo shows on the idea; discarded, it goes into the archive', () => {
     const i = idea();

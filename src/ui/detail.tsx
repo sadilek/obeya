@@ -5,7 +5,7 @@ import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
-import { Inline, plain, shortTitle } from './markdown';
+import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { errorText, stateLabel, t } from './strings';
 import { talkTurns } from './talk';
@@ -894,31 +894,6 @@ function DemoView({
         </div>
       </div>
       <Body md={summary} />
-      <div className="cols">
-        {(
-          [
-            [t.demo.shown, demo.shown],
-            [t.demo.notShown, demo.notShown],
-            [t.demo.findings, demo.findings],
-          ] as const
-        ).map(([h, list]) => (
-          <section key={h}>
-            <h4>{h}</h4>
-            {list.length ? (
-              <ul>
-                {list.map((x, i) => (
-                  <li key={i}>
-                    <Inline md={x} />
-                    {run && list === demo.findings && <FollowUp finding={x} item={item} all={all} run={run} />}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="hint">{t.demo.none}</span>
-            )}
-          </section>
-        ))}
-      </div>
     </>
   );
 }
@@ -1022,21 +997,6 @@ function ExportBox({ item, run }: { item: Item; run: Run }) {
         </>
       )}
     </div>
-  );
-}
-
-/** Makes a finding of the demo a card of its own that comes from this one, or names the card it already became. */
-function FollowUp({ finding, item, all, run }: { finding: string; item: Item; all: Item[]; run: Run }) {
-  const text = finding.trim();
-  const made = all.find((i) => i.from === item.id && i.state !== 'proposal' && !i.prototypeOf && i.body.includes(text));
-  if (made) return <div className="follow-up done">→ {t.demo.followedUp(plain(made.title))}</div>;
-  return (
-    <button
-      className="follow-up"
-      onClick={() => run(() => api.create({ title: shortTitle(text), body: text, from: item.id }).then(() => {}), { close: false })}
-    >
-      + {t.demo.followUp}
-    </button>
   );
 }
 

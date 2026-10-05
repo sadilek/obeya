@@ -18,7 +18,7 @@ const setConfig = (dir: string | undefined) => (dir === undefined ? delete proce
 beforeAll(() => void (process.env.OBEYA_LIVE && setConfig(machine)));
 afterAll(() => void setConfig(scratch));
 
-const DEMO = JSON.stringify({ dir: '/d', chapters: [], shown: [], notShown: [], findings: ['Das Datum im Dateinamen ist amerikanisch formatiert.'], question: 'Alte Projekte nachtragen?' });
+const DEMO = JSON.stringify({ dir: '/d', chapters: [], question: 'Alte Projekte nachtragen?' });
 const STATES: Record<string, Record<string, string>> = {
   working: { state: 'working' },
   question: { state: 'waiting', need: 'question', detail: JSON.stringify({ question: { text: 'CSV oder Excel?', options: ['CSV', 'Excel'] } }) },

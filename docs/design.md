@@ -178,10 +178,11 @@ An idea is thought through on its card before anything is planned; no worker run
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
    sends the card back to `working`. The demo plays on its own the first time the card is opened
    (per browser; a new render counts as new), later it waits to be played, with a big play button
-   over it like a shared page's (also when the browser blocks the first play). Each finding in the
-   demo's report has "Als Aufgabe anlegen": a planned card with the finding as its text, below the
-   card it comes from, in its repository; the finding then names that card. A follow-up's worker
-   hears which card it comes from and that card's summary. A question in the demo report is an
+   over it like a shared page's (also when the browser blocks the first play). Beside it stands the
+   worker's summary, the whole report: what changed for the user and what the owner needs to know,
+   in a few short paragraphs at most. A problem the worker noticed beyond the task is a proposal
+   (`propose_card`), not a line in the report. A follow-up's worker hears which card it comes from
+   and that card's summary. A question in the demo report is an
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
    the answer, and the demo keeps waiting for approval.
 4. Where work lands through pull requests (Acme), approval puts the card `in PR`: its worker opens
@@ -226,7 +227,7 @@ visible on a card. A worker has four tools, served in-process: `report(status)`,
 on the card; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
 or writes their own answer); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1); and
-`ready_for_review(summary, demo | no_demo)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
+`ready_for_review(summary, demo | no_demo)`, whose summary is the report the owner reads. A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner. A turn that ends while the worker's own
 background work runs (a demo render, a test suite, a watcher it started) is no such turn: the work
 wakes the worker when it finishes or fires, so Obeya waits, and only after ten minutes without a
@@ -460,7 +461,7 @@ the owner's language (`src/core/locale.ts`).
   reply; a command once its undo window has passed, unless its words reach the learner another
   way, as a note or an idea's discussion do); and the text the owner writes in a card, once they
   pause typing for a minute or act on the card, with the text it had before (a proposal's, a
-  finding a follow-up quotes). The owner's first note, answer or feedback on a card after an answer
+  follow-up's). The owner's first note, answer or feedback on a card after an answer
   given in their name goes with that answer, which it may overrule. The learner reads an input with
   the card's text, what the owner said in the last three days (notes, feedback and answers to
   agents, ideas' discussions, the conversation with the Koordinator; at most 30), the agent's last
@@ -570,9 +571,8 @@ the owner's language (`src/core/locale.ts`).
   the rule it changes, which then takes the new text, or, moved into a CLAUDE.md, goes. The
   Koordinator always sees the canvas's repositories, one included. The Koordinator gets the owner's rules, numbered, with every command,
   and follows them itself too.
-  With a card open, the Koordinator gets its worker's whole summary and the findings of its demo,
-  so "lege eine Folgeaufgabe für die ambient-Auffälligkeit an" makes a follow-up of that card with
-  the finding as its text. One confirmation covers all actions; they run in order a few
+  With a card open, the Koordinator gets its worker's whole summary, so "lege eine Folgeaufgabe
+  für den ambient-Ton an" makes a follow-up of that card with what the summary says about it. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
   confirmation, since the conversation shows it. The same holds for a note or an answer to the
@@ -739,12 +739,12 @@ the owner's language (`src/core/locale.ts`).
   worker records once the change is committed and checked, as the adapter says how to run the
   app (Obeya: a scratch instance from the worktree, staged by `scripts/scratch-obeya.ts` from a
   stage file before every take, its workers idle (`--idle-workers`) unless the change is about
-  agents; Acme: the clone's AppHost), and hands over the directory, chapter titles and report with `ready_for_review`.
+  agents; Acme: the clone's AppHost), and hands over the directory and chapter titles with `ready_for_review`.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
   the card's demo (range requests). The card shows it with approve and feedback
   beside the video; feedback asks for a new render. When the result is something to look at
   rather than something that happens, the worker makes an HTML artifact instead (`kind: 'html'`):
-  a directory with an `index.html` and the files it loads, handed over with the same report. The
+  a directory with an `index.html` and the files it loads, handed over the same way. The
   card shows the page in a frame where the video would be (no chapters); Obeya serves any file of
   that directory, none outside it, with a CSP sandbox and the frame's `sandbox`, so the page's
   scripts run in an origin of their own, away from Obeya's API. A handover with `no_demo` (the
@@ -1071,9 +1071,13 @@ the repository; the copy on the project is only for the archive).
   instead of 4). Test repositories are copies of a template committed once per set of files
   (`gitRepo` in `src/server/testing.ts`). Together they halved the test suite.
 - A demo is a video or an HTML artifact, chosen by the worker (2026-10-01): drafts to choose from
-  (a logo for Obeya) say more as a page side by side than as a recording of one. The report, the
+  (a logo for Obeya) say more as a page side by side than as a recording of one. The summary, the
   open question and the follow-up cards are the same for both. Without any demo the owner would
   have to read to decide, so handing over without one needs a reason and stays the exception.
+- The demo report has no lists of what was shown, what was not shown and what the worker noticed
+  (2026-10-05): the owner never read the first two, read the findings but rarely made a card of
+  one, since most were not for them to act on. What the owner needs to know goes into the
+  summary, kept to a few paragraphs; a problem worth a card is a proposal.
 - A demo's scratch Obeya is staged by a script from a stage file rather than by hand (2026-10-01):
   in the 14 card runs before, the demo took longer than the change itself, and every worker wrote
   its own staging (curl, sqlite, server start) with the same mistakes: the wrong API path, a

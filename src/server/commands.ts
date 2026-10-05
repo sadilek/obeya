@@ -569,23 +569,10 @@ export class Commander {
     }
   }
 
-  /**
-   * What the open card's worker handed over: the summary in full and the findings of its demo, so
-   * a follow-up for one of them carries what it is about. Findings that have their follow-up name it.
-   */
-  private report(card: Item, tag: (id: string) => string): string {
+  /** What the open card's worker handed over: its summary in full, so a follow-up carries what it is about. */
+  private report(card: Item): string {
     const summary = this.o.board.summary(card.id)?.trim();
-    const findings = card.demo?.findings ?? [];
-    if (!summary && !findings.length) return '';
-    const followUps = this.o.board.snapshot().items.filter((i) => i.from === card.id && i.state !== 'proposal' && !i.prototypeOf);
-    const listed = findings.map((f, n) => {
-      const done = followUps.find((i) => i.body.includes(f.trim()));
-      return `${n + 1}. ${f.trim()}${done ? ` (follow-up card: ${tag(done.id)} "${done.title}")` : ''}`;
-    });
-    return [
-      summary ? `\n\nIts worker's summary:\n${summary}` : '',
-      listed.length ? `\n\nFindings of its demo (things the worker noticed beyond the task):\n${listed.join('\n')}` : '',
-    ].join('');
+    return summary ? `\n\nIts worker's summary:\n${summary}` : '';
   }
 
   /** The message for one command: what the Koordinator needs to know besides what it already knows. */
@@ -678,7 +665,7 @@ export class Commander {
             `The owner attached ${shots === 1 ? 'a screenshot' : `${shots} screenshots`} (shown below). Obeya gives ${shots === 1 ? 'it' : 'them'} to every new_card, new_idea, start, note, answer, feedback and discuss action you take for this message; a title for a new card may say what ${shots === 1 ? 'it shows' : 'they show'}.`,
           ]
         : []),
-      focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused, tag)}` : project ? `The owner is looking at the project ${tag(project.id)} "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
+      focused ? `The owner has this card open, so "it", "this" and a bare answer refer to it: ${describe(focused)}${this.report(focused)}` : project ? `The owner is looking at the project ${tag(project.id)} "${project.title}".` : 'No card is open: the owner speaks to you, the Koordinator.',
       `Cards on the canvas now:\n${relevant.map(describe).join('\n') || '(none)'}`,
       ...(projects.length ? [`Projects with workstreams to start:\n${projects.join('\n')}`] : []),
       rules.length

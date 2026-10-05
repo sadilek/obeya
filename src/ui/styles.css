@@ -275,13 +275,6 @@ textarea.p-body:focus { border-color: var(--muted); }
 .share-link { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .share-busy { color: var(--muted); flex: 1 1 100%; }
 .share .hint { margin: 0; }
-.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
-.cols section { background: var(--chip); border-radius: 12px; padding: 12px 16px; font-size: 13px; }
-.cols h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.cols ul { margin: 0; padding-left: 18px; } .cols li { margin: 3px 0; }
-.follow-up { display: block; margin: 3px 0 6px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-.follow-up:hover { border-color: var(--muted); }
-.follow-up.done { border: 0; background: none; padding: 0; font-weight: 400; color: var(--muted); cursor: default; }
 .idea-grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 20px; margin-top: 16px;
   height: min(600px, calc(100vh - 370px)); }
 .idea-brief { overflow: auto; min-height: 0; padding-right: 4px; }
@@ -617,7 +610,7 @@ button.link:hover { text-decoration: underline; }
 .ack.reading { background: var(--card); color: var(--muted); box-shadow: var(--shadow); padding: 7px 14px; font-size: 13px; }
 .ack.reading::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--working); animation: spin .8s linear infinite; }
 .c-listener { flex-basis: 100%; margin-top: -4px; font-size: 11.5px; color: var(--muted); }
-@media (max-width: 760px) { #minimap, #keys, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; } .p-grid, .cols { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { #minimap, #keys, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; } .p-grid { grid-template-columns: 1fr; } }
 
 /* the play button on a startable card, shown while the pointer is on the card */
 .card .play { position: absolute; right: 10px; bottom: 8px; width: 26px; height: 26px; border-radius: 13px; border: 0; padding: 0 0 0 2px;

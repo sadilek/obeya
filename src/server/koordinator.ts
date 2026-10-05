@@ -41,7 +41,7 @@ export interface InputContext {
   overruled?: { question: string; answer: string; by: 'project' | 'koordinator' };
   /** The Koordinator's reply to what the owner said to it. */
   reply?: string;
-  /** The card's text before the owner wrote in it: a proposal's, a finding a follow-up quotes. */
+  /** The card's text before the owner wrote in it: a proposal's, a follow-up's. */
   before?: string;
 }
 

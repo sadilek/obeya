@@ -50,7 +50,7 @@ describe('a canvas with several repositories', () => {
   test('a repository whose adapter shares no demos offers no sharing', () => {
     expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([undefined, undefined]);
     const c = canvas.board.create({ title: 'Home', x: 0, y: 0 });
-    canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], shown: [], notShown: [], findings: [] }) });
+    canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [] }) });
     expect(() => canvas.act(c.id, { action: 'share' })).toThrow('shares none');
     expect(() => canvas.act(c.id, { action: 'unshare' })).toThrow('not shared');
   });
@@ -66,7 +66,7 @@ describe('a canvas with several repositories', () => {
     expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([true, undefined]);
     expect(canvas.repos[0]!.share).toEqual([process.execPath, join(web, 'share.ts')]);
     const c = canvas.board.create({ title: 'Home', x: 0, y: 0 });
-    canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], shown: [], notShown: [], findings: [], page: { title: 'T', text: 'X.' } }) });
+    canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], page: { title: 'T', text: 'X.' } }) });
     canvas.act(c.id, { action: 'share' });
     for (let i = 0; i < 300 && canvas.board.item(c.id)!.share?.state !== 'shared'; i++) await new Promise((r) => setTimeout(r, 10));
     expect(canvas.board.item(c.id)!.share).toEqual({ state: 'shared', url: 'https://pages.example/publish' });

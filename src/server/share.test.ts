@@ -93,7 +93,7 @@ function card(title = 'Zählerstände exportieren', demo: Record<string, unknown
   mkdirSync(d);
   board.work(c.id, {
     state: 'live',
-    demo: JSON.stringify({ kind: 'video', dir: d, chapters: [[0, 'Vorher']], shown: [], notShown: [], findings: [], page: { title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.' }, ...demo }),
+    demo: JSON.stringify({ kind: 'video', dir: d, chapters: [[0, 'Vorher']], page: { title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.' }, ...demo }),
   });
   return board.item(c.id)!;
 }
@@ -139,7 +139,7 @@ describe('sharing a demo', () => {
     await until(() => share(c.id)?.state === 'shared');
     const newer = join(dir, 'newer');
     mkdirSync(newer);
-    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [], shown: [], notShown: [], findings: [], page: { title: 'CSV-Export 2', text: 'T.' } }) });
+    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [], page: { title: 'CSV-Export 2', text: 'T.' } }) });
     expect(share(c.id)).toMatchObject({ state: 'shared', stale: true });
     expect(calls()).toHaveLength(1);
     sharing.share(c.id);
@@ -265,7 +265,7 @@ describe('a page published with an earlier version of the command', () => {
     await until(() => share(c.id)?.state === 'shared');
     version('v1');
     await sharing.checkVersions();
-    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], shown: [], notShown: [], findings: [], page: { title: 'T', text: 'T.' } }) });
+    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], page: { title: 'T', text: 'T.' } }) });
     expect(share(c.id)).toMatchObject({ stale: true });
     expect(share(c.id)!.outdated).toBeUndefined();
   });
@@ -465,7 +465,7 @@ describe('the link in the pull request', () => {
     await until(() => share(c.id)?.state === 'shared');
     const newer = join(dir, 'newer');
     mkdirSync(newer);
-    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [[0, 'Neu']], shown: [], notShown: [], findings: [], page: { title: 'CSV-Export 2', text: 'T.' } }) });
+    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: newer, chapters: [[0, 'Neu']], page: { title: 'CSV-Export 2', text: 'T.' } }) });
     openPr(c.id);
     sharing.prOpened(c.id);
     await until(() => calls().length === 2);

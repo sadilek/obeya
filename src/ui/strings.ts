@@ -217,12 +217,10 @@ export const t = {
     short: (n: number, failed: number, conflict: boolean, ready?: boolean) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : '', ready ? 'Bereit zum Mergen' : ''].filter(Boolean).join(' · '),
   },
-  demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.',
+  demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', kept: 'Die Demo bleibt hier abrufbar.',
     artifact: 'HTML-Artefakt des Agenten',
     play: 'Abspielen',
     noDemo: 'Ohne Demo',
-    followUp: 'Als Aufgabe anlegen',
-    followedUp: (title: string) => `Aufgabe „${title}“ angelegt`,
   },
   share: {
     share: 'Teilen',
