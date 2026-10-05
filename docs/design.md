@@ -37,9 +37,12 @@ decisions are made in front of the wall.
 ## Concepts
 
 - **Canvas** — a canvas spans one or more repositories; one Obeya serves several canvases.
-- **Cards** — a card is a task; a `project` is a container backed by a plan doc, and its
-  workstreams are its child cards. Cards have no further kind: whether one fixes a bug or adds
-  something makes no difference to how it is worked on, so the owner does not pick one.
+- **Cards** — everything on the canvas is a card: a task (`task`; in the UI an *Aufgabe*), an idea,
+  a prototype, or a `project`, a container backed by a plan doc whose workstreams are its child
+  cards. Tasks have no further kind: whether one fixes a bug or adds something makes no difference
+  to how it is worked on, so the owner does not pick one. A task's card names no kind either (that
+  it is one shows); the others say what they are (idea, prototype, workstream number, project).
+  The UI and the Koordinator say *Aufgabe* and *Folgeaufgabe*, never *Karte*.
 - **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) →
   `approved` → `in PR` → `live`, or `done` when the work changed no code; an agent's `proposal`
   is started when accepted. An
@@ -152,7 +155,7 @@ An idea is thought through on its card before anything is planned; no worker run
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
    sends the card back to `working`. The demo plays on its own the first time the card is opened
    (per browser; a new render counts as new), later it waits to be played. Each finding in the
-   demo's report has "Als Karte anlegen": a planned card with the finding as its text, below the
+   demo's report has "Als Aufgabe anlegen": a planned card with the finding as its text, below the
    card it comes from, in its repository; the finding then names that card. A follow-up's worker
    hears which card it comes from and that card's summary. A question in the demo report is an
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
@@ -466,7 +469,7 @@ the owner's language (`src/core/locale.ts`).
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
-  one waits for, so "starte alle wartenden Karten" works. A reply answers questions too
+  one waits for, so "starte alle wartenden Aufgaben" works. A reply answers questions too
   ("Was ist seit gestern passiert?"), as far as the cards and their history answer them.
   "Merk dir: …" ("ab jetzt immer …") is remember, with the open card as its occasion, once the undo
   window has passed. A rule on how agents work with the owner through Obeya becomes one of the
@@ -477,7 +480,7 @@ the owner's language (`src/core/locale.ts`).
   Koordinator always sees the canvas's repositories, one included. The Koordinator gets the owner's rules, numbered, with every command,
   and follows them itself too.
   With a card open, the Koordinator gets its worker's whole summary and the findings of its demo,
-  so "lege eine Folgekarte für die ambient-Auffälligkeit an" makes a follow-up of that card with
+  so "lege eine Folgeaufgabe für die ambient-Auffälligkeit an" makes a follow-up of that card with
   the finding as its text. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
@@ -510,7 +513,7 @@ the owner's language (`src/core/locale.ts`).
   one after the other, so it understands "die andere auch" or "nein, die von vorhin". It sees a
   card's open question, also one in a demo report, so a bare "ja" to it is an answer, not an
   approval. Under the mic the UI names who listens: the Koordinator, and the card, idea or project
-  in focus ("Koordinator · Karte: …"). Card tags
+  in focus ("Koordinator · Aufgabe: …"). Card tags
   (`K1`, …) stay fixed for the session. Each command brings the cards as they are now and what
   happened since the previous one (state changes, questions, answers, hand-overs, the owner's
   notes, errors, new cards; not the workers' steps); a command the owner took back is told with the

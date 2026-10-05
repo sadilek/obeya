@@ -157,7 +157,7 @@ export class Koordinator {
       result = await this.plan(card);
     } catch (e) {
       this.setQueue(cardId, null);
-      this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte die Karte nicht aufteilen (${e instanceof Error ? e.message : String(e)}).`);
+      this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte die Aufgabe nicht aufteilen (${e instanceof Error ? e.message : String(e)}).`);
       return;
     }
     if (!('packages' in result) || result.packages.length < 2) {
@@ -570,7 +570,7 @@ export class Koordinator {
     try {
       scope = await this.estimate(card, active, ahead);
     } catch (e) {
-      this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte den Umfang nicht schätzen (${e instanceof Error ? e.message : String(e)}); die Karte startet trotzdem.`);
+      this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte den Umfang nicht schätzen (${e instanceof Error ? e.message : String(e)}); die Aufgabe startet trotzdem.`);
       scope = { files: [], conflictsWith: [], reason: '' };
     }
     if (!this.o.board.item(cardId)?.queue) return;

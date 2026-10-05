@@ -202,7 +202,7 @@ export class Board {
     const rows = this.store.insert(
       cards.map((c, n) => ({
         canvas_id: this.canvas.id,
-        kind: 'card',
+        kind: 'task',
         state: 'planned' as const,
         title: c.title.slice(0, 200),
         body: c.body.slice(0, 20000),
@@ -239,7 +239,7 @@ export class Board {
     if (!from) return this.freeSpot();
     const b = boundsOf(from, items);
     const earlier = items.filter((i) => i.from === fromId && i.state !== 'proposal' && !i.prototypeOf).length;
-    return { x: b.x + 35 + earlier * (CARD_SIZE.card[0] + GAP), y: b.y + b.h + 60 };
+    return { x: b.x + 35 + earlier * (CARD_SIZE.task[0] + GAP), y: b.y + b.h + 60 };
   }
 
   /** The worker's last summary of a card; it stays with the card until work on it starts again. */
@@ -256,7 +256,7 @@ export class Board {
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
-        kind: 'card',
+        kind: 'task',
         state: 'proposal',
         title: p.title.slice(0, 200),
         body: `${p.reason}\n\n${p.suggestion}`.slice(0, 20000),
@@ -312,11 +312,11 @@ export class Board {
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
-        kind: 'card',
+        kind: 'task',
         state: 'planned',
         title: title.slice(0, 200),
         body: body.slice(0, 20000),
-        x: b.x + 35 + prototypes * (CARD_SIZE.card[0] + GAP),
+        x: b.x + 35 + prototypes * (CARD_SIZE.task[0] + GAP),
         y: b.y + b.h + 60,
         from_id: ideaId,
         prototype_of: ideaId,
@@ -658,7 +658,7 @@ export class Board {
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
-        kind: 'card',
+        kind: 'task',
         state: n.idea ? 'idea' : 'planned',
         title: n.title,
         body: n.body ?? '',
@@ -761,7 +761,7 @@ export class Board {
       const kids = items.filter((i) => i.parent === project.id);
       const startY = kids.length ? Math.max(...kids.map((k) => k.y + sizeOf(k, items)[1])) + GAP : PROJECT_HEAD;
       placeWorkstreams(missing, startY).forEach((pos, n) =>
-        add.push({ canvas_id: c, kind: 'card', parent_id: project.id, plan_ref: `${doc.file}#${missing[n]!.key}`, ...pos }),
+        add.push({ canvas_id: c, kind: 'task', parent_id: project.id, plan_ref: `${doc.file}#${missing[n]!.key}`, ...pos }),
       );
     }
     if (add.length) this.store.insert(add);
@@ -771,7 +771,7 @@ export class Board {
     if (!fresh.length) return add.length > 0 || linked;
     const layouts = fresh.map((d) => {
       const pos = placeWorkstreams(d.workstreams);
-      const kids = pos.map((p, n) => ({ kind: 'card' as const, state: d.workstreams[n]!.done ? ('live' as const) : ('planned' as const), parent: 'p', ...p }));
+      const kids = pos.map((p, n) => ({ kind: 'task' as const, state: d.workstreams[n]!.done ? ('live' as const) : ('planned' as const), parent: 'p', ...p }));
       return { doc: d, pos, size: projectSize(kids) };
     });
     const top = items.filter((i) => !i.parent);
@@ -779,7 +779,7 @@ export class Board {
     layouts.forEach(({ doc, pos }, n) => {
       const [project] = this.store.insert([{ canvas_id: c, kind: 'project', plan_ref: doc.file, ...at[n]! }]);
       this.store.insert(
-        doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'card' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
+        doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'task' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
       );
     });
     this.linkOrigins(docs);

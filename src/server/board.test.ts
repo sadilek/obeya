@@ -213,7 +213,7 @@ describe('manual cards', () => {
     let changes = 0;
     board.onChange(() => changes++);
     const c = board.create({ title: 'Fix it', x: 10, y: 20 });
-    expect(c).toMatchObject({ kind: 'card', state: 'planned', title: 'Fix it', body: '', source: 'manual' });
+    expect(c).toMatchObject({ kind: 'task', state: 'planned', title: 'Fix it', body: '', source: 'manual' });
     board.patch(c.id, { title: 'Fix it now', body: 'Details' });
     expect(board.snapshot().items.find((i) => i.id === c.id)).toMatchObject({ title: 'Fix it now', body: 'Details' });
     board.remove(c.id);

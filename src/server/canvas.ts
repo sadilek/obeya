@@ -374,7 +374,7 @@ export class CanvasRuntime {
     const { workers } = this.repoOf(prototype);
     const { path, branch } = workers.buildOn(prototype.id, idea);
     this.board.work(idea.id, { workspace: path, branch, built_on: prototype.id });
-    this.decided(idea, { answer: `So bauen, auf Prototyp „${prototype.title}“.`, log: `So bauen, auf dem Prototyp „${prototype.title}“: Sein Branch ist jetzt der dieser Karte.` });
+    this.decided(idea, { answer: `So bauen, auf Prototyp „${prototype.title}“.`, log: `So bauen, auf dem Prototyp „${prototype.title}“: Sein Branch ist jetzt der dieser Aufgabe.` });
     this.koordinator.request(idea.id);
   }
 
@@ -452,7 +452,7 @@ export class CanvasRuntime {
   private prototypeReady(prototype: Item, summary: string, demo: string | undefined) {
     const idea = this.board.item(prototype.prototypeOf!);
     if (!idea) return;
-    this.board.log(idea.id, 'state', 'worker', `Prototyp „${prototype.title}“ fertig${demo ? '; seine Demo liegt auf dieser Karte' : ''}.`);
+    this.board.log(idea.id, 'state', 'worker', `Prototyp „${prototype.title}“ fertig${demo ? '; seine Demo liegt hier' : ''}.`);
     if (idea.state === 'idea')
       this.explorers.tell(
         idea.id,

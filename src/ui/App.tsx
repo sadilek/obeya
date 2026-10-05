@@ -394,7 +394,7 @@ function Canvas({
   }
 
   async function createAt(world: Pos) {
-    const [w, h] = CARD_SIZE.card;
+    const [w, h] = CARD_SIZE.task;
     const card = await api.create({ title: '', x: Math.round(world.x - w / 2), y: Math.round(world.y - h / 2) });
     flushSync(() => {
       setPending((p) => [...p, card]);

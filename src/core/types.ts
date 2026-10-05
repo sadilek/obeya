@@ -4,7 +4,7 @@ import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/setti
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 
-export type CardKind = 'card' | 'project';
+export type CardKind = 'task' | 'project';
 
 export const STATES = ['idea', 'proposal', 'planned', 'working', 'waiting', 'approved', 'inPr', 'live', 'done'] as const;
 export type CardState = (typeof STATES)[number];

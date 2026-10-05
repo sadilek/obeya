@@ -677,7 +677,7 @@ describe('preference memory', () => {
     expect(board.preferencesText()).toBe('');
     expect(board.snapshot().preferences).toEqual([]);
     const collect = board.collecting('home')!;
-    expect(collect).toMatchObject({ title: 'CLAUDE.md ergänzen', state: 'planned', kind: 'card' });
+    expect(collect).toMatchObject({ title: 'CLAUDE.md ergänzen', state: 'planned', kind: 'task' });
     expect(collect.body).toEndWith('\n\n- Tests auf Deutsch benennen.');
 
     // the next learner knows it is on its way; a rule for the preferences can be moved to a CLAUDE.md, and back

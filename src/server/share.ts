@@ -138,7 +138,7 @@ export class Sharing {
       shown = now;
       dir = s.dir;
     } else {
-      if (!demo || demo.kind === 'html' || !cmd) return back('Die Karte hat keine Video-Demo mehr, oder ihr Repository teilt keine.');
+      if (!demo || demo.kind === 'html' || !cmd) return back('Die Aufgabe hat keine Video-Demo mehr, oder ihr Repository teilt keine.');
       const page = await this.page(card, demo);
       shown = { title: page.title, text: page.text, chapters: demo.chapters };
       dir = demo.dir;
@@ -183,7 +183,7 @@ export class Sharing {
       this.o.board.log(cardId, 'error', 'obeya', [why, out].filter(Boolean).join('\n\n'));
     };
     const cmd = this.o.commandFor(card);
-    if (!cmd) return back('Nicht zurückgezogen: Das Repository der Karte teilt keine Demos mehr.');
+    if (!cmd) return back('Nicht zurückgezogen: Das Repository der Aufgabe teilt keine Demos mehr.');
     const r = await run([...cmd.command, 'withdraw', s.slug], JSON.stringify({ slug: s.slug, shared: this.others(cardId, cmd.command) }), cmd.cwd, this.o.home);
     if (r.code !== 0) return back(`Nicht zurückgezogen: Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).`, tail(r.err || r.out));
     this.set(cardId, { slug: s.slug });

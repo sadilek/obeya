@@ -130,7 +130,7 @@ describe('a canvas with several repositories', () => {
     canvas.board.patch(p.id, { title: 'Folgefehler im Export', body: 'Nur den Export.' });
     canvas.act(p.id, { action: 'accept', start: false });
     await settle();
-    expect(item(p.id)).toMatchObject({ state: 'planned', title: 'Folgefehler im Export', body: 'Nur den Export.', kind: 'card' });
+    expect(item(p.id)).toMatchObject({ state: 'planned', title: 'Folgefehler im Export', body: 'Nur den Export.', kind: 'task' });
     expect(item(p.id).queue).toBeFalsy();
   });
 

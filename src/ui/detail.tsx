@@ -47,10 +47,11 @@ export function Detail(p: Props) {
     }
   };
   const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
-  const repoPrefix = p.repos.length > 1 ? `${p.repos.find((r) => r.id === item.repo)?.name ?? item.repo} · ` : '';
-  const kind =
-    repoPrefix +
-    (parent
+  const repo = p.repos.length > 1 ? (p.repos.find((r) => r.id === item.repo)?.name ?? item.repo) : '';
+  // a plain task says nothing of its kind
+  const kind = [
+    repo,
+    parent
       ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}`
       : item.state === 'idea'
         ? t.kind.idea
@@ -58,12 +59,17 @@ export function Detail(p: Props) {
           ? t.kind.becomesProject
           : item.prototypeOf
             ? t.kind.prototype
-            : t.kind[item.kind]);
+            : item.kind === 'project'
+              ? t.kind.project
+              : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea' || item.state === 'proposal') && !item.queue;
   if (item.state === 'idea' && item.idea)
     return (
       <>
-        <div className="p-kind">{kind}</div>
+        {kind && <div className="p-kind">{kind}</div>}
         {item.archivedAt ? <div className="p-title">{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div> : <ManualTitle item={item} onEdit={p.onEdit} />}
         <IdeaView item={item} act={act} run={run} onDelete={p.onDelete} />
         {error && <p className="p-error">{error}</p>}
@@ -72,7 +78,7 @@ export function Detail(p: Props) {
   if (item.prototypeEnd)
     return (
       <>
-        <div className="p-kind">{kind}</div>
+        {kind && <div className="p-kind">{kind}</div>}
         <div className="p-title">
           <Inline md={item.title} />
         </div>
@@ -122,7 +128,7 @@ export function Detail(p: Props) {
 
   return (
     <>
-      <div className="p-kind">{kind}</div>
+      {kind && <div className="p-kind">{kind}</div>}
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div>}
       <div className="p-state">
         ● {stateLabel(item)}

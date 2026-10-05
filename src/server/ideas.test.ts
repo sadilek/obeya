@@ -265,7 +265,7 @@ describe('an idea', () => {
     const s = new Store(path);
     s.ensureCanvas('c', 'C');
     const idea = JSON.stringify({ status: 'open', brief: '' });
-    const [answered, asked] = s.insert([0, 1].map((y) => ({ canvas_id: 'c', kind: 'card' as const, state: 'idea' as const, idea, x: 0, y })));
+    const [answered, asked] = s.insert([0, 1].map((y) => ({ canvas_id: 'c', kind: 'task' as const, state: 'idea' as const, idea, x: 0, y })));
     const say = (card: string, author: 'owner' | 'explorer') => s.addEvent({ cardId: card, kind: 'talk', author, text: '…' });
     say(answered!.id, 'owner');
     say(answered!.id, 'explorer');

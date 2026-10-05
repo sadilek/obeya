@@ -671,7 +671,7 @@ export class Workers {
             schema: { title: z.string(), reason: z.string(), suggestion: z.string() },
             run: (a) => {
               const p = this.o.board.propose(cardId, a as { title: string; reason: string; suggestion: string });
-              this.o.board.log(cardId, 'activity', 'worker', `Karte vorgeschlagen: ${p.title}`);
+              this.o.board.log(cardId, 'activity', 'worker', `Aufgabe vorgeschlagen: ${p.title}`);
               return 'Proposed; the owner decides. Continue with your task.';
             },
           },
