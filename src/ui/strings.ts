@@ -207,6 +207,7 @@ export const t = {
   },
   demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten', none: '–', kept: 'Die Demo bleibt hier abrufbar.',
     artifact: 'HTML-Artefakt des Agenten',
+    play: 'Abspielen',
     noDemo: 'Ohne Demo',
     followUp: 'Als Aufgabe anlegen',
     followedUp: (title: string) => `Aufgabe „${title}“ angelegt`,

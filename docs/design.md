@@ -165,7 +165,8 @@ An idea is thought through on its card before anything is planned; no worker run
    names, and records the demo.
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
    sends the card back to `working`. The demo plays on its own the first time the card is opened
-   (per browser; a new render counts as new), later it waits to be played. Each finding in the
+   (per browser; a new render counts as new), later it waits to be played, with a big play button
+   over it like a shared page's (also when the browser blocks the first play). Each finding in the
    demo's report has "Als Aufgabe anlegen": a planned card with the finding as its text, below the
    card it comes from, in its repository; the finding then names that card. A follow-up's worker
    hears which card it comes from and that card's summary. A question in the demo report is an

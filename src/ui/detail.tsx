@@ -777,10 +777,13 @@ function DemoView({
   const video = useRef<HTMLVideoElement>(null);
   const [now, setNow] = useState(0);
   const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
+  // start once the card has unfolded, like the mock, the first time only; a demo kept on a finished card waits to be played
+  const [autostart] = useState(() => autoplay && demo.kind !== 'html' && firstOpening(localStorage, cardId, demo));
+  // a video that does not start on its own shows a big play button over it until it first plays
+  const [started, setStarted] = useState(autostart);
   useEffect(() => {
-    // start once the card has unfolded, like the mock, the first time only; a demo kept on a finished card waits to be played
-    if (!autoplay || demo.kind === 'html') return;
-    const h = setTimeout(() => firstOpening(localStorage, cardId, demo) && video.current?.play().catch(() => {}), 300);
+    if (!autostart) return;
+    const h = setTimeout(() => video.current?.play().catch(() => setStarted(false)), 300);
     return () => clearTimeout(h);
   }, []);
   useEffect(() => () => holdRestart('video', null), []);
@@ -792,20 +795,35 @@ function DemoView({
           // the worker's page: scripts run, but in an origin of its own, away from Obeya's API
           <iframe className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} />
         ) : (
-          <video
-            ref={video}
-            controls
-            preload="metadata"
-            poster={src('poster.jpg')}
-            src={src('demo.mp4')}
-            onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
-            // a restart waits while the owner watches
-            onPlay={() => holdRestart('video', 'video')}
-            onPause={() => holdRestart('video', null)}
-            onEnded={() => holdRestart('video', null)}
-          >
-            <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
-          </video>
+          <div className="player">
+            <video
+              ref={video}
+              controls
+              preload="metadata"
+              poster={src('poster.jpg')}
+              src={src('demo.mp4')}
+              onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
+              // a restart waits while the owner watches
+              onPlay={() => {
+                setStarted(true);
+                holdRestart('video', 'video');
+              }}
+              onPause={() => holdRestart('video', null)}
+              onEnded={() => holdRestart('video', null)}
+            >
+              <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
+            </video>
+            {!started && (
+              // a click anywhere on the video but its controls starts it, like on a shared page
+              <button className="start" aria-label={t.demo.play} onClick={() => video.current?.play().catch(() => {})}>
+                <span>
+                  <svg viewBox="0 0 24 24">
+                    <path d="M6 4l15 8-15 8z" />
+                  </svg>
+                </span>
+              </button>
+            )}
+          </div>
         )}
         <div>
           {demo.chapters.length > 0 && (
