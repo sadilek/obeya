@@ -235,6 +235,35 @@ describe('workers', () => {
     expect(runtime.last.inbox.at(-1)).toContain('Datum, Stand');
   });
 
+  test('a note instead of an answer takes the question back: the worker goes on or asks anew', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'CSV oder Excel?', options: ['CSV', 'Excel'] });
+    workers.message(c.id, 'Exportier erst mal gar nichts, ich kläre das.');
+    expect(state(c.id)).toBe('working');
+    expect(board.item(c.id)!.question).toBeUndefined();
+    expect(runtime.last.inbox.at(-1)).toContain('withdraws your question („CSV oder Excel?“)');
+    expect(runtime.last.inbox.at(-1)).toContain('Exportier erst mal gar nichts');
+    // a remark is not a decision
+    expect(board.decisionsOn(c.id)).toEqual([]);
+    expect(() => workers.answer(c.id, 'CSV')).toThrow(BadRequest);
+  });
+
+  test('reply answers a note in the conversation, and the worker works on', () => {
+    const c = manual();
+    workers.start(c.id);
+    workers.message(c.id, 'Bitte auch Excel.');
+    expect(runtime.last.inbox.at(-1)).toContain('Bitte auch Excel.');
+    expect(runtime.last.call('reply', { text: 'Mache ich: Excel kommt als zweites Format dazu.' })).toBe('Shown to the owner. Carry on.');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'talk', author: 'worker', text: 'Mache ich: Excel kommt als zweites Format dazu.' });
+    expect(state(c.id)).toBe('working');
+    // a reply is no handover: the turn ending after it is nudged
+    runtime.last.emit({ type: 'text', text: 'Excel ist eingebaut.' });
+    const before = runtime.last.inbox.length;
+    runtime.last.emit({ type: 'idle' });
+    expect(runtime.last.inbox.length).toBe(before + 1);
+  });
+
   test('a workstream asks its project agent first', async () => {
     const w = board.snapshot().items.find((i) => i.label === 'W1')!;
     workers.start(w.id);

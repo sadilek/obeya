@@ -1,11 +1,11 @@
 // Workers: one agent session per card, in a leased clone. Obeya is the mailbox between the
-// worker, its project agent and the owner; every exchange lands in the card's log.
+// worker, its project agent and the owner; every exchange lands in the card's conversation.
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { basename } from 'node:path';
-import type { DemoKind, DemoPage, Item, Mock, Question, RestartReason } from '../core/types';
+import { type DemoKind, type DemoPage, formatQuestion, type Item, type Mock, type Question, type RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
 import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
@@ -189,10 +189,21 @@ export class Workers {
         `Feedback from the owner instead of an approval${spoken ? ` (${SPOKEN})` : ''}; the card is back with you${card.need === 'demo' ? ', and your demo stays on it until you hand over another' : ''}:\n\n${text}${imageNote(images)}`,
         images,
       );
-    } else if (card.state === 'working' || card.state === 'inPr' || (card.state === 'waiting' && card.need === 'question') || card.finishing) {
+    } else if (card.state === 'waiting' && card.need === 'question') {
+      // a note instead of an answer takes the question back: it may have settled it, else the worker asks anew
+      const row = this.o.board.row(cardId);
+      this.o.board.work(cardId, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
       if (text) this.o.onOwnerInput?.(card, 'note', text, overruled ? { overruled } : {});
-      this.deliver(cardId, `A note from the owner${spoken ? ` (${SPOKEN})` : ''} (it does not stop you; adjust your plan if it changes anything, and say briefly what you change or why nothing):\n\n${text}${imageNote(images)}`, images);
+      this.deliver(
+        cardId,
+        `A note from the owner instead of an answer${spoken ? ` (${SPOKEN})` : ''}. It withdraws your question („${card.question?.text ?? ''}“): if the note settles it, go on; if not, ask again.\n\n${text}${imageNote(images)}`,
+        images,
+      );
+    } else if (card.state === 'working' || card.state === 'inPr' || card.finishing) {
+      this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
+      if (text) this.o.onOwnerInput?.(card, 'note', text, overruled ? { overruled } : {});
+      this.deliver(cardId, `A note from the owner${spoken ? ` (${SPOKEN})` : ''} (it does not stop you; adjust your plan if it changes anything):\n\n${text}${imageNote(images)}`, images);
     } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
 
@@ -751,6 +762,17 @@ export class Workers {
         },
       },
       {
+        name: 'reply',
+        description: `Answer a note or feedback from the owner in your card's conversation: a sentence or two in ${OWNER_LANGUAGE}, what you change because of it or why nothing. Your turn goes on: carry on with your work.`,
+        schema: { text: z.string() },
+        run: ({ text }) => {
+          const s = clip(String(text).trim(), 2000);
+          if (!s) return 'Not shown: the reply is empty.';
+          this.o.board.log(cardId, 'talk', 'worker', s);
+          return 'Shown to the owner. Carry on.';
+        },
+      },
+      {
         name: 'ask',
         description: `Ask for a decision you should not make yourself: product behaviour, trade-offs, anything irreversible or external. Write the question in ${OWNER_LANGUAGE} for a reader who has not seen the code, and offer up to four short answer options when they exist; the owner picks one on the card (several when multiple is true) or writes their own. Then end your turn.`,
         schema: { question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() },
@@ -998,6 +1020,7 @@ You are a worker agent directed through Obeya, a canvas on which the owner direc
 
 The owner does not watch you work and does not read code. They see your card: status lines, questions, and your summary at the end. Talk to them only through the Obeya tools:
 - report: a short status line at milestones.
+- reply: your answer to a note or feedback from the owner, in a sentence or two: what you change because of it, or why nothing.
 - ask: a decision that is not yours (product behaviour, trade-offs, anything irreversible or external). Make routine judgement calls yourself. After ask, end your turn; the answer arrives as the next message.
 ${prototype ? '- propose_build: propose that the idea be built on your prototype, once it convinced. You make no other cards; mention other problems you noticed in your summary.' : '- propose_card: a separate problem or idea you noticed, as a card for the agent who will take it on; do not widen your task.'}
 - ready_for_review: the work is committed and the checks pass. Then end your turn.
@@ -1007,9 +1030,9 @@ Obeya's messages tell you what happened: feedback, an answer, a note from the ow
 Rules:
 - Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.
 - Follow the repository's own instructions (CLAUDE.md and docs).
-- Owner-facing text (report, ask, ${prototype ? 'propose_build' : 'propose_card'}, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete. What you write between tool calls also shows in the card's log for the owner: keep it brief and in ${OWNER_LANGUAGE} too.
+- Owner-facing text (report, reply, ask, ${prototype ? 'propose_build' : 'propose_card'}, ready_for_review) is in ${OWNER_LANGUAGE}, short and concrete. What you write between tool calls also shows on the card for the owner, folded under your next message: keep it brief and in ${OWNER_LANGUAGE} too.
 - Wait for anything external (a deploy, a CI run, a point in time, a process to finish) in the background: run_in_background or Monitor, then end your turn; Obeya wakes you when it finishes or fires. Never wait with sleep or a polling loop in the foreground: a note from the owner reaches you only once the running command is done.
-- When a note from the owner arrives, answer it in a sentence or two of text (it shows in the card's log): what you change because of it, or why nothing. If it is unclear what they want, ask.
+- When a note or feedback from the owner arrives, answer it with reply and go on. If it is unclear what they want, ask.
 `.trim() + (preferences ? `\n\n${preferences}` : '');
   }
 
@@ -1100,10 +1123,6 @@ ${idea.idea.brief}` : '',
 function mocksText(mocks: Mock[] | undefined): string {
   if (!mocks?.length) return '';
   return ['Mocks of the brief, as the owner saw them rendered (how its variants look):', ...mocks.map((m) => `${m.title || 'Mock'}:\n\n\`\`\`html\n${m.html}\n\`\`\``)].join('\n\n');
-}
-
-function formatQuestion(q: Question): string {
-  return q.options.length ? `${q.text}${q.multiple ? ' (Mehrfachauswahl)' : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
 }
 
 /** One log line for a built-in tool call. */

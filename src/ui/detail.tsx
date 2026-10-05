@@ -9,7 +9,7 @@ import { firstOpening } from './demoSeen';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { errorText, stateLabel, t } from './strings';
-import { talkTurns } from './talk';
+import { parseQuestion, talkTurns, type Turn } from './talk';
 
 /** What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open. */
 export type ActDone = { close: true; ack: string; undo?: () => unknown } | { close: false };
@@ -110,7 +110,7 @@ export function Detail(p: Props) {
             </div>
           )
         )}
-        <Log cardId={item.id} />
+        <Conversation item={item} past />
         <details className="p-task">
           <summary>{t.task}</summary>
           <Body md={item.body} />
@@ -273,18 +273,6 @@ export function Detail(p: Props) {
         </details>
       )}
 
-      {item.state === 'waiting' && item.need === 'question' && (
-        <Answer
-          key={JSON.stringify(item.question ?? null)}
-          questions={item.question ? [item.question] : []}
-          heading={t.questionFromWorker}
-          placeholder={item.question?.options.length ? t.ask.words : t.compose.question}
-          listener={listener}
-          onSend={(text, images) => act({ action: 'answer', text, images }, { close: true, ack: t.answered })}
-          onWords={tell('answer')}
-        />
-      )}
-
       {item.state === 'waiting' && item.need === 'demo' && item.demo && (
         <DemoView
           item={item}
@@ -364,14 +352,8 @@ export function Detail(p: Props) {
 
       {item.finishing && finished(item.state) && <p className="hint">{item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
 
-      {(item.state === 'working' || item.state === 'inPr' || (item.state === 'waiting' && item.need === 'review') || item.finishing) && (
-        <Composer
-          key={`${item.state}:${item.need ?? ''}`}
-          placeholder={item.need === 'review' ? t.compose.review : t.compose.working}
-          listener={listener}
-          onSend={tell(item.need === 'review' ? 'feedback' : 'note')}
-        />
-      )}
+      {/* what was said on the card and how the work went, from its idea's discussion on; the owner's words go below it */}
+      {worked && <TaskTalk item={item} listener={listener} act={act} tell={tell} />}
 
       {finished(item.state) && item.source === 'manual' && !item.finishing && (
         <div className="actions">
@@ -392,13 +374,11 @@ export function Detail(p: Props) {
             </div>
           )}
           <PrototypeDemos item={item} />
-          <Conversation item={item} past />
         </>
       )}
 
       {worked && (
         <>
-          <Log cardId={item.id} skipTalk={item.brief !== undefined} />
           {((item.body.trim() && item.body.trim() !== item.brief?.trim()) || !!item.images?.length) && (
             <details className="p-task">
               <summary>{t.task}</summary>
@@ -441,8 +421,8 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {/* a card nobody worked on shows its log once there is something, such as a talk with the Koordinator */}
-      {!worked && <Log cardId={item.id} hideEmpty skipTalk={item.brief !== undefined} />}
+      {/* a card nobody worked on shows its conversation once there is something, such as a talk with the Koordinator */}
+      {!worked && <Conversation item={item} past hideEmpty />}
     </>
   );
 }
@@ -692,70 +672,105 @@ const opened = (events: CardEvent[], body: string) => {
 };
 
 /**
- * The discussion of an idea, live: the owner's messages and the agent's replies. How the agent got
- * to a reply (what it read and thought, the decisions it recorded) folds away under that reply;
- * while it thinks, its latest step shows. The agent's open questions stand at the end. `past`: the
- * idea is decided, only the talk is left.
+ * A card's conversation, live: what the owner says, the agents' replies, questions and handovers,
+ * and the state changes between them. How an agent got to a message (what it read and thought, its
+ * status lines) folds away under that message; while it works, its latest step shows. The questions
+ * it waits on stand at the end (`questions`). `past`: nobody works on the card any more.
+ * `hideEmpty`: nothing shows until something was said.
  */
-function Conversation({ item, questions, past = false }: { item: Item; questions?: ReactNode; past?: boolean }) {
+function Conversation({ item, questions, past = false, hideEmpty = false }: { item: Item; questions?: ReactNode; past?: boolean; hideEmpty?: boolean }) {
   const events = useEvents(item.id);
   const box = useRef<HTMLDivElement>(null);
-  const asked = JSON.stringify(item.idea?.questions ?? []);
+  const idea = item.state === 'idea' && !!item.idea;
+  const asking = item.state === 'waiting' && item.need === 'question' ? item.question : undefined;
+  const working = !past && (idea ? !!item.idea?.thinking : item.state === 'working' || !!item.finishing);
+  const asked = JSON.stringify(item.idea?.questions ?? asking ?? []);
   useEffect(() => {
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [events, item.idea?.thinking, asked]);
-  if (!events) return null;
-  if (past && !events.some((e) => e.kind === 'talk')) return null;
-  const all = talkTurns(events);
-  const turns = past ? { shown: all.shown.filter((x) => x.e.kind === 'talk'), pending: [] } : all;
-  const thinking = !past && !!item.idea?.thinking;
+  }, [events, working, asked]);
+  const turns = useMemo(() => (events ? talkTurns(events, { asking, working }) : null), [events, asked, working]);
+  if (!events || !turns) return null;
+  if (hideEmpty && !turns.shown.length && !turns.pending.length) return null;
+  const agent = idea ? t.author.explorer : t.author.worker;
+  // the demo report's question goes with the handover it came with
+  const handover = item.demo?.question ? turns.shown.findLast((x) => x.e.kind === 'review') : undefined;
   return (
     <>
-      <h4 className="p-h">{t.idea.talk}</h4>
-      <div className="talk" ref={box}>
-        {turns.shown.length === 0 && !thinking && <div className="hint">{t.idea.talkEmpty}</div>}
-        {!past && item.body.trim() && !opened(events, item.body) && (
+      <h4 className="p-h">{t.talk.heading}</h4>
+      <div className="talk conv" ref={box}>
+        {turns.shown.length === 0 && !working && !turns.asked && <div className="hint">{idea ? t.idea.talkEmpty : t.talk.empty}</div>}
+        {idea && !past && item.body.trim() && !opened(events, item.body) && (
           <div className="msg by-owner seed">
             <div className="who">{t.idea.seed}</div>
             <Body md={item.body} />
           </div>
         )}
-        {turns.shown.map(({ e, steps }) =>
-          e.kind === 'talk' ? (
-            <div key={e.id} className={`msg by-${e.author}`}>
-              <div className="who">
-                {t.author[e.author]} <span className="t">{time(e.at)}</span>
-              </div>
-              <Body md={e.text} />
-              <Mocks mocks={e.mocks} />
-              <Shots ids={e.images} />
-              <Steps steps={steps} />
+        {turns.shown.map((turn) =>
+          turn.line ? (
+            <div key={turn.e.id} className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
+              {time(turn.e.at)} · {eventText(turn.e)}
             </div>
           ) : (
-            <div key={e.id} className={`note ev-${e.kind}`} title={e.code ? e.text : undefined}>
-              {time(e.at)} · {eventText(e)}
-            </div>
+            <Message key={turn.e.id} turn={turn} demoQuestion={turn === handover ? item.demo : undefined} />
           ),
         )}
-        {thinking ? (
-          <div className="msg by-explorer thinking">
+        {working ? (
+          <div className={`msg by-${idea ? 'explorer' : 'worker'} thinking`}>
             <div className="who">
-              {t.author.explorer} {t.idea.thinking}
+              {agent} {idea ? t.idea.thinking : t.talk.working}
             </div>
             {turns.pending.at(-1) && <div className="hint">{clipLine(turns.pending.at(-1)!.text)}</div>}
             <Steps steps={turns.pending} />
           </div>
         ) : (
-          turns.pending.length > 0 && (
-            <div className="msg by-explorer">
-              <Steps steps={turns.pending} />
+          (turns.pending.length > 0 || (turns.asked?.steps.length ?? 0) > 0) && (
+            <div className={`msg by-${idea ? 'explorer' : 'worker'}`}>
+              <Steps steps={[...(turns.asked?.steps ?? []), ...turns.pending]} />
             </div>
           )
         )}
-        {!thinking && questions}
+        {!working && questions}
       </div>
     </>
+  );
+}
+
+/** Who stands on the owner's side of the conversation: the owner, and whoever answers a question in their name. */
+const ownerSide = (e: CardEvent) => e.author === 'owner' || e.kind === 'answer';
+
+/** One message of the conversation; a question with its options and what came of it, a handover with its demo report's question. */
+function Message({ turn, demoQuestion }: { turn: Turn; demoQuestion?: Demo }) {
+  const { e, steps } = turn;
+  const q = e.kind === 'question' ? parseQuestion(e.text) : undefined;
+  return (
+    <div className={`msg by-${ownerSide(e) ? 'owner' : e.author}${q ? ' q' : ''}${turn.settled ? ' settled' : ''}`}>
+      <div className="who">
+        {t.author[e.author]}
+        {e.kind === 'question' && ` · ${t.talk.question}`}
+        {e.kind === 'review' && ` · ${t.talk.handover}`}
+        <span className="t">{time(e.at)}</span>
+      </div>
+      <Body md={q ? q.text : e.text} />
+      {q && !turn.settled && q.options.length > 0 && (
+        <ul className="q-opts">
+          {q.options.map((o) => (
+            <li key={o} className={turn.answer?.includes(o) ? 'on' : ''}>
+              <Inline md={o} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {turn.settled && <div className="hint">{t.talk.settled}</div>}
+      {demoQuestion?.question && (
+        <div className="demo-q">
+          <b>{t.talk.demoQuestion}</b> {demoQuestion.question}
+        </div>
+      )}
+      <Mocks mocks={e.mocks} />
+      <Shots ids={e.images} />
+      <Steps steps={steps} />
+    </div>
   );
 }
 
@@ -797,15 +812,16 @@ function MockFrame({ mock }: { mock: Mock }) {
   );
 }
 
-/** What the agent did on its way to a reply, folded. */
+/** What the agent did on its way to a message, folded: its history. */
 function Steps({ steps }: { steps: CardEvent[] }) {
   if (!steps.length) return null;
   return (
     <details className="steps">
-      <summary>{t.idea.steps(steps.length)}</summary>
+      <summary>{t.talk.steps(steps.length)}</summary>
       <ol>
         {steps.map((s) => (
           <li key={s.id} className={`step-${s.kind}`}>
+            {s.author !== 'worker' && s.author !== 'explorer' && <b>{t.author[s.author]}: </b>}
             {s.kind === 'say' ? <Body md={s.text} /> : s.text}
           </li>
         ))}
@@ -1177,28 +1193,36 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
 
 // ------------------------------------------------------------------ talking to the worker
 
-/** A worker's question with its answer options, and the composer for the owner's own words: both go out as one answer. */
-function Answer(p: {
-  questions: Question[];
-  heading: string;
-  placeholder: string;
-  listener: string;
-  /** The options picked, with the owner's words: straight to the agent. */
-  onSend: (text: string, images?: string[]) => Promise<void>;
-  /** Words alone: read by the Koordinator, like spoken ones. */
-  onWords: (text: string, images?: string[]) => Promise<void>;
-}) {
-  const answer = usePicks(p.questions);
+/**
+ * A worked card's conversation, and below it what the owner says to its agent: the answer to the
+ * question it waits on (options picked and own words go out as one answer), a note, or feedback.
+ */
+function TaskTalk({ item, listener, act, tell }: { item: Item; listener: string; act: (a: CardAction, done: ActDone) => Promise<void>; tell: (field: Field) => (text: string, images?: string[]) => Promise<void> }) {
+  const asking = item.state === 'waiting' && item.need === 'question';
+  const key = JSON.stringify(item.question ?? null);
+  const questions = useMemo(() => (asking && item.question ? [item.question] : []), [asking, key]);
+  const answer = usePicks(questions);
+  const review = item.state === 'waiting' && item.need === 'review';
   return (
     <>
-      <Questions questions={p.questions} heading={p.heading} {...answer} />
-      <Composer
-        placeholder={p.placeholder}
-        button={p.questions.length ? t.ask.send : t.send}
-        allowEmpty={answer.picked}
-        listener={p.listener}
-        onSend={(words, images) => (answer.picked ? p.onSend(answerText(p.questions, answer.picks, words), images) : p.onWords(words, images))}
-      />
+      <Conversation item={item} questions={asking && <Questions questions={questions} heading={t.questionFromWorker} {...answer} />} />
+      {asking ? (
+        <Composer
+          key={key}
+          placeholder={item.question?.options.length ? t.ask.words : t.compose.question}
+          button={questions.length ? t.ask.send : t.send}
+          allowEmpty={answer.picked}
+          listener={listener}
+          // picked options go to the worker as they are; words alone go through the Koordinator, like spoken ones
+          onSend={(words, images) =>
+            answer.picked ? act({ action: 'answer', text: answerText(questions, answer.picks, words), images }, { close: true, ack: t.answered }) : tell('answer')(words, images)
+          }
+        />
+      ) : (
+        (item.state === 'working' || item.state === 'inPr' || review || item.finishing) && (
+          <Composer key={`${item.state}:${item.need ?? ''}`} placeholder={review ? t.compose.review : t.compose.working} listener={listener} onSend={tell(review ? 'feedback' : 'note')} />
+        )
+      )}
     </>
   );
 }
@@ -1366,37 +1390,6 @@ function LastFailure({ cardId }: { cardId: string }) {
         {eventText(last)}
       </div>
     </div>
-  );
-}
-
-/** The card's log, live. */
-function Log({ cardId, hideEmpty, skipTalk }: { cardId: string; hideEmpty?: boolean; skipTalk?: boolean }) {
-  const all = useEvents(cardId);
-  // the conversation of a decided idea shows on its own
-  const events = useMemo(() => (all && skipTalk ? all.filter((e) => e.kind !== 'talk') : all), [all, skipTalk]);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = box.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [events]);
-  if (!events || (hideEmpty && !events.length)) return null;
-  return (
-    <>
-      <h4 className="p-h">{t.log}</h4>
-      <div className="log" ref={box}>
-        {events.length === 0 && <div className="hint">{t.logEmpty}</div>}
-        {events.map((e) => (
-          <div key={e.id} className={`ev ev-${e.kind} by-${e.author}`}>
-            <span className="t">{time(e.at)}</span>
-            {e.author !== 'worker' && <span className="who">{t.author[e.author]}</span>}
-            <span className="x" title={e.code ? e.text : undefined}>
-              {e.kind === 'say' ? <Inline md={e.text} /> : eventText(e)}
-              <Shots ids={e.images} />
-            </span>
-          </div>
-        ))}
-      </div>
-    </>
   );
 }
 

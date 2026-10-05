@@ -26,6 +26,10 @@ export interface Question {
   pick?: { options: string[]; why: string };
 }
 
+/** A question as its card's log holds it: the text, then one line per option. */
+export const formatQuestion = (q: Question): string =>
+  q.options.length ? `${q.text}${q.multiple ? ' (Mehrfachauswahl)' : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
+
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**
  * A card needs the owner: it waits, is a proposal, has a pull request that only waits for the

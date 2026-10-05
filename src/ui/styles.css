@@ -334,6 +334,21 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .steps .step-state { color: var(--idea); }
 .talk .note { font-size: 12px; color: var(--muted); font-style: italic; align-self: center; text-align: center; }
 .talk .note.ev-error { color: #dc2626; font-style: normal; }
+/* a task's conversation: under the card's demo and pull request, scrolled to its end */
+.talk.conv { max-height: min(520px, 60vh); max-width: 100ch; }
+.talk .msg.by-worker .who { color: var(--ink); }
+.talk .msg.by-koordinator .who, .talk .msg.by-project .who { color: var(--muted); }
+.talk .msg.by-worker.thinking .who::after { background: linear-gradient(90deg, transparent, var(--working), transparent); background-size: 200% 100%; }
+.talk .msg.q { border-left: 3px solid var(--waiting); }
+.talk .msg.q .who { color: var(--waiting); }
+.talk .msg.q.settled { border-left-color: var(--line); }
+.talk .msg.q.settled .who, .talk .msg.q.settled .p-lead { color: var(--muted); }
+.talk .msg .q-opts { list-style: none; margin: 6px 0 2px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.talk .msg .q-opts li { font-size: 12.5px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+.talk .msg .q-opts li.on { color: var(--ink); border-color: var(--working); background: color-mix(in srgb, var(--working) 10%, var(--card)); font-weight: 600; }
+.talk .msg .q-opts li.on::before { content: "✓ "; color: var(--working); }
+.talk .msg .demo-q { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 13.5px; }
+.talk .msg .demo-q b { color: var(--waiting); font-weight: 600; }
 .question.pr { border-color: var(--inPr); background: color-mix(in srgb, var(--inPr) 7%, transparent); }
 .question.pr h4 a { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
 .checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
@@ -436,14 +451,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .log .t { color: var(--muted); flex: none; }
 .log .who { flex: none; font-weight: 600; }
 .log .x { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
-.log .ev-activity .x { color: var(--muted); }
 .log .ev-say .x { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 13px; }
-.log .ev-report .x { font-weight: 700; }
-.log .ev-question .x, .log .ev-review .x, .log .ev-hint .x, .log .ev-answer .x { color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 13px; }
-.log .ev-question { color: var(--waiting); }
-.log .ev-answer .who, .log .ev-hint .who { color: var(--working); }
-.log .ev-error { color: #dc2626; }
-.log .ev-state .x { font-style: italic; }
 /* above projects (z-index 0), below cards (2): a line from a workstream stays visible over its project */
 #links { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
 #links path { fill: none; stroke: var(--proposal); stroke-width: 2; stroke-dasharray: 5 6; opacity: .7; }
