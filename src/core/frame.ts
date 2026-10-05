@@ -21,5 +21,5 @@ export function withHeightReport(html: string): string {
 /** A mock's few lines of HTML as a page of their own: a plain sans-serif on white unless the mock is a whole page itself. */
 export function mockPage(html: string): string {
   const whole = /<html[\s>]/i.test(html);
-  return withHeightReport(whole ? html : `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:12px;font:14px/1.4 system-ui,sans-serif;color:#222;background:#fff}</style></head><body>${html}</body></html>`);
+  return withHeightReport(whole ? html : `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:8px;font:14px/1.4 system-ui,sans-serif;color:#222;background:#fff}</style></head><body>${html}</body></html>`);
 }

@@ -346,7 +346,7 @@ const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'record_decision'
 const MAX_VARIANTS = 6;
 
 /** How a mock is written, for both tools that take them. */
-const MOCKS = `each with a title (the variant in a few words, in ${OWNER_LANGUAGE}) and html: a few lines of self-contained HTML with inline styles (no files, no network), shown in a sandboxed frame about 300 px wide`;
+const MOCKS = `each with a title (the variant in a few words, in ${OWNER_LANGUAGE}) and html: a few lines of self-contained HTML with inline styles (no files, no network), shown in a sandboxed frame that may leave it only 240 px of width, so nothing in it is wider`;
 const MOCK_SCHEMA = z.array(z.object({ title: z.string(), html: z.string() })).max(MAX_VARIANTS).optional();
 
 /** How the agent hears the messages an interrupted turn left unanswered. */
