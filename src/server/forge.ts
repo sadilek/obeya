@@ -16,8 +16,12 @@ export interface PrStatus {
   mergeState?: string;
   /** The commit the checks ran on. */
   head: string;
-  /** When `head` was made (its committer date): a review written before it has not seen it. */
-  headAt?: string;
+  /**
+   * When the PR's own changes last changed: the committer date of its newest commit that is not a
+   * merge (merging the base in brings changes reviewed there). A review written before it has not
+   * seen them.
+   */
+  changedAt?: string;
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   /**
    * Conversation comments, review summaries and inline review comments, oldest first. An inline
@@ -106,7 +110,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
         '-F',
         `number=${ref.number}`,
         '-f',
-        'query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } comments(last: 100) { nodes { id updatedAt } } commits(last: 1) { nodes { commit { committedDate } } } } } }',
+        'query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } comments(last: 100) { nodes { id updatedAt } } commits(last: 30) { nodes { commit { committedDate parents { totalCount } } } } } } }',
       ),
     ) as {
       data?: {
@@ -114,7 +118,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
           pullRequest?: {
             reviewThreads?: { nodes: { isResolved: boolean; comments: { nodes: { databaseId: number }[] } }[] };
             comments?: { nodes: { id: string; updatedAt: string }[] };
-            commits?: { nodes: { commit: { committedDate: string } }[] };
+            commits?: { nodes: { commit: { committedDate: string; parents: { totalCount: number } } }[] };
           };
         };
       };
@@ -122,7 +126,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
     const resolved = new Set(
       (threads.data?.repository?.pullRequest?.reviewThreads?.nodes ?? []).filter((t) => t.isResolved).map((t) => t.comments.nodes[0]?.databaseId),
     );
-    const headAt = threads.data?.repository?.pullRequest?.commits?.nodes[0]?.commit.committedDate;
+    const changedAt = (threads.data?.repository?.pullRequest?.commits?.nodes ?? []).findLast((n) => n.commit.parents.totalCount < 2)?.commit.committedDate;
     const updated = new Map((threads.data?.repository?.pullRequest?.comments?.nodes ?? []).map((c) => [c.id, c.updatedAt]));
     // an edit within a minute of writing is part of writing it
     const edited = (id: string, at?: string) => {
@@ -145,7 +149,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       mergeable: pr.mergeable,
       ...(pr.mergeStateStatus ? { mergeState: pr.mergeStateStatus } : {}),
       head: pr.headRefOid,
-      ...(headAt ? { headAt } : {}),
+      ...(changedAt ? { changedAt } : {}),
       author: pr.author.login,
       checks,
       comments: [
@@ -248,8 +252,8 @@ export function reviewOf(s: PrStatus, skip: string[] = []): PrReviewEntry[] {
 
 /**
  * Whether the pull request only waits for the merge: GitHub sees nothing in the way, every
- * check has passed, every review thread is resolved, a reviewer who wrote has seen the head
- * commit, and whoever was asked for another look has answered since the author last asked (a
+ * check has passed, every review thread is resolved, a reviewer who wrote has seen the PR's own
+ * latest changes, and whoever was asked for another look has answered since the author last asked (a
  * review bot answers a re-review by rewriting its summary, often without a new comment). Comments
  * by `skip` do not count as an answer.
  */
@@ -265,19 +269,33 @@ export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
 }
 
 /**
- * Whether a reviewer wrote on the pull request, but nothing since its head commit was made: the
- * last verdict is about an older state. A PR merged on Greptile's 3/5 of its first commit
+ * Whether a reviewer wrote on the pull request, but nothing since its own changes last changed
+ * (a merge of the base does not count): the last verdict is about an older state. A PR merged on Greptile's 3/5 of its first commit
  * (2026-10-02): the fix pushed after it was never reviewed, as nobody asked for another look.
  */
 export function reviewStale(s: PrStatus, skip: string[] = []): boolean {
-  if (!s.headAt) return false;
+  if (!s.changedAt) return false;
   const last = reviewers(s, skip).reduce((a, c) => latest(a, c.edited ?? c.at), '');
-  return !!last && last < s.headAt;
+  return !!last && last < s.changedAt;
 }
 
 /** When the author last asked for another look (a conversation comment of theirs). */
 export function lastAsked(s: PrStatus): string {
   return s.comments.filter((c) => c.author === s.author && c.id.startsWith('c')).reduce((a, c) => latest(a, c.at), '');
+}
+
+/**
+ * The confidence a reviewer gave last, in a comment rewritten or written latest (Greptile's
+ * "Confidence Score: 3/5" in its summary); none when no reviewer gives one.
+ */
+export function confidence(s: PrStatus, skip: string[] = []): { score: number; of: number; by: string } | undefined {
+  let found: { score: number; of: number; by: string; at: string } | undefined;
+  for (const c of reviewers(s, skip)) {
+    const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(c.body);
+    const at = c.edited ?? c.at ?? '';
+    if (m && (!found || at >= found.at)) found = { score: Number(m[1]), of: Number(m[2]), by: c.author, at };
+  }
+  return found && { score: found.score, of: found.of, by: found.by };
 }
 
 const reviewers = (s: PrStatus, skip: string[]) => s.comments.filter((c) => c.author !== s.author && !skip.includes(c.author));

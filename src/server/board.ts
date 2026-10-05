@@ -50,6 +50,8 @@ export interface PrState {
   readyHead?: string;
   /** Why GitHub refused Obeya's merge of the ready PR: then the owner merges. */
   mergeError?: string;
+  /** A ready PR's reviewer confidence too low for Obeya to merge it: the owner decides. */
+  held?: { score: string; by: string };
   checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   /** The review as last seen, for the card. */
   review?: PrReviewEntry[];
@@ -1163,7 +1165,7 @@ function work(r: CardRow): Partial<Item> {
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
-    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && pr.mergeError ? { ready: true, mergeError: pr.mergeError } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
+    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && (pr.mergeError || pr.held) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}) } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice

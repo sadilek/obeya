@@ -197,10 +197,12 @@ export interface PullRequest {
   conflict: boolean;
   /**
    * Nothing is left for the worker (checks green, threads resolved, reviewers answered), and GitHub
-   * refused Obeya's merge for `mergeError`: the owner merges.
+   * refused Obeya's merge for `mergeError`, or the reviewer's confidence is too low for Obeya to
+   * merge (`held`, Greptile's 3/5 say): the owner merges, or tells the worker what is missing.
    */
   ready?: boolean;
   mergeError?: string;
+  held?: { score: string; by: string };
   /** The review as last seen, oldest first (`reviewOf` in the server's forge). */
   review?: PrReviewEntry[];
 }

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, type PrStatus } from './forge';
+import { confidence, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, type PrStatus } from './forge';
 
 test('parsePrUrl', () => {
   expect(parsePrUrl('https://github.com/example-org/acme/pull/813')).toEqual({ owner: 'example-org', repo: 'acme', number: 813 });
@@ -37,7 +37,13 @@ test('gh output becomes a PR status', () => {
             pullRequest: {
               reviewThreads: { nodes: [{ isResolved: true, comments: { nodes: [{ databaseId: 7 }] } }] },
               comments: { nodes: [{ id: 'IC_1', updatedAt: '2026-10-02T08:09:00Z' }] },
-              commits: { nodes: [{ commit: { committedDate: '2026-10-02T07:58:00Z' } }] },
+              // the last commit merges the base in: the PR's own changes are older
+              commits: {
+                nodes: [
+                  { commit: { committedDate: '2026-10-02T07:58:00Z', parents: { totalCount: 1 } } },
+                  { commit: { committedDate: '2026-10-02T08:20:00Z', parents: { totalCount: 2 } } },
+                ],
+              },
             },
           },
         },
@@ -55,7 +61,7 @@ test('gh output becomes a PR status', () => {
     mergeable: 'CONFLICTING',
     mergeState: 'DIRTY',
     head: 'abc',
-    headAt: '2026-10-02T07:58:00Z',
+    changedAt: '2026-10-02T07:58:00Z',
     author: 'owner',
     checks: [
       { name: 'build', state: 'failure', url: 'https://ci/1' },
@@ -154,9 +160,9 @@ test('ready to merge: GitHub clean, checks green, threads resolved, the last re-
   expect(without((c) => (c.mergeable = 'UNKNOWN'))).toBe(false);
   // no reviewer asked for anything
   expect(without((c) => (c.comments = []))).toBe(true);
-  // the head commit is older than the reviewer's last word; one made after it is not reviewed yet
-  expect(without((c) => (c.headAt = at('45')))).toBe(true);
-  expect(without((c) => (c.headAt = at('50')))).toBe(false);
+  // the PR's changes are older than the reviewer's last word; a change after it is not reviewed yet
+  expect(without((c) => (c.changedAt = at('45')))).toBe(true);
+  expect(without((c) => (c.changedAt = at('50')))).toBe(false);
 });
 
 test('a push since the review is not ready to merge until the reviewer has seen it', () => {
@@ -167,7 +173,7 @@ test('a push since the review is not ready to merge until the reviewer has seen 
     mergeable: 'MERGEABLE',
     mergeState: 'CLEAN',
     head: 'ae384ff',
-    headAt: '2026-10-02T12:49:20Z',
+    changedAt: '2026-10-02T12:49:20Z',
     author: 'owner',
     checks: [{ name: 'CI', state: 'success' }],
     comments: [
@@ -189,6 +195,23 @@ test('a push since the review is not ready to merge until the reviewer has seen 
   expect(readyToMerge(s, ['cloudflare'])).toBe(true);
   // a PR no reviewer wrote on waits for nobody
   expect(reviewStale({ ...s, comments: [s.comments[0]!] }, ['cloudflare'])).toBe(false);
+});
+
+test('the confidence a reviewer gave last', () => {
+  const s: PrStatus = { state: 'OPEN', mergeable: 'MERGEABLE', head: 'h', author: 'owner', checks: [], comments: [] };
+  expect(confidence(s)).toBeUndefined();
+  // Greptile's summary as it writes it, rewritten each round
+  s.comments.push({
+    id: 'cSUM',
+    author: 'greptile-apps',
+    body: '<h2><a href="r"><picture><img alt="Retrigger" src="r.svg"></picture></a>Confidence Score: 3/5</h2>\n\n<!-- greptile_confidence_score:3 -->',
+    at: '2026-10-02T12:44:56Z',
+  });
+  s.comments.push({ id: 'cME', author: 'owner', body: 'Confidence Score: 5/5', at: '2026-10-02T12:50:00Z' });
+  expect(confidence(s)).toEqual({ score: 3, of: 5, by: 'greptile-apps' });
+  s.comments[0]!.body = 'Confidence Score: 4/5';
+  s.comments[0]!.edited = '2026-10-02T12:57:00Z';
+  expect(confidence(s)).toEqual({ score: 4, of: 5, by: 'greptile-apps' });
 });
 
 test('the description is read with gh pr view and replaced through a file', () => {

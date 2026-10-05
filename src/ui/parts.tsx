@@ -60,7 +60,7 @@ export const CardView = memo(
       item.state === 'working'
         ? item.statusLine
         : item.state === 'inPr' && item.pr
-          ? t.pr.short(item.pr.number, item.pr.checks.filter((c) => c.state === 'failure').length, item.pr.conflict, item.pr.ready)
+          ? t.pr.short(item.pr.number, item.pr.checks.filter((c) => c.state === 'failure').length, item.pr.conflict, item.pr.ready, item.pr.held?.score)
           : undefined;
     const meta =
       item.question?.text ??

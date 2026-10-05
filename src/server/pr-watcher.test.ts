@@ -190,7 +190,7 @@ describe('watching', () => {
     runtime.last.emit({ type: 'idle' });
     runtime.last.emit({ type: 'idle' });
     status.head = 'bbb';
-    status.headAt = '2026-10-02T12:49:20Z';
+    status.changedAt = '2026-10-02T12:49:20Z';
     status.comments = [
       { id: 'cSUM', author: 'greptile', body: 'Confidence Score: 3/5', at: '2026-10-02T12:44:56Z' },
       { id: 'i1', author: 'greptile', body: 'Permissions can remain active', at: '2026-10-02T12:45:00Z', round: 'A', resolved: true },
@@ -214,6 +214,30 @@ describe('watching', () => {
     status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 5/5', edited: '2026-10-02T12:57:00Z' };
     watcher.poll();
     expect(merges).toEqual(['bbb']);
+    expect(state(id)).toBe('live');
+  });
+
+  test('a reviewer confidence below 4/5 leaves the merge to the owner; a better one lets Obeya merge', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.comments = [{ id: 'cSUM', author: 'greptile', body: 'Confidence Score: 3/5', at: '2026-10-02T08:34:00Z' }];
+    board.work(id, { pr: JSON.stringify({ ...JSON.parse(board.row(id).pr!), seen: ['cSUM'] }) });
+    watcher.poll();
+    expect(merges).toEqual([]);
+    expect(state(id)).toBe('inPr');
+    expect(board.item(id)!.pr).toMatchObject({ ready: true, held: { score: '3/5', by: 'greptile' } });
+    expect(needsYou(board.item(id)!)).toBe(true);
+    expect(board.events(id).at(-1)!.text).toBe('Bereit zum Mergen, aber greptile gibt nur 3/5: Unter 4/5 mergt Obeya nicht selbst. Du entscheidest.');
+    // said once
+    const events = board.events(id).length;
+    watcher.poll();
+    expect(board.events(id).length).toBe(events);
+    // a new review rates it 4/5
+    status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 4/5', edited: '2026-10-02T08:49:00Z' };
+    watcher.poll();
+    expect(merges).toEqual(['aaa']);
     expect(state(id)).toBe('live');
   });
 

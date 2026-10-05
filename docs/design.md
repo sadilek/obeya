@@ -396,18 +396,22 @@ the owner's language (`src/core/locale.ts`).
   asked, news waits. Once nothing is left for the worker, the card needs the owner: "Bereit zum
   Mergen" (once in the log, on the card and folded) when GitHub sees nothing in the way
   (`mergeStateStatus` clean), every check has passed, every review thread is resolved, the worker
-  is not in a turn, a reviewer who wrote has written since the head commit was made (its committer
-  date), and whoever the PR's author last asked for another look has answered since. A
+  is not in a turn, a reviewer who wrote has written since the PR's own changes last changed (the
+  committer date of its newest commit that is not a merge: merging the base in brings changes
+  reviewed there, mostly elsewhere in the code), and whoever the PR's author last asked for another look has answered since. A
   review bot often answers a re-review only by rewriting its summary (Greptile's new score, on Acme's
   PR #821 on 2026-10-02, with no new comment), so a rewrite counts as an answer; before, the watcher
   waited for new comments only and the card stood "in PR" with nothing left to do. A review older
-  than the head is about an older state: a PR (2026-10-02) went in on Greptile's 3/5 of its first
+  than the changes is about an older state: a PR (2026-10-02) went in on Greptile's 3/5 of its first
   commit, since the worker pushed its fixes, replied in the threads and resolved them, but asked for
   no new review, and a PR nobody asked about counted as reviewed. Now the worker hears, once per
   commit and when it is not in a turn, that its reviewers have not seen its latest push, and asks
   them the repository's way (its own skill, or a comment mentioning the bot); the message on new
-  review comments already says to ask once pushed. A merge of `main` into the branch is a new state too
-  and gets a new review; a PR no reviewer wrote on waits for nobody. Once ready,
+  review comments already says to ask once pushed. A PR no reviewer wrote on waits for nobody. A
+  ready PR whose reviewer's latest confidence is below 4/5 ("Confidence Score: 3/5" in Greptile's
+  summary) Obeya does not merge: the card needs the owner ("Bereit zum Mergen · Review nur 3/5"),
+  who merges on GitHub or tells the worker what is missing; a new review at 4/5 or better lets Obeya
+  merge again. Once ready,
   Obeya merges the PR itself (`gh pr merge` with the method the repository allows, Acme: squash, and
   `--match-head-commit`, so a push since is never merged unchecked) and the card is `live` (After
   landing, below) in the same round. Before, Obeya left the merge to the owner on GitHub, and a

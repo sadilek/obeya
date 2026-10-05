@@ -3,7 +3,10 @@
 // merges it (the owner's approval covered that); a merge makes the card live.
 
 import type { Board, PrState } from './board';
-import { lastAsked, readyToMerge, reviewOf, reviewStale, type Forge, type PrStatus } from './forge';
+import { confidence, lastAsked, readyToMerge, reviewOf, reviewStale, type Forge, type PrStatus } from './forge';
+
+/** Below this share of a reviewer's confidence (4 of 5), Obeya leaves the merge to the owner. */
+const MIN_CONFIDENCE = 0.8;
 import type { Workers } from './workers';
 
 export class PrWatcher {
@@ -109,7 +112,7 @@ export class PrWatcher {
       // ready only while the worker has nothing in hand: what it was told may still change the PR
       const idle = !comments.length && !failed.length && !this.workers.busyCards().includes(cardId);
       // a push the reviewer has not seen, and nobody asked for another look: the worker asks, once per commit
-      if (idle && reviewStale(s, this.noise) && lastAsked(s) < s.headAt! && pr.staleHead !== s.head) {
+      if (idle && reviewStale(s, this.noise) && lastAsked(s) < s.changedAt! && pr.staleHead !== s.head) {
         next.staleHead = s.head;
         this.workers.prEvent(
           cardId,
@@ -117,9 +120,19 @@ export class PrWatcher {
           'Your pull request has commits its reviewers have not seen: their last word is older than the head commit, and nobody asked for another look since. Their verdict is about an older state, so Obeya does not merge on it. Ask them for a new review the way the repository does it (its own skill or script for this, if it has one; otherwise a comment mentioning the review bot), and end your turn.',
         );
       }
-      if (idle && readyToMerge(s, this.noise)) {
-        if (pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya mergt.');
+      const low = confidence(s, this.noise);
+      if (idle && readyToMerge(s, this.noise) && low && low.score / low.of < MIN_CONFIDENCE) {
+        // the reviewer doubts it: the owner decides, and merges on GitHub or tells the worker what is missing
+        const held = { score: `${low.score}/${low.of}`, by: low.by };
+        if (pr.readyHead !== s.head || pr.held?.score !== held.score)
+          this.board.log(cardId, 'state', 'obeya', `Bereit zum Mergen, aber ${held.by} gibt nur ${held.score}: Unter 4/5 mergt Obeya nicht selbst. Du entscheidest.`);
         next.readyHead = s.head;
+        next.held = held;
+        delete next.mergeError;
+      } else if (idle && readyToMerge(s, this.noise)) {
+        if (pr.readyHead !== s.head || pr.held) this.board.log(cardId, 'state', 'obeya', 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya mergt.');
+        next.readyHead = s.head;
+        delete next.held;
         // the owner's approval covered the merge: Obeya merges, and tries again each round while GitHub refuses
         try {
           this.forge.merge(this.cwd(cardId), pr.url!, s.head);
@@ -134,6 +147,7 @@ export class PrWatcher {
       } else {
         delete next.readyHead;
         delete next.mergeError;
+        delete next.held;
       }
     }
     this.save(cardId, next);
