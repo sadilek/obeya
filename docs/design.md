@@ -396,7 +396,10 @@ the owner's language (`src/core/locale.ts`).
   stopped it starts, or, while other work runs that may have started meanwhile, it is judged
   again — the owner can start it anyway. Cards whose turn comes together go in the order they came
   to the Koordinator, the one waiting longest first. On the canvas, a planned card and one waiting in the queue show a play button
-  while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. A project starts all its
+  while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. While the pointer is on a card,
+  the waits around it show over every step, both ways (`src/ui/deps.ts`): the cards it waits for
+  ("kommt zuerst"), those waiting for it ("wartet darauf"), each with a ring and an arrow from the
+  card waited for to the card waiting. A project starts all its
   planned workstreams at once ("Alle N starten" in the project card's head, "Alle N Workstreams
   starten" in its sheet, or by voice: start on the project): they queue in the plan's order, wait
   8 seconds in which "Rückgängig" takes the start back (the button is easily hit), and then one

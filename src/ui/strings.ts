@@ -112,6 +112,11 @@ export const t = {
     forced: 'Gestartet, trotz möglicher Merge-Konflikte.',
     dequeued: 'Aus der Warteschlange genommen.',
   },
+  /** Tags on the cards around the one the pointer is on: it waits for them, or they wait for it. */
+  deps: {
+    before: 'kommt zuerst',
+    after: 'wartet darauf',
+  },
   /** Why the server refused an action; `invalid` is also the text for anything unknown. */
   error: {
     unknownCard: 'Das gibt es nicht mehr.',

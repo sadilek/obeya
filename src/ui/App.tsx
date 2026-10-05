@@ -11,11 +11,12 @@ import { type ActDone, Detail } from './detail';
 import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
 import { KoordinatorSheet } from './koordinator';
+import { depsOf } from './deps';
 import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './keep';
 import { Sign, Wordmark } from './logo';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, usePushToTalk, type Where } from './voice';
-import { CanvasPill, CardView, Edges, Links, Minimap, ProjectView, RestartPill, Sheet } from './parts';
+import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_GAP, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
 
@@ -595,6 +596,8 @@ function Canvas({
   const dragRef = useRef<Drag | null>(null);
   const [panning, setPanning] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  // the card the pointer is on, for the waits around it
+  const [hoverId, setHoverId] = useState<string | null>(null);
   // the strip on the right a sheet covers, which neither edge indicators nor dragging count as view
   const readingNow = !!reading && focus?.type === 'project';
   const reserve = focus || kOn || aOn || cOn ? (readingNow ? sheetW.read : sheetW.sheet) + 30 : 0;
@@ -809,6 +812,8 @@ function Canvas({
   // ---------------------------------------------------------------- render
   const sheetProject = sheetId ? (items.find((i) => i.id === sheetId) ?? archived.find((i) => i.id === sheetId)) : undefined;
   const sheetKids = !sheetProject ? [] : sheetProject.archivedAt ? archived.filter((i) => i.parent === sheetProject.id) : (kidsOf.get(sheetProject.id) ?? []);
+  const deps = useMemo(() => (hoverId && !panning && !dragId ? depsOf(hoverId, items) : undefined), [hoverId, panning, dragId, items]);
+  const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   const edgeTargets = placed.filter(({ item }) => needsYou(item) && (focus?.type !== 'project' || item.parent === focus.id));
 
   return (
@@ -829,6 +834,7 @@ function Canvas({
       >
         <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
           <Links placed={placed} />
+          {deps && <DepLinks placed={placed} edges={deps.edges} />}
           {placed.map(({ item, b }) =>
             item.kind === 'project' ? (
               <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} onStartAll={startAll} />
@@ -845,6 +851,8 @@ function Canvas({
                 els={els}
                 onStart={startCard}
                 onArchive={archiveCard}
+                dep={depOf(item.id)}
+                onHover={setHoverId}
               />
             ),
           )}

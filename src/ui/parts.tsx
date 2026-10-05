@@ -32,12 +32,16 @@ interface CardProps {
   onStart: (item: Item) => void;
   /** Takes a finished card or a dropped idea off the canvas into the archive. */
   onArchive: (item: Item) => void;
+  /** While the pointer is on a card with waits: this one is it, comes before it, or waits for it. */
+  dep?: 'self' | 'before' | 'after';
+  /** The pointer came onto the card (its id) or left it (null). */
+  onHover: (id: string | null) => void;
 }
 
 const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover }: CardProps) {
     const shape = shapeOf(item);
     // a card the Koordinator is checking or cutting has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
@@ -71,14 +75,17 @@ export const CardView = memo(
       item.idea && `idea-${item.idea.status}`,
       item.idea?.thinking && 'thinking',
       item.idea && needsYou(item) && 'your-turn',
-      item.queue && 'queued', lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
+      item.queue && 'queued', dep && `dep-${dep}`, lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (
       <div
         className={cls}
         data-id={item.id}
         ref={(el) => void (el ? els.set(item.id, el) : els.delete(item.id))}
         style={{ left: b.x, top: b.y, width: b.w, height: b.h, zIndex: 2 }}
+        onPointerEnter={() => onHover(item.id)}
+        onPointerLeave={() => onHover(null)}
       >
+        {(dep === 'before' || dep === 'after') && <div className="dep-tag">{t.deps[dep]}</div>}
         {label && (
           <div className="kind">
             <span>{label}</span>
@@ -130,7 +137,7 @@ export const CardView = memo(
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive,
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover,
 );
 
 /**
@@ -307,6 +314,25 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   return (
     <svg id="links" width="1" height="1">
       {paths}
+    </svg>
+  );
+}
+
+/** While the pointer is on a card with waits: a line for each wait, from the card waited for to the card waiting. */
+export function DepLinks({ placed, edges }: { placed: { item: Item; b: Bounds }[]; edges: [string, string][] }) {
+  const byId = new Map(placed.map((p) => [p.item.id, p.b]));
+  return (
+    <svg id="deps" width="1" height="1">
+      <defs>
+        <marker id="dep-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" />
+        </marker>
+      </defs>
+      {edges.flatMap(([from, to]) => {
+        const a = byId.get(from);
+        const b = byId.get(to);
+        return a && b ? [<path key={`${from} ${to}`} d={linkPath(a, b)} markerEnd="url(#dep-arrow)" />] : [];
+      })}
     </svg>
   );
 }

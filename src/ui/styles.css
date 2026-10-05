@@ -596,3 +596,11 @@ button.link:hover { text-decoration: underline; }
 .card .play:hover { filter: brightness(1.1); }
 .card .play.archive { padding: 0; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 .card.dragging .play, .card.lifted .play { opacity: 0; pointer-events: none; }
+
+/* while the pointer is on a card with waits: the cards it waits for and those waiting for it, over every step */
+#deps { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
+#deps path { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+#deps marker path { fill: var(--waiting); stroke: none; }
+.card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
+.card .dep-tag { position: absolute; left: 14px; top: -10px; padding: 1px 8px; border-radius: 9px; font-size: 11px; font-weight: 600;
+  background: var(--waiting); color: #fff; white-space: nowrap; pointer-events: none; }
