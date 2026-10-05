@@ -532,8 +532,9 @@ the owner's language (`src/core/locale.ts`).
 - **Demos** — the demo skill's pipeline (scripted walkthrough, narrated video, report) is part of
   the repository: `plugin/` is a Claude Code plugin named `obeya` whose skill `demo`
   (`plugin/skills/demo/`) holds the instructions (`SKILL.md`, paths through `${CLAUDE_SKILL_DIR}`),
-  the director (`lib/director.ts`, Playwright on the local Chrome, cut with ffmpeg, run with plain
-  `node`), the overlay (`lib/overlay.js`) and the narration (`lib/tts.py`, synthesis and listening
+  the director (`lib/director.ts`, Playwright on the local Chrome, else Edge, else Playwright's
+  own Chromium, as on Linux on ARM where there is no Chrome; cut with ffmpeg, run with plain
+  `node`; on macOS, Linux and Windows, checked 2026-10-05), the overlay (`lib/overlay.js`) and the narration (`lib/tts.py`, synthesis and listening
   back with Whisper), with Playwright among Obeya's dependencies. Obeya loads the plugin into every
   worker session of a repository with demos (the Agent SDK's `plugins` option, a local plugin),
   so the worker has the skill as `obeya:demo`, which its brief names. The skill also runs without
@@ -552,7 +553,14 @@ the owner's language (`src/core/locale.ts`).
   ones are HTTP requests from templates in `tts.py`: Gemini, OpenAI (or another base URL with the
   same API), ElevenLabs, Azure, or the owner's own endpoint (POST `{"text", "language"}` as JSON,
   audio back), each with its key from its environment variable or a key file. Whatever comes back
-  becomes a mono 16-bit WAV through ffmpeg; Whisper listens back in a throwaway uv environment.
+  becomes a mono 16-bit WAV through ffmpeg (a voice command gets its text as UTF-8, with
+  `PYTHONUTF8`: on Windows Piper read it in the code page otherwise); Whisper listens back in a throwaway uv environment:
+  mlx-whisper on Apple Silicon, faster-whisper elsewhere (CUDA with a GPU, else int8 on the CPU;
+  the clip decoded by ffmpeg, since its own PyAV decoder broke with newer PyAV). Listening back is
+  optional: off in the settings ("Erzählung mit Whisper gegenhören", `listenBack: false`), or off
+  for one render when uv cannot get Whisper or it fails to load; the clips then stay unheard and
+  uncached as heard, one take each, the review table says "not heard back", and the report page's
+  provenance says "nicht gegengehört" with why (otherwise "mit … gegengehört").
   Obeya installs Piper and Qwen3-TTS on request from the settings sheet, which shows what is
   missing and about how large it is first: each in a Python environment of its own made by uv
   under `voices/` in Obeya's home, Piper's voice files beside it, Qwen3's models in the Hugging
@@ -560,7 +568,9 @@ the owner's language (`src/core/locale.ts`).
   does the same without Obeya). A render refuses a voice that is not installed and says how to
   install it. The sheet also plays a sentence in the voice being chosen ("Anhören"). Local voices
   that load a large model (Qwen3-TTS, the owner's command) synthesise one at a time on the
-  machine (`lockf` on `~/.cache/demo-skill/tts.lock`). The owner's clone is such a command: it
+  machine: `tts.py --lock ~/.cache/demo-skill/tts.lock` holds the file locked while it runs
+  (`flock`, on Windows a byte-range lock through `msvcrt`; it works beside an older `lockf -k` on
+  the same file). The owner's clone is such a command: it
   runs in the owner's voice project (Stimmzwilling, `scripts/demo_voice.py`) and never leaves the
   machine. Voices are not labelled as generated, a clone included: the whole demo is generated,
   and that is clear from where it is shown. The person follows from "Das ist meine eigene

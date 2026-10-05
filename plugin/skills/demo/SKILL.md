@@ -157,12 +157,16 @@ is not installed stops the render with how to install it: from the settings shee
 `node ${CLAUDE_SKILL_DIR}/lib/voices.ts install`. `DEMO_VOICE=<provider>` renders in another
 voice; `DEMO_VOICE=<path>.wav` clones that clip with Qwen3-TTS (its exact transcript beside it as
 `.txt`). Clips are cached by voice and text, so re-runs after a
-visual fix skip synthesis. Each clip is transcribed back with Whisper and synthesised again (up
-to three takes) when it does not match. A voice that loads a large model (Qwen3-TTS, the owner's
-command) takes 7–12 GB with Whisper, so only one such demo synthesises at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it" and
-wait, which is expected, not a hang. Recording uses the local Chrome (headless screencast,
-1440×900). A failing scene leaves
-`.work/failure.png`.
+visual fix skip synthesis. Each clip is transcribed back with Whisper (mlx-whisper on Apple
+Silicon, faster-whisper elsewhere) and synthesised again (up to three takes) when it does not
+match. Listening back can be off in the settings ("Erzählung mit Whisper gegenhören"), and a
+Whisper that cannot be loaded turns it off for that render; then the review table says "not heard
+back" and the report page "nicht gegengehört": name that in the report's `findings`. A voice that
+loads a large model (Qwen3-TTS, the owner's command) takes 7–12 GB with Whisper, so only one such
+demo synthesises at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it"
+and wait, which is expected, not a hang. Recording uses the local Chrome, else Edge, else
+Playwright's own Chromium (`DEMO_CHROME` names another; headless screencast, 1440×900); it runs
+on macOS, Linux and Windows. A failing scene leaves `.work/failure.png`.
 
 ## 6. Review your own video — before the owner sees it
 

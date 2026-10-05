@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { type NarrationLanguage, readDemoSettings, withVoice } from './settings.ts';
-import { installState, TTS_LOCK, voiceSpec } from './voices.ts';
+import { installState, onMlx, TTS_LOCK, voiceSpec } from './voices.ts';
 
 export interface Scene {
   /** Chapter title in the player. */
@@ -62,15 +62,24 @@ const SAVED = readDemoSettings();
 const SETTINGS = withVoice(SAVED, process.env.DEMO_VOICE);
 const LANGUAGE: NarrationLanguage = SETTINGS.language;
 const LIB = import.meta.dirname;
-/** `lockf`'s exit status when `-t 0` finds the lock held (EX_TEMPFAIL). */
-const LOCK_BUSY = 75;
 
 interface Clip {
   id: string;
   file: string;
   seconds: number;
-  heard: string;
-  match: number;
+  /** `null` when the clip was not heard back. */
+  heard: string | null;
+  match: number | null;
+}
+
+interface Narration {
+  clips: Clip[];
+  /** Why some clips went unheard: Whisper off in the settings, or not loadable. */
+  unchecked: string | null;
+  /** How the clips were heard back, for the report. */
+  heardWith: string;
+  /** Listening back is off in the settings, so `unchecked` is no failure. */
+  turnedOff: boolean;
 }
 
 export class Director {
@@ -269,14 +278,23 @@ function run(cmd: string, args: string[], opts: { cwd?: string } = {}) {
 }
 
 /**
- * The command that runs tts.py, with Whisper for listening back in a throwaway environment; the
- * voice itself runs as its spec says (`voices.ts`).
+ * Whisper for listening back, in a throwaway environment uv makes: mlx-whisper on Apple Silicon,
+ * faster-whisper elsewhere (CUDA when there is a GPU, else the CPU). Off in the settings, or when
+ * uv cannot get it (offline, no wheel for this machine), the clips go unheard and the report says so.
  */
-function ttsCommand(args: string[]) {
-  return ['uv', 'run', '--quiet', '--no-project', '--with', 'mlx-whisper', 'python', path.join(LIB, 'tts.py'), ...args];
+function whisper(): { backend: 'mlx' | 'faster' | 'off'; uvArgs: string[]; unchecked?: string } {
+  if (SETTINGS.listenBack === false) return { backend: 'off', uvArgs: [] };
+  // faster-whisper's CTranslate2 has wheels for released Pythons only, so not for the newest one uv may pick.
+  const [backend, uvArgs, probe] = onMlx()
+    ? (['mlx', ['--with', 'mlx-whisper'], 'mlx_whisper'] as const)
+    : (['faster', ['--python', '3.12', '--with', 'faster-whisper'], 'faster_whisper'] as const);
+  const r = spawnSync('uv', ['run', '--quiet', '--no-project', ...uvArgs, 'python', '-c', `import ${probe}`], { encoding: 'utf8' });
+  if (r.status === 0) return { backend, uvArgs: [...uvArgs] };
+  const why = (r.error?.message ?? r.stderr ?? '').trim().split('\n').at(-1);
+  return { backend: 'off', uvArgs: [], unchecked: `${probe.replace('_', '-')} could not be loaded: ${why}` };
 }
 
-function synthesize(scenes: Scene[], dir: string): Clip[] {
+function synthesize(scenes: Scene[], dir: string): Narration {
   const jobs = scenes.map((s, i) => ({ id: `s${i + 1}`, text: s.say }));
   const jobsFile = path.join(dir, 'jobs.json');
   fs.writeFileSync(jobsFile, JSON.stringify(jobs));
@@ -287,35 +305,46 @@ function synthesize(scenes: Scene[], dir: string): Clip[] {
   const spec = voiceSpec(SETTINGS);
   const specFile = path.join(dir, 'voice.json');
   fs.writeFileSync(specFile, JSON.stringify(spec));
-  console.log(`narration: ${jobs.length} clips, voice ${SETTINGS.voice}, language ${LANGUAGE}`);
-  const tts = ttsCommand([specFile, LANGUAGE, jobsFile, dir]);
-  if (spec.kind !== 'command' || !spec.heavy) {
-    // A hosted or light voice: only Whisper loads here, and rate-limit waits must not hold up a clone.
-    run(tts[0]!, tts.slice(1));
-  } else {
-    fs.mkdirSync(path.dirname(TTS_LOCK), { recursive: true });
-    const tryNow = spawnSync('lockf', ['-k', '-t', '0', TTS_LOCK, ...tts], {
-      encoding: 'utf8',
-      maxBuffer: 1 << 26,
-    });
-    if (tryNow.status === LOCK_BUSY) {
-      console.log('narration: another demo is synthesising, waiting for it (expected, not a hang)');
-      const since = now();
-      run('lockf', ['-k', TTS_LOCK, ...tts]);
-      console.log(`narration: done after waiting ${Math.round(now() - since)} s in all`);
-    } else if (tryNow.status !== 0) {
-      throw new Error(`tts.py failed (${tryNow.status}):\n${tryNow.stderr?.slice(-3000)}`);
-    }
-  }
-  return JSON.parse(fs.readFileSync(path.join(dir, 'tts.json'), 'utf8'));
+  const ear = whisper();
+  if (ear.unchecked) console.warn(`narration: not listening back, ${ear.unchecked}`);
+  console.log(`narration: ${jobs.length} clips, voice ${SETTINGS.voice}, language ${LANGUAGE}, listening back ${ear.backend === 'off' ? 'off' : `with ${ear.backend === 'mlx' ? 'mlx-whisper' : 'faster-whisper'}`}`);
+  // A voice that loads a large model takes the machine's turn (TTS_LOCK); a hosted or light one
+  // does not, so rate-limit waits never hold up a clone.
+  const lock = spec.kind === 'command' && spec.heavy ? ['--lock', TTS_LOCK] : [];
+  const args = ['run', '--quiet', '--no-project', ...ear.uvArgs, 'python', path.join(LIB, 'tts.py'), '--listen', ear.backend, ...lock, specFile, LANGUAGE, jobsFile, dir];
+  // tts.py's progress (takes, matches, waiting for the lock) shows as it happens.
+  const r = spawnSync('uv', args, { stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status !== 0) throw new Error(`tts.py failed (${r.error?.message ?? r.status}); its output is above`);
+  const out = JSON.parse(fs.readFileSync(path.join(dir, 'tts.json'), 'utf8')) as Pick<Narration, 'clips' | 'unchecked'>;
+  // tts.py only knows it got `--listen off`; why (settings, or Whisper not loadable) is known here.
+  const unheard = out.clips.some((c) => c.heard === null);
+  const unchecked = unheard ? (ear.unchecked ?? out.unchecked ?? 'not heard back') : null;
+  const heardWith = ear.backend === 'mlx' ? 'mlx-whisper' : 'faster-whisper';
+  return { clips: out.clips, unchecked, heardWith, turnedOff: SETTINGS.listenBack === false };
 }
 
 /**
  * Headless Chrome with its window the size of the viewport: in a window of another size the
  * screencast captured only the top 813 of 900 pixels.
  */
-function launch(viewport: { width: number; height: number }) {
-  return chromium.launch({ channel: 'chrome', args: [`--window-size=${viewport.width},${viewport.height}`] });
+async function launch(viewport: { width: number; height: number }) {
+  const args = [`--window-size=${viewport.width},${viewport.height}`];
+  if (process.env.DEMO_CHROME) return chromium.launch({ executablePath: process.env.DEMO_CHROME, args });
+  // Chrome where it is installed, else Edge (on every Windows), else Playwright's own Chromium
+  // (on Linux on ARM, where there is no Chrome).
+  const missing: string[] = [];
+  for (const channel of ['chrome', 'msedge', undefined]) {
+    try {
+      return await chromium.launch({ channel, args });
+    } catch (error) {
+      const message = String((error as Error).message);
+      if (!/is not found at|Executable doesn't exist|not supported on/i.test(message)) throw error;
+      missing.push(channel ?? 'chromium');
+    }
+  }
+  throw new Error(
+    `no browser to record with (tried ${missing.join(', ')}): install Google Chrome, or run \`npx playwright-core install chromium\` in ${LIB}, or set DEMO_CHROME to a Chromium-based browser`,
+  );
 }
 
 /**
@@ -379,13 +408,15 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
 function frameList(frames: Frame[], t0: number, tEnd: number, file: string) {
   const firstIdx = Math.max(0, frames.findLastIndex((f) => f.t <= t0));
   const used = frames.slice(firstIdx).filter((f) => f.t < tEnd);
+  // Relative, with forward slashes: ffmpeg reads them on every platform, a Windows drive path not always.
+  const entry = (f: Frame) => `file '${path.relative(path.dirname(file), f.file).split(path.sep).join('/')}'`;
   const lines = ['ffconcat version 1.0'];
   used.forEach((f, i) => {
     const from = Math.max(f.t, t0);
     const to = i + 1 < used.length ? used[i + 1]!.t : tEnd;
-    lines.push(`file '${f.file}'`, `duration ${Math.max(0.001, to - from).toFixed(4)}`);
+    lines.push(entry(f), `duration ${Math.max(0.001, to - from).toFixed(4)}`);
   });
-  lines.push(`file '${used[used.length - 1]!.file}'`);
+  lines.push(entry(used[used.length - 1]!));
   fs.writeFileSync(file, `${lines.join('\n')}\n`);
 }
 
@@ -412,10 +443,12 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   fs.rmSync(framesDir, { recursive: true, force: true });
   fs.mkdirSync(framesDir, { recursive: true });
 
-  const clips = synthesize(spec.scenes, work);
-  for (const c of clips.filter((c) => c.match < TTS_MATCH_WARN)) {
-    console.warn(`narration ${c.id} may be off (match ${c.match.toFixed(2)}): heard "${c.heard}"`);
+  const narrated = synthesize(spec.scenes, work);
+  const clips = narrated.clips;
+  for (const c of clips) {
+    if (c.match !== null && c.match < TTS_MATCH_WARN) console.warn(`narration ${c.id} may be off (match ${c.match.toFixed(2)}): heard "${c.heard}"`);
   }
+  if (narrated.unchecked) console.warn(`narration not heard back: ${narrated.unchecked}`);
   if (process.argv.includes('--narration')) {
     console.log(`narration only: ${clips.length} clips cached, ${clips.reduce((t, c) => t + c.seconds, 0).toFixed(0)} s spoken`);
     return;
@@ -507,7 +540,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   });
   fs.copyFileSync(path.join(reviewDir, '01.jpg'), path.join(outDir, 'poster.jpg'));
 
-  fs.writeFileSync(path.join(outDir, 'index.html'), reportPage(spec, marks));
+  fs.writeFileSync(path.join(outDir, 'index.html'), reportPage(spec, marks, narrated));
   fs.writeFileSync(
     path.join(work, 'narration-check.json'),
     JSON.stringify(clips.map((c, i) => ({ scene: i + 1, said: spec.scenes[i]!.say, heard: c.heard, match: c.match })), null, 2),
@@ -516,9 +549,11 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   console.log('\nreview (narration said vs. heard: .work/narration-check.json):');
   marks.forEach((m, i) => {
     const clip = clips[i]!;
-    const flag = clip.match < NARRATION_OK ? `  ← heard: "${clip.heard}"` : '';
-    console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}  match ${clip.match.toFixed(2)}${flag}`);
+    const flag = clip.match !== null && clip.match < NARRATION_OK ? `  ← heard: "${clip.heard}"` : '';
+    const match = clip.match === null ? 'not heard back' : `match ${clip.match.toFixed(2)}`;
+    console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}  ${match}${flag}`);
   });
+  if (narrated.unchecked) console.log(`narration NOT heard back (${narrated.unchecked}): name that in the report's findings`);
   console.log(`stills → ${reviewDir}: NN-mid.jpg (middle of each scene), NN.jpg (its end)`);
 }
 
@@ -531,14 +566,39 @@ function mmss(s: number) {
 }
 
 /** The report page's own words, in the narration language. */
-const PAGE_WORDS: Record<NarrationLanguage, { captions: string; question: string; shown: string; notShown: string; findings: string }> = {
-  de: { captions: 'Deutsch', question: 'Offene Frage', shown: 'Gezeigt', notShown: 'Nicht gezeigt', findings: 'Auffälligkeiten' },
-  en: { captions: 'English', question: 'Open question', shown: 'Shown', notShown: 'Not shown', findings: 'Findings' },
+const PAGE_WORDS: Record<
+  NarrationLanguage,
+  { captions: string; question: string; shown: string; notShown: string; findings: string; narration: string; heard: (w: string) => string; unheard: string; off: string }
+> = {
+  de: {
+    captions: 'Deutsch',
+    question: 'Offene Frage',
+    shown: 'Gezeigt',
+    notShown: 'Nicht gezeigt',
+    findings: 'Auffälligkeiten',
+    narration: 'Erzählung',
+    heard: (w) => `mit ${w} gegengehört`,
+    unheard: 'nicht gegengehört',
+    off: 'in den Demo-Einstellungen abgeschaltet',
+  },
+  en: {
+    captions: 'English',
+    question: 'Open question',
+    shown: 'Shown',
+    notShown: 'Not shown',
+    findings: 'Findings',
+    narration: 'Narration',
+    heard: (w) => `heard back with ${w}`,
+    unheard: 'not heard back',
+    off: 'turned off in the demo settings',
+  },
 };
 
-function reportPage(spec: DemoSpec, marks: { title: string; start: number }[]) {
-  const r = spec.report;
+function reportPage(spec: DemoSpec, marks: { title: string; start: number }[], narrated: Narration) {
+  const r = { ...spec.report, meta: { ...spec.report.meta } };
   const w = PAGE_WORDS[LANGUAGE];
+  // Whether the voice was checked is part of the provenance, and the owner sees it when it was not.
+  r.meta[w.narration] = narrated.unchecked ? `${w.unheard} (${narrated.turnedOff ? w.off : narrated.unchecked})` : w.heard(narrated.heardWith);
   const list = (items: string[]) => (items.length ? `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : '<p class="none">—</p>');
   const chapters = marks
     .map((m) => `<li><button data-t="${m.start.toFixed(2)}"><span class="t">${mmss(m.start)}</span>${esc(m.title)}</button></li>`)

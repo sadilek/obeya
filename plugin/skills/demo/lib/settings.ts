@@ -43,6 +43,11 @@ export interface DemoSettings {
   reference?: string;
   /** A service's API key, in a file; the service's environment variable takes precedence. */
   keyFile?: string;
+  /**
+   * `false`: the clips are not heard back with Whisper, so they go unchecked (and the report says
+   * so). For a machine where Whisper is too slow or too large. Absent means on.
+   */
+  listenBack?: false;
 }
 
 export const DEFAULT_DEMO_SETTINGS: DemoSettings = { language: 'de', voice: 'piper' };
@@ -70,6 +75,7 @@ export function tidyDemoSettings(input: unknown): DemoSettings {
   const voice = legacyClone ? 'command' : (VOICES.find((v) => v === o.voice) ?? DEFAULT_DEMO_SETTINGS.voice);
   const out: DemoSettings = { language, voice };
   if (o.ownVoice === true || legacyClone) out.ownVoice = true;
+  if (o.listenBack === false) out.listenBack = false;
   for (const k of TEXT_FIELDS) {
     const v = str(o[k]);
     if (v) out[k] = v;
@@ -100,7 +106,7 @@ export function writeDemoSettings(settings: DemoSettings, home = obeyaHome()) {
  */
 export function withVoice(s: DemoSettings, voice: string | undefined): DemoSettings {
   if (!voice || voice === s.voice) return s;
-  if (voice.endsWith('.wav')) return { language: s.language, voice: 'qwen3', reference: voice };
+  if (voice.endsWith('.wav')) return { language: s.language, voice: 'qwen3', reference: voice, ...(s.listenBack === false && { listenBack: false }) };
   const kind = VOICES.find((v) => v === voice);
   if (!kind) throw new Error(`unknown voice "${voice}"; use ${VOICES.join(', ')} or a .wav`);
   // another provider is not the owner's own voice just because the saved one is
@@ -126,6 +132,7 @@ export function describeDemoSettings(saved: DemoSettings, override: string | und
       ? `person: first — the voice is the owner's own, so the narration speaks as the owner ("I added …")`
       : `person: third — the voice is not the owner's, so the narration presents the work without "I" or "we" ("The card now shows …")`,
     `voice: ${s.voice}${s.voiceName ? ` (${s.voiceName})` : ''}${s.reference ? ` (clone of ${s.reference})` : ''}`,
+    `listening back: ${s.listenBack === false ? 'off — the clips go unchecked; say so in the report\'s findings' : 'on, with Whisper'}`,
     `from: ${path.join(obeyaHome(), DEMO_SETTINGS_FILE)}${override ? ' (voice from DEMO_VOICE)' : ''}`,
   ].join('\n');
 }

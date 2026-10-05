@@ -244,16 +244,16 @@ export function sample(s: DemoSettings, out: string, home = obeyaHome()): Promis
   const spec = voiceSpec(s, home);
   const specFile = `${out}.spec.json`;
   fs.writeFileSync(specFile, JSON.stringify(spec));
-  const cmd = ['uv', 'run', '--quiet', '--no-project', 'python', path.join(LIB, 'tts.py'), '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
-  const locked = spec.kind === 'command' && spec.heavy && process.platform === 'darwin' ? ['lockf', '-k', TTS_LOCK, ...cmd] : cmd;
-  if (locked !== cmd) fs.mkdirSync(path.dirname(TTS_LOCK), { recursive: true });
-  return exec(locked[0]!, locked.slice(1), () => {}).finally(() => fs.rmSync(specFile, { force: true }));
+  const lock = spec.kind === 'command' && spec.heavy ? ['--lock', TTS_LOCK] : [];
+  const args = ['run', '--quiet', '--no-project', 'python', path.join(LIB, 'tts.py'), ...lock, '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
+  return exec('uv', args, () => {}).finally(() => fs.rmSync(specFile, { force: true }));
 }
 
 /**
  * One on-device synthesis at a time: each loads a voice model (and the render Whisper, 7–12 GB in
- * all), and parallel demos from several agents swapped the machine to a halt. The kernel drops
- * the lock when its holder dies, so no stale lock survives a crash.
+ * all), and parallel demos from several agents swapped the machine to a halt. `tts.py --lock`
+ * holds it (flock, on Windows a byte-range lock); the system drops it when its holder dies, so no
+ * stale lock survives a crash.
  */
 export const TTS_LOCK = path.join(os.homedir(), '.cache', 'demo-skill', 'tts.lock');
 

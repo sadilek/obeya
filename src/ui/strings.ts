@@ -362,6 +362,7 @@ export const t = {
       installFailed: (why: string) => `Installation fehlgeschlagen: ${why}`,
       listen: 'Anhören',
       sampling: 'Erzeuge Probe …',
+      listenBack: 'Erzählung mit Whisper gegenhören (findet verschluckte Wörter; ohne bleibt sie ungeprüft)',
       save: 'Demo-Einstellungen speichern',
       saved: 'Gespeichert. Die nächste Demo nutzt sie.',
       problem: {

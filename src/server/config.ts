@@ -108,6 +108,7 @@ const demoShape = z
     voiceName: z.string().optional(),
     reference: z.string().optional(),
     keyFile: z.string().optional(),
+    listenBack: z.literal(false).optional(),
   })
   .strict();
 

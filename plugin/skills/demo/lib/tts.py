@@ -11,16 +11,23 @@ The voice comes as a spec from `voices.ts`, one of two kinds:
   service's environment variable, else from the key file in the spec.
 
 Whatever comes back is made a mono 16-bit WAV with ffmpeg. Listening back takes Whisper, which
-the render brings into a throwaway environment:
+the render brings into a throwaway environment: mlx-whisper on Apple Silicon, faster-whisper
+elsewhere (`--listen mlx|faster`), or none (`--listen off`, the clips go unchecked):
 
-    uv run --no-project --with mlx-whisper python tts.py <spec.json> <language> <jobs.json> <out_dir>
+    uv run --no-project --with mlx-whisper python tts.py --listen mlx [--lock <file>] \
+        <spec.json> <language> <jobs.json> <out_dir>
 
 `jobs.json` is `[{"id": ..., "text": ...}]`. Each text becomes `<out_dir>/<hash>.wav`, cached by
 voice + text, so re-rendering a demo after a visual fix costs no synthesis. Every clip is
 transcribed back with Whisper: a voice occasionally swallows or invents a word, and the narration
-is the one part of a demo nobody re-reads. Results land in `<out_dir>/tts.json`.
+is the one part of a demo nobody re-reads. When Whisper is off or fails to load, the clips are
+kept unheard and `unchecked` says why. Results land in `<out_dir>/tts.json`:
+`{"clips": [{"id", "file", "seconds", "heard", "match"}], "unchecked": null | reason}`.
 
-    python tts.py --sample <spec.json> <language> <text> <out.wav>
+`--lock <file>` holds that file locked while it runs, for voices that load a large model: one
+such synthesis at a time on the machine, the others wait.
+
+    python tts.py [--lock <file>] --sample <spec.json> <language> <text> <out.wav>
 
 synthesises one clip without listening back, for hearing a voice in the settings.
 """
@@ -48,7 +55,8 @@ MAX_TAKES = 3
 
 LANGUAGE_NAMES = {"de": "German", "en": "English"}
 LOCALES = {"de": "de-DE", "en": "en-US"}
-STT_MODEL = os.environ.get("DEMO_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
+#: Whisper's model per backend; `DEMO_STT_MODEL` names another.
+STT_MODELS = {"mlx": "mlx-community/whisper-large-v3-turbo", "faster": "large-v3-turbo"}
 
 #: How the hosted voices should sound: a product lead walking a colleague through a finished feature.
 STYLE = (
@@ -183,7 +191,9 @@ class CommandVoice:
     def synthesize(self, text: str, target: Path) -> None:
         raw = target.with_name(f"{target.stem}.raw.wav")
         raw.unlink(missing_ok=True)
-        env = {**os.environ, "DEMO_WAV": str(raw), "DEMO_LANGUAGE": self._language}
+        # The text goes in as UTF-8. A Python voice (Piper) would read stdin in the Windows code
+        # page otherwise and speak "öffnet" as "Ã¶ffnet".
+        env = {**os.environ, "DEMO_WAV": str(raw), "DEMO_LANGUAGE": self._language, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
         command = [a.replace("{out}", str(raw)) for a in self._argv] if self._argv else self._shell
         done = subprocess.run(command, input=text, shell=not self._argv, env=env, capture_output=True,
                               text=True, encoding="utf-8")
@@ -302,26 +312,135 @@ def make_voice(spec: dict, language: str):
     return CommandVoice(spec, language) if spec["kind"] == "command" else HttpVoice(spec, language)
 
 
+class Ear:
+    """Whisper, hearing each clip back. Off, or failing to load, it hears nothing and says why."""
+
+    def __init__(self, backend: str, language: str) -> None:
+        self._backend = backend
+        self._language = language
+        self._model = None
+        self._device = ""
+        self.unchecked: str | None = None
+        if backend == "off":
+            self.unchecked = "listening back is off in the demo settings"
+        elif backend not in STT_MODELS:
+            sys.exit(f"unknown Whisper backend {backend!r}; known: {', '.join(STT_MODELS)}, off")
+        self._name = os.environ.get("DEMO_STT_MODEL") or STT_MODELS.get(backend, "")
+
+    def hear(self, wav: Path) -> str | None:
+        if self.unchecked:
+            return None
+        try:
+            return self._mlx(wav) if self._backend == "mlx" else self._faster(wav)
+        except Exception as failed:  # not installed, the model not downloadable, out of memory
+            self.unchecked = f"Whisper failed: {type(failed).__name__}: {failed}"[:400]
+            print(f"narration: not listening back, {self.unchecked}", file=sys.stderr)
+            return None
+
+    def _mlx(self, wav: Path) -> str:
+        import mlx_whisper
+
+        heard = mlx_whisper.transcribe(str(wav), path_or_hf_repo=self._name, language=self._language)
+        return str(heard.get("text", "")).strip()
+
+    @staticmethod
+    def _samples(wav: Path):
+        """The clip as 16 kHz mono floats, decoded by ffmpeg: faster-whisper's own decoder (PyAV)
+        broke with newer PyAV releases (`metadata_errors`)."""
+        import numpy
+
+        pcm = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(wav), "-f", "f32le", "-ac", "1", "-ar", "16000", "-"],
+            capture_output=True,
+            check=True,
+        ).stdout
+        return numpy.frombuffer(pcm, dtype=numpy.float32)
+
+    def _faster(self, wav: Path, device: str | None = None) -> str:
+        if self._model is None or device:
+            import ctranslate2
+            from faster_whisper import WhisperModel
+
+            device = device or ("cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu")
+            self._model = WhisperModel(self._name, device=device, compute_type="float16" if device == "cuda" else "int8")
+            self._device = device
+        try:
+            segments, _ = self._model.transcribe(self._samples(wav), language=self._language, beam_size=5)
+            return "".join(s.text for s in segments).strip()
+        except Exception:
+            # A GPU without the CUDA libraries faster-whisper needs: the CPU hears as well, slower.
+            if self._device != "cuda":
+                raise
+            return self._faster(wav, device="cpu")
+
+
+_held_lock = None
+
+
+def hold_lock(file: str) -> None:
+    """Takes `file`'s lock for the rest of this process; the system drops it when the process ends."""
+    global _held_lock
+    Path(file).parent.mkdir(parents=True, exist_ok=True)
+    handle = open(file, "a+b")
+    if os.name == "nt":
+        import msvcrt
+
+        def attempt() -> None:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        def attempt() -> None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    try:
+        attempt()
+    except OSError:
+        print("narration: another demo is synthesising, waiting for it (expected, not a hang)", file=sys.stderr, flush=True)
+        since = time.monotonic()
+        while True:
+            time.sleep(1)
+            try:
+                attempt()
+                break
+            except OSError:
+                continue
+        print(f"narration: waited {round(time.monotonic() - since)} s for the other demo", file=sys.stderr, flush=True)
+    _held_lock = handle
+
+
+def take_option(args: list[str], name: str) -> str | None:
+    if name not in args:
+        return None
+    i = args.index(name)
+    value = args[i + 1]
+    del args[i : i + 2]
+    return value
+
+
 def main() -> None:
-    if sys.argv[1] == "--sample":
-        spec_file, language, text, target = sys.argv[2:6]
+    # Heard texts carry umlauts; a Windows pipe would otherwise encode stderr in its code page.
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    args = sys.argv[1:]
+    lock = take_option(args, "--lock")
+    listen = take_option(args, "--listen") or "mlx"
+    if lock:
+        hold_lock(lock)
+    if args[0] == "--sample":
+        spec_file, language, text, target = args[1:5]
         make_voice(json.loads(Path(spec_file).read_text(encoding="utf-8")), language).synthesize(text, Path(target))
         return
-    spec = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    language = sys.argv[2]
-    jobs = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
-    out = Path(sys.argv[4])
+    spec = json.loads(Path(args[0]).read_text(encoding="utf-8"))
+    language = args[1]
+    jobs = json.loads(Path(args[2]).read_text(encoding="utf-8"))
+    out = Path(args[3])
     out.mkdir(parents=True, exist_ok=True)
     if language not in LANGUAGE_NAMES:
         sys.exit(f"unknown narration language {language!r}; known: {', '.join(LANGUAGE_NAMES)}")
     voice = make_voice(spec, language)
     voice_tag = voice.tag
-
-    def hear(wav: Path) -> str:
-        import mlx_whisper
-
-        heard = mlx_whisper.transcribe(str(wav), path_or_hf_repo=STT_MODEL, language=language)
-        return str(heard.get("text", "")).strip()
+    ear = Ear(listen, language)
 
     def score(text: str, heard: str) -> float:
         a, b = spoken_letters(text, language), spoken_letters(heard, language)
@@ -334,8 +453,8 @@ def main() -> None:
         heard_file = wav.with_suffix(".heard.txt")
         if not wav.exists():
             # Sampling differs per run, so a take that swallowed or invented a word is simply
-            # synthesised again; the best of a few takes is kept.
-            best: tuple[float, str, Path] | None = None
+            # synthesised again; the best of a few takes is kept. Unheard, the first take stays.
+            best: tuple[float, str | None, Path] | None = None
             for take in range(1, voice.max_takes + 1):
                 candidate = out / f"{key}.take{take}.wav"
                 try:
@@ -345,7 +464,10 @@ def main() -> None:
                         sys.exit(f"{exhausted}; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
                     print(f"{job['id']}: {exhausted}, keeping take {take - 1}", file=sys.stderr)
                     break
-                heard = hear(candidate)
+                heard = ear.hear(candidate)
+                if heard is None:
+                    best = best or (0.0, None, candidate)
+                    break
                 match = score(job["text"], heard)
                 print(f"{job['id']} take {take}: match {match:.2f}", file=sys.stderr)
                 if best is None or match > best[0]:
@@ -354,22 +476,28 @@ def main() -> None:
                     break
             _, heard, chosen = best
             chosen.rename(wav)
-            heard_file.write_text(heard, encoding="utf-8")
+            if heard is not None:
+                heard_file.write_text(heard, encoding="utf-8")
             for leftover in out.glob(f"{key}.take*.wav"):
                 leftover.unlink()
 
         if not heard_file.exists():
-            heard_file.write_text(hear(wav), encoding="utf-8")
-        heard_text = heard_file.read_text(encoding="utf-8")
+            heard = ear.hear(wav)
+            if heard is not None:
+                heard_file.write_text(heard, encoding="utf-8")
+        heard_text = heard_file.read_text(encoding="utf-8") if heard_file.exists() else None
 
         with wave.open(str(wav)) as fh:
             seconds = fh.getnframes() / fh.getframerate()
-        match = score(job["text"], heard_text)
+        match = score(job["text"], heard_text) if heard_text is not None else None
         results.append(
             {"id": job["id"], "file": str(wav), "seconds": seconds, "heard": heard_text, "match": match}
         )
 
-    (out / "tts.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+    unchecked = ear.unchecked if any(r["heard"] is None for r in results) else None
+    (out / "tts.json").write_text(
+        json.dumps({"clips": results, "unchecked": unchecked}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":

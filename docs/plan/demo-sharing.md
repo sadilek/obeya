@@ -16,15 +16,17 @@ Linux, with voices each user chooses. W1–W2 are the Acme part, W3–W7 the ope
 - *Recording*: since W3 the pipeline is in the repository, as the skill `obeya:demo` of the
   plugin `plugin/` that Obeya loads into its workers; Daniel's `~/.claude/skills/demo` links to it.
   Language and voice come from the demo settings (design: Architecture, Demos), the recipes from
-  the adapters. Listening back is still mlx only.
+  the adapters. Since W5 it records and cuts on macOS, Linux and Windows, and listens back with
+  mlx-whisper on Apple Silicon, faster-whisper elsewhere, or not at all (design: Architecture, Demos).
 - *Voices*: since W4 every voice is a provider (design: Architecture, Demos): Piper, the default,
   and Qwen3-TTS, both installed by Obeya on request into `~/.obeya/voices/`; macOS `say`; an own
   command or HTTP endpoint; templates for Gemini, OpenAI, ElevenLabs and Azure. Daniel's clone is
   his own command, `scripts/demo_voice.py` in `~/dev/stimmzwilling` (Qwen3-TTS 1.7B on mlx-audio,
   model and reference from that project's `config.yaml`), marked as his own voice, so his demos
   speak in the first person as before; the clips cached before W4 are synthesised once more.
-  Every clip is listened back with Whisper, on mlx, so only on a Mac. The video is a screencast
-  of the local Chrome, cut with ffmpeg; the report page is `index.html`.
+  Every clip is listened back with Whisper unless that is off. The video is a screencast of the
+  local Chrome (else Edge, else Playwright's Chromium), cut with ffmpeg; the report page is
+  `index.html`.
 - *Obeya*: the worker's brief names the demo skill `obeya:demo` (`src/server/workers.ts`), the
   adapter adds `demo.required` and `demo.howToRun` with the project's recipe (`src/adapters/`). Obeya reads the handed-over
   directory under `~/demos/` (`demo.mp4`, `poster.jpg`, `captions.vtt`, `index.html`) and shows the
@@ -139,7 +141,7 @@ demos in pull requests went with W2).
   ElevenLabs, Azure), Piper as the local default and Qwen3-TTS as an option, both installed by
   Obeya on request, `say` as an extra on a Mac; the choice in settings; no label for generated
   voices. Daniel's clone moves to a command provider. After W3.
-- [ ] **W5:** Demos on Windows and Linux. Recording and cutting on all three platforms,
+- [x] **W5:** Demos on Windows and Linux. Recording and cutting on all three platforms,
   faster-whisper for listening back, listening back optional; checked on a Linux machine and a
   Windows one. After W3; independent of W4.
 - [x] **W6:** Sharing in general. The share command as configuration per repository; without one,
@@ -157,6 +159,13 @@ demos in pull requests went with W2).
 - Measured in W4 (2026-10-02): Piper's German `thorsten-high` runs about twice real time on the
   laptop CPU and was heard back word for word; Qwen3-TTS's stock speaker needs retakes now and
   then (0.99 match). Qwen3-TTS through PyTorch (Windows, Linux) is untried: no machine with a GPU.
+- Checked in W5 (2026-10-05): the same smoke demo recorded with Piper and heard back word for
+  word on macOS (Apple Silicon, mlx-whisper), Linux on ARM in Docker (no Chrome: Playwright's
+  Chromium; faster-whisper on the CPU), and on GitHub's runners on Windows Server 2025 and Ubuntu
+  x64 (Chrome, faster-whisper); the lock and the render with listening back off on all of them,
+  offline in Docker. Windows found one bug: Piper read its text in the code page ("öffnet" came
+  out garbled, match 0.77), fixed by giving voice commands UTF-8. Not tried: Edge as the fallback
+  (the runners have Chrome), a voice command through `cmd.exe`, Obeya itself on Windows.
 - Checked in W3: Obeya hands the skill to its workers as a local plugin (`plugins` option of the
   Agent SDK); the session lists it as `obeya:demo`, beside the user's own skills.
 

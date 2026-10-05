@@ -20,6 +20,15 @@ describe('demo settings', () => {
     expect(readDemoSettings(home)).toEqual({ language: 'de', voice: 'piper' });
   });
 
+  test('keep listening back on unless it is turned off', () => {
+    expect(tidyDemoSettings({ language: 'de', voice: 'piper', listenBack: true })).toEqual({ language: 'de', voice: 'piper' });
+    expect(tidyDemoSettings({ language: 'de', voice: 'piper', listenBack: false })).toEqual({ language: 'de', voice: 'piper', listenBack: false });
+    expect(withVoice({ language: 'de', voice: 'piper', listenBack: false }, 'gemini')).toMatchObject({ listenBack: false });
+    expect(withVoice({ language: 'de', voice: 'piper', listenBack: false }, '/tmp/x.wav')).toMatchObject({ listenBack: false });
+    expect(describeDemoSettings({ language: 'de', voice: 'piper' }, undefined)).toContain('listening back: on');
+    expect(describeDemoSettings({ language: 'de', voice: 'piper', listenBack: false }, undefined)).toContain('listening back: off');
+  });
+
   test('carry over what they said before the providers', () => {
     expect(tidyDemoSettings({ language: 'de', voice: 'gemini', geminiKeyFile: '~/k' })).toEqual({ language: 'de', voice: 'gemini', keyFile: '~/k' });
     // the clone becomes the owner's own command, which they still write

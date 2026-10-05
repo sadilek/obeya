@@ -286,7 +286,7 @@ function DemoBlock({ on }: { on: boolean }) {
           <select
             value={draft.voice}
             // another voice starts with its own fields, and is nobody's own until ticked
-            onChange={(e) => setDraft({ language: draft.language, voice: e.target.value as VoiceKind })}
+            onChange={(e) => setDraft({ language: draft.language, voice: e.target.value as VoiceKind, listenBack: draft.listenBack })}
           >
             {VOICE_GROUPS.map(({ group, voices }) => (
               <optgroup key={group} label={d.groups[group]}>
@@ -335,6 +335,10 @@ function DemoBlock({ on }: { on: boolean }) {
             {sampling ? d.sampling : d.listen}
           </button>
         </div>
+        <label className="c-check">
+          <input type="checkbox" checked={draft.listenBack !== false} onChange={(e) => set('listenBack', e.target.checked ? undefined : false)} />
+          <span className="hint">{d.listenBack}</span>
+        </label>
         <div className="c-actions">
           <button className="btn small primary" disabled={!changed || busy} onClick={save}>
             {d.save}
