@@ -986,11 +986,24 @@ function panelRect(i: Item, inner: HTMLElement) {
   const demo = (i.state === 'waiting' && i.need === 'demo') || i.state === 'idea';
   const W = Math.min(demo ? 1120 : tall ? 980 : 900, innerWidth - 80);
   inner.style.width = `${W}px`;
+  inner.style.paddingBottom = '';
   const pad = getComputedStyle(inner);
-  const need = (inner.firstElementChild as HTMLElement).offsetHeight + parseFloat(pad.paddingTop) + parseFloat(pad.paddingBottom);
-  const H = Math.min(Math.ceil(need), demo ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
+  const base = parseFloat(pad.paddingBottom);
+  const need = (inner.firstElementChild as HTMLElement).offsetHeight + parseFloat(pad.paddingTop) + base;
+  const max = Math.min(demo ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
+  // the microphone sits over the bottom of a tall panel: the content gets room below it to scroll
+  // up past the microphone, and the panel grows by that room where it can
+  const mic = (document.getElementById('ptt')?.getBoundingClientRect().top ?? innerHeight) - MIC_GAP;
+  const under = (H: number) => Math.max(0, Math.max(64, (innerHeight - H) / 2) + H - mic - base);
+  let H = Math.min(Math.ceil(need), max);
+  H = Math.min(Math.ceil(need + under(H)), max);
+  const extra = under(H);
+  if (extra) inner.style.paddingBottom = `${base + extra}px`;
   return { left: `${(innerWidth - W) / 2}px`, top: `${Math.max(64, (innerHeight - H) / 2)}px`, width: `${W}px`, height: `${H}px` };
 }
+
+/** Room between the panel's content and the microphone. */
+const MIC_GAP = 12;
 
 const rect = (r: DOMRect) => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
 

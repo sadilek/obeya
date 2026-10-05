@@ -949,7 +949,9 @@ the repository; the copy on the project is only for the archive).
   view, the camera flies to the nearest; the minimap and the overview key land next to content
   too (2026-10-01).
 - An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
-  follows its content while open.
+  follows its content while open. Where its bottom lies under the microphone, the content gets
+  that much room below it, so the last row (an idea's „Parken“, „Verwerfen“) scrolls up past the
+  microphone instead of staying under it (2026-10-05).
 - Opening a card takes 300 ms: a 130 ms flight brings it to the middle, then it unfolds in 170 ms;
   closing runs the same in reverse. Fast enough not to wait on, long enough to keep the context.
 - Manual cards are created by double-click, the button or `n`, and edited in the unfolded card;
