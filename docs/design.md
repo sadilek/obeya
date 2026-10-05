@@ -605,7 +605,7 @@ the owner's language (`src/core/locale.ts`).
   recording that runs on unheld) and the owner hears „Das Mikrofon war noch nicht bereit“. The
   microphone is not opened on page load: in the log of 1–5 Oct 2026 (22 page loads with a recording
   after them) the first recording after a load failed no more often than later ones, and opening it
-  early would keep the browser's microphone indicator on all the time. A quick, low-effort Koordinator turn reads
+  early would keep the browser's microphone indicator on all the time. A Koordinator turn (effort medium) reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
   approve, accept, dismiss, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,

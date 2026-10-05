@@ -174,7 +174,7 @@ describe('voice', () => {
     const s = await briefed();
     expect(heardAudio).toEqual(['AUDIO']);
     expect(s.inbox[0]).toContain('"Neue Karte Export"');
-    expect(s.spec).toMatchObject({ readOnly: true, effort: 'low' });
+    expect(s.spec).toMatchObject({ readOnly: true, effort: 'medium' });
     s.call('act', { actions: [{ do: 'new_card', title: 'Export', body: 'CSV', start: true }], confirm: 'Neue Karte „Export“, der Agent fängt an.' });
     s.emit({ type: 'idle' });
     const body = (await (await res).json()) as { confirm: string; token: string; audio?: string };

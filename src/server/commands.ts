@@ -303,7 +303,7 @@ export class Commander {
     s.agent = this.o.runtime.start({
       cwd: this.o.cwd,
       readOnly: true,
-      effort: 'low',
+      effort: 'medium',
       system: SYSTEM,
       tools: [
         {
