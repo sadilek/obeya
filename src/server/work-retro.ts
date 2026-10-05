@@ -95,7 +95,7 @@ export class WorkRetro {
       tools: (finish): AgentTool[] => [
         {
           name: 'note',
-          description: 'Note one piece of friction worth preventing (in English, a sentence each): what went wrong, what it cost, what would have prevented it.',
+          description: 'Note one piece of friction worth preventing (in German, a sentence each): what went wrong, what it cost, what would have prevented it.',
           schema: { what: z.string(), cost: z.string(), fix: z.string() },
           run: ({ what, cost, fix }) => {
             if (notes.length >= MAX_NOTES) return finish(`At most ${MAX_NOTES} notes. End your turn now.`);
@@ -109,6 +109,9 @@ export class WorkRetro {
       ],
     });
     this.o.board.addFriction(card.repo, card.id, notes);
+    // the owner sees on the card what was noted; a card deleted meanwhile has no log to show it
+    if (notes.length && this.o.board.item(card.id))
+      this.o.board.log(card.id, 'state', 'koordinator', `Arbeitsrückschau, Reibung notiert:\n${notes.map((n) => `– ${n.what} Kosten: ${n.cost} Verhindert hätte es: ${n.fix}`).join('\n')}`);
   }
 
   /**
@@ -133,7 +136,7 @@ export class WorkRetro {
     const titles = new Map(notes.map((n) => [n.cardId, n.title]));
     const byCard = [...tags].map(([tag, id]) => {
       const mine = notes.filter((n) => n.cardId === id);
-      return `${tag} "${titles.get(id)}":\n${mine.map((n) => `- ${n.what} Cost: ${n.cost} Would have prevented it: ${n.fix}`).join('\n')}`;
+      return `${tag} "${titles.get(id)}":\n${mine.map((n) => `- ${n.what} Kosten: ${n.cost} Verhindert hätte es: ${n.fix}`).join('\n')}`;
     });
     const proposed = b.retroProposals(repo);
     const rules = b.preferences('proposed', 'rejected', 'filed').filter((p) => p.target === repo);
@@ -248,7 +251,7 @@ Note the friction a change to the repository would prevent in future runs:
 - a tool or check used wrongly, a missing piece of knowledge about the repository.
 Not friction: a test or type check failing on the change being made and then fixed (that is the work itself), one quick slip corrected at once at no cost, a call blocked by a rule that then worked the other way at once.
 
-Note 0 to 3, the costliest first; most runs have one or none. Call note for each: what (concretely: the command, the file, the error), cost (the steps or time it took, a wrong turn), fix (what would have prevented it: a script, a skill, a line in the CLAUDE.md, a clearer error message; concretely). In English, a sentence each. You may read the repository (you cannot change it) to check whether that already exists. Then call done.
+Note 0 to 3, the costliest first; most runs have one or none. Call note for each: what (concretely: the command, the file, the error), cost (the steps or time it took, a wrong turn), fix (what would have prevented it: a script, a skill, a line in the CLAUDE.md, a clearer error message; concretely). In German, a sentence each: the owner reads them on the card. You may read the repository (you cannot change it) to check whether that already exists. Then call done.
 `.trim();
 
 const RETRO_SYSTEM = `

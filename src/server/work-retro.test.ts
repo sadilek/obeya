@@ -72,6 +72,7 @@ describe('Arbeitsrückschau', () => {
       { cardId: a.id, title: 'A', what: 'bun run dev has no --port flag', cost: 'a few steps', fix: 'a script' },
       { cardId: a.id, what: 'the demo script failed and was rewritten' },
     ]);
+    expect(board.events(a.id).at(-1)).toMatchObject({ author: 'koordinator', text: 'Arbeitsrückschau, Reibung notiert:\n– bun run dev has no --port flag Kosten: a few steps Verhindert hätte es: a script\n– the demo script failed and was rewritten Kosten: a few steps Verhindert hätte es: a script' });
   });
 
   test('a run without a transcript, or without anything gone wrong, gets no session; a card that never ran does not count', async () => {
