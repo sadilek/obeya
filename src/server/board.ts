@@ -23,6 +23,7 @@ import {
   type PrReviewEntry,
   type ProjectHistory,
   type NextStep,
+  type PlannedPrototype,
   type Question,
   STATES,
   finished,
@@ -322,7 +323,7 @@ export class Board {
   }
 
   /** A card whose worker builds a throwaway prototype for the idea; placed below it, beside the prototypes already there. */
-  addPrototype(ideaId: string, title: string, body: string): Item {
+  addPrototype(ideaId: string, title: string, body: string, variant?: string): Item {
     const items = this.snapshot().items;
     const idea = items.find((i) => i.id === ideaId);
     const b = idea ? boundsOf(idea, items) : { x: 0, y: 0, w: 0, h: 0 };
@@ -338,6 +339,7 @@ export class Board {
         y: b.y + b.h + 60,
         from_id: ideaId,
         prototype_of: ideaId,
+        ...(variant ? { prototype: JSON.stringify({ variant } satisfies StoredPrototype) } : {}),
         repo: idea && idea.repo !== this.home ? idea.repo : null,
       },
     ]);
@@ -993,6 +995,8 @@ function shareOf(r: CardRow): Item['share'] {
 
 /** What is stored of a prototype: how it ended, once it did, and its worker's proposal to build the idea on it. */
 interface StoredPrototype {
+  /** The planned variant it shows. */
+  variant?: string;
   end?: 'discarded' | 'built';
   proposal?: string;
 }
@@ -1003,7 +1007,7 @@ const storedPrototype = (r: CardRow): StoredPrototype => (r.prototype ? (JSON.pa
 function prototypeOf(r: CardRow): Partial<Item> {
   const p = storedPrototype(r);
   const summary = p.end && r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
-  return { ...(p.end ? { prototypeEnd: p.end } : {}), ...(p.proposal && !p.end ? { buildProposal: p.proposal } : {}), ...(summary ? { summary } : {}) };
+  return { ...(p.variant ? { variant: p.variant } : {}), ...(p.end ? { prototypeEnd: p.end } : {}), ...(p.proposal && !p.end ? { buildProposal: p.proposal } : {}), ...(summary ? { summary } : {}) };
 }
 
 /** What is stored of an idea; `thinking` while its agent works on a reply, `yourTurn` once it replied. */
@@ -1014,6 +1018,8 @@ export interface StoredIdea {
   yourTurn?: boolean;
   questions?: Question[];
   next?: NextStep;
+  /** The prototypes the brief plans, as the agent last set them. */
+  variants?: PlannedPrototype[];
   /** Decided as a project: its worker writes the plan doc, and the project takes the card's place. */
   project?: boolean;
   /** Messages a turn ended before answering (the idea parked or dropped, an error, a restart); they go to the agent first next time. */
@@ -1041,7 +1047,7 @@ function decided(r: CardRow): Pick<Item, 'brief' | 'becomesProject'> {
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
-  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}) };
+  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}), variants: i.variants ?? [] };
 }
 
 function checkPreference(v: unknown): string {

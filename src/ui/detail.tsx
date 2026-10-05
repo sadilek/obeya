@@ -517,13 +517,7 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
           <ArchiveButton item={item} run={run} />
         </div>
       ) : prototyping ? (
-        <Composer
-          placeholder={t.idea.prototypePlaceholder}
-          button={t.idea.prototypeGo}
-          allowEmpty
-          noImages
-          onSend={(text) => act({ action: 'prototype', ...(text ? { text } : {}) }, { close: true, ack: t.idea.prototyped })}
-        />
+        <PrototypeStart item={item} act={act} />
       ) : (
         <>
           {next && (
@@ -564,6 +558,63 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
           </div>
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * "Prototyp bauen lassen": the variants the idea's agent planned, each chosen unless its prototype
+ * runs already, and an approach of the owner's own; one prototype each starts at once.
+ */
+function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+  const variants = item.idea!.variants;
+  const running = new Set((item.prototypes ?? []).flatMap((p) => (!p.archivedAt && p.variant ? [p.variant] : [])));
+  const [chosen, setChosen] = useState(() => variants.filter((v) => !running.has(v.approach)).map((v) => v.approach));
+  const [own, setOwn] = useState(false);
+  const n = chosen.length + (own ? 1 : 0);
+  return (
+    <>
+      {variants.length > 0 && (
+        <div className="question ask prototype-variants">
+          <h4>{t.idea.variants}</h4>
+          <div className="choices multiple" role="group">
+            {variants.map((v) => {
+              const on = chosen.includes(v.approach);
+              return (
+                <button
+                  key={v.approach}
+                  role="checkbox"
+                  aria-checked={on}
+                  className={`choice${on ? ' on' : ''}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setChosen(variants.map((x) => x.approach).filter((a) => (a === v.approach ? !on : chosen.includes(a))))}
+                >
+                  <span>
+                    <b>{v.approach}</b>
+                    {running.has(v.approach) && <span className="pick-tag">{t.idea.variantRuns}</span>}
+                    <span className="v-show" title={v.show}>
+                      {v.show}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <Composer
+        placeholder={variants.length ? t.idea.prototypeOwn : t.idea.prototypePlaceholder}
+        button={t.idea.prototypeGo(Math.max(n, 1))}
+        allowEmpty={!variants.length || chosen.length > 0}
+        noImages
+        onText={(text) => setOwn(!!text.trim())}
+        onSend={(text) =>
+          act(
+            { action: 'prototype', ...(text ? { text } : {}), ...(variants.length ? { variants: chosen } : {}) },
+            { close: true, ack: t.idea.prototyped(Math.max(n, 1)) },
+          )
+        }
+      />
     </>
   );
 }
@@ -1117,6 +1168,7 @@ function Composer({
   allowEmpty = false,
   noImages = false,
   listener,
+  onText,
 }: {
   placeholder: string;
   onSend: (text: string, images?: string[]) => Promise<void>;
@@ -1125,6 +1177,8 @@ function Composer({
   noImages?: boolean;
   /** Who reads what is typed (the Koordinator, or the card's agent through it); it then gets ready while the owner types. */
   listener?: string;
+  /** Hears the text as it is typed. */
+  onText?: (text: string) => void;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1137,6 +1191,7 @@ function Composer({
     await onSend(text.trim(), images.length ? images : undefined);
     setBusy(false);
     setText('');
+    onText?.('');
     shots.clear();
   };
   return (
@@ -1148,7 +1203,10 @@ function Composer({
           placeholder={placeholder}
           rows={2}
           onFocus={listener ? () => api.warmVoice() : undefined}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            onText?.(e.target.value);
+          }}
           onPaste={shots.onPaste}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

@@ -85,6 +85,8 @@ export interface Item {
   idea?: Idea;
   /** A prototype's idea: the throwaway prototype is built for it and never lands itself. */
   prototypeOf?: string;
+  /** A prototype of one of the variants its idea's agent planned: that variant's approach. */
+  variant?: string;
   /** A prototype in the archive: discarded (its code thrown away), or built (its idea was built on its branch). */
   prototypeEnd?: 'discarded' | 'built';
   /** A prototype whose worker proposes to build the idea on it: why, in its words. */
@@ -139,6 +141,14 @@ export interface Idea {
   questions: Question[];
   /** What the agent would do next in the owner's place, from its latest reply, until the owner says something. */
   next?: NextStep;
+  /** The prototypes the brief plans, one per variant: "Prototyp bauen lassen" offers them, to start at once. */
+  variants: PlannedPrototype[];
+}
+
+/** A prototype the idea's agent plans: its approach in a few words (its title) and what it builds and shows (its task). */
+export interface PlannedPrototype {
+  approach: string;
+  show: string;
 }
 
 /** The owner's next click on an idea: answer its questions, or one of the decisions on the card. */
@@ -386,8 +396,13 @@ export type CardAction =
   | { action: 'planDoc' }
   | { action: 'park' }
   | { action: 'drop' }
-  /** Ideas: a worker builds a throwaway prototype and shows it as a demo on the idea; several may run side by side. */
-  | { action: 'prototype'; text?: string }
+  /**
+   * Ideas: a worker builds a throwaway prototype and shows it as a demo on the idea; several may run
+   * side by side. One per planned variant named in `variants` (by approach), and one for `text`.
+   * Neither: one per planned variant without a prototype on the canvas, or, without any planned,
+   * the idea as it stands.
+   */
+  | { action: 'prototype'; text?: string; variants?: string[] }
   /** Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are discarded. */
   | { action: 'buildPrototype' }
   /** Prototypes: thrown away, into the archive with log, demo and summary. */
@@ -429,6 +444,8 @@ export type ErrorCode =
   | 'ideaThinking'
   /** A prototype for the idea is still running. */
   | 'prototypeRunning'
+  /** Every variant the idea's agent planned has its prototype on the canvas already. */
+  | 'variantsRunning'
   /** A project has no planned workstream left that is not already with the Koordinator. */
   | 'nothingToStart'
   /** The action is for a prototype on the canvas, and the card is none. */

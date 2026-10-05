@@ -332,7 +332,9 @@ export class CanvasRuntime {
       case 'drop':
         return this.shelve(cardId, a.action);
       case 'prototype':
-        return this.prototype(cardId, text.trim());
+        if (a.variants !== undefined && (!Array.isArray(a.variants) || a.variants.length > 20 || a.variants.some((v) => typeof v !== 'string')))
+          throw new BadRequest('invalid', 'variants must be a list of the planned approaches');
+        return this.prototype(cardId, text.trim(), a.variants);
       case 'buildPrototype':
         return this.buildOnPrototype(cardId);
       case 'discard':
@@ -432,26 +434,52 @@ export class CanvasRuntime {
   }
 
   /**
-   * A worker builds a throwaway prototype for the idea, in its own workspace; it never lands itself.
-   * Several may run side by side, each with its approach in its title.
+   * Workers build throwaway prototypes for the idea, each in its own workspace; they never land
+   * themselves. One per planned variant chosen, each with its approach in its title, and one for
+   * what the owner wrote. Neither chosen nor written: the planned variants that have no prototype
+   * on the canvas, or, with none planned, the idea as it stands.
    */
-  private prototype(cardId: string, what: string) {
+  private prototype(cardId: string, what: string, chosen?: string[]) {
     const card = this.ideaCard(cardId);
-    const approach = approachOf(what);
-    const base = `Prototyp: ${card.title}${approach ? ` – ${approach}` : ''}`;
+    const { variants = [] } = this.board.idea(cardId);
+    const running = new Set(this.board.snapshot().items.flatMap((i) => (i.prototypeOf === cardId && i.variant ? [i.variant] : [])));
+    const picked = chosen ? variants.filter((v) => chosen.includes(v.approach)) : what ? [] : variants.filter((v) => !running.has(v.approach));
+    if (chosen?.length && !picked.length && !what) throw new BadRequest('invalid', 'none of the chosen variants is planned');
+    if (!chosen && !what && variants.length && !picked.length) throw new BadRequest('variantsRunning', 'every planned variant has its prototype on the canvas');
+    const runs = picked.map((v) => {
+      const others = variants.filter((o) => o !== v).map((o) => o.approach);
+      return { approach: v.approach, task: others.length ? `${v.show}\n\nNur diese Variante: ${others.join(', ')} bauen eigene Prototypen.` : v.show, variant: v.approach };
+    });
+    if (what || !runs.length) runs.push({ approach: approachOf(what), task: what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.', variant: '' });
     const taken = new Set((this.board.item(cardId)?.prototypes ?? []).map((p) => p.title));
-    let title = base;
-    for (let n = 2; taken.has(title); n++) title = `${base} (${n})`;
-    const prototype = this.board.addPrototype(cardId, title, what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.');
+    const started: string[] = [];
     try {
-      this.repoOf(prototype).workers.start(prototype.id);
-    } catch (e) {
-      this.board.remove(prototype.id);
-      throw e;
+      for (const run of runs) {
+        const base = `Prototyp: ${card.title}${run.approach ? ` – ${run.approach}` : ''}`;
+        let title = base;
+        for (let n = 2; taken.has(title); n++) title = `${base} (${n})`;
+        taken.add(title);
+        const prototype = this.board.addPrototype(cardId, title, run.task, run.variant || undefined);
+        try {
+          this.repoOf(prototype).workers.start(prototype.id);
+        } catch (e) {
+          this.board.remove(prototype.id);
+          throw e;
+        }
+        started.push(title);
+      }
+    } finally {
+      if (started.length) {
+        // the owner now waits for the prototypes, not the other way round; the agent's reply to a result gives the turn back
+        this.board.setIdea(cardId, { yourTurn: false });
+        this.board.log(
+          cardId,
+          'state',
+          'owner',
+          started.length > 1 ? `Prototypen gestartet: ${started.map((t) => `„${t}“`).join(', ')}.` : `Prototyp „${started[0]}“ gestartet${what && !picked.length ? `: ${what.replace(/[.!?]$/, '')}` : ''}.`,
+        );
+      }
     }
-    // the owner now waits for the prototype, not the other way round; the agent's reply to its result gives the turn back
-    this.board.setIdea(cardId, { yourTurn: false });
-    this.board.log(cardId, 'state', 'owner', `Prototyp „${title}“ gestartet${what ? `: ${what.replace(/[.!?]$/, '')}` : ''}.`);
   }
 
   /** A prototype handed over: its demo shows on the idea beside those of the other prototypes, and the idea's agent hears what it found. */

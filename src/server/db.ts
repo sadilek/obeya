@@ -232,7 +232,7 @@ export const MIGRATIONS = [
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'images'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -347,8 +347,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, images, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $images, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -368,6 +368,7 @@ export class Store {
           repo: r.repo ?? null,
           idea: r.idea ?? null,
           prototype_of: r.prototype_of ?? null,
+          prototype: r.prototype ?? null,
           images: r.images ?? null,
           now: now(),
         });

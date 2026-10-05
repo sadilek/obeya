@@ -7,7 +7,7 @@
 import { basename } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
-import { type Item, NEXT_STEPS, type NextStep, type Question } from '../core/types';
+import { type Item, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question } from '../core/types';
 import { decisionLog, toQuestion } from './advisor';
 import { BadRequest, type Board, type Message, type Unread } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
@@ -263,6 +263,17 @@ export class Explorers {
         },
       },
       {
+        name: 'plan_prototypes',
+        description: `The throwaway prototypes the brief plans, one per variant to be seen side by side: the whole list each time, empty when none are planned any more. When the owner clicks "Prototyp bauen lassen", the card offers them, all chosen, and starts one worker per variant at once; without this list it starts one prototype of the idea as it stands. approach: the variant in a few words, in ${OWNER_LANGUAGE} ("A Plasma-Felder"); it becomes the prototype's title. show: that prototype's task, in ${OWNER_LANGUAGE}: what it builds and what its demo shows, for this variant only; its worker also reads the brief.`,
+        schema: { prototypes: z.array(z.object({ approach: z.string(), show: z.string() })).max(MAX_VARIANTS) },
+        run: ({ prototypes }) => {
+          const variants = plannedPrototypes(prototypes);
+          this.o.board.setIdea(cardId, { variants });
+          this.o.board.log(cardId, 'activity', 'explorer', variants.length ? `Plant Prototypen: ${variants.map((v) => v.approach).join(', ')}` : 'Plant keine Prototypen mehr');
+          return variants.length ? `Planned ${variants.length} prototype${variants.length > 1 ? 's' : ''}.` : 'No prototypes planned.';
+        },
+      },
+      {
         name: 'record_decision',
         description: `The owner decided something in the conversation: record it in the decision log (question and answer in ${OWNER_LANGUAGE}, short).`,
         schema: { question: z.string(), answer: z.string() },
@@ -311,6 +322,7 @@ How to work:
 Tools, within a turn in this order:
 - record_decision: when the owner decided something in the message. General preferences (how they like to work) are not decisions; Obeya learns those on its own.
 - update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Ist-Stand** (what the code does today, when it matters), **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
+- plan_prototypes: whenever the brief plans prototypes you have not passed to it yet, or the plan changes (which variants are to be seen side by side, and what each is to show). The owner then starts them all with one click, one worker per variant.
 - reply, last: your turn in the conversation, and spoken, its summary for the ear. Exactly once per message, then end your turn.
 
 The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype built, park it or drop it. With every reply, say through next what you would do in their place if you had to decide, and why; the card marks that click, so the owner sees at a glance where to go on:
@@ -319,11 +331,14 @@ The owner decides on the card whether to build the idea, turn it into a plan doc
 - planDoc: it is too big for one card (several workstreams, or an order to work in).
 - prototype: only seeing it will settle it (a layout, how it feels, a risky approach), and a throwaway build costs less than guessing.
 - park or drop: it is not worth it now, or no longer.
-Give your pick on every question with options, whatever next is. Do not hold the idea back with questions you could settle as well as the owner: settle them in the brief and say so. Several prototypes may try different approaches side by side; you hear each one's result, and the questions their workers asked with the owner's answers, which belong in the brief like answers given here. Once one convinces, the owner builds the idea on that prototype's branch.
+Give your pick on every question with options, whatever next is. Do not hold the idea back with questions you could settle as well as the owner: settle them in the brief and say so. Several prototypes may try different approaches side by side, one per variant you planned with plan_prototypes; you hear each one's result, and the questions their workers asked with the owner's answers, which belong in the brief like answers given here. Once one convinces, the owner builds the idea on that prototype's branch.
 Owner-facing text is in ${OWNER_LANGUAGE}.
 `.trim();
 
-const OWN_TOOLS = ['reply', 'update_brief', 'record_decision'];
+const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'record_decision'];
+
+/** At most this many prototypes are planned for one idea. */
+const MAX_VARIANTS = 6;
 
 /** How the agent hears the messages an interrupted turn left unanswered. */
 const OPENING =
@@ -350,6 +365,20 @@ function withPick(a: Asked): Question {
   const picked = (a.pick ?? []).map((o) => clip(String(o).trim(), 120)).filter((o) => q.options.includes(o));
   const options = q.multiple ? [...new Set(picked)] : picked.slice(0, 1);
   return options.length ? { ...q, pick: { options, why: clip(String(a.pick_why ?? '').trim(), 400) } } : q;
+}
+
+/** The prototypes as the agent planned them: each with an approach of its own, and a task. */
+function plannedPrototypes(list: unknown): PlannedPrototype[] {
+  const seen = new Set<string>();
+  const out: PlannedPrototype[] = [];
+  for (const p of (list as { approach?: unknown; show?: unknown }[] | undefined) ?? []) {
+    const approach = clip(String(p.approach ?? '').replace(/\s+/g, ' ').trim(), 60);
+    const show = clip(String(p.show ?? '').trim(), 4000);
+    if (!approach || !show || seen.has(approach.toLowerCase())) continue;
+    seen.add(approach.toLowerCase());
+    out.push({ approach, show });
+  }
+  return out.slice(0, MAX_VARIANTS);
 }
 
 /** The step the agent suggests; answering needs questions to answer. */

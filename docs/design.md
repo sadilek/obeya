@@ -108,7 +108,14 @@ An idea is thought through on its card before anything is planned; no worker run
 4. A prototype ("Prototyp bauen lassen"), when talking is not enough: a worker builds a throwaway one in its own workspace,
    on a card of its own below the idea, and records a demo. Several may run side by side, one per
    approach; each carries its approach in its title ("Prototyp: Logo – Wortmarke", the first words of
-   what the owner asked it to show). The idea shows the demos of all its prototypes, each under its
+   what the owner asked it to show). When the brief plans prototypes of several variants, the
+   agent also passes them to Obeya (`plan_prototypes`: per variant a few words and what its
+   prototype shows); "Prototyp bauen lassen" then offers them as checkboxes, each chosen unless its
+   prototype runs already, beside a field for an approach of the owner's own, and starts one worker
+   per variant at once, its title the variant's words and its task that variant only (2026-10-05:
+   three clicks with an empty field had started three prototypes of the same brief, which planned
+   three variants). Spoken without words, it starts the planned variants that have none running;
+   without planned variants, an empty field is the idea as it stands. The idea shows the demos of all its prototypes, each under its
    title, and its exploration agent hears what each found. While one is built, the idea no longer
    needs the owner; the agent's reply to its result makes it their turn again. A prototype's
    worker asks on its own card, and the questions with the owner's answers also go to the

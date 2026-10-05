@@ -69,7 +69,7 @@ describe('an idea', () => {
       s.call('record_decision', { question: 'Format?', answer: 'CSV' });
     });
     expect(s.closed).toBe(true);
-    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false, yourTurn: true, questions: [] });
+    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false, yourTurn: true, questions: [], variants: [] });
     expect(talk(i.id)).toEqual([
       ['owner', 'Lass uns das durchdenken.'],
       ['explorer', 'CSV oder PDF?'],
@@ -176,7 +176,7 @@ describe('an idea', () => {
     expect(item(i.id).idea).toMatchObject({ thinking: true });
     s.call('reply', { text: 'Zu zweitens.', spoken: '' });
     s.emit({ type: 'idle' });
-    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: true, questions: [] });
+    expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: true, questions: [], variants: [] });
     canvas.act(i.id, { action: 'discuss', text: 'Drittens.' });
     expect(item(i.id).idea).toMatchObject({ thinking: true, yourTurn: false });
     // a turn that ends without words leaves nothing to answer
@@ -568,6 +568,43 @@ describe('a prototype', () => {
     canvas.act(prototypes(i.id)[0]!.id, { action: 'discard' });
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
     expect(prototypes(i.id).map((p) => p.title)).toEqual(['Prototyp: Export für Vermieter – Knopf (2)']);
+  });
+
+  test('the variants its agent planned start at once, one prototype each, and none twice', () => {
+    canvas.shutdown();
+    canvas = open(4);
+    const i = idea('Leinwand ordnen');
+    canvas.act(i.id, { action: 'discuss', text: 'Zeig mir alle drei.' });
+    turn(explorer(), 'Drei Prototypen geplant.', () =>
+      explorer().call('plan_prototypes', {
+        prototypes: [
+          { approach: 'A Plasma-Felder', show: 'Gebiete als Metaballs.' },
+          { approach: 'B Territorien', show: 'Gebiete als Voronoi.' },
+          { approach: 'C Konturen', show: 'Gebiete als Hüllen.' },
+          { approach: 'a plasma-felder', show: 'Doppelt.' },
+        ],
+      }),
+    );
+    expect(item(i.id).idea!.variants.map((v) => v.approach)).toEqual(['A Plasma-Felder', 'B Territorien', 'C Konturen']);
+    // the owner leaves one out
+    canvas.act(i.id, { action: 'prototype', variants: ['A Plasma-Felder', 'C Konturen'] });
+    expect(prototypes(i.id).map((p) => [p.title, p.variant, p.state])).toEqual([
+      ['Prototyp: Leinwand ordnen – A Plasma-Felder', 'A Plasma-Felder', 'working'],
+      ['Prototyp: Leinwand ordnen – C Konturen', 'C Konturen', 'working'],
+    ]);
+    // each builds its own variant only
+    expect(prototypes(i.id)[0]!.body).toBe('Gebiete als Metaballs.\n\nNur diese Variante: B Territorien, C Konturen bauen eigene Prototypen.');
+    expect(workers()[1]!.inbox[0]).toContain('Gebiete als Hüllen.');
+    expect(board().events(i.id).at(-1)!.text).toBe('Prototypen gestartet: „Prototyp: Leinwand ordnen – A Plasma-Felder“, „Prototyp: Leinwand ordnen – C Konturen“.');
+    // without a choice (a spoken command): the planned ones that have none yet
+    canvas.act(i.id, { action: 'prototype' });
+    expect(prototypes(i.id).map((p) => p.variant)).toEqual(['A Plasma-Felder', 'C Konturen', 'B Territorien']);
+    expect(() => canvas.act(i.id, { action: 'prototype' })).toThrow(expect.objectContaining({ code: 'variantsRunning' }));
+    // a discarded variant can be tried again
+    canvas.act(prototypes(i.id)[0]!.id, { action: 'discard' });
+    canvas.act(i.id, { action: 'prototype' });
+    expect(prototypes(i.id).at(-1)!.title).toBe('Prototyp: Leinwand ordnen – A Plasma-Felder (2)');
+    expect(() => canvas.act(i.id, { action: 'prototype', variants: ['D Gibt es nicht'] })).toThrow(expect.objectContaining({ code: 'invalid' }));
   });
 
   test('"Diesen Prototyp bauen" builds the idea on its branch; the others are discarded', async () => {

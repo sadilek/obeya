@@ -372,6 +372,10 @@ textarea.p-body:focus { border-color: var(--muted); }
 .pick-tag { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 8px; font-size: 11px; font-weight: 700; line-height: 18px; white-space: nowrap;
   color: var(--idea); background: color-mix(in srgb, var(--idea) 10%, var(--card)); }
 .hint.pick-why { margin-top: 6px; font-size: 12.5px; }
+/* the prototypes the idea's agent planned, one row each, its task in two lines */
+.prototype-variants { margin-top: 16px; max-width: 80ch; }
+.prototype-variants .choice { flex-basis: 100%; }
+.prototype-variants .v-show { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
 .talk .question.ask { margin: 0; max-width: 92%; padding: 10px 12px; font-size: 14px; flex: none; background: color-mix(in srgb, var(--waiting) 9%, var(--card)); }
 .composer { display: flex; gap: 10px; align-items: flex-end; margin-top: 16px; max-width: 80ch; }
 .composer textarea { flex: 1; resize: vertical; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
