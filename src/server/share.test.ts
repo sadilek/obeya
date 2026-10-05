@@ -266,27 +266,34 @@ describe('a page published with an earlier version of the command', () => {
     expect(share(c.id)!.outdated).toBeUndefined();
   });
 
-  test('a command that writes every page afresh brings all its pages up to date with any call', async () => {
-    version('v1 all');
+  test('each page is brought up to date on its own: sharing one again leaves the others marked', async () => {
+    version('v1');
     const a = card('A');
     const b = card('B');
-    const x = card('C');
-    for (const c of [a, b, x]) {
+    for (const c of [a, b]) {
       sharing.share(c.id);
       await until(() => share(c.id)?.state === 'shared');
     }
-    version('v2 all');
+    version('v2');
     await sharing.checkVersions();
-    expect([a, b, x].map((c) => share(c.id)!.outdated)).toEqual([true, true, true]);
     sharing.share(a.id);
     await until(() => share(a.id)?.state === 'shared' && !share(a.id)!.outdated);
-    expect([b, x].map((c) => share(c.id)!.outdated)).toEqual([undefined, undefined]);
-    expect(stored(b.id).version).toBe('v2');
-    version('v3 all');
-    await sharing.checkVersions();
-    sharing.unshare(x.id);
-    await until(() => !share(x.id));
-    expect([a, b].map((c) => share(c.id)!.outdated)).toEqual([undefined, undefined]);
+    expect(share(b.id)!.outdated).toBe(true);
+    expect(stored(b.id).version).toBe('v1');
+  });
+
+  test('a version that changes while nobody looks is marked after the next call of the command', async () => {
+    version('v1');
+    const a = card('A');
+    const b = card('B');
+    for (const c of [a, b]) {
+      sharing.share(c.id);
+      await until(() => share(c.id)?.state === 'shared');
+    }
+    version('v2');
+    sharing.unshare(b.id);
+    await until(() => !share(b.id));
+    expect(share(a.id)!.outdated).toBe(true);
   });
 
   test('marked after a restart', async () => {

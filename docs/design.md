@@ -640,10 +640,11 @@ the owner's language (`src/core/locale.ts`).
   the canvas (at most once a minute: a command from another repository changes without a restart). A page published with another version, or
   before commands said theirs (until 2026-10-05), shows that pages are made differently now and
   offers "Erneut teilen" beside "Nicht mehr teilen": the same demo published again under the same
-  link. A card with a newer demo offers only "Neu teilen", which brings both. A version followed by
-  the word `all` says each call writes every page afresh, so after any call every page shared
-  through the command is at that version. Acme's command prints a hash of a sample page and an
-  overview as its code writes them, and `all`: only a change that shows on the pages counts.
+  link. A card with a newer demo offers only "Neu teilen", which brings both. Each page is brought
+  up to date on its own card: Acme's command wrote every page afresh with each call until
+  2026-10-05, which updated all of them unseen and would take long with hundreds of pages. Acme's
+  command prints a hash of a sample page as its code writes it: only a change that shows on the
+  pages counts.
   The pull request and the page link each other. A demo shared before approval goes into the
   worker's approval message with "link it in the description". Once a PR exists and the page is
   out (in either order: `pr_opened` after sharing, or sharing a card whose PR is open or merged),
@@ -675,8 +676,9 @@ the owner's language (`src/core/locale.ts`).
   token are in `~/.obeya/team-share/cloudflare.env`. Pages serves no byte ranges (a range request
   gets the whole file with 200), and a browser cannot seek in a video streamed that way: the
   chapters and the progress bar jumped back to the start. The page therefore asks for a range
-  first and, getting the whole file, plays the video from memory. Each call writes every page
-  afresh from its `meta.json`, so pages shared earlier take a fixed template along. It refuses files over 25 MiB (the Pages limit)
+  first and, getting the whole file, plays the video from memory. A call writes its own page and
+  the overview; the other pages stay as they were written (their `meta.json` keeps what a page
+  shows). It refuses files over 25 MiB (the Pages limit)
   and a site that lacks a page Obeya has as shared (a lost directory would take them offline), and
   puts the directory back when a deployment fails. The owner sets it up once in Cloudflare (done
   2026-10-02), in this order: the Pages project `team-demos` (under Pages: the dashboard's plain

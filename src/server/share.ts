@@ -48,16 +48,6 @@ export interface SharingOptions {
   forge: Forge;
 }
 
-/**
- * What a share command says of the pages it writes (`version`): a version that changes whenever its
- * pages would come out different, and whether each call writes every page afresh (`all`), so that
- * after any call every page shared through it is at that version.
- */
-interface CommandVersion {
-  version: string;
-  all: boolean;
-}
-
 /** A share command that has not finished by then is stopped (an upload of a few files takes seconds). */
 const COMMAND_TIMEOUT = 15 * 60_000;
 
@@ -148,29 +138,26 @@ export class Sharing {
     for (const cmd of commands.values()) this.mark(cmd.command, await this.version(cmd));
   }
 
-  /** The version of the pages the command writes; null when it says none. */
-  private async version(cmd: { command: string[]; cwd: string }): Promise<CommandVersion | null> {
+  /**
+   * The version of the pages the command writes, which changes whenever its pages would come out
+   * different; null when it says none.
+   */
+  private async version(cmd: { command: string[]; cwd: string }): Promise<string | null> {
     const r = await run([...cmd.command, 'version'], '', cmd.cwd, this.o.home);
-    const [version, flag] = r.code === 0 ? (r.out.trim().split('\n').at(-1)?.trim().split(/\s+/) ?? []) : [];
-    return version ? { version, all: flag === 'all' } : null;
+    return (r.code === 0 && r.out.trim().split('\n').at(-1)?.trim().split(/\s+/)[0]) || null;
   }
 
-  /**
-   * After the command wrote pages: every page shared through a command that writes all pages
-   * afresh is at its version now. Then each page at rest through it is marked as published with an
-   * earlier version, or not.
-   */
-  private mark(command: string[], current: CommandVersion | null, wroteAll = false) {
+  /** Marks each page at rest shared through the command as published with another version than its current one, or not. */
+  private mark(command: string[], current: string | null) {
     const key = JSON.stringify(command);
     for (const r of this.o.board.sharedRows()) {
       const s = JSON.parse(r.share!) as StoredShare;
       const card = this.find(r.id);
       if (!s.url || s.state || !card || JSON.stringify(this.o.commandFor(card)?.command) !== key) continue;
-      const version = wroteAll && current?.all ? current.version : s.version;
-      const outdated = !!current && version !== current.version;
-      if (version !== s.version || outdated !== !!s.outdated) {
-        const { outdated: _, version: __, ...rest } = s;
-        this.set(r.id, { ...rest, ...(version ? { version } : {}), ...(outdated ? { outdated: true as const } : {}) });
+      const outdated = !!current && s.version !== current;
+      if (outdated !== !!s.outdated) {
+        const { outdated: _, ...rest } = s;
+        this.set(r.id, { ...rest, ...(outdated ? { outdated: true as const } : {}) });
       }
     }
   }
@@ -218,8 +205,8 @@ export class Sharing {
     const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
     if (r.code !== 0 || !url) return back(r.code !== 0 ? `Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).` : 'Der Befehl zum Teilen hat keine URL ausgegeben.', tail(r.err || r.out));
     const current = await this.version(cmd);
-    this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}), ...(current ? { version: current.version } : {}) });
-    this.mark(cmd.command, current, true);
+    this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}), ...(current ? { version: current } : {}) });
+    this.mark(cmd.command, current);
     // stdout carries the URL, logged below; what the command says on the way is on stderr
     if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
     this.o.board.log(cardId, 'state', 'obeya', s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
@@ -259,7 +246,7 @@ export class Sharing {
     if (r.code !== 0) return back(`Nicht zurückgezogen: Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).`, tail(r.err || r.out));
     const current = await this.version(cmd);
     this.set(cardId, { slug: s.slug });
-    this.mark(cmd.command, current, true);
+    this.mark(cmd.command, current);
     if (r.err.trim() || r.out.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(`${r.out}\n${r.err}`));
     this.o.board.log(cardId, 'state', 'obeya', 'Die Seite ist zurückgezogen.');
   }
