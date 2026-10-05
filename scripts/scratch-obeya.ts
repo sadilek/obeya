@@ -349,6 +349,11 @@ function stop(d: string) {
     } catch {
       return;
     }
+    // Obeya waits for workers in the middle of a turn (an idle worker always is); a second signal ends it at once
+    if (i === 15)
+      try {
+        process.kill(-pid, 'SIGTERM');
+      } catch {}
     Bun.sleepSync(100);
   }
   try {

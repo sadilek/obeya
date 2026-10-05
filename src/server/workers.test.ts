@@ -142,6 +142,20 @@ describe('workers', () => {
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
   });
 
+  test('stopping Obeya is announced like a restart, and the worker pauses until Obeya runs again', () => {
+    const c = manual();
+    workers.start(c.id);
+    const busy = runtime.last;
+    workers.restartDue({ reason: 'stop', deadline: Date.now() + 15 * 60_000 });
+    expect(busy.inbox.at(-1)).toContain('Obeya is about to stop (the owner is shutting it down)');
+    expect(busy.inbox.at(-1)).toContain('Obeya resumes you once it runs again');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Beenden von Obeya angekündigt; der Agent pausiert beim nächsten sicheren Punkt.' });
+    busy.emit({ type: 'idle' });
+    expect(workers.busy()).toBe(false);
+    expect(state(c.id)).toBe('working');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert, bis Obeya wieder läuft.' });
+  });
+
   test('a restart goes ahead once the workers it announced itself to have paused', async () => {
     const c = manual();
     workers.start(c.id);

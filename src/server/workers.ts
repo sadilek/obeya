@@ -108,10 +108,16 @@ const END_TURN = 'Recorded. End your turn now without further work; the reply ar
 const RESTARTED =
   'Obeya was restarted. Whatever you had running then was stopped with it: background commands, servers you started, and a command still running in your turn (its result shows exit code 137). Run again what you still need. If you had paused for the restart, go on from there.';
 
-/** Tells a worker that Obeya is about to restart, so that it pauses at a safe point instead of being cut off. */
+const DUE_WHY: Record<RestartReason, string> = {
+  code: 'restart (new code landed on main)',
+  config: 'restart (the owner saved a new configuration)',
+  stop: 'stop (the owner is shutting it down)',
+};
+
+/** Tells a worker that Obeya is about to restart or stop, so that it pauses at a safe point instead of being cut off. */
 const restartNotice = (due: DueRestart) => {
   const minutes = Math.max(1, Math.round((due.deadline - Date.now()) / 60_000));
-  return `Obeya is about to restart (${due.reason === 'code' ? 'new code landed on main' : 'the owner saved a new configuration'}) and stops whatever its workers run at that moment. It waits until no worker is in the middle of a turn, at most ${minutes} more minute${minutes === 1 ? '' : 's'}. Pause at the next safe point: finish the step you are in, start nothing long (a test run, a demo render, a measurement), and end your turn, without handing over if you are not done. Background commands still running keep Obeya waiting: let those you need finish, stop the others (a scratch server you can start again). Obeya resumes you once it runs again, and you go on from there.`;
+  return `Obeya is about to ${DUE_WHY[due.reason]} and stops whatever its workers run at that moment. It waits until no worker is in the middle of a turn, at most ${minutes} more minute${minutes === 1 ? '' : 's'}. Pause at the next safe point: finish the step you are in, start nothing long (a test run, a demo render, a measurement), and end your turn, without handing over if you are not done. Background commands still running keep Obeya waiting: let those you need finish, stop the others (a scratch server you can start again). Obeya resumes you once it runs again, and you go on from there.`;
 };
 
 const AFTER_LANDING =
@@ -458,7 +464,7 @@ export class Workers {
       if (!live.busy || live.toldRestart) continue;
       live.toldRestart = true;
       live.session.send(restartNotice(due));
-      this.o.board.log(cardId, 'state', 'obeya', 'Neustart von Obeya angekündigt; der Agent pausiert beim nächsten sicheren Punkt.');
+      this.o.board.log(cardId, 'state', 'obeya', `${due.reason === 'stop' ? 'Beenden' : 'Neustart'} von Obeya angekündigt; der Agent pausiert beim nächsten sicheren Punkt.`);
     }
   }
 
@@ -622,7 +628,7 @@ export class Workers {
     }
     if (this.restart && live.toldRestart) {
       // it paused for the restart, which resumes it
-      this.o.board.log(cardId, 'state', 'obeya', 'Pausiert bis zum Neustart von Obeya.');
+      this.o.board.log(cardId, 'state', 'obeya', this.restart.reason === 'stop' ? 'Pausiert, bis Obeya wieder läuft.' : 'Pausiert bis zum Neustart von Obeya.');
       return;
     }
     if (!acted && !live.nudged) {

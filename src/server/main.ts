@@ -13,6 +13,10 @@
 // configuration the owner saved (config.ts). Saved while the canvases came from the command line,
 // it starts the server from the file from then on.
 //
+// Ctrl-C or SIGTERM stops Obeya the way a restart goes: workers in the middle of a turn hear of it
+// and pause, and Obeya ends once none is (at most 15 minutes); a second Ctrl-C ends it at once.
+// Workers it stopped are resumed when Obeya starts again.
+//
 // --idle-workers: no agent works on a started card (a scratch Obeya for a demo, scripts/scratch-obeya.ts).
 
 import { existsSync } from 'node:fs';
@@ -26,7 +30,7 @@ import { Store } from './db';
 import { ghForge } from './forge';
 import { NarrationHost } from './narration';
 import { idleRuntime, sdkRuntime } from './runtime';
-import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, Restarter, watchOwnCode } from './self-update';
+import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, watchOwnCode } from './self-update';
 import { serve } from './server';
 import { SpeechSidecar, WhisperSidecar } from './voice';
 import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
@@ -52,7 +56,13 @@ const configFile = values.config ? resolve(expand(values.config)) : join(home, C
 
 if (!values.dev && !process.env.OBEYA_SUPERVISED) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
-  for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => child?.kill(sig));
+  // the server stops once its workers paused; whatever exit code it ends with, nothing starts again
+  let stopping = false;
+  for (const sig of ['SIGINT', 'SIGTERM'] as const)
+    process.on(sig, () => {
+      stopping = true;
+      child?.kill(sig);
+    });
   let args = process.argv.slice(1);
   for (;;) {
     child = Bun.spawn([process.execPath, ...args], {
@@ -60,6 +70,7 @@ if (!values.dev && !process.env.OBEYA_SUPERVISED) {
       stdio: ['inherit', 'inherit', 'inherit'],
     });
     const code = await child.exited;
+    if (stopping) process.exit(code === RESTART || code === RESTART_FROM_FILE ? 0 : code);
     if (code === RESTART_FROM_FILE) {
       // the owner saved the configuration of canvases given on the command line: the file is it now
       args = [args[0]!, '--config', configFile, '--port', values.port, '--permission-mode', values['permission-mode'], ...(values['idle-workers'] ? ['--idle-workers'] : [])];
@@ -109,8 +120,9 @@ let exitCode = RESTART;
 const busy = () => canvases.flatMap((c) => c.busy().map((card) => ({ canvas: c.id, card })));
 const restarter = new Restarter({
   busy,
-  go: () => {
+  go: (reason) => {
     server?.stop(true);
+    if (reason === 'stop') return shutdown(0);
     if (own && ranFrom) {
       const done = installDependencies(own, ranFrom);
       if (done.ran && done.ok) console.log(`Obeya: installed the new dependencies in ${own}`);
@@ -178,7 +190,23 @@ const shutdown = (code: number) => {
   narration.stop();
   process.exit(code);
 };
-for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => shutdown(0));
+// stopping waits for the workers like a restart; a second Ctrl-C has it go ahead at once
+const SAME_PRESS_MS = 1000;
+let stopAsked = 0;
+for (const sig of ['SIGINT', 'SIGTERM'] as const)
+  process.on(sig, () => {
+    if (!stopAsked) {
+      stopAsked = Date.now();
+      const n = busy().length;
+      console.log(n ? `Obeya: stopping once no worker is in the middle of a turn (${n} ${n === 1 ? 'is' : 'are'}, at most ${RESTART_PATIENCE_MS / 60_000} minutes); Ctrl-C again stops at once` : 'Obeya: stopping');
+      restarter.request('stop');
+      return;
+    }
+    // Ctrl-C in the terminal reaches the supervisor too, which passes it on: one press arrives twice
+    if (Date.now() - stopAsked < SAME_PRESS_MS) return;
+    console.log('Obeya: stopping now');
+    if (!restarter.now()) shutdown(0);
+  });
 
 server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev, config, restarter, narration);
 console.log(`Obeya on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'})`);

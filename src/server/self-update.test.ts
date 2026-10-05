@@ -175,3 +175,42 @@ test('a restart with no worker busy waits for the owner alone', async () => {
   await wait(50);
   expect(gone).toBe(1);
 });
+
+test('a stop waits for the workers like a restart, but not for the owner, and goes as a stop', async () => {
+  let busy: Busy[] = [{ canvas: 'c', card: 'a' }];
+  const gone: string[] = [];
+  const r = new Restarter({ busy: () => busy, go: (reason) => gone.push(reason), patienceMs: 10_000, intervalMs: 10 });
+  r.hold('page', ['video']);
+  r.request('stop');
+  expect(r.due()).toMatchObject({ reason: 'stop', waiting: busy, owner: [] });
+  r.request('code');
+  expect(r.due()!.reason).toBe('stop');
+  await wait(50);
+  expect(gone).toEqual([]);
+  busy = [];
+  await wait(50);
+  expect(gone).toEqual(['stop']);
+});
+
+test('a stop turns a restart that waits into a stop', async () => {
+  const gone: string[] = [];
+  let changes = 0;
+  const r = new Restarter({ busy: () => [{ canvas: 'c', card: 'a' }], go: (reason) => gone.push(reason), patienceMs: 10_000, intervalMs: 10 });
+  r.onChange(() => changes++);
+  r.hold('page', ['voice']);
+  r.request('code');
+  r.request('stop');
+  expect(r.due()).toMatchObject({ reason: 'stop', owner: [] });
+  expect(changes).toBe(2);
+  expect(r.now()).toBe(true);
+  expect(gone).toEqual(['stop']);
+});
+
+test('a stop with no worker busy goes at once, even while the owner watches a video', () => {
+  const gone: string[] = [];
+  const r = new Restarter({ busy: () => [], go: (reason) => gone.push(reason) });
+  r.hold('page', ['video']);
+  r.request('stop');
+  expect(gone).toEqual(['stop']);
+  expect(r.due()).toBeNull();
+});

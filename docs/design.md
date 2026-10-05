@@ -469,6 +469,14 @@ the owner's language (`src/core/locale.ts`).
   the drafts in their text fields and where the demo video stood; the new page opens them again
   without flights or unfold and puts positions and drafts back while their content loads
   (`src/ui/keep.ts`). The camera is kept anyway.
+- **Stopping** — Ctrl-C or SIGTERM (with or without `--dev`) stops Obeya the way a restart goes,
+  only nothing starts again: the workers in the middle of a turn are told Obeya is about to stop
+  and pause at a safe point, and Obeya ends once none is (at most 15 minutes). The bar shows it
+  ("Beenden wartet auf N Agenten", "Jetzt beenden"), and a second Ctrl-C ends it at once (the
+  terminal's Ctrl-C reaches supervisor and server, and the supervisor passes it on: signals within
+  a second count as one press). A stop does not wait for the owner's video or dictation, since the
+  owner asked for it; it turns a restart that waits into a stop. The next start resumes the
+  workers it stopped like a restart does.
 - **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
   card starts it estimates the files the card will change and judges whether running it next to
   the cards in progress likely ends in merge conflicts. Cards queued before it count too: a card

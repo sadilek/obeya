@@ -196,6 +196,7 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
   const until = new Date(restart.deadline).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const titles = restart.cards.map((id) => plain(items.find((i) => i.id === id)?.title ?? id));
   const owner = restart.owner;
+  const stop = restart.reason === 'stop';
   const now = () => {
     setGoing(true);
     api.restartNow().then(
@@ -206,19 +207,19 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
   if (going)
     return (
       <div className="pill restart going" id="restart">
-        <span className="spin">↻</span> {t.restart.going}
+        <span className="spin">↻</span> {stop ? t.restart.goingStop : t.restart.going}
       </div>
     );
   return (
     <div className="pill restart" id="restart">
       <span className="spin">↻</span>
-      <span>{t.restart.pill(n, owner)}</span>
+      <span>{t.restart.pill(n, owner, stop)}</span>
       {/* the deadline does not cut the owner off */}
       {!owner.length && <span className="hint">{t.restart.until(until)}</span>}
       <button onClick={now}>
-        {t.restart.now}
+        {stop ? t.restart.nowStop : t.restart.now}
         <span className="tip risk" role="tooltip">
-          {n ? t.restart.nowRisk : t.restart.nowOwner}
+          {stop ? t.restart.nowRiskStop : n ? t.restart.nowRisk : t.restart.nowOwner}
         </span>
       </button>
       <div className="tip why" role="tooltip">
@@ -237,8 +238,8 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
             </ul>
           </>
         )}
-        <p className="hint">{t.restart.kept}</p>
-        {n > 0 && <p className="hint">{owner.length ? t.restart.deadlineOwner(until) : t.restart.deadline(until)}</p>}
+        <p className="hint">{stop ? t.restart.keptStop : t.restart.kept}</p>
+        {n > 0 && <p className="hint">{stop ? t.restart.deadlineStop(until) : owner.length ? t.restart.deadlineOwner(until) : t.restart.deadline(until)}</p>}
       </div>
     </div>
   );

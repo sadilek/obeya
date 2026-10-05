@@ -1,6 +1,7 @@
 // Obeya on its own checkout: work that lands there changes the code this very process runs. The
 // supervisor in main.ts starts the server again when it exits with RESTART; this module tells
-// when that is due, and installs what the new code depends on before it goes.
+// when that is due, and installs what the new code depends on before it goes. Stopping Obeya
+// (Ctrl-C, SIGTERM) waits for the workers the same way, and then nothing starts again.
 
 import { dirname } from 'node:path';
 import type { OwnerHold, RestartReason } from '../core/types';
@@ -50,8 +51,8 @@ export interface Due {
 export interface RestarterOptions {
   /** The workers in the middle of a turn. */
   busy: () => Busy[];
-  /** Stops the server so that it starts again. */
-  go: () => void;
+  /** Stops the server so that it starts again, or for good when the reason is `stop`. */
+  go: (reason: RestartReason) => void;
   patienceMs?: number;
   intervalMs?: number;
 }
@@ -59,10 +60,12 @@ export interface RestarterOptions {
 /**
  * Starts the server again once no worker is in the middle of a turn (`whenIdle`) and the owner
  * neither watches a demo video nor dictates in an open page, and tells while it waits: for whom,
- * and until when at most. The owner can have it go ahead at once.
+ * and until when at most. The owner can have it go ahead at once. A stop waits for the workers
+ * alone: the owner asked for it, and a page left playing a video does not hold it off.
  */
 export class Restarter {
   private current: Due | null = null;
+  private stopping = false;
   private gone = false;
   private stopWaiting = () => {};
   private listeners = new Set<() => void>();
@@ -92,14 +95,22 @@ export class Restarter {
     }
   }
 
-  /** Asks for a restart; one that is due already covers the next reason too. */
+  /** Asks for a restart; one that is due already covers the next reason too, and turns into a stop when asked for one. */
   request(reason: RestartReason) {
-    if (this.current || this.gone) return;
+    if (this.gone) return;
+    if (reason === 'stop') this.stopping = true;
+    if (this.current) {
+      if (reason === 'stop' && this.current.reason !== 'stop') {
+        this.current = { ...this.current, reason, owner: [] };
+        this.emit();
+      }
+      return;
+    }
     const patience = this.o.patienceMs ?? RESTART_PATIENCE_MS;
     const since = Date.now();
     let waiting = this.o.busy();
     const owner = this.owner();
-    if (!waiting.length && !owner.length) return this.go();
+    if (!waiting.length && !owner.length) return this.go(reason);
     this.current = { reason, since, deadline: since + patience, waiting, owner };
     this.emit();
     this.stopWaiting = whenIdle(
@@ -112,31 +123,32 @@ export class Restarter {
         }
         return now.length > 0;
       },
-      () => this.go(),
+      () => this.go(reason),
       patience,
       this.o.intervalMs,
-      () => this.holds.size > 0,
+      () => this.owner().length > 0,
     );
   }
 
   /** Goes ahead with the restart that waits, cutting off the workers it waits for; false when none waits. */
   now(): boolean {
     if (!this.current) return false;
-    this.go();
+    this.go(this.current.reason);
     return true;
   }
 
   private owner(): OwnerHold[] {
+    if (this.stopping) return [];
     const all = new Set([...this.holds.values()].flat());
     return (['video', 'voice'] as const).filter((h) => all.has(h));
   }
 
-  private go() {
+  private go(reason: RestartReason) {
     if (this.gone) return;
     this.gone = true;
     this.stopWaiting();
     this.current = null;
-    this.o.go();
+    this.o.go(this.stopping ? 'stop' : reason);
   }
 
   private emit() {

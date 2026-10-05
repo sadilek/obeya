@@ -692,8 +692,8 @@ export interface DemoSettingsView {
   platform: string;
 }
 
-/** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved. */
-export type RestartReason = 'code' | 'config';
+/** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved; or why it stops for good (Ctrl-C, SIGTERM). */
+export type RestartReason = 'code' | 'config' | 'stop';
 
 /** What the owner does in an open page that a restart would cut off: watching a demo video, dictating. */
 export type OwnerHold = 'video' | 'voice';
