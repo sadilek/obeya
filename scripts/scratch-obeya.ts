@@ -65,6 +65,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { CanvasSnapshot, Item } from '../src/core/types';
+import { answers, waitUp } from './wait-up';
 
 interface StageCard {
   key?: string;
@@ -188,10 +189,16 @@ server.unref();
 writeFileSync(join(dir, 'server.pid'), String(server.pid));
 let exited: number | null = null;
 server.on('exit', (c) => (exited = c ?? -1));
-for (let i = 0; ; i++) {
-  if (await answers(`${base}/api/canvases`)) break;
-  if (exited !== null || i > 120) fail(`the server did not come up${exited !== null ? ` (exit ${exited})` : ''}; ${log}:\n${readFileSync(log, 'utf8').slice(-2000)}`);
-  await Bun.sleep(250);
+const started = await waitUp(`${base}/api/canvases`, {
+  exited: () => exited,
+  limit: 5 * 60_000,
+  slowAfter: 15_000,
+  onSlow: () => console.error(`scratch-obeya: the server takes long to start${commit ? ' (code from git archive starts cold)' : ''}; waiting up to 5 min`),
+});
+if (!started.up) {
+  if (started.exit === null) stop(dir);
+  const after = `after ${Math.round(started.waited / 1000)} s`;
+  fail(`the server did not come up ${started.exit !== null ? `(exit ${started.exit}) ${after}` : `${after}, so it was stopped`}; ${log}:\n${readFileSync(log, 'utf8').slice(-2000)}`);
 }
 const canvas = ((await (await fetch(`${base}/api/canvases`)).json()) as { id: string }[])[0]!.id;
 const api = async (method: string, path: string, body?: unknown) => {
@@ -323,14 +330,6 @@ process.exit(0);
 function run(cmd: string, a: string[], cwd: string) {
   const r = spawnSync(cmd, a, { cwd, encoding: 'utf8' });
   if (r.status !== 0) fail(`${cmd} ${a.join(' ')}: ${r.stderr}`);
-}
-
-async function answers(url: string) {
-  try {
-    return (await fetch(url, { signal: AbortSignal.timeout(1000) })).ok;
-  } catch {
-    return false;
-  }
 }
 
 /** Ends the scratch Obeya that `dir` belongs to, and what it started, if it still runs. */
