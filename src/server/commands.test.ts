@@ -370,6 +370,22 @@ describe('what the owner says or types with a card open', () => {
         expect(said(a.id)).toHaveLength(commands.length * 2);
       });
 
+  test('a question about the work of an agent goes to that agent, not to a look-up of main', async () => {
+    const a = open('demo');
+    const k = commander();
+    const question = 'Ist sichergestellt, dass beim Anhalten alles committed ist?';
+    const heard = k.hear(question, { card: a.id }, [], { typed: true });
+    await settle();
+    const s = runtime.last;
+    expect(await s.call('look_up', { question, card: 'K1', confirm: 'Ich schaue nach.' })).toContain('Pass the owner\'s words to it with act (feedback)');
+    expect(await s.call('act', { actions: [{ do: 'feedback', card: 'K1', text: question }], confirm: 'An den Agenten von „Export“.' })).toContain('Done');
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'feedback', card: a.id, text: question, spoken: false }]);
+    expect(board.lookingUp()).toEqual([]);
+  });
+
   test('a note together with a command waits with it; a note to another card waits too', async () => {
     const a = open('review');
     const b = open('working');

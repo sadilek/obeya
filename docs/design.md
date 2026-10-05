@@ -613,7 +613,7 @@ the owner's language (`src/core/locale.ts`).
   agent of the open card, alone in what the owner said: it goes out at once and quietly, and the
   card's log shows it under „Du“. Feedback on work waiting for review keeps the confirmation and
   the undo window, as does every command to Obeya. With an agent on the open card (working, in a
-  pull request, waiting, or finishing what remains), what the owner says is, in doubt, for that
+  pull request, waiting, waiting for review, or finishing what remains), what the owner says is, in doubt, for that
   agent: note, answer or feedback, in the owner's own words (a single such action carries the
   whole transcript, whatever the Koordinator wrote), and spoken words reach it with the remark
   that speech recognition may have misheard them. Only what clearly asks Obeya for something
@@ -630,7 +630,11 @@ the owner's language (`src/core/locale.ts`).
   ich starte?", what the plan says, how something works) the quick turn does not answer: it
   acknowledges it ("Ich schaue im Plan nach.") and passes it on. A question about a project or one
   of its workstreams goes to the project agent, in the project's session; any other to a thorough
-  read-only Koordinator turn (effort medium) on the card's repository. Both get the question, the
+  read-only Koordinator turn (effort medium) on the card's repository. A question about the work of
+  an agent on a card (also one waiting for review: „Ist sichergestellt, dass …?“) is not looked up
+  but goes to that agent, as a note or as feedback: its work is on its branch, not in the checkout
+  the look-up reads, and the card shows the agent at work while it answers. `look_up` on such a
+  card is refused with that hint. Both get the question, the
   card's state and log, and the task its worker gets at the start (`Workers.startBrief`), from
   which, the plan doc and the repository's instructions they derive the worker's steps. The answer
   comes 10–30 s later: spoken in short wherever the owner is, in full in the log of the card that

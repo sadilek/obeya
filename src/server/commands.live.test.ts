@@ -26,6 +26,7 @@ const STATES: Record<string, Record<string, string>> = {
   review: { state: 'waiting', need: 'review' },
   inPr: { state: 'inPr' },
   finishing: { state: 'live', workspace: '/w', landed: '{}' },
+  planned: { state: 'planned' },
 };
 
 /** State of the open card, what the owner says, whether typed, the actions expected, and whether it goes out at once. */
@@ -44,6 +45,8 @@ const CASES: [string, string, boolean, Command['do'][], boolean][] = [
   ['demo', 'gib frei', false, ['approve'], false],
   ['demo', 'gib frei und mach eine Folgeaufgabe für die Auffälligkeit mit dem Datum', true, ['approve', 'newCard'], false],
   ['demo', 'Merk dir: Demos immer mit Ton', false, ['remember'], false],
+  ['demo', 'Wenn ein Projekt noch keine Zählerstände hat, ist sichergestellt, dass trotzdem eine Datei mit Kopfzeile rauskommt?', true, ['feedback'], false],
+  ['review', 'Was passiert beim Export mit Umlauten im Dateinamen?', false, ['feedback'], false],
   ['review', 'Die Spaltenüberschriften fehlen noch', true, ['feedback'], false],
   ['review', 'gib das frei', false, ['approve'], false],
   ['inPr', 'Rebase bitte auf main', false, ['note'], true],
@@ -51,6 +54,8 @@ const CASES: [string, string, boolean, Command['do'][], boolean][] = [
   ['finishing', 'Räum danach den Branch auf', true, ['note'], true],
   ['working', 'pack das in die Gruppe Abrechnung', false, ['group'], false],
   ['review', 'Export und Login gehören zur Gruppe Konto', true, ['group'], false],
+  ['working', 'Wie gehst du mit leeren Zeilen um?', false, ['note'], true],
+  ['planned', 'Was würde der Agent hier machen, wenn ich starte?', false, [], false],
 ];
 
 /** What the Koordinator makes of one sentence: the actions as they run, and whether it went out at once. */
