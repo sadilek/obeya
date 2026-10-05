@@ -1043,15 +1043,45 @@ function PlanSource({ file, onRead }: { file: string; onRead?: () => void }) {
 function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => void }) {
   // a local draft: the server echo must not overwrite what is being typed
   const [title, setTitle] = useState(item.title);
+  // one line of text that wraps: a long title shows in full instead of running out of the box
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    };
+    fit();
+    // the panel unfolds from the card's width, and a narrower box needs more lines
+    let width = el.clientWidth;
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      // in the next frame: changing the height inside the callback makes it a resize loop
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [title]);
   return (
-    <input
+    <textarea
+      ref={ref}
       className="p-title"
+      rows={1}
       value={title}
       placeholder={t.titlePlaceholder}
       maxLength={200}
+      onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
       onChange={(e) => {
-        setTitle(e.target.value);
-        onEdit({ title: e.target.value });
+        const v = e.target.value.replace(/\s*\n\s*/g, ' ');
+        setTitle(v);
+        onEdit({ title: v });
       }}
     />
   );

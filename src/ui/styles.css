@@ -205,8 +205,8 @@ button.pill:hover { box-shadow: var(--lift); }
 #panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); z-index: 1; }
 .p-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .p-title { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 2px 0 6px; line-height: 1.2; }
-input.p-title { display: block; width: calc(100% - 40px); border: 0; background: transparent; padding: 0; outline: none; }
-input.p-title::placeholder { color: var(--muted); font-weight: 500; }
+textarea.p-title { display: block; width: calc(100% - 40px); border: 0; background: transparent; padding: 0; outline: none; resize: none; overflow: hidden; }
+textarea.p-title::placeholder { color: var(--muted); font-weight: 500; }
 .p-state { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; font-weight: 600; color: var(--c); }
 .p-lead { font-size: 15.5px; max-width: 76ch; margin: 14px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .p-list { max-width: 76ch; margin: 12px 0 0; padding-left: 0; list-style: none; font-size: 14px; }

@@ -279,7 +279,7 @@ function Canvas({
     setSheetOn(false);
     if (!quick) await sleep(UNFOLD_MS);
     panel.classList.add('ready');
-    const title = panel.querySelector<HTMLInputElement>('input.p-title');
+    const title = panel.querySelector<HTMLTextAreaElement>('textarea.p-title');
     if (title && !title.value) title.focus();
   }
 
