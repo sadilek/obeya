@@ -380,7 +380,8 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
     if (i.state === 'later') return s.later(megabytes(i.mb ?? 0));
     if (i.state === 'off') return s.off;
     if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
-    return i.found ?? s.there;
+    // a browser by its program's name; the whole path is in the tooltip
+    return (i.id === 'browser' ? i.found?.split(/[\\/]/).at(-1) : i.found) ?? s.there;
   };
   return (
     <>
@@ -394,7 +395,9 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
                 {{ ok: '✓', missing: '✗', later: '…', off: '–' }[i.state]}
               </span>
               <span className="c-name">{s.names[i.id]}</span>
-              <span className="hint">{state(i)}</span>
+              <span className="hint" title={i.found}>
+                {state(i)}
+              </span>
               {i.state === 'missing' && i.install && (
                 <div className="c-how">
                   {!!i.install.commands.length && <span className="hint">{s.install}</span>}
