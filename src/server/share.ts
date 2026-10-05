@@ -3,7 +3,8 @@
 // and runs the command:
 // `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`; and,
 // where the command knows it, `version`, which prints the version of the pages it writes: a page
-// published with another one is offered to share again ("Erneut teilen").
+// published with another one is offered to share again ("Erneut teilen"), on its card, or many at
+// once from the Koordinator's sheet.
 // Once the card has a pull request, its description links the page and the page links it. The
 // command comes from the repository's configuration, else from its adapter. A repository with
 // neither exports the demo instead: the same page as a ZIP with its files, or as one HTML file.
@@ -14,7 +15,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { type Demo, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
-import { BadRequest, type Board, type PrState, type StoredShare } from './board';
+import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
 import { type DemoPageParts, day, demoPageHtml } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
@@ -62,6 +63,8 @@ const serial = <T>(fn: () => Promise<T>): Promise<T> => {
 export class Sharing {
   /** When the versions were last asked for because the owner came back. */
   private checked = 0;
+  /** A page of the run sharing many again is waiting for the command, or going out. */
+  private resharing = false;
 
   constructor(private o: SharingOptions) {}
 
@@ -107,10 +110,85 @@ export class Sharing {
       let s = JSON.parse(r.share!) as StoredShare;
       // held for the owner to take back, as shares were until 2026-10-02: it goes out now
       if ((s.state as string) === 'pending') this.set(r.id, (s = { ...s, state: 'publishing' }));
+      // one of many shared again goes on with the rest of them
+      if (s.state === 'publishing' && s.again && this.o.board.reshareRun()?.queue[0] === r.id) continue;
       if (s.state === 'publishing') void serial(() => this.publish(r.id));
       else if (s.state === 'withdrawing') void serial(() => this.withdraw(r.id));
     }
     void serial(() => this.checkVersions());
+    this.nextAgain();
+  }
+
+  /**
+   * "Erneut teilen" for many pages at once, from the Koordinator's sheet: the outdated pages, the
+   * newest demos first, `count` of them or all. They go out one after the other, each as it shows
+   * now, so a newer demo on a card still waits for its "Neu teilen"; a share the owner starts
+   * meanwhile goes out between two of them.
+   */
+  reshareMany(count: number | null) {
+    const run = this.o.board.reshareRun();
+    if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again already');
+    const rows = this.o.board.sharedRows().filter((r) => reshareable(r) && this.find(r.id) && this.o.commandFor(this.find(r.id)!));
+    if (!rows.length) throw new BadRequest('nothingOutdated', 'no shared page is outdated');
+    const made = (r: (typeof rows)[number]) => {
+      const dir = (JSON.parse(r.share!) as StoredShare).dir;
+      return dir ? (statOr(join(dir, 'demo.mp4')) ?? statOr(dir) ?? 0) : 0;
+    };
+    const queue = rows
+      .map((r) => ({ id: r.id, at: made(r) }))
+      .sort((a, b) => b.at - a.at)
+      .slice(0, count ?? undefined)
+      .map((r) => r.id);
+    this.o.board.setReshareRun({ queue, total: queue.length, done: 0, failed: [] });
+    this.nextAgain();
+  }
+
+  /** Stops sharing many again: the page going out finishes, the rest stay as they are. */
+  stopResharing() {
+    const run = this.o.board.reshareRun();
+    if (!run?.queue.length) return;
+    const going = this.resharing && this.stored(run.queue[0]!)?.state === 'publishing' ? [run.queue[0]!] : [];
+    this.o.board.setReshareRun({ ...run, queue: going, stopped: true });
+  }
+
+  /** Puts away what the finished run says. */
+  dismissResharing() {
+    if (this.o.board.reshareRun()?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again');
+    this.o.board.setReshareRun(null);
+  }
+
+  /** The next page of the run sharing many again, once the command is free. */
+  private nextAgain() {
+    if (this.resharing || !this.o.board.reshareRun()?.queue.length) return;
+    this.resharing = true;
+    void serial(() => this.again()).finally(() => {
+      this.resharing = false;
+      this.nextAgain();
+    });
+  }
+
+  private async again() {
+    const id = this.o.board.reshareRun()?.queue[0];
+    if (!id) return;
+    const s = this.stored(id);
+    let ok: boolean | null = null;
+    if (s?.state === 'publishing' && s.again) ok = await this.publish(id);
+    else {
+      const row = this.find(id) && this.o.board.row(id);
+      if (s && row && reshareable(row)) {
+        this.set(id, { ...s, state: 'publishing', refresh: true, again: true });
+        this.o.board.log(id, 'state', 'owner', 'Erneut teilen, mit anderen geteilten Demos: Die Seite wird mit dem neuen Stand erzeugt.');
+        ok = await this.publish(id);
+      }
+    }
+    // shared again meanwhile on its own, withdrawn or gone: it no longer counts
+    const run = this.o.board.reshareRun();
+    if (!run) return;
+    const next: StoredReshare = { ...run, queue: run.queue.filter((x) => x !== id) };
+    if (ok === true) next.done++;
+    else if (ok === false) next.failed = [...next.failed, id];
+    else next.total--;
+    this.o.board.setReshareRun(next);
   }
 
   /**
@@ -170,14 +248,16 @@ export class Sharing {
     void serial(() => this.publish(cardId));
   }
 
-  private async publish(cardId: string) {
+  /** Publishes the card's page; whether it went out (null: nothing to publish). */
+  private async publish(cardId: string): Promise<boolean | null> {
     const s = this.stored(cardId);
     const card = this.find(cardId);
-    if (s?.state !== 'publishing' || !card) return;
-    const failed = s.refresh ? 'Der Link zum Pull Request ist nicht auf die Seite gekommen' : 'Nicht geteilt';
+    if (s?.state !== 'publishing' || !card) return null;
+    const failed = s.again ? 'Nicht erneut geteilt' : s.refresh ? 'Der Link zum Pull Request ist nicht auf die Seite gekommen' : 'Nicht geteilt';
     const back = (why: string, out = '') => {
       this.set(cardId, atRest(s));
       this.o.board.log(cardId, 'error', 'obeya', [`${failed}: ${why}`, out].filter(Boolean).join('\n\n'));
+      return false;
     };
     const demo = this.demo(cardId);
     const cmd = this.o.commandFor(card);
@@ -187,9 +267,10 @@ export class Sharing {
       // the page as it is: a newer demo on the card waits for "Neu teilen"
       const now = s.shown ?? (demo?.page && demo.dir === s.dir ? { ...demo.page, chapters: demo.chapters } : null);
       if (!now || !s.dir || !cmd) {
+        if (s.again) return back('Die Demo, die die Seite zeigt, ist nicht mehr da; „Neu teilen“ bringt die der Aufgabe.');
         this.set(cardId, atRest(s));
         this.o.board.log(cardId, 'activity', 'obeya', 'Die geteilte Seite bekommt den Link zum Pull Request mit dem nächsten „Neu teilen“.');
-        return;
+        return null;
       }
       shown = now;
       dir = s.dir;
@@ -209,11 +290,12 @@ export class Sharing {
     this.mark(cmd.command, current);
     // stdout carries the URL, logged below; what the command says on the way is on stderr
     if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
-    this.o.board.log(cardId, 'state', 'obeya', s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
+    this.o.board.log(cardId, 'state', 'obeya', s.again ? `Erneut geteilt: ${url}` : s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
     if (pr) this.linkPr(cardId, pr, url, cmd.cwd);
     // the pull request was opened while the page went out: once more, with its link
     const now = this.prOf(cardId);
     if (now && now !== pr) this.refresh(cardId);
+    return true;
   }
 
   /**
@@ -414,8 +496,17 @@ const PAGE_SYSTEM = `You write the page on which a demo video of a change is sha
 Then end your turn. Read code only if the summary leaves unclear what the change does for the user.`;
 
 /** A share at rest: neither held, nor publishing, nor withdrawing. */
-function atRest({ state: _, refresh: __, ...s }: StoredShare): StoredShare {
+function atRest({ state: _, refresh: __, again: ___, ...s }: StoredShare): StoredShare {
   return s;
+}
+
+/** When the file was last written, in ms; null when it is not there. */
+function statOr(path: string): number | null {
+  try {
+    return statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
 }
 
 /** Marks the line Obeya put into a pull request's description, so it is found again. */

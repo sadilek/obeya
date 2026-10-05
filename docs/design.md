@@ -721,7 +721,20 @@ the owner's language (`src/core/locale.ts`).
   up to date on its own card: Acme's command wrote every page afresh with each call until
   2026-10-05, which updated all of them unseen and would take long with hundreds of pages. Acme's
   command prints a hash of a sample page as its code writes it: only a change that shows on the
-  pages counts.
+  pages counts. Many at once go from the Koordinator's sheet: while pages are outdated, a purple
+  entry says how many („N geteilte Demos sind veraltet“, archived cards' included) and shares
+  again the newest 20 of them (or 10, 50, 100, all), newest by the demo's video file. They go out
+  one after the other through the same queue as every share, each published as it shows (what
+  the share kept, so a newer demo on the card still waits for "Neu teilen"), and a share the owner
+  starts meanwhile goes out between two of them. The entry shows how many are out, the one going
+  now, and the failed ones with their cards (the reason is in each card's log, the page stays
+  outdated); "Anhalten" lets the page going out finish and leaves the rest. The result stays until
+  "Ausblenden". The run is kept (setting `reshare`), so it goes on after a restart; a page shared
+  again on its own meanwhile, withdrawn or deleted drops out of it. It is not counted on the
+  Koordinator button: the cards offer "Erneut teilen" each, and nothing is lost by leaving them.
+  A page published again with the same video keeps its date („Geteilt am“) on Acme's site, so the
+  overview keeps its order when pages are brought up to date or get their PR's link; a new video
+  dates it anew.
   The pull request and the page link each other. A demo shared before approval goes into the
   worker's approval message with "link it in the description". Once a PR exists and the page is
   out (in either order: `pr_opened` after sharing, or sharing a card whose PR is open or merged),
@@ -782,7 +795,7 @@ passed on), an idea's status, brief and open questions with its agent's picks an
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
 work added; the shared demo page: slug, link, the demo directory it shows, the version of the
 share command it was published with and whether that is behind, and whether it is publishing or
-withdrawing),
+withdrawing; sharing many outdated pages again: the cards still to go, how many are out and which failed),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its

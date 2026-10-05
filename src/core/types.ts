@@ -294,6 +294,30 @@ export interface CanvasSnapshot {
   preferences: Preference[];
   /** The owner's latest exchanges with the Koordinator without an open card (those with one are in its log). */
   talk: Talk[];
+  /** Shared pages the share commands now write differently, and sharing many of them again; none when there is neither. */
+  reshare?: Reshare;
+}
+
+/**
+ * Shared demo pages to bring up to date at once, from the Koordinator's sheet: how many are
+ * outdated, and the run that shares them again one after the other.
+ */
+export interface Reshare {
+  /** Pages that could be shared again and are not queued. */
+  outdated: number;
+  run?: {
+    total: number;
+    /** Shared again. */
+    done: number;
+    /** Failed, with the reason in their card's log. */
+    failed: { id: string; title: string }[];
+    /** Still to go, the one going out now included. */
+    left: number;
+    /** The card whose page goes out now. */
+    current?: string;
+    /** The owner stopped it: the pages not yet out stay as they were. */
+    stopped?: boolean;
+  };
 }
 
 /** One exchange between the owner and the Koordinator. */
@@ -459,6 +483,10 @@ export type ErrorCode =
   | 'shareBusy'
   /** Sharing: the demo is not shared. */
   | 'notShared'
+  /** Sharing many pages again: a run is under way already. */
+  | 'reshareBusy'
+  /** Sharing many pages again: no page is outdated. */
+  | 'nothingOutdated'
   /** Export: the video is too large for one HTML file. */
   | 'exportTooLarge'
   /** Approval could not land the work on main. */

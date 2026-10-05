@@ -137,6 +137,11 @@ export const api = {
   acceptProposal: (id: number, text?: string, target?: string | null) =>
     call<void>('POST', at(`/preferences/${id}/accept`), { ...(text === undefined ? {} : { text }), ...(target === undefined ? {} : { target }) }),
   rejectProposal: (id: number) => call<void>('POST', at(`/preferences/${id}/reject`)),
+  /** Shares outdated pages again, the newest demos first: `count` of them, or all with null. */
+  reshare: (count: number | null) => call<void>('POST', at('/reshare'), { count }),
+  stopReshare: () => call<void>('POST', at('/reshare/stop')),
+  /** Puts away what the finished run says. */
+  dismissReshare: () => call<void>('DELETE', at('/reshare')),
 };
 
 // Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.

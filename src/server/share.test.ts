@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BadRequest, Board } from './board';
@@ -306,6 +306,111 @@ describe('a page published with an earlier version of the command', () => {
     board.work(c.id, { share: JSON.stringify({ slug: 's', url: 'https://demos.example/s/', dir: join(dir, `demo-${c.id}`), version: 'v1' }) });
     sharing.resume();
     await until(() => !!share(c.id)?.outdated);
+  });
+});
+
+describe('sharing many outdated pages again at once', () => {
+  const version = (v: string) => writeFileSync(join(dir, 'version'), v);
+  const reshare = () => board.snapshot().reshare;
+  /** Cards shared with v1 whose demos were rendered `ages` minutes ago, then outdated by v2. */
+  async function outdated(...ages: number[]) {
+    version('v1');
+    const cards = ages.map((age, n) => {
+      const c = card(`Demo ${n}`);
+      const video = join(dir, `demo-${c.id}`, 'demo.mp4');
+      writeFileSync(video, 'video');
+      const t = new Date(Date.now() - age * 60_000);
+      utimesSync(video, t, t);
+      return c;
+    });
+    for (const c of cards) {
+      sharing.share(c.id);
+      await until(() => share(c.id)?.state === 'shared');
+    }
+    version('v2');
+    await sharing.checkVersions();
+    return cards;
+  }
+
+  test('shares the newest again, one after the other, and says how far it got', async () => {
+    const [old, newest, middle] = await outdated(30, 1, 10);
+    expect(reshare()).toEqual({ outdated: 3 });
+    const before = calls().length;
+    sharing.reshareMany(2);
+    expect(reshare()).toMatchObject({ outdated: 1, run: { total: 2, done: 0, left: 2, failed: [] } });
+    await until(() => reshare()?.run?.left === 0);
+    expect(reshare()).toEqual({ outdated: 1, run: { total: 2, done: 2, failed: [], left: 0 } });
+    const slug = (id: string) => (JSON.parse(board.row(id).share!) as { slug: string }).slug;
+    expect(calls().slice(before).map((c) => c.input.slug)).toEqual([slug(newest!.id), slug(middle!.id)]);
+    for (const c of [newest!, middle!]) {
+      expect(share(c.id)!.outdated).toBeUndefined();
+      expect(log(c.id)).toContain('Erneut teilen, mit anderen geteilten Demos: Die Seite wird mit dem neuen Stand erzeugt.');
+      expect(log(c.id).at(-1)).toBe(`Erneut geteilt: ${share(c.id)!.url}`);
+    }
+    expect(share(old!.id)!.outdated).toBe(true);
+    // the result stays until the owner puts it away
+    sharing.dismissResharing();
+    expect(reshare()).toEqual({ outdated: 1 });
+    sharing.reshareMany(null);
+    await until(() => reshare()?.run?.left === 0);
+    expect(reshare()).toEqual({ outdated: 0, run: { total: 1, done: 1, failed: [], left: 0 } });
+    expect(() => sharing.reshareMany(null)).toThrow(BadRequest);
+  });
+
+  test('a page that fails stays outdated, with the reason in its log, and the rest go on', async () => {
+    const [a, b] = await outdated(2, 1);
+    writeFileSync(join(dir, 'fail'), '');
+    sharing.reshareMany(null);
+    await until(() => reshare()?.run?.left === 0);
+    expect(reshare()!.run).toEqual({ total: 2, done: 0, failed: [b, a].map((c) => ({ id: c!.id, title: c!.title })), left: 0 });
+    expect(share(a!.id)).toMatchObject({ state: 'shared', outdated: true });
+    expect(log(a!.id).at(-1)).toStartWith('Nicht erneut geteilt: Der Befehl zum Teilen ist gescheitert (Exit-Code 2).');
+    expect(reshare()!.outdated).toBe(2);
+  });
+
+  test('one run at a time; stopped before a page went out, all stay as they were', async () => {
+    await outdated(2, 1);
+    const before = calls().length;
+    sharing.reshareMany(null);
+    expect(() => sharing.reshareMany(null)).toThrow(BadRequest);
+    expect(() => sharing.dismissResharing()).toThrow(BadRequest);
+    sharing.stopResharing();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(reshare()).toEqual({ outdated: 2, run: { total: 2, done: 0, failed: [], left: 0, stopped: true } });
+    expect(calls()).toHaveLength(before);
+  });
+
+  test('a card with a newer demo gets its page as it shows, the newer demo still waits for "Neu teilen"', async () => {
+    const [c] = await outdated(1);
+    const shown = join(dir, `demo-${c!.id}`);
+    board.work(c!.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], shown: [], notShown: [], findings: [], page: { title: 'Neu', text: 'Neu.' } }) });
+    expect(reshare()).toEqual({ outdated: 1 });
+    sharing.reshareMany(null);
+    await until(() => reshare()?.run?.left === 0);
+    expect(calls().at(-1)!.input).toMatchObject({ dir: shown, title: 'CSV-Export' });
+    expect(share(c!.id)).toMatchObject({ stale: true });
+  });
+
+  test('a page shared again on its own meanwhile no longer counts', async () => {
+    const [a, b] = await outdated(2, 1);
+    sharing.reshareMany(null);
+    sharing.share(a!.id);
+    await until(() => reshare()?.run?.left === 0);
+    expect(reshare()!.run).toMatchObject({ total: 1, done: 1 });
+    expect(share(b!.id)!.outdated).toBeUndefined();
+  });
+
+  test('goes on after a restart', async () => {
+    const [a, b] = await outdated(2, 1);
+    // the restart came while b went out
+    board.work(b!.id, { share: JSON.stringify({ ...JSON.parse(board.row(b!.id).share!), state: 'publishing', refresh: true, again: true }) });
+    board.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
+    sharing = make();
+    sharing.resume();
+    await until(() => reshare()?.run?.left === 0);
+    expect(reshare()!.run).toMatchObject({ total: 2, done: 2 });
+    expect(share(a!.id)!.outdated).toBeUndefined();
+    expect(share(b!.id)!.outdated).toBeUndefined();
   });
 });
 

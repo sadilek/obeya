@@ -1,8 +1,8 @@
 // The Koordinator's sheet: the conversation, what waits, what runs, and the owner's preferences it
-// keeps, with the ones it learned and proposes.
+// keeps, with the ones it learned and proposes; and shared demos to bring up to date at once.
 
 import { useEffect, useRef, useState } from 'react';
-import type { Item, Preference, RepoRef, Talk } from '../core/types';
+import type { Item, Preference, RepoRef, Reshare, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { Inline, plain } from './markdown';
 import { errorText, stateLabel, t } from './strings';
@@ -17,10 +17,11 @@ interface Props {
   /** The canvas's repositories, whose CLAUDE.md a proposal may go into. */
   repos: RepoRef[];
   talk: Talk[];
+  reshare?: Reshare;
   onOpen: (i: Item) => void;
 }
 
-export function KoordinatorSheet({ on, items, preferences, repos, talk, onOpen, onTell }: Props) {
+export function KoordinatorSheet({ on, items, preferences, repos, talk, reshare, onOpen, onTell }: Props) {
   const queued = items.filter((i) => i.state === 'planned' && i.queue);
   const running = items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project');
   const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
@@ -45,6 +46,8 @@ export function KoordinatorSheet({ on, items, preferences, repos, talk, onOpen, 
             </ul>
           </>
         )}
+
+        {reshare && <ReshareBox r={reshare} items={items} onOpen={onOpen} />}
 
         <h4 className="p-h">{t.koordinator.queue}</h4>
         {queued.length === 0 ? (
@@ -305,6 +308,100 @@ function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items:
       </span>
       {error && <span className="p-error">{error}</span>}
     </li>
+  );
+}
+
+/** How many of the outdated shared demos to share again at once: the newest few, or all. */
+const RESHARE_COUNTS = [10, 20, 50, 100];
+
+/**
+ * Shared demos whose pages are made differently now: shared again many at once, the newest first,
+ * one after the other, with how far it got and which failed.
+ */
+function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (i: Item) => void }) {
+  const counts = RESHARE_COUNTS.filter((n) => n < r.outdated);
+  const [pick, setPick] = useState<number | 'all'>();
+  const [error, setError] = useState('');
+  // the newest 20 unless the owner picks otherwise; null is all of them
+  const chosen = pick === 'all' ? null : pick !== undefined && counts.includes(pick) ? pick : (counts.find((n) => n >= 20) ?? null);
+  const run = r.run;
+  const going = !!run && run.left > 0;
+  const act = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+      setError('');
+    } catch (e) {
+      setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  };
+  const s = t.koordinator.reshare;
+  const out = run ? run.done + run.failed.length : 0;
+  return (
+    <div className="reshare">
+      <ul className="prefs proposals">
+        {run && (
+          <li>
+            <span className="pref-text">{going ? s.progress(out, run.total) : run.stopped ? s.stopped(run.done, run.total) : s.finished(run.done, run.total)}</span>
+            <span className="bar">
+              <span style={{ width: `${run.total ? (100 * out) / run.total : 100}%` }} />
+            </span>
+            {going && run.current && <span className="occasion">{s.now(plain(run.current))}</span>}
+            {run.failed.length > 0 && (
+              <span className="occasion">
+                {s.failed(run.failed.length)}
+                {run.failed.map((f) => {
+                  const card = items.find((i) => i.id === f.id);
+                  return (
+                    <span key={f.id} className="failed">
+                      {card ? (
+                        <a className="from" onClick={() => onOpen(card)}>
+                          {plain(f.title)}
+                        </a>
+                      ) : (
+                        plain(f.title)
+                      )}
+                    </span>
+                  );
+                })}
+              </span>
+            )}
+            <span className="pref-actions">
+              {going ? (
+                <button className="btn" title={s.stopHint} disabled={!!run.stopped} onClick={() => act(api.stopReshare)}>
+                  {s.stop}
+                </button>
+              ) : (
+                <button className="btn" onClick={() => act(api.dismissReshare)}>
+                  {s.dismiss}
+                </button>
+              )}
+            </span>
+          </li>
+        )}
+        {r.outdated > 0 && !going && (
+          <li>
+            <span className="pref-text">{s.outdated(r.outdated)}</span>
+            <span className="occasion">{s.outdatedHint}</span>
+            <span className="pref-actions">
+              {counts.length > 0 && (
+                <select value={chosen ?? ''} onChange={(e) => setPick(e.target.value ? Number(e.target.value) : 'all')}>
+                  {counts.map((n) => (
+                    <option key={n} value={n}>
+                      {s.newest(n)}
+                    </option>
+                  ))}
+                  <option value="">{s.all(r.outdated)}</option>
+                </select>
+              )}
+              <button className="btn primary" onClick={() => act(() => api.reshare(chosen))}>
+                {s.go}
+              </button>
+            </span>
+          </li>
+        )}
+      </ul>
+      {error && <p className="p-error">{error}</p>}
+    </div>
   );
 }
 

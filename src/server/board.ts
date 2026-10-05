@@ -25,6 +25,7 @@ import {
   type NextStep,
   type PlannedPrototype,
   type Question,
+  type Reshare,
   STATES,
   finished,
 } from '../core/types';
@@ -69,6 +70,30 @@ export interface StoredShare {
   version?: string;
   /** The command writes its pages differently now: sharing again would make a difference. */
   outdated?: true;
+  /** While `publishing` (with `refresh`): the page goes out again as it is, one of many the owner shares again at once. */
+  again?: true;
+}
+
+/** Sharing many outdated pages again at once (share.ts), kept so a restart goes on with it. */
+export interface StoredReshare {
+  /** The cards still to go, in order; the first is the one going out. */
+  queue: string[];
+  total: number;
+  done: number;
+  failed: string[];
+  stopped?: true;
+}
+
+const RESHARE_SETTING = 'reshare';
+
+/**
+ * A page at rest the share command now writes differently, whose demo is still at hand: the one on
+ * the card, or the one it showed, kept with the share.
+ */
+export function reshareable(r: CardRow): boolean {
+  const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
+  if (!s?.url || !s.outdated || s.state) return false;
+  return !!s.shown || (!!r.demo && (JSON.parse(r.demo) as { dir: string }).dir === s.dir);
 }
 
 /** A request the server refuses: a stable code for the UI's text, and an English detail. */
@@ -311,6 +336,17 @@ export class Board {
     this.store.setSetting(this.canvas.id, key, value);
   }
 
+  /** Sharing many outdated pages again, while it runs and until the owner puts its result away. */
+  reshareRun(): StoredReshare | null {
+    const v = this.setting(RESHARE_SETTING);
+    return v ? (JSON.parse(v) as StoredReshare) : null;
+  }
+
+  setReshareRun(run: StoredReshare | null) {
+    this.setSetting(RESHARE_SETTING, run ? JSON.stringify(run) : '');
+    this.changed();
+  }
+
   /** An idea's stored status and brief. */
   idea(id: string): StoredIdea {
     const r = this.own(id);
@@ -529,8 +565,42 @@ export class Board {
       items = toItems(this.store.cards(this.canvas.id), docs, this.home);
     }
     items = this.withPrototypes(items);
-    this.cache = { canvas: this.canvas, items, preferences: this.store.preferences(this.canvas.id, ['proposed', 'active']), talk: this.store.talk(this.canvas.id, SHEET_TALK, true) };
+    const reshare = this.reshare();
+    this.cache = {
+      canvas: this.canvas,
+      items,
+      preferences: this.store.preferences(this.canvas.id, ['proposed', 'active']),
+      talk: this.store.talk(this.canvas.id, SHEET_TALK, true),
+      ...(reshare ? { reshare } : {}),
+    };
     return this.cache;
+  }
+
+  /** The outdated pages, archived cards' included, and the run sharing them again. */
+  private reshare(): Reshare | null {
+    const rows = this.sharedRows();
+    const run = this.reshareRun();
+    const queued = new Set(run?.queue);
+    const outdated = rows.filter((r) => !queued.has(r.id) && reshareable(r)).length;
+    if (!outdated && !run) return null;
+    const title = (id: string) => rows.find((r) => r.id === id)?.title ?? '';
+    const first = run?.queue[0] ? rows.find((r) => r.id === run.queue[0]) : undefined;
+    const current = first?.share && (JSON.parse(first.share) as StoredShare).state === 'publishing' ? first.title : undefined;
+    return {
+      outdated,
+      ...(run
+        ? {
+            run: {
+              total: run.total,
+              done: run.done,
+              failed: run.failed.map((id) => ({ id, title: title(id) })),
+              left: run.queue.length,
+              ...(current ? { current } : {}),
+              ...(run.stopped ? { stopped: true } : {}),
+            },
+          }
+        : {}),
+    };
   }
 
   /** Ideas, and cards that were ideas, with their prototypes, wherever these are: on the canvas or in the archive. */
@@ -989,7 +1059,7 @@ function shareOf(r: CardRow): Item['share'] {
     state: s.refresh ? 'shared' : (s.state ?? 'shared'),
     ...(s.url ? { url: s.url } : {}),
     ...(stale ? { stale: true } : {}),
-    ...(s.url && s.outdated && !stale ? { outdated: true } : {}),
+    ...(s.url && s.outdated && !stale && !s.state ? { outdated: true } : {}),
   };
 }
 

@@ -300,6 +300,17 @@ export function serve(
         }),
       },
       '/api/c/:canvas/preferences/:id/reject': { POST: on((c, req) => click(c, c.rejectRule(Number(req.params.id)))) },
+      // "Erneut teilen" for many outdated pages at once: `count` of them, the newest demos first, or all (null)
+      '/api/c/:canvas/reshare': {
+        POST: on(async (c, req) => {
+          const { count } = (await req.json().catch(() => ({}))) as { count?: number | null };
+          if (count != null && !(Number.isInteger(count) && count > 0)) throw new BadRequest('invalid', 'count must be a positive integer or null');
+          c.sharing.reshareMany(count ?? null);
+        }),
+        // puts away what the finished run says
+        DELETE: on((c) => c.sharing.dismissResharing()),
+      },
+      '/api/c/:canvas/reshare/stop': { POST: on((c) => c.sharing.stopResharing()) },
       '/api/c/:canvas/ws': (req, server) =>
         byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID() } })
           ? undefined
