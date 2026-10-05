@@ -6,7 +6,7 @@ import { type CanvasConfig, finished, type Item, type NextStep, type Queue } fro
 import { BadRequest, type Board } from './board';
 import type { Config } from './config';
 import type { Moment } from './db';
-import type { AgentRuntime, AgentSession } from './runtime';
+import { type AgentRuntime, type AgentSession, failureReason } from './runtime';
 
 export type Command = (
   /** `from`: the card it follows up on. */
@@ -180,9 +180,21 @@ export class Commander {
    * Koordinator's sheet. Screenshots (image ids) go with the actions that create or concern a card.
    */
   async hear(transcript: string, focus: Focus, images: string[] = [], input: Input = {}): Promise<Heard> {
-    const decision = await this.interpret(transcript, focus, images, input);
-    const { confirm, lookUp } = decision;
     const card = focus.card && this.o.board.item(focus.card) ? focus.card : undefined;
+    let decision: Decision;
+    try {
+      decision = await this.interpret(transcript, focus, images, input);
+    } catch (e) {
+      // the Koordinator's session failed (not logged in, say): the owner hears why, not that they went unheard
+      const confirm = `Ich konnte das nicht lesen. ${failureReason(e instanceof Error ? e.message : String(e))}`;
+      this.o.board.addTalk(transcript, confirm, card ?? null, undefined, images);
+      if (card) {
+        this.o.board.log(card, 'say', 'owner', transcript, undefined, images);
+        this.o.board.log(card, 'say', 'koordinator', confirm);
+      }
+      return { confirm };
+    }
+    const { confirm, lookUp } = decision;
     // the open card's agent gets what was said to it in the owner's words, however the Koordinator put them
     const verbatim = decision.commands.length === 1 && ['note', 'answer', 'feedback'].includes(decision.commands[0]!.do);
     const commands = decision.commands.map((c): Command => {

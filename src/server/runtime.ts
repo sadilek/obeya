@@ -1,6 +1,6 @@
 // Agent sessions behind a small interface, so the orchestration can be tested without a model.
 
-import { createSdkMcpServer, type HookInput, type HookJSONOutput, type PermissionMode, query, type SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk';
+import { createSdkMcpServer, type HookInput, type HookJSONOutput, type PermissionMode, query, type SDKResultMessage, type SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk';
 import { readFileSync } from 'node:fs';
 import type { z } from 'zod';
 import { mediaType } from './images';
@@ -117,7 +117,8 @@ export const sdkRuntime: AgentRuntime = {
               else if (block.type === 'tool_use') spec.onEvent({ type: 'tool', name: block.name, input: (block.input ?? {}) as Record<string, unknown> });
             }
           } else if (m.type === 'result') {
-            if (m.subtype !== 'success') spec.onEvent({ type: 'error', message: m.subtype });
+            const failed = resultFailure(m);
+            if (failed) spec.onEvent({ type: 'error', message: failed });
             spec.onEvent({ type: 'idle', background });
           }
         }
@@ -135,6 +136,21 @@ export const sdkRuntime: AgentRuntime = {
     };
   },
 };
+
+/**
+ * What made a turn fail, or nothing when it did not. A turn that failed on the API (not logged in,
+ * say) ends as a `success` with `is_error` and the error in `result`.
+ */
+export function resultFailure(m: SDKResultMessage): string | undefined {
+  if (m.subtype === 'success') return m.is_error ? m.result.trim() || 'error' : undefined;
+  return m.errors?.filter((e) => e.trim()).join('; ') || m.subtype;
+}
+
+/** A session's failure in German words for the owner. */
+export function failureReason(message: string): string {
+  if (/not logged in|\/login/i.test(message)) return 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.';
+  return `Die Claude-Sitzung brach mit einem Fehler ab: ${message}`;
+}
 
 /** A foreground command may sleep this long; anything longer keeps the owner's notes from the agent. */
 export const FOREGROUND_SLEEP_LIMIT = 30;

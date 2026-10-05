@@ -12,7 +12,7 @@ import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import type { InputContext } from './koordinator';
-import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
+import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, failureReason } from './runtime';
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
 import type { PrState } from './board';
 import { parsePrUrl } from './forge';
@@ -78,6 +78,8 @@ interface Live {
   acted: boolean;
   nudged: boolean;
   lastText: string;
+  /** The error the worker's last turn failed with (not logged in, say); gone once it says or does something. */
+  failed?: string;
   /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
   busy: boolean;
   /** Set while an ended turn waits for the worker's background work to wake it. */
@@ -542,7 +544,10 @@ export class Workers {
     live.busy = e.type !== 'idle';
     clearTimeout(live.waiting);
     live.waiting = undefined;
-    if (e.type === 'text' || e.type === 'tool') this.resumed(cardId, live);
+    if (e.type === 'text' || e.type === 'tool') {
+      this.resumed(cardId, live);
+      live.failed = undefined;
+    }
     if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.acted = true;
     switch (e.type) {
       case 'session': {
@@ -561,6 +566,7 @@ export class Workers {
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input));
         break;
       case 'error':
+        live.failed = e.message;
         this.o.board.log(cardId, 'error', 'obeya', e.message);
         break;
       case 'idle':
@@ -637,7 +643,9 @@ export class Workers {
     }
     live.nudged = false;
     live.stalled = true;
-    this.toOwner(cardId, { text: live.lastText ? clip(live.lastText, 1200) : 'Der Agent hat angehalten, ohne fertig zu sein.', options: [] });
+    // a session that fails again after the nudge cannot go on by itself: the owner hears why, not its last words
+    const text = live.failed ? failureReason(clip(live.failed, 1200)) : live.lastText ? clip(live.lastText, 1200) : 'Der Agent hat angehalten, ohne fertig zu sein.';
+    this.toOwner(cardId, { text, options: [] });
   }
 
   /** Waits for a sign of life from the worker; without one for a long while, its turn counts as ended. */

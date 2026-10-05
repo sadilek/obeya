@@ -250,6 +250,19 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toBe('Ich komme nicht an die Datenbank.');
   });
 
+  test('a session that fails again after the nudge goes to the owner with the reason', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'text', text: 'Ich fange an.' });
+    runtime.last.emit({ type: 'error', message: 'Not logged in · Please run /login' });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('working');
+    runtime.last.emit({ type: 'error', message: 'Not logged in · Please run /login' });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.question!.text).toContain('nicht angemeldet');
+  });
+
   test('a turn in which the worker did nothing does not use up its nudge', async () => {
     workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 });
     const c = manual();

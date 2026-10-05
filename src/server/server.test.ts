@@ -285,6 +285,22 @@ describe('voice', () => {
     expect(await heard).toEqual({ confirm: 'Was genau soll ich tun?' });
   });
 
+  test('a session that fails again tells the owner why, not that they went unheard', async () => {
+    const c = card();
+    canvas.commander.warm();
+    const k = interpretation();
+    const heard = canvas.commander.hear('starte A', { card: c.id });
+    await until(() => k.inbox.length);
+    k.emit({ type: 'error', message: 'Not logged in · Please run /login' });
+    await until(() => interpretation() !== k);
+    const fresh = await briefed();
+    fresh.emit({ type: 'error', message: 'Not logged in · Please run /login' });
+    const { confirm } = await heard;
+    expect(confirm).toStartWith('Ich konnte das nicht lesen.');
+    expect(confirm).toContain('/login');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: confirm });
+  });
+
   test('nothing to do is just said', async () => {
     const res = fetch(new URL(api('/command'), server.url), { method: 'POST', body: JSON.stringify({ text: 'ähm' }) });
     (await briefed()).call('reply', { confirm: 'Was genau soll ich tun?' });

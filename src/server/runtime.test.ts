@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import type { HookInput } from '@anthropic-ai/claude-agent-sdk';
-import { BOUNDED_WAITS, backgroundWork, FOREGROUND_SLEEP_LIMIT, foregroundSleep, refuseForegroundWait } from './runtime';
+import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import { BOUNDED_WAITS, backgroundWork, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure } from './runtime';
 
 test('background work counts renders, test runs and watchers, not housekeeping', () => {
   expect(
@@ -79,4 +79,14 @@ test('the refusal lets through the bounded waits it suggests and a loop under ti
   expect(refused(`timeout ${FOREGROUND_SLEEP_LIMIT + 1} bash -c 'until curl -sf localhost:3000; do sleep 2; done'`)).toBe(true);
   const reason = hook('sleep 300').hookSpecificOutput!.permissionDecisionReason;
   for (const command of BOUNDED_WAITS) expect(reason).toContain(command);
+});
+
+test('a turn that failed on the API counts as failed, with its error', () => {
+  const result = (r: Record<string, unknown>) => ({ type: 'result', ...r }) as unknown as SDKResultMessage;
+  expect(resultFailure(result({ subtype: 'success', is_error: false, result: 'Fertig.' }))).toBeUndefined();
+  expect(resultFailure(result({ subtype: 'success', is_error: true, result: 'Not logged in · Please run /login' }))).toBe('Not logged in · Please run /login');
+  expect(resultFailure(result({ subtype: 'error_during_execution', is_error: true, errors: ['overloaded'] }))).toBe('overloaded');
+  expect(resultFailure(result({ subtype: 'error_max_turns', is_error: true, errors: [] }))).toBe('error_max_turns');
+  expect(failureReason('Not logged in · Please run /login')).toContain('nicht angemeldet');
+  expect(failureReason('overloaded')).toContain('overloaded');
 });

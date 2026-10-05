@@ -235,7 +235,9 @@ on the card; `ask(question, options, multiple)`, which returns at once — the w
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
 or writes their own answer); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1); and
 `ready_for_review(summary, demo | no_demo)`, whose summary is the report the owner reads. A turn that ends without `ask` or `ready_for_review` gets one nudge,
-then its last words become a question to the owner. A turn that ends while the worker's own
+then its last words become a question to the owner; when that turn failed in the session (the
+SDK reports an error result, e.g. Claude not logged in on the machine), the question is the error
+in words for the owner instead. A turn that ends while the worker's own
 background work runs (a demo render, a test suite, a watcher it started) is no such turn: the work
 wakes the worker when it finishes or fires, so Obeya waits, and only after ten minutes without a
 sign of life does it nudge. So does a turn in which the worker said and did nothing: a session
@@ -682,7 +684,10 @@ the owner's language (`src/core/locale.ts`).
   (`K1`, …) stay fixed for the session. Each command brings the cards as they are now and what
   happened since the previous one (state changes, questions, answers, hand-overs, the owner's
   notes, errors, new cards; not the workers' steps); a command the owner took back is told with the
-  next. Every exchange is stored (`talk`). A session is not resumed: after a restart, and after 30
+  next. Every exchange is stored (`talk`). A session that fails while reading a command (an error
+result, which the SDK also reports as a `success` with `is_error`) is replaced by a fresh one for
+the same command; should that fail too, the owner hears the reason („Ich konnte das nicht lesen.
+Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden“. A session is not resumed: after a restart, and after 30
   commands so the context stays short, a fresh one starts from memory: the last 20 exchanges and
   the canvas's last 14 days (at most 60 steps), with times.
 - **Voice out** — the default system voice speaks the confirmation, which the browser plays: a
