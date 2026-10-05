@@ -69,7 +69,7 @@ describe('an idea', () => {
       s.call('record_decision', { question: 'Format?', answer: 'CSV' });
     });
     expect(s.closed).toBe(true);
-    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false, yourTurn: true, questions: [], variants: [] });
+    expect(item(i.id).idea).toEqual({ status: 'open', brief: '**Ziel:** Vermieter exportieren Zählerstände.', thinking: false, yourTurn: true, questions: [], variants: [], mocks: [] });
     expect(talk(i.id)).toEqual([
       ['owner', 'Lass uns das durchdenken.'],
       ['explorer', 'CSV oder PDF?'],
@@ -319,6 +319,45 @@ describe('an idea', () => {
     expect(() => canvas.act(i.id, { action: 'discuss', text: 'Noch was.' })).toThrow('not an idea');
   });
 
+  test('its agent shows variants as mocks, in its reply and under the brief, and the worker who builds it gets them', async () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Wie sähe der Knopf aus?' });
+    const s = explorer();
+    const a = { title: 'A Knopf oben', html: '<button style="float:right">Export</button>' };
+    const b = { title: 'B Menü', html: '<select><option>Export</option></select>' };
+    s.emit({ type: 'session', id: 'sess-1' });
+    s.call('update_brief', { brief: '**Varianten:** A oder B.', mocks: [a, b, { title: 'C zu lang', html: 'x'.repeat(20001) }] });
+    s.call('reply', { text: 'Zwei Varianten, siehe Stand. Und so sähe es im Dialog aus:', spoken: '', mocks: [{ title: '  Im   Dialog ', html: ' <dialog open>Export</dialog> ' }] });
+    s.emit({ type: 'idle' });
+    // a mock too long for a sketch is left out
+    expect(item(i.id).idea!.mocks).toEqual([a, b]);
+    expect(board().events(i.id).filter((e) => e.kind === 'talk').at(-1)!.mocks).toEqual([{ title: 'Im Dialog', html: '<dialog open>Export</dialog>' }]);
+    expect(board().events(i.id).filter((e) => e.kind === 'talk' && e.author === 'owner')[0]!.mocks).toBeUndefined();
+
+    // a brief without mocks keeps them; an empty list removes them
+    canvas.act(i.id, { action: 'discuss', text: 'Nimm A.' });
+    turn(explorer(), 'A steht.', () => explorer().call('update_brief', { brief: '**Entscheidungen:** A.' }));
+    expect(item(i.id).idea).toMatchObject({ brief: '**Entscheidungen:** A.', mocks: [a, b] });
+    canvas.act(i.id, { action: 'discuss', text: 'B weg.' });
+    turn(explorer(), 'B ist raus.', () => explorer().call('update_brief', { brief: '**Entscheidungen:** A.', mocks: [a] }));
+    expect(item(i.id).idea!.mocks).toEqual([a]);
+
+    canvas.act(i.id, { action: 'build' });
+    expect(item(i.id)).toMatchObject({ state: 'planned', brief: '**Entscheidungen:** A.', mocks: [a] });
+    await settle();
+    const worker = runtime.sessions.find((x) => x.spec.tools.some((t) => t.name === 'ready_for_review'))!;
+    expect(worker.inbox[0]).toContain('A Knopf oben:\n\n```html\n<button style="float:right">Export</button>\n```');
+  });
+
+  test('a mock list can be emptied', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Los.' });
+    turn(explorer(), 'Gut.', () => explorer().call('update_brief', { brief: 'x', mocks: [{ title: 'A', html: '<b>A</b>' }] }));
+    canvas.act(i.id, { action: 'discuss', text: 'Ohne Mock.' });
+    turn(explorer(), 'Gut.', () => explorer().call('update_brief', { brief: 'x', mocks: [] }));
+    expect(item(i.id).idea!.mocks).toEqual([]);
+  });
+
   test('a big idea becomes a project: a worker starts on its plan doc at once, on the idea’s card', async () => {
     const i = idea();
     board().setIdea(i.id, { brief: '**Ziel:** Vermieterportal.' });
@@ -491,7 +530,7 @@ describe('a prototype', () => {
 
   test('builds a throwaway prototype whose demo shows on the idea; discarded, it goes into the archive', () => {
     const i = idea();
-    board().setIdea(i.id, { brief: '**Ziel:** CSV-Export.' });
+    board().setIdea(i.id, { brief: '**Ziel:** CSV-Export.', mocks: [{ title: 'Knopf', html: '<button>Export</button>' }] });
     canvas.act(i.id, { action: 'discuss', text: 'Zeig mal.' });
     turn(explorer(), 'Ein Prototyp hilft.');
     canvas.act(i.id, { action: 'prototype', text: 'Den Export-Knopf. Oben rechts in der Leiste.' });
@@ -503,6 +542,7 @@ describe('a prototype', () => {
     const w = worker();
     expect(w.inbox[0]).toContain('throwaway prototype');
     expect(w.inbox[0]).toContain('**Ziel:** CSV-Export.');
+    expect(w.inbox[0]).toContain('<button>Export</button>');
     expect(w.inbox[0]).not.toContain('Before ready_for_review, run');
     // a prototype never lands, so it holds no files for the Koordinator
     expect(canvas.koordinator.inProgress()).toEqual([]);

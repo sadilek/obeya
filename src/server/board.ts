@@ -20,6 +20,7 @@ import {
   type Group,
   type Idea,
   type Item,
+  type Mock,
   type NewCard,
   type PreferenceState,
   type PrReviewEntry,
@@ -186,8 +187,8 @@ export class Board {
   }
 
   /** Appends a line to the card's log. */
-  log(cardId: string, kind: CardEvent['kind'], author: CardEvent['author'], text: string, code?: ErrorCode, images?: string[]): CardEvent {
-    const e = this.store.addEvent({ cardId, kind, author, text, ...(code ? { code } : {}), ...(images?.length ? { images } : {}) });
+  log(cardId: string, kind: CardEvent['kind'], author: CardEvent['author'], text: string, code?: ErrorCode, images?: string[], mocks?: Mock[]): CardEvent {
+    const e = this.store.addEvent({ cardId, kind, author, text, ...(code ? { code } : {}), ...(images?.length ? { images } : {}), ...(mocks?.length ? { mocks } : {}) });
     for (const fn of this.eventListeners) fn(e);
     return e;
   }
@@ -1248,6 +1249,8 @@ export interface StoredIdea {
   next?: NextStep;
   /** The prototypes the brief plans, as the agent last set them. */
   variants?: PlannedPrototype[];
+  /** The brief's mocks, as the agent last set them. */
+  mocks?: Mock[];
   /** Decided as a project: its worker writes the plan doc, and the project takes the card's place. */
   project?: boolean;
   /** Messages a turn ended before answering (the idea parked or dropped, an error, a restart); they go to the agent first next time. */
@@ -1267,15 +1270,15 @@ export interface Unread {
 
 const toDecision = (d: DecisionRow): Decision => ({ id: d.id, cardId: d.card_id, question: d.question, answer: d.answer, by: d.by, at: d.at });
 
-/** A card that was an idea, as decided: the brief, and whether it becomes a project. */
-function decided(r: CardRow): Pick<Item, 'brief' | 'becomesProject'> {
+/** A card that was an idea, as decided: the brief with its mocks, and whether it becomes a project. */
+function decided(r: CardRow): Pick<Item, 'brief' | 'mocks' | 'becomesProject'> {
   const i = JSON.parse(r.idea!) as StoredIdea;
-  return { brief: i.brief, ...(i.project ? { becomesProject: true } : {}) };
+  return { brief: i.brief, ...(i.mocks?.length ? { mocks: i.mocks } : {}), ...(i.project ? { becomesProject: true } : {}) };
 }
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
-  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}), variants: i.variants ?? [] };
+  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}), variants: i.variants ?? [], mocks: i.mocks ?? [] };
 }
 
 function checkPreference(v: unknown): string {

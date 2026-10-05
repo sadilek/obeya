@@ -51,7 +51,7 @@
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
 // into the database:
 // state, need, statusLine, summary, noDemo, question, demo, queue (`behind` by key; `since` defaults to
-// now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago? }]),
+// now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks? }]; an idea's reply with `mocks` needs code that has them),
 // workspace (true: the card holds the next free clone, for an adapter that works in clones),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
 // "3d" ago. `"adapter": ""` names none: the repository's own (`.obeya/adapter/` among `files`) or the generic one. `share` is the repository's share command as the configuration holds it (a script among
@@ -92,7 +92,7 @@ interface StageCard {
   workspace?: boolean;
   createdAgo?: string;
   archivedAgo?: string;
-  events?: { kind: string; author: string; text: string; ago?: string }[];
+  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[] }[];
   row?: Record<string, unknown>;
 }
 
@@ -287,12 +287,14 @@ for (const [i, c] of stage.cards.entries()) {
       ...Object.fromEntries(keys.map((k) => [k, typeof row[k] === 'object' && row[k] !== null ? JSON.stringify(row[k]) : (row[k] as string | number | null)])),
     } as Record<string, string | number | null>);
   for (const e of c.events ?? [])
-    db.query('INSERT INTO events (card_id, at, kind, author, text) VALUES ($c, $at, $kind, $author, $text)').run({
+    // only code that has mocks has their column
+    db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''})`).run({
       c: id,
       at: ago(e.ago ?? '0s'),
       kind: e.kind,
       author: e.author,
       text: e.text,
+      ...(e.mocks ? { mocks: JSON.stringify(e.mocks) } : {}),
     });
 }
 const prefIds: Record<string, number> = {};

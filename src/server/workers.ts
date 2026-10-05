@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { OWNER_LANGUAGE } from '../core/locale';
 import { basename } from 'node:path';
-import type { DemoKind, DemoPage, Item, Question, RestartReason } from '../core/types';
+import type { DemoKind, DemoPage, Item, Mock, Question, RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Reply, toQuestion } from './advisor';
 import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
@@ -980,11 +980,13 @@ Rules:
           idea?.idea?.brief ? `The idea as discussed so far:
 
 ${idea.idea.brief}` : '',
+          mocksText(idea?.idea?.mocks),
         ]
           .filter(Boolean)
           .join('\n\n'),
       );
     if (card.body.trim()) parts.push(card.body.trim());
+    if (card.mocks?.length) parts.push(mocksText(card.mocks));
     if (card.builtOn) parts.push(this.builtOnPrototype(card.builtOn));
     const from = card.from && !card.prototypeOf ? this.o.board.item(card.from) ?? this.o.board.archived().find((i) => i.id === card.from) : undefined;
     if (from) {
@@ -1036,6 +1038,12 @@ ${idea.idea.brief}` : '',
     if (!i) throw new BadRequest('unknownCard', 'unknown card');
     return i;
   }
+}
+
+/** The mocks of an idea's brief as a worker reads them, after the brief they belong to. */
+function mocksText(mocks: Mock[] | undefined): string {
+  if (!mocks?.length) return '';
+  return ['Mocks of the brief, as the owner saw them rendered (how its variants look):', ...mocks.map((m) => `${m.title || 'Mock'}:\n\n\`\`\`html\n${m.html}\n\`\`\``)].join('\n\n');
 }
 
 function formatQuestion(q: Question): string {

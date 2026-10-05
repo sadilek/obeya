@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { CardEvent, CardKind, CardState, Need, Preference, PreferenceState, Talk } from '../core/types';
+import type { CardEvent, CardKind, CardState, Mock, Need, Preference, PreferenceState, Talk } from '../core/types';
 
 export interface CardRow {
   id: string;
@@ -266,6 +266,8 @@ export const MIGRATIONS = [
      created_at TEXT NOT NULL
    );
    ALTER TABLE cards ADD COLUMN group_id TEXT REFERENCES groups(id);`,
+  // an idea's agent shows how a variant looks in a few lines of HTML beside its reply
+  `ALTER TABLE events ADD COLUMN mocks TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -472,16 +474,18 @@ export class Store {
   addEvent(e: Omit<CardEvent, 'id' | 'at'>): CardEvent {
     const at = now();
     const { id } = this.db
-      .query('INSERT INTO events (card_id, at, kind, author, text, code, images) VALUES ($cardId, $at, $kind, $author, $text, $code, $images) RETURNING id')
-      .get({ ...e, code: e.code ?? null, images: e.images?.length ? JSON.stringify(e.images) : null, at }) as { id: number };
+      .query('INSERT INTO events (card_id, at, kind, author, text, code, images, mocks) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks) RETURNING id')
+      .get({ ...e, code: e.code ?? null, images: e.images?.length ? JSON.stringify(e.images) : null, mocks: e.mocks?.length ? JSON.stringify(e.mocks) : null, at }) as { id: number };
     return { ...e, id, at };
   }
 
   events(cardId: string, limit = 500): CardEvent[] {
     const rows = this.db
-      .query('SELECT id, card_id AS cardId, at, kind, author, text, code, images FROM events WHERE card_id = $c ORDER BY id DESC LIMIT $limit')
-      .all({ c: cardId, limit }) as (Omit<CardEvent, 'images'> & { code: CardEvent['code'] | null; images: string | null })[];
-    return rows.reverse().map(({ code, images, ...e }) => ({ ...e, ...(code ? { code } : {}), ...(images ? { images: JSON.parse(images) as string[] } : {}) }));
+      .query('SELECT id, card_id AS cardId, at, kind, author, text, code, images, mocks FROM events WHERE card_id = $c ORDER BY id DESC LIMIT $limit')
+      .all({ c: cardId, limit }) as (Omit<CardEvent, 'images' | 'mocks'> & { code: CardEvent['code'] | null; images: string | null; mocks: string | null })[];
+    return rows
+      .reverse()
+      .map(({ code, images, mocks, ...e }) => ({ ...e, ...(code ? { code } : {}), ...(images ? { images: JSON.parse(images) as string[] } : {}), ...(mocks ? { mocks: JSON.parse(mocks) as Mock[] } : {}) }));
   }
 
   // ---------------------------------------------------------------- workspaces

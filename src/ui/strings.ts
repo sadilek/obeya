@@ -537,6 +537,7 @@ export const t = {
     status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
     yourTurn: 'Idee · du bist dran',
     brief: 'Stand der Idee',
+    mock: 'Mock',
     briefEmpty: 'Noch leer. Der Explorations-Agent hält hier fest, was das Gespräch ergibt: Ziel, Varianten, Entscheidungen, offene Fragen.',
     seed: 'Ausgangspunkt',
     talk: 'Gespräch',

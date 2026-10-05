@@ -7,7 +7,7 @@
 import { basename } from 'node:path';
 import { z } from 'zod';
 import { OWNER_LANGUAGE } from '../core/locale';
-import { type Item, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question } from '../core/types';
+import { type Item, type Mock, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question } from '../core/types';
 import { decisionLog, toQuestion } from './advisor';
 import { BadRequest, type Board, type Message, type Unread } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
@@ -215,9 +215,9 @@ export class Explorers {
     }
   }
 
-  /** The agent's reply stands in the conversation, its questions below it; the owner is next. */
-  private answer(cardId: string, text: string, questions: Question[] = [], next?: NextStep) {
-    this.o.board.log(cardId, 'talk', 'explorer', text);
+  /** The agent's reply stands in the conversation, its mocks and questions below it; the owner is next. */
+  private answer(cardId: string, text: string, questions: Question[] = [], next?: NextStep, mocks: Mock[] = []) {
+    this.o.board.log(cardId, 'talk', 'explorer', text, undefined, undefined, mocks);
     this.o.board.setIdea(cardId, { yourTurn: true, questions, next });
   }
 
@@ -227,7 +227,7 @@ export class Explorers {
     return current([
       {
         name: 'reply',
-        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. questions: the questions you ask now, each with its answer options (multiple: true when several may be chosen together); the card shows them under your reply for the owner to pick from, so the reply does not repeat them; pick: the options you would choose yourself if you had to decide (one, or several when multiple), and pick_why: why, in one short sentence in ${OWNER_LANGUAGE}. next: what you would do next in the owner's place, always: answer (the open questions come first), build, planDoc, prototype, park or drop, with why in one short sentence in ${OWNER_LANGUAGE}; the card marks that click for the owner. Call it once per message, then end your turn.`,
+        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. questions: the questions you ask now, each with its answer options (multiple: true when several may be chosen together); the card shows them under your reply for the owner to pick from, so the reply does not repeat them; pick: the options you would choose yourself if you had to decide (one, or several when multiple), and pick_why: why, in one short sentence in ${OWNER_LANGUAGE}. next: what you would do next in the owner's place, always: answer (the open questions come first), build, planDoc, prototype, park or drop, with why in one short sentence in ${OWNER_LANGUAGE}; the card marks that click for the owner. mocks: only when the owner asked to see something the brief has no place for; ${MOCKS}. Call it once per message, then end your turn.`,
         schema: {
           text: z.string(),
           spoken: z.string(),
@@ -244,12 +244,13 @@ export class Explorers {
             .max(4)
             .optional(),
           next: z.object({ step: z.enum(NEXT_STEPS), why: z.string() }).optional(),
+          mocks: MOCK_SCHEMA,
         },
-        run: ({ text, spoken, questions, next }) => {
+        run: ({ text, spoken, questions, next, mocks }) => {
           if (live.replied) return 'Already replied. End your turn now.';
           live.replied = true;
           const asked = ((questions as Asked[] | undefined) ?? []).map(withPick).filter((q) => q.text);
-          this.answer(cardId, clip(String(text), 12000), asked, nextStep(next, asked));
+          this.answer(cardId, clip(String(text), 12000), asked, nextStep(next, asked), mocksOf(mocks));
           if (live.speak && String(spoken).trim()) this.o.board.speak(cardId, clip(String(spoken).trim(), 400));
           live.speak = false;
           return 'Shown to the owner. End your turn now; their next message arrives as a new one.';
@@ -257,10 +258,10 @@ export class Explorers {
       },
       {
         name: 'update_brief',
-        description: `Replace the brief of the idea ("Stand der Idee"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own.`,
-        schema: { brief: z.string() },
-        run: ({ brief }) => {
-          this.o.board.setIdea(cardId, { brief: clip(String(brief).trim(), 20000) });
+        description: `Replace the brief of the idea ("Stand der Idee"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own. mocks: how the brief's variants look, one per variant, shown under the brief; ${MOCKS}. The whole list whenever it changes; leave it out to keep the mocks as they are, an empty list removes them.`,
+        schema: { brief: z.string(), mocks: MOCK_SCHEMA },
+        run: ({ brief, mocks }) => {
+          this.o.board.setIdea(cardId, { brief: clip(String(brief).trim(), 20000), ...(mocks === undefined ? {} : { mocks: mocksOf(mocks) }) });
           this.o.board.log(cardId, 'activity', 'explorer', 'Aktualisiert den Stand der Idee');
           return 'Brief updated.';
         },
@@ -321,6 +322,7 @@ How to work:
 - Ask what you need to know, one or two questions at a time, under **Offene Fragen** in the brief, numbered, and pass the same questions to reply as questions, with two to five short answer options each when the answer is a choice; when options can be combined, set multiple instead of offering combinations as options. The card shows them as choices under your reply; the owner picks or writes their own answer. A question without options gets a written answer.
 - Your reply is your turn in the conversation, a few sentences at most: react to what the owner said, name in a few words what changed in the brief ("Varianten A bis C ergänzt", not the variants again, and no finding from it summed up), and say what you need from them next by pointing to the open questions ("Zwei offene Fragen, siehe Stand"), without repeating them. Only what has no place in the brief (an explanation the owner asked for, a remark on the side) is said in the reply itself.
 - Do not confirm recorded decisions one by one; the brief shows them.
+- When a variant is something to look at (a layout, a card, a dialog), show it with a mock in the brief: a few lines of HTML the card shows beside the brief. A mock is a sketch of how it looks, not working code; a prototype is for what a sketch cannot show.
 
 Tools, within a turn in this order:
 - record_decision: when the owner decided something in the message. General preferences (how they like to work) are not decisions; Obeya learns those on its own.
@@ -342,6 +344,10 @@ const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'record_decision'
 
 /** At most this many prototypes are planned for one idea. */
 const MAX_VARIANTS = 6;
+
+/** How a mock is written, for both tools that take them. */
+const MOCKS = `each with a title (the variant in a few words, in ${OWNER_LANGUAGE}) and html: a few lines of self-contained HTML with inline styles (no files, no network), shown in a sandboxed frame about 300 px wide`;
+const MOCK_SCHEMA = z.array(z.object({ title: z.string(), html: z.string() })).max(MAX_VARIANTS).optional();
 
 /** How the agent hears the messages an interrupted turn left unanswered. */
 const OPENING =
@@ -386,6 +392,17 @@ function plannedPrototypes(list: unknown): PlannedPrototype[] {
   }
   return out.slice(0, MAX_VARIANTS);
 }
+
+/** The mocks as the agent wrote them: each with a title and some HTML, at most one per variant. */
+function mocksOf(list: unknown): Mock[] {
+  return ((list as { title?: unknown; html?: unknown }[] | undefined) ?? [])
+    .map((m) => ({ title: clip(String(m.title ?? '').replace(/\s+/g, ' ').trim(), 80), html: String(m.html ?? '').trim() }))
+    .filter((m) => m.html && m.html.length <= MOCK_MAX)
+    .slice(0, MAX_VARIANTS);
+}
+
+/** A mock is a sketch, not a page: longer ones are left out rather than cut off mid-tag. */
+const MOCK_MAX = 20000;
 
 /** The step the agent suggests; answering needs questions to answer. */
 function nextStep(next: unknown, asked: Question[]): NextStep | undefined {

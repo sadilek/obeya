@@ -112,7 +112,13 @@ An idea is thought through on its card before anything is planned; no worker run
    variants, decisions, open questions, effort. The conversation is the means, the brief the
    result: whoever opens the card later reads the brief. The two stand side by side and never say
    the same: findings, variants and questions go into the brief, and a reply only carries the
-   turn (what changed in the brief, which open question is next).
+   turn (what changed in the brief, which open question is next). A variant that is something to
+   look at (a layout, a dialog) comes with a mock: a few lines of HTML the agent passes with the
+   brief (`update_brief`'s `mocks`, one per variant, with its title; left out, the mocks stay) or,
+   for something the brief has no place for, with its reply. The card shows each in the frame of a
+   worker's HTML artifact (sandboxed, scripts in an origin of their own), sized to its content, the
+   brief's side by side under it. A worker who builds the idea or a prototype of it gets the
+   brief's mocks as HTML after the brief.
 4. A prototype ("Prototyp bauen lassen"), when talking is not enough: a worker builds a throwaway one in its own workspace,
    on a card of its own below the idea, and records a demo. Several may run side by side, one per
    approach; each carries its approach in its title ("Prototyp: Logo – Wortmarke", the first words of
@@ -1177,6 +1183,10 @@ the repository; the copy on the project is only for the archive).
   (2026-10-05): the owner never read the first two, read the findings but rarely made a card of
   one, since most were not for them to act on. What the owner needs to know goes into the
   summary, kept to a few paragraphs; a problem worth a card is a proposal.
+- An idea's agent shows how a variant looks as a mock in a field of its own beside the brief and
+  the reply, not as HTML in their Markdown (2026-10-05): the agent stays read-only and writes no
+  artifact files, the Markdown renderer stays without HTML, and the owner sees simple options
+  without having a prototype built.
 - A demo's scratch Obeya is staged by a script from a stage file rather than by hand (2026-10-01):
   in the 14 card runs before, the demo took longer than the change itself, and every worker wrote
   its own staging (curl, sqlite, server start) with the same mistakes: the wrong API path, a

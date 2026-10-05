@@ -5,6 +5,9 @@
 
 import { type Dirent, existsSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { withHeightReport } from '../core/frame';
+
+export { withHeightReport };
 
 export interface DemoPageParts {
   title: string;
@@ -158,23 +161,6 @@ ${links.length ? `<div class="links">${links.join('')}</div>\n` : ''}<div class=
 </script>
 </body></html>
 `;
-}
-
-/** The artifact's height, sent to the page around it whenever it changes: there the frame grows to it. */
-const HEIGHT_REPORT = `<script>(() => {
-  let last = 0;
-  const say = () => {
-    const h = document.documentElement.scrollHeight;
-    if (Math.abs(h - last) > 2) { last = h; parent.postMessage({ obeyaHeight: h }, '*'); }
-  };
-  addEventListener('load', say);
-  new ResizeObserver(say).observe(document.documentElement);
-})();</script>`;
-
-/** The artifact's page with its height report, at the end of its body (or of the page, without one). */
-export function withHeightReport(html: string): string {
-  const at = html.toLowerCase().lastIndexOf('</body>');
-  return at < 0 ? html + HEIGHT_REPORT : html.slice(0, at) + HEIGHT_REPORT + html.slice(at);
 }
 
 export function demoPageHtml(p: DemoPageParts): string {

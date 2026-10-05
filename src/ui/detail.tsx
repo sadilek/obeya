@@ -1,7 +1,8 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
+import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
+import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
@@ -387,6 +388,7 @@ export function Detail(p: Props) {
             <div className="question brief">
               <h4>{t.idea.brief}</h4>
               <Body md={item.brief} />
+              <Mocks mocks={item.mocks} />
             </div>
           )}
           <PrototypeDemos item={item} />
@@ -471,6 +473,7 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
           <div className="question brief">
             <h4>{t.idea.brief}</h4>
             {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
+            <Mocks mocks={idea.mocks} />
           </div>
           {/* a demo copied onto the idea, from before every prototype kept its own */}
           {item.demo && !item.prototypes?.length && (
@@ -725,6 +728,7 @@ function Conversation({ item, questions, past = false }: { item: Item; questions
                 {t.author[e.author]} <span className="t">{time(e.at)}</span>
               </div>
               <Body md={e.text} />
+              <Mocks mocks={e.mocks} />
               <Shots ids={e.images} />
               <Steps steps={steps} />
             </div>
@@ -752,6 +756,44 @@ function Conversation({ item, questions, past = false }: { item: Item; questions
         {!thinking && questions}
       </div>
     </>
+  );
+}
+
+/** The mocks of an idea's agent, side by side where there is room. */
+function Mocks({ mocks }: { mocks?: Mock[] }) {
+  if (!mocks?.length) return null;
+  return (
+    <div className="mocks">
+      {mocks.map((m, i) => (
+        <MockFrame key={i} mock={m} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One mock in the frame a worker's HTML artifact gets: its scripts run, but in an origin of its own,
+ * away from Obeya's API. It grows to the height the mock reports, up to a limit, then scrolls.
+ */
+function MockFrame({ mock }: { mock: Mock }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(48);
+  const page = useMemo(() => mockPage(mock.html), [mock.html]);
+  useEffect(() => {
+    // a mock as high as its frame would grow with each step: it stops after a few
+    let steps = 0;
+    const on = (e: MessageEvent) => {
+      const h = e.source === frame.current?.contentWindow && (e.data as { obeyaHeight?: unknown } | null)?.obeyaHeight;
+      if (typeof h === 'number' && h > 0 && steps++ < 30) setHeight(Math.min(Math.ceil(h), 480));
+    };
+    addEventListener('message', on);
+    return () => removeEventListener('message', on);
+  }, []);
+  return (
+    <figure className="mock">
+      {mock.title && <figcaption>{mock.title}</figcaption>}
+      <iframe ref={frame} sandbox="allow-scripts" srcDoc={page} title={mock.title || t.idea.mock} style={{ height }} />
+    </figure>
   );
 }
 

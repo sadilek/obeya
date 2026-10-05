@@ -108,6 +108,8 @@ export interface Item {
   images?: string[];
   /** A card that was an idea and has been decided: the brief it was decided on. */
   brief?: string;
+  /** A card that was an idea and has been decided: the mocks of its brief. */
+  mocks?: Mock[];
   /** A card that was an idea, decided as a project: its worker writes the plan doc, and the project takes its place. */
   becomesProject?: boolean;
   /** The group the card belongs to (a `Group` id); a workstream's is its project's. */
@@ -174,6 +176,14 @@ export interface Idea {
   next?: NextStep;
   /** The prototypes the brief plans, one per variant: "Prototyp bauen lassen" offers them, to start at once. */
   variants: PlannedPrototype[];
+  /** How the brief's variants look, one mock each, shown beside it. */
+  mocks: Mock[];
+}
+
+/** A few lines of HTML the idea's agent writes to show how something would look; the card shows it in a sandboxed frame. */
+export interface Mock {
+  title: string;
+  html: string;
 }
 
 /** A prototype the idea's agent plans: its approach in a few words (its title) and what it builds and shows (its task). */
@@ -310,6 +320,8 @@ export interface CardEvent {
   code?: ErrorCode;
   /** Screenshots the owner attached (ids under `/api/c/<canvas>/images/`). */
   images?: string[];
+  /** The mocks of an exploration agent's reply. */
+  mocks?: Mock[];
 }
 
 export interface CanvasInfo {
