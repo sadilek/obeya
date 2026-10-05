@@ -1,7 +1,9 @@
 // Sharing a card's video demo with colleagues: a page outside Obeya, published by the command the
 // repository's adapter names (`demo.share`). Obeya writes the page's text when the worker did not,
 // and runs the command:
-// `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`.
+// `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`; and,
+// where the command knows it, `version`, which prints the version of the pages it writes: a page
+// published with another one is offered to share again ("Erneut teilen").
 // Once the card has a pull request, its description links the page and the page links it. The
 // command comes from the repository's configuration, else from its adapter. A repository with
 // neither exports the demo instead: the same page as a ZIP with its files, or as one HTML file.
@@ -46,6 +48,16 @@ export interface SharingOptions {
   forge: Forge;
 }
 
+/**
+ * What a share command says of the pages it writes (`version`): a version that changes whenever its
+ * pages would come out different, and whether each call writes every page afresh (`all`), so that
+ * after any call every page shared through it is at that version.
+ */
+interface CommandVersion {
+  version: string;
+  all: boolean;
+}
+
 /** A share command that has not finished by then is stopped (an upload of a few files takes seconds). */
 const COMMAND_TIMEOUT = 15 * 60_000;
 
@@ -58,6 +70,9 @@ const serial = <T>(fn: () => Promise<T>): Promise<T> => {
 };
 
 export class Sharing {
+  /** When the versions were last asked for because the owner came back. */
+  private checked = 0;
+
   constructor(private o: SharingOptions) {}
 
   /**
@@ -71,7 +86,8 @@ export class Sharing {
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     this.set(cardId, { ...(s ? atRest(s) : { slug: slugOf(card) }), state: 'publishing' });
-    this.o.board.log(cardId, 'state', 'owner', s?.url ? 'Neu teilen: Die Seite bekommt die neue Demo.' : 'Teilen: Die Seite geht online.');
+    const again = !s?.url ? 'Teilen: Die Seite geht online.' : s.dir === demo.dir && s.outdated ? 'Erneut teilen: Die Seite wird mit dem neuen Stand erzeugt.' : 'Neu teilen: Die Seite bekommt die neue Demo.';
+    this.o.board.log(cardId, 'state', 'owner', again);
     void serial(() => this.publish(cardId));
   }
 
@@ -95,7 +111,7 @@ export class Sharing {
     if (pr && s?.url && !s.state && s.pr !== pr) this.refresh(cardId);
   }
 
-  /** After a restart: a share under way goes on, a withdrawal too. */
+  /** After a restart: a share under way goes on, a withdrawal too; pages published with an earlier version are marked. */
   resume() {
     for (const r of this.o.board.sharedRows()) {
       let s = JSON.parse(r.share!) as StoredShare;
@@ -103,6 +119,59 @@ export class Sharing {
       if ((s.state as string) === 'pending') this.set(r.id, (s = { ...s, state: 'publishing' }));
       if (s.state === 'publishing') void serial(() => this.publish(r.id));
       else if (s.state === 'withdrawing') void serial(() => this.withdraw(r.id));
+    }
+    void serial(() => this.checkVersions());
+  }
+
+  /**
+   * The owner came back to Obeya: the versions are asked again (at most once a minute), since a
+   * share command from another repository changes without Obeya restarting.
+   */
+  soon() {
+    if (Date.now() - this.checked < 60_000) return;
+    this.checked = Date.now();
+    void serial(() => this.checkVersions());
+  }
+
+  /**
+   * Asks each share command with pages out for the version of the pages it writes, and marks the
+   * pages published with another one (or before commands said theirs): sharing them again would
+   * make a difference.
+   */
+  async checkVersions() {
+    const commands = new Map<string, { command: string[]; cwd: string }>();
+    for (const r of this.o.board.sharedRows()) {
+      const card = this.find(r.id);
+      const cmd = card && (JSON.parse(r.share!) as StoredShare).url ? this.o.commandFor(card) : null;
+      if (cmd) commands.set(JSON.stringify(cmd.command), cmd);
+    }
+    for (const cmd of commands.values()) this.mark(cmd.command, await this.version(cmd));
+  }
+
+  /** The version of the pages the command writes; null when it says none. */
+  private async version(cmd: { command: string[]; cwd: string }): Promise<CommandVersion | null> {
+    const r = await run([...cmd.command, 'version'], '', cmd.cwd, this.o.home);
+    const [version, flag] = r.code === 0 ? (r.out.trim().split('\n').at(-1)?.trim().split(/\s+/) ?? []) : [];
+    return version ? { version, all: flag === 'all' } : null;
+  }
+
+  /**
+   * After the command wrote pages: every page shared through a command that writes all pages
+   * afresh is at its version now. Then each page at rest through it is marked as published with an
+   * earlier version, or not.
+   */
+  private mark(command: string[], current: CommandVersion | null, wroteAll = false) {
+    const key = JSON.stringify(command);
+    for (const r of this.o.board.sharedRows()) {
+      const s = JSON.parse(r.share!) as StoredShare;
+      const card = this.find(r.id);
+      if (!s.url || s.state || !card || JSON.stringify(this.o.commandFor(card)?.command) !== key) continue;
+      const version = wroteAll && current?.all ? current.version : s.version;
+      const outdated = !!current && version !== current.version;
+      if (version !== s.version || outdated !== !!s.outdated) {
+        const { outdated: _, version: __, ...rest } = s;
+        this.set(r.id, { ...rest, ...(version ? { version } : {}), ...(outdated ? { outdated: true as const } : {}) });
+      }
     }
   }
 
@@ -148,7 +217,9 @@ export class Sharing {
     const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.cwd, this.o.home);
     const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
     if (r.code !== 0 || !url) return back(r.code !== 0 ? `Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).` : 'Der Befehl zum Teilen hat keine URL ausgegeben.', tail(r.err || r.out));
-    this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}) });
+    const current = await this.version(cmd);
+    this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}), ...(current ? { version: current.version } : {}) });
+    this.mark(cmd.command, current, true);
     // stdout carries the URL, logged below; what the command says on the way is on stderr
     if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
     this.o.board.log(cardId, 'state', 'obeya', s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
@@ -186,7 +257,9 @@ export class Sharing {
     if (!cmd) return back('Nicht zurückgezogen: Das Repository der Aufgabe teilt keine Demos mehr.');
     const r = await run([...cmd.command, 'withdraw', s.slug], JSON.stringify({ slug: s.slug, shared: this.others(cardId, cmd.command) }), cmd.cwd, this.o.home);
     if (r.code !== 0) return back(`Nicht zurückgezogen: Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).`, tail(r.err || r.out));
+    const current = await this.version(cmd);
     this.set(cardId, { slug: s.slug });
+    this.mark(cmd.command, current, true);
     if (r.err.trim() || r.out.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(`${r.out}\n${r.err}`));
     this.o.board.log(cardId, 'state', 'obeya', 'Die Seite ist zurückgezogen.');
   }

@@ -238,6 +238,8 @@ export interface Share {
   url?: string;
   /** The card has a newer demo than the one on the page. */
   stale?: boolean;
+  /** The page shows the card's demo, but the share command writes pages differently now ("Erneut teilen"). */
+  outdated?: boolean;
 }
 
 /** One line in a card's log. */

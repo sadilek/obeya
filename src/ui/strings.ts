@@ -224,6 +224,9 @@ export const t = {
     publishing: 'Wird veröffentlicht …',
     withdrawing: 'Wird zurückgezogen …',
     stale: 'Die geteilte Seite zeigt noch die frühere Demo.',
+    outdated: 'Seiten werden inzwischen anders erzeugt; diese zeigt noch die frühere Fassung.',
+    reshare: 'Erneut teilen',
+    reshareHint: 'Erzeugt die Seite neu, mit derselben Demo; der Link bleibt.',
   },
   koordinator: {
     button: 'Koordinator',

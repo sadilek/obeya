@@ -25,11 +25,13 @@ const calls = () =>
         .map((l) => JSON.parse(l) as { args: string[]; input: SharePage & { shared: string[] }; home: string })
     : [];
 
-// prints the page's URL, or fails with some output while the file `fail` exists
+// prints the page's URL, or fails with some output while the file `fail` exists; `version` is not logged in `calls`
 const FAKE = `
 const { appendFileSync, existsSync } = require('node:fs');
 const dir = ${'process.argv[2]'};
 const args = process.argv.slice(3);
+// the version of its pages while the file \`version\` holds one, else none
+if (args[0] === 'version') { if (existsSync(dir + '/version')) console.log(require('node:fs').readFileSync(dir + '/version', 'utf8')); process.exit(existsSync(dir + '/version') ? 0 : 1); }
 const input = JSON.parse(await Bun.stdin.text());
 appendFileSync(dir + '/calls', JSON.stringify({ args, input, home: process.env.OBEYA_HOME }) + '\\n');
 if (existsSync(dir + '/fail')) { console.error('upload refused: token expired'); process.exit(2); }
@@ -208,6 +210,91 @@ describe('sharing a demo', () => {
     sharing.resume();
     await until(() => share(a.id)?.state === 'shared' && share(b.id)?.state === 'shared');
     expect(calls().map((c) => c.input.slug).sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('a page published with an earlier version of the command', () => {
+  const version = (v: string | null) => (v ? writeFileSync(join(dir, 'version'), v) : rmSync(join(dir, 'version'), { force: true }));
+  const stored = (id: string) => JSON.parse(board.row(id).share!) as { version?: string; outdated?: true };
+
+  test('is offered to share again once the command writes its pages differently, and "Erneut teilen" brings it up to date', async () => {
+    version('v1');
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    expect(stored(c.id).version).toBe('v1');
+    await sharing.checkVersions();
+    expect(share(c.id)!.outdated).toBeUndefined();
+
+    version('v2');
+    await sharing.checkVersions();
+    expect(share(c.id)).toEqual({ state: 'shared', url: expect.stringContaining('demos.example'), outdated: true });
+    expect(calls()).toHaveLength(1);
+    sharing.share(c.id);
+    expect(log(c.id).at(-1)).toBe('Erneut teilen: Die Seite wird mit dem neuen Stand erzeugt.');
+    expect(share(c.id)).toMatchObject({ state: 'publishing', url: expect.stringContaining('demos.example') });
+    await until(() => share(c.id)?.state === 'shared');
+    expect(share(c.id)!.outdated).toBeUndefined();
+    expect(stored(c.id).version).toBe('v2');
+    expect(calls().at(-1)!.input).toMatchObject({ slug: calls()[0]!.input.slug, dir: join(dir, `demo-${c.id}`) });
+  });
+
+  test('a page shared before commands said their version counts as earlier; without one nothing is marked', async () => {
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    expect(stored(c.id).version).toBeUndefined();
+    await sharing.checkVersions();
+    expect(share(c.id)!.outdated).toBeUndefined();
+    version('v1');
+    await sharing.checkVersions();
+    expect(share(c.id)!.outdated).toBe(true);
+    // the command no longer says one: nothing to compare with
+    version(null);
+    await sharing.checkVersions();
+    expect(share(c.id)!.outdated).toBeUndefined();
+  });
+
+  test('a newer demo is "Neu teilen", not "Erneut teilen"', async () => {
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    version('v1');
+    await sharing.checkVersions();
+    board.work(c.id, { demo: JSON.stringify({ kind: 'video', dir: join(dir, 'newer'), chapters: [], shown: [], notShown: [], findings: [], page: { title: 'T', text: 'T.' } }) });
+    expect(share(c.id)).toMatchObject({ stale: true });
+    expect(share(c.id)!.outdated).toBeUndefined();
+  });
+
+  test('a command that writes every page afresh brings all its pages up to date with any call', async () => {
+    version('v1 all');
+    const a = card('A');
+    const b = card('B');
+    const x = card('C');
+    for (const c of [a, b, x]) {
+      sharing.share(c.id);
+      await until(() => share(c.id)?.state === 'shared');
+    }
+    version('v2 all');
+    await sharing.checkVersions();
+    expect([a, b, x].map((c) => share(c.id)!.outdated)).toEqual([true, true, true]);
+    sharing.share(a.id);
+    await until(() => share(a.id)?.state === 'shared' && !share(a.id)!.outdated);
+    expect([b, x].map((c) => share(c.id)!.outdated)).toEqual([undefined, undefined]);
+    expect(stored(b.id).version).toBe('v2');
+    version('v3 all');
+    await sharing.checkVersions();
+    sharing.unshare(x.id);
+    await until(() => !share(x.id));
+    expect([a, b].map((c) => share(c.id)!.outdated)).toEqual([undefined, undefined]);
+  });
+
+  test('marked after a restart', async () => {
+    version('v2');
+    const c = card();
+    board.work(c.id, { share: JSON.stringify({ slug: 's', url: 'https://demos.example/s/', dir: join(dir, `demo-${c.id}`), version: 'v1' }) });
+    sharing.resume();
+    await until(() => !!share(c.id)?.outdated);
   });
 });
 

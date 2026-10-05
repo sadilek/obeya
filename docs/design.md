@@ -629,10 +629,21 @@ the owner's language (`src/core/locale.ts`).
   the demo afterwards. Obeya runs the command (`src/server/share.ts`) in the repository with
   `OBEYA_HOME` set, one call at a time: `publish` with the page as JSON on stdin (slug, title,
   text, chapters, PR URL, demo directory, and the slugs of the other pages it has shared), which
-  prints the page's URL; `withdraw <slug>`. The slug comes from the card's title and id once and
+  prints the page's URL; `withdraw <slug>`; and `version`, which prints the version of the pages
+  the command writes (a command that does not know it fails or prints nothing). The slug comes from the card's title and id once and
   stays, so a link keeps working across publishing again. The command's stderr goes into the
   card's log, a failure with its output as an error, and the card stays as it was. A share held,
   publishing or withdrawing at a restart goes on after it.
+  Obeya keeps with each share the version the command said right after publishing it, and asks
+  each command with pages out for its version at startup (Obeya restarts when its own code changes,
+  Acme's command included), after each of its calls, and when the owner comes back to a page of
+  the canvas (at most once a minute: a command from another repository changes without a restart). A page published with another version, or
+  before commands said theirs (until 2026-10-05), shows that pages are made differently now and
+  offers "Erneut teilen" beside "Nicht mehr teilen": the same demo published again under the same
+  link. A card with a newer demo offers only "Neu teilen", which brings both. A version followed by
+  the word `all` says each call writes every page afresh, so after any call every page shared
+  through the command is at that version. Acme's command prints a hash of a sample page and an
+  overview as its code writes them, and `all`: only a change that shows on the pages counts.
   The pull request and the page link each other. A demo shared before approval goes into the
   worker's approval message with "link it in the description". Once a PR exists and the page is
   out (in either order: `pr_opened` after sharing, or sharing a card whose PR is open or merged),
@@ -686,8 +697,9 @@ source, a follow-up's card), estimated scope, queue,
 when archived, the pull request (link, checks, the comments, failed checks and conflict already
 passed on), an idea's status, brief and open questions with its agent's picks and suggested next step, a prototype's idea, how it ended and its worker's proposal to build on it, the prototype an idea is built on, landed work whose worker still
 finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
-work added; the shared demo page: slug, link, the demo directory it shows, and whether it is held,
-publishing or withdrawing),
+work added; the shared demo page: slug, link, the demo directory it shows, the version of the
+share command it was published with and whether that is behind, and whether it is publishing or
+withdrawing),
 card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its

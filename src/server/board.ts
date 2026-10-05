@@ -62,6 +62,10 @@ export interface StoredShare {
   pr?: string;
   /** While `publishing`: the page goes out again as it is, now with the PR's link; the card shows it as shared meanwhile. */
   refresh?: true;
+  /** The version of the pages the share command wrote when it published this one (its `version`); none when it said none. */
+  version?: string;
+  /** The command writes its pages differently now: sharing again would make a difference. */
+  outdated?: true;
 }
 
 /** A request the server refuses: a stable code for the UI's text, and an English detail. */
@@ -976,7 +980,13 @@ function shareOf(r: CardRow): Item['share'] {
   const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
   if (!s || (!s.state && !s.url)) return undefined;
   const demoDir = r.demo ? (JSON.parse(r.demo) as { dir: string }).dir : undefined;
-  return { state: s.refresh ? 'shared' : (s.state ?? 'shared'), ...(s.url ? { url: s.url } : {}), ...(s.url && demoDir && s.dir !== demoDir ? { stale: true } : {}) };
+  const stale = !!s.url && !!demoDir && s.dir !== demoDir;
+  return {
+    state: s.refresh ? 'shared' : (s.state ?? 'shared'),
+    ...(s.url ? { url: s.url } : {}),
+    ...(stale ? { stale: true } : {}),
+    ...(s.url && s.outdated && !stale ? { outdated: true } : {}),
+  };
 }
 
 /** What is stored of a prototype: how it ended, once it did, and its worker's proposal to build the idea on it. */

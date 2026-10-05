@@ -563,9 +563,10 @@ export class CanvasRuntime {
     return this.repos.flatMap((r) => r.workers.busyCards());
   }
 
-  /** The owner came back to a page of this canvas: its open pull requests are looked at now. */
+  /** The owner came back to a page of this canvas: its open pull requests are looked at now, and the versions of its share commands. */
   ownerBack() {
     for (const w of this.prWatchers) w.soon();
+    this.sharing.soon();
   }
 
   /** Obeya is about to restart, or no longer is: the workers hear so and pause for it. */

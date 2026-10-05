@@ -19,6 +19,7 @@
 // The stage file (JSON; every field but `cards` optional):
 //   {
 //     "port": 4480, "dir": "/tmp/obeya-scratch-4480", "adapter": "obeya", "clones": 2,
+//     "share": "share.ts",
 //     "files": { "src/cli.ts": "…" },
 //     "plans": { "docs/plan/werkzeug.md": "# Werkzeug\n\n## Workstreams\n\n- [ ] **W1:** Konfiguration.\n" },
 //     "cards": [
@@ -50,7 +51,8 @@
 // state, need, statusLine, summary, noDemo, question, demo, queue (`behind` by key; `since` defaults to
 // now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago? }]),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
-// "3d" ago. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
+// "3d" ago. `share` is the repository's share command as the configuration holds it (a script among
+// `files`, say); the server then starts from a configuration file in <dir>. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
 // `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
 // What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
 
@@ -93,6 +95,8 @@ interface Stage {
   adapter?: string;
   /** Clones for an adapter that works in clones (generic): real workers need one each. */
   clones?: number;
+  /** The repository's share command, as in the configuration. */
+  share?: string;
   files?: Record<string, string>;
   plans?: Record<string, string>;
   cards: StageCard[];
@@ -164,9 +168,14 @@ const out = openSync(log, 'a');
 // not supervised: a scratch Obeya restarts itself only when asked to
 const supervised = args.includes('--restarts');
 const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'OBEYA_SUPERVISED')), OBEYA_HOME: home };
+// a share command lives in the configuration, which the command line cannot give
+const configFile = join(dir, 'canvases.json');
+if (stage.share)
+  writeFileSync(configFile, JSON.stringify([{ repos: [{ path: repo, adapter: stage.adapter ?? 'obeya', ...(stage.clones ? { clones: stage.clones } : {}), share: stage.share }] }], null, 2));
+const canvasArgs = stage.share ? ['--config', configFile] : [repo, '--adapter', stage.adapter ?? 'obeya', ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
 const server = spawn(
   process.execPath,
-  ['src/server/main.ts', repo, '--adapter', stage.adapter ?? 'obeya', '--port', String(port), ...(supervised ? [] : ['--dev']), ...(stage.clones ? ['--clones', String(stage.clones)] : []), ...(idle && canIdle ? ['--idle-workers'] : [])],
+  ['src/server/main.ts', ...canvasArgs, '--port', String(port), ...(supervised ? [] : ['--dev']), ...(idle && canIdle ? ['--idle-workers'] : [])],
   { cwd: code, env, detached: true, stdio: ['ignore', out, out] },
 );
 server.unref();

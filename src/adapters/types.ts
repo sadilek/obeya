@@ -46,7 +46,8 @@ export interface RepoAdapter {
      * The command (argv) that shares a video demo with colleagues on a page outside Obeya. Obeya
      * runs it in the repository with `OBEYA_HOME` set: `publish` with the page as JSON on stdin
      * (`SharePage` in `src/server/share.ts`), printing the page's URL; `withdraw <slug>` takes it
-     * down. Without it, demos are not shared.
+     * down; `version`, where it knows it, prints the version of the pages it writes (and `all` when
+     * each call writes every page afresh). Without it, demos are not shared.
      */
     share?: string[];
   };

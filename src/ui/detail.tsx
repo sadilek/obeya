@@ -795,7 +795,8 @@ function DemoView({
 
 /**
  * Sharing the video with colleagues: "Teilen" publishes it right away, then the page's link with
- * "Nicht mehr teilen"; "Neu teilen" once the card has a newer demo than the page.
+ * "Nicht mehr teilen"; "Neu teilen" once the card has a newer demo than the page, "Erneut teilen"
+ * once the share command writes pages differently than when it published this one.
  */
 function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
   const [copied, setCopied] = useState(false);
@@ -831,10 +832,16 @@ function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDon
             </button>
           </div>
           {s.stale && <p className="hint">{t.share.stale}</p>}
+          {s.outdated && <p className="hint">{t.share.outdated}</p>}
           <div className="share-row">
             {s.stale && (
               <button className="btn" title={t.share.againHint} onClick={() => go('share')}>
                 {t.share.again}
+              </button>
+            )}
+            {s.outdated && (
+              <button className="btn" title={t.share.reshareHint} onClick={() => go('share')}>
+                {t.share.reshare}
               </button>
             )}
             <button className="btn" title={t.share.stopHint} onClick={() => go('unshare')}>
