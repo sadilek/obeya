@@ -77,7 +77,9 @@ decisions are made in front of the wall.
 An idea is thought through on its card before anything is planned; no worker runs.
 
 1. "Ich will über Export für Vermieter nachdenken" (voice or typed), or "Erst besprechen" on a
-   planned card of the owner's, makes a card in state `idea`.
+   planned card of the owner's, makes a card in state `idea`, and its exploration agent opens the
+   discussion right away: with what the owner said, or with what the card says, which stays at the
+   top of the conversation as its starting point ("Ausgangspunkt").
 2. The unfolded idea is a conversation with its exploration agent: a read-only session (code, plan
    docs, the decision log, the preferences) resumed for every message, days later too. It asks
    back, shows variants with their trade-offs and says what they would cost. Its questions come

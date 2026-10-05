@@ -573,6 +573,12 @@ function PrototypeDemos({ item }: { item: Item }) {
   );
 }
 
+/** The owner's first words in the discussion are the card's text (an idea said aloud): it is not shown again as the starting point. */
+const opened = (events: CardEvent[], body: string) => {
+  const first = events.find((e) => e.kind === 'talk');
+  return first?.author === 'owner' && first.text.trim() === body.trim();
+};
+
 /**
  * The discussion of an idea, live: the owner's messages and the agent's replies. How the agent got
  * to a reply (what it read and thought, the decisions it recorded) folds away under that reply;
@@ -597,7 +603,7 @@ function Conversation({ item, questions, past = false }: { item: Item; questions
       <h4 className="p-h">{t.idea.talk}</h4>
       <div className="talk" ref={box}>
         {turns.shown.length === 0 && !thinking && <div className="hint">{t.idea.talkEmpty}</div>}
-        {!past && item.body.trim() && !events.some((e) => e.kind === 'talk') && (
+        {!past && item.body.trim() && !opened(events, item.body) && (
           <div className="msg by-owner seed">
             <div className="who">{t.idea.seed}</div>
             <Body md={item.body} />

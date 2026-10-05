@@ -62,6 +62,11 @@ export class Explorers {
     this.send(card, `The owner says:\n\n${text}${imageNote(images)}`, spoken, images);
   }
 
+  /** A planned card became an idea: its agent opens the discussion with what the card says, before the owner writes. */
+  open(cardId: string) {
+    this.tell(cardId, OPENING);
+  }
+
   /**
    * Obeya tells the agent something the owner did not say (a prototype's result). `quiet`: it is
    * for the brief only (an answer given on a prototype), and the turn's words are no reply.
@@ -321,6 +326,9 @@ Owner-facing text is in ${OWNER_LANGUAGE}.
 const OWN_TOOLS = ['reply', 'update_brief', 'record_decision'];
 
 /** How the agent hears the messages an interrupted turn left unanswered. */
+const OPENING =
+  'The owner wrote this as a card to be built, then chose to discuss it first. They have not said more yet: what the card says above is where the conversation starts. Look into it and open the discussion.';
+
 const UNREAD_NOTE: Record<Unread['why'], string> = {
   parked: 'The owner parked the idea while you were working on a reply, which ended that turn. These messages are still unanswered; take them in with the one after them:',
   dropped: 'The owner dropped the idea while you were working on a reply, which ended that turn. These messages are still unanswered; take them in with the one after them:',

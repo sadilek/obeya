@@ -346,10 +346,23 @@ describe('an idea', () => {
     expect(() => canvas.act(board().create({ title: 'X', x: 0, y: 0 }).id, { action: 'park' })).toThrow('not an idea');
   });
 
-  test('a planned card of the owner’s can become an idea first', () => {
-    const c = board().create({ title: 'Unklar', x: 0, y: 0 });
-    board().patch(c.id, { state: 'idea' });
-    expect(item(c.id).idea).toEqual({ status: 'open', brief: '', thinking: false, yourTurn: false, questions: [] });
+  test('a planned card of the owner’s can become an idea first, and its agent opens the discussion with what the card says', () => {
+    const c = board().create({ title: 'Klon lädt sein Modell neu', body: 'Für jeden Clip.', x: 0, y: 0 });
+    canvas.patch(c.id, { state: 'idea' });
+    expect(item(c.id).idea).toMatchObject({ status: 'open', brief: '', thinking: true, yourTurn: false, questions: [] });
+    const s = explorer();
+    expect(s.spec.readOnly).toBe(true);
+    expect(s.inbox[0]).toContain('“Klon lädt sein Modell neu”');
+    expect(s.inbox[0]).toContain('Für jeden Clip.');
+    expect(s.inbox[0]).toContain('chose to discuss it first');
+    // the card's text is the starting point, not words of the owner's
+    expect(talk(c.id)).toEqual([]);
+    turn(s, 'Zwei Wege, siehe Stand.');
+    expect(talk(c.id)).toEqual([['explorer', 'Zwei Wege, siehe Stand.']]);
+    expect(item(c.id).idea).toMatchObject({ thinking: false, yourTurn: true });
+    // saving the idea again starts nothing new
+    canvas.patch(c.id, { state: 'idea' });
+    expect(runtime.sessions).toHaveLength(1);
   });
 
   test('after a restart an idea whose agent was answering gets its reply', () => {

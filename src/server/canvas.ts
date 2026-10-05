@@ -215,15 +215,18 @@ export class CanvasRuntime {
 
   /** The owner edits a card; what they write in it is offered for learning once they have written it. */
   patch(cardId: string, p: CardPatch) {
-    const before = this.board.row(cardId).body ?? '';
+    const { body: before, state } = this.board.row(cardId);
     this.board.patch(cardId, p);
     if (p.body !== undefined) {
       const w = this.writing.get(cardId);
       clearTimeout(w?.timer);
-      this.writing.set(cardId, { before: w?.before ?? before, timer: setTimeout(() => this.written(cardId), this.deps.writingPauseMs ?? 60_000) });
+      this.writing.set(cardId, { before: w?.before ?? before ?? '', timer: setTimeout(() => this.written(cardId), this.deps.writingPauseMs ?? 60_000) });
     }
-    // an idea's agent starts from the card's text
-    if (p.state === 'idea') this.written(cardId);
+    // an idea's agent starts from the card's text, and opens the discussion with it
+    if (p.state === 'idea' && state !== 'idea') {
+      this.written(cardId);
+      this.explorers.open(cardId);
+    }
   }
 
   /** The owner has written in the card (a pause, or they act on it): the learner gets what they wrote. */
