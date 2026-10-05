@@ -1243,3 +1243,6 @@ the repository; the copy on the project is only for the archive).
   where work lands there; for a repository whose work lands through PRs, read them from `origin/main`?
 - A plan doc without a `## Workstreams` checklist is not shown (its tasks under other headings,
   say). Fix such docs, or show them as projects without cards?
+- Making Obeya known as open source (MIT licence, a public repository, an English interface, voice
+  on Windows and Linux, an installable app, the site on obeya.si): planned in
+  [`docs/plan/open-source.md`](plan/open-source.md).
