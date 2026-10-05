@@ -95,6 +95,8 @@ export interface Item {
   builtOn?: string;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
+  /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
+  noChange?: boolean;
   /** Screenshots the owner attached to the card's task; its worker gets them at the start. */
   images?: string[];
   /** A card that was an idea and has been decided: the brief it was decided on. */

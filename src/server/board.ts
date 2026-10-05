@@ -935,7 +935,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow): Partial<Item> {
-  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noDemo?: string }) : {};
+  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noDemo?: string; noChange?: boolean }) : {};
   const demo = r.demo ? (({ dir: _, ...d }) => d)(JSON.parse(r.demo) as Item['demo'] & { dir: string }) : undefined;
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
@@ -955,6 +955,7 @@ function work(r: CardRow): Partial<Item> {
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),
     ...(r.landed && r.workspace ? { finishing: true } : {}),
+    ...(detail.noChange && (r.need === 'review' || r.need === 'demo') ? { noChange: true } : {}),
   };
 }
 

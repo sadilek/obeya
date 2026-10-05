@@ -627,6 +627,7 @@ describe('landing through a pull request', () => {
     git(clone, 'add', '.');
     git(clone, 'commit', '--quiet', '-m', 'X');
     runtime.last.call('ready_for_review', { summary: 'S' });
+    expect(board.item(c.id)!.noChange).toBeUndefined();
     await workers.approve(c.id);
     expect(state(c.id)).toBe('inPr');
     expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
@@ -638,9 +639,12 @@ describe('landing through a pull request', () => {
     workers.start(c.id);
     const s = runtime.last;
     s.call('ready_for_review', { summary: 'Demo aufgenommen, keine Code-Änderung.' });
+    // the owner sees before approving that approval ends the card
+    expect(board.item(c.id)!.noChange).toBe(true);
     s.emit({ type: 'idle' });
     await workers.approve(c.id);
     expect(state(c.id)).toBe('done');
+    expect(board.item(c.id)!.noChange).toBeUndefined();
     expect(board.item(c.id)!.pr).toBeUndefined();
     expect(board.item(c.id)!.finishing).toBe(true);
     expect(s.inbox.at(-1)).toContain('nothing lands and there is no pull request: the card is done');

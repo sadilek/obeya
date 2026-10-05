@@ -126,6 +126,13 @@ export function Detail(p: Props) {
     </>
   );
 
+  // work that changes nothing in the repository ends with the approval: no pull request, nothing lands
+  const approveButton = (
+    <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: item.noChange ? t.approvedNoChange : t.approved })}>
+      {item.noChange ? t.approveNoChange : t.approve}
+    </button>
+  );
+
   return (
     <>
       {kind && <div className="p-kind">{kind}</div>}
@@ -280,12 +287,9 @@ export function Detail(p: Props) {
         >
           {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
-            {prototypeActions || (
-              <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
-                {t.approve}
-              </button>
-            )}
+            {prototypeActions || approveButton}
           </div>
+          {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
           <Composer placeholder={t.compose.review} onSend={(text, images) => act({ action: 'message', text, images }, { close: false })} />
           {shareBox}
         </DemoView>
@@ -311,12 +315,9 @@ export function Detail(p: Props) {
             </div>
           )}
           <div className="actions">
-            {prototypeActions || (
-              <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: t.approved })}>
-                {t.approve}
-              </button>
-            )}
+            {prototypeActions || approveButton}
           </div>
+          {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
         </>
       )}
 

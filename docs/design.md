@@ -172,7 +172,9 @@ An idea is thought through on its card before anything is planned; no worker run
    work is on main and may finish what was waiting for that (a data migration, say) before its
    session ends. Work that changed nothing in the repository (the task wanted a demo, an analysis,
    an answer) has nothing to land: approving it makes the card `done` ("Erledigt") without a pull
-   request or a landing, and its worker finishes the same way. A worker whose approved work turns
+   request or a landing, and its worker finishes the same way. The owner sees that before
+   approving: when the handover finds nothing on the branch (no commits, nothing uncommitted), the
+   button reads "Freigeben und beenden", with a line that no pull request follows. A worker whose approved work turns
    out to change nothing (its branch emptied after the approval) closes the card itself with
    `close_unchanged`, which Obeya refuses while the workspace holds commits or uncommitted
    changes. Before, such a card waited in `in PR` for a pull request that could never come

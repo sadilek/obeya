@@ -763,7 +763,8 @@ export class Workers {
           // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
           this.o.board.work(cardId, {
             ...(approved ? { status_line: 'Landet auf main' } : { state: 'waiting', need: d || kept ? 'demo' : 'review' }),
-            detail: JSON.stringify({ summary: s, ...(none ? { noDemo: none } : {}) }),
+            // approving work that changes nothing makes the card done, which the owner sees before approving
+            detail: JSON.stringify({ summary: s, ...(none ? { noDemo: none } : {}), ...(this.o.workspaces.hasWork(cardId) ? {} : { noChange: true }) }),
             ...(demoJson ? { demo: demoJson } : {}),
             // an earlier demo would show on the finished card as if it were this work's
             ...(none && !approved ? { demo: null } : {}),
