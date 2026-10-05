@@ -28,6 +28,8 @@ const config = (source: 'file' | 'args', started: CanvasConfig[], running: strin
     store,
     running: () => running,
     server: { port: 4417, home: dir, permissionMode: 'auto' },
+    // not the machine's lock: a demo another agent renders meanwhile would hold up the sample
+    ttsLock: join(dir, 'tts.lock'),
     restart: () => void restarts++,
   });
 

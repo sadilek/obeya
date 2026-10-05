@@ -268,13 +268,14 @@ export const SAMPLE_TEXT: Record<NarrationLanguage, string> = {
 /**
  * Synthesises one sample with `tts.py`, without listening back, into `out`. For the settings
  * sheet, so the owner hears a voice before choosing it; with `obeyaUrl`, Obeya holds a voice that
- * can stay loaded, so the next sample (and the next render) skips loading it.
+ * can stay loaded, so the next sample (and the next render) skips loading it. A heavy voice waits
+ * for `lock`, the machine's TTS_LOCK unless a test gives its own.
  */
-export function sample(s: DemoSettings, out: string, home = obeyaHome(), obeyaUrl?: string): Promise<void> {
+export function sample(s: DemoSettings, out: string, home = obeyaHome(), obeyaUrl?: string, lockFile = TTS_LOCK): Promise<void> {
   const spec = voiceSpec(s, home);
   const specFile = `${out}.spec.json`;
   fs.writeFileSync(specFile, JSON.stringify(spec));
-  const lock = spec.kind === 'command' && spec.heavy ? ['--lock', TTS_LOCK] : [];
+  const lock = spec.kind === 'command' && spec.heavy ? ['--lock', lockFile] : [];
   const args = ['run', '--quiet', '--no-project', 'python', path.join(LIB, 'tts.py'), ...lock, '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
   return exec('uv', args, () => {}, obeyaUrl ? { OBEYA_URL: obeyaUrl } : undefined).finally(() => fs.rmSync(specFile, { force: true }));
 }

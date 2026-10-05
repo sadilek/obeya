@@ -97,6 +97,8 @@ export interface ConfigOptions {
   server: { port: number; home: string; permissionMode: string };
   /** Where this Obeya answers, so a sample's voice is held by it (`narration.ts`); none in tests. */
   narrationUrl?: string;
+  /** The lock a heavy voice's sample waits for; the machine's (TTS_LOCK) unless a test gives its own. */
+  ttsLock?: string;
   /** Starts Obeya again with the saved configuration; absent where nothing restarts it (--dev). */
   restart?: () => void;
 }
@@ -286,7 +288,7 @@ export class Config {
     const dir = mkdtempSync(join(tmpdir(), 'obeya-voice-'));
     try {
       const out = join(dir, 'sample.wav');
-      await sample(s, out, this.o.server.home, this.o.narrationUrl).catch((e: Error) => {
+      await sample(s, out, this.o.server.home, this.o.narrationUrl, this.o.ttsLock).catch((e: Error) => {
         // tts.py says why on its last line: no key, no command, a service's refusal
         const why = e.message.trim().split('\n').at(-1) ?? e.message;
         throw new BadRequest('voiceSample', why);

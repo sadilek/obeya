@@ -16,12 +16,15 @@ let sharing: Sharing;
 /** The descriptions of the fake forge's pull requests, and each edit Obeya made. */
 let bodies: Map<string, string>;
 let edits: string[];
-/** Each call of the fake share command: its arguments and what it got on stdin. */
+/**
+ * Each call of the fake share command: its arguments and what it got on stdin. Only whole lines:
+ * the one without its newline yet is still being written.
+ */
 const calls = () =>
   existsSync(join(dir, 'calls'))
     ? readFileSync(join(dir, 'calls'), 'utf8')
-        .trim()
         .split('\n')
+        .slice(0, -1)
         .map((l) => JSON.parse(l) as { args: string[]; input: SharePage & { shared: string[] }; home: string })
     : [];
 
