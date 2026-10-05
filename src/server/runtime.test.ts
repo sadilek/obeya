@@ -45,6 +45,22 @@ test('foreground sleep: sleep durations, loops, bounds and background', () => {
     ['timeout 0 sleep 60', 60],
     ['timeout 300 sleep 300 &', 0],
     ['sleep infinity', Infinity],
+    // a heredoc's text is data, unless a shell runs it
+    ["cat > wait.sh <<'EOF'\nuntil curl -s x; do sleep 2; done\nEOF\nchmod +x wait.sh", 0],
+    ['cat > wait.sh <<EOF\nuntil curl -s x; do sleep 2; done\nEOF\nsleep 5', 5],
+    ['cat <<-END > f\n\twhile true; do sleep 1; done\n\tEND', 0],
+    ['git commit -m "$(cat <<\'EOF\'\nWait until the server is up; do sleep 2; done\nEOF\n)"', 0],
+    ["cat > a <<'A' && cat > b <<'B'\nsleep 100\nA\nsleep 200\nB\nsleep 3", 3],
+    ["bash <<'EOF'\nuntil curl -s x; do sleep 2; done\nEOF", Infinity],
+    ['ssh host bash -s <<EOF\nsleep 60\nEOF', 60],
+    ["cat <<'EOF' | sh\nsleep 60\nEOF", 60],
+    ["cat > f <<'EOF' && bash f\nsleep 60\nEOF", 0],
+    // no heredoc: a here-string, `<<` in quotes or a comment, a shift
+    ['grep -q x <<< "$out"; sleep 40', 40],
+    ["echo 'a <<b'\nsleep 40\nb", 40],
+    ['echo "a <<b"\nsleep 40\nb', 40],
+    ['# cat <<EOF\nsleep 40\nEOF', 40],
+    ['echo $((1<<4))\nsleep 40\n4', 40],
     ['bun test', 0],
     ['git log --oneline | head', 0],
   ];

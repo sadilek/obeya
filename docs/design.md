@@ -230,7 +230,9 @@ wait for anything external (a deploy, a CI run, a point in time) in the backgrou
 command in the foreground that sleeps longer than 30 seconds (`sleep N`, a polling loop without a
 bound, counted from the command line by `foregroundSleep` in `src/server/runtime.ts`) is refused
 with that reason. `timeout N` (or `gtimeout`) bounds the command it starts, wherever that stands
-in the line (`cd app && timeout 28 bash -c 'until …; do sleep 2; done'`); the refusal names two
+in the line (`cd app && timeout 28 bash -c 'until …; do sleep 2; done'`). The text of a heredoc
+is data (a script written with `cat > f <<'EOF'`, a commit message) and counts only when a shell
+runs it (`bash <<EOF`, `cat <<EOF | sh`, `ssh host <<EOF`). The refusal names two
 bounded waits that pass it, one without `timeout`, which macOS lacks. A worker answers a note in its log, saying what
 it changes or why nothing, and asks when the note is unclear.
 

@@ -168,12 +168,13 @@ function withContext(event: 'PostToolUse' | 'PostToolUseFailure', text: string |
  * `sleep` with its durations (`sleep 90`, `sleep 5m`, `sleep 1m 30s`), times the iterations of the
  * loop it is in (a `for` over a word list, `seq` or `{a..b}`; `while` and `until` have no bound).
  * A command that `timeout N` starts counts at most N, wherever it stands (`cd app && timeout 30 bash
- * -c 'until …; do sleep 2; done'`). What runs behind `&` does not count. Commands that only sleep
- * inside scripts or programs they call are not seen.
+ * -c 'until …; do sleep 2; done'`). What runs behind `&` does not count, nor does the text of a
+ * heredoc unless a shell runs it (`bash <<EOF`, `cat <<EOF | sh`). Commands that only sleep inside
+ * scripts or programs they call are not seen.
  */
 export function foregroundSleep(command: string): number {
   // redirections such as 2>&1 are words, not `&`
-  const tokens = boundTimeouts(command).replace(/['"`]/g, ' ').match(/\d*[<>]&\d*-?|&>>?|&&|\|\||[;&|(){}\n]|[^\s;&|(){}<>]+|[<>]+/g) ?? [];
+  const tokens = boundTimeouts(withoutHeredocs(command)).replace(/['"`]/g, ' ').match(/\d*[<>]&\d*-?|&>>?|&&|\|\||[;&|(){}\n]|[^\s;&|(){}<>]+|[<>]+/g) ?? [];
   // per open loop or group (and the command line itself): seconds of finished commands, and of the one in progress
   type Frame = { done: number; current: number; iterations: number; closer: string };
   const stack: Frame[] = [{ done: 0, current: 0, iterations: 1, closer: '' }];
@@ -209,6 +210,72 @@ export function foregroundSleep(command: string): number {
     total = body > 0 ? body * f.iterations : 0;
   }
   return total;
+}
+
+/** A command word that runs what it reads as shell code: a shell, or `ssh` running it elsewhere. */
+const SHELL = /^(?:\S*\/)?(?:(?:ba|z|da|k|mk)?sh|ssh)$/;
+
+/**
+ * The command line without the text of its heredocs (`cat > f <<'EOF' … EOF`, a commit message in
+ * `"$(cat <<'EOF' … EOF)"`): only data, unless the command it is fed to, or one the heredoc's
+ * command pipes into, is a shell. Single quotes hide `<<`, double quotes too, except within `$(…)`.
+ */
+function withoutHeredocs(command: string): string {
+  // what the scanner is in: code (the line itself or a `$(…)`/`(…)`, closed by `)`) or a double-quoted string
+  const modes: ('line' | 'paren' | 'dq')[] = ['line'];
+  const pending: { delimiter: string; tabs: boolean; keep: boolean }[] = [];
+  let out = '';
+  for (let i = 0; i < command.length; ) {
+    const mode = modes.at(-1)!;
+    const c = command[i]!;
+    let unit = c;
+    if (c === '\\') unit = command.slice(i, i + 2);
+    else if (mode === 'dq') {
+      if (c === '"') modes.pop();
+      else if (command.startsWith('$(', i)) (unit = '$('), modes.push('paren');
+    } else if (c === "'") {
+      const end = command.indexOf("'", i + 1);
+      unit = command.slice(i, end < 0 ? command.length : end + 1);
+    } else if (c === '"') modes.push('dq');
+    else if (c === '(') modes.push('paren');
+    else if (c === ')' && mode === 'paren') modes.pop();
+    else if (c === '#' && /^$|[\s;&|()]$/.test(out.slice(-1))) unit = command.slice(i).match(/^[^\n]*/)![0];
+    else if (command.startsWith('<<<', i)) unit = '<<<';
+    else if (command.startsWith('<<', i)) {
+      const op = command.slice(i).match(/^<<(-?)[ \t]*((?:'[^'\n]*'|"[^"\n]*"|\\.|[^\s;&|()<>'"\\])+)/);
+      const delimiter = op?.[2]!.replace(/['"\\]/g, '');
+      if (op && delimiter && /[A-Za-z_]/.test(delimiter)) {
+        unit = op[0];
+        // the pipeline the heredoc belongs to: back to the last command separator, on to the next one in its line
+        const before = out.split(/[;&\n(]|\|\|/).at(-1)!;
+        const after = command.slice(i + unit.length).split(/[;&\n)]|\|\|/)[0]!;
+        const words = `${before} ${after}`.replace(/['"]/g, ' ').split(/[\s|]+/);
+        pending.push({ delimiter, tabs: op[1] === '-', keep: words.some((w) => SHELL.test(w)) });
+      }
+    } else if (c === '\n' && pending.length > 0) {
+      // the bodies follow this line, one after another, each up to the line that is its delimiter
+      out += '\n';
+      i++;
+      for (const h of pending.splice(0)) {
+        let end = i;
+        for (;;) {
+          const next = command.indexOf('\n', end);
+          const line = command.slice(end, next < 0 ? command.length : next);
+          if (next < 0 || (h.tabs ? line.replace(/^\t+/, '') : line) === h.delimiter) {
+            end = next < 0 ? command.length : next + 1;
+            break;
+          }
+          end = next + 1;
+        }
+        if (h.keep) out += command.slice(i, end);
+        i = end;
+      }
+      continue;
+    }
+    out += unit;
+    i += unit.length;
+  }
+  return out;
 }
 
 /** `timeout` (or coreutils' `gtimeout` on macOS) where a command begins: variables set for it, options, then the duration. */
