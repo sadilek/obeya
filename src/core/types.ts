@@ -324,6 +324,15 @@ export interface RepoRef {
   branch: string;
   /** It has a share target: video demos go to a page outside Obeya (the configuration's command, or the adapter's `demo.share`); without one they are exported as a file. */
   share?: boolean;
+  /** Its workers work in a pool of clones (else a worktree per card, as many as there are cards). */
+  clones?: boolean;
+}
+
+/** A repository's pool of clones: how many there are, and the cards that hold one now. */
+export interface ClonePool {
+  repo: string;
+  total: number;
+  cards: string[];
 }
 
 export interface CanvasSnapshot {
@@ -334,6 +343,8 @@ export interface CanvasSnapshot {
   preferences: Preference[];
   /** The owner's latest exchanges with the Koordinator without an open card (those with one are in its log). */
   talk: Talk[];
+  /** The clone pools of the repositories that use clones; none when no repository does. */
+  workspaces?: ClonePool[];
   /** Shared pages the share commands now write differently, and sharing many of them again; none when there is neither. */
   reshare?: Reshare;
 }

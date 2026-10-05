@@ -51,6 +51,7 @@
 // into the database:
 // state, need, statusLine, summary, noDemo, question, demo, queue (`behind` by key; `since` defaults to
 // now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago? }]),
+// workspace (true: the card holds the next free clone, for an adapter that works in clones),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
 // "3d" ago. `share` is the repository's share command as the configuration holds it (a script among
 // `files`, say); the server then starts from a configuration file in <dir>. Preferences are active unless `state` says otherwise; `card` and `replaces` name keys;
@@ -86,6 +87,7 @@ interface StageCard {
   queue?: { behind?: string[]; reason?: string; since?: string; checking?: true; cutting?: true };
   scope?: string[];
   branch?: string;
+  workspace?: boolean;
   createdAgo?: string;
   archivedAgo?: string;
   events?: { kind: string; author: string; text: string; ago?: string }[];
@@ -259,6 +261,12 @@ for (const [i, c] of stage.cards.entries()) {
     };
   if (c.scope !== undefined) row.scope = { files: c.scope, reason: '' };
   if (c.branch !== undefined) row.branch = c.branch;
+  if (c.workspace) {
+    const free = db.query('SELECT path FROM workspaces WHERE card_id IS NULL ORDER BY path').get() as { path: string } | null;
+    if (!free) fail(`card ${c.key ?? i}: no free clone for it ("clones" in the stage, an adapter that works in clones)`);
+    db.query('UPDATE workspaces SET card_id = $id WHERE path = $path').run({ id, path: free!.path });
+    row.workspace = free!.path;
+  }
   if (c.createdAgo !== undefined) row.created_at = ago(c.createdAgo);
   if (c.archivedAgo !== undefined) row.archived_at = ago(c.archivedAgo);
   Object.assign(row, c.row ?? {});

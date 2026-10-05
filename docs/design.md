@@ -366,6 +366,10 @@ the owner's language (`src/core/locale.ts`).
   (Acme: csharpier finds no files inside a worktree, and parallel AppHosts per clone are proven),
   or a worktree per card (Obeya itself: any number in parallel), kept across stop and restart
   until the card's work has landed. Clones come from `--workspace <path>` or `--clones <n>`.
+  For each repository that uses clones, the top bar shows the pool ("Workspaces", a dot per clone,
+  filled while a card holds it, and "2 frei" or "alle belegt"); over it, the cards that hold one and
+  how many wait for one. The snapshot carries the pools (`workspaces`): leases change only with a
+  card, so they ride on its updates. Worktrees are never short, so a canvas of only those shows none.
 - **Landing** — per adapter. `pr` (Acme): approval leaves the branch for the PR loop. `main`
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
   is `live`. Commits that conflict one by one but not as a whole land squashed into one commit.

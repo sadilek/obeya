@@ -13,6 +13,7 @@ import {
   type CanvasSnapshot,
   type CardEvent,
   type CardPatch,
+  type ClonePool,
   type Decision,
   type DemoKind,
   type ErrorCode,
@@ -627,15 +628,27 @@ export class Board {
     }
     items = this.withPrototypes(items);
     const reshare = this.reshare();
+    const pools = this.clonePools();
     this.cache = {
       canvas: this.canvas,
       items,
       groups: this.store.groups(this.canvas.id).map(toGroup),
       preferences: this.store.preferences(this.canvas.id, ['proposed', 'active']),
       talk: this.store.talk(this.canvas.id, SHEET_TALK, true),
+      ...(pools.length ? { workspaces: pools } : {}),
       ...(reshare ? { reshare } : {}),
     };
     return this.cache;
+  }
+
+  /** Leases change only along with a card (start, stop, landing, a discarded prototype), so the cache holds. */
+  private clonePools(): ClonePool[] {
+    return this.canvas.repos
+      .filter((r) => r.clones)
+      .map((r) => {
+        const ws = this.store.workspaces(this.canvas.id, r.id === this.home ? null : r.id);
+        return { repo: r.id, total: ws.length, cards: ws.flatMap((w) => (w.card_id ? [w.card_id] : [])) };
+      });
   }
 
   /** The outdated pages, archived cards' included, and the run sharing them again. */

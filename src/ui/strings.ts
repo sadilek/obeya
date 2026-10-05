@@ -482,6 +482,14 @@ export const t = {
     nowOwner: 'Ohne zu warten: Dein Video oder Diktat wird unterbrochen. Was offen war, ist danach wieder offen, das Video an derselben Stelle.',
     going: 'Obeya startet neu …',
   },
+  workspaces: {
+    label: 'Workspaces',
+    free: (n: number, total: number) => (total === 0 ? 'keine eingerichtet' : n <= 0 ? 'alle belegt' : `${n} frei`),
+    taken: (n: number, total: number, repo: string | null) =>
+      `${repo ? `${repo}: ` : ''}${n} von ${total} ${total === 1 ? 'Clone' : 'Clones'} belegt${n ? ', von:' : '.'}`,
+    offCanvas: 'einer Karte, die nicht auf der Leinwand liegt',
+    waiting: (n: number) => (n === 1 ? '1 Karte wartet auf einen freien Workspace.' : `${n} Karten warten auf einen freien Workspace.`),
+  },
   archive: {
     button: 'Archiv',
     kind: 'Archiv',

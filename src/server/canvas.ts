@@ -705,6 +705,7 @@ function uniqueRefs(configs: RepoConfig[], infos: RepoInfo[], adapters: RepoAdap
       path: info.path,
       branch: info.branch,
       ...(shareCommandOf(configs[i]!, info, adapters[i]!) ? { share: true } : {}),
+      ...(adapters[i]!.workspaces === 'clones' ? { clones: true } : {}),
     };
   });
 }

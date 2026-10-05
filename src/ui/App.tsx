@@ -18,7 +18,7 @@ import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './k
 import { Sign, Wordmark } from './logo';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, ToldList, usePushToTalk, useTold, type Where } from './voice';
-import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet } from './parts';
+import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_GAP, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
 
@@ -940,6 +940,7 @@ function Canvas({
         <div className="right">
           {!online && <div className="pill offline">{t.offline}</div>}
           {online && restart && <RestartPill restart={restart} items={items} />}
+          {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} items={items} />}
           <button className={cOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleConfig}>
             {t.config.button}
           </button>

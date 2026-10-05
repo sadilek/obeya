@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import { type CanvasInfo, finished, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
+import { type CanvasInfo, type ClonePool, finished, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
 import { api } from './api';
 import type { Cam } from './camera';
 import type { Shape } from './groups';
@@ -239,6 +239,46 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
         )}
         <p className="hint">{t.restart.kept}</p>
         {n > 0 && <p className="hint">{owner.length ? t.restart.deadlineOwner(until) : t.restart.deadline(until)}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** How many clones each repository's pool has taken and whether one is free; over it, the cards that hold them. */
+export function WorkspacesPill({ pools, canvas, items }: { pools: ClonePool[]; canvas: CanvasInfo; items: Item[] }) {
+  const several = pools.length > 1;
+  const name = (repo: string) => canvas.repos.find((r) => r.id === repo)?.name ?? repo;
+  const waiting = items.filter((i) => i.queue && 'workspace' in i.queue).length;
+  const full = pools.every((p) => p.cards.length >= p.total);
+  return (
+    <div className={full ? 'pill workspaces full' : 'pill workspaces'} id="workspaces">
+      <span>{t.workspaces.label}</span>
+      {pools.map((p) => (
+        <span key={p.repo} className="pool">
+          {several && <span className="hint">{name(p.repo)}</span>}
+          <span className="slots" aria-hidden>
+            {Array.from({ length: p.total }, (_, i) => (
+              <i key={i} className={i < p.cards.length ? 'on' : undefined} />
+            ))}
+          </span>
+          <b>{t.workspaces.free(p.total - p.cards.length, p.total)}</b>
+        </span>
+      ))}
+      <div className="tip" role="tooltip">
+        {pools.map((p) => (
+          <div key={p.repo}>
+            <p>{t.workspaces.taken(p.cards.length, p.total, several ? name(p.repo) : null)}</p>
+            {p.cards.length > 0 && (
+              <ul>
+                {p.cards.map((id) => {
+                  const item = items.find((i) => i.id === id);
+                  return <li key={id}>{item ? plain(item.title) : <span className="hint">{t.workspaces.offCanvas}</span>}</li>;
+                })}
+              </ul>
+            )}
+          </div>
+        ))}
+        {waiting > 0 && <p>{t.workspaces.waiting(waiting)}</p>}
       </div>
     </div>
   );

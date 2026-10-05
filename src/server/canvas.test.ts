@@ -83,6 +83,21 @@ describe('a canvas with several repositories', () => {
     expect(() => canvas.board.create({ title: 'X', x: 0, y: 0, repo: 'nope' })).toThrow();
   });
 
+  test('the snapshot counts each repository\'s clones and the cards that hold one', () => {
+    expect(canvas.board.snapshot().workspaces).toEqual([
+      { repo: 'web', total: 1, cards: [] },
+      { repo: 'api', total: 1, cards: [] },
+    ]);
+    const other = canvas.board.create({ title: 'Andere', x: 0, y: 0, repo: 'api' });
+    canvas.repoOf(other.id).workers.start(other.id);
+    expect(canvas.board.snapshot().workspaces).toEqual([
+      { repo: 'web', total: 1, cards: [] },
+      { repo: 'api', total: 1, cards: [other.id] },
+    ]);
+    canvas.repoOf(other.id).workers.stop(other.id);
+    expect(canvas.board.snapshot().workspaces![1]).toEqual({ repo: 'api', total: 1, cards: [] });
+  });
+
   test('cards of different repositories never wait for each other', async () => {
     const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
     canvas.act(a.id, { action: 'start' });

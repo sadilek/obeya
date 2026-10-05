@@ -140,6 +140,19 @@ button.pill:hover { box-shadow: var(--lift); }
 @keyframes pulse-in { 0% { box-shadow: 0 0 0 0 rgba(245,158,11,.55); } 70%, 100% { box-shadow: 0 0 0 10px rgba(245,158,11,0); } }
 .canvas-menu a { position: relative; padding-right: 40px; }
 .canvas-menu a .waits { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); }
+.pill.workspaces { position: relative; cursor: default; }
+.pill.workspaces .pool { display: flex; align-items: center; gap: 6px; }
+.pill.workspaces .slots { display: flex; gap: 3px; }
+.pill.workspaces .slots i { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--planned); }
+.pill.workspaces .slots i.on { background: var(--working); box-shadow: none; }
+.pill.workspaces.full b { color: var(--waiting); }
+.pill.workspaces .tip { display: none; position: absolute; top: calc(100% + 8px); right: 0; width: 300px; padding: 10px 14px; border-radius: 12px;
+  background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: normal; font-size: 13px; font-weight: 400; line-height: 1.45;
+  text-align: left; pointer-events: none; z-index: 30; }
+.pill.workspaces .tip p { margin: 0 0 6px; }
+.pill.workspaces .tip ul { margin: 0 0 6px; padding-left: 18px; }
+.pill.workspaces .tip > :last-child, .pill.workspaces .tip > div:last-child > :last-child { margin-bottom: 0; }
+.pill.workspaces:hover .tip { display: block; }
 #bar > svg { flex: none; margin-right: 4px; }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 .kpill .n { background: var(--planned); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
