@@ -58,6 +58,8 @@ export interface CardRow {
   images: string | null;
   /** JSON, projects only: the plan doc as last read (`PlanDoc`), kept for the archive once the doc is gone. */
   plan: string | null;
+  /** A card the Arbeitsrückschau proposed: what it rests on. */
+  retro: string | null;
   /** JSON: the plan docs (plan references) the landed work of a card that was an idea added. */
   plan_docs: string | null;
   /** JSON, prototypes only: how it ended (`end`, once archived) and its worker's proposal to build the idea on it (`proposal`). */
@@ -229,10 +231,23 @@ export const MIGRATIONS = [
   `ALTER TABLE preferences ADD COLUMN target TEXT;`,
   // bugfix and feature are one kind now: a task
   `UPDATE cards SET kind = 'task' WHERE kind IN ('bugfix', 'feature');`,
+  // the Arbeitsrückschau: friction noted on a card's run, per repository, and the cards it proposed
+  `CREATE TABLE friction (
+     id INTEGER PRIMARY KEY,
+     canvas_id TEXT NOT NULL REFERENCES canvases(id),
+     repo TEXT NOT NULL,
+     card_id TEXT NOT NULL REFERENCES cards(id),
+     at TEXT NOT NULL,
+     what TEXT NOT NULL,
+     cost TEXT NOT NULL,
+     fix TEXT NOT NULL
+   );
+   CREATE INDEX friction_repo ON friction (canvas_id, repo, at);
+   ALTER TABLE cards ADD COLUMN retro TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -347,8 +362,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -370,6 +385,7 @@ export class Store {
           prototype_of: r.prototype_of ?? null,
           prototype: r.prototype ?? null,
           images: r.images ?? null,
+          retro: r.retro ?? null,
           now: now(),
         });
         return id;
@@ -649,6 +665,33 @@ export class Store {
       .all({ c: canvasId, since }) as { at: string; title: string; state: CardState }[];
   }
 
+  // ---------------------------------------------------------------- the Arbeitsrückschau
+
+  addFriction(canvasId: string, repo: string, cardId: string, notes: FrictionNote[]) {
+    const stmt = this.db.query('INSERT INTO friction (canvas_id, repo, card_id, at, what, cost, fix) VALUES ($c, $repo, $card, $at, $what, $cost, $fix)');
+    const at = now();
+    this.db.transaction(() => notes.forEach((n) => stmt.run({ c: canvasId, repo, card: cardId, at, ...n })))();
+  }
+
+  /** The friction noted on a repository's cards after `since` (ISO time; all without), oldest first, with each card's title. */
+  friction(canvasId: string, repo: string, since: string | null): Friction[] {
+    return this.db
+      .query(
+        `SELECT f.card_id AS cardId, COALESCE(c.title, '') AS title, f.at, f.what, f.cost, f.fix FROM friction f JOIN cards c ON c.id = f.card_id
+         WHERE f.canvas_id = $c AND f.repo = $repo AND f.at > $since ORDER BY f.at, f.id`,
+      )
+      .all({ c: canvasId, repo, since: since ?? '' }) as Friction[];
+  }
+
+  /** The cards the Arbeitsrückschau proposed for a repository (`null`: the home repository), oldest first, with what became of them. */
+  retroProposals(canvasId: string, repo: string | null): { title: string; retro: string; state: CardState; dismissed: boolean }[] {
+    return (
+      this.db
+        .query(`SELECT COALESCE(title, '') AS title, retro, COALESCE(state, 'planned') AS state, deleted_at FROM cards WHERE canvas_id = $c AND retro IS NOT NULL AND repo IS $repo ORDER BY created_at, rowid`)
+        .all({ c: canvasId, repo }) as { title: string; retro: string; state: CardState; deleted_at: string | null }[]
+    ).map(({ deleted_at, ...r }) => ({ ...r, dismissed: !!deleted_at && r.state === 'proposal' }));
+  }
+
   // ---------------------------------------------------------------- settings
 
   setting(canvasId: string, key: string): string | null {
@@ -663,6 +706,19 @@ export class Store {
 }
 
 const now = () => new Date().toISOString();
+
+/** One piece of friction in a worker's run: what went wrong, what it cost, what would have prevented it. */
+export interface FrictionNote {
+  what: string;
+  cost: string;
+  fix: string;
+}
+export interface Friction extends FrictionNote {
+  cardId: string;
+  /** The card's title. */
+  title: string;
+  at: string;
+}
 
 interface TalkRow {
   id: number;

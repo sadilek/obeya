@@ -29,7 +29,7 @@ import {
   STATES,
   finished,
 } from '../core/types';
-import type { CardRow, DecisionRow, NewRow, RowUpdate, Store } from './db';
+import type { CardRow, DecisionRow, Friction, FrictionNote, NewRow, RowUpdate, Store } from './db';
 import type { Images } from './images';
 
 /** What Obeya keeps about a card's pull request; `url` is null until the worker opened it. */
@@ -312,6 +312,41 @@ export class Board {
     ]);
     this.changed();
     return toItems([row!], [], this.home)[0]!;
+  }
+
+  /**
+   * A card the Arbeitsrückschau proposes for a repository: it waits as a proposal like an agent's,
+   * in a free spot, with what it rests on (`basis`).
+   */
+  proposeRetro(repo: string, p: { title: string; body: string; basis: string }): Item {
+    const [row] = this.store.insert([
+      {
+        canvas_id: this.canvas.id,
+        kind: 'task',
+        state: 'proposal',
+        title: p.title.slice(0, 200),
+        body: p.body.slice(0, 20000),
+        ...this.freeSpot(),
+        repo: repo !== this.home ? repo : null,
+        retro: p.basis.slice(0, 2000),
+      },
+    ]);
+    this.changed();
+    return toItems([row!], [], this.home)[0]!;
+  }
+
+  /** The cards the Arbeitsrückschau proposed for a repository, with what became of them. */
+  retroProposals(repo: string) {
+    return this.store.retroProposals(this.canvas.id, repo !== this.home ? repo : null);
+  }
+
+  addFriction(repo: string, cardId: string, notes: FrictionNote[]) {
+    if (notes.length) this.store.addFriction(this.canvas.id, repo, cardId, notes);
+  }
+
+  /** The friction noted on a repository's cards after `since` (all without), oldest first. */
+  friction(repo: string, since: string | null): Friction[] {
+    return this.store.friction(this.canvas.id, repo, since);
   }
 
   decide(d: { project_id: string | null; card_id: string; question: string; answer: string; by: 'owner' | 'project' | 'koordinator' }) {
@@ -965,6 +1000,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         ...(r.prototype_of ? { prototypeOf: r.prototype_of, ...prototypeOf(r) } : {}),
         ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
+        ...(r.retro ? { retro: r.retro } : {}),
       });
       continue;
     }

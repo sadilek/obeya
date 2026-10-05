@@ -480,6 +480,46 @@ the owner's language (`src/core/locale.ts`).
   request); until then the rule applies to no agent, and afterwards through the CLAUDE.md alone. The Koordinator
   button counts open proposals (violet, beside the grey count of queued cards); they do not
   count among the cards that need the owner and do not show on cards.
+- **Arbeitsrückschau** (`src/server/work-retro.ts`, `src/server/transcript.ts`) — Obeya looks back
+  at how the workers worked, to make future runs cheaper: where a worker went wrong and corrected
+  itself (a command with wrong flags, a script that failed and was rewritten, a long search for how
+  to start something), above all the same detour on several cards. A feature of its own beside the
+  Rückschau, with its parts (a read-only reading session, a count in the canvas's settings,
+  proposals on the usual way), but a different source (the workers' transcripts, not the owner's
+  words), beat (finished cards, not the owner's inputs), place (the repository of the friction, not
+  the home checkout) and result (feature cards, not rules). Two stages:
+  - When a card's work ends (landed, closed without a change, a prototype discarded or built, or a
+    card deleted with work not finished), Obeya draws an excerpt from the transcripts of its runs
+    without a model. The Agent SDK keeps a session's transcript at
+    `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<cwd, non-alphanumerics as „-“>/<session id>.jsonl`,
+    after the workspace has gone too; Obeya looks there first and then in every directory, as the
+    naming may change. A card's runs are its `session_id` and the earlier ones in its log: a start
+    from scratch (and a session that replaces another) logs the session before as „Der frühere
+    Lauf (Sitzung …) bleibt für die Arbeitsrückschau erhalten.“ The excerpt holds the failed tool
+    calls with their error (start and end, about 800 characters), similar calls in a row (a failed
+    one and its correction; a command three times or more), files written whole more than once,
+    the worker's words before and after each, and how many tool calls the run took and after how
+    many it first changed a file. Calls cut off by a restart (exit code 137) or stopped by the
+    owner do not count; subagents' lines are left out. A missing file or a format it cannot read
+    gives no excerpt and no error. A short read-only session in the repository's checkout (Sonnet,
+    low effort) makes 0–3 friction notes of a non-empty excerpt (what went wrong, what it cost,
+    what would have prevented it), stored per repository and card in `friction`; an empty excerpt
+    gets no session.
+  - Every 10 finished cards of a repository (counted when work ends, whether or not they had
+    friction; a card that never ran does not count; the setting `work_retro_cards:<repo>`), after
+    the notes of the card that completed the count, the retrospective runs: one read-only session
+    in that repository's checkout, so it sees its CLAUDE.md, scripts and skills, reads the notes
+    since the last one (`work_retro_since:<repo>`) card by card, with the proposals of earlier
+    retrospectives: those the owner dismissed, so it does not repeat them, and those waiting or
+    taken. It proposes at most three things, each resting on friction on at least two cards (tags
+    the tool checks): a feature card (a script, a skill, a fix to a tool) that waits as a proposal
+    in a free spot, with a sentence on the cards it rests on (`retro` on the card, shown under the
+    title as „Aus der Arbeitsrückschau: …“ and in its body), or a line for the repository's
+    CLAUDE.md, which goes the way of the Rückschau's rules (a proposal for „CLAUDE.md von <repo>“,
+    then the card „CLAUDE.md ergänzen“). Nothing is created silently and nothing starts by itself;
+    skills of the user (`~/.claude/skills`) are out of scope. The owner can ask the Koordinator
+    for it at once („Mach eine Arbeitsrückschau für Acme“, the action `work_retro`): it reads the
+    notes since the last one, the count starts again, and the owner hears what came of it.
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
   audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
   loaded and transcribes in German with the canvas's titles as vocabulary
@@ -497,7 +537,7 @@ the owner's language (`src/core/locale.ts`).
   early would keep the browser's microphone indicator on all the time. A quick, low-effort Koordinator turn reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
-  approve, accept, dismiss, cut, stop, remember; on ideas: discuss, build, plan doc, prototype,
+  approve, accept, dismiss, cut, stop, remember, Arbeitsrückschau; on ideas: discuss, build, plan doc, prototype,
   park, drop; on prototypes: build on it, discard),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
@@ -802,7 +842,7 @@ card events (the log, with an error code where the UI words it and the owner's s
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
 reply, the screenshots that came with it, the open card, whether it was taken back; a looked-up
-question, the card it is about, its answer and who gave it), per-canvas settings (the home repository; the Rückschau's count and when its history begins).
+question, the card it is about, its answer and who gave it), per-canvas settings (the home repository; the Rückschau's count and when its history begins; per repository the Arbeitsrückschau's count and when it last ran), the friction noted on each card's runs (per repository), and on a card the Arbeitsrückschau proposed what it rests on.
 
 Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
 (`canvases.json`), Acme's shared demo site and its Cloudflare credentials (`team-share/`).
@@ -838,6 +878,14 @@ the repository; the copy on the project is only for the archive).
   (2026-10-02): the owner wants to see every learned rule before it applies. Open proposals count
   on the Koordinator button only, not among the cards that need the owner nor on the cards. The
   Rückschau runs after about 20 inputs, neither daily nor only on request.
+- The Arbeitsrückschau learns from the workers' transcripts, in two stages (2026-10-05): an excerpt
+  drawn without a model when a card's work ends, made into a few friction notes, and a
+  retrospective over the notes of about ten cards in the repository's checkout. Rejected: building
+  it into the Rückschau (the card log's tool lines have no results, and source, beat, place and
+  result all differ), the worker reporting its own detours at the hand-over (patchy, and it makes
+  every hand-over longer), and raw transcripts in the retrospective (far too much context). It
+  runs on its beat and on the owner's word; its results are proposals in the repository of the
+  friction, never cards created or started silently.
 - Preferences hold only how agents work with the owner through Obeya; rules about a repository,
   taste in code that holds in every repository included, go into its CLAUDE.md (2026-10-02). At
   first the learner drew no line, and repository facts landed among the preferences, unversioned

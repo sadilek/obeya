@@ -432,31 +432,7 @@ export class Koordinator {
 
   /** A reading session of the learner's, read-only: it ends with its turn, or once a tool calls `finish`. */
   private read(cwd: string, system: string, tools: (finish: (r: string) => string) => AgentTool[], brief: string): Promise<void> {
-    return new Promise((resolve) => {
-      let done = false;
-      const finish = (r: string) => {
-        if (!done) {
-          done = true;
-          resolve();
-        }
-        return r;
-      };
-      const session = this.o.runtime.start(
-        {
-          cwd,
-          readOnly: true,
-          system,
-          tools: tools(finish),
-          onEvent: (e) => {
-            if (e.type === 'idle' || e.type === 'error') {
-              session.close();
-              finish('');
-            }
-          },
-        },
-        brief,
-      );
-    });
+    return readSession(this.o.runtime, { cwd, system, tools, brief });
   }
 
   /** What the learner reads an input in: the card's text, the agent's last message before it, what the owner said in the last days. */
@@ -1027,6 +1003,43 @@ Read what you need in the repository (you cannot change files). Then either call
 - keep: when the card is small, or its parts cannot run apart without stepping on each other.
 Do not add scope the card does not ask for.
 `.trim();
+
+/**
+ * A read-only session that reads `brief` and answers through its tools: it ends with its turn, or
+ * once a tool calls `finish`. The learner, the Rückschau and the Arbeitsrückschau read this way.
+ */
+export function readSession(
+  runtime: AgentRuntime,
+  o: { cwd: string; system: string; tools: (finish: (r: string) => string) => AgentTool[]; brief: string; model?: string; effort?: 'low' | 'medium' | 'high' },
+): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (r: string) => {
+      if (!done) {
+        done = true;
+        resolve();
+      }
+      return r;
+    };
+    const session = runtime.start(
+      {
+        cwd: o.cwd,
+        readOnly: true,
+        system: o.system,
+        tools: o.tools(finish),
+        ...(o.model ? { model: o.model } : {}),
+        ...(o.effort ? { effort: o.effort } : {}),
+        onEvent: (e) => {
+          if (e.type === 'idle' || e.type === 'error') {
+            session.close();
+            finish('');
+          }
+        },
+      },
+      o.brief,
+    );
+  });
+}
 
 /** A card the Koordinator holds back or is judging, before it starts. */
 const waits = (i: Item) => i.state === 'planned' && !!i.queue && ('behind' in i.queue || 'checking' in i.queue);

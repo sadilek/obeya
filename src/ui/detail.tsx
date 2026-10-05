@@ -157,6 +157,7 @@ export function Detail(p: Props) {
         <>
           <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} />
           {p.from && <p className="hint">{t.proposedBy(plain(p.from.title))}</p>}
+          {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
           <div className="actions">
             <button className="btn primary" onClick={() => act({ action: 'accept' }, { close: true, ack: t.accepted })}>
               {t.accept}

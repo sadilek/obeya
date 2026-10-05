@@ -71,6 +71,8 @@ export interface Item {
   share?: Share;
   /** The card it comes from: a proposal's source, a prototype's idea, or the card a follow-up follows up on. */
   from?: string;
+  /** A card the Arbeitsrückschau proposed: the cards and the friction on them it rests on. */
+  retro?: string;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
   repo: string;
   branch?: string;

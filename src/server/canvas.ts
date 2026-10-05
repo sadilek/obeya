@@ -7,7 +7,7 @@ import { pickAdapter } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
-import type { CanvasConfig, CardAction, CardPatch, ConfigProblemCode, Item, RepoConfig, RepoRef } from '../core/types';
+import { type CanvasConfig, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -16,6 +16,7 @@ import { Explorers } from './explorers';
 import { Images, MAX_IMAGES } from './images';
 import type { Forge } from './forge';
 import { Koordinator } from './koordinator';
+import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
 import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
@@ -64,6 +65,8 @@ export interface RepoRuntime {
 export class CanvasRuntime {
   readonly board: Board;
   readonly koordinator: Koordinator;
+  /** The Arbeitsrückschau: friction in the workers' runs, made into proposals. */
+  readonly workRetro: WorkRetro;
   readonly commander: Commander;
   readonly explorers: Explorers;
   /** Screenshots the owner attaches to what they write. */
@@ -99,6 +102,11 @@ export class CanvasRuntime {
 
     // the Koordinator needs the workers, and the workers ask it: it is set right after them
     let koordinator!: Koordinator;
+    const workRetro = (this.workRetro = new WorkRetro({
+      board,
+      runtime: deps.runtime,
+      pathFor: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).info.path,
+    }));
     config.repos.forEach((rc, i) => {
       const info = infos[i]!;
       const adapter = adapters[i]!;
@@ -136,6 +144,7 @@ export class CanvasRuntime {
         onPrototypeAnswer: (prototype, question, answer, by) => this.prototypeAnswered(prototype, question, answer, by),
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
         imageFiles,
+        onWorkEnded: (cardId, workspace) => workRetro.ended(cardId, workspace),
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
         ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       });
@@ -356,6 +365,8 @@ export class CanvasRuntime {
     if (prototype_of) return this.repoOf(cardId).workers.endPrototype(cardId, 'discarded');
     if (state === 'working' || state === 'waiting' || (landed && workspace)) this.repoOf(cardId).workers.stop(cardId);
     if (state === 'idea') this.explorers.close(cardId);
+    // work thrown away ended too (finished work counted when it landed)
+    else if (!state || !finished(state)) this.workRetro.ended(cardId, workspace);
     this.board.remove(cardId);
   }
 
@@ -580,6 +591,8 @@ export class CanvasRuntime {
         return this.deps.config?.save(c.canvases);
       case 'remember':
         return this.remember(c.text, c);
+      case 'workRetro':
+        return this.workRetro.now(c.repo);
     }
   }
 

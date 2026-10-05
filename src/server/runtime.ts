@@ -41,6 +41,8 @@ export interface AgentSpec {
   env?: Record<string, string>;
   /** How much the model thinks; low for quick turns such as reading a spoken command. */
   effort?: 'low' | 'medium' | 'high';
+  /** The model, when not the default: a smaller one for small, frequent jobs. */
+  model?: string;
   /**
    * Asked after every tool step: what changed since the session's instructions were built, for the
    * agent to read with that step's result without being stopped; nothing when nothing did.
@@ -94,6 +96,7 @@ export const sdkRuntime: AgentRuntime = {
           : { allowedTools: ownTools, permissionMode: spec.permissionMode ?? 'auto' }),
         ...(spec.resume ? { resume: spec.resume } : {}),
         ...(spec.effort ? { effort: spec.effort } : {}),
+        ...(spec.model ? { model: spec.model } : {}),
         env: { ...cleanEnv(), ...spec.env },
         hooks: {
           PreToolUse: [{ matcher: 'Bash', hooks: [async (input) => refuseForegroundWait(input)] }],

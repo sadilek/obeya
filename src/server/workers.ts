@@ -15,6 +15,7 @@ import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtim
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
 import type { PrState } from './board';
 import { parsePrUrl } from './forge';
+import { earlierRun } from './work-retro';
 
 /** Who answers a worker's question before the owner does, and how. */
 export type Advisor = { by: Adviser; ask: (q: Question) => Promise<Reply> };
@@ -50,6 +51,8 @@ export interface WorkerOptions {
   restartsFor?: (landed: Landed) => boolean;
   /** Added to every worker's environment: where Obeya is (`OBEYA_URL`), for a demo's narration. */
   env?: Record<string, string>;
+  /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
+  onWorkEnded?: (cardId: string, workspace: string | null) => void;
 }
 
 /** What is stored while landed work's worker finishes (`CardRow.landed`). */
@@ -142,6 +145,8 @@ export class Workers {
       throw e;
     }
     this.bump(card.id);
+    // the run before is not resumed, but the Arbeitsrückschau still reads it
+    if (row.session_id) this.o.board.log(card.id, 'state', 'obeya', `Von vorn gestartet. ${earlierRun(row.session_id)}`);
     this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr: null, approved_at: null });
     this.o.board.log(card.id, 'state', 'obeya', `Agent gestartet auf ${branch}.`);
     this.launch(card.id, this.briefing(card, branch, !!row.branch), undefined, this.taskImages(card));
@@ -307,6 +312,7 @@ export class Workers {
     }
     this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, ...(row.state === 'waiting' ? { state: row.landed ? landedState(row.landed) : 'live', need: null, detail: null } : {}) });
     this.o.board.workDone(cardId);
+    this.o.onWorkEnded?.(cardId, row.workspace);
   }
 
   /** The plan docs the card's branch adds, as plan references of the canvas. */
@@ -327,6 +333,7 @@ export class Workers {
   endPrototype(cardId: string, end: 'discarded' | 'built', by: 'owner' | 'obeya' = 'owner') {
     const card = this.card(cardId);
     if (!card.prototypeOf) throw new BadRequest('notPrototype', 'not a prototype');
+    this.o.onWorkEnded?.(cardId, this.o.board.row(cardId).workspace);
     this.end(cardId);
     this.bump(cardId);
     try {
@@ -537,9 +544,13 @@ export class Workers {
     if (e.type === 'text' || e.type === 'tool') this.resumed(cardId, live);
     if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.acted = true;
     switch (e.type) {
-      case 'session':
+      case 'session': {
+        // a session that replaces another (none resumed, say) keeps the one before for the Arbeitsrückschau
+        const before = this.o.board.row(cardId).session_id;
+        if (before && before !== e.id) this.o.board.log(cardId, 'state', 'obeya', `Neue Sitzung. ${earlierRun(before)}`);
         this.o.board.work(cardId, { session_id: e.id });
         break;
+      }
       case 'text':
         live.lastText = e.text;
         // after handing over, the worker's closing words repeat what the card already shows

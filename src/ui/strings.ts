@@ -86,6 +86,7 @@ export const t = {
   summary: 'Zusammenfassung des Agenten',
   proposal: 'Vorschlag',
   proposedBy: (title: string) => `Vorgeschlagen vom Agenten der Aufgabe „${title}“.`,
+  proposedByRetro: (basis: string) => `Aus der Arbeitsrückschau: ${basis}`,
   followUpOf: (title: string) => `Kommt von der Aufgabe „${title}“.`,
   task: 'Auftrag',
   log: 'Verlauf',
