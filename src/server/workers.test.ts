@@ -277,6 +277,49 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toContain('nicht angemeldet');
   });
 
+  test('a worker the usage limit stopped goes on by itself once the limit lifts', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 30 });
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('report', { status: 'Exporter steht' });
+    runtime.last.emit({ type: 'text', text: 'Ich schreibe die Tests.' });
+    const hit = "You've hit your session limit · resets 2:40pm (Europe/Berlin)";
+    runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() } });
+    runtime.last.emit({ type: 'idle' });
+    const sent = runtime.last.inbox.length;
+    // no nudge, no question to the owner: the card waits for the limit, and a restart need not wait for it
+    expect(state(c.id)).toBe('working');
+    expect(workers.busy()).toBe(false);
+    expect(board.item(c.id)!.statusLine).toStartWith('Nutzungslimit · weiter um ');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya' });
+    expect(board.events(c.id).at(-1)!.text).toContain('automatisch weiter');
+    await Bun.sleep(60);
+    expect(runtime.last.inbox.length).toBe(sent + 1);
+    expect(runtime.last.inbox.at(-1)).toContain('usage limit');
+    expect(workers.busy()).toBe(true);
+    // the limit still holds: it waits again, and its status line stays what it was before
+    runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() + 10_000 } });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('working');
+    runtime.last.emit({ type: 'text', text: 'Weiter mit den Tests.' });
+    expect(board.item(c.id)!.statusLine).toBe('Exporter steht');
+    workers.stop(c.id);
+  });
+
+  test('a worker the usage limit stopped is not woken once stopped', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 10 });
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() } });
+    runtime.last.emit({ type: 'idle' });
+    const session = runtime.last;
+    const sent = session.inbox.length;
+    workers.stop(c.id);
+    await Bun.sleep(40);
+    expect(session.inbox.length).toBe(sent);
+    expect(runtime.sessions.length).toBe(1);
+  });
+
   test('a turn in which the worker did nothing does not use up its nudge', async () => {
     workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, backgroundGrace: 5 });
     const c = manual();

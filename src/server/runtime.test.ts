@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
-import { BOUNDED_WAITS, backgroundWork, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure } from './runtime';
+import { BOUNDED_WAITS, backgroundWork, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure, usageLimit } from './runtime';
 
 test('background work counts renders, test runs and watchers, not housekeeping', () => {
   expect(
@@ -89,4 +89,16 @@ test('a turn that failed on the API counts as failed, with its error', () => {
   expect(resultFailure(result({ subtype: 'error_max_turns', is_error: true, errors: [] }))).toBe('error_max_turns');
   expect(failureReason('Not logged in · Please run /login')).toContain('nicht angemeldet');
   expect(failureReason('overloaded')).toContain('overloaded');
+});
+
+test('a turn the usage limit stopped says when the limit lifts', () => {
+  const hit = "You've hit your session limit · resets 2:40pm (Europe/Berlin)";
+  const rejected = { status: 'rejected', resetsAt: 1_791_211_200, rateLimitType: 'five_hour' } as const;
+  expect(usageLimit(hit, true, rejected)).toEqual({ resetsAt: 1_791_211_200_000 });
+  // refused, but the limits reported say nothing of when
+  expect(usageLimit(hit, true, undefined)).toEqual({});
+  // a CLI that reports neither: the message alone
+  expect(usageLimit(hit, false, undefined)).toEqual({});
+  expect(usageLimit('overloaded', false, { status: 'allowed' })).toBeUndefined();
+  expect(usageLimit('Not logged in · Please run /login', false, undefined)).toBeUndefined();
 });

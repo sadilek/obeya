@@ -1,6 +1,16 @@
 // Agent sessions behind a small interface, so the orchestration can be tested without a model.
 
-import { createSdkMcpServer, type HookInput, type HookJSONOutput, type PermissionMode, query, type SDKResultMessage, type SDKUserMessage, tool } from '@anthropic-ai/claude-agent-sdk';
+import {
+  createSdkMcpServer,
+  type HookInput,
+  type HookJSONOutput,
+  type PermissionMode,
+  query,
+  type SDKRateLimitInfo,
+  type SDKResultMessage,
+  type SDKUserMessage,
+  tool,
+} from '@anthropic-ai/claude-agent-sdk';
 import { readFileSync } from 'node:fs';
 import type { z } from 'zod';
 import { mediaType } from './images';
@@ -22,7 +32,11 @@ export type AgentEvent =
    * background tasks still running: when one ends, the session wakes itself for a new turn.
    */
   | { type: 'idle'; background?: number }
-  | { type: 'error'; message: string };
+  /**
+   * The turn failed. `limit` when the account's usage limit stopped it (the five-hour session
+   * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when.
+   */
+  | { type: 'error'; message: string; limit?: { resetsAt?: number } };
 
 export interface AgentSpec {
   cwd: string;
@@ -106,11 +120,17 @@ export const sdkRuntime: AgentRuntime = {
       },
     });
     let background = 0;
+    // the account's usage limits as last reported, and whether the turn's request was refused for one
+    let limits: SDKRateLimitInfo | undefined;
+    let limited = false;
     const done = (async () => {
       try {
         for await (const m of q) {
           if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id });
           else if (m.type === 'system' && m.subtype === 'background_tasks_changed') background = backgroundWork(m.tasks);
+          else if (m.type === 'rate_limit_event') limits = m.rate_limit_info;
+          // an API error the CLI words as the agent's reply; the turn's result reports it
+          else if (m.type === 'assistant' && m.error) limited ||= m.error === 'rate_limit';
           else if (m.type === 'assistant' && !m.parent_tool_use_id) {
             for (const block of m.message.content) {
               if (block.type === 'text' && block.text.trim()) spec.onEvent({ type: 'text', text: block.text });
@@ -118,7 +138,9 @@ export const sdkRuntime: AgentRuntime = {
             }
           } else if (m.type === 'result') {
             const failed = resultFailure(m);
-            if (failed) spec.onEvent({ type: 'error', message: failed });
+            const limit = failed ? usageLimit(failed, limited, limits) : undefined;
+            limited = false;
+            if (failed) spec.onEvent({ type: 'error', message: failed, ...(limit ? { limit } : {}) });
             spec.onEvent({ type: 'idle', background });
           }
         }
@@ -144,6 +166,18 @@ export const sdkRuntime: AgentRuntime = {
 export function resultFailure(m: SDKResultMessage): string | undefined {
   if (m.subtype === 'success') return m.is_error ? m.result.trim() || 'error' : undefined;
   return m.errors?.filter((e) => e.trim()).join('; ') || m.subtype;
+}
+
+/**
+ * Whether a failed turn hit the account's usage limit, and when that lifts: the request was refused
+ * for it, the limits last reported say so, or (from a CLI that reports neither) the message does
+ * („You've hit your session limit · resets 2:40pm“).
+ */
+export function usageLimit(failure: string, refused: boolean, limits: SDKRateLimitInfo | undefined): { resetsAt?: number } | undefined {
+  const rejected = limits?.status === 'rejected';
+  if (!refused && !rejected && !/\bhit your .*limit\b/i.test(failure)) return undefined;
+  // the API gives seconds
+  return rejected && limits.resetsAt ? { resetsAt: limits.resetsAt * 1000 } : {};
 }
 
 /** A session's failure in German words for the owner. */

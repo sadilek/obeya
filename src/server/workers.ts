@@ -46,6 +46,8 @@ export interface WorkerOptions {
   onPrototypeAnswer?: (prototype: Item, question: string, answer: string, by: 'owner' | Adviser) => void;
   /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
   backgroundGrace?: number;
+  /** How long after a usage limit lifts the worker goes on (a minute: the reset time is rounded). */
+  limitMargin?: number;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
   imageFiles?: (ids?: string[]) => string[];
   /** Whether Obeya starts again for work that landed: it runs from this repository's checkout and the work changed code. */
@@ -82,8 +84,12 @@ interface Live {
   failed?: string;
   /** Between a message and the end of the turn it starts: a restart now would cut the worker off. */
   busy: boolean;
-  /** Set while an ended turn waits for the worker's background work to wake it. */
+  /** Set while an ended turn waits for the worker's background work to wake it, or for a usage limit to lift. */
   waiting?: ReturnType<typeof setTimeout>;
+  /** When the usage limit that stopped the worker lifts (or, not knowing, when to try again); gone once it works. */
+  limited?: number;
+  /** The card's status line from before the worker waited for the limit, back once it works again. */
+  statusBefore?: string | null;
   /** Whether the card's open question is the worker having stopped, not a question it asked. */
   stalled: boolean;
   /** Whether the worker has heard of the restart that is due, so that it pauses for it. */
@@ -100,8 +106,14 @@ export interface DueRestart {
 
 /** A render or a test suite finishes well within this; a turn that waits longer counts as ended. */
 const BACKGROUND_GRACE = 10 * 60_000;
+/** A usage limit that does not say when it lifts is tried again after this. */
+const LIMIT_RETRY = 15 * 60_000;
+/** How the card's status line starts while its worker waits for a usage limit. */
+const LIMIT_STATUS = 'Nutzungslimit';
 /** Said of the owner's words when they came through speech recognition. */
 export const SPOKEN = 'spoken, so speech recognition may have misheard words';
+
+const LIMIT_LIFTED = 'The usage limit that stopped your last turn has reset. Go on where you stopped.';
 
 const END_TURN = 'Recorded. End your turn now without further work; the reply arrives as your next message.';
 
@@ -552,6 +564,7 @@ export class Workers {
     live.waiting = undefined;
     if (e.type === 'text' || e.type === 'tool') {
       this.resumed(cardId, live);
+      this.unlimited(cardId, live);
       live.failed = undefined;
     }
     if (e.type === 'text' || e.type === 'tool' || e.type === 'error') live.acted = true;
@@ -572,6 +585,11 @@ export class Workers {
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input));
         break;
       case 'error':
+        if (e.limit) {
+          live.limited = e.limit.resetsAt ? Math.max(e.limit.resetsAt, Date.now()) + (this.o.limitMargin ?? 60_000) : Date.now() + LIMIT_RETRY;
+          this.o.board.log(cardId, 'state', 'obeya', `${e.message}. ${e.limit.resetsAt ? `Der Agent arbeitet ${when(live.limited)} automatisch weiter.` : `Obeya versucht es ${when(live.limited)} noch einmal.`}`);
+          break;
+        }
         live.failed = e.message;
         this.o.board.log(cardId, 'error', 'obeya', e.message);
         break;
@@ -631,6 +649,7 @@ export class Workers {
       this.o.board.log(cardId, 'state', 'obeya', this.restart.reason === 'stop' ? 'Pausiert, bis Obeya wieder läuft.' : 'Pausiert bis zum Neustart von Obeya.');
       return;
     }
+    if (live.limited) return this.waitForLimit(cardId, live, live.limited);
     if (!acted && !live.nudged) {
       // the worker's own turn is still to come; should it not, it counts as ended after a while
       // (silence after a nudge, though, is the worker having stopped)
@@ -662,6 +681,39 @@ export class Workers {
       live.busy = false;
       if (this.live.get(cardId) === live) this.turnEnded(cardId, live, 0, true);
     }, this.o.backgroundGrace ?? BACKGROUND_GRACE);
+  }
+
+  /**
+   * The usage limit stopped the worker: it goes on by itself once the limit lifts. Meanwhile it is
+   * not busy (a restart need not wait for it, and resumes it into the same limit); a message from
+   * the owner reaches it at once and finds out whether the limit still holds.
+   */
+  private waitForLimit(cardId: string, live: Live, at: number) {
+    live.busy = false;
+    if (live.statusBefore === undefined) {
+      // after a restart the line may still be the one this shows
+      const line = this.o.board.row(cardId).status_line;
+      live.statusBefore = line?.startsWith(LIMIT_STATUS) ? null : line;
+    }
+    this.o.board.work(cardId, { status_line: `${LIMIT_STATUS} · weiter ${when(at)}` });
+    // a timer runs at most about 24 days
+    live.waiting = setTimeout(() => {
+      live.waiting = undefined;
+      if (this.live.get(cardId) !== live) return;
+      const state = this.o.board.item(cardId)?.state;
+      if (state !== 'working' && state !== 'inPr') return;
+      this.deliver(cardId, LIMIT_LIFTED);
+    }, Math.min(Math.max(0, at - Date.now()), 2 ** 31 - 1));
+  }
+
+  /** A worker that waited for the usage limit works again: its status line is back. */
+  private unlimited(cardId: string, live: Live) {
+    live.limited = undefined;
+    const before = live.statusBefore;
+    live.statusBefore = undefined;
+    if (before !== undefined) this.o.board.work(cardId, { status_line: before });
+    // it waited before a restart
+    else if (this.o.board.row(cardId).status_line?.startsWith(LIMIT_STATUS)) this.o.board.work(cardId, { status_line: null });
   }
 
   /** A worker that went to the owner for having stopped and then works on by itself takes the question back. */
@@ -1080,5 +1132,12 @@ export function describeTool(name: string, input: Record<string, unknown>): stri
 
 /** The state a finished card goes back to after a question: `done` when nothing landed, else `live`. */
 const landedState = (landed: string) => ((JSON.parse(landed) as LandedState).unchanged ? 'done' : 'live');
+
+/** When a time lies, in the owner's words: „um 14:40“, or „am 7.10. um 14:40“ on another day. */
+function when(at: number): string {
+  const d = new Date(at);
+  const time = `um ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+  return d.toDateString() === new Date().toDateString() ? time : `am ${d.getDate()}.${d.getMonth() + 1}. ${time}`;
+}
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
