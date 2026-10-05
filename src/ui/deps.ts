@@ -14,9 +14,11 @@ export interface Deps {
 
 const behind = (i: Item) => (i.queue && 'behind' in i.queue ? i.queue.behind : []);
 
-/** The waits around `id` among `items`, both ways; undefined when there are none. */
+/** The waits around `id` among `items`, both ways; undefined when there are none or `id` is gone
+ *  (a card archived under the pointer stays hovered). */
 export function depsOf(id: string, items: Item[]): Deps | undefined {
   const byId = new Map(items.map((i) => [i.id, i]));
+  if (!byId.has(id)) return undefined;
   const waiters = new Map<string, string[]>();
   for (const i of items) for (const b of behind(i)) if (byId.has(b)) waiters.set(b, [...(waiters.get(b) ?? []), i.id]);
   const edges = new Map<string, [string, string]>();

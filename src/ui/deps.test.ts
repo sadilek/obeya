@@ -33,6 +33,10 @@ test('a card without waits has none, and cards gone from the canvas are left out
   expect(depsOf('F', [card('F', 'gone')])).toBeUndefined();
 });
 
+test('a hovered card gone from the canvas, archived under the pointer, has none', () => {
+  expect(depsOf('C', items.filter((i) => i.id !== 'C'))).toBeUndefined();
+});
+
 test('a loop ends', () => {
   const d = depsOf('X', [card('X', 'Y'), card('Y', 'X')])!;
   expect([...d.before]).toEqual(['Y']);
