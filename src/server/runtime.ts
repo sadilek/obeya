@@ -39,7 +39,7 @@ export interface AgentSpec {
   permissionMode?: PermissionMode;
   /** Added to the agent's environment (Obeya's own, cleaned). */
   env?: Record<string, string>;
-  /** How much the model thinks; low for quick turns such as reading a spoken command. */
+  /** How much the model thinks; low for quick, small jobs. */
   effort?: 'low' | 'medium' | 'high';
   /** The model, when not the default: a smaller one for small, frequent jobs. */
   model?: string;
