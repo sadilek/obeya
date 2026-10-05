@@ -46,7 +46,7 @@ export interface WorkerOptions {
   onPrototypeAnswer?: (prototype: Item, question: string, answer: string, by: 'owner' | Adviser) => void;
   /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
   backgroundGrace?: number;
-  /** How long after a usage limit lifts the worker goes on (a minute: the reset time is rounded). */
+  /** How long after a usage limit lifts the worker goes on, so that clocks a little apart do not matter. */
   limitMargin?: number;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
   imageFiles?: (ids?: string[]) => string[];
@@ -108,6 +108,8 @@ export interface DueRestart {
 const BACKGROUND_GRACE = 10 * 60_000;
 /** A usage limit that does not say when it lifts is tried again after this. */
 const LIMIT_RETRY = 15 * 60_000;
+/** A usage limit that should have lifted already is tried again after this. */
+const LIMIT_AGAIN = 60_000;
 /** How the card's status line starts while its worker waits for a usage limit. */
 const LIMIT_STATUS = 'Nutzungslimit';
 /** Said of the owner's words when they came through speech recognition. */
@@ -586,7 +588,9 @@ export class Workers {
         break;
       case 'error':
         if (e.limit) {
-          live.limited = e.limit.resetsAt ? Math.max(e.limit.resetsAt, Date.now()) + (this.o.limitMargin ?? 60_000) : Date.now() + LIMIT_RETRY;
+          const now = Date.now();
+          const reset = e.limit.resetsAt;
+          live.limited = !reset ? now + LIMIT_RETRY : reset > now ? reset + (this.o.limitMargin ?? 10_000) : now + LIMIT_AGAIN;
           this.o.board.log(cardId, 'state', 'obeya', `${e.message}. ${e.limit.resetsAt ? `Der Agent arbeitet ${when(live.limited)} automatisch weiter.` : `Obeya versucht es ${when(live.limited)} noch einmal.`}`);
           break;
         }

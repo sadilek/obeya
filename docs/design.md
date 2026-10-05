@@ -247,8 +247,9 @@ SDK reports an error result, e.g. Claude not logged in on the machine), the ques
 in words for the owner instead. A turn the account's usage limit stopped (the five-hour session
 limit, a weekly one: the SDK's `rate_limit_event` says `rejected` and when it resets, the API error
 is `rate_limit`) is neither nudged nor a question: the card's log says when the worker goes on, its
-status line reads „Nutzungslimit · weiter um 14:41“, and a minute after the reset Obeya tells the
-worker to go on where it stopped (without a reset time it tries again every 15 minutes). Meanwhile
+status line reads „Nutzungslimit · weiter um 14:40“, and ten seconds after the reset Obeya tells
+the worker to go on where it stopped (a limit that holds past its reset time is tried again after
+a minute, one without a reset time every 15 minutes). Meanwhile
 the worker is not busy, so a restart need not wait for it (the resumed session runs into the limit
 again and waits anew), and a note from the owner reaches it at once. Once it works again its
 status line from before is back. A turn that ends while the worker's own

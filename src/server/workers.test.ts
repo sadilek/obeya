@@ -284,7 +284,7 @@ describe('workers', () => {
     runtime.last.call('report', { status: 'Exporter steht' });
     runtime.last.emit({ type: 'text', text: 'Ich schreibe die Tests.' });
     const hit = "You've hit your session limit · resets 2:40pm (Europe/Berlin)";
-    runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() } });
+    runtime.last.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() + 20 } });
     runtime.last.emit({ type: 'idle' });
     const sent = runtime.last.inbox.length;
     // no nudge, no question to the owner: the card waits for the limit, and a restart need not wait for it
@@ -310,7 +310,7 @@ describe('workers', () => {
     workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 10 });
     const c = manual();
     workers.start(c.id);
-    runtime.last.emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() } });
+    runtime.last.emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() + 20 } });
     runtime.last.emit({ type: 'idle' });
     const session = runtime.last;
     const sent = session.inbox.length;
