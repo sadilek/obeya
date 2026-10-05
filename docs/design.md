@@ -645,9 +645,10 @@ the owner's language (`src/core/locale.ts`).
   `tts.py` synthesises the first take of every clip before it hears any: parallel renders
   synthesise turn by turn through Obeya, then listen back one after the other, with one voice
   model and one Whisper in memory; retakes go through Obeya while the lock is held. Without
-  listening back such a render takes no lock at all. The owner's clone is such a command: it
-  runs in the owner's voice project (Stimmzwilling, `scripts/demo_voice.py`) and never leaves the
-  machine. Voices are not labelled as generated, a clone included: the whole demo is generated,
+  listening back such a render takes no lock at all. The owner's clone is Obeya's Qwen3 voice
+  with the reference clip of the owner's voice project (Stimmzwilling,
+  `data/voice/derived/reference4_A.wav` with its transcript), so Obeya holds it across renders;
+  it never leaves the machine. Voices are not labelled as generated, a clone included: the whole demo is generated,
   and that is clear from where it is shown. The person follows from "Das ist meine eigene
   Stimme" in the settings: the first person only in the owner's own voice, otherwise the
   narration presents the work without "I". `node lib/settings.ts` prints what applies, for the
