@@ -65,6 +65,8 @@ export const t = {
   noChangeHint: 'Keine Änderung am Code: Beenden schließt die Karte ab, ohne Pull Request.',
   accept: 'Übernehmen und starten',
   acceptOnly: 'Übernehmen',
+  acceptIdea: 'Übernehmen und besprechen',
+  acceptAsTask: 'Als Aufgabe übernehmen',
   dismiss: 'Verwerfen',
   send: 'Senden',
   compose: {
@@ -86,6 +88,8 @@ export const t = {
   summary: 'Zusammenfassung des Agenten',
   proposal: 'Vorschlag',
   proposedBy: (title: string) => `Vorgeschlagen vom Agenten der Aufgabe „${title}“.`,
+  proposalQuestions: 'Offene Fragen',
+  proposalQuestionsHint: 'Was du hier wählst, steht danach als entschieden im Text; der Rest geht als offene Frage mit.',
   proposedByRetro: (basis: string) => `Aus der Arbeitsrückschau: ${basis}`,
   followUpOf: (title: string) => `Kommt von der Aufgabe „${title}“.`,
   task: 'Auftrag',
@@ -99,6 +103,7 @@ export const t = {
   approved: 'Freigegeben.',
   approvedNoChange: 'Beendet.',
   accepted: 'Vorschlag übernommen und gestartet.',
+  acceptedIdea: 'Vorschlag als Idee übernommen; der Agent eröffnet die Diskussion.',
   dismissed: 'Vorschlag verworfen.',
   stopped: 'Agent angehalten.',
   queue: {

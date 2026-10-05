@@ -62,9 +62,12 @@ export class Explorers {
     this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${text}${imageNote(images)}`, spoken, images);
   }
 
-  /** A planned card became an idea: its agent opens the discussion with what the card says, before the owner writes. */
-  open(cardId: string) {
-    this.tell(cardId, OPENING);
+  /**
+   * A planned card became an idea, or the owner took up an idea a worker proposed (`proposed`): its
+   * agent opens the discussion with what the card says, before the owner writes.
+   */
+  open(cardId: string, proposed = false) {
+    this.tell(cardId, proposed ? OPENING_PROPOSED : OPENING);
   }
 
   /**
@@ -343,6 +346,9 @@ const MAX_VARIANTS = 6;
 /** How the agent hears the messages an interrupted turn left unanswered. */
 const OPENING =
   'The owner wrote this as a card to be built, then chose to discuss it first. They have not said more yet: what the card says above is where the conversation starts. Look into it and open the discussion.';
+
+const OPENING_PROPOSED =
+  "A worker proposed this idea while on another card, and the owner took it up to discuss it. They have not said more yet: what the card says above is where the conversation starts, with what the owner decided on the proposal and the questions still open. Look into it and open the discussion.";
 
 const UNREAD_NOTE: Record<Unread['why'], string> = {
   parked: 'The owner parked the idea while you were working on a reply, which ended that turn. These messages are still unanswered; take them in with the one after them:',

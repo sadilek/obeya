@@ -324,9 +324,9 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.approve(cardId);
       case 'accept':
         // accepting a proposal is the owner's go unless they keep it to edit first: the card goes to
-        // the Koordinator like a started one
-        this.board.accept(cardId);
-        if (a.start !== false) this.koordinator.request(cardId);
+        // the Koordinator like a started one, a proposed idea to its exploration agent
+        if (this.board.accept(cardId, a.picks, a.start !== false)) this.explorers.open(cardId, true);
+        else if (a.start !== false) this.koordinator.request(cardId);
         return;
       case 'dismiss':
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');

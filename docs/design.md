@@ -160,7 +160,19 @@ An idea is thought through on its card before anything is planned; no worker run
 
 1. A card is created by the owner (voice or canvas) or proposed by an agent; the owner can
    edit a proposal, and accepting it starts it (it goes to the Koordinator like a started
-   `planned` card) unless they only accept it as `planned`.
+   `planned` card) unless they only accept it as `planned`. A worker writes a proposal's text for
+   the agent that will take the card on, as the owner would write a card: no "I" or "my question"
+   of its own, other cards named by their title. Apart from the text it says why, for the owner
+   only (beside "Vorgeschlagen vom Agenten der Aufgabe …"), and what the owner has to decide, as
+   questions with options. The owner may pick options on the proposal before taking it; accepting
+   writes the questions into the text, those with a pick under "Entschieden:", the others under
+   "Offene Fragen:", so the new worker reads what is settled and asks the rest. A worker may also
+   propose an idea, for something to think through first: it shows as "✦ Vorschlag · Idee", and
+   "Übernehmen und besprechen" makes it an open idea whose exploration agent opens the discussion
+   with the text and its questions; "Als Aufgabe übernehmen" plans it as a task instead. Before,
+   a proposal was the worker's reason and suggestion as one text, in the first person, with open
+   questions buried in it; taken as it was, it went to the next worker as if the owner had
+   written it.
 2. `working`: the worker leases a workspace, implements, runs the local reviews the repo adapter
    names, and records the demo.
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
@@ -213,7 +225,7 @@ Agents never talk to each other directly; the Obeya server is the mailbox, so ev
 visible on a card. A worker has four tools, served in-process: `report(status)`, a status line
 on the card; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
-or writes their own answer); `propose_card(title, reason, suggestion)`; and
+or writes their own answer); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1); and
 `ready_for_review(summary, demo | no_demo)`. A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner. A turn that ends while the worker's own
 background work runs (a demo render, a test suite, a watcher it started) is no such turn: the work

@@ -52,7 +52,7 @@ export const CardView = memo(
       ((finished(item.state) && item.source === 'manual' && !item.finishing) || (item.idea?.status === 'dropped' && !prototyped));
     const kind =
       item.label ??
-      (item.parent ? t.kind.workstream : item.idea ? t.kind.idea : item.becomesProject ? t.kind.becomesProject : item.prototypeOf ? t.kind.prototype : item.kind === 'project' ? t.kind.project : '');
+      (item.parent ? t.kind.workstream : item.idea || item.proposal?.idea ? t.kind.idea : item.becomesProject ? t.kind.becomesProject : item.prototypeOf ? t.kind.prototype : item.kind === 'project' ? t.kind.project : '');
     // a plain task says nothing of its kind: that it is one shows
     const label = [item.state === 'proposal' && t.proposalMark, showRepo && item.repo, kind].filter(Boolean).join(' · ');
     const status =

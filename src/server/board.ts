@@ -22,6 +22,7 @@ import {
   type PreferenceState,
   type PrReviewEntry,
   type ProjectHistory,
+  type Proposal,
   type NextStep,
   type PlannedPrototype,
   type Question,
@@ -292,22 +293,31 @@ export class Board {
     return r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
   }
 
-  /** A card an agent proposes, placed below the card it came from, or at the nearest free spot. */
-  propose(fromId: string, p: { title: string; reason: string; suggestion: string }): Item {
+  /**
+   * A card an agent proposes, placed below the card it came from, or at the nearest free spot: its
+   * text for the agent that takes it on, and apart from it why and what the owner has to decide.
+   */
+  propose(fromId: string, p: { title: string; task: string; reason?: string; idea?: boolean; questions?: Question[] }): Item {
     const items = this.snapshot().items;
     const from = items.find((i) => i.id === fromId);
     const b = from ? boundsOf(from, items) : undefined;
     const at = b ? this.nearFree(items, { x: b.x + 35, y: b.y + b.h + 60 }) : this.freeSpot();
+    const proposal: Proposal = {
+      ...(p.idea ? { idea: true } : {}),
+      ...(p.reason?.trim() ? { reason: p.reason.trim().slice(0, 2000) } : {}),
+      questions: (p.questions ?? []).slice(0, 5),
+    };
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
         kind: 'task',
         state: 'proposal',
         title: p.title.slice(0, 200),
-        body: `${p.reason}\n\n${p.suggestion}`.slice(0, 20000),
+        body: p.task.slice(0, 20000),
         ...at,
         from_id: fromId,
         repo: from && from.repo !== this.home ? from.repo : null,
+        proposal: JSON.stringify(proposal),
       },
     ]);
     this.changed();
@@ -489,10 +499,18 @@ export class Board {
     return this.store.removed(this.canvas.id, since);
   }
 
-  accept(id: string) {
-    if (this.own(id).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
-    this.store.update(id, { state: 'planned' });
+  /**
+   * The owner takes a proposal: as an idea when it was proposed as one and `asIdea`, else as a
+   * planned task. Its questions join the text, with the options picked (`picks`) as decided.
+   */
+  accept(id: string, picks: string[][] = [], asIdea = false) {
+    const row = this.own(id);
+    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
+    const proposal = row.proposal ? (JSON.parse(row.proposal) as Proposal) : undefined;
+    const idea = asIdea && !!proposal?.idea;
+    this.store.update(id, { state: idea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks), proposal: null });
     this.changed();
+    return idea;
   }
 
   // ---------------------------------------------------------------- archive
@@ -1001,6 +1019,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
         ...(r.retro ? { retro: r.retro } : {}),
+        ...(r.proposal && r.state === 'proposal' ? { proposal: JSON.parse(r.proposal) as Proposal } : {}),
       });
       continue;
     }
@@ -1097,6 +1116,19 @@ function shareOf(r: CardRow): Item['share'] {
     ...(stale ? { stale: true } : {}),
     ...(s.url && s.outdated && !stale && !s.state ? { outdated: true } : {}),
   };
+}
+
+/**
+ * A proposal's text with its questions, once the owner took it: those they picked options for as
+ * decided, the others as still open, for the agent that takes the card on.
+ */
+export function withQuestions(text: string, questions: Question[], picks: string[][]): string {
+  const chosen = (i: number) => (picks[i] ?? []).filter((o) => questions[i]!.options.includes(o));
+  const decided = questions.flatMap((q, i) => (chosen(i).length ? [`- ${q.text} → ${chosen(i).join(', ')}`] : []));
+  const open = questions.flatMap((q, i) => (chosen(i).length ? [] : [`- ${q.text}${q.options.length ? ` (${q.options.join(' / ')})` : ''}`]));
+  return [text.trim(), decided.length ? `Entschieden:\n${decided.join('\n')}` : '', open.length ? `Offene Fragen:\n${open.join('\n')}` : '']
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /** What is stored of a prototype: how it ended, once it did, and its worker's proposal to build the idea on it. */

@@ -117,7 +117,7 @@ describe('a canvas with several repositories', () => {
 
   test('accepting a proposal starts it', async () => {
     const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
-    const p = canvas.board.propose(b.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    const p = canvas.board.propose(b.id, { title: 'Folgefehler', task: 'S', reason: 'R' });
     canvas.act(p.id, { action: 'accept' });
     expect(item(p.id)).toMatchObject({ state: 'planned', queue: { checking: true } });
     await settle();
@@ -125,23 +125,48 @@ describe('a canvas with several repositories', () => {
     expect(() => canvas.act(p.id, { action: 'accept' })).toThrow();
   });
 
+  test("the options picked on a proposal go into its text as decided, the others as open", () => {
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
+    const questions = [
+      { text: 'Welches Wort?', options: ['Erledigt', 'Beendet'] },
+      { text: 'Auch im Archiv?', options: ['Ja', 'Nein'] },
+      { text: 'Was noch?', options: [] },
+    ];
+    const p = canvas.board.propose(b.id, { title: 'Ein Wort', task: 'Zustand und Knopf angleichen.', reason: 'R', questions });
+    canvas.act(p.id, { action: 'accept', start: false, picks: [['Beendet'], [], ['erfunden']] });
+    expect(item(p.id).body).toBe('Zustand und Knopf angleichen.\n\nEntschieden:\n- Welches Wort? → Beendet\n\nOffene Fragen:\n- Auch im Archiv? (Ja / Nein)\n- Was noch?');
+  });
+
+  test('a proposed idea becomes an idea whose agent opens the discussion; taken as a task it is planned', () => {
+    const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
+    const p = canvas.board.propose(b.id, { title: 'Vorschläge mit Fragen', task: 'Vorschläge könnten Fragen tragen.', reason: 'R', idea: true });
+    expect(item(p.id).proposal).toEqual({ idea: true, reason: 'R', questions: [] });
+    canvas.act(p.id, { action: 'accept' });
+    expect(item(p.id)).toMatchObject({ state: 'idea', idea: { status: 'open', thinking: true } });
+    const s = runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief')).at(-1)!;
+    expect(s.inbox[0]).toContain('A worker proposed this idea');
+    const q = canvas.board.propose(b.id, { title: 'Noch eine', task: 'T', reason: 'R', idea: true });
+    canvas.act(q.id, { action: 'accept', start: false });
+    expect(item(q.id).state).toBe('planned');
+  });
+
   test('a proposal from a workstream goes to a free spot beside its project, not onto it', () => {
     const items = canvas.board.snapshot().items;
     const project = items.find((i) => i.kind === 'project' && i.repo === 'web')!;
     const ws = items.find((i) => i.parent === project.id)!;
-    const p = canvas.board.propose(ws.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    const p = canvas.board.propose(ws.id, { title: 'Folgefehler', task: 'S', reason: 'R' });
     const all = canvas.board.snapshot().items;
     const pb = boundsOf(item(p.id), all);
     for (const o of all.filter((i) => !i.parent && i.id !== p.id).map((i) => boundsOf(i, all)))
       expect(pb.x + pb.w <= o.x || o.x + o.w <= pb.x || pb.y + pb.h <= o.y || o.y + o.h <= pb.y).toBe(true);
     // a second one does not land on the first
-    const q = canvas.board.propose(ws.id, { title: 'Noch einer', reason: 'R', suggestion: 'S' });
+    const q = canvas.board.propose(ws.id, { title: 'Noch einer', task: 'S', reason: 'R' });
     expect([item(q.id).x, item(q.id).y]).not.toEqual([item(p.id).x, item(p.id).y]);
   });
 
   test('a proposal can be edited, and accepted without starting', async () => {
     const b = canvas.board.create({ title: 'B', x: 0, y: 0 });
-    const p = canvas.board.propose(b.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    const p = canvas.board.propose(b.id, { title: 'Folgefehler', task: 'S', reason: 'R' });
     canvas.board.patch(p.id, { title: 'Folgefehler im Export', body: 'Nur den Export.' });
     canvas.act(p.id, { action: 'accept', start: false });
     await settle();
@@ -174,7 +199,7 @@ describe('a canvas with several repositories', () => {
 
   test('proposals keep the repository of the card they came from', () => {
     const b = canvas.board.create({ title: 'B', x: 0, y: 0, repo: 'api' });
-    const p = canvas.board.propose(b.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    const p = canvas.board.propose(b.id, { title: 'Folgefehler', task: 'S', reason: 'R' });
     expect(p.repo).toBe('api');
   });
 });

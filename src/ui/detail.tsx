@@ -63,7 +63,7 @@ export function Detail(p: Props) {
     repo,
     parent
       ? `${plain(parent.title)} · ${item.label ?? ''} · ${t.kind.workstream}`
-      : item.state === 'idea'
+      : item.state === 'idea' || item.proposal?.idea
         ? t.kind.idea
         : item.becomesProject
           ? t.kind.becomesProject
@@ -154,22 +154,9 @@ export function Detail(p: Props) {
       </div>
 
       {item.state === 'proposal' && (
-        <>
+        <ProposalView item={item} from={p.from} act={act}>
           <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} />
-          {p.from && <p className="hint">{t.proposedBy(plain(p.from.title))}</p>}
-          {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
-          <div className="actions">
-            <button className="btn primary" onClick={() => act({ action: 'accept' }, { close: true, ack: t.accepted })}>
-              {t.accept}
-            </button>
-            <button className="btn" onClick={() => act({ action: 'accept', start: false }, { close: false })}>
-              {t.acceptOnly}
-            </button>
-            <button className="btn" onClick={() => act({ action: 'dismiss' }, { close: true, ack: t.dismissed })}>
-              {t.dismiss}
-            </button>
-          </div>
-        </>
+        </ProposalView>
       )}
 
       {item.state === 'planned' && item.queue && (
@@ -559,6 +546,41 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
           </div>
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * A proposal: its text as the agent taking it on will read it (`children`, editable), why it was
+ * proposed, and the questions to decide, which the owner may answer before taking it.
+ */
+function ProposalView({ item, from, act, children }: { item: Item; from?: Item; act: (a: CardAction, done: ActDone) => Promise<void>; children: ReactNode }) {
+  const questions = item.proposal?.questions ?? [];
+  const answer = usePicks(questions);
+  const idea = !!item.proposal?.idea;
+  const accept = (start: boolean) => act({ action: 'accept', ...(start ? {} : { start: false }), ...(answer.picked ? { picks: answer.picks } : {}) }, start ? { close: true, ack: idea ? t.acceptedIdea : t.accepted } : { close: false });
+  return (
+    <>
+      {children}
+      {from && <p className="hint">{t.proposedBy(plain(from.title))}{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
+      {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
+      {questions.length > 0 && (
+        <>
+          <Questions questions={questions} heading={t.proposalQuestions} {...answer} />
+          <p className="hint">{t.proposalQuestionsHint}</p>
+        </>
+      )}
+      <div className="actions">
+        <button className="btn primary" onClick={() => accept(true)}>
+          {idea ? t.acceptIdea : t.accept}
+        </button>
+        <button className="btn" onClick={() => accept(false)}>
+          {idea ? t.acceptAsTask : t.acceptOnly}
+        </button>
+        <button className="btn" onClick={() => act({ action: 'dismiss' }, { close: true, ack: t.dismissed })}>
+          {t.dismiss}
+        </button>
+      </div>
     </>
   );
 }

@@ -478,12 +478,25 @@ describe('workers', () => {
   test('a proposal lands below its source card', () => {
     const c = manual();
     workers.start(c.id);
-    runtime.last.call('propose_card', { title: 'Falsches Label', reason: 'Gesehen beim Testen.', suggestion: 'Umbenennen.' });
+    runtime.last.call('propose_card', {
+      title: 'Falsches Label',
+      task: 'Der Knopf „Export“ heißt in src/ui/strings.ts noch „Exportieren“.',
+      reason: 'Gesehen beim Testen.',
+      questions: [{ question: 'Welches Wort?', options: ['Export', 'Exportieren'] }],
+    });
     const p = board.snapshot().items.find((i) => i.state === 'proposal')!;
-    expect(p).toMatchObject({ title: 'Falsches Label', from: c.id });
+    // the text is for the agent that takes the card on; why stays with the proposal, for the owner
+    expect(p).toMatchObject({
+      title: 'Falsches Label',
+      from: c.id,
+      body: 'Der Knopf „Export“ heißt in src/ui/strings.ts noch „Exportieren“.',
+      proposal: { reason: 'Gesehen beim Testen.', questions: [{ text: 'Welches Wort?', options: ['Export', 'Exportieren'] }] },
+    });
     expect(p.y).toBeGreaterThan(c.y);
     board.accept(p.id);
     expect(state(p.id)).toBe('planned');
+    expect(board.item(p.id)!.proposal).toBeUndefined();
+    expect(board.item(p.id)!.body).toBe('Der Knopf „Export“ heißt in src/ui/strings.ts noch „Exportieren“.\n\nOffene Fragen:\n- Welches Wort? (Export / Exportieren)');
   });
 
   test('a delivery to a worker that never reported a session starts one with the card', () => {

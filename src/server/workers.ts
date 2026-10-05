@@ -703,11 +703,30 @@ export class Workers {
           }
         : {
             name: 'propose_card',
-            description: `Propose a separate card for a problem you noticed that is outside your task, instead of fixing it here. Title, reason and suggestion in ${OWNER_LANGUAGE}.`,
-            schema: { title: z.string(), reason: z.string(), suggestion: z.string() },
-            run: (a) => {
-              const p = this.o.board.propose(cardId, a as { title: string; reason: string; suggestion: string });
-              this.o.board.log(cardId, 'activity', 'worker', `Aufgabe vorgeschlagen: ${p.title}`);
+            description: [
+              `Propose a separate card for something you noticed that is outside your task, instead of doing it here; the owner decides on it.`,
+              `idea: true for something to think through with the owner before anyone builds it (it becomes an idea, discussed with an agent of its own); leave it out for a task that is clear enough to build.`,
+              `task: the card's text, written for the agent who will take it on, which has seen neither your card nor your session: what is wrong or wanted, where (files, names), what done looks like. Write it as the owner would write a card: no "I", no "my question", no "your card"; name other cards by their title.`,
+              `reason: for the owner only, why you propose it, a sentence or two; it does not go to that agent.`,
+              `questions: what the owner has to decide first (product behaviour, a trade-off), each with up to four short options; keep them out of task. The owner may answer them on the proposal; what they decided and what stays open go to the agent with the task.`,
+              `Everything in ${OWNER_LANGUAGE}.`,
+            ].join(' '),
+            schema: {
+              title: z.string(),
+              task: z.string(),
+              reason: z.string(),
+              idea: z.boolean().optional(),
+              questions: z.array(z.object({ question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() })).max(5).optional(),
+            },
+            run: ({ title, task, reason, idea, questions }) => {
+              const p = this.o.board.propose(cardId, {
+                title: String(title),
+                task: String(task),
+                reason: String(reason),
+                idea: !!idea,
+                questions: ((questions ?? []) as { question: string; options?: string[]; multiple?: boolean }[]).map((q) => toQuestion(q.question, q.options, q.multiple)),
+              });
+              this.o.board.log(cardId, 'activity', 'worker', `${idea ? 'Idee' : 'Aufgabe'} vorgeschlagen: ${p.title}`);
               return 'Proposed; the owner decides. Continue with your task.';
             },
           },
@@ -910,7 +929,7 @@ You are a worker agent directed through Obeya, a canvas on which the owner direc
 The owner does not watch you work and does not read code. They see your card: status lines, questions, and your summary at the end. Talk to them only through the Obeya tools:
 - report: a short status line at milestones.
 - ask: a decision that is not yours (product behaviour, trade-offs, anything irreversible or external). Make routine judgement calls yourself. After ask, end your turn; the answer arrives as the next message.
-${prototype ? '- propose_build: propose that the idea be built on your prototype, once it convinced. You make no other cards; mention other problems you noticed in your summary.' : '- propose_card: a separate problem you noticed; do not widen your task.'}
+${prototype ? '- propose_build: propose that the idea be built on your prototype, once it convinced. You make no other cards; mention other problems you noticed in your summary.' : '- propose_card: a separate problem or idea you noticed, as a card for the agent who will take it on; do not widen your task.'}
 - ready_for_review: the work is committed and the checks pass. Then end your turn.
 
 Obeya's messages tell you what happened: feedback, an answer, a note from the owner, a landing that failed, your work landing. What to do about it is yours to judge. Approved work lands (or goes out as a pull request) and Obeya tells you once it is on main; your session ends with the turn after that, so whatever was waiting for the landing can still be done then. Work that changed nothing in the repository (the task needed only a demo, an analysis or an answer) lands nothing: approving it makes the card done, and Obeya tells you so the same way.

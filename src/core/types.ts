@@ -73,6 +73,8 @@ export interface Item {
   from?: string;
   /** A card the Arbeitsrückschau proposed: the cards and the friction on them it rests on. */
   retro?: string;
+  /** A worker's proposal, while it waits: an idea or a task, why, and what the owner has to decide. */
+  proposal?: Proposal;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
   repo: string;
   branch?: string;
@@ -108,6 +110,19 @@ export interface Item {
   brief?: string;
   /** A card that was an idea, decided as a project: its worker writes the plan doc, and the project takes its place. */
   becomesProject?: boolean;
+}
+
+/**
+ * What a worker proposes beyond the card's text, which it writes for the agent that will take the
+ * card on. Accepting it writes the questions into the text: those the owner answered on the
+ * proposal as decided, the others as open.
+ */
+export interface Proposal {
+  /** Something to think through with the owner first: accepted, it becomes an idea. */
+  idea?: boolean;
+  /** Why the worker proposes it, for the owner only; the card's text does not say it. */
+  reason?: string;
+  questions: Question[];
 }
 
 /** A decision taken on a card: an answer to a worker's question, or the owner's call on an idea. */
@@ -412,8 +427,11 @@ export type CardAction =
   | { action: 'dequeue' }
   /** Let the Koordinator cut the card into packages that can run in parallel. */
   | { action: 'split' }
-  /** A proposal becomes the owner's card and starts; with `start: false` it is only planned. */
-  | { action: 'accept'; start?: boolean }
+  /**
+   * A proposal becomes the owner's card and starts (a proposed idea: its discussion opens); with
+   * `start: false` it is only planned. `picks`: the options the owner chose for each of its questions.
+   */
+  | { action: 'accept'; start?: boolean; picks?: string[][] }
   | { action: 'dismiss' }
   /** Ideas: talk to the exploration agent; `spoken` gets a short spoken summary back. */
   | { action: 'discuss'; text: string; spoken?: boolean; images?: string[] }

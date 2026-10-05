@@ -60,6 +60,8 @@ export interface CardRow {
   plan: string | null;
   /** A card the Arbeitsrückschau proposed: what it rests on. */
   retro: string | null;
+  /** JSON, while a worker's proposal waits: `Proposal` (an idea or a task, why, the questions to decide). */
+  proposal: string | null;
   /** JSON: the plan docs (plan references) the landed work of a card that was an idea added. */
   plan_docs: string | null;
   /** JSON, prototypes only: how it ended (`end`, once archived) and its worker's proposal to build the idea on it (`proposal`). */
@@ -244,10 +246,11 @@ export const MIGRATIONS = [
    );
    CREATE INDEX friction_repo ON friction (canvas_id, repo, at);
    ALTER TABLE cards ADD COLUMN retro TEXT;`,
+  `ALTER TABLE cards ADD COLUMN proposal TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
-  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro'>>;
+  Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro' | 'proposal'>>;
 
 export type RowUpdate = Partial<
   Pick<
@@ -280,6 +283,7 @@ export type RowUpdate = Partial<
     | 'prototype'
     | 'built_on'
     | 'share'
+    | 'proposal'
   >
 >;
 
@@ -362,8 +366,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $now, $now)`,
+      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, created_at, updated_at)
+       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $now, $now)`,
     );
     const ids = this.db.transaction(() =>
       rows.map((r) => {
@@ -386,6 +390,7 @@ export class Store {
           prototype: r.prototype ?? null,
           images: r.images ?? null,
           retro: r.retro ?? null,
+          proposal: r.proposal ?? null,
           now: now(),
         });
         return id;
