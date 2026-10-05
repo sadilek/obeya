@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { boundsOf } from '../core/layout';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { FakeRuntime, noForge, gitRepo } from './testing';
@@ -122,6 +123,20 @@ describe('a canvas with several repositories', () => {
     await settle();
     expect(item(p.id).state).toBe('working');
     expect(() => canvas.act(p.id, { action: 'accept' })).toThrow();
+  });
+
+  test('a proposal from a workstream goes to a free spot beside its project, not onto it', () => {
+    const items = canvas.board.snapshot().items;
+    const project = items.find((i) => i.kind === 'project' && i.repo === 'web')!;
+    const ws = items.find((i) => i.parent === project.id)!;
+    const p = canvas.board.propose(ws.id, { title: 'Folgefehler', reason: 'R', suggestion: 'S' });
+    const all = canvas.board.snapshot().items;
+    const pb = boundsOf(item(p.id), all);
+    for (const o of all.filter((i) => !i.parent && i.id !== p.id).map((i) => boundsOf(i, all)))
+      expect(pb.x + pb.w <= o.x || o.x + o.w <= pb.x || pb.y + pb.h <= o.y || o.y + o.h <= pb.y).toBe(true);
+    // a second one does not land on the first
+    const q = canvas.board.propose(ws.id, { title: 'Noch einer', reason: 'R', suggestion: 'S' });
+    expect([item(q.id).x, item(q.id).y]).not.toEqual([item(p.id).x, item(p.id).y]);
   });
 
   test('a proposal can be edited, and accepted without starting', async () => {

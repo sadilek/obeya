@@ -87,6 +87,27 @@ export function placeWorkstreams(ws: { done: boolean }[], startY = PROJECT_HEAD)
   return out;
 }
 
+/**
+ * The spot nearest `want` where a card of `size` keeps GAP clear of everything in `taken`. Besides
+ * `want` itself, the candidates are the positions flush beside the edges of what is taken; right of
+ * everything there is always room.
+ */
+export function freeSpotNear(want: { x: number; y: number }, size: readonly [number, number], taken: Bounds[]): { x: number; y: number } {
+  const [w, h] = size;
+  const free = (x: number, y: number) =>
+    taken.every((b) => x + w + GAP <= b.x || b.x + b.w + GAP <= x || y + h + GAP <= b.y || b.y + b.h + GAP <= y);
+  const xs = [want.x, ...taken.flatMap((b) => [b.x + b.w + GAP, b.x - w - GAP])];
+  const ys = [want.y, ...taken.flatMap((b) => [b.y + b.h + GAP, b.y - h - GAP])];
+  let best = want;
+  let bestD = Infinity;
+  for (const x of xs)
+    for (const y of ys) {
+      const d = (x - want.x) ** 2 + (y - want.y) ** 2;
+      if (d < bestD && free(x, y)) [best, bestD] = [{ x, y }, d];
+    }
+  return best;
+}
+
 /** Places new projects in a roughly square grid of columns below everything already on the canvas. */
 export function placeProjects(existing: Bounds | null, sizes: [number, number][]): { x: number; y: number }[] {
   const x0 = existing?.x ?? 0;

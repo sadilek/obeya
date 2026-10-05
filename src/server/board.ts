@@ -6,7 +6,7 @@
 // into the archive with it, and comes back to its place when the doc returns. A workstream that
 // leaves its doc stays stored but is not shown.
 
-import { boundsOf, CARD_SIZE, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
+import { boundsOf, CARD_SIZE, freeSpotNear, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { PlanDoc } from '../core/plan-doc';
 import {
   type CanvasInfo,
@@ -231,7 +231,10 @@ export class Board {
     return { x, y };
   }
 
-  /** Where a follow-up of a card goes: below it, each further one beside the one before. */
+  /**
+   * Where a follow-up of a card goes: below it, each further one beside the one before; or, when
+   * something is in the way there (the card's own project, for a workstream), the nearest free spot.
+   */
   private followUpSpot(fromId: string): { x: number; y: number } {
     const items = this.snapshot().items;
     const from = items.find((i) => i.id === fromId);
@@ -239,7 +242,16 @@ export class Board {
     if (!from) return this.freeSpot();
     const b = boundsOf(from, items);
     const earlier = items.filter((i) => i.from === fromId && i.state !== 'proposal' && !i.prototypeOf).length;
-    return { x: b.x + 35 + earlier * (CARD_SIZE.task[0] + GAP), y: b.y + b.h + 60 };
+    return this.nearFree(items, { x: b.x + 35 + earlier * (CARD_SIZE.task[0] + GAP), y: b.y + b.h + 60 });
+  }
+
+  /** The free spot nearest `want` for a new card, clear of every project and card on the canvas. */
+  private nearFree(items: Item[], want: { x: number; y: number }): { x: number; y: number } {
+    return freeSpotNear(
+      want,
+      CARD_SIZE.task,
+      items.filter((i) => !i.parent).map((i) => boundsOf(i, items)),
+    );
   }
 
   /** The worker's last summary of a card; it stays with the card until work on it starts again. */
@@ -248,11 +260,12 @@ export class Board {
     return r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
   }
 
-  /** A card an agent proposes, placed below the card it came from. */
+  /** A card an agent proposes, placed below the card it came from, or at the nearest free spot. */
   propose(fromId: string, p: { title: string; reason: string; suggestion: string }): Item {
     const items = this.snapshot().items;
     const from = items.find((i) => i.id === fromId);
-    const b = from ? boundsOf(from, items) : { x: 0, y: 0, w: 0, h: 0 };
+    const b = from ? boundsOf(from, items) : undefined;
+    const at = b ? this.nearFree(items, { x: b.x + 35, y: b.y + b.h + 60 }) : this.freeSpot();
     const [row] = this.store.insert([
       {
         canvas_id: this.canvas.id,
@@ -260,8 +273,7 @@ export class Board {
         state: 'proposal',
         title: p.title.slice(0, 200),
         body: `${p.reason}\n\n${p.suggestion}`.slice(0, 20000),
-        x: b.x + 35,
-        y: b.y + b.h + 60,
+        ...at,
         from_id: fromId,
         repo: from && from.repo !== this.home ? from.repo : null,
       },

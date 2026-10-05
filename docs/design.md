@@ -755,7 +755,13 @@ the repository; the copy on the project is only for the archive).
   `origin` URL; the generic one covers any repo with `docs/plan/`.
 - A card has one fixed size; a delivered workstream shrinks to a chip, a project wraps its
   children, and a workstream cannot be dragged out of its project. New projects are placed in a
-  grid below the existing ones.
+  grid below the existing ones. A proposal or follow-up goes below the card it came from, or, when
+  something is in the way there (for a workstream: its own project), to the nearest spot clear of
+  every card and project (2026-10-05).
+- The dashed line from a proposal, follow-up or prototype to its card joins the sides that face
+  each other (left and right when the two stand more beside than above each other) and runs above
+  projects but below cards, so a line from a workstream stays visible over its project
+  (2026-10-05).
 - A card dragged to an edge of the view scrolls it that way, faster the nearer the edge, but only
   as far as the rest of the canvas reaches plus room to drop the card beside it; a card picked up
   at an edge scrolls only once the pointer moves towards it (2026-10-01).

@@ -415,7 +415,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 .log .ev-answer .who, .log .ev-hint .who { color: var(--working); }
 .log .ev-error { color: #dc2626; }
 .log .ev-state .x { font-style: italic; }
-#links { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+/* above projects (z-index 0), below cards (2): a line from a workstream stays visible over its project */
+#links { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
 #links path { fill: none; stroke: var(--proposal); stroke-width: 2; stroke-dasharray: 5 6; opacity: .7; }
 
 .sheet { position: fixed; top: 64px; right: 14px; bottom: 158px; width: var(--sheet-w, 380px); background: var(--panel); border-radius: 16px; box-shadow: var(--lift);

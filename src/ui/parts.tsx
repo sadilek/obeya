@@ -271,18 +271,38 @@ export const ProjectView = memo(
   (a, b) => a.item === b.item && a.onStartAll === b.onStartAll && sameBounds(a.b, b.b) && a.kids.length === b.kids.length && a.kids.every((k, i) => k === b.kids[i]),
 );
 
+/**
+ * A curve between the facing sides of two cards: left and right when they stand more beside each
+ * other than above each other, else bottom and top.
+ */
+export function linkPath(a: Bounds, b: Bounds): string {
+  const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
+  const gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+  if (gapX > gapY) {
+    const right = b.x + b.w / 2 > a.x + a.w / 2;
+    const x1 = right ? a.x + a.w : a.x;
+    const x2 = right ? b.x : b.x + b.w;
+    const y1 = a.y + a.h / 2;
+    const y2 = b.y + b.h / 2;
+    const mx = (x1 + x2) / 2;
+    return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+  }
+  const down = b.y + b.h / 2 > a.y + a.h / 2;
+  const x1 = a.x + a.w / 2;
+  const x2 = b.x + b.w / 2;
+  const y1 = down ? a.y + a.h : a.y;
+  const y2 = down ? b.y : b.y + b.h;
+  const my = (y1 + y2) / 2;
+  return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+}
+
 /** A dashed line from each proposal and each follow-up not yet started to the card it came from, and from each prototype to its idea. */
 export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   const byId = new Map(placed.map((p) => [p.item.id, p]));
   const paths = placed.flatMap(({ item, b }) => {
     const src = (item.state === 'proposal' || item.state === 'planned' || item.prototypeOf) && item.from ? byId.get(item.from) : undefined;
     if (!src) return [];
-    const x1 = src.b.x + src.b.w / 2;
-    const y1 = src.b.y + src.b.h;
-    const x2 = b.x + b.w / 2;
-    const y2 = b.y;
-    const my = (y1 + y2) / 2;
-    return [<path key={item.id} d={`M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`} />];
+    return [<path key={item.id} d={linkPath(src.b, b)} />];
   });
   return (
     <svg id="links" width="1" height="1">

@@ -224,10 +224,12 @@ describe('manual cards', () => {
   });
 
   test('a follow-up goes below the card it comes from, in its repository, and names it', () => {
-    const src = board.create({ title: 'Export', x: 100, y: 100 });
+    // clear of the plan project (placed with the first snapshot), which a follow-up would step around
+    board.snapshot();
+    const src = board.create({ title: 'Export', x: 3000, y: 100 });
     const a = board.create({ title: 'Ton bleibt an', body: 'Der ambient-Ton läuft nach dem Stopp weiter.', from: src.id });
     expect(a).toMatchObject({ state: 'planned', from: src.id, repo: src.repo, body: 'Der ambient-Ton läuft nach dem Stopp weiter.' });
-    expect(a.x).toBe(135);
+    expect(a.x).toBe(3035);
     expect(a.y).toBeGreaterThan(100);
     // the next one goes beside it
     const b = board.create({ title: 'Noch eine', from: src.id });
