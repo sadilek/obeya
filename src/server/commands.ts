@@ -508,6 +508,7 @@ export class Commander {
         }
         if (card.state !== 'planned') return `only a planned card can be started (${is})`;
         if (card.queue && 'behind' in card.queue) return { do: 'force', card: card.id };
+        if (card.queue && 'workspace' in card.queue) return 'the card waits for a free workspace and starts by itself once one is free';
         if (card.queue) return `the Koordinator is still ${'cutting' in card.queue ? 'splitting' : 'checking'} the card; it starts by itself unless it collides`;
         break;
       case 'approve':
@@ -714,6 +715,7 @@ const STEP: Partial<Record<Moment['kind'], string>> = {
 function queued(q: Queue, items: Item[]): string {
   if ('checking' in q) return 'queued: the Koordinator checks it for merge conflicts';
   if ('cutting' in q) return 'queued: the Koordinator splits it';
+  if ('workspace' in q) return `waits for a free workspace (${q.workspace === 'dirty' ? 'every free one has uncommitted changes' : 'all are leased'}); starts by itself once one is free`;
   const titles = q.behind.map((id) => `"${items.find((i) => i.id === id)?.title ?? id}"`).join(', ');
   return `queued behind ${titles}`;
 }

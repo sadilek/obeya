@@ -80,6 +80,9 @@ function squashOnto(ws: string, upstream: string): boolean {
   return true;
 }
 
+/** How long free clones found dirty count as dirty before `leasable` looks again. */
+export const RECHECK_MS = 60_000;
+
 export interface WorkspaceOptions {
   mode: 'clones' | 'worktrees';
   /** The checkout Obeya runs on. */
@@ -91,6 +94,9 @@ export interface WorkspaceOptions {
 }
 
 export class Workspaces {
+  /** The free clones `leasable` last found all dirty, and when. */
+  private dirty?: { key: string; at: number };
+
   constructor(
     private store: Store,
     private canvasId: string,
@@ -138,6 +144,28 @@ export class Workspaces {
     const own = this.leasedBy(cardId);
     if (own) return own;
     return this.o.mode === 'worktrees' ? this.leaseWorktree(cardId, branch) : this.leaseClone(cardId, branch);
+  }
+
+  /**
+   * Whether `lease` would find a workspace for a new card now. A worktree can always be made; a
+   * clone must be free and clean. Free clones that were dirty at the last look within RECHECK_MS
+   * are not asked again, since cards waiting for one ask on every change of the board.
+   */
+  leasable(): boolean {
+    if (this.o.mode === 'worktrees') return true;
+    const free = this.list().filter((w) => !w.card_id && existsSync(w.path));
+    if (!free.length) return false;
+    const key = free.map((w) => w.path).join('\n');
+    if (this.dirty?.key === key && Date.now() - this.dirty.at < RECHECK_MS) return false;
+    const clean = free.some((w) => {
+      try {
+        return git(w.path, 'status', '--porcelain') === '';
+      } catch {
+        return false;
+      }
+    });
+    this.dirty = clean ? undefined : { key, at: Date.now() };
+    return clean;
   }
 
   /** Whether the card's workspace holds work: uncommitted changes or commits beyond the base. */

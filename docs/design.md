@@ -429,7 +429,12 @@ the owner's language (`src/core/locale.ts`).
   goes back to its worker on landing. A card likely to conflict waits, with the reason (one that
   starts says which files it shares and why that is fine); once what it waits for has landed or
   stopped it starts, or, while other work runs that may have started meanwhile, it is judged
-  again — the owner can start it anyway. Cards whose turn comes together go in the order they came
+  again — the owner can start it anyway. A card the Koordinator lets start while no workspace is
+  free (all clones leased, or every free one with uncommitted changes) waits for one in its place in
+  the queue, shown as "Wartet auf Workspace" with the reason, and starts by itself once one is
+  free; cards queued after it count it as ahead of them. Clones only free up with a change of the
+  board (stop, landing, a discarded prototype), so the Koordinator looks then; free clones found
+  dirty are looked at again after a minute at the latest. Cards whose turn comes together go in the order they came
   to the Koordinator, the one waiting longest first. On the canvas, a planned card and one waiting in the queue show a play button
   while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. While the pointer is on a card,
   the waits around it show over every step, both ways (`src/ui/deps.ts`): the cards it waits for
@@ -974,7 +979,10 @@ the repository; the copy on the project is only for the archive).
   carry the code too. The UI shows its text for the code from `strings.ts`, a generic one for
   anything else.
 - A start that fails after the Koordinator took it drops the card back to planned; the unfolded
-  planned card then shows the last log entry, when it is an error, as the reason.
+  planned card then shows the last log entry, when it is an error, as the reason. A start that
+  finds no workspace is no failure but a wait (2026-10-05): before, such a card stood as "Geplant"
+  with "Kein Workspace frei" as its last failure and never started by itself, though the owner had
+  started it. Cards left that way are picked up as waiting when Obeya starts.
 - A card waits rather than risking a collision; the Koordinator's estimate is taken once, before
   the start, and a waiting card is checked again against what runs when its blockers finish.
 - A new card does not overtake a queued one it likely conflicts with: it queues behind it, also

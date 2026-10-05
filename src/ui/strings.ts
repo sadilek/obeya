@@ -113,6 +113,13 @@ export const t = {
     waiting: 'In der Warteschlange',
     checkingLong: 'Der Koordinator prüft, ob die Aufgabe mit laufender Arbeit wahrscheinlich in Merge-Konflikte gerät.',
     behind: (titles: string[]) => `Wartet auf ${titles.map((x) => `„${x}“`).join(', ')}.`,
+    workspace: 'Wartet auf Workspace',
+    /** On the card: why it waits for a workspace. */
+    workspaceWhy: { none: 'Alle Workspaces sind belegt.', dirty: 'Die freien Workspaces haben nicht committete Änderungen.' },
+    workspaceLong: {
+      none: 'Kein Workspace frei: Alle sind belegt oder es ist keiner eingerichtet. Die Aufgabe startet von selbst, sobald einer frei wird.',
+      dirty: 'Kein Workspace frei: Jeder freie hat noch nicht committete Änderungen. Die Aufgabe startet von selbst, sobald einer sauber ist.',
+    },
     force: 'Trotzdem starten',
     dequeue: 'Aus der Warteschlange nehmen',
     forced: 'Gestartet, trotz möglicher Merge-Konflikte.',
@@ -593,7 +600,9 @@ export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; id
       ? t.queue.checking
       : 'cutting' in i.queue
         ? t.queue.cutting
-        : t.queue.waiting
+        : 'workspace' in i.queue
+          ? t.queue.workspace
+          : t.queue.waiting
     : i.state === 'waiting' && i.need
       ? i.need === 'demo' && i.question
         ? t.demoWithQuestion

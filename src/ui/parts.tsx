@@ -65,6 +65,7 @@ export const CardView = memo(
       item.question?.text ??
       (item.idea?.yourTurn ? item.idea.questions[0]?.text : undefined) ??
       (item.queue && 'behind' in item.queue ? item.queue.reason : undefined) ??
+      (item.queue && 'workspace' in item.queue ? t.queue.workspaceWhy[item.queue.workspace] : undefined) ??
       status ??
       (item.idea ? firstLine(item.idea.brief) || firstLine(item.body) : firstLine(item.body));
     const cls = [

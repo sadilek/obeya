@@ -4,13 +4,13 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import { type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS } from '../core/types';
+import { type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
 import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { Utterance } from './db';
 import type { AgentRuntime, AgentTool } from './runtime';
 import type { Workers } from './workers';
-import type { Change, Workspaces } from './workspaces';
+import { type Change, RECHECK_MS, type Workspaces } from './workspaces';
 
 interface Package {
   title: string;
@@ -90,6 +90,8 @@ export class Koordinator {
    */
   private questionSession: { id?: string; asked: number } = { asked: 0 };
   private draining = false;
+  /** A look again at cards waiting for a workspace, which can free up without a change of the board (a dirty clone cleaned up). */
+  private recheck?: ReturnType<typeof setTimeout>;
 
   constructor(private o: KoordinatorOptions) {
     o.board.onChange(() => this.scheduleDrain());
@@ -99,6 +101,12 @@ export class Koordinator {
   resume() {
     const together = new Set<string>();
     for (const i of this.o.board.snapshot().items) {
+      // a start that found no workspace before cards waited for one: it waits now
+      if (i.state === 'planned' && !i.queue && !i.archivedAt) {
+        const last = this.o.board.events(i.id).at(-1);
+        const shortage = last?.kind === 'error' && last.code ? SHORTAGE[last.code] : undefined;
+        if (shortage) this.setQueue(i.id, { workspace: shortage }, last!.at);
+      }
       if (i.state !== 'planned' || !i.queue) continue;
       if ('checking' in i.queue && i.queue.together) together.add(i.queue.together);
       else if ('checking' in i.queue) this.serial(() => this.decide(i.id));
@@ -106,6 +114,10 @@ export class Koordinator {
     }
     for (const p of together) this.serial(() => this.decideAll(p));
     this.scheduleDrain();
+  }
+
+  shutdown() {
+    clearTimeout(this.recheck);
   }
 
   /** The owner wants the card worked on; a project, all its planned workstreams. */
@@ -223,9 +235,10 @@ export class Koordinator {
   force(cardId: string) {
     const card = this.card(cardId);
     if (!card.queue || !('behind' in card.queue)) throw new BadRequest('notQueued', 'the card is not waiting');
+    const since = card.queue.since;
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', 'Trotz Überschneidung gestartet.');
-    this.o.repoFor(card).workers.start(cardId);
+    this.launch(cardId, since);
   }
 
   dequeue(cardId: string) {
@@ -628,13 +641,26 @@ export class Koordinator {
   }
 
   private startNow(cardId: string, why: string) {
+    const since = this.o.board.item(cardId)?.queue?.since;
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'obeya', `Koordinator: ${why}`);
+    this.launch(cardId, since);
+  }
+
+  /**
+   * Starts the card's worker. Without a free workspace the card waits for one, in its place in the
+   * queue (`since`), and starts once one is free; any other failure is logged and leaves it planned.
+   */
+  private launch(cardId: string, since?: string) {
+    const card = this.o.board.item(cardId);
+    if (!card) return;
     try {
-      const card = this.o.board.item(cardId);
-      if (card) this.o.repoFor(card).workers.start(cardId);
+      this.o.repoFor(card).workers.start(cardId);
     } catch (e) {
-      this.o.board.log(cardId, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
+      const shortage = e instanceof BadRequest ? SHORTAGE[e.code] : undefined;
+      if (!shortage) return this.o.board.log(cardId, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
+      this.setQueue(cardId, { workspace: shortage }, since);
+      this.o.board.log(cardId, 'state', 'obeya', WAITS_FOR[shortage]);
     }
   }
 
@@ -660,9 +686,20 @@ export class Koordinator {
     const active = new Set([...this.inProgress(), ...items.filter(waits)].map((i) => i.id));
     // the card waiting longest goes first: one queued later must not take its turn
     const waiting = items
-      .filter((i) => i.state === 'planned' && i.queue && 'behind' in i.queue)
+      .filter((i) => i.state === 'planned' && i.queue && ('behind' in i.queue || 'workspace' in i.queue))
       .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
+    // a repository whose workspaces are taken by a card waiting longer is not asked again
+    const full = new Set<string | undefined>();
     for (const w of waiting) {
+      if ('workspace' in w.queue!) {
+        if (full.has(w.repo) || !this.o.repoFor(w).workspaces.leasable()) {
+          full.add(w.repo);
+          continue;
+        }
+        this.startNow(w.id, 'Ein Workspace ist frei; es geht los.');
+        if (this.o.board.item(w.id)?.queue) full.add(w.repo);
+        continue;
+      }
       const q = w.queue as { behind: string[]; reason: string };
       const still = q.behind.filter((id) => active.has(id));
       if (still.length === q.behind.length) continue;
@@ -680,6 +717,13 @@ export class Koordinator {
         this.o.board.log(w.id, 'state', 'obeya', 'Koordinator: Worauf sie gewartet hat, ist erledigt; prüft neu gegen die laufende Arbeit.');
         this.serial(() => this.decide(w.id));
       }
+    }
+    if (full.size && !this.recheck) {
+      this.recheck = setTimeout(() => {
+        this.recheck = undefined;
+        this.scheduleDrain();
+      }, RECHECK_MS);
+      this.recheck.unref?.();
     }
   }
 
@@ -834,7 +878,8 @@ export class Koordinator {
         ? `Cards queued ahead of this one (they wait for others and start before this card):\n${ahead
             .map((a) => {
               const q = a.queue!;
-              const waitsFor = 'behind' in q ? q.behind.map((id) => `"${this.o.board.item(id)?.title ?? id}"`).join(', ') : '';
+              const waitsFor =
+                'behind' in q ? q.behind.map((id) => `"${this.o.board.item(id)?.title ?? id}"`).join(', ') : 'workspace' in q ? 'a free workspace (its start is decided)' : '';
               return [
                 `- ${tagOf(a.id)}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
                 `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
@@ -854,8 +899,8 @@ export class Koordinator {
   }
 
   /** A card keeps the time it came to the Koordinator for as long as it stays queued. */
-  private setQueue(cardId: string, q: Queue | null) {
-    const since = this.o.board.item(cardId)?.queue?.since ?? new Date().toISOString();
+  private setQueue(cardId: string, q: Queue | null, keep?: string) {
+    const since = keep ?? this.o.board.item(cardId)?.queue?.since ?? new Date().toISOString();
     this.o.board.work(cardId, { queue: q ? JSON.stringify({ ...q, since }) : null });
   }
 
@@ -1042,7 +1087,14 @@ export function readSession(
 }
 
 /** A card the Koordinator holds back or is judging, before it starts. */
-const waits = (i: Item) => i.state === 'planned' && !!i.queue && ('behind' in i.queue || 'checking' in i.queue);
+const waits = (i: Item) => i.state === 'planned' && !!i.queue && ('behind' in i.queue || 'checking' in i.queue || 'workspace' in i.queue);
+
+/** The refusals of a start for want of a workspace, and what the card then waits for. */
+const SHORTAGE: Record<string, WorkspaceShortage> = { noWorkspace: 'none', dirtyWorkspaces: 'dirty' };
+const WAITS_FOR: Record<WorkspaceShortage, string> = {
+  none: 'Kein Workspace frei: Alle sind belegt oder es ist keiner eingerichtet. Die Aufgabe startet, sobald einer frei wird.',
+  dirty: 'Kein Workspace frei: Jeder freie hat noch nicht committete Änderungen. Die Aufgabe startet, sobald einer sauber ist.',
+};
 
 /** A changed file with the places changed in it: "src/a.ts (lines 12-20 in function f; 40)", or "(new)". */
 const describe = (c: Change) =>

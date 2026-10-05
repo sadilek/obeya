@@ -622,6 +622,7 @@ export class CanvasRuntime {
     for (const [, w] of this.writing) clearTimeout(w.timer);
     for (const stop of this.stops) stop();
     for (const r of this.repos) r.workers.shutdown();
+    this.koordinator.shutdown();
     this.explorers.shutdown();
   }
 }

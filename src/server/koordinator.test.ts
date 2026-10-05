@@ -329,6 +329,111 @@ describe('Koordinator', () => {
   });
 });
 
+describe('Koordinator waits for a free workspace', () => {
+  let clones: string[];
+
+  /** A pool of `n` clones instead of worktrees: cards wait when all are leased. */
+  function pool(n: number) {
+    const main = join(dir, 'main');
+    const store = new Store(':memory:');
+    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs);
+    const adapter = { ...generic, land: 'main' as const, workspaces: 'clones' as const };
+    workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'clones') });
+    workspaces.ensureClones(main, n);
+    clones = workspaces.list().map((w) => w.path);
+    workers = new Workers({ board, runtime, workspaces, adapter });
+    k = new Koordinator({ board, runtime, home: main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
+  }
+
+  test('a card the Koordinator lets start waits for a workspace, and starts once one is free', async () => {
+    pool(1);
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/b.ts']);
+    expect(item(b.id)).toMatchObject({ state: 'planned', queue: { workspace: 'none' } });
+    expect(board.events(b.id).at(-1)).toMatchObject({ kind: 'state', text: expect.stringContaining('sobald einer frei wird') });
+    expect(board.events(b.id).some((e) => e.kind === 'error')).toBe(false);
+
+    workers.stop(a.id);
+    await settle();
+    expect(item(b.id).state).toBe('working');
+    expect(board.row(b.id).workspace).toBe(clones[0]!);
+    expect(item(b.id).queue).toBeUndefined();
+    expect(board.events(b.id).some((e) => e.text.includes('Ein Workspace ist frei'))).toBe(true);
+  });
+
+  test('the card waiting longest gets the workspace; a card behind a waiting one waits too', async () => {
+    pool(1);
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/b.ts']);
+    const c = card('C');
+    k.request(c.id);
+    await settle();
+    // B is ahead of C in the queue, so C is judged against it
+    expect(estimates().at(-1)!.inbox[0]).toContain('a free workspace');
+    await scope(['src/c.ts']);
+    const d = card('D');
+    k.request(d.id);
+    await scope(['src/b.ts'], ['K2']);
+    expect(item(c.id).queue).toMatchObject({ workspace: 'none' });
+    expect(item(d.id).queue).toMatchObject({ behind: [b.id] });
+
+    workers.stop(a.id);
+    await settle();
+    expect(item(b.id).state).toBe('working');
+    expect(item(c.id).queue).toMatchObject({ workspace: 'none' });
+    expect(item(d.id).queue).toMatchObject({ behind: [b.id] });
+  });
+
+  test('every free workspace with uncommitted changes: the card waits until one is clean', async () => {
+    pool(2);
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const free = clones.find((p) => p !== board.row(a.id).workspace)!;
+    writeFileSync(join(free, 'stray.txt'), 'x');
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/b.ts']);
+    expect(item(b.id).queue).toMatchObject({ workspace: 'dirty' });
+
+    rmSync(join(free, 'stray.txt'));
+    // a dirty clone is not asked again on every change of the board, but once another one frees up
+    workers.stop(a.id);
+    await settle();
+    expect(item(b.id).state).toBe('working');
+  });
+
+  test('taken out of the queue, it no longer starts; a start that failed before waits after a restart', async () => {
+    pool(1);
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/b.ts']);
+    k.dequeue(b.id);
+    expect(item(b.id).queue).toBeUndefined();
+
+    // as before cards waited for a workspace: the start was logged as failed
+    const c = card('C');
+    board.log(c.id, 'error', 'obeya', 'no workspace registered or all are leased', 'noWorkspace');
+    k.resume();
+    expect(item(c.id).queue).toMatchObject({ workspace: 'none' });
+    workers.stop(a.id);
+    await settle();
+    expect(item(b.id).state).toBe('planned');
+    expect(item(c.id).state).toBe('working');
+  });
+});
+
 describe('Koordinator starts all workstreams of a project', () => {
   const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: `Text ${key}`, done, inReview: false });
   const schedules = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'schedule'));

@@ -96,13 +96,12 @@ describe('refused requests', () => {
     expect(await codeOf(act(c.id, { action: 'start' }))).toBe('queued');
   });
 
-  test('a start that fails without a free workspace is logged with its code', async () => {
+  test('a start without a free workspace waits for one', async () => {
     const c = card();
     expect((await act(c.id, { action: 'start' })).status).toBe(204);
-    await until(() => board.events(c.id).at(-1)?.kind === 'error');
-    const events = (await (await fetch(new URL(api(`/cards/${c.id}/events`), server.url))).json()) as { kind: string; code?: string; text: string }[];
-    expect(events.at(-1)).toMatchObject({ kind: 'error', code: 'noWorkspace', text: 'no workspace registered or all are leased' });
-    expect(board.item(c.id)!.state).toBe('planned');
+    await until(() => board.item(c.id)!.queue && 'workspace' in board.item(c.id)!.queue!);
+    expect(board.item(c.id)).toMatchObject({ state: 'planned', queue: { workspace: 'none' } });
+    expect(board.events(c.id).some((e) => e.kind === 'error')).toBe(false);
   });
 });
 
