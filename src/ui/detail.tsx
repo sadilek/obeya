@@ -342,7 +342,7 @@ export function Detail(p: Props) {
             </a>
           </h4>
           {item.pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
-          {item.pr.ready && <div className="q-text">{t.pr.ready}</div>}
+          {item.pr.ready && <div className="q-text">{t.pr.ready(item.pr.mergeError ?? '')}</div>}
           {item.pr.checks.length > 0 ? (
             <ul className="checks">
               {item.pr.checks.map((c) => (

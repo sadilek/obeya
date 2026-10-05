@@ -1,6 +1,6 @@
 // Watches the open pull requests of a canvas and passes what happens on them to the card's
-// worker: new review comments, failed checks, conflicts. Once nothing is left for the worker, the
-// card waits for the owner's merge; a merge makes the card live.
+// worker: new review comments, failed checks, conflicts. Once nothing is left for the worker, Obeya
+// merges it (the owner's approval covered that); a merge makes the card live.
 
 import type { Board, PrState } from './board';
 import { readyToMerge, reviewOf, type Forge, type PrStatus } from './forge';
@@ -108,9 +108,23 @@ export class PrWatcher {
       } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
       // ready only while the worker has nothing in hand: what it was told may still change the PR
       if (!comments.length && !failed.length && !this.workers.busyCards().includes(cardId) && readyToMerge(s, this.noise)) {
-        if (pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch.');
+        if (pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya mergt.');
         next.readyHead = s.head;
-      } else delete next.readyHead;
+        // the owner's approval covered the merge: Obeya merges, and tries again each round while GitHub refuses
+        try {
+          this.forge.merge(this.cwd(cardId), pr.url!, s.head);
+          delete next.mergeError;
+          this.save(cardId, next);
+          return this.workers.merged(cardId);
+        } catch (e) {
+          const reason = (e instanceof Error ? e.message : String(e)).replace(/^gh pr merge \S+: /, '');
+          if (pr.mergeError !== reason || pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', `Obeya konnte nicht mergen: ${reason}`);
+          next.mergeError = reason;
+        }
+      } else {
+        delete next.readyHead;
+        delete next.mergeError;
+      }
     }
     this.save(cardId, next);
   }

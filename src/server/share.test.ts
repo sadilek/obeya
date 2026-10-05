@@ -73,6 +73,7 @@ const forge: Forge = {
     bodies.set(url, body);
     edits.push(url);
   },
+  merge: () => {},
 };
 
 const PR = 'https://github.com/acme/app/pull/42';

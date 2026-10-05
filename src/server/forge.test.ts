@@ -169,3 +169,19 @@ test('the description is read with gh pr view and replaced through a file', () =
   expect(calls[1]!.slice(0, 4)).toEqual(['pr', 'edit', url, '--body-file']);
   expect(written).toBe('Text\n\nDemo-Video: https://d/a/');
 });
+
+test('a merge uses the method the repository allows, and only the commit that was found ready', () => {
+  const calls: string[][] = [];
+  let allows = { squash: true, merge: false, rebase: false };
+  const forge = makeGhForge((_cwd, ...args) => {
+    calls.push(args);
+    return args[0] === 'api' ? JSON.stringify(allows) : '';
+  });
+  const url = 'https://github.com/acme/app/pull/42';
+  forge.merge('/repo', url, 'abc');
+  expect(calls[0]!.slice(0, 2)).toEqual(['api', 'repos/acme/app']);
+  expect(calls[1]).toEqual(['pr', 'merge', url, '--squash', '--match-head-commit', 'abc']);
+  allows = { squash: false, merge: true, rebase: true };
+  forge.merge('/repo', url, 'abc');
+  expect(calls[3]).toEqual(['pr', 'merge', url, '--merge', '--match-head-commit', 'abc']);
+});

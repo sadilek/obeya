@@ -185,7 +185,7 @@ export const t = {
   pr: {
     title: (n: number) => `Pull Request #${n}`,
     conflict: 'Konflikt mit dem Zielbranch; der Agent bringt den Branch auf Stand.',
-    ready: 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Mergen auf GitHub.',
+    ready: (reason: string) => `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya konnte nicht mergen (${reason}); bitte auf GitHub mergen.`,
     noChecks: 'Noch keine Checks.',
     opening: 'Der Agent öffnet den Pull Request.',
     review: 'Review',

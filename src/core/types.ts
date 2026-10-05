@@ -154,8 +154,12 @@ export interface PullRequest {
   /** Checks on the PR's latest commit, as last seen. */
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   conflict: boolean;
-  /** Nothing is left for the worker: checks green, threads resolved, reviewers answered; the owner merges. */
+  /**
+   * Nothing is left for the worker (checks green, threads resolved, reviewers answered), and GitHub
+   * refused Obeya's merge for `mergeError`: the owner merges.
+   */
   ready?: boolean;
+  mergeError?: string;
   /** The review as last seen, oldest first (`reviewOf` in the server's forge). */
   review?: PrReviewEntry[];
 }

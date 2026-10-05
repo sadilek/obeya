@@ -8,7 +8,7 @@ import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec } from './runtim
 import { git } from './workspaces';
 
 /** A forge for tests that never reach a pull request. */
-export const noForge: Forge = { status: () => ({}) as never, body: () => '', setBody: () => {} };
+export const noForge: Forge = { status: () => ({}) as never, body: () => '', setBody: () => {}, merge: () => {} };
 
 /** A session whose tools and events the test drives. */
 export class FakeSession implements AgentSession {

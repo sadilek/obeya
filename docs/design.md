@@ -165,7 +165,7 @@ An idea is thought through on its card before anything is planned; no worker run
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
    the answer, and the demo keeps waiting for approval.
 4. Where work lands through pull requests (Acme), approval puts the card `in PR`: its worker opens
-   the PR and Obeya carries it to the merge. Review comments, failed checks and conflicts go to the
+   the PR and Obeya carries it through the merge, which it does itself. Review comments, failed checks and conflicts go to the
    worker; only what needs judgement — a review comment that questions a decision, a conflict with
    product meaning — comes back to the owner as a question on the card, and the answer returns it
    to the PR. A PR closed without a merge asks the owner whether to open it again or drop the work.
@@ -337,10 +337,16 @@ the owner's language (`src/core/locale.ts`).
   is not in a turn, and whoever the PR's author last asked for another look has answered since. A
   review bot often answers a re-review only by rewriting its summary (Greptile's new score, on Acme's
   PR #821 on 2026-10-02, with no new comment), so a rewrite counts as an answer; before, the watcher
-  waited for new comments only and the card stood "in PR" with nothing left to do. The owner
-  merges on GitHub; anything new for the worker takes the readiness back. A merge makes the card
-  `live` (After landing, below). The card shows the PR
-  with its link, its checks (each linked to its run), a conflict and whether it is ready to merge;
+  waited for new comments only and the card stood "in PR" with nothing left to do. Once ready,
+  Obeya merges the PR itself (`gh pr merge` with the method the repository allows, Acme: squash, and
+  `--match-head-commit`, so a push since is never merged unchecked) and the card is `live` (After
+  landing, below) in the same round. Before, Obeya left the merge to the owner on GitHub, and a
+  ready PR stood for days with the card saying only "Bereit zum Mergen" (Acme's PR #823, ready
+  2026-10-03, still open 2026-10-05). When GitHub refuses the merge (branch protection wanting a
+  human approval, say), the card says why ("Obeya konnte nicht mergen: …") and needs the owner, who
+  merges on GitHub; Obeya tries again each round, so it goes through once the reason is gone.
+  Anything new for the worker takes the readiness back. The card shows the PR
+  with its link, its checks (each linked to its run), a conflict and a ready PR Obeya could not merge;
   folded, it reads "PR #42 · 1 Check rot · Konflikt" or "PR #42 · Bereit zum Mergen". Below the checks it shows the review as last polled, oldest
   first: each round a reviewer left comments on the code in ("Runde 2 · greptile-apps · 3
   Anmerkungen, 1 offen"), each comment folded to its first line with whether its thread is
@@ -765,7 +771,9 @@ the repository; the copy on the project is only for the archive).
 - A canvas may span several repositories, and one Obeya serves several canvases (at first it was
   one canvas per repository).
 - Agents may propose cards.
-- Approval triggers the PR and its monitoring to the merge, not the merge itself.
+- Approval covers the PR, its monitoring and the merge (2026-10-05): the owner approves the demo,
+  not the code, so a second click on GitHub once checks and review are through added nothing but
+  waiting. At first Obeya left the merge to the owner.
 - The worker opens and tends its PR the way the repository does it, rather than Obeya scripting
   the steps (2026-10-01): Obeya's first version told it to rebase and push with
   `--force-with-lease`, while Acme merges `main` into a PR branch, never force-pushes, and has its

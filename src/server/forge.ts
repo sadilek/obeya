@@ -46,6 +46,8 @@ export interface Forge {
   body(cwd: string, url: string): string;
   /** Replaces the PR's description. */
   setBody(cwd: string, url: string, body: string): void;
+  /** Merges the PR, if its head is still `head`, the way the repository allows; throws with GitHub's reason when it cannot. */
+  merge(cwd: string, url: string, head: string): void;
 }
 
 /** A GitHub pull request URL: `https://github.com/<owner>/<repo>/pull/<n>`. */
@@ -181,6 +183,15 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       rmSync(dir, { recursive: true, force: true });
     }
   },
+  merge(cwd, url, head) {
+    const ref = parsePrUrl(url);
+    if (!ref) throw new Error(`not a GitHub pull request URL: ${url}`);
+    // the repository's own merge methods (Acme allows squash only); squash first where it allows several
+    const allows = JSON.parse(run(cwd, 'api', `repos/${ref.owner}/${ref.repo}`, '--jq', '{squash: .allow_squash_merge, merge: .allow_merge_commit, rebase: .allow_rebase_merge}')) as Record<string, boolean>;
+    const method = (['squash', 'merge', 'rebase'] as const).find((m) => allows[m] !== false) ?? 'squash';
+    // no --delete-branch: that also switches branches in the workspace; the repository deletes merged branches or not
+    run(cwd, 'pr', 'merge', url, `--${method}`, '--match-head-commit', head);
+  },
 });
 
 export const ghForge = makeGhForge(gh);
@@ -231,7 +242,7 @@ export function reviewOf(s: PrStatus, skip: string[] = []): PrReviewEntry[] {
 }
 
 /**
- * Whether the pull request only waits for the owner's merge: GitHub sees nothing in the way, every
+ * Whether the pull request only waits for the merge: GitHub sees nothing in the way, every
  * check has passed, every review thread is resolved, and whoever was asked for another look has
  * answered since the author last asked (a review bot answers a re-review by rewriting its summary,
  * often without a new comment). Comments by `skip` do not count as an answer.

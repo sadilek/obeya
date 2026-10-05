@@ -18,6 +18,9 @@ let runtime: FakeRuntime;
 let workers: Workers;
 let status: PrStatus;
 let watcher: PrWatcher;
+/** Merges the watcher made, by commit; a reason in `refuse` makes GitHub refuse them. */
+let merges: string[];
+let refuse: string | undefined;
 /** Cards whose PR the worker reported, as the canvas passes them to sharing. */
 let opened: string[];
 const URL_ = 'https://github.com/acme/app/pull/42';
@@ -34,7 +37,18 @@ beforeEach(() => {
   opened = [];
   workers = new Workers({ board, runtime, workspaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' }, onPrOpened: (id) => opened.push(id) });
   status = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [], comments: [] };
-  const forge: Forge = { status: () => status, body: () => '', setBody: () => {} };
+  merges = [];
+  refuse = undefined;
+  const forge: Forge = {
+    status: () => status,
+    body: () => '',
+    setBody: () => {},
+    merge: (_cwd, url, head) => {
+      if (refuse) throw new Error(`gh pr merge ${url}: ${refuse}`);
+      merges.push(head);
+      status.state = 'MERGED';
+    },
+  };
   watcher = new PrWatcher(board, workers, forge, () => main, ['deploy-bot']);
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -142,7 +156,7 @@ describe('watching', () => {
     expect(runtime.last.inbox.at(-1)).toContain('conflicts');
   });
 
-  test('a PR with nothing left for the worker waits for the owner’s merge; new work takes that back', async () => {
+  test('a PR with nothing left for the worker is merged by Obeya, which makes the card live', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
     // the turn that handed over ends, then the one the approval started
@@ -154,19 +168,43 @@ describe('watching', () => {
       { id: 'cPING', author: 'owner', body: '@greptile re-review', at: '2026-10-02T08:46:00Z' },
     ];
     watcher.poll();
-    expect(board.item(id)!.pr!.ready).toBeUndefined();
+    expect(merges).toEqual([]);
     // the worker answers the summary
     runtime.last.emit({ type: 'idle' });
     watcher.poll();
-    expect(board.item(id)!.pr!.ready).toBeUndefined();
+    expect(merges).toEqual([]);
     // the reviewer rewrites its summary, with no new comment
     status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 5/5', edited: '2026-10-02T08:49:00Z' };
-    const n = runtime.last.inbox.length;
     watcher.poll();
-    expect(board.item(id)!.pr!.ready).toBe(true);
+    expect(merges).toEqual(['aaa']);
+    expect(state(id)).toBe('live');
+    expect(board.events(id).map((e) => e.text).slice(-2)).toEqual(['Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya mergt.', 'Pull Request gemergt. Live.']);
+    expect(runtime.last.inbox.at(-1)).toContain('pull request was merged');
+  });
+
+  test('a PR found ready before Obeya merged is merged on the next round', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    // what an Obeya that left the merge to the owner kept (Acme's PR #823, ready since Saturday)
+    board.work(id, { pr: JSON.stringify({ ...JSON.parse(board.row(id).pr!), readyHead: 'aaa' }) });
+    watcher.poll();
+    expect(merges).toEqual(['aaa']);
+    expect(state(id)).toBe('live');
+  });
+
+  test('a merge GitHub refuses leaves it to the owner, tried again each round; new work takes that back', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    refuse = 'At least 1 approving review is required by reviewers with write access.';
+    watcher.poll();
+    expect(state(id)).toBe('inPr');
+    expect(board.item(id)!.pr).toMatchObject({ ready: true, mergeError: refuse });
     expect(needsYou(board.item(id)!)).toBe(true);
-    expect(board.events(id).at(-1)!.text).toStartWith('Bereit zum Mergen');
-    expect(runtime.last.inbox.length).toBe(n);
+    expect(board.events(id).at(-1)!.text).toBe(`Obeya konnte nicht mergen: ${refuse}`);
     // said once
     const events = board.events(id).length;
     watcher.poll();
@@ -176,6 +214,12 @@ describe('watching', () => {
     watcher.poll();
     expect(board.item(id)!.pr!.ready).toBeUndefined();
     expect(needsYou(board.item(id)!)).toBe(false);
+    // the worker resolves it; now GitHub lets the merge through
+    status.comments[0]!.resolved = true;
+    runtime.last.emit({ type: 'idle' });
+    refuse = undefined;
+    watcher.poll();
+    expect(state(id)).toBe('live');
   });
 
   test('while the owner is asked, news waits; the answer returns the card to the PR', async () => {
@@ -213,8 +257,10 @@ describe('watching', () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
     runtime.last.emit({ type: 'idle' });
+    // not yet ready, so Obeya does not merge it itself
+    status.checks = [{ name: 'build', state: 'pending' }];
     let asked = 0;
-    const counting = new PrWatcher(board, workers, { status: () => (asked++, status), body: () => '', setBody: () => {} }, () => dir);
+    const counting = new PrWatcher(board, workers, { status: () => (asked++, status), body: () => '', setBody: () => {}, merge: () => {} }, () => dir);
     counting.soon();
     counting.soon();
     await Bun.sleep(5);
