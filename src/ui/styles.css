@@ -773,15 +773,15 @@ button.link:hover { text-decoration: underline; }
   background: var(--card); box-shadow: 0 0 0 1px hsl(var(--h) 60% 55% / .55), 0 2px 8px rgba(0,0,0,.1);
   opacity: 0; transition: opacity .2s, box-shadow .15s; }
 .gtag span { overflow: hidden; text-overflow: ellipsis; }
-/* how many of the group's cards are still to be done; an empty group's name goes pale */
-.gcount { flex: none; min-width: 18px; height: 16px; margin-right: -4px; padding: 0 5px; box-sizing: border-box; border-radius: 8px;
-  display: grid; place-items: center; font: 600 11px/1 system-ui; font-variant-numeric: tabular-nums;
-  background: hsl(var(--h) 70% 50% / .16); color: var(--ink); }
+/* how many of the group's cards are still to be done, in the tag's coloured right end, on the
+   name's line; an empty group's name goes pale */
+.gcount { flex: none; align-self: stretch; margin: -2px -9px -2px 2px; padding: 2px 8px 2px 7px; border-radius: 0 11px 11px 0;
+  font: 600 12px/18px system-ui; font-variant-numeric: tabular-nums; color: var(--ink); background: hsl(var(--h) 70% 50% / .2); }
 .gtag.vacant span { color: var(--muted); }
-.gtag.vacant .gcount { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
+.gtag.vacant .gcount { background: color-mix(in srgb, var(--line) 70%, transparent); color: var(--muted); }
 .ring.open .gtag { opacity: 1; }
 .gtag.hot { font-weight: 600; box-shadow: 0 0 0 2px hsl(var(--h) 75% 52%), 0 0 14px hsl(var(--h) 90% 55% / .45); }
-.gdel { flex: none; width: 18px; height: 18px; margin-right: -5px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;
+.gdel { flex: none; width: 18px; height: 18px; margin-right: -2px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;
   background: transparent; color: var(--muted); font: 600 14px/1 system-ui; cursor: pointer; }
 .gdel:hover { background: var(--ink); color: var(--bg); }
 .rcap { position: absolute; left: -60px; width: 120px; top: -9px; text-align: center; font: 600 13px/18px system-ui; color: var(--ink); white-space: nowrap; }

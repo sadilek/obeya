@@ -349,9 +349,6 @@ export function Ring({
                 onPointerDown={(e) => (e.preventDefault(), e.stopPropagation(), naming ? onClose() : pick(k))}
               >
                 <span>{b.g.name}</span>
-                <b className="gcount" title={t.groups.open(openCards.get(b.g.id) ?? 0)}>
-                  {openCards.get(b.g.id) ?? 0}
-                </b>
                 {k === hot && !naming && (
                   <button
                     className="gdel"
@@ -362,6 +359,9 @@ export function Ring({
                     ×
                   </button>
                 )}
+                <b className="gcount" title={t.groups.open(openCards.get(b.g.id) ?? 0)}>
+                  {openCards.get(b.g.id) ?? 0}
+                </b>
               </div>
             ),
         )}
