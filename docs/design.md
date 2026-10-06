@@ -386,7 +386,7 @@ the owner's language (`src/core/locale.ts`).
   `settings.json` in Obeya's home (`src/server/settings.ts`), which the server reads whenever it
   needs the language (`ownerLanguage`) and the UI asks for before its first render
   (`/api/language`). The UI strings are two tables of one shape in `src/ui/strings.ts`, so a
-  missing English text is a type error; dates and numbers follow the language, in the browser's
+  missing English text is a type error; the English one calls the Koordinator the Coordinator; dates and numbers follow the language, in the browser's
   own variant of it (`en-GB` writes the day first). Choosing another language takes effect at
   once: the page loads again, keeping what was open, as after a restart. Behind the interface
   (the Koordinator's replies and spoken confirmations, Whisper, server messages, what agents
