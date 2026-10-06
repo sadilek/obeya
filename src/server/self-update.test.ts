@@ -45,12 +45,13 @@ test('a commit that changes code asks for a restart, once', async () => {
   expect(calls).toEqual([[start, head]]);
 });
 
-test('docs and the site alone change nothing that runs', async () => {
+test('docs, the site and its workflow alone change nothing that runs', async () => {
   const calls: string[] = [];
   stop = watchOwnCode(repo, (_, to) => calls.push(to), 20);
   commit('docs/plan.md', 'plan');
   commit('README.md', 'readme');
   commit('site/index.html', '<!doctype html>');
+  commit('.github/workflows/pages.yml', 'name: Pages');
   await wait(120);
   expect(calls).toEqual([]);
   const head = commit('src/a.ts', 'b');

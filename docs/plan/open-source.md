@@ -45,8 +45,46 @@ services are off the table for now (see Background).
   reduced motion and without JavaScript they stay a plain list); from C the six principles as
   cards on a wall. Inter and the three characters of 大部屋 (Noto Serif JP) are served from
   `site/fonts/` with their OFL licences; logo and wordmark are copies from `src/ui/logo/`. The
-  screenshots are B's, of the German interface, and the film is a still until W9. Not published
-  yet (W4). The prototype cards A, B and C can go.
+  screenshots are B's, of the German interface, and the film is a still until W9. The prototype
+  cards A, B and C can go.
+- *Publishing*: the workflow `.github/workflows/pages.yml` publishes `site/` to GitHub Pages on
+  every push to `main` on GitHub that touches `site/` (or the workflow), and on demand from the
+  Actions tab. Pages serves a branch only from `/` or `/docs`, hence the workflow. The repository
+  is public, so the free plan has Pages. Not live yet: GitHub's `main` lags the local one until it
+  is pushed, and the owner's steps below are open. Today obeya.si and www.obeya.si point to the
+  registrar's parking page (2.57.91.91; registrar OpusDNS, nameservers `aurora` and
+  `nebula.dns-parking.com`).
+
+### Publishing: the owner's steps
+
+1. **Pages source.** github.com/sadilek/obeya → Settings → Pages → Build and deployment →
+   Source: *GitHub Actions*.
+2. **Verify the domain** (keeps others from claiming obeya.si on GitHub): github.com → your
+   profile's Settings → Pages → Add a domain → `obeya.si`. GitHub shows a TXT record
+   (`_github-pages-challenge-sadilek.obeya.si` with a code); add it at the registrar, then Verify.
+3. **DNS at the registrar.** Remove the parking record (`A 2.57.91.91`) for `obeya.si` and the
+   one for `www`, then add:
+
+   | Name  | Type  | Value                  |
+   | ----- | ----- | ---------------------- |
+   | `@`   | A     | `185.199.108.153`      |
+   | `@`   | A     | `185.199.109.153`      |
+   | `@`   | A     | `185.199.110.153`      |
+   | `@`   | A     | `185.199.111.153`      |
+   | `@`   | AAAA  | `2606:50c0:8000::153`  |
+   | `@`   | AAAA  | `2606:50c0:8001::153`  |
+   | `@`   | AAAA  | `2606:50c0:8002::153`  |
+   | `@`   | AAAA  | `2606:50c0:8003::153`  |
+   | `www` | CNAME | `sadilek.github.io.`   |
+
+4. **Push `main`** to GitHub. The workflow runs and publishes to sadilek.github.io/obeya until the
+   domain is set (the site uses relative paths, so it works there too).
+5. **Custom domain.** Settings → Pages → Custom domain: `obeya.si` → Save. GitHub checks the DNS
+   (minutes to an hour after step 3) and then issues the certificate; once it has, tick
+   *Enforce HTTPS*. www.obeya.si then redirects to obeya.si. The domain lives in this setting,
+   not in a `CNAME` file, which workflow deployments ignore.
+6. **Check:** `dig +short obeya.si` shows the four addresses above, https://obeya.si shows the
+   site, http://obeya.si redirects to it.
 
 ## Design
 
@@ -103,7 +141,7 @@ needs the English interface (W5, W6) and the site (W3).
 - [x] **W3:** The site. Built from prototype B (film first) as `site/index.html` with its assets,
   with the ideas from prototypes A and C the owner names; Inter served from `site/`, works on a
   phone, readable without JavaScript. Once it has landed, the prototype cards A, B and C can go.
-- [ ] **W4:** Publishing on GitHub Pages under obeya.si. A GitHub Actions workflow publishes `site/` to Pages (Pages
+- [x] **W4:** Publishing on GitHub Pages under obeya.si. A GitHub Actions workflow publishes `site/` to Pages (Pages
   serves only `/` or `/docs` from a branch), the custom domain with HTTPS. The DNS records at the
   registrar and the Pages setting are the owner's steps; the worker writes them down. Needs the
   public repository (W2) unless the account's plan has Pages for private ones.
