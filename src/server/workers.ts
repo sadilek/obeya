@@ -656,7 +656,9 @@ export class Workers {
     if (card.state !== 'working' && card.state !== 'inPr' && !landed) return;
     if (landed) {
       // what remained after the landing is done, unless the worker waits for its question or the restart
-      if (card.state !== 'waiting' && !landed.waits) this.finish(cardId);
+      if (card.state === 'waiting' || landed.waits) return;
+      if (live.failed) return this.failedAfterLanding(cardId, live);
+      this.finish(cardId);
       return;
     }
     if (this.restart && live.toldRestart) {
@@ -686,6 +688,27 @@ export class Workers {
     // a session that fails again after the nudge cannot go on by itself: the owner hears why, not its last words
     const text = live.failed ? failureReason(clip(live.failed, 1200)) : live.lastText ? clip(live.lastText, 1200) : 'Der Agent hat angehalten, ohne fertig zu sein.';
     this.toOwner(cardId, { text, options: [] });
+  }
+
+  /**
+   * A turn after the landing that an error cut off (the API overloaded, say) has not done what
+   * remained: it is tried once more, then the owner hears why. A restart that is due tries it
+   * again by resuming the worker, and need not wait for a turn that may fail the same way.
+   */
+  private failedAfterLanding(cardId: string, live: Live) {
+    if (this.restart) {
+      this.o.board.log(cardId, 'state', 'obeya', this.restart.reason === 'stop' ? 'Pausiert, bis Obeya wieder läuft.' : 'Pausiert bis zum Neustart von Obeya.');
+      return;
+    }
+    if (!live.nudged) {
+      live.nudged = true;
+      live.busy = true;
+      live.session.send(`Your last turn broke off with an error (${clip(live.failed!, 300)}). Your work is on main; go on with what remained after the landing.`);
+      return;
+    }
+    live.nudged = false;
+    live.stalled = true;
+    this.toOwner(cardId, { text: `${failureReason(clip(live.failed!, 1200))} Was nach der Landung noch zu tun war, ist nicht erledigt; „Anhalten“ schließt die Karte ohne den Rest ab.`, options: ['Nochmal versuchen'] });
   }
 
   /** Waits for a sign of life from the worker; without one for a long while, its turn counts as ended. */
@@ -736,7 +759,9 @@ export class Workers {
     if (!live.stalled) return;
     live.stalled = false;
     const card = this.o.board.item(cardId);
-    if (card?.state === 'waiting' && card.need === 'question') this.o.board.work(cardId, { state: card.pr ? 'inPr' : 'working', need: null, detail: null });
+    if (card?.state !== 'waiting' || card.need !== 'question') return;
+    const landed = this.o.board.row(cardId).landed;
+    this.o.board.work(cardId, { state: landed ? landedState(landed) : card.pr ? 'inPr' : 'working', need: null, detail: null });
   }
 
   // ---------------------------------------------------------------- the worker's tools

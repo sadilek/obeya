@@ -1167,6 +1167,78 @@ describe('a worktree per card', () => {
     expect(git(main, 'worktree', 'list').split('\n')).toHaveLength(1);
   });
 
+  test('a turn after the landing that an error cut off is tried once more, then goes to the owner; the card does not finish', async () => {
+    const c = manual();
+    workers.start(c.id);
+    commitIn(board.row(c.id).workspace!, 'c.ts', 'C');
+    const s = runtime.last;
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    s.emit({ type: 'error', message: 'API Error: 529 Overloaded' });
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(false);
+    expect(workers.busy()).toBe(true);
+    expect(s.inbox.at(-1)).toContain('go on with what remained after the landing');
+    s.emit({ type: 'error', message: 'API Error: 529 Overloaded' });
+    s.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.question!.text).toContain('529 Overloaded');
+    expect(board.item(c.id)!.finishing).toBe(true);
+    expect(s.closed).toBe(false);
+    // the question is no reason to put off a restart
+    expect(workers.busy()).toBe(false);
+    // the owner's answer has the worker try again; once it gets through, the card finishes
+    workers.answer(c.id, 'Nochmal versuchen');
+    expect(state(c.id)).toBe('live');
+    s.emit({ type: 'tool', name: 'Bash', input: { command: 'bun scripts/backfill.ts' } });
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(board.item(c.id)!.finishing).toBeUndefined();
+  });
+
+  test('a worker that works on by itself after its failed turn went to the owner takes the question back, and the card stays live', async () => {
+    const c = manual();
+    workers.start(c.id);
+    commitIn(board.row(c.id).workspace!, 'c.ts', 'C');
+    const s = runtime.last;
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    for (let i = 0; i < 2; i++) {
+      s.emit({ type: 'error', message: 'API Error: 529 Overloaded' });
+      s.emit({ type: 'idle' });
+    }
+    expect(state(c.id)).toBe('waiting:question');
+    s.emit({ type: 'text', text: 'Weiter.' });
+    expect(state(c.id)).toBe('live');
+  });
+
+  test('a turn after the landing that an error cut off while a restart is due waits for the restart, which resumes it', async () => {
+    const c = manual();
+    workers.start(c.id);
+    commitIn(board.row(c.id).workspace!, 'c.ts', 'C');
+    const s = runtime.last;
+    s.emit({ type: 'session', id: 'sess-1' });
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 60_000 });
+    const sent = s.inbox.length;
+    s.emit({ type: 'error', message: 'API Error: 529 Overloaded' });
+    s.emit({ type: 'idle' });
+    // no second try that holds off the restart, and no end of the card either
+    expect(s.inbox).toHaveLength(sent);
+    expect(workers.busy()).toBe(false);
+    expect(s.closed).toBe(false);
+    expect(board.item(c.id)!.finishing).toBe(true);
+    workers.shutdown();
+    const after = new Workers({ board: new Board(store, board.canvas, () => [doc]), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } });
+    after.resumeAll();
+    expect(runtime.last).not.toBe(s);
+    expect(runtime.last.spec.resume).toBe('sess-1');
+  });
+
   test("an idea's plan doc that lands is remembered for the project it becomes", async () => {
     const i = board.create({ idea: true, title: 'Groß', x: 0, y: 0 });
     board.work(i.id, { state: 'planned' });

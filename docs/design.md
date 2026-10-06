@@ -480,7 +480,13 @@ the owner's language (`src/core/locale.ts`).
   for ends its session and removes worktree and branch (a clone is free again). When the landing
   changed Obeya's own running code, the worker is told Obeya restarts with it; what needs the new
   code waits through `after_restart`: the worker ends its turn, the restart goes ahead, and the
-  resumed worker hears that Obeya now runs its change.
+  resumed worker hears that Obeya now runs its change. A turn there that an error cut off (the API
+  overloaded, say) does not count as done: like a turn that ends without a handover while the
+  worker works, it is tried once more, and if that fails too the owner gets the reason as a question
+  ("Nochmal versuchen", or "Anhalten" to end the card without the rest). Before (until 2026-10),
+  such a turn ended the card, and what remained after the landing was silently left undone. While a
+  restart is due, the failed turn instead pauses for it, which resumes the worker, so that a second
+  try does not hold up the restart.
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs), the server stops and starts again; when the
