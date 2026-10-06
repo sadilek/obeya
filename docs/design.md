@@ -492,7 +492,9 @@ the owner's language (`src/core/locale.ts`).
   restart is due, the failed turn instead pauses for it, which resumes the worker, so that a second
   try does not hold up the restart. A turn there that the usage limit stopped is not done either: it
   waits for the limit as while the worker works (status line, not busy, told to go on after the
-  reset), then the worker finishes what remained. Before, it too ended the card.
+  reset), then the worker finishes what remained. Before, it too ended the card. On the canvas, a
+  card finishing shows its status line as one at work does; before (until 2026-10), only the
+  detail view showed it.
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs), the server stops and starts again; when the
