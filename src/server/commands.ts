@@ -7,6 +7,8 @@ import { BadRequest, type Board } from './board';
 import type { Config } from './config';
 import type { Moment } from './db';
 import { type AgentRuntime, type AgentSession, failureReason } from './runtime';
+import { type Language, LANGUAGE_NAMES } from '../core/locale';
+import { MESSAGES } from '../core/messages';
 
 export type Command = (
   /** `from`: the card it follows up on. */
@@ -129,6 +131,8 @@ export interface CommanderOptions {
 interface Session {
   agent: AgentSession;
   ended: boolean;
+  /** The language it speaks to the owner in; another one chosen since takes a new session. */
+  language: Language;
   /** Tags of the cards it has seen; they stay the same for the session, so earlier messages stay right. */
   tags: Map<string, string>;
   tagOf: Map<string, string>;
@@ -191,7 +195,8 @@ export class Commander {
       decision = await this.interpret(transcript, focus, images, input);
     } catch (e) {
       // the Koordinator's session failed (not logged in, say): the owner hears why, not that they went unheard
-      const confirm = `Ich konnte das nicht lesen. ${failureReason(e instanceof Error ? e.message : String(e))}`;
+      const t = this.o.board.t;
+      const confirm = t.voice.couldNotRead(failureReason(e instanceof Error ? e.message : String(e), t));
       this.o.board.addTalk(transcript, confirm, card ?? null, undefined, images);
       if (card) {
         this.o.board.log(card, 'say', 'owner', transcript, undefined, images);
@@ -275,7 +280,7 @@ export class Commander {
     clearTimeout(w.timer);
     this.waiting.delete(token);
     this.o.board.undoTalk(w.talk);
-    if (w.card && this.o.board.item(w.card)) this.o.board.log(w.card, 'state', 'owner', 'Zurückgenommen.');
+    if (w.card && this.o.board.item(w.card)) this.o.board.log(w.card, 'state', 'owner', this.o.board.t.voice.undone);
     this.news.push(`The owner took back what you confirmed with „${w.confirm}“; it did not happen.`);
     return true;
   }
@@ -291,17 +296,31 @@ export class Commander {
       .snapshot()
       .items.filter((i) => !finished(i.state))
       .map((i) => i.title.replace(/[`*_]/g, ''));
-    return ['Obeya, Koordinator, Aufgabe, Folgeaufgabe, Karte, Workstream, Idee, Prototyp, parken, Demo, freigeben, Pull Request, Agent.', ...titles].join(' ').slice(0, 900);
+    return [this.o.board.t.vocabulary, ...titles].join(' ').slice(0, 900);
   }
 
   /** Starts the Koordinator's session ahead, so a command does not wait for its start-up. Called when the owner starts speaking. */
   warm() {
-    if (!this.session || this.session.ended) this.session = this.open();
+    if (!this.live()) this.session = this.open();
+  }
+
+  /** The session that reads the next command, if it is still up and speaks the owner's language. */
+  private live(): Session | null {
+    const s = this.session;
+    if (s && !s.ended && !s.reading && s.language !== this.o.board.language()) {
+      s.ended = true;
+      s.agent.close();
+      this.session = null;
+    }
+    return this.session && !this.session.ended ? this.session : null;
   }
 
   /** A session whose tools act on whatever command it is reading. */
   private open(): Session {
-    const s: Session = { agent: null as unknown as AgentSession, ended: false, tags: new Map(), tagOf: new Map(), read: 0, since: '', rules: [] };
+    const language = this.o.board.language();
+    const t = MESSAGES[language];
+    const say = CONFIRM[language];
+    const s: Session = { agent: null as unknown as AgentSession, ended: false, language, tags: new Map(), tagOf: new Map(), read: 0, since: '', rules: [] };
     const finish = (commands: Command[], confirm: string, lookUp?: LookUp) => (s.reading ? s.reading.finish(commands, confirm, lookUp) : 'No command to read.');
     const repos = this.o.board.canvas.repos;
     const config = this.o.config;
@@ -309,7 +328,7 @@ export class Commander {
       cwd: this.o.cwd,
       readOnly: true,
       effort: 'medium',
-      system: SYSTEM,
+      system: system(language),
       tools: [
         {
           name: 'act',
@@ -324,10 +343,10 @@ export class Commander {
             '- feedback: text as feedback on work waiting for review (demo or summary), a question about that work included; the agent works on it again.',
             '- approve: approve work waiting for review; direct: true when the owner wants it straight onto main without a pull request („ohne PR“, „direkt auf main“), which a repository whose work goes out as a pull request allows only where the list of repositories says so. accept: take a proposed card and start it (a proposed idea: its discussion opens; the open questions on it go along). dismiss: discard a proposed card. revise: text what the owner wants changed in a proposed card, or their thoughts on it (added, dropped, decided, put differently); an agent rewrites its text and questions by it in a minute or so, and accepting it waits for that (by a click once it is there). split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
-            "- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card „CLAUDE.md ergänzen“, whose worker writes it into the CLAUDE.md. confirm says where it goes („Gemerkt, gilt ab sofort für alle Agenten.“ / „Kommt in die CLAUDE.md von <repository name>, über die Aufgabe „CLAUDE.md ergänzen“.“).",
-            "- work_retro (no card): the Arbeitsrückschau of a repository, now („Mach eine Arbeitsrückschau für den Shop“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill) or CLAUDE.md lines for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself every 10 finished cards of a repository. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. „Ich mache die Arbeitsrückschau für den Shop; Vorschläge erscheinen als Karten.“",
+            `- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in ${LANGUAGE_NAMES[language]}; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card ${t.quote(t.claudeMd.title)}, whose worker writes it into the CLAUDE.md. confirm says where it goes (${say.remember}).`,
+            `- work_retro (no card): the Arbeitsrückschau of a repository, now („Mach eine Arbeitsrückschau für den Shop“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill) or CLAUDE.md lines for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself every 10 finished cards of a repository. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. ${say.retro}`,
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once; while its agent works on a reply, or starts on one with a discuss in the same command, once that reply is there, unless the reply asks questions), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words; empty: one prototype for each variant its agent planned that has none running yet, all at once, or without planned variants one of the idea as it stands), park (for later), drop (it stays on the canvas with its brief). Planning an idea waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that planning goes by a click once the reply is there.",
-            `- group: put cards into a group, shown on the canvas as a coloured territory behind them. cards: their tags; text: the group's name (group is only for rename_group), one the canvas has (see the list) or a new one, which is then created. A card is in one group at most, so this takes it out of its group. A workstream stands for its project: the whole project goes into the group. ungroup: take cards (cards) out of their group. rename_group: group the group's current name, text its new name. A group no card belongs to any more goes. confirm e.g. „„Export“ und „Rabatt“ gehören jetzt zur Gruppe Abrechnung.“`,
+            `- group: put cards into a group, shown on the canvas as a coloured territory behind them. cards: their tags; text: the group's name (group is only for rename_group), one the canvas has (see the list) or a new one, which is then created. A card is in one group at most, so this takes it out of its group. A workstream stands for its project: the whole project goes into the group. ungroup: take cards (cards) out of their group. rename_group: group the group's current name, text its new name. A group no card belongs to any more goes. confirm e.g. ${say.group}`,
             '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away; when the idea became a project, one of its workstreams is built on the branch instead: the one its plan doc builds on the prototype with, or cards: the tag of the one the owner names), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
             "Texts for a card's agent (note, answer, feedback) and for revise in the owner's own words, not rephrased: all they said, or with several actions in one sentence the part for that action. Other texts (a new card's body, a rule, talk to an idea) as the owner meant them (fix obvious recognition errors).",
           ].join('\n'),
@@ -395,7 +414,7 @@ export class Commander {
                 description: [
                   "Change Obeya's configuration on the owner's word: canvases is the whole new list as config shows it (keep what the owner did not ask to change). It is saved after the undo window, and Obeya then starts again with it once no agent is in the middle of a turn; the page reloads.",
                   "A canvas's id follows its name (without one, the first repository's adapter names it), unless id is set: to rename a canvas, set id to its current id (from resolved), or it becomes a new, empty canvas and its cards stay under the old id, unseen. The first repository a canvas was served with stays its home and must stay listed. Server settings (port, permission mode) are not part of it; they come from the command line.",
-                  'confirm: one short German sentence saying what changes and that Obeya then starts again, e.g. „Das Repository shop-web kommt auf die Leinwand Shop; Obeya startet danach neu.“',
+                  `confirm: one short ${LANGUAGE_NAMES[language]} sentence saying what changes and that Obeya then starts again, e.g. ${say.configure}`,
                 ].join('\n'),
                 schema: {
                   canvases: z.array(
@@ -424,7 +443,7 @@ export class Commander {
             'No action: a question that needs reading you cannot do in this quick turn: what an agent would do on a card if it were started, what the plan doc says about a workstream, how something works in the code, why something is the way it is.',
             "Never for a question about the work of an agent on a card (working, waiting for review, in PR, waiting, or finishing what remains): that agent knows its work, which is on its branch and not in the checkout look_up reads; pass the question to it (note, or feedback when it waits for review).",
             "An agent that reads the plan docs, the repository and the card's start task answers it in a few seconds; a question about a workstream goes to its project agent.",
-            'question: the question in full, standing on its own (in English or German). card: the tag of the card it is about, if any (the open one unless the owner means another). confirm: a short German acknowledgement, e.g. „Ich schaue im Plan nach.“ / „Moment, ich lese nach, was der Agent bei „…“ tun würde.“',
+            `question: the question in full, standing on its own (in English or German). card: the tag of the card it is about, if any (the open one unless the owner means another). confirm: a short ${LANGUAGE_NAMES[language]} acknowledgement, e.g. ${say.lookUp}`,
           ].join('\n'),
           schema: { question: z.string(), card: z.string().optional(), confirm: z.string() },
           run: ({ question, card, confirm }) => {
@@ -621,7 +640,7 @@ export class Commander {
 
   /** Reads one command; settles when the turn has ended, while the decision goes out as soon as it is taken. */
   private async read(transcript: string, focus: Focus, images: string[], input: Input, decide: (d: Decision) => void, retry = true): Promise<void> {
-    const warmed = this.session && !this.session.ended ? this.session : null;
+    const warmed = this.live();
     const s = warmed ?? (this.session = this.open());
     let decided = false;
     const ended = new Promise<Error | undefined>((end) => {
@@ -644,7 +663,7 @@ export class Commander {
       if (warmed && retry) return this.read(transcript, focus, images, input, decide, false);
       throw error;
     }
-    if (!decided) decide({ commands: [], confirm: 'Das habe ich nicht verstanden.' });
+    if (!decided) decide({ commands: [], confirm: MESSAGES[s.language].voice.notUnderstood });
     if (s.read >= (this.o.sessionCommands ?? 30)) {
       // long enough: the next session starts from the stored memory, so the context stays short
       s.ended = true;
@@ -812,7 +831,29 @@ function when(iso: string): string {
   return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-const SYSTEM = `
+/** Examples of the confirmations the Koordinator speaks, and the owner's words for its cards, per language. */
+const CONFIRM: Record<Language, { act: string; words: string; remember: string; retro: string; group: string; configure: string; lookUp: string }> = {
+  de: {
+    act: '"Neue Aufgabe „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgeaufgabe „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."',
+    words: 'In German, a card is an „Aufgabe“ (a follow-up: „Folgeaufgabe“), an idea „Idee“, a project „Projekt“; never say „Karte“. The owner may still say „Karte“ and means the same.',
+    remember: '„Gemerkt, gilt ab sofort für alle Agenten.“ / „Kommt in die CLAUDE.md von <repository name>, über die Aufgabe „CLAUDE.md ergänzen“.“',
+    retro: '„Ich mache die Arbeitsrückschau für den Shop; Vorschläge erscheinen als Karten.“',
+    group: '„„Export“ und „Rabatt“ gehören jetzt zur Gruppe Abrechnung.“',
+    configure: '„Das Repository shop-web kommt auf die Leinwand Shop; Obeya startet danach neu.“',
+    lookUp: '„Ich schaue im Plan nach.“ / „Moment, ich lese nach, was der Agent bei „…“ tun würde.“',
+  },
+  en: {
+    act: '"New task “Meter readings as CSV”, the agent starts." / "“Discount” approved, and the follow-up “Archive” is created." / "Passed on to the agent of “Export”."',
+    words: 'In English, a card is a “task” (a follow-up: “follow-up”), an idea “idea”, a project “project”; never say “card”. The owner may still say “card” and means the same.',
+    remember: '“Noted, it applies to all agents from now on.” / “It goes into the CLAUDE.md of <repository name>, through the task “Add to CLAUDE.md”.”',
+    retro: '“I am running the work retrospective for the shop; proposals appear as cards.”',
+    group: '““Export” and “Discount” now belong to the group Billing.”',
+    configure: '“The repository shop-web joins the canvas Shop; Obeya then restarts.”',
+    lookUp: '“Let me look at the plan.” / “One moment, I am reading what the agent would do on “…”.”',
+  },
+};
+
+const system = (language: Language) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents by voice or typing. Each message brings what the owner just said or typed. Speech is transcribed by speech recognition: words may be misheard, so read for what they most likely meant, using the card titles as vocabulary. Typed text stands as written.
 
 This is one ongoing conversation. The owner refers back to it ("the card from before", "no, the other one", "that one too"), and to how the canvas developed: each message says what happened since the previous one, and the first brings your memory of earlier conversations and the canvas's recent history. Card tags (K1, K2, …) stay the same throughout this conversation. No agent works on a planned, live or done card (done: finished without any change to the code, so nothing landed); a workstream of a project takes its state from the project's plan doc (checked off there means live).
@@ -821,10 +862,10 @@ For each message, call act, reply or look_up once, then end your turn:
 - act, with every action the owner asked for, in their order, on the cards they meant (the open card unless they name another). One sentence may hold several ("gib das frei und mach eine Folgeaufgabe …" is approve and new_card, with the open card as the one it follows up on): leave none out.
 - reply, when the owner asks you something you can answer from what you know (the cards, their states and history, this conversation), also about the open card, or when nothing fits or it is unclear which card or what is meant.
 - look_up, when the answer needs reading: what an agent would do on a card ("Was würde der Agent hier machen, wenn ich starte?"), what the plan says, how or why something works. Never reply that you cannot know or predict it; look it up. The answer follows in a few seconds.
-All three take confirm: one short German sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards ("Neue Aufgabe „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgeaufgabe „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."). No preamble, no questions back unless you use reply.
-In German, a card is an „Aufgabe“ (a follow-up: „Folgeaufgabe“), an idea „Idee“, a project „Projekt“; never say „Karte“. The owner may still say „Karte“ and means the same.
+All three take confirm: one short ${LANGUAGE_NAMES[language]} sentence (two at most for an answer or several actions) the owner hears back, saying what will happen, naming the cards (${CONFIRM[language].act}). No preamble, no questions back unless you use reply.
+${CONFIRM[language].words}
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
-When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent. Decide where it goes: only a rule on how the agents work with the owner through Obeya, whatever the repository, is one of the owner's rules (no repos); anything about a repository (named, "hier", "in diesem Repo", or about its code, UI, wording, tests, tools or product) goes into that repository's CLAUDE.md: pass repos. Leave the place out of the rule's text, and say in confirm where it went (for a CLAUDE.md: into the repository's card „CLAUDE.md ergänzen“, which writes it into the file).
+When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent. Decide where it goes: only a rule on how the agents work with the owner through Obeya, whatever the repository, is one of the owner's rules (no repos); anything about a repository (named, "hier", "in diesem Repo", or about its code, UI, wording, tests, tools or product) goes into that repository's CLAUDE.md: pass repos. Leave the place out of the rule's text, and say in confirm where it went (for a CLAUDE.md: into the repository's card ${MESSAGES[language].quote(MESSAGES[language].claudeMd.title)}, which writes it into the file).
 When an agent works on the open card (working, in PR, waiting, waiting for review, or finishing what remains), what the owner says is, in doubt, for that agent: note, or answer when the card has an open question, or feedback when it waits for review. Pass their words as they are; the agent learns whether they were spoken. Talking to the agent ("mach …", "kannst du …", "warum hast du …"), a remark on the work, a question about it ("ist sichergestellt, dass …", "was passiert, wenn …"), a bare answer: all for the agent, which knows its work; never look_up. Only what clearly asks something of Obeya goes elsewhere: approve, stop, start, a follow-up or new card, a new idea, remember, grouping cards, an action on another card, or a question to you about the canvas (reply or look_up).
 When the open card is a proposal, what the owner says about it (what should be added, dropped, decided or put differently, or their thoughts on it) is revise with their words, unless they clearly accept or dismiss it or ask for something else.
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). "Mach, was du vorschlägst" on an idea takes the step its agent would take next, as its line says; when that is answering, discuss with its own answers. Wanting to think about something, rather than have it done, is new_idea.

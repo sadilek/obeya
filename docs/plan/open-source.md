@@ -27,9 +27,10 @@ services are off the table for now (see Background).
 - *Language*: the interface speaks German or English (`src/ui/strings.ts`), chosen in the
   settings and following the system language until chosen; dates and numbers follow. The choice
   is in `settings.json` in Obeya's home, which the server reads (`ownerLanguage` in
-  `src/server/settings.ts`) (W5). The Koordinator, spoken confirmations, worker prompts and
-  server messages are still German.
-  Demo narration can already be German or English (design: Architecture, Demos).
+  `src/server/settings.ts`) (W5). Behind the interface the same setting decides the Koordinator's
+  replies and spoken confirmations, the Whisper language, the server's lines in a card's log, the
+  language agents write the owner in, and a demo's narration until the demo settings name one
+  (W6).
 - *Platforms*: voice in and out run on all three platforms (W7): Whisper on MLX and the macOS
   voice on a Mac, faster-whisper and Piper elsewhere, with a section "Voice" in the settings
   that checks and installs them. Checked on GitHub's Windows Server and Ubuntu runners and Linux
@@ -153,7 +154,7 @@ needs the English interface (W5, W6) and the site (W3).
 - [x] **W5:** English interface. `src/ui/strings.ts` gets English beside German, chosen in the
   settings and following the system language until chosen; dates and numbers follow too. The
   setting is stored where the other settings are and read by the server.
-- [ ] **W6:** English behind the interface. The language setting from W5 decides the Koordinator's
+- [x] **W6:** English behind the interface. The language setting from W5 decides the Koordinator's
   replies and its spoken confirmations, the Whisper language, server messages the owner sees, the
   language worker and idea-agent prompts ask for in owner-facing text, and the narration language
   a demo is offered with. Prompts stay as they are where only agents read them.
@@ -178,8 +179,6 @@ needs the English interface (W5, W6) and the site (W3).
   scrolling and screen readers; on a phone and with reduced motion the site stays plain B.
 - **B depends on the video.** Until the hero video (W9) exists, the site shows a still with a
   placeholder.
-- **English behind the interface (W6) is larger than it looks.** German sits in prompts, server
-  messages and tests. If it does not fit one card, it is cut along those lines.
 - **Voice on Windows** has no machine here; one run in a VM or on a colleague's machine is the
   minimum before the site says it works there.
 

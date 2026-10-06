@@ -7,6 +7,8 @@
 // leaves its doc stays stored but is not shown.
 
 import { boundsOf, CARD_SIZE, freeSpotNear, GAP, PROJECT_HEAD, placeProjects, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
+import type { Language } from '../core/locale';
+import { MESSAGES, type Messages } from '../core/messages';
 import type { PlanDoc } from '../core/plan-doc';
 import {
   type CanvasInfo,
@@ -121,10 +123,7 @@ const ACTIVE: string[] = ['working', 'waiting', 'inPr', 'approved'];
 /** Exchanges with the Koordinator its sheet shows. */
 const SHEET_TALK = 30;
 
-/** The card that collects accepted rules for a repository's CLAUDE.md, and the setting that names it, per repository. */
-const CLAUDE_MD_TITLE = 'CLAUDE.md ergänzen';
-const CLAUDE_MD_TASK =
-  'Der Owner hat diese Regeln für dieses Repo festgelegt. Arbeite sie in die CLAUDE.md ein, passend zu dem, was dort steht (Abschnitt, Ton, Länge) und ohne Dopplungen; steht eine schon sinngemäß drin, schärfe nur die Stelle. Sonst nichts ändern. Statt einer Demo genügt in der Zusammenfassung der neue Wortlaut.';
+/** The setting that names the card collecting accepted rules for a repository's CLAUDE.md, per repository. */
 const CLAUDE_MD_SETTING = 'claude_md_card:';
 
 /** How long an untitled card of the owner's may exist before Obeya drops it on start. */
@@ -154,10 +153,17 @@ export class Board {
     private images?: Pick<Images, 'resolve'>,
     /** Whether the Lesestand of the repository holds the commit; without it, every commit counts as held. */
     private holds?: (repo: string, commit: string) => boolean,
+    /** The language Obeya speaks to the owner now (`ownerLanguage`); the tests speak German. */
+    readonly language: () => Language = () => 'de',
   ) {
     store.ensureCanvas(canvas.id, canvas.name);
     // a new card whose page closed before it got a title was never wanted
     store.sweepUntitled(canvas.id, new Date(Date.now() - UNTITLED_GRACE_MS).toISOString());
+  }
+
+  /** What Obeya says to the owner, in their language. */
+  get t(): Messages {
+    return MESSAGES[this.language()];
   }
 
   /** The canvas's home repository: bare plan references and cards without a repository are its. */
@@ -231,7 +237,7 @@ export class Board {
       const shipped: Shipped = { ...s, ...(!s.pr && pr?.url && pr.number ? { pr: { url: pr.url, number: pr.number } } : {}) };
       // a new run starts on a fresh branch: the old one is merged, perhaps squashed
       this.store.update(r.id, { state: 'planned', need: null, pr: null, branch: null, shipped: JSON.stringify(shipped) });
-      this.log(r.id, 'state', 'obeya', 'Teil gelandet, im Plan-Doc weiter offen.');
+      this.log(r.id, 'state', 'obeya', this.t.idea.partLanded);
     }
   }
 
@@ -568,7 +574,7 @@ export class Board {
     const proposal = row.proposal ? (JSON.parse(row.proposal) as Proposal) : undefined;
     if (proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
     const idea = asIdea && !!proposal?.idea;
-    this.store.update(id, { state: idea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks), proposal: null });
+    this.store.update(id, { state: idea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks, this.t), proposal: null });
     this.changed();
     return idea;
   }
@@ -890,12 +896,12 @@ export class Board {
     const open = this.collecting(repo);
     if (open) {
       this.store.update(open.id, { body: `${open.body.trimEnd()}\n- ${rule}` });
-      this.log(open.id, 'state', 'koordinator', `Regel aufgenommen: „${rule}“`);
+      this.log(open.id, 'state', 'koordinator', this.t.koordinator.ruleTaken(rule));
       return;
     }
-    const card = this.create({ title: CLAUDE_MD_TITLE, body: `${CLAUDE_MD_TASK}\n\n- ${rule}`, repo, ...this.freeSpot() });
+    const card = this.create({ title: this.t.claudeMd.title, body: `${this.t.claudeMd.task}\n\n- ${rule}`, repo, ...this.freeSpot() });
     this.setSetting(`${CLAUDE_MD_SETTING}${repo}`, card.id);
-    this.log(card.id, 'state', 'koordinator', `Regel aufgenommen: „${rule}“`);
+    this.log(card.id, 'state', 'koordinator', this.t.koordinator.ruleTaken(rule));
   }
 
   /** The repository's card „CLAUDE.md ergänzen“ while it still collects rules, if there is one. */
@@ -1190,7 +1196,7 @@ export class Board {
     if (!r || r.deleted_at || r.archived_at || r.state !== 'live' || (r.landed && r.workspace)) return false;
     if (!this.store.projects(this.canvas.id).some((p) => p.from_id === ideaId && !p.archived_at)) return false;
     this.store.update(ideaId, { archived_at: new Date().toISOString() });
-    this.log(ideaId, 'state', 'obeya', 'Das Projekt steht jetzt an der Stelle der Idee; die Idee liegt im Archiv.');
+    this.log(ideaId, 'state', 'obeya', this.t.idea.becameProject);
     return true;
   }
 }
@@ -1341,11 +1347,11 @@ function shareOf(r: CardRow): Item['share'] {
  * A proposal's text with its questions, once the owner took it: those they picked options for as
  * decided, the others as still open, for the agent that takes the card on.
  */
-export function withQuestions(text: string, questions: Question[], picks: string[][]): string {
+export function withQuestions(text: string, questions: Question[], picks: string[][], t: Messages): string {
   const chosen = (i: number) => (picks[i] ?? []).filter((o) => questions[i]!.options.includes(o));
   const decided = questions.flatMap((q, i) => (chosen(i).length ? [`- ${q.text} → ${chosen(i).join(', ')}`] : []));
   const open = questions.flatMap((q, i) => (chosen(i).length ? [] : [`- ${q.text}${q.options.length ? ` (${q.options.join(' / ')})` : ''}`]));
-  return [text.trim(), decided.length ? `Entschieden:\n${decided.join('\n')}` : '', open.length ? `Offene Fragen:\n${open.join('\n')}` : '']
+  return [text.trim(), decided.length ? `${t.decided}:\n${decided.join('\n')}` : '', open.length ? `${t.openQuestions}:\n${open.join('\n')}` : '']
     .filter(Boolean)
     .join('\n\n');
 }

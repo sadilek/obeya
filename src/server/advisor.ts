@@ -2,7 +2,7 @@
 // either answers a worker's question or escalates it to the owner.
 
 import { z } from 'zod';
-import { OWNER_LANGUAGE } from '../core/locale';
+import { type Language, LANGUAGE_NAMES } from '../core/locale';
 import type { Question } from '../core/types';
 import type { AgentRuntime } from './runtime';
 
@@ -19,6 +19,8 @@ export interface Consultation {
   onSession: (id: string) => void;
   /** Returned when the turn ends without a reply. */
   fallback: Question;
+  /** The owner's language, which the answer and the question to the owner are in. */
+  language: Language;
 }
 
 export function consult(c: Consultation): Promise<Reply> {
@@ -39,13 +41,13 @@ export function consult(c: Consultation): Promise<Reply> {
         tools: [
           {
             name: 'answer',
-            description: `Answer the worker yourself, in ${OWNER_LANGUAGE} (the owner reads it too), briefly. Say which source the answer rests on (plan doc section, earlier decision, preference, code).`,
+            description: `Answer the worker yourself, in ${LANGUAGE_NAMES[c.language]} (the owner reads it too), briefly. Say which source the answer rests on (plan doc section, earlier decision, preference, code).`,
             schema: { text: z.string() },
             run: ({ text }) => settle({ answer: String(text) }),
           },
           {
             name: 'escalate',
-            description: `Pass the question to the owner, rewritten in ${OWNER_LANGUAGE} for a reader who has not seen the code, with up to four short answer options when they exist (multiple: true when several may be chosen together).`,
+            description: `Pass the question to the owner, rewritten in ${LANGUAGE_NAMES[c.language]} for a reader who has not seen the code, with up to four short answer options when they exist (multiple: true when several may be chosen together).`,
             schema: { question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() },
             run: ({ question, options, multiple }) => settle({ escalate: toQuestion(question, options, multiple) }),
           },
@@ -83,6 +85,8 @@ export interface Briefing {
   /** What the agent reads, as it reads it. */
   onTool?: (name: string, input: Record<string, unknown>) => void;
   effort?: 'low' | 'medium' | 'high';
+  /** The owner's language, which the answer is in. */
+  language: Language;
 }
 
 /** A read-only turn that answers the owner's question; a turn that ends without the tool answers with its last words. */
@@ -106,7 +110,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
         tools: [
           {
             name: 'answer_owner',
-            description: `Your answer to the owner, in ${OWNER_LANGUAGE}: text in full (markdown, short paragraphs or a list; it stands in the card's log), spoken one or two short sentences that sum it up for the ear.`,
+            description: `Your answer to the owner, in ${LANGUAGE_NAMES[b.language]}: text in full (markdown, short paragraphs or a list; it stands in the card's log), spoken one or two short sentences that sum it up for the ear.`,
             schema: { text: z.string(), spoken: z.string() },
             run: ({ text, spoken }) => settle({ text: String(text).trim(), spoken: String(spoken).trim() }),
           },

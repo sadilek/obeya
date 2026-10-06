@@ -31,6 +31,28 @@ beforeEach(() => {
   executed = [];
 });
 
+describe("the owner's language", () => {
+  test('the Koordinator confirms in the language Obeya speaks, in a new session once it changed', async () => {
+    let language: 'de' | 'en' = 'en';
+    board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => [], undefined, undefined, () => language);
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
+    const k = commander();
+    const first = await say(k, 'start the export', 'act', { actions: [{ do: 'start', card: 'K1' }], confirm: 'Starting “Export”.' });
+    expect(first.session.spec.system).toContain('one short English sentence');
+    expect(first.session.spec.system).toContain('a card is a “task”');
+    // a turn without a decision is not understood, in English
+    const heard = k.hear('hm', {});
+    await settle();
+    runtime.last.emit({ type: 'idle' });
+    expect((await heard).confirm).toBe('I did not understand that.');
+    language = 'de';
+    const second = await say(k, 'starte Export', 'reply', { confirm: 'Schon gestartet.' });
+    expect(second.session).not.toBe(first.session);
+    expect(second.session.spec.system).toContain('one short German sentence');
+    expect(k.vocabulary()).toStartWith('Obeya, Koordinator, Aufgabe');
+  });
+});
+
 describe('the Koordinator remembers', () => {
   test('the conversation goes on in one session; card tags stay, and each command brings what happened since', async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });

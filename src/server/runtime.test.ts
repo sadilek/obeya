@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { BOUNDED_WAITS, backgroundWork, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure, usageLimit } from './runtime';
+import { MESSAGES } from '../core/messages';
 
 test('background work counts renders, test runs and watchers, not housekeeping', () => {
   expect(
@@ -87,8 +88,9 @@ test('a turn that failed on the API counts as failed, with its error', () => {
   expect(resultFailure(result({ subtype: 'success', is_error: true, result: 'Not logged in · Please run /login' }))).toBe('Not logged in · Please run /login');
   expect(resultFailure(result({ subtype: 'error_during_execution', is_error: true, errors: ['overloaded'] }))).toBe('overloaded');
   expect(resultFailure(result({ subtype: 'error_max_turns', is_error: true, errors: [] }))).toBe('error_max_turns');
-  expect(failureReason('Not logged in · Please run /login')).toContain('nicht angemeldet');
-  expect(failureReason('overloaded')).toContain('overloaded');
+  expect(failureReason('Not logged in · Please run /login', MESSAGES.de)).toContain('nicht angemeldet');
+  expect(failureReason('Not logged in · Please run /login', MESSAGES.en)).toContain('not logged in');
+  expect(failureReason('overloaded', MESSAGES.en)).toContain('overloaded');
 });
 
 test('a turn the usage limit stopped says when the limit lifts', () => {

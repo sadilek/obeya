@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { whisperKit } from '../../plugin/skills/demo/lib/setup.ts';
 import type { DemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { installState, piperFiles } from '../../plugin/skills/demo/lib/voices.ts';
+import { installState, piperFiles, SAY_VOICES } from '../../plugin/skills/demo/lib/voices.ts';
+import type { Language } from '../core/locale';
 
 /** `doubtful`: Whisper itself counts the decode as failed (a loop, or too unsure of its words). */
 export interface Transcript {
@@ -16,14 +17,15 @@ export interface Transcript {
 }
 
 export interface Transcriber {
-  transcribe(audioPath: string, vocabulary: string): Promise<Transcript>;
+  /** `language`: the one the owner speaks, which Whisper is told to expect. */
+  transcribe(audioPath: string, vocabulary: string, language: Language): Promise<Transcript>;
   /** Gets ready for the next recording (the owner started speaking). */
   warm?(): void;
 }
 
 export interface Speaker {
-  /** The text as WAV the browser plays; null when it could not be spoken. */
-  speak(text: string): Promise<Uint8Array<ArrayBuffer> | null>;
+  /** The text, in `language`, as WAV the browser plays; null when it could not be spoken. */
+  speak(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null>;
   warm?(): void;
 }
 
@@ -39,10 +41,11 @@ export function looping(text: string): boolean {
 
 /**
  * What Whisper writes for a recording without speech instead of a loop: there was nothing to hear.
- * „Musik“, sure of itself and without the card titles, came from a 0.6 s press with room noise only.
+ * „Musik“, sure of itself and without the card titles, came from a 0.6 s press with room noise only;
+ * in English it thanks for watching, as it learnt from subtitles.
  */
 export const silence = (text: string) =>
-  /^[[(*]?(vielen dank|danke fürs zuschauen|musik|untertitel(ung)? (im auftrag )?des zdf.*)[.!]?[\])*]?$/i.test(text.trim());
+  /^[[(*]?(vielen dank|danke fürs zuschauen|musik|untertitel(ung)? (im auftrag )?des zdf.*|thank you|thanks for watching|music)[.!]?[\])*]?$/i.test(text.trim());
 
 const VOICE = join(import.meta.dir, '../../voice');
 
@@ -61,8 +64,8 @@ export function voiceBackends(env: Record<string, string | undefined> = process.
   return { listen, speech };
 }
 
-/** The Piper voice the confirmations are spoken in: the demos' default German one. */
-export const CONFIRMATION_VOICE: DemoSettings = { language: 'de', voice: 'piper' };
+/** The Piper voice the confirmations are spoken in: the demos' default one of the owner's language. */
+export const confirmationVoice = (language: Language): DemoSettings => ({ language, voice: 'piper' });
 
 /**
  * A helper process in a process group of its own (POSIX): Ctrl-C in the terminal goes to the whole
@@ -168,8 +171,8 @@ export class WhisperSidecar implements Transcriber {
     return this.sidecar.ready();
   }
 
-  async transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
-    const { text, doubtful } = await this.sidecar.request({ path: audioPath, prompt: vocabulary });
+  async transcribe(audioPath: string, vocabulary: string, language: Language): Promise<Transcript> {
+    const { text, doubtful } = await this.sidecar.request({ path: audioPath, prompt: vocabulary, language });
     return { text: typeof text === 'string' ? text : '', doubtful: doubtful === true };
   }
 
@@ -189,12 +192,12 @@ export class SpeechSidecar implements Speaker {
     this.sidecar.ensure();
   }
 
-  async speak(text: string): Promise<Uint8Array<ArrayBuffer> | null> {
+  async speak(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null> {
     const dir = mkdtempSync(join(tmpdir(), 'obeya-say-'));
     const aiff = join(dir, 'ack.aiff');
     const wav = join(dir, 'ack.wav');
     try {
-      await within(8000, this.sidecar.request({ text, path: aiff }));
+      await within(8000, this.sidecar.request({ text, path: aiff, language, voice: SAY_VOICES[language] }));
       const convert = Bun.spawn(['afconvert', '-f', 'WAVE', '-d', 'LEI16', aiff, wav], { stdout: 'ignore', stderr: 'ignore' });
       if ((await convert.exited) !== 0) throw new Error('afconvert failed');
       return new Uint8Array(readFileSync(wav));
@@ -202,7 +205,7 @@ export class SpeechSidecar implements Speaker {
       console.error('speech sidecar:', e instanceof Error ? e.message : e);
       // a stuck sidecar would hold up every confirmation after this one: the next starts afresh
       this.sidecar.stop();
-      return say(text);
+      return say(text, language);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -215,40 +218,51 @@ export class SpeechSidecar implements Speaker {
 
 /**
  * The confirmation in Piper's voice, off the Mac: a sidecar in Piper's environment under Obeya's
- * home keeps the voice loaded. Without Piper installed nothing is spoken (the settings sheet
- * installs it); the written confirmation shows all the same.
+ * home keeps the voice of a language loaded, one per language spoken. Without the voice installed
+ * nothing is spoken (the settings sheet installs it); the written confirmation shows all the same.
  */
 export class PiperSpeaker implements Speaker {
-  private sidecar: Sidecar;
-  private told = false;
+  private sidecars = new Map<Language, Sidecar>();
+  private told = new Set<Language>();
 
-  constructor(private home: string) {
-    const { python, onnx } = piperFiles(CONFIRMATION_VOICE, home);
-    this.sidecar = new Sidecar('Piper', () => [python, join(VOICE, 'piper_sidecar.py'), onnx]);
-  }
+  constructor(
+    private home: string,
+    /** The language spoken now, for the voice to warm up. */
+    private language: () => Language,
+  ) {}
 
-  private installed() {
-    if (installState(CONFIRMATION_VOICE, this.home).installed) return true;
-    if (!this.told) console.log('Obeya: Piper is not installed, confirmations are not spoken (the settings sheet installs it)');
-    this.told = true;
-    return false;
+  private sidecar(language: Language): Sidecar | null {
+    const voice = confirmationVoice(language);
+    if (!installState(voice, this.home).installed) {
+      if (!this.told.has(language)) console.log(`Obeya: Piper's ${language} voice is not installed, confirmations are not spoken (the settings sheet installs it)`);
+      this.told.add(language);
+      return null;
+    }
+    let sidecar = this.sidecars.get(language);
+    if (!sidecar) {
+      const { python, onnx } = piperFiles(voice, this.home);
+      sidecar = new Sidecar('Piper', () => [python, join(VOICE, 'piper_sidecar.py'), onnx]);
+      this.sidecars.set(language, sidecar);
+    }
+    return sidecar;
   }
 
   warm() {
-    if (this.installed()) this.sidecar.ensure();
+    this.sidecar(this.language())?.ensure();
   }
 
-  async speak(text: string): Promise<Uint8Array<ArrayBuffer> | null> {
-    if (!this.installed()) return null;
+  async speak(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null> {
+    const sidecar = this.sidecar(language);
+    if (!sidecar) return null;
     const dir = mkdtempSync(join(tmpdir(), 'obeya-piper-'));
     const wav = join(dir, 'ack.wav');
     try {
       // the first one may wait for the voice to load
-      await within(15_000, this.sidecar.request({ text, path: wav }));
+      await within(15_000, sidecar.request({ text, path: wav }));
       return new Uint8Array(readFileSync(wav));
     } catch (e) {
       console.error('Piper sidecar:', e instanceof Error ? e.message : e);
-      this.sidecar.stop();
+      sidecar.stop();
       return null;
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -256,16 +270,16 @@ export class PiperSpeaker implements Speaker {
   }
 
   stop() {
-    this.sidecar.stop();
+    for (const sidecar of this.sidecars.values()) sidecar.stop();
   }
 }
 
-/** The confirmation as speech: macOS `say` with the default voice, as WAV the browser plays. */
-export async function say(text: string): Promise<Uint8Array<ArrayBuffer> | null> {
+/** The confirmation as speech: macOS `say` with a voice of its language, as WAV the browser plays. */
+export async function say(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null> {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-say-'));
   const out = join(dir, 'ack.wav');
   try {
-    const proc = Bun.spawn(['say', '-o', out, '--data-format=LEI16@22050', text], { stdout: 'ignore', stderr: 'ignore' });
+    const proc = Bun.spawn(['say', '-v', SAY_VOICES[language], '-o', out, '--data-format=LEI16@22050', text], { stdout: 'ignore', stderr: 'ignore' });
     return (await within(8000, proc.exited)) === 0 ? new Uint8Array(readFileSync(out)) : null;
   } catch {
     return null;

@@ -14,6 +14,7 @@ import {
 import { readFileSync } from 'node:fs';
 import type { z } from 'zod';
 import { mediaType } from './images';
+import type { Messages } from '../core/messages';
 
 export interface AgentTool {
   name: string;
@@ -180,10 +181,10 @@ export function usageLimit(failure: string, refused: boolean, limits: SDKRateLim
   return rejected && limits.resetsAt ? { resetsAt: limits.resetsAt * 1000 } : {};
 }
 
-/** A session's failure in German words for the owner. */
-export function failureReason(message: string): string {
-  if (/not logged in|\/login/i.test(message)) return 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.';
-  return `Die Claude-Sitzung brach mit einem Fehler ab: ${message}`;
+/** A session's failure in the owner's words. */
+export function failureReason(message: string, t: Messages): string {
+  if (/not logged in|\/login/i.test(message)) return t.failure.notLoggedIn;
+  return t.failure.session(message);
 }
 
 /** A foreground command may sleep this long; anything longer keeps the owner's notes from the agent. */

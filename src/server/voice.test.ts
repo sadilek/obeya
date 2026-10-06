@@ -8,13 +8,15 @@ import { VoiceSetup } from './voice-setup';
 test.skipIf(process.platform !== 'darwin')('the speech sidecar renders confirmations as WAV, one after another', async () => {
   const speaker = new SpeechSidecar();
   try {
-    const [a, b] = await Promise.all([speaker.speak('Ok.'), speaker.speak('Neue Karte „Export“, der Agent fängt an.')]);
-    for (const wav of [a, b]) expect(new TextDecoder().decode(wav!.slice(0, 4))).toBe('RIFF');
+    const [a, b, c] = await Promise.all([speaker.speak('Ok.', 'de'), speaker.speak('Neue Karte „Export“, der Agent fängt an.', 'de'), speaker.speak('New task “Export”, the agent starts.', 'en')]);
+    for (const wav of [a, b, c]) expect(new TextDecoder().decode(wav!.slice(0, 4))).toBe('RIFF');
     expect(b!.length).toBeGreaterThan(a!.length);
+    expect(c!.length).toBeGreaterThan(a!.length);
   } finally {
     speaker.stop();
   }
-});
+  // the sidecar starts in about 4 s, and a voice of another language loads in about 2 s more
+}, 20_000);
 
 test('a loop is one word, phrase or syllable six times in a row, whatever the case and punctuation', () => {
   for (const loop of [

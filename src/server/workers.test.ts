@@ -32,6 +32,9 @@ let origin: string;
 /** The cards `onMerged` was called for. */
 let merged: string[];
 
+/** The language Obeya speaks to the owner in these tests. */
+let language: 'de' | 'en';
+
 /** `withOrigin`: clones come from a bare `origin`, as from a remote, instead of from the checkout. */
 function setup(adapter: RepoAdapter, withOrigin = false) {
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
@@ -43,7 +46,8 @@ function setup(adapter: RepoAdapter, withOrigin = false) {
   docs = [doc];
   // the checkout is the Lesestand: work lands on its main
   const holds = (_repo: string, commit: string) => Bun.spawnSync([GIT, '-C', main, 'merge-base', '--is-ancestor', commit, 'HEAD'], { stderr: 'ignore' }).exitCode === 0;
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs, undefined, holds);
+  language = 'de';
+  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs, undefined, holds, () => language);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
   if (adapter.workspaces === 'clones') {
@@ -82,6 +86,19 @@ describe('workers', () => {
     workers.start(c.id);
     expect(runtime.last.inbox[0]).toContain('Excel fehlt.');
     expect(runtime.last.inbox[0]).toContain('This card follows up on the card “Zählerstände exportieren”. Its worker handed it over with this summary:\n\nCSV-Export gebaut; Excel fehlt noch.');
+  });
+
+  test('in English, the worker writes the owner in English, and the log says what happens in English', () => {
+    language = 'en';
+    const c = manual();
+    workers.start(c.id);
+    expect(runtime.last.spec.system).toContain('ready_for_review) is in English');
+    expect(runtime.last.spec.tools.find((t) => t.name === 'ask')!.description).toContain('Write the question in English');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: `Agent started on ${board.row(c.id).branch}.` });
+    runtime.last.call('ask', { question: 'Which columns?', options: ['Date', 'Reading'], multiple: true });
+    expect(board.events(c.id).at(-1)!.text).toBe('Which columns? (multiple choice)\n– Date\n– Reading');
+    workers.stop(c.id);
+    expect(board.events(c.id).at(-1)!.text).toBe('Stopped.');
   });
 
   test('start leases a clean clone, branches and briefs the worker', () => {

@@ -6,7 +6,8 @@
 
 import { basename } from 'node:path';
 import { z } from 'zod';
-import { OWNER_LANGUAGE } from '../core/locale';
+import { type Language, LANGUAGE_NAMES } from '../core/locale';
+import { MESSAGES } from '../core/messages';
 import { type Item, type Mock, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question } from '../core/types';
 import { decisionLog, toQuestion } from './advisor';
 import { BadRequest, type Board, type Message, type Unread } from './board';
@@ -58,7 +59,7 @@ export class Explorers {
     const idea = this.o.board.idea(cardId);
     if (idea.status !== 'open') {
       this.o.board.setIdea(cardId, { status: 'open' });
-      this.o.board.log(cardId, 'state', 'owner', 'Idee wieder aufgenommen.');
+      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.idea.reopened);
     }
     this.o.board.log(cardId, 'talk', 'owner', text, undefined, images.map((f) => basename(f)));
     this.o.board.setIdea(cardId, { yourTurn: false, questions: [], next: undefined });
@@ -162,7 +163,7 @@ export class Explorers {
       {
         cwd: this.o.pathFor(card),
         readOnly: true,
-        system: SYSTEM + (preferences ? `\n\n${preferences}` : ''),
+        system: system(this.o.board.language()) + (preferences ? `\n\n${preferences}` : ''),
         tools: this.tools(card.id, live),
         contextUpdate: () => [this.buildNote(card.id, live), this.preferencesUpdate(live)].filter(Boolean).join('\n\n') || undefined,
         ...(resume ? { resume } : {}),
@@ -201,7 +202,7 @@ export class Explorers {
         break;
       case 'tool':
         // its own tools show in the conversation and the brief, not as reading
-        if (!e.name.startsWith('mcp__') && !OWN_TOOLS.includes(e.name)) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input));
+        if (!e.name.startsWith('mcp__') && !OWN_TOOLS.includes(e.name)) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input, this.o.board.t));
         break;
       case 'error':
         this.o.board.log(cardId, 'error', 'obeya', e.message);
@@ -240,6 +241,10 @@ export class Explorers {
   private tools(cardId: string, live: Live): AgentTool[] {
     const current = (tools: AgentTool[]): AgentTool[] =>
       tools.map((t) => ({ ...t, run: (args) => (this.live.get(cardId) === live ? t.run(args) : 'This conversation has ended. End your turn.') }));
+    const language = this.o.board.language();
+    const OWNER_LANGUAGE = LANGUAGE_NAMES[language];
+    const MOCKS = mocks(language);
+    const t = MESSAGES[language].idea;
     return current([
       {
         name: 'reply',
@@ -274,22 +279,22 @@ export class Explorers {
       },
       {
         name: 'update_brief',
-        description: `Replace the brief of the idea ("Stand der Idee"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own. mocks: how the brief's variants look, one per variant, shown under the brief; ${MOCKS}. The whole list whenever it changes; leave it out to keep the mocks as they are, an empty list removes them.`,
+        description: `Replace the brief of the idea ("${t.briefName}"), in ${OWNER_LANGUAGE} markdown, whenever the conversation changed it. Always the whole text, standing on its own. mocks: how the brief's variants look, one per variant, shown under the brief; ${MOCKS}. The whole list whenever it changes; leave it out to keep the mocks as they are, an empty list removes them.`,
         schema: { brief: z.string(), mocks: MOCK_SCHEMA },
         run: ({ brief, mocks }) => {
           this.o.board.setIdea(cardId, { brief: clip(String(brief).trim(), 20000), ...(mocks === undefined ? {} : { mocks: mocksOf(mocks) }) });
-          this.o.board.log(cardId, 'activity', 'explorer', 'Aktualisiert den Stand der Idee');
+          this.o.board.log(cardId, 'activity', 'explorer', t.briefUpdated);
           return 'Brief updated.';
         },
       },
       {
         name: 'plan_prototypes',
-        description: `The throwaway prototypes the brief plans, one per variant to be seen side by side: the whole list each time, empty when none are planned any more. When the owner clicks "Prototyp bauen lassen", the card offers them, all chosen, and starts one worker per variant at once; without this list it starts one prototype of the idea as it stands. approach: the variant in a few words, in ${OWNER_LANGUAGE} ("A Plasma-Felder"); it becomes the prototype's title. show: that prototype's task, in ${OWNER_LANGUAGE}: what it builds and what its demo shows, for this variant only; its worker also reads the brief.`,
+        description: `The throwaway prototypes the brief plans, one per variant to be seen side by side: the whole list each time, empty when none are planned any more. When the owner clicks "${t.prototypeButton}", the card offers them, all chosen, and starts one worker per variant at once; without this list it starts one prototype of the idea as it stands. approach: the variant in a few words, in ${OWNER_LANGUAGE} (${WORDS[language].approach}); it becomes the prototype's title. show: that prototype's task, in ${OWNER_LANGUAGE}: what it builds and what its demo shows, for this variant only; its worker also reads the brief.`,
         schema: { prototypes: z.array(z.object({ approach: z.string(), show: z.string() })).max(MAX_VARIANTS) },
         run: ({ prototypes }) => {
           const variants = plannedPrototypes(prototypes);
           this.o.board.setIdea(cardId, { variants });
-          this.o.board.log(cardId, 'activity', 'explorer', variants.length ? `Plant Prototypen: ${variants.map((v) => v.approach).join(', ')}` : 'Plant keine Prototypen mehr');
+          this.o.board.log(cardId, 'activity', 'explorer', variants.length ? t.plansPrototypes(variants.map((v) => v.approach).join(', ')) : t.plansNoPrototypes);
           return variants.length ? `Planned ${variants.length} prototype${variants.length > 1 ? 's' : ''}.` : 'No prototypes planned.';
         },
       },
@@ -299,7 +304,7 @@ export class Explorers {
         schema: { question: z.string(), answer: z.string() },
         run: ({ question, answer }) => {
           this.o.board.decide({ project_id: null, card_id: cardId, question: clip(String(question), 500), answer: clip(String(answer), 500), by: 'owner' });
-          this.o.board.log(cardId, 'state', 'explorer', `Entscheidung: ${clip(String(question), 200)} → ${clip(String(answer), 200)}`);
+          this.o.board.log(cardId, 'state', 'explorer', t.decision(clip(String(question), 200), clip(String(answer), 200)));
           return 'Recorded.';
         },
       },
@@ -325,24 +330,33 @@ export class Explorers {
   }
 }
 
-const SYSTEM = `
+/** The words of the card the idea's agent writes into: the parts of the brief, and examples in the owner's language. */
+const WORDS: Record<Language, { parts: [string, string, string, string, string, string]; changed: string; pointer: string; approach: string }> = {
+  de: { parts: ['Ziel', 'Ist-Stand', 'Varianten', 'Entscheidungen', 'Offene Fragen', 'Aufwand'], changed: 'Varianten A bis C ergänzt', pointer: 'Zwei offene Fragen, siehe Stand', approach: '"A Plasma-Felder"' },
+  en: { parts: ['Goal', 'Today', 'Variants', 'Decisions', 'Open questions', 'Effort'], changed: 'Added variants A to C', pointer: 'Two open questions, see the brief', approach: '"A Plasma fields"' },
+};
+
+const system = (language: Language) => {
+  const w = WORDS[language];
+  const [goal, today, variants, decisions, open, effort] = w.parts.map((p) => `**${p}**`);
+  return `
 You are the exploration agent of one idea on Obeya, a canvas on which the owner directs coding agents like an engineering director directs a team. The owner wants to think the idea through with you before anything is planned or built. It is one long conversation; it may go on days later.
 
 You can only read: the code, the repository's docs and plan docs, and what the messages give you (decisions taken so far, the owner's preferences). You cannot change files, and nothing you do starts work.
 
-The card shows the brief ("Stand der Idee") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
+The card shows the brief ("${MESSAGES[language].idea.briefName}") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
 
 How to work:
 - Put what you find and propose into the brief, not into your reply: what the code does today, variants with their trade-offs and what each would cost (what it touches, roughly how much agent work, the risks), decisions, open questions, effort.
 - Ground it in the code and the plan; say when you are guessing.
-- Ask what you need to know, one or two questions at a time, under **Offene Fragen** in the brief, numbered, and pass the same questions to reply as questions, with two to five short answer options each when the answer is a choice; when options can be combined, set multiple instead of offering combinations as options. The card shows them as choices under your reply; the owner picks or writes their own answer. A question without options gets a written answer.
-- Your reply is your turn in the conversation, a few sentences at most: react to what the owner said, name in a few words what changed in the brief ("Varianten A bis C ergänzt", not the variants again, and no finding from it summed up), and say what you need from them next by pointing to the open questions ("Zwei offene Fragen, siehe Stand"), without repeating them. Only what has no place in the brief (an explanation the owner asked for, a remark on the side) is said in the reply itself.
+- Ask what you need to know, one or two questions at a time, under ${open} in the brief, numbered, and pass the same questions to reply as questions, with two to five short answer options each when the answer is a choice; when options can be combined, set multiple instead of offering combinations as options. The card shows them as choices under your reply; the owner picks or writes their own answer. A question without options gets a written answer.
+- Your reply is your turn in the conversation, a few sentences at most: react to what the owner said, name in a few words what changed in the brief ("${w.changed}", not the variants again, and no finding from it summed up), and say what you need from them next by pointing to the open questions ("${w.pointer}"), without repeating them. Only what has no place in the brief (an explanation the owner asked for, a remark on the side) is said in the reply itself.
 - Do not confirm recorded decisions one by one; the brief shows them.
 - When a variant is something to look at (a layout, a card, a dialog), show it with a mock in the brief: a few lines of HTML the card shows beside the brief. A mock is a sketch of how it looks, not working code; a prototype is for what a sketch cannot show.
 
 Tools, within a turn in this order:
 - record_decision: when the owner decided something in the message. General preferences (how they like to work) are not decisions; Obeya learns those on its own.
-- update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: **Ziel**, **Ist-Stand** (what the code does today, when it matters), **Varianten** (open and dropped ones, each with why), **Entscheidungen**, **Offene Fragen**, and **Aufwand** once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
+- update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: ${goal}, ${today} (what the code does today, when it matters), ${variants} (open and dropped ones, each with why), ${decisions}, ${open}, and ${effort} once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
 - plan_prototypes: whenever the brief plans prototypes you have not passed to it yet, or the plan changes (which variants are to be seen side by side, and what each is to show). The owner then starts them all with one click, one worker per variant.
 - reply, last: your turn in the conversation, and spoken, its summary for the ear. Exactly once per message, then end your turn.
 
@@ -353,8 +367,9 @@ The owner decides on the card whether to build the idea, turn it into a plan doc
 - prototype: only seeing it will settle it (a layout, how it feels, a risky approach), and a throwaway build costs less than guessing.
 - park or drop: it is not worth it now, or no longer.
 Give your pick on every question with options, whatever next is. Do not hold the idea back with questions you could settle as well as the owner: settle them in the brief and say so. Several prototypes may try different approaches side by side, one per variant you planned with plan_prototypes; you hear each one's result, and the questions their workers asked with the owner's answers, which belong in the brief like answers given here. Once one convinces, the owner builds the idea on that prototype's branch.
-Owner-facing text is in ${OWNER_LANGUAGE}.
+Owner-facing text is in ${LANGUAGE_NAMES[language]}.
 `.trim();
+};
 
 const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'record_decision'];
 
@@ -362,7 +377,8 @@ const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'record_decision'
 const MAX_VARIANTS = 6;
 
 /** How a mock is written, for both tools that take them. */
-const MOCKS = `each with a title (the variant in a few words, in ${OWNER_LANGUAGE}) and html: a few lines of self-contained HTML with inline styles (no files, no network), shown in a sandboxed frame that may leave it only 240 px of width, so nothing in it is wider`;
+const mocks = (language: Language) =>
+  `each with a title (the variant in a few words, in ${LANGUAGE_NAMES[language]}) and html: a few lines of self-contained HTML with inline styles (no files, no network), shown in a sandboxed frame that may leave it only 240 px of width, so nothing in it is wider`;
 const MOCK_SCHEMA = z.array(z.object({ title: z.string(), html: z.string() })).max(MAX_VARIANTS).optional();
 
 /** How the agent hears the messages an interrupted turn left unanswered. */

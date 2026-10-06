@@ -1,7 +1,7 @@
 // The demo settings: in which language a demo is narrated and by which voice, so the person it
 // speaks in follows. Obeya's settings sheet edits them; they live in `demo.json` under Obeya's home
 // (`OBEYA_HOME`, else `~/.obeya`), where a session without Obeya finds them as well. Missing
-// entries take the defaults.
+// entries take the defaults; the language without one is the one Obeya speaks to the owner.
 //
 // Run on its own (`node settings.ts`), it prints the settings in effect for the agent writing a
 // demo's narration. Plain Node with type stripping, like the director: no imports without
@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { ownerLanguageIn } from './language.ts';
 
 export const NARRATION_LANGUAGES = ['de', 'en'] as const;
 export type NarrationLanguage = (typeof NARRATION_LANGUAGES)[number];
@@ -67,10 +68,10 @@ const TEXT_FIELDS = ['command', 'url', 'voiceName', 'reference', 'keyFile'] as c
  * from before the providers (`clone` with a voice project, `gemini` with `geminiKeyFile`) carry
  * over as far as they can: the clone becomes the owner's own command, still to be written.
  */
-export function tidyDemoSettings(input: unknown): DemoSettings {
+export function tidyDemoSettings(input: unknown, fallbackLanguage: NarrationLanguage = DEFAULT_DEMO_SETTINGS.language): DemoSettings {
   const o = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  const language = NARRATION_LANGUAGES.find((l) => l === o.language) ?? DEFAULT_DEMO_SETTINGS.language;
+  const language = NARRATION_LANGUAGES.find((l) => l === o.language) ?? fallbackLanguage;
   const legacyClone = o.voice === 'clone';
   const voice = legacyClone ? 'command' : (VOICES.find((v) => v === o.voice) ?? DEFAULT_DEMO_SETTINGS.voice);
   const out: DemoSettings = { language, voice };
@@ -84,14 +85,15 @@ export function tidyDemoSettings(input: unknown): DemoSettings {
   return out;
 }
 
-/** The settings as saved, or the defaults where nothing is. */
+/** The settings as saved, or the defaults where nothing is: then the narration is in Obeya's language. */
 export function readDemoSettings(home = obeyaHome()): DemoSettings {
   const file = path.join(home, DEMO_SETTINGS_FILE);
-  if (!fs.existsSync(file)) return { ...DEFAULT_DEMO_SETTINGS };
+  const language = ownerLanguageIn(home);
+  if (!fs.existsSync(file)) return { ...DEFAULT_DEMO_SETTINGS, language };
   try {
-    return tidyDemoSettings(JSON.parse(fs.readFileSync(file, 'utf8')));
+    return tidyDemoSettings(JSON.parse(fs.readFileSync(file, 'utf8')), language);
   } catch {
-    return { ...DEFAULT_DEMO_SETTINGS };
+    return { ...DEFAULT_DEMO_SETTINGS, language };
   }
 }
 

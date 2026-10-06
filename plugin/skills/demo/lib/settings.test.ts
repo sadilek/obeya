@@ -9,13 +9,20 @@ beforeEach(() => (home = mkdtempSync(join(tmpdir(), 'obeya-demo-settings-'))));
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
 describe('demo settings', () => {
-  test('without a file, a demo is narrated in German by Piper', () => {
+  test('without a file, a demo is narrated by Piper in the language Obeya speaks to the owner', () => {
+    writeFileSync(join(home, 'settings.json'), JSON.stringify({ language: 'de' }));
     expect(readDemoSettings(home)).toEqual({ language: 'de', voice: 'piper' });
+    writeFileSync(join(home, 'settings.json'), JSON.stringify({ language: 'en' }));
+    expect(readDemoSettings(home)).toEqual({ language: 'en', voice: 'piper' });
+    // a file without a language takes it from there too
+    writeFileSync(join(home, 'demo.json'), JSON.stringify({ voice: 'say' }));
+    expect(readDemoSettings(home)).toEqual({ language: 'en', voice: 'say' });
   });
 
   test('keep what is valid and fall back to the defaults for the rest', () => {
     expect(tidyDemoSettings({ language: 'fr', voice: 'command', command: '  ', url: ' x ', extra: 1 })).toEqual({ language: 'de', voice: 'command', url: 'x' });
     expect(tidyDemoSettings({ voice: 'nope', ownVoice: 'yes' })).toEqual({ language: 'de', voice: 'piper' });
+    writeFileSync(join(home, 'settings.json'), JSON.stringify({ language: 'de' }));
     writeFileSync(join(home, 'demo.json'), 'not json');
     expect(readDemoSettings(home)).toEqual({ language: 'de', voice: 'piper' });
   });

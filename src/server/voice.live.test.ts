@@ -8,15 +8,15 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installVoice } from '../../plugin/skills/demo/lib/voices.ts';
-import { CONFIRMATION_VOICE, PiperSpeaker, WhisperSidecar } from './voice';
+import { confirmationVoice, PiperSpeaker, WhisperSidecar } from './voice';
 
 const home = process.env.OBEYA_LIVE_VOICE;
 
 test.skipIf(!home)(
   'Piper speaks a command and Whisper hears it back',
   async () => {
-    await installVoice(CONFIRMATION_VOICE, (line) => console.log(line), home);
-    const speaker = new PiperSpeaker(home!);
+    for (const language of ['de', 'en'] as const) await installVoice(confirmationVoice(language), (line) => console.log(line), home);
+    const speaker = new PiperSpeaker(home!, () => 'de');
     const whisper = new WhisperSidecar();
     const dir = mkdtempSync(join(tmpdir(), 'obeya-voice-live-'));
     try {
@@ -24,21 +24,26 @@ test.skipIf(!home)(
       await whisper.prepare();
       console.log(`${whisper.backend} loaded in ${((performance.now() - started) / 1000).toFixed(1)} s`);
       started = performance.now();
-      const wav = await speaker.speak('Starte die Karte Export für Vermieter.');
+      const wav = await speaker.speak('Starte die Karte Export für Vermieter.', 'de');
       console.log(`Piper spoke in ${((performance.now() - started) / 1000).toFixed(1)} s`);
       expect(new TextDecoder().decode(wav!.slice(0, 4))).toBe('RIFF');
       const again = performance.now();
-      expect(await speaker.speak('Ok.')).not.toBeNull();
+      expect(await speaker.speak('Ok.', 'de')).not.toBeNull();
       console.log(`a second sentence in ${((performance.now() - again) / 1000).toFixed(2)} s`);
       writeFileSync(join(dir, 'command.wav'), wav!);
       started = performance.now();
-      const heard = await whisper.transcribe(join(dir, 'command.wav'), 'Export für Vermieter');
+      const heard = await whisper.transcribe(join(dir, 'command.wav'), 'Export für Vermieter', 'de');
       console.log(`heard in ${((performance.now() - started) / 1000).toFixed(1)} s: ${heard.text}`);
       expect(heard.text.toLowerCase()).toMatch(/starte die karte,? export für vermieter/);
       expect(heard.doubtful).toBe(false);
+      // in English, Piper's English voice and Whisper told to expect English
+      writeFileSync(join(dir, 'english.wav'), (await speaker.speak('Start the task Export for landlords.', 'en'))!);
+      const english = await whisper.transcribe(join(dir, 'english.wav'), 'Export for landlords', 'en');
+      console.log(`heard in English: ${english.text}`);
+      expect(english.text.toLowerCase()).toMatch(/start the task,? export for landlords/);
       // a recording without a sound is not transcribed
       writeFileSync(join(dir, 'silence.wav'), silentWav(1));
-      expect(await whisper.transcribe(join(dir, 'silence.wav'), '')).toEqual({ text: '', doubtful: false });
+      expect(await whisper.transcribe(join(dir, 'silence.wav'), '', 'de')).toEqual({ text: '', doubtful: false });
     } finally {
       speaker.stop();
       whisper.stop();

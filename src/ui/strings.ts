@@ -397,7 +397,7 @@ const de = {
     koordinator: 'Der Koordinator kennt sie auch: frag ihn danach oder sag ihm, was sich ändern soll.',
     language: {
       title: 'Sprache',
-      hint: 'Die Sprache der Oberfläche, mit ihren Daten und Zahlen. Gilt sofort; die Seite lädt dazu neu.',
+      hint: 'Die Sprache, in der Obeya mit dir spricht: die Oberfläche mit Daten und Zahlen, der Koordinator, Spracheingabe und -ausgabe, was die Agenten dir schreiben, und die Demos, solange unten keine eigene Sprache gewählt ist. Gilt sofort; die Seite lädt dazu neu.',
       system: (name: string) => `Wie das System (${name})`,
       /** Each language in its own words, as a stranger looks for it. */
       names: { de: 'Deutsch', en: 'English' } satisfies Record<Language, string>,
@@ -1115,7 +1115,7 @@ const en: Strings = {
     koordinator: 'The Coordinator knows it too: ask it about it or tell it what should change.',
     language: {
       title: 'Language',
-      hint: 'The language of the interface, with its dates and numbers. Applies at once; the page loads again for it.',
+      hint: 'The language Obeya speaks to you: the interface with its dates and numbers, the Coordinator, voice in and out, what agents write to you, and demos unless they have a language of their own below. Applies at once; the page loads again for it.',
       system: (name: string) => `As the system (${name})`,
       names: { de: 'Deutsch', en: 'English' },
     },

@@ -9,7 +9,8 @@ import type { VoiceSetupItem, VoiceSetupView } from '../core/types';
 import { installHint, linuxFamily, output, whisperKit } from '../../plugin/skills/demo/lib/setup.ts';
 import { hfModelPresent, installState, installVoice } from '../../plugin/skills/demo/lib/voices.ts';
 import { BadRequest } from './board';
-import { CONFIRMATION_VOICE, type ListenBackend, type SpeechBackend } from './voice';
+import { ownerLanguage } from './settings';
+import { confirmationVoice, type ListenBackend, type SpeechBackend } from './voice';
 
 export interface VoiceSetupOptions {
   home: string;
@@ -61,7 +62,7 @@ export class VoiceSetup {
     let piperMb = 0;
     if (speech === 'macos') items.push({ id: 'speech', state: 'ok', found: 'macOS' });
     else {
-      const piper = installState(CONFIRMATION_VOICE, this.o.home);
+      const piper = installState(confirmationVoice(ownerLanguage(this.o.home)), this.o.home);
       piperMb = piper.mb;
       items.push(piper.installed ? { id: 'speech', state: 'ok', found: 'Piper' } : { id: 'speech', state: 'missing', found: piper.missing.join(', '), mb: piper.mb });
     }
@@ -75,9 +76,10 @@ export class VoiceSetup {
     const { speech } = this.o.backends;
     const job: NonNullable<VoiceSetupView['job']> = (this.job = { running: true, step: 'piper', line: '' });
     (async () => {
-      if (speech === 'piper' && !installState(CONFIRMATION_VOICE, this.o.home).installed) {
+      const voice = confirmationVoice(ownerLanguage(this.o.home));
+      if (speech === 'piper' && !installState(voice, this.o.home).installed) {
         console.log('Obeya: installing Piper for spoken confirmations');
-        await installVoice(CONFIRMATION_VOICE, (line) => (job.line = line.slice(0, 300)), this.o.home);
+        await installVoice(voice, (line) => (job.line = line.slice(0, 300)), this.o.home);
       }
       job.step = 'whisper';
       job.line = '';

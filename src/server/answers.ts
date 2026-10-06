@@ -45,7 +45,7 @@ export class Answers {
     const reading = t.cardId && this.o.board.item(t.cardId) ? t.cardId : undefined;
     // what it reads shows on the open card, as an exploration agent's reading does
     const onTool = (name: string, input: Record<string, unknown>) => {
-      if (reading && !name.startsWith('mcp__')) this.o.board.log(reading, 'activity', by, describeTool(name, input));
+      if (reading && !name.startsWith('mcp__')) this.o.board.log(reading, 'activity', by, describeTool(name, input, this.o.board.t));
     };
     const message = this.message(t.said, t.question, about, project);
     const asked =
@@ -58,12 +58,14 @@ export class Answers {
             system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents.\n\n${INFORM_RULES}`,
             message: [message, this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
             onTool,
+            language: this.o.board.language(),
           });
     asked
       .then((a) => this.deliver(talkId, by, t.question!, a, reading))
-      .catch((e) =>
-        this.deliver(talkId, by, t.question!, { text: `Ich konnte die Frage nicht beantworten (${e instanceof Error ? e.message : String(e)}).`, spoken: 'Ich konnte die Frage nicht beantworten.' }, reading),
-      )
+      .catch((e) => {
+        const said = this.o.board.t.answer;
+        this.deliver(talkId, by, t.question!, { text: said.failed(e instanceof Error ? e.message : String(e)), spoken: said.failedSpoken }, reading);
+      })
       .finally(() => this.busy.delete(talkId));
   }
 

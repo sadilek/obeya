@@ -3,6 +3,7 @@
 import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 import type { SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { Language } from './locale';
+import { MESSAGES } from './messages';
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 export type { Language } from './locale';
@@ -54,8 +55,8 @@ export interface Question {
 }
 
 /** A question as its card's log holds it: the text, then one line per option. */
-export const formatQuestion = (q: Question): string =>
-  q.options.length ? `${q.text}${q.multiple ? ' (Mehrfachauswahl)' : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
+export const formatQuestion = (q: Question, language: Language): string =>
+  q.options.length ? `${q.text}${q.multiple ? ` (${MESSAGES[language].multiple})` : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**

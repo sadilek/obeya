@@ -127,12 +127,12 @@ test('a conversation nobody works on ends with its last message or line, the ste
 });
 
 test('questions carry their answer; a note instead of an answer settles one; the open one stands apart', () => {
-  const q1 = ev('question', 'worker', formatQuestion({ text: 'CSV oder Excel?', options: ['CSV', 'Excel'] }));
+  const q1 = ev('question', 'worker', formatQuestion({ text: 'CSV oder Excel?', options: ['CSV', 'Excel'] }, 'de'));
   const a1 = ev('answer', 'owner', 'CSV');
   const q2 = ev('question', 'worker', 'Welches Trennzeichen?');
   const note = ev('hint', 'owner', 'Nimm, was Excel öffnet.');
   const work = ev('activity', 'worker', 'Ändert server/export.ts');
-  const q3 = ev('question', 'worker', formatQuestion({ text: 'Auch PDF?', options: ['Ja', 'Nein'] }));
+  const q3 = ev('question', 'worker', formatQuestion({ text: 'Auch PDF?', options: ['Ja', 'Nein'] }, 'de'));
   const events = [q1, a1, q2, note, work, q3];
   const { shown, asked } = talkTurns(events, { asking: { text: 'Auch PDF?', options: ['Ja', 'Nein'] } });
   expect(shown).toEqual([{ e: q1, steps: [], answer: 'CSV' }, { e: a1, steps: [] }, { e: q2, steps: [], settled: true }, { e: note, steps: [] }]);
@@ -146,7 +146,8 @@ test('questions carry their answer; a note instead of an answer settles one; the
 });
 
 test('a question reads back from the log with its options', () => {
-  expect(parseQuestion(formatQuestion({ text: 'Welche Spalten?', options: ['Datum', 'Stand'], multiple: true }))).toEqual({ text: 'Welche Spalten?', options: ['Datum', 'Stand'] });
+  expect(parseQuestion(formatQuestion({ text: 'Welche Spalten?', options: ['Datum', 'Stand'], multiple: true }, 'de'))).toEqual({ text: 'Welche Spalten?', options: ['Datum', 'Stand'] });
+  expect(parseQuestion(formatQuestion({ text: 'Which columns?', options: ['Date', 'Reading'], multiple: true }, 'en'))).toEqual({ text: 'Which columns?', options: ['Date', 'Reading'] });
   expect(parseQuestion('Weiter so?')).toEqual({ text: 'Weiter so?', options: [] });
 });
 

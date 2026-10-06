@@ -1,5 +1,6 @@
 // A card's conversation, from its events.
 
+import { LANGUAGES } from '../core/locale';
 import { type CardEvent, formatQuestion, type Question } from '../core/types';
 
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
@@ -26,7 +27,8 @@ export interface Talk {
 }
 
 /** Obeya's lines that mark where the work stands, or why an idea clicked to build was not; its other notes (restarts, sessions, what happens on the pull request) fold away. */
-const MILESTONE = /^(Agent gestartet|Pull Request gemergt|Nach der Freigabe auf main gelandet|Pull Request ohne Merge geschlossen|Das Projekt steht jetzt|Nicht gebaut|Teil gelandet)/;
+const MILESTONE =
+  /^(Agent gestartet|Agent started|Pull Request gemergt|Pull request merged|Nach der Freigabe auf main gelandet|Landed on main after the approval|Pull Request ohne Merge geschlossen|Pull request closed without a merge|Das Projekt steht jetzt|The project now stands|Nicht gebaut|Not built|Teil gelandet|Part landed)/;
 
 /** The agent that works on the card or thinks the idea through. */
 const agentAuthor = (e: CardEvent) => e.author === 'worker' || e.author === 'explorer';
@@ -145,7 +147,7 @@ function outcome(events: CardEvent[], q: CardEvent): Pick<Turn, 'answer' | 'sett
 function openQuestion(shown: Turn[], asking: Question): Turn | undefined {
   const last = shown.findLast((x) => x.e.kind === 'question');
   if (!last || last.answer !== undefined) return;
-  return !last.settled || last.e.text === formatQuestion(asking) ? last : undefined;
+  return !last.settled || LANGUAGES.some((l) => last.e.text === formatQuestion(asking, l)) ? last : undefined;
 }
 
 /** A question as the log holds it (`formatQuestion`): its text and the options after it. */
@@ -157,7 +159,7 @@ export function parseQuestion(text: string): { text: string; options: string[] }
     text: lines
       .slice(0, n)
       .join('\n')
-      .replace(/ \(Mehrfachauswahl\)$/, ''),
+      .replace(/ \((Mehrfachauswahl|multiple choice)\)$/, ''),
     options: lines.slice(n).map((l) => l.slice(2)),
   };
 }

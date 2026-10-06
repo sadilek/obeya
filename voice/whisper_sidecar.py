@@ -2,7 +2,8 @@
 Silicon, faster-whisper elsewhere (`--backend faster`: CUDA when there is a GPU, else int8 on the
 CPU; a GPU without the CUDA libraries falls back to the CPU).
 
-Reads JSON lines on stdin: {"id": ..., "path": "<audio file>", "prompt": "<vocabulary>"}.
+Reads JSON lines on stdin: {"id": ..., "path": "<audio file>", "prompt": "<vocabulary>", "language": "de"}
+(the language the owner speaks; German when left out).
 Writes JSON lines on stdout: {"id": ..., "text": "...", "doubtful": bool} or {"id": ..., "error": "..."}.
 Audio is decoded by ffmpeg (for both backends: faster-whisper's own decoder, PyAV, broke with
 newer PyAV releases), so any format the browser records (webm/opus, wav) works. The model is
@@ -46,11 +47,11 @@ class Mlx:
 
         self._whisper, self._model = mlx_whisper, model
 
-    def transcribe(self, audio: np.ndarray, prompt: str | None) -> list[dict]:
+    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
         result = self._whisper.transcribe(
             audio,
             path_or_hf_repo=self._model,
-            language="de",
+            language=language,
             initial_prompt=prompt,
             condition_on_previous_text=False,
             temperature=0.0,
@@ -73,11 +74,11 @@ class Faster:
         self.device = device
         print(f"whisper: faster-whisper {self._name} on the {device.upper()}", file=sys.stderr, flush=True)
 
-    def transcribe(self, audio: np.ndarray, prompt: str | None) -> list[dict]:
+    def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
         try:
             segments, _ = self._model.transcribe(
                 audio,
-                language="de",
+                language=language,
                 initial_prompt=prompt,
                 condition_on_previous_text=False,
                 temperature=0.0,
@@ -89,7 +90,7 @@ class Faster:
             if self.device != "cuda":
                 raise
             self._load("cpu")
-            return self.transcribe(audio, prompt)
+            return self.transcribe(audio, prompt, language)
 
 
 def main() -> None:
@@ -117,7 +118,7 @@ def main() -> None:
             if quiet:
                 print(json.dumps({"id": job["id"], "text": "", "doubtful": False}), flush=True)
                 continue
-            segments = whisper.transcribe(audio, job.get("prompt") or None)
+            segments = whisper.transcribe(audio, job.get("prompt") or None, job.get("language") or "de")
             text = " ".join(s["text"].strip() for s in segments)
             print(json.dumps({"id": job["id"], "text": text.strip(), "doubtful": any(map(doubtful, segments))}), flush=True)
         except Exception as e:  # one bad recording must not take the sidecar down

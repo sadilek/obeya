@@ -11,6 +11,7 @@ import type { Utterance } from './db';
 import type { AgentRuntime, AgentTool } from './runtime';
 import type { Workers } from './workers';
 import { type Change, RECHECK_MS, type Workspaces } from './workspaces';
+import { LANGUAGE_NAMES } from '../core/locale';
 
 interface Package {
   title: string;
@@ -79,6 +80,11 @@ export interface KoordinatorOptions {
 }
 
 export class Koordinator {
+  /** The language its agents write the owner in. */
+  private get language() {
+    return LANGUAGE_NAMES[this.o.board.language()];
+  }
+
   /** Decisions to start are taken one at a time, so two colliding cards cannot both slip through. */
   private chain: Promise<unknown> = Promise.resolve();
   private answers: Promise<unknown> = Promise.resolve();
@@ -141,7 +147,7 @@ export class Koordinator {
     if (!open.length) throw new BadRequest('nothingToStart', 'the project has no planned workstream left to start');
     const now = Date.now();
     open.forEach((w, n) => this.o.board.work(w.id, { queue: JSON.stringify({ checking: true, together: project.id, since: new Date(now + n).toISOString() }) }));
-    this.o.board.log(project.id, 'state', 'owner', `Alle Workstreams gestartet: ${open.map((w) => w.label ?? w.title).join(', ')}. Der Koordinator legt die Reihenfolge fest.`);
+    this.o.board.log(project.id, 'state', 'owner', this.o.board.t.koordinator.allStarted(open.map((w) => w.label ?? w.title).join(', ')));
     setTimeout(() => this.serial(() => this.decideAll(project.id)), this.o.holdMs ?? START_ALL_HOLD_MS);
   }
 
@@ -169,16 +175,16 @@ export class Koordinator {
       result = await this.plan(card);
     } catch (e) {
       this.setQueue(cardId, null);
-      this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte die Aufgabe nicht aufteilen (${e instanceof Error ? e.message : String(e)}).`);
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.koordinator.splitFailed(e instanceof Error ? e.message : String(e)));
       return;
     }
     if (!('packages' in result) || result.packages.length < 2) {
       this.setQueue(cardId, null);
-      this.o.board.log(cardId, 'state', 'koordinator', `Nicht aufgeteilt: ${'keep' in result ? result.keep : 'ein Paket genügt.'}`);
+      this.o.board.log(cardId, 'state', 'koordinator', this.o.board.t.koordinator.notSplit('keep' in result ? result.keep : this.o.board.t.koordinator.onePackage));
       return;
     }
     const made = this.o.board.replace(cardId, result.packages);
-    for (const m of made) this.o.board.log(m.id, 'state', 'koordinator', `Aus „${card.title}“ aufgeteilt. ${result.reason}`);
+    for (const m of made) this.o.board.log(m.id, 'state', 'koordinator', this.o.board.t.koordinator.splitFrom(card.title, result.reason));
   }
 
   private plan(card: Item): Promise<Cut> {
@@ -194,11 +200,11 @@ export class Koordinator {
         {
           cwd: this.o.repoFor(card).path,
           readOnly: true,
-          system: CUT_SYSTEM,
+          system: CUT_SYSTEM(this.language),
           tools: [
             {
               name: 'packages',
-              description: 'Replace the card by these packages (2 to 6). Titles and bodies in German; files as in scope estimates.',
+              description: `Replace the card by these packages (2 to 6). Titles and bodies in ${this.language}; files as in scope estimates.`,
               schema: {
                 packages: z.array(z.object({ title: z.string(), body: z.string(), files: z.array(z.string()) })).min(2).max(6),
                 reason: z.string(),
@@ -207,7 +213,7 @@ export class Koordinator {
             },
             {
               name: 'keep',
-              description: 'Leave the card whole, with a one-sentence reason in German.',
+              description: `Leave the card whole, with a one-sentence reason in ${this.language}.`,
               schema: { reason: z.string() },
               run: (a) => finish({ keep: String(a.reason) }),
             },
@@ -237,7 +243,7 @@ export class Koordinator {
     if (!card.queue || !('behind' in card.queue)) throw new BadRequest('notQueued', 'the card is not waiting');
     const since = card.queue.since;
     this.setQueue(cardId, null);
-    this.o.board.log(cardId, 'state', 'owner', 'Trotz Überschneidung gestartet.');
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.startedDespite);
     this.launch(cardId, since);
   }
 
@@ -248,12 +254,12 @@ export class Koordinator {
       const back = this.unplanned(cardId);
       if (!back.length) throw new BadRequest('notQueued', 'no workstream of the project waits to be planned');
       for (const w of back) this.setQueue(w.id, null);
-      this.o.board.log(cardId, 'state', 'owner', `Start zurückgenommen: ${back.map((w) => w.label ?? w.title).join(', ')}.`);
+      this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.startTakenBack(back.map((w) => w.label ?? w.title).join(', ')));
       return;
     }
     if (!card.queue) throw new BadRequest('notQueued', 'the card is not waiting');
     this.setQueue(cardId, null);
-    this.o.board.log(cardId, 'state', 'owner', 'Aus der Warteschlange genommen.');
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.dequeued);
   }
 
   /** Answers the question of a card without a project, or escalates it. One question at a time. */
@@ -269,6 +275,7 @@ export class Koordinator {
           cwd: this.o.repoFor(card).path,
           resume: s.id,
           onSession: (id) => (s.id = id),
+          language: this.o.board.language(),
           system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Workers on cards that belong to no project send you the questions they cannot decide themselves.\n\n${ADVICE_RULES}`,
           message: [
             `Question from the worker on the ${card.kind} "${card.title}":`,
@@ -336,11 +343,11 @@ export class Koordinator {
     let proposed = 0;
     return this.read(
       this.o.home(),
-      REVIEW_SYSTEM,
+      REVIEW_SYSTEM(this.language),
       (finish): AgentTool[] => [
         {
           name: 'propose',
-          description: `Propose a rule to the owner: one short rule in German, and why (one short sentence in German, under 150 characters, naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
+          description: `Propose a rule to the owner: one short rule in ${this.language}, and why (one short sentence in ${this.language}, under 150 characters, naming what in the history it rests on). Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
           schema: { rule: z.string(), why: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
           run: ({ rule, why, replaces, repos }) => {
             const r = String(rule).trim().slice(0, 500);
@@ -477,11 +484,11 @@ export class Koordinator {
     let proposed = false;
     return this.read(
       card ? this.o.repoFor(card).path : this.o.home(),
-      LEARN_SYSTEM,
+      LEARN_SYSTEM(this.language),
       (finish): AgentTool[] => [
         {
           name: 'propose',
-          description: `Propose a lasting preference to the owner as one short rule in German. Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
+          description: `Propose a lasting preference to the owner as one short rule in ${this.language}. Pass replaces with the number of a recorded rule it refines or contradicts. ${REPOS_PARAM}`,
           schema: { rule: z.string(), replaces: z.number().int().optional(), repos: z.array(z.string()).optional() },
           run: ({ rule, replaces, repos }) => {
             const r = String(rule).trim().slice(0, 500);
@@ -494,7 +501,7 @@ export class Koordinator {
             const old = typeof replaces === 'number' ? rules[replaces - 1] : undefined;
             for (const t of fresh) this.o.board.proposePreference(r, { ...(card ? { cardId: card.id } : {}), quote: text }, old?.id, t);
             proposed = true;
-            if (card) this.o.board.log(card.id, 'state', 'koordinator', `Schlägt vor: „${r}“`);
+            if (card) this.o.board.log(card.id, 'state', 'koordinator', this.o.board.t.koordinator.proposes(r));
             return finish('Proposed. End your turn now.');
           },
         },
@@ -547,7 +554,7 @@ export class Koordinator {
     const ahead = this.ahead(card);
     if (!active.length && !ahead.length) {
       // nothing it could collide with: start at once, and estimate the scope for the cards after it
-      this.startNow(cardId, 'Nichts läuft gerade; es geht sofort los.');
+      this.startNow(cardId, this.o.board.t.koordinator.nothingRuns);
       if (this.o.board.item(cardId)?.state !== 'working') return;
       try {
         const scope = await this.estimate(card, []);
@@ -559,22 +566,23 @@ export class Koordinator {
     try {
       scope = await this.estimate(card, active, ahead);
     } catch (e) {
-      this.o.board.log(cardId, 'error', 'obeya', `Koordinator konnte den Umfang nicht schätzen (${e instanceof Error ? e.message : String(e)}); die Aufgabe startet trotzdem.`);
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.koordinator.estimateFailed(e instanceof Error ? e.message : String(e)));
       scope = { files: [], conflictsWith: [], reason: '' };
     }
     if (!this.o.board.item(cardId)?.queue) return;
     this.o.board.work(cardId, { scope: JSON.stringify({ files: scope.files, reason: scope.reason }) });
     const behind = this.collisions(card, scope, [...active, ...ahead]);
-    if (!behind.length) return this.startNow(cardId, `Kein Merge-Konflikt mit laufender Arbeit zu erwarten.${scope.reason ? ` ${scope.reason}` : ''}`);
+    const t = this.o.board.t.koordinator;
+    if (!behind.length) return this.startNow(cardId, `${t.noConflict}${scope.reason ? ` ${scope.reason}` : ''}`);
     const names = behind
       .map((id) => {
         const a = ahead.find((x) => x.id === id);
-        return a ? `„${a.title}“ (wartet selbst und ist vorher dran)` : `„${active.find((x) => x.id === id)?.title ?? id}“`;
+        return a ? t.waitsAhead(a.title) : this.o.board.t.quote(active.find((x) => x.id === id)?.title ?? id);
       })
       .join(', ');
-    const reason = scope.reason || 'Wahrscheinlich Merge-Konflikte mit laufender Arbeit.';
+    const reason = scope.reason || t.likelyConflict;
     this.setQueue(cardId, { behind, reason });
-    this.o.board.log(cardId, 'state', 'obeya', `Koordinator: wartet auf ${names}. ${reason}`);
+    this.o.board.log(cardId, 'state', 'obeya', t.waitsFor(names, reason));
   }
 
   /** Decides on the workstreams of a project that came to the Koordinator together. */
@@ -599,7 +607,7 @@ export class Koordinator {
       plan = await this.schedule(this.o.board.item(projectId)!, batch, active, ahead);
     } catch (e) {
       // judged one by one instead: without the dependencies, but nothing is lost
-      this.o.board.log(projectId, 'error', 'obeya', `Koordinator konnte die Workstreams nicht gemeinsam einplanen (${e instanceof Error ? e.message : String(e)}); er prüft sie einzeln.`);
+      this.o.board.log(projectId, 'error', 'obeya', this.o.board.t.koordinator.togetherFailed(e instanceof Error ? e.message : String(e)));
       for (const w of batch) {
         this.setQueue(w.id, { checking: true });
         this.serial(() => this.decide(w.id));
@@ -615,7 +623,7 @@ export class Koordinator {
     // none wait for each other
     const times = batch.map((w) => w.queue!.since!);
     const before = new Set([...active, ...ahead].map((i) => i.id));
-    const names = new Map([...active, ...ahead, ...batch].map((i) => [i.id, i.parent === projectId && i.label ? `${i.label} „${i.title}“` : `„${i.title}“`]));
+    const names = new Map([...active, ...ahead, ...batch].map((i) => [i.id, i.parent === projectId && i.label ? `${i.label} ${this.o.board.t.quote(i.title)}` : this.o.board.t.quote(i.title)]));
     let started = 0;
     plan.forEach((p, n) => {
       const id = p.card;
@@ -625,13 +633,13 @@ export class Koordinator {
       this.o.board.work(id, { scope: JSON.stringify({ files: p.files, reason: p.reason }), queue: JSON.stringify({ checking: true, together: projectId, since: times[n] }) });
       if (!behind.length) {
         started++;
-        return this.startNow(id, `Gemeinsam mit den anderen Workstreams eingeplant; startet jetzt.${p.reason ? ` ${p.reason}` : ''}`);
+        return this.startNow(id, `${this.o.board.t.koordinator.togetherStarts}${p.reason ? ` ${p.reason}` : ''}`);
       }
-      const reason = p.reason || 'Wahrscheinlich Merge-Konflikte mit laufender Arbeit.';
+      const reason = p.reason || this.o.board.t.koordinator.likelyConflict;
       this.setQueue(id, { behind, reason });
-      this.o.board.log(id, 'state', 'obeya', `Koordinator: wartet auf ${behind.map((b) => names.get(b) ?? b).join(', ')}. ${reason}`);
+      this.o.board.log(id, 'state', 'obeya', this.o.board.t.koordinator.waitsFor(behind.map((b) => names.get(b) ?? b).join(', '), reason));
     });
-    this.o.board.log(projectId, 'state', 'koordinator', `Eingeplant: ${started} von ${plan.length} Workstreams starten jetzt, die anderen warten.`);
+    this.o.board.log(projectId, 'state', 'koordinator', this.o.board.t.koordinator.planned(started, plan.length));
   }
 
   /** Whether a card still holds others back: in progress, or waiting itself. */
@@ -643,7 +651,7 @@ export class Koordinator {
   private startNow(cardId: string, why: string) {
     const since = this.o.board.item(cardId)?.queue?.since;
     this.setQueue(cardId, null);
-    this.o.board.log(cardId, 'state', 'obeya', `Koordinator: ${why}`);
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.says(why));
     this.launch(cardId, since);
   }
 
@@ -660,7 +668,7 @@ export class Koordinator {
       const shortage = e instanceof BadRequest ? SHORTAGE[e.code] : undefined;
       if (!shortage) return this.o.board.log(cardId, 'error', 'obeya', e instanceof Error ? e.message : String(e), e instanceof BadRequest ? e.code : undefined);
       this.setQueue(cardId, { workspace: shortage }, since);
-      this.o.board.log(cardId, 'state', 'obeya', WAITS_FOR[shortage]);
+      this.o.board.log(cardId, 'state', 'obeya', shortage === 'none' ? this.o.board.t.koordinator.noWorkspace : this.o.board.t.koordinator.dirtyWorkspaces);
     }
   }
 
@@ -696,7 +704,7 @@ export class Koordinator {
           full.add(w.repo);
           continue;
         }
-        this.startNow(w.id, 'Ein Workspace ist frei; es geht los.');
+        this.startNow(w.id, this.o.board.t.koordinator.workspaceFree);
         if (this.o.board.item(w.id)?.queue) full.add(w.repo);
         continue;
       }
@@ -710,11 +718,11 @@ export class Koordinator {
       // what it waited for is done; with nothing else running it starts, else it is judged again
       // against what runs now, which may have started after it was judged
       if (!this.inProgress(w.repo).length) {
-        this.startNow(w.id, 'Worauf sie gewartet hat, ist erledigt; es geht los.');
+        this.startNow(w.id, this.o.board.t.koordinator.waitedDone);
         active.add(w.id);
       } else {
         this.setQueue(w.id, { checking: true });
-        this.o.board.log(w.id, 'state', 'obeya', 'Koordinator: Worauf sie gewartet hat, ist erledigt; prüft neu gegen die laufende Arbeit.');
+        this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.waitedDoneRecheck);
         this.serial(() => this.decide(w.id));
       }
     }
@@ -737,11 +745,11 @@ export class Koordinator {
         {
           cwd: this.o.repoFor(card).path,
           readOnly: true,
-          system: SYSTEM,
+          system: SYSTEM(this.language),
           tools: [
             {
               name: 'scope',
-              description: 'Report the files the card will change, the cards in progress or queued ahead whose changes are likely to conflict with it on merge (their tags), and a one-sentence reason in German.',
+              description: `Report the files the card will change, the cards in progress or queued ahead whose changes are likely to conflict with it on merge (their tags), and a one-sentence reason in ${this.language}.`,
               schema: { files: z.array(z.string()), conflicts_with: z.array(z.string()), reason: z.string() },
               run: (a) => {
                 if (done) return 'Already reported.';
@@ -784,11 +792,11 @@ export class Koordinator {
         {
           cwd: this.o.repoFor(project).path,
           readOnly: true,
-          system: SCHEDULE_SYSTEM,
+          system: SCHEDULE_SYSTEM(this.language),
           tools: [
             {
               name: 'schedule',
-              description: 'Report every workstream once, in the order they should go: its tag, the files it will change, the tags of the cards it waits for (in progress, queued ahead, or workstreams earlier in your order; empty to start now), and a one-sentence reason in German.',
+              description: `Report every workstream once, in the order they should go: its tag, the files it will change, the tags of the cards it waits for (in progress, queued ahead, or workstreams earlier in your order; empty to start now), and a one-sentence reason in ${this.language}.`,
               schema: {
                 workstreams: z.array(z.object({ card: z.string(), files: z.array(z.string()), waits_for: z.array(z.string()), reason: z.string() })),
               },
@@ -911,7 +919,7 @@ export class Koordinator {
   }
 }
 
-const SYSTEM = `
+const SYSTEM = (language: string) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to conflict with one of them waits behind it rather than overtaking it.
 
 Sharing a file is not a conflict. Git merges changes to different places of the same file cleanly: new strings, types, routes, tests or functions added next to others; edits in different functions. A conflict is likely when both cards change the same lines or the same function or block, when one rewrites, moves, renames or reformats code the other one edits, or when both change the same small, tightly packed section (one config entry, one signature that both extend). For a card in progress you see what it is expected to change and the places it has changed so far (line ranges in its branch, with the enclosing function); read the code there when you need to.
@@ -919,11 +927,11 @@ Sharing a file is not a conflict. Git merges changes to different places of the 
 Read what you need in the repository (you cannot change files), then call scope exactly once:
 - files: repository-relative paths the card will most likely change; a path ending in "/" stands for a directory. Be concrete; list new files where you expect them.
 - conflicts_with: the tags of cards in progress or queued ahead whose changes will likely conflict with this card's on merge; empty when none. When in doubt, leave a card out: a conflict that happens anyway goes back to its worker to resolve.
-- reason: one sentence in German for the owner: with a conflict, where the two cards change the same code; without one, which files they share, if any, and why that is fine. The owner does not know the tags: name cards by their title.
+- reason: one sentence in ${language} for the owner: with a conflict, where the two cards change the same code; without one, which files they share, if any, and why that is fine. The owner does not know the tags: name cards by their title.
 Keep it quick: this runs every time a card starts.
 `.trim();
 
-const SCHEDULE_SYSTEM = `
+const SCHEDULE_SYSTEM = (language: string) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. The owner started all open workstreams of a project at once; you decide how they go. Read the plan doc and what you need in the repository (you cannot change files).
 
 A workstream waits for another when:
@@ -935,7 +943,7 @@ Call schedule exactly once, with every workstream once, in the order they should
 - card: its tag.
 - files: repository-relative paths it will most likely change; a path ending in "/" stands for a directory.
 - waits_for: the tags of cards it waits for: cards in progress, queued ahead, or workstreams earlier in your order. Empty: it starts now. A workstream that waits starts by itself once what it waits for has landed.
-- reason: one sentence in German for the owner: why it waits (the dependency, or where the changes collide), or, starting now, why it can run beside the others. The owner does not know the tags: name cards by their label or title.
+- reason: one sentence in ${language} for the owner: why it waits (the dependency, or where the changes collide), or, starting now, why it can run beside the others. The owner does not know the tags: name cards by their label or title.
 `.trim();
 
 /**
@@ -951,7 +959,7 @@ A rule goes to one of two places:
 const REPOS_PARAM =
   "repos: the ids of the repositories whose CLAUDE.md the rule belongs in (one proposal each); leave it out for a rule on how agents work with the owner through Obeya.";
 
-const LEARN_SYSTEM = `
+const LEARN_SYSTEM = (language: string) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's rules, so the owner never has to say the same thing twice.
 
 You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you, the Koordinator, in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the canvas's repositories, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting rule that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
@@ -965,7 +973,7 @@ Signals for one:
 - It overrules an answer given in the owner's name: the agent that answered lacked a rule.
 Not a preference: deciding the case at hand (an option, a name, a date, what this card should do), approving, asking how things stand, correcting a fact. Most of what the owner says is like that: then call nothing.
 
-Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in German, in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
+Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in ${language}, in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
 `.trim();
 
 /** After how many of the owner's inputs the Rückschau runs, at most how many rules it proposes, and how much history it reads. */
@@ -976,7 +984,7 @@ const REVIEW_HISTORY = 300;
 const REVIEW_COUNT = 'review_inputs';
 const REVIEW_SINCE = 'review_since';
 
-const REVIEW_SYSTEM = `
+const REVIEW_SYSTEM = (language: string) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's rules, so the owner never has to say the same thing twice.
 
 ${WHERE_RULES_GO}
@@ -990,7 +998,7 @@ This is the Rückschau. You get what happened on the canvas since the last one, 
 - commands taken back, and what the owner did instead.
 Clicks without words count here: what the owner does again and again says what they want as much as what they say.
 
-Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in German in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); why, one short sentence in German for the owner (under 150 characters) naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
+Propose a rule only for a pattern seen at least twice, on different cards, that you expect the owner to accept; most of the time there is none. Call propose for each, at most ${REVIEW_PROPOSALS}: rule, a short, general rule in ${language} in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); why, one short sentence in ${language} for the owner (under 150 characters) naming the cards or moments it rests on. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either. Then call done.
 `.trim();
 
 /** How the Rückschau names who did something on a card, and what. */
@@ -1040,11 +1048,11 @@ const INPUTS: Record<OwnerInput, string> = {
   card: 'text of a card they wrote, the task for an agent',
 };
 
-const CUT_SYSTEM = `
+const CUT_SYSTEM = (language: string) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers run at the same time, each on one card in its own workspace; cards whose changes would conflict on merge (the same code in the same files) have to wait for each other. The owner asks you to cut a card into work packages that can run in parallel.
 
 Read what you need in the repository (you cannot change files). Then either call packages or keep:
-- packages: 2 to 6 cards that together do exactly what the card asks, each shippable and testable on its own, touching different files wherever possible. Each body says what to do and how to verify it, so a worker needs no other context. files: the repository-relative paths each will change ("dir/" for a directory). reason: one sentence in German on how you cut.
+- packages: 2 to 6 cards that together do exactly what the card asks, each shippable and testable on its own, touching different files wherever possible. Each body says what to do and how to verify it, so a worker needs no other context. files: the repository-relative paths each will change ("dir/" for a directory). reason: one sentence in ${language} on how you cut.
 - keep: when the card is small, or its parts cannot run apart without stepping on each other.
 Do not add scope the card does not ask for.
 `.trim();
@@ -1091,10 +1099,6 @@ const waits = (i: Item) => i.state === 'planned' && !!i.queue && ('behind' in i.
 
 /** The refusals of a start for want of a workspace, and what the card then waits for. */
 const SHORTAGE: Record<string, WorkspaceShortage> = { noWorkspace: 'none', dirtyWorkspaces: 'dirty' };
-const WAITS_FOR: Record<WorkspaceShortage, string> = {
-  none: 'Kein Workspace frei: Alle sind belegt oder es ist keiner eingerichtet. Die Aufgabe startet, sobald einer frei wird.',
-  dirty: 'Kein Workspace frei: Jeder freie hat noch nicht committete Änderungen. Die Aufgabe startet, sobald einer sauber ist.',
-};
 
 /** A changed file with the places changed in it: "src/a.ts (lines 12-20 in function f; 40)", or "(new)". */
 const describe = (c: Change) =>

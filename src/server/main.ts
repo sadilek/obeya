@@ -35,6 +35,7 @@ import { serve } from './server';
 import { PiperSpeaker, SpeechSidecar, voiceBackends, WhisperSidecar } from './voice';
 import { VoiceSetup } from './voice-setup';
 import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
+import { ownerLanguage } from './settings';
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -175,6 +176,7 @@ canvases = configs.map(
       ownCheckout: own,
       config,
       workerEnv: { OBEYA_URL: url },
+      language: () => ownerLanguage(home),
     }),
 );
 const ids = canvases.map((c) => c.id);
@@ -184,7 +186,7 @@ if (new Set(ids).size !== ids.length) {
 }
 const backends = voiceBackends();
 const transcriber = new WhisperSidecar(backends.listen);
-const speaker = backends.speech === 'macos' ? new SpeechSidecar() : new PiperSpeaker(home);
+const speaker = backends.speech === 'macos' ? new SpeechSidecar() : new PiperSpeaker(home, () => ownerLanguage(home));
 const voiceSetup = new VoiceSetup({ home, backends, prepare: () => transcriber.prepare() });
 const shutdown = (code: number) => {
   for (const c of canvases) c.shutdown();

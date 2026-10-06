@@ -16,7 +16,8 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { KIT_PATH } from '../adapters';
-import { OWNER_LANGUAGE } from '../core/locale';
+import { LANGUAGE_NAMES } from '../core/locale';
+import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoPageHtml, withHeightReport } from './demo-page';
@@ -100,7 +101,8 @@ export class Sharing {
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     this.set(cardId, { ...(s ? atRest(s) : { slug: slugOf(card) }), state: 'publishing' });
-    const again = !s?.url ? 'Teilen: Die Seite geht online.' : s.dir === demo.dir && s.outdated ? 'Erneut teilen: Die Seite wird mit dem neuen Stand erzeugt.' : 'Neu teilen: Die Seite bekommt die neue Demo.';
+    const t = this.o.board.t.share;
+    const again = !s?.url ? t.share : s.dir === demo.dir && s.outdated ? t.again : t.newDemo;
     this.o.board.log(cardId, 'state', 'owner', again);
     void serial(() => this.publish(cardId));
   }
@@ -111,7 +113,7 @@ export class Sharing {
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     if (!s?.url) throw new BadRequest('notShared', 'the demo is not shared');
     this.set(cardId, { ...s, state: 'withdrawing' });
-    this.o.board.log(cardId, 'state', 'owner', 'Nicht mehr teilen: Die Seite wird zurückgezogen.');
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.unshare);
     void serial(() => this.withdraw(cardId));
   }
 
@@ -198,7 +200,7 @@ export class Sharing {
       const row = this.find(id) && this.o.board.row(id);
       if (s && row && reshareable(row)) {
         this.set(id, { ...s, state: 'publishing', refresh: true, again: true });
-        this.o.board.log(id, 'state', 'owner', 'Erneut teilen, mit anderen geteilten Demos: Die Seite wird mit dem neuen Stand erzeugt.');
+        this.o.board.log(id, 'state', 'owner', this.o.board.t.share.againWithOthers);
         ok = await this.publish(id);
       }
     }
@@ -275,7 +277,8 @@ export class Sharing {
     const s = this.stored(cardId);
     const card = this.find(cardId);
     if (s?.state !== 'publishing' || !card) return null;
-    const failed = s.again ? 'Nicht erneut geteilt' : s.refresh ? 'Der Link zum Pull Request ist nicht auf die Seite gekommen' : 'Nicht geteilt';
+    const t = this.o.board.t.share;
+    const failed = s.again ? t.notAgain : s.refresh ? t.notLinked : t.notShared;
     const back = (why: string, out = '') => {
       this.set(cardId, atRest(s));
       this.o.board.log(cardId, 'error', 'obeya', [`${failed}: ${why}`, out].filter(Boolean).join('\n\n'));
@@ -289,15 +292,15 @@ export class Sharing {
       // the page as it is: a newer demo on the card waits for "Neu teilen"
       const now = s.shown ?? (demo?.page && demo.dir === s.dir ? { ...demo.page, chapters: demo.chapters, kind: demo.kind ?? 'video' } : null);
       if (!now || !s.dir || !cmd) {
-        if (s.again) return back('Die Demo, die die Seite zeigt, ist nicht mehr da; „Neu teilen“ bringt die der Aufgabe.');
+        if (s.again) return back(t.demoGone);
         this.set(cardId, atRest(s));
-        this.o.board.log(cardId, 'activity', 'obeya', 'Die geteilte Seite bekommt den Link zum Pull Request mit dem nächsten „Neu teilen“.');
+        this.o.board.log(cardId, 'activity', 'obeya', t.linkLater);
         return null;
       }
       shown = now;
       dir = s.dir;
     } else {
-      if (!demo || !cmd) return back('Die Aufgabe hat keine Demo mehr, oder ihr Repository teilt keine.');
+      if (!demo || !cmd) return back(t.noDemo);
       const page = await this.page(card, demo);
       shown = { title: page.title, text: page.text, chapters: demo.chapters, kind: demo.kind ?? 'video' };
       dir = demo.dir;
@@ -306,14 +309,14 @@ export class Sharing {
     const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, dir, shared: this.others(cardId, cmd.command) };
     const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.repo, this.o.home);
     const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
-    if (r.code !== 0 || !url) return back(r.code !== 0 ? `Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).` : 'Der Befehl zum Teilen hat keine URL ausgegeben.', tail(r.err || r.out));
+    if (r.code !== 0 || !url) return back(r.code !== 0 ? t.commandFailed(r.code) : t.noUrl, tail(r.err || r.out));
     const versions = await this.version(cmd);
     const current = versionOf(versions, shown.kind);
     this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}), ...(current ? { version: current } : {}) });
     this.mark(cmd.command, versions);
     // stdout carries the URL, logged below; what the command says on the way is on stderr
     if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
-    this.o.board.log(cardId, 'state', 'obeya', s.again ? `Erneut geteilt: ${url}` : s.refresh ? `Die geteilte Seite verlinkt jetzt den Pull Request: ${url}` : `Geteilt: ${url}`);
+    this.o.board.log(cardId, 'state', 'obeya', s.again ? t.sharedAgain(url) : s.refresh ? t.linksPr(url) : t.shared(url));
     if (pr) this.linkPr(cardId, pr, url, cmd.repo, shown.kind);
     // the pull request was opened while the page went out: once more, with its link
     const now = this.prOf(cardId);
@@ -328,12 +331,12 @@ export class Sharing {
   private linkPr(cardId: string, pr: string, url: string, cwd: string, kind: DemoKind = 'video') {
     const n = parsePrUrl(pr)?.number;
     try {
-      const body = withDemoLink(this.o.forge.body(cwd, pr), url, kind);
+      const body = withDemoLink(this.o.forge.body(cwd, pr), url, kind, this.o.board.t);
       if (body === null) return;
       this.o.forge.setBody(cwd, pr, body);
-      this.o.board.log(cardId, 'state', 'obeya', `Den Link zur Demo in die Beschreibung von Pull Request #${n} eingetragen.`);
+      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.prLinked(n));
     } catch (e) {
-      this.o.board.log(cardId, 'error', 'obeya', `Den Link zur Demo nicht in Pull Request #${n} eingetragen: ${e instanceof Error ? e.message : String(e)}`);
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.share.prNotLinked(n, e instanceof Error ? e.message : String(e)));
     }
   }
 
@@ -346,14 +349,15 @@ export class Sharing {
       this.o.board.log(cardId, 'error', 'obeya', [why, out].filter(Boolean).join('\n\n'));
     };
     const cmd = this.o.commandFor(card);
-    if (!cmd) return back('Nicht zurückgezogen: Das Repository der Aufgabe teilt keine Demos mehr.');
+    const t = this.o.board.t.share;
+    if (!cmd) return back(t.notWithdrawnNoShare);
     const r = await run([...cmd.command, 'withdraw', s.slug], JSON.stringify({ slug: s.slug, shared: this.others(cardId, cmd.command) }), cmd.repo, this.o.home);
-    if (r.code !== 0) return back(`Nicht zurückgezogen: Der Befehl zum Teilen ist gescheitert (Exit-Code ${r.code}).`, tail(r.err || r.out));
+    if (r.code !== 0) return back(t.notWithdrawnFailed(r.code), tail(r.err || r.out));
     const versions = await this.version(cmd);
     this.set(cardId, { slug: s.slug });
     this.mark(cmd.command, versions);
     if (r.err.trim() || r.out.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(`${r.out}\n${r.err}`));
-    this.o.board.log(cardId, 'state', 'obeya', 'Die Seite ist zurückgezogen.');
+    this.o.board.log(cardId, 'state', 'obeya', t.withdrawn);
   }
 
   /**
@@ -404,7 +408,7 @@ export class Sharing {
       ];
       out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
     }
-    this.o.board.log(cardId, 'state', 'owner', `Exportiert als ${as === 'zip' ? 'ZIP' : 'HTML-Datei'}: ${out.name}`);
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
     return out;
   }
 
@@ -429,7 +433,7 @@ export class Sharing {
       ];
       out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
     }
-    this.o.board.log(card.id, 'state', 'owner', `Exportiert als ${as === 'zip' ? 'ZIP' : 'HTML-Datei'}: ${out.name}`);
+    this.o.board.log(card.id, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
     return out;
   }
 
@@ -457,11 +461,11 @@ export class Sharing {
           cwd: cmd?.repo ?? this.o.home,
           readOnly: true,
           effort: 'low',
-          system: PAGE_SYSTEM,
+          system: pageSystem(LANGUAGE_NAMES[this.o.board.language()]),
           tools: [
             {
               name: 'page',
-              description: `The page's title and text, in ${OWNER_LANGUAGE}.`,
+              description: `The page's title and text, in ${LANGUAGE_NAMES[this.o.board.language()]}.`,
               schema: { title: z.string(), text: z.string() },
               run: ({ title, text }) => {
                 if (page) return 'Already written.';
@@ -544,9 +548,9 @@ export class Sharing {
   }
 }
 
-const PAGE_SYSTEM = `You write the page on which the demo of a change (a video, or a page with charts or an analysis) is shared with colleagues of the team. They have never seen the tool the change was planned in, its cards or plan docs; they know the product. Read the card's task and its worker's summary, and call the tool page once with:
+const pageSystem = (language: string) => `You write the page on which the demo of a change (a video, or a page with charts or an analysis) is shared with colleagues of the team. They have never seen the tool the change was planned in, its cards or plan docs; they know the product. Read the card's task and its worker's summary, and call the tool page once with:
 - title: what changes, for a user of the product, in a few words (not the card's internal wording).
-- text: two to five sentences in ${OWNER_LANGUAGE}: what changes for the user and why. No findings, no test details, no internal process (cards, workers, demos, reviews), no markdown.
+- text: two to five sentences in ${language}: what changes for the user and why. No findings, no test details, no internal process (cards, workers, demos, reviews), no markdown.
 Then end your turn. Read code only if the summary leaves unclear what the change does for the user.`;
 
 /** A share at rest: neither held, nor publishing, nor withdrawing. */
@@ -567,9 +571,9 @@ function statOr(path: string): number | null {
 export const DEMO_MARKER = '<!-- obeya:demo -->';
 
 /** The description with a line linking the demo's page; null when it links the page already. */
-export function withDemoLink(body: string, url: string, kind: DemoKind = 'video'): string | null {
+export function withDemoLink(body: string, url: string, kind: DemoKind = 'video', t: Messages = MESSAGES.de): string | null {
   if (body.includes(url)) return null;
-  const line = `${kind === 'html' ? 'Demo-Seite' : 'Demo-Video'}: ${url} ${DEMO_MARKER}`;
+  const line = `${t.share.prLine(kind === 'html')}: ${url} ${DEMO_MARKER}`;
   const lines = body.split('\n');
   const i = lines.findIndex((l) => l.includes(DEMO_MARKER));
   if (i >= 0) {

@@ -5,11 +5,14 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FALLBACK_LANGUAGE, type Language, LANGUAGES, languageOf } from '../core/locale';
+import { OWNER_SETTINGS_FILE, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
+import { type Language, LANGUAGES } from '../core/locale';
 import type { LanguageView } from '../core/types';
 import { BadRequest } from './board';
 
-export const SETTINGS_FILE = 'settings.json';
+export { systemLanguage };
+
+export const SETTINGS_FILE = OWNER_SETTINGS_FILE;
 
 interface Settings {
   language?: Language;
@@ -23,32 +26,6 @@ function read(home: string): Settings {
   } catch {
     return {};
   }
-}
-
-/**
- * The system's language. On a Mac the one its interface is in (`AppleLanguages`), which a server
- * started outside a terminal has no `LANG` for; elsewhere the locale variables, in the order POSIX
- * gives them, then what the runtime reports (Windows). A language Obeya does not speak gives the
- * fallback.
- */
-export function systemLanguage(env: Record<string, string | undefined> = process.env, platform = process.platform, apple = appleLanguage): Language {
-  const fromEnv = [env.LC_ALL, env.LC_MESSAGES, env.LANG].find((v) => v && v !== 'C' && v !== 'POSIX' && !v.startsWith('C.'));
-  const locale = (platform === 'darwin' ? apple() : undefined) ?? fromEnv ?? Intl.DateTimeFormat().resolvedOptions().locale;
-  return languageOf(locale) ?? FALLBACK_LANGUAGE;
-}
-
-let apple: string | null | undefined;
-/** The first of the Mac's preferred languages, read once. */
-function appleLanguage(): string | undefined {
-  if (apple === undefined) {
-    try {
-      const out = Bun.spawnSync(['defaults', 'read', '-g', 'AppleLanguages'], { stderr: 'ignore' });
-      apple = /"?([A-Za-z]{2,3}(?:[-_][A-Za-z0-9]+)*)"?/.exec(out.stdout.toString().replace(/^\s*\(/, ''))?.[1] ?? null;
-    } catch {
-      apple = null;
-    }
-  }
-  return apple ?? undefined;
 }
 
 export function languageView(home: string, system = systemLanguage()): LanguageView {

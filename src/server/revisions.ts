@@ -2,7 +2,7 @@
 // questions in one read-only turn, and the proposal waits for it. What the owner did not touch stays.
 
 import { z } from 'zod';
-import { OWNER_LANGUAGE } from '../core/locale';
+import { LANGUAGE_NAMES } from '../core/locale';
 import type { Item } from '../core/types';
 import { toQuestion } from './advisor';
 import type { Board } from './board';
@@ -55,12 +55,12 @@ export class Revisions {
         (r) => {
           const questions = r.questions.map((q) => toQuestion(q.question, q.options, q.multiple));
           if (!this.o.board.revised(cardId, { title: r.title, task: r.task, ...(r.reason ? { reason: r.reason } : {}), idea: !!r.idea, questions })) return;
-          this.o.board.log(cardId, 'state', 'koordinator', 'Vorschlag überarbeitet.');
+          this.o.board.log(cardId, 'state', 'koordinator', this.o.board.t.koordinator.revised);
           return true;
         },
         (e) => {
           if (!this.o.board.revised(cardId)) return;
-          this.o.board.log(cardId, 'error', 'koordinator', `Überarbeiten ging nicht: ${e instanceof Error ? e.message : String(e)}`);
+          this.o.board.log(cardId, 'error', 'koordinator', this.o.board.t.koordinator.reviseFailed(e instanceof Error ? e.message : String(e)));
           return false;
         },
       )
@@ -82,7 +82,7 @@ export class Revisions {
             {
               name: 'revise_proposal',
               description: [
-                `The whole proposal as it is to stand now, in ${OWNER_LANGUAGE}.`,
+                `The whole proposal as it is to stand now, in ${LANGUAGE_NAMES[this.o.board.language()]}.`,
                 `title: short and precise. task: the card's text, written for the agent who will take it on, which has seen neither the card it came from nor this conversation: what is wrong or wanted, where (files, names), what done looks like; as the owner would write a card: no "I", no "my question"; other cards named by their title.`,
                 `reason: for the owner only, why it is proposed, a sentence or two (keep it unless what the owner said changes it). idea: true for something to think through with the owner before anyone builds it.`,
                 `questions: what the owner still has to decide, each with up to four short options; keep them out of task. A question the owner's words settle goes, and its decision goes into task.`,

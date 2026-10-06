@@ -7,6 +7,7 @@ import { pickAdapter } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
+import type { Language } from '../core/locale';
 import { buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
@@ -51,6 +52,8 @@ export interface CanvasDeps {
   writingPauseMs?: number;
   /** Added to every worker's environment (`OBEYA_URL`). */
   workerEnv?: Record<string, string>;
+  /** The language Obeya speaks to the owner now (`ownerLanguage`); German when left out (the tests). */
+  language?: () => Language;
 }
 
 export interface RepoRuntime {
@@ -111,6 +114,7 @@ export class CanvasRuntime {
         ),
       images,
       (repo, commit) => !!reads[refs.findIndex((r) => r.id === repo)]?.holds(commit),
+      deps.language,
     );
     const board = this.board;
     const imageFiles = (ids: string[] = []) => ids.flatMap((i) => images.path(i) ?? []);
@@ -409,7 +413,7 @@ export class CanvasRuntime {
     if (start && proposal?.revising) {
       // the owner knows what comes; the new text still may ask what must be settled first
       if (this.board.acceptAfterRevision(cardId, true))
-        this.board.log(cardId, 'state', 'owner', `${proposal.idea ? 'Übernehmen und besprechen' : 'Übernehmen und starten'}, sobald der Vorschlag überarbeitet ist; hat er noch Fragen, bleibt er Vorschlag.`);
+        this.board.log(cardId, 'state', 'owner', this.board.t.proposal.acceptAfterRevision(!!proposal.idea));
       return;
     }
     if (this.board.accept(cardId, picks, start)) this.explorers.open(cardId, true);
@@ -418,7 +422,7 @@ export class CanvasRuntime {
 
   /** Accepting after the revision is taken back: the proposal stays one. */
   private unaccept(cardId: string) {
-    if (this.board.acceptAfterRevision(cardId, false)) this.board.log(cardId, 'state', 'owner', 'Doch nicht übernehmen.');
+    if (this.board.acceptAfterRevision(cardId, false)) this.board.log(cardId, 'state', 'owner', this.board.t.proposal.notAccepting);
   }
 
   /** The revision is over (`revised`, or the agent ended without a text): a proposal accepted meanwhile is accepted now, unless it asks questions. */
@@ -428,7 +432,8 @@ export class CanvasRuntime {
     this.board.acceptAfterRevision(cardId, false);
     const asks = card.proposal.questions.length;
     if (revised && !asks) return this.accept(cardId, [], true);
-    this.board.log(cardId, 'state', 'obeya', !revised ? 'Nicht übernommen: Die Überarbeitung kam nicht zustande.' : asks > 1 ? 'Nicht übernommen: Der Vorschlag hat noch Fragen.' : 'Nicht übernommen: Der Vorschlag hat noch eine Frage.');
+    const t = this.board.t.proposal;
+    this.board.log(cardId, 'state', 'obeya', !revised ? t.notAcceptedNoRevision : asks > 1 ? t.notAcceptedQuestions : t.notAcceptedQuestion);
   }
 
   // ---------------------------------------------------------------- ideas
@@ -443,10 +448,10 @@ export class CanvasRuntime {
       // the owner knows what comes; the reply still may ask what must be settled first
       if (card.idea.buildAfterReply) return;
       this.board.setIdea(cardId, { buildAfterReply: true });
-      this.board.log(cardId, 'state', 'owner', 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.');
+      this.board.log(cardId, 'state', 'owner', this.board.t.idea.buildAfterReply);
       return;
     }
-    this.decided(card, { answer: 'So bauen, wie der Stand der Idee sagt.', log: 'So bauen: Der Stand der Idee ist der Auftrag.' });
+    this.decided(card, { answer: this.board.t.idea.buildAnswer, log: this.board.t.idea.buildLog });
     this.koordinator.request(cardId);
   }
 
@@ -454,7 +459,7 @@ export class CanvasRuntime {
   private unbuild(cardId: string) {
     if (!this.ideaCard(cardId).idea?.buildAfterReply) return;
     this.board.setIdea(cardId, { buildAfterReply: false });
-    this.board.log(cardId, 'state', 'owner', 'Doch nicht bauen.');
+    this.board.log(cardId, 'state', 'owner', this.board.t.idea.unbuild);
   }
 
   /**
@@ -467,7 +472,8 @@ export class CanvasRuntime {
     this.board.setIdea(cardId, { buildAfterReply: false });
     const asks = card.idea.questions.length;
     if (replied && !asks && card.idea.status === 'open') return this.build(cardId);
-    this.board.log(cardId, 'state', 'obeya', !replied ? 'Nicht gebaut: Die Antwort kam nicht zustande.' : asks > 1 ? 'Nicht gebaut: Der Agent hat noch Fragen.' : 'Nicht gebaut: Der Agent hat noch eine Frage.');
+    const t = this.board.t.idea;
+    this.board.log(cardId, 'state', 'obeya', !replied ? t.notBuiltNoReply : asks > 1 ? t.notBuiltQuestions : t.notBuiltQuestion);
   }
 
   /**
@@ -486,7 +492,7 @@ export class CanvasRuntime {
     const { workers } = this.repoOf(prototype);
     const { path, branch } = workers.buildOn(prototype.id, idea);
     this.board.work(idea.id, { workspace: path, branch, built_on: prototype.id });
-    this.decided(idea, { answer: `So bauen, auf Prototyp „${prototype.title}“.`, log: `So bauen, auf dem Prototyp „${prototype.title}“: Sein Branch ist jetzt der dieser Aufgabe.` });
+    this.decided(idea, { answer: this.board.t.idea.buildOnAnswer(prototype.title), log: this.board.t.idea.buildOnLog(prototype.title) });
     this.koordinator.request(idea.id);
   }
 
@@ -500,12 +506,13 @@ export class CanvasRuntime {
     if (!ws && !workstreamId) throw new BadRequest('workstreamMissing', 'the plan doc does not say which workstream builds on the prototype: choose it');
     if (!ws || ws.parent !== project.id) throw new BadRequest('invalid', 'not a workstream of the project the idea became');
     if (!buildableOn(ws)) throw new BadRequest('workstreamStarted', 'only a workstream nobody has started can be built on a prototype');
-    const named = `${ws.label ? `${ws.label} ` : ''}„${ws.title}“`;
+    const named = `${ws.label ? `${ws.label} ` : ''}${this.board.t.quote(ws.title)}`;
     const { path, branch } = this.repoOf(prototype).workers.buildOn(prototype.id, ws, named);
     this.board.work(ws.id, { workspace: path, branch, built_on: prototype.id });
     for (const p of this.board.snapshot().items.filter((i) => i.prototypeOf === prototype.prototypeOf)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
-    this.board.decide({ project_id: project.id, card_id: ws.id, question: `Auf welchem Prototyp baut ${named}?`, answer: `Auf Prototyp „${prototype.title}“.`, by: 'owner' });
-    this.board.log(ws.id, 'state', 'owner', `Auf dem Prototyp „${prototype.title}“ bauen: Sein Branch ist jetzt der dieses Workstreams.`);
+    const t = this.board.t.idea;
+    this.board.decide({ project_id: project.id, card_id: ws.id, question: t.whichPrototype(named), answer: t.onPrototype(prototype.title), by: 'owner' });
+    this.board.log(ws.id, 'state', 'owner', t.workstreamOnLog(prototype.title));
     this.koordinator.request(ws.id);
   }
 
@@ -518,7 +525,7 @@ export class CanvasRuntime {
     // the screenshots the owner showed in the discussion belong to what is built
     const shown = this.board.events(idea.id).flatMap((e) => (e.kind === 'talk' && e.author === 'owner' ? (e.images ?? []) : []));
     if (shown.length) this.addTaskImages(idea.id, shown);
-    this.board.decide({ project_id: null, card_id: idea.id, question: `Idee „${idea.title}“: wie weiter?`, answer: how.answer, by: 'owner' });
+    this.board.decide({ project_id: null, card_id: idea.id, question: this.board.t.idea.howOn(idea.title), answer: how.answer, by: 'owner' });
     this.board.log(idea.id, 'state', 'owner', how.log);
   }
 
@@ -532,20 +539,21 @@ export class CanvasRuntime {
     const idea = this.board.idea(cardId);
     const dir = this.repoOf(card).adapter.planDocs.dir;
     const prototypes = this.board.snapshot().items.filter((i) => i.prototypeOf === cardId);
+    const t = this.board.t.idea;
     this.explorers.close(cardId);
     this.board.work(cardId, {
       state: 'planned',
       idea: JSON.stringify({ ...idea, project: true } satisfies StoredIdea),
       body: [
-        `Schreibe aus dem Stand dieser Idee ein Plan-Doc in \`${dir}/\`, nach den Konventionen des Repositorys (vorhandene Plan-Docs als Vorbild). Es braucht ein \`## Ziel\` (oder \`## Goal\`) und eine Checkliste unter \`## Workstreams\` (\`- [ ] **W1:** Titel. Details\`), in Pakete geschnitten, die einzeln landen können; dann zeigt Obeya es als Projekt, das an die Stelle dieser Idee tritt. Baue nichts davon; nur das Plan-Doc (und ein Verweis darauf, wo das Repository Plan-Docs verlinkt).`,
-        `Idee: „${card.title}“`,
+        t.planDocTask(dir),
+        t.planDocIdea(card.title),
         idea.brief.trim() || card.body.trim(),
         prototypes.length
           ? [
-              `Zu dieser Idee gibt es schon ${prototypes.length > 1 ? `${prototypes.length} Prototypen` : 'einen Prototyp'}. Sie bleiben auf der Leinwand stehen; steht das Projekt, wählt der Owner einen von ihnen („Diesen Prototyp bauen“), und der Workstream, der darauf aufbaut, wird auf seinem Branch gebaut. Plane sie also nicht noch einmal als Workstreams, sondern nimm, was sie gezeigt haben, ins Plan-Doc auf. Nur der Workstream, der auf dem gewählten Prototyp aufbaut, erwähnt Prototypen: an ihm erkennt Obeya, welcher Workstream auf dem Branch des Prototyps gebaut wird.`,
+              t.planDocPrototypes(prototypes.length),
               ...prototypes.map((p) => {
                 const summary = this.board.summary(p.id)?.trim();
-                return summary ? `„${p.title}“, so übergeben:\n\n${summary}` : `„${p.title}“: noch in Arbeit.`;
+                return summary ? t.planDocHandedOver(p.title, summary) : t.planDocInProgress(p.title);
               }),
             ].join('\n\n')
           : '',
@@ -553,8 +561,8 @@ export class CanvasRuntime {
         .filter(Boolean)
         .join('\n\n'),
     });
-    this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'Als Projekt: erst ein Plan-Doc mit Workstreams.', by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', 'Als Projekt: Ein Agent schreibt das Plan-Doc; ist es gelandet, tritt das Projekt an die Stelle der Idee.');
+    this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(card.title), answer: t.planDocAnswer, by: 'owner' });
+    this.board.log(cardId, 'state', 'owner', t.planDocLog);
     this.koordinator.request(cardId);
   }
 
@@ -563,8 +571,9 @@ export class CanvasRuntime {
     const card = this.ideaCard(cardId);
     this.explorers.interrupt(cardId, how === 'park' ? 'parked' : 'dropped');
     this.board.setIdea(cardId, { status: how === 'park' ? 'parked' : 'dropped', buildAfterReply: false });
-    if (how === 'drop') this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'Verworfen.', by: 'owner' });
-    this.board.log(cardId, 'state', 'owner', how === 'park' ? 'Geparkt.' : 'Verworfen.');
+    const t = this.board.t.idea;
+    if (how === 'drop') this.board.decide({ project_id: null, card_id: cardId, question: t.howOn(card.title), answer: t.dropped, by: 'owner' });
+    this.board.log(cardId, 'state', 'owner', how === 'park' ? t.parked : t.dropped);
   }
 
   /**
@@ -576,20 +585,21 @@ export class CanvasRuntime {
   private prototype(cardId: string, what: string, chosen?: string[]) {
     const card = this.ideaCard(cardId);
     const { variants = [] } = this.board.idea(cardId);
+    const t = this.board.t.idea;
     const running = new Set(this.board.snapshot().items.flatMap((i) => (i.prototypeOf === cardId && i.variant ? [i.variant] : [])));
     const picked = chosen ? variants.filter((v) => chosen.includes(v.approach)) : what ? [] : variants.filter((v) => !running.has(v.approach));
     if (chosen?.length && !picked.length && !what) throw new BadRequest('invalid', 'none of the chosen variants is planned');
     if (!chosen && !what && variants.length && !picked.length) throw new BadRequest('variantsRunning', 'every planned variant has its prototype on the canvas');
     const runs = picked.map((v) => {
       const others = variants.filter((o) => o !== v).map((o) => o.approach);
-      return { approach: v.approach, task: others.length ? `${v.show}\n\nNur diese Variante: ${others.join(', ')} bauen eigene Prototypen.` : v.show, variant: v.approach };
+      return { approach: v.approach, task: others.length ? `${v.show}\n\n${t.onlyThisVariant(others.join(', '))}` : v.show, variant: v.approach };
     });
-    if (what || !runs.length) runs.push({ approach: approachOf(what), task: what || 'Zeige die Idee so, wie der Stand der Idee sie beschreibt.', variant: '' });
+    if (what || !runs.length) runs.push({ approach: approachOf(what), task: what || t.showAsItStands, variant: '' });
     const taken = new Set((this.board.item(cardId)?.prototypes ?? []).map((p) => p.title));
     const started: string[] = [];
     try {
       for (const run of runs) {
-        const base = `Prototyp: ${card.title}${run.approach ? ` – ${run.approach}` : ''}`;
+        const base = t.prototypeTitle(`${card.title}${run.approach ? ` – ${run.approach}` : ''}`);
         let title = base;
         for (let n = 2; taken.has(title); n++) title = `${base} (${n})`;
         taken.add(title);
@@ -610,7 +620,7 @@ export class CanvasRuntime {
           cardId,
           'state',
           'owner',
-          started.length > 1 ? `Prototypen gestartet: ${started.map((t) => `„${t}“`).join(', ')}.` : `Prototyp „${started[0]}“ gestartet${what && !picked.length ? `: ${what.replace(/[.!?]$/, '')}` : ''}.`,
+          started.length > 1 ? t.prototypesStarted(started.map((s) => this.board.t.quote(s)).join(', ')) : t.prototypeStarted(started[0]!, what && !picked.length ? what.replace(/[.!?]$/, '') : ''),
         );
       }
     }
@@ -620,7 +630,7 @@ export class CanvasRuntime {
   private prototypeReady(prototype: Item, summary: string, demo: string | undefined) {
     const idea = this.board.item(prototype.prototypeOf!);
     if (!idea) return;
-    this.board.log(idea.id, 'state', 'worker', `Prototyp „${prototype.title}“ fertig${demo ? '; seine Demo liegt hier' : ''}.`);
+    this.board.log(idea.id, 'state', 'worker', this.board.t.idea.prototypeReady(prototype.title, !!demo));
     if (idea.state === 'idea')
       this.explorers.tell(
         idea.id,
@@ -671,13 +681,13 @@ export class CanvasRuntime {
           ...(c.images?.length ? { images: c.images } : {}),
           ...at,
         });
-        this.board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
+        this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
         if (c.start) this.koordinator.request(card.id);
         return;
       }
       case 'newIdea': {
         const card = this.board.create({ idea: true, title: c.title, body: c.body, ...(c.repo ? { repo: c.repo } : {}), ...this.board.freeSpot() });
-        this.board.log(card.id, 'state', 'owner', 'Per Sprache angelegt.');
+        this.board.log(card.id, 'state', 'owner', this.board.t.voice.created);
         // the agent opens the discussion with what the owner said
         this.explorers.discuss(card.id, c.body.trim() || c.title, true, this.images.resolve(c.images));
         return;

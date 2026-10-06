@@ -11,6 +11,8 @@ import type { FrictionNote } from './db';
 import { readSession } from './koordinator';
 import type { AgentRuntime, AgentTool } from './runtime';
 import { type Excerpt, excerptOf, excerptText, findTranscript } from './transcript';
+import { type Language, LANGUAGE_NAMES } from '../core/locale';
+import { MESSAGES } from '../core/messages';
 
 export interface WorkRetroOptions {
   board: Board;
@@ -88,14 +90,14 @@ export class WorkRetro {
     const notes: FrictionNote[] = [];
     await readSession(this.o.runtime, {
       cwd: this.o.pathFor(card.repo),
-      system: NOTES_SYSTEM,
+      system: NOTES_SYSTEM(LANGUAGE_NAMES[this.o.board.language()]),
       model: NOTES_MODEL,
       effort: 'low',
       brief: `The card: "${card.title}".\n\nThe excerpt of its worker's ${runs.length > 1 ? `${runs.length} runs` : 'run'}:\n\n${text}`,
       tools: (finish): AgentTool[] => [
         {
           name: 'note',
-          description: 'Note one piece of friction worth preventing (in German, a sentence each): what went wrong, what it cost, what would have prevented it.',
+          description: `Note one piece of friction worth preventing (in ${LANGUAGE_NAMES[this.o.board.language()]}, a sentence each): what went wrong, what it cost, what would have prevented it.`,
           schema: { what: z.string(), cost: z.string(), fix: z.string() },
           run: ({ what, cost, fix }) => {
             if (notes.length >= MAX_NOTES) return finish(`At most ${MAX_NOTES} notes. End your turn now.`);
@@ -111,7 +113,7 @@ export class WorkRetro {
     this.o.board.addFriction(card.repo, card.id, notes);
     // the owner sees on the card what was noted; a card deleted meanwhile has no log to show it
     if (notes.length && this.o.board.item(card.id))
-      this.o.board.log(card.id, 'state', 'koordinator', `Arbeitsrückschau, Reibung notiert:\n${notes.map((n) => `– ${n.what} Kosten: ${n.cost} Verhindert hätte es: ${n.fix}`).join('\n')}`);
+      this.o.board.log(card.id, 'state', 'koordinator', this.o.board.t.retro.friction(notes.map((n) => this.o.board.t.retro.note(n.what, n.cost, n.fix)).join('\n')));
   }
 
   /**
@@ -126,7 +128,7 @@ export class WorkRetro {
     const notes = b.friction(repo, since);
     b.setSetting(sinceKey(repo), new Date().toISOString());
     if (!notes.length) {
-      if (told) b.speak(undefined, `Arbeitsrückschau für ${name}: Seit der letzten gibt es keine Reibung zu lesen.`);
+      if (told) b.speak(undefined, b.t.retro.nothingToRead(name));
       return;
     }
     // the cards as tags, in the order their notes came
@@ -151,7 +153,7 @@ export class WorkRetro {
     };
     await readSession(this.o.runtime, {
       cwd: this.o.pathFor(repo),
-      system: RETRO_SYSTEM,
+      system: RETRO_SYSTEM(b.language()),
       brief: [
         `The repository: ${name}. The friction noted on its cards since the last Arbeitsrückschau, card by card:\n\n${byCard.join('\n\n')}`,
         dismissed.length ? `Proposals of earlier Arbeitsrückschauen the owner dismissed (do not propose them again, in other words either):\n${list(dismissed)}` : '',
@@ -164,7 +166,7 @@ export class WorkRetro {
         return [
           {
             name: 'card',
-            description: 'Propose a feature card that prevents the friction: a script, a skill, a fix to a tool. title, body and basis in German; cards: the tags of the cards it rests on (at least two).',
+            description: `Propose a feature card that prevents the friction: a script, a skill, a fix to a tool. title, body and basis in ${LANGUAGE_NAMES[b.language()]}; cards: the tags of the cards it rests on (at least two).`,
             schema: { title: z.string(), body: z.string(), basis: z.string(), cards: z.array(z.string()) },
             run: ({ title, body, basis, cards }) => {
               if (made >= WORK_RETRO_PROPOSALS) return f(`At most ${WORK_RETRO_PROPOSALS} proposals. End your turn now.`);
@@ -173,15 +175,15 @@ export class WorkRetro {
               const on = basisOf(cards);
               if (typeof on === 'string') return on;
               const why = clip(String(basis).trim(), 600);
-              const p = b.proposeRetro(repo, { title: t, body: `${String(body).trim()}\n\nAnlass (Arbeitsrückschau): ${why}`, basis: why });
-              b.log(p.id, 'state', 'koordinator', `Aus der Arbeitsrückschau für ${name}. ${why} Karten: ${on.ids.map((id) => `„${titles.get(id)}“`).join(', ')}.`);
+              const p = b.proposeRetro(repo, { title: t, body: `${String(body).trim()}\n\n${b.t.retro.occasion(why)}`, basis: why });
+              b.log(p.id, 'state', 'koordinator', b.t.retro.from(name, why, on.ids.map((id) => b.t.quote(titles.get(id) ?? '')).join(', ')));
               made++;
               return after();
             },
           },
           {
             name: 'rule',
-            description: "Propose a line for the repository's CLAUDE.md, for knowledge the workers lacked: rule short and in German; basis in German; cards: the tags of the cards it rests on (at least two).",
+            description: `Propose a line for the repository's CLAUDE.md, for knowledge the workers lacked: rule short and in ${LANGUAGE_NAMES[b.language()]}; basis in ${LANGUAGE_NAMES[b.language()]}; cards: the tags of the cards it rests on (at least two).`,
             schema: { rule: z.string(), basis: z.string(), cards: z.array(z.string()) },
             run: ({ rule, basis, cards }) => {
               if (made >= WORK_RETRO_PROPOSALS) return f(`At most ${WORK_RETRO_PROPOSALS} proposals. End your turn now.`);
@@ -199,7 +201,7 @@ export class WorkRetro {
         ];
       },
     });
-    if (told) b.speak(undefined, `Arbeitsrückschau für ${name}: ${made ? `${made === 1 ? 'ein Vorschlag' : `${made} Vorschläge`}, auf der Leinwand und beim Koordinator.` : 'nichts, was sich auf mehreren Karten wiederholt.'}`);
+    if (told) b.speak(undefined, b.t.retro.done(name, made));
   }
 
   private serial(fn: () => Promise<void>) {
@@ -215,14 +217,12 @@ export class WorkRetro {
   }
 }
 
-/** The log line that keeps an earlier run of a card, whose session a new start replaces. */
-export const earlierRun = (sessionId: string) => `Der frühere Lauf (Sitzung ${sessionId}) bleibt für die Arbeitsrückschau erhalten.`;
-
 /** The sessions of a card's earlier runs, from its log. */
 export function earlierRuns(events: CardEvent[]): string[] {
   return events.flatMap((e) => {
     if (e.author !== 'obeya' || e.kind !== 'state') return [];
-    const m = /\(Sitzung ([\w-]+)\) bleibt für die Arbeitsrückschau erhalten/.exec(e.text);
+    // the line that keeps an earlier run (`earlierRun` in either language)
+    const m = /\((?:Sitzung|session) ([\w-]+)\) (?:bleibt für die Arbeitsrückschau erhalten|is kept for the work retrospective)/.exec(e.text);
     return m ? [m[1]!] : [];
   });
 }
@@ -239,7 +239,7 @@ const sinceKey = (repo: string) => `work_retro_since:${repo}`;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-const NOTES_SYSTEM = `
+const NOTES_SYSTEM = (language: string) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Each worker works on one card in its own workspace of a repository. You look back at how a worker worked, so that future runs in this repository go faster.
 
 You get an excerpt of one card's run from its transcript: tool calls that failed, with their errors; similar calls in a row (a failed one followed by its correction, or one command again and again); files written whole more than once; the worker's words around them; and how many tool calls the run took, and after how many it first changed a file.
@@ -251,10 +251,10 @@ Note the friction a change to the repository would prevent in future runs:
 - a tool or check used wrongly, a missing piece of knowledge about the repository.
 Not friction: a test or type check failing on the change being made and then fixed (that is the work itself), one quick slip corrected at once at no cost, a call blocked by a rule that then worked the other way at once.
 
-Note 0 to 3, the costliest first; most runs have one or none. Call note for each: what (concretely: the command, the file, the error), cost (the steps or time it took, a wrong turn), fix (what would have prevented it: a script, a skill, a line in the CLAUDE.md, a clearer error message; concretely). In German, a sentence each: the owner reads them on the card. You may read the repository (you cannot change it) to check whether that already exists. Then call done.
+Note 0 to 3, the costliest first; most runs have one or none. Call note for each: what (concretely: the command, the file, the error), cost (the steps or time it took, a wrong turn), fix (what would have prevented it: a script, a skill, a line in the CLAUDE.md, a clearer error message; concretely). In ${language}, a sentence each: the owner reads them on the card. You may read the repository (you cannot change it) to check whether that already exists. Then call done.
 `.trim();
 
-const RETRO_SYSTEM = `
+const RETRO_SYSTEM = (language: Language) => `
 You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Each worker works on one card in its own workspace of a repository. This is the Arbeitsrückschau for the repository you are in (you cannot change it): you get the friction noted on its workers' runs since the last one, card by card, and propose what would make future runs cheaper.
 
 Look for friction that recurs on at least two different cards, the same detour taken again and again, and that a change to the repository would prevent:
@@ -265,7 +265,7 @@ Look for friction that recurs on at least two different cards, the same detour t
 Read the repository first: its CLAUDE.md, its docs, scripts and skills. Propose nothing it has already; where it has it but the workers did not find it, propose making it findable (a CLAUDE.md line). Skills of the user (~/.claude/skills) are out of scope.
 
 Propose at most ${WORK_RETRO_PROPOSALS}, only for patterns on at least two cards and only what you expect the owner to take; most of the time that is fewer, or none.
-- card: a feature card. title in German, naming what it builds: „Skript \`scripts/x.ts\` für …“, „Skill für …“. body in German: what to build and how to verify it, so a worker needs no other context, and the friction it prevents. basis: one sentence in German for the owner, naming the cards it rests on and what went wrong on them. cards: the tags of those cards.
-- rule: a line for the CLAUDE.md: rule short, general, in German; basis and cards as for card. It waits for the owner and goes into the CLAUDE.md through the card „CLAUDE.md ergänzen“.
+- card: a feature card. title in ${LANGUAGE_NAMES[language]}, naming what it builds: ${language === 'de' ? '„Skript \`scripts/x.ts\` für …“, „Skill für …“' : '“Script \`scripts/x.ts\` for …”, “Skill for …”'}. body in ${LANGUAGE_NAMES[language]}: what to build and how to verify it, so a worker needs no other context, and the friction it prevents. basis: one sentence in ${LANGUAGE_NAMES[language]} for the owner, naming the cards it rests on and what went wrong on them. cards: the tags of those cards.
+- rule: a line for the CLAUDE.md: rule short, general, in ${LANGUAGE_NAMES[language]}; basis and cards as for card. It waits for the owner and goes into the CLAUDE.md through the card ${MESSAGES[language].quote(MESSAGES[language].claudeMd.title)}.
 The owner does not know the tags: name cards by their titles in basis. Do not propose again what was proposed before, above all what the owner dismissed, in other words either. Then call done.
 `.trim();

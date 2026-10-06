@@ -42,7 +42,7 @@ export function serve(
   /** Starts speaking `text` and returns where the browser fetches it. */
   const voice = (c: CanvasRuntime, text: string) => {
     const id = crypto.randomUUID();
-    speech.set(id, speaker.speak(text));
+    speech.set(id, speaker.speak(text, c.board.language()));
     setTimeout(() => speech.delete(id), 60_000);
     return `/api/c/${encodeURIComponent(c.id)}/voice/speech/${id}`;
   };
@@ -108,13 +108,14 @@ export function serve(
     const file = join(dir, 'speech.webm');
     try {
       await Bun.write(file, await req.arrayBuffer());
-      const first = await transcriber.transcribe(file, c.commander.vocabulary());
+      const language = c.board.language();
+      const first = await transcriber.transcribe(file, c.commander.vocabulary(), language);
       const text = first.text.trim();
       if (silence(text)) return console.log(`whisper on ${c.id}: ${text}`), '';
       if (!looping(text) && !first.doubtful) return text;
       // the card titles talk Whisper into loops or guesses on a recording without speech: once more without them
       console.log(`whisper ${looping(text) ? 'looped' : 'was unsure'} on ${c.id}: ${text.slice(0, 80)}; once more without the card titles`);
-      const again = await transcriber.transcribe(file, '');
+      const again = await transcriber.transcribe(file, '', language);
       const second = again.text.trim();
       if (!looping(second) && !again.doubtful && !silence(second)) return second;
       console.log(`whisper on ${c.id} without the card titles${again.doubtful ? ', unsure' : ''}: ${second.slice(0, 80)}`);
@@ -130,10 +131,10 @@ export function serve(
     // nothing heard or understood: screenshots shown with it stay in the browser for the next try
     const h: Heard & { unheard?: true } =
       text === null
-        ? { confirm: 'Das habe ich nicht verstanden.', unheard: true }
+        ? { confirm: c.board.t.voice.notUnderstood, unheard: true }
         : text
           ? await c.commander.hear(text, focus, images, input)
-          : { confirm: 'Ich habe nichts gehört.', unheard: true };
+          : { confirm: c.board.t.voice.nothingHeard, unheard: true };
     // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
     if (h.quiet) return h;

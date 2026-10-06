@@ -404,14 +404,23 @@ the owner's language (`src/core/locale.ts`).
   Konfiguration sheet; until then the system's applies: on a Mac the language of its interface
   (`AppleLanguages`), elsewhere `LC_ALL`, `LC_MESSAGES`, `LANG` in that order, then what the
   runtime reports; a language Obeya does not speak gives English. The choice lives in
-  `settings.json` in Obeya's home (`src/server/settings.ts`), which the server reads whenever it
-  needs the language (`ownerLanguage`) and the UI asks for before its first render
+  `settings.json` in Obeya's home (`src/server/settings.ts`; the system's language is worked out
+  in `plugin/skills/demo/lib/language.ts`, which the demo skill shares), which the server reads
+  whenever it needs the language (`ownerLanguage`) and the UI asks for before its first render
   (`/api/language`). The UI strings are two tables of one shape in `src/ui/strings.ts`, so a
   missing English text is a type error; the English one calls the Koordinator the Coordinator; dates and numbers follow the language, in the browser's
   own variant of it (`en-GB` writes the day first). Choosing another language takes effect at
-  once: the page loads again, keeping what was open, as after a restart. Behind the interface
-  (the Koordinator's replies and spoken confirmations, Whisper, server messages, what agents
-  write to the owner) Obeya is still German (`OWNER_LANGUAGE` in `src/core/locale.ts`).
+  once: the page loads again, keeping what was open, as after a restart. Behind the interface the
+  same setting decides: what the server writes into a card's log, the questions it puts to the
+  owner and what it speaks are two tables of one shape in `src/core/messages.ts` (the Board's `t`,
+  read when a line is written, which then stays in that language; the UI recognises the few lines
+  it treats specially in either); the Koordinator's replies and spoken confirmations (its session
+  starts afresh once the language changed), the language Whisper is told to expect, the voice that
+  speaks (on a Mac a system voice of that language, `say`'s Anna or Samantha where the default
+  voice speaks another; Piper's voice of that language elsewhere), and the language every prompt
+  asks agents to write the owner in (`LANGUAGE_NAMES`), with examples in it where they shape the
+  owner's text. A demo is narrated in it until the demo settings name a language. Prompts only
+  agents read stay English with German examples of what the owner may say.
 - **Canvases and repositories** — each repository on a canvas has its adapter, workspaces,
   workers, project agents and PR watcher; the canvas has one board and one Koordinator, whose
   collision checks stay within a repository. The first repository is the canvas's home: its plan
@@ -766,7 +775,7 @@ the owner's language (`src/core/locale.ts`).
     notes since the last one, the count starts again, and the owner hears what came of it.
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
   audio with the focus (open card, project in view). A Whisper sidecar keeps the model
-  loaded and transcribes in German with the canvas's titles as vocabulary: mlx-whisper on Apple
+  loaded and transcribes in the owner's language with the canvas's titles as vocabulary: mlx-whisper on Apple
   Silicon, faster-whisper elsewhere (CUDA when there is a GPU, falling back to the CPU when its
   libraries are missing; int8 on the CPU), large-v3-turbo on both, the recording decoded by ffmpeg
   (`OBEYA_WHISPER_PYTHON`, a Python with the package, else `uv` with the same kit the demos listen
@@ -877,9 +886,10 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   commands so the context stays short, a fresh one starts from memory: the last 20 exchanges and
   the canvas's last 14 days (at most 60 steps), with times.
 - **Voice out** — a voice on the server speaks the confirmation, which the browser plays. On a Mac
-  the default system voice: a JXA sidecar keeps the macOS synthesizer loaded (about half a second
-  a sentence), with `say` as the fallback. Elsewhere Piper (`de_DE-thorsten-high`, the demos'
-  default voice and the same installation under `voices/` in Obeya's home): a sidecar in Piper's
+  the default system voice, or one of the owner's language where it speaks another: a JXA sidecar
+  keeps the macOS synthesizer loaded (about half a second a sentence), with `say` as the fallback.
+  Elsewhere Piper (the demos' default voice of the owner's language, `de_DE-thorsten-high` or
+  `en_US-ryan-high`, and the same installation under `voices/` in Obeya's home): a sidecar in Piper's
   environment keeps the voice loaded (`voice/piper_sidecar.py`); without Piper nothing is spoken.
   `OBEYA_SPEECH=piper` takes Piper on a Mac too. The settings sheet's section "Spracheingabe und -ausgabe" ("Voice") checks
   what voice in and out need on this machine (`src/server/voice-setup.ts`): Whisper (the package
@@ -902,7 +912,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   Obeya: as the plugin, or as a user skill that points to `plugin/skills/demo` (the owner's
   `~/.claude/skills/demo` is a link to it in the Obeya checkout). The demo settings
   (`lib/settings.ts`; `demo.json` in Obeya's home, `OBEYA_HOME` else `~/.obeya`) give the
-  narration language (German or English: narration, captions, Whisper, the report page's words)
+  narration language (German or English: narration, captions, Whisper, the report page's words;
+  without one, the language Obeya speaks to the owner)
   and the voice, a provider: text in, WAV out (`lib/voices.ts` turns the settings into what
   `lib/tts.py` runs). Local ones run once per clip as a command with the text on stdin: Piper, the
   default (German `de_DE-thorsten-high`, English `en_US-ryan-high`; about twice real time on a

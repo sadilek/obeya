@@ -100,7 +100,7 @@ export class PrWatcher {
         next.reported = [...pr.reported, ...failed.map((c) => `${c.name}@${s.head}`)];
         this.workers.prEvent(
           cardId,
-          `Check fehlgeschlagen: ${failed.map((c) => c.name).join(', ')}. Der Agent sieht nach.`,
+          this.board.t.pr.checkFailed(failed.map((c) => c.name).join(', ')),
           ['Checks failed on your pull request. Find the cause (gh run view --log-failed helps), fix it, push, and end your turn.', ...failed.map((c) => `- ${c.name}${c.url ? `: ${c.url}` : ''}`)].join('\n'),
         );
       }
@@ -108,7 +108,7 @@ export class PrWatcher {
         next.conflictHead = s.head;
         this.workers.prEvent(
           cardId,
-          'Konflikt mit dem Zielbranch. Der Agent bringt den Branch auf Stand.',
+          this.board.t.pr.conflict,
           'Your pull request conflicts with its base branch. Bring it up to date with the latest base the way the repository does it (merge or rebase; push a rebase with --force-with-lease), resolve the conflicts, run the checks, push, and end your turn. Use ask if a conflict needs a product decision.',
         );
       } else if (s.mergeable === 'MERGEABLE') delete next.conflictHead;
@@ -119,7 +119,7 @@ export class PrWatcher {
         next.staleHead = s.head;
         this.workers.prEvent(
           cardId,
-          'Neuer Stand seit dem letzten Review, um ein neues hat niemand gebeten. Der Agent fragt danach.',
+          this.board.t.pr.stale,
           'Your pull request has commits its reviewers have not seen: their last word is older than the head commit, and nobody asked for another look since. Their verdict is about an older state, so Obeya does not merge on it. Ask them for a new review the way the repository does it (its own skill or script for this, if it has one; otherwise a comment mentioning the review bot), and end your turn.',
         );
       }
@@ -128,12 +128,12 @@ export class PrWatcher {
         // the reviewer doubts it: the owner decides, and merges on GitHub or tells the worker what is missing
         const held = { score: `${low.score}/${low.of}`, by: low.by };
         if (pr.readyHead !== s.head || pr.held?.score !== held.score)
-          this.board.log(cardId, 'state', 'obeya', `Bereit zum Mergen, aber ${held.by} gibt nur ${held.score}: Unter 4/5 mergt Obeya nicht selbst. Du entscheidest.`);
+          this.board.log(cardId, 'state', 'obeya', this.board.t.pr.held(held.by, held.score));
         next.readyHead = s.head;
         next.held = held;
         delete next.mergeError;
       } else if (idle && readyToMerge(s, this.noise)) {
-        if (pr.readyHead !== s.head || pr.held) this.board.log(cardId, 'state', 'obeya', 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya mergt.');
+        if (pr.readyHead !== s.head || pr.held) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.ready);
         next.readyHead = s.head;
         delete next.held;
         // the owner's approval covered the merge: Obeya merges, and tries again each round while GitHub refuses
@@ -144,7 +144,7 @@ export class PrWatcher {
           return this.workers.merged(cardId, commit || undefined);
         } catch (e) {
           const reason = (e instanceof Error ? e.message : String(e)).replace(/^gh pr merge \S+: /, '');
-          if (pr.mergeError !== reason || pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', `Obeya konnte nicht mergen: ${reason}`);
+          if (pr.mergeError !== reason || pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.mergeFailed(reason));
           next.mergeError = reason;
         }
       } else {
