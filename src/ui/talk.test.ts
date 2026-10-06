@@ -85,6 +85,47 @@ test('a spoken note stands once; the Koordinator confirms in the steps and answe
   ]);
 });
 
+test('a conversation nobody works on ends with its last message or line, the steps without a message where they happened', () => {
+  const review = ev('review', 'worker', 'Gesprächsverlauf steht.');
+  const approved = ev('state', 'owner', 'Freigegeben und auf main.');
+  const landed = ev('state', 'obeya', 'Nach der Freigabe auf main gelandet.');
+  const restart = ev('state', 'obeya', 'Neustart von Obeya angekündigt; der Agent pausiert beim nächsten sicheren Punkt.');
+  const err = ev('error', 'obeya', 'API Error: 529 Overloaded');
+  const events = [review, approved, landed, restart, err];
+  // while the agent works, its steps wait for its next message
+  expect(talkTurns(events).pending).toEqual([restart]);
+  // once it is over, what only Obeya noted goes
+  expect(talkTurns(events, { over: true })).toEqual({
+    shown: [
+      { e: review, steps: [] },
+      { e: approved, steps: [], line: true },
+      { e: landed, steps: [], line: true },
+      { e: err, steps: [], line: true },
+    ],
+    pending: [],
+  });
+  // the agent's last words in a turn without a message are its message, before the line that came later
+  const read = ev('activity', 'worker', 'Liest docs/design.md');
+  const done = ev('say', 'worker', 'Die Änderung ist auf main. Es ist nichts mehr offen.');
+  const retro = ev('state', 'koordinator', 'Arbeitsrückschau, Reibung notiert.');
+  expect(talkTurns([review, approved, landed, restart, read, done, retro], { over: true }).shown.slice(3)).toEqual([
+    { e: done, steps: [restart, read] },
+    { e: retro, steps: [], line: true },
+  ]);
+  // a turn the agent ended without words stands as its steps
+  const edit = ev('activity', 'worker', 'Ändert server/export.ts');
+  expect(talkTurns([review, restart, edit, err], { over: true }).shown).toEqual([
+    { e: review, steps: [] },
+    { e: edit, steps: [restart, edit], quiet: true },
+    { e: err, steps: [], line: true },
+  ]);
+  // the steps that led to the question the card waits on stay with it
+  const q = ev('question', 'worker', 'Auch PDF?');
+  const asked = talkTurns([read, q, restart], { asking: { text: 'Auch PDF?', options: [] }, over: true });
+  expect(asked.asked).toEqual({ e: q, steps: [read] });
+  expect(asked.pending).toEqual([restart]);
+});
+
 test('questions carry their answer; a note instead of an answer settles one; the open one stands apart', () => {
   const q1 = ev('question', 'worker', formatQuestion({ text: 'CSV oder Excel?', options: ['CSV', 'Excel'] }));
   const a1 = ev('answer', 'owner', 'CSV');

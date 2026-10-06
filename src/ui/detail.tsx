@@ -676,7 +676,7 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
     const el = box.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [events, working, asked]);
-  const turns = useMemo(() => (events ? talkTurns(events, { asking }) : null), [events, asked]);
+  const turns = useMemo(() => (events ? talkTurns(events, { asking, over: !working }) : null), [events, asked, working]);
   if (!events || !turns) return null;
   if (hideEmpty && !turns.shown.length && !turns.pending.length) return null;
   const agent = idea ? t.author.explorer : t.author.worker;
@@ -744,7 +744,7 @@ function Message({ turn, demoQuestion }: { turn: Turn; demoQuestion?: Demo }) {
         {e.kind === 'review' && ` · ${t.talk.handover}`}
         <span className="t">{time(e.at)}</span>
       </div>
-      <Body md={q ? q.text : e.text} />
+      {!turn.quiet && <Body md={q ? q.text : e.text} />}
       {q && !turn.settled && q.options.length > 0 && (
         <ul className="q-opts">
           {q.options.map((o) => (

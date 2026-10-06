@@ -13,6 +13,8 @@ export interface Turn {
   answer?: string;
   /** A worker's question the owner's note took back instead of an answer. */
   settled?: true;
+  /** Only the agent's steps, without words: a turn it ended silently, in a conversation nobody works on any more. */
+  quiet?: true;
 }
 
 export interface Talk {
@@ -25,6 +27,9 @@ export interface Talk {
 
 /** Obeya's lines that mark where the work stands; its other notes (restarts, sessions, what happens on the pull request) fold away. */
 const MILESTONE = /^(Agent gestartet|Pull Request gemergt|Nach der Freigabe auf main gelandet|Pull Request ohne Merge geschlossen|Das Projekt steht jetzt)/;
+
+/** The agent that works on the card or thinks the idea through. */
+const agentAuthor = (e: CardEvent) => e.author === 'worker' || e.author === 'explorer';
 
 /** What the owner says to the card's agent. */
 const toAgent = (e: CardEvent) => (e.kind === 'hint' || e.kind === 'answer' || e.kind === 'talk') && (e.author === 'owner' || e.kind === 'answer');
@@ -53,9 +58,10 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
  * A card's events as its conversation: what the owner says, the agents' replies, questions and
  * handovers, each with the steps that led to it, and the state changes between them. What the
  * owner says to a worker that does not `reply` is answered by the first words it says after it.
- * `asking`: the question the card waits on.
+ * `asking`: the question the card waits on. `over`: no agent works on the card, so no message will
+ * come for the steps without one (`settle`).
  */
-export function talkTurns(events: CardEvent[], opts: { asking?: Question } = {}): Talk {
+export function talkTurns(events: CardEvent[], opts: { asking?: Question; over?: boolean } = {}): Talk {
   const shown: Turn[] = [];
   let steps: CardEvent[] = [];
   // the owner said something to the agent, and the worker has not answered yet
@@ -86,7 +92,33 @@ export function talkTurns(events: CardEvent[], opts: { asking?: Question } = {})
     shown.splice(shown.indexOf(asked), 1);
     delete asked.settled;
   }
+  if (opts.over && !asked) {
+    settle(shown, steps, events);
+    steps = [];
+  }
   return { shown, pending: steps, ...(asked ? { asked } : {}) };
+}
+
+/**
+ * Steps no message came after, in a conversation nobody works on any more, go where they happened,
+ * before what came later. Each run of them between two turns ends with the agent's last words in
+ * it, as its message; a run without words stands as the agent's steps; what only Obeya and the
+ * Koordinator noted there goes.
+ */
+function settle(shown: Turn[], pending: CardEvent[], events: CardEvent[]) {
+  const at = new Map(events.map((e, i) => [e, i]));
+  const runs = new Map<number, CardEvent[]>();
+  for (const s of pending) {
+    const k = shown.findIndex((x) => at.get(x.e)! > at.get(s)!);
+    const where = k < 0 ? shown.length : k;
+    runs.set(where, [...(runs.get(where) ?? []), s]);
+  }
+  for (const [where, run] of [...runs].reverse()) {
+    const words = run.findLast((s) => s.kind === 'say' && agentAuthor(s));
+    const own = run.find(agentAuthor);
+    if (words) shown.splice(where, 0, { e: words, steps: run.filter((s) => s !== words) });
+    else if (own) shown.splice(where, 0, { e: own, steps: run, quiet: true });
+  }
 }
 
 /** Whether the owner's words at `i` reached the agent as the note or answer that follows, in the same words. */

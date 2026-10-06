@@ -290,8 +290,11 @@ the state changes (started, pull request opened, approved, landed, stopped, erro
 else folds away under the agent's next message as „Verlauf“: tool calls, thoughts, status lines,
 the Koordinator's confirmations, Obeya's notes (restarts, sessions, what happens on the pull
 request). A note the worker answered without `reply` (a card from before it, a worker that forgot)
-is answered by the first words the worker said after it. While the worker works, its latest step
-shows; the question the card waits on stands at the end with its options, and the answer field
+is answered by the first words the worker said after it. Once no agent works on the card and no
+question is open, no message is coming for the steps after the last one: they go where they
+happened, before the lines that came later. The agent's last words among them stand as its message
+(the closing words after a landing, say), a turn it ended without words as its steps, and what only
+Obeya or the Koordinator noted there goes. While the worker works, its latest step shows; the question the card waits on stands at the end with its options, and the answer field
 under it; a question a note took back stays, without options, „Durch deinen Hinweis erledigt“.
 Demo, pull request and buttons stay above it. A card that was an idea continues the idea's
 conversation in the same list.
