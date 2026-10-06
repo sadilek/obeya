@@ -314,6 +314,8 @@ export class CanvasRuntime {
   /** The owner clicks in the card's panel: a click without words the learner reads counts towards the Rückschau. */
   press(cardId: string, a: CardAction) {
     const r = this.act(cardId, a);
+    // the options picked on a proposal go to its reviser without the Koordinator, which would have logged them
+    if (a.action === 'revise') this.board.log(cardId, 'say', 'owner', a.text.trim());
     if (!(['message', 'answer', 'discuss'].includes(a.action) && 'text' in a && a.text?.trim())) this.koordinator.noticed();
     return r;
   }

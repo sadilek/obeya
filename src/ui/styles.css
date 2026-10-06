@@ -311,7 +311,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .idea-talk .talk { flex: 1; min-height: 0; max-height: none; max-width: none; }
 .idea-talk .composer { margin-top: 10px; max-width: none; }
 /* a proposal is as tall as its text and questions (up to the idea's height); its conversation fills that height and scrolls */
-.proposal-grid { height: auto; grid-template-rows: minmax(340px, auto); }
+.proposal-grid { height: auto; grid-template-rows: minmax(min(440px, calc(100vh - 380px)), auto); }
 .proposal-grid .idea-brief { max-height: min(600px, calc(100vh - 340px)); }
 .proposal-grid .idea-talk { contain: size; }
 .question.brief { border-color: var(--idea); background: color-mix(in srgb, var(--idea) 6%, transparent); }

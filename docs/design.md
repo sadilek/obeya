@@ -206,8 +206,11 @@ An idea is thought through on its card before anything is planned; no worker run
    read-only agent (`revisions.ts`, effort medium, in the card's repository) rewrites title, text,
    reason and questions by those words, keeping what they did not touch; a question the words
    settle goes, and its decision into the text. As with an idea, the conversation about it stands
-   beside the proposal, with the field under it; the proposal's text, reason and questions are on
-   the left, its buttons below both. Meanwhile the proposal shows „wird überarbeitet“ (in the
+   beside the proposal, its questions at the end of it and the field under it; the proposal's text
+   and reason are on the left, its buttons below both. Options picked there and sent („Antworten“,
+   with words or without) go to the reviser at once, without the Koordinator or an undo window, and
+   stand in the conversation as the owner's words; accepting instead takes the picks into the text
+   as above. Meanwhile the proposal shows „wird überarbeitet“ (in the
    conversation, where the field was), cannot be accepted or edited, and takes no second revision;
    it is not among the cards that need the owner. The owner's words stand in its conversation, then
    „Vorschlag überarbeitet.“; an agent

@@ -103,6 +103,14 @@ describe('a proposal reworked by what the owner says', () => {
     expect(reviser()!.inbox[0]).toContain('wrote about it');
   });
 
+  test('options picked in the panel go to the reviser at once and stand in the conversation', async () => {
+    const p = proposal();
+    canvas.press(p.id, { action: 'revise', text: '**Welche Kodierung?** UTF-8' });
+    expect(board().item(p.id)!.proposal?.revising).toEqual({ words: '**Welche Kodierung?** UTF-8' });
+    expect(reviser()!.inbox[0]).toContain('**Welche Kodierung?** UTF-8');
+    expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'say', author: 'owner', text: '**Welche Kodierung?** UTF-8' });
+  });
+
   test('accepting in the same breath, or while it is reworked, is refused', async () => {
     const p = proposal();
     const both = await say('Excel auch, und dann übernehmen', p, (tag) => [

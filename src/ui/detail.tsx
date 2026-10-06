@@ -627,17 +627,21 @@ function ProposalView({
           {children}
           {from && <p className="hint">{t.proposedBy(plain(from.title))}{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
           {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
-          {questions.length > 0 && (
-            <>
-              <Questions questions={questions} heading={t.proposalQuestions} {...answer} />
-              <p className="hint">{t.proposalQuestionsHint}</p>
-            </>
-          )}
         </div>
         <div className="idea-talk">
-          <Conversation item={item} />
+          {/* its questions stand at the end of the conversation; the options picked go to the reviser as they are, words through the Koordinator */}
+          <Conversation item={item} questions={<Questions questions={questions} heading={t.proposalQuestions} {...answer} />} />
           {/* while it is reworked, the owner's words stand in the conversation and wait there */}
-          {!revising && <Composer placeholder={t.compose.revise} listener={listener} onSend={(text) => onRevise(text)} noImages />}
+          {!revising && (
+            <Composer
+              placeholder={questions.length ? t.ask.words : t.compose.revise}
+              button={questions.length ? t.ask.send : t.send}
+              allowEmpty={answer.picked}
+              listener={listener}
+              noImages
+              onSend={(words) => (answer.picked ? act({ action: 'revise', text: answerText(questions, answer.picks, words, true) }, { close: false }) : onRevise(words))}
+            />
+          )}
         </div>
       </div>
       <div className="actions">
@@ -651,6 +655,7 @@ function ProposalView({
           {t.dismiss}
         </button>
       </div>
+      {questions.length > 0 && !revising && <p className="hint">{t.proposalQuestionsHint}</p>}
     </>
   );
 }
@@ -777,6 +782,9 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
   if (!events || !turns) return null;
   if (hideEmpty && !turns.shown.length && !turns.pending.length) return null;
   const agent = idea ? t.author.explorer : t.author.worker;
+  // no agent's message ever closes a proposal's rounds: its rework shows only what came after the owner's latest words
+  const since = proposal && turns.shown.length ? events.indexOf(turns.shown.at(-1)!.e) : -1;
+  const pending = proposal ? turns.pending.filter((s) => events.indexOf(s) > since) : turns.pending;
   // the demo report's question goes with the handover it came with
   const handover = item.demo?.question ? turns.shown.findLast((x) => x.e.kind === 'review') : undefined;
   return (
@@ -802,8 +810,8 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
         {working ? (
           <div className={`msg by-${idea ? 'explorer' : proposal ? 'koordinator' : 'worker'} thinking`}>
             <div className="who">{proposal ? t.revising : `${agent} ${idea ? t.idea.thinking : t.talk.working}`}</div>
-            {turns.pending.at(-1) && <div className="hint">{clipLine(turns.pending.at(-1)!.text)}</div>}
-            <Steps steps={turns.pending} />
+            {pending.at(-1) && <div className="hint">{clipLine(pending.at(-1)!.text)}</div>}
+            <Steps steps={pending} />
           </div>
         ) : (
           (turns.pending.length > 0 || (turns.asked?.steps.length ?? 0) > 0) && (
