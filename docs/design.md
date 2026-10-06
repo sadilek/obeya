@@ -585,7 +585,7 @@ the owner's language (`src/core/locale.ts`).
   detail view showed it.
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
-  moves to commits that change code (not only docs), the server stops and starts again; when the
+  moves to commits that change code (not only docs or the site for obeya.si in `site/`), the server stops and starts again; when the
   commits since it started change `package.json` or `bun.lock`, it runs `bun install
   --frozen-lockfile` in the checkout first (a failure goes to the log and the restart goes ahead,
   the new code then fails where it imports what is missing); workers resume, and an open page reloads when it reconnects to a new server process. The restart waits

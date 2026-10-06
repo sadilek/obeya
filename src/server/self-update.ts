@@ -158,8 +158,8 @@ export class Restarter {
 
 const key = (b: Busy[]) => b.map((x) => `${x.canvas}/${x.card}`).join(' ');
 
-/** Paths whose change leaves the running code as it is. */
-const INERT = /(^docs\/|^design\/|\.md$)/;
+/** Paths whose change leaves the running code as it is: docs, and the site for obeya.si. */
+const INERT = /(^docs\/|^design\/|^site\/|\.md$)/;
 
 const git = (cwd: string, ...args: string[]): string | null => {
   const r = Bun.spawnSync([GIT, '-C', cwd, ...args], { stderr: 'ignore' });
