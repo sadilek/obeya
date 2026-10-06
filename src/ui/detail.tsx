@@ -98,17 +98,11 @@ export function Detail(p: Props) {
           {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
         </div>
         <p className="hint ended">{t.idea.endedLong[item.prototypeEnd](plain(p.from?.title ?? ''))}</p>
-        {item.demo ? (
-          <DemoView item={item} summary={item.summary ?? ''} demo={item.demo} autoplay={false}>
+        {/* the summary is the handover in the conversation */}
+        {item.demo && (
+          <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
             {null}
           </DemoView>
-        ) : (
-          item.summary && (
-            <div className="question review">
-              <h4>{t.summary}</h4>
-              <Body md={item.summary} />
-            </div>
-          )
         )}
         <Conversation item={item} past />
         <details className="p-task">
@@ -274,11 +268,12 @@ export function Detail(p: Props) {
       )}
 
       {item.state === 'waiting' && item.need === 'demo' && item.demo && (
+        // the summary is the handover in the conversation below
         <DemoView
           item={item}
           all={all}
           run={run}
-          summary={item.summary ?? ''}
+          summary=""
           demo={item.demo}
           onAnswer={tell('answer')}
           listener={listener}
@@ -302,16 +297,7 @@ export function Detail(p: Props) {
 
       {item.state === 'waiting' && item.need === 'review' && (
         <>
-          <div className="question review">
-            <h4>{t.summary}</h4>
-            <Body md={item.summary ?? ''} />
-          </div>
-          {item.noDemo && (
-            <div className="question no-demo">
-              <h4>{t.demo.noDemo}</h4>
-              <div className="q-text">{item.noDemo}</div>
-            </div>
-          )}
+          {/* the summary, and why there is no demo, are the handover in the conversation below */}
           <div className="actions">
             {prototypeActions || approveButton}
           </div>

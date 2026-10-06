@@ -192,9 +192,10 @@ An idea is thought through on its card before anything is planned; no worker run
 3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
    sends the card back to `working`. The demo plays on its own the first time the card is opened
    (per browser; a new render counts as new), later it waits to be played, with a big play button
-   over it like a shared page's (also when the browser blocks the first play). Beside it stands the
-   worker's summary, the whole report: what changed for the user and what the owner needs to know,
-   in a few short paragraphs at most. A problem the worker noticed beyond the task is a proposal
+   over it like a shared page's (also when the browser blocks the first play). The worker's
+   summary is its handover in the card's conversation below, not repeated under the demo: the
+   whole report, what changed for the user and what the owner needs to know, in a few short
+   paragraphs at most. A problem the worker noticed beyond the task is a proposal
    (`propose_card`), not a line in the report. A follow-up's worker hears which card it comes from
    and that card's summary. A question in the demo report is an
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
@@ -851,7 +852,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   that directory, none outside it, with a CSP sandbox and the frame's `sandbox`, so the page's
   scripts run in an origin of their own, away from Obeya's API. A handover with `no_demo` (the
   reason) instead is the exception the worker's brief names as such: the card waits for review
-  with the summary and the reason, and a demo from an earlier handover leaves the card, since it
+  with the buttons on top and the summary and the reason as the handover in its conversation, and a demo from an earlier handover leaves the card, since it
   showed other work. Artifacts stay in `~/demos/`, never in git; a pull request links a demo
   only once it is shared (below).
 - **Sharing a demo** — every demo, video or HTML artifact, has "Teilen" beside it, on waiting cards

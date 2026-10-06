@@ -92,7 +92,6 @@ export const t = {
     pick: 'Würde ich nehmen',
     pickWhy: (why: string) => `Der Agent würde so entscheiden: ${why}`,
   },
-  summary: 'Zusammenfassung des Agenten',
   proposal: 'Vorschlag',
   proposedBy: (title: string) => `Vorgeschlagen vom Agenten der Aufgabe „${title}“.`,
   proposalQuestions: 'Offene Fragen',
@@ -241,7 +240,6 @@ export const t = {
   demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', kept: 'Die Demo bleibt hier abrufbar.',
     artifact: 'HTML-Artefakt des Agenten',
     play: 'Abspielen',
-    noDemo: 'Ohne Demo',
   },
   share: {
     share: 'Teilen',

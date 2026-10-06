@@ -266,7 +266,6 @@ textarea.p-body:focus { border-color: var(--muted); }
 .p-task .p-lead { font-size: 14px; }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 12px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
-.question.review { border-color: var(--approved); background: color-mix(in srgb, var(--approved) 7%, transparent); }
 .p-grid { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; align-items: start; margin-top: 16px; }
 .p-grid video { width: 100%; border-radius: 10px; background: #000; display: block; }
 .p-grid .player { position: relative; }
@@ -381,7 +380,6 @@ textarea.p-body:focus { border-color: var(--muted); }
 .pr-reply { margin-top: 8px; padding-left: 10px; border-left: 3px solid var(--line); }
 .pr-reply.mine { border-left-color: var(--inPr); }
 .question.queue { border-color: var(--planned); background: var(--chip); }
-.question.no-demo { border-color: var(--planned); background: var(--chip); }
 .question.failed { border-color: #dc2626; background: color-mix(in srgb, #dc2626 6%, transparent); }
 .question.queue .actions { margin-top: 10px; }
 .question.queue .btn { background: var(--card); border: 1px solid var(--line); }
