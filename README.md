@@ -10,8 +10,8 @@ team. Every task and every project is a card on one canvas. Agents do the work i
 background; you keep every essential decision — made by voice, from a narrated demo of the
 finished work, without reading code or cycling through terminals.
 
-The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls.
-More on [obeya.si](https://obeya.si).
+*Obeya* is Japanese for "big room": in lean management, the room where every project hangs
+visibly on the walls. More on [obeya.si](https://obeya.si).
 
 ![An Obeya canvas: a project with its workstreams, tasks an agent works on, a question and a demo waiting for the owner, an idea](docs/images/canvas.png)
 

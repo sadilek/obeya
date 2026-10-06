@@ -12,8 +12,8 @@ team: every task and every project is a card on one canvas; agents do the work i
 background; the human keeps every essential decision — made by voice, from a narrated demo
 video, without reading code or cycling through terminals.
 
-The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls and
-decisions are made in front of the wall.
+*Obeya* is Japanese for "big room": in lean management, the room where every project hangs
+visibly on the walls and decisions are made in front of the wall.
 
 ## Principles
 

@@ -51,7 +51,7 @@ services are off the table for now (see Background).
   1. One sentence and one picture (the canvas, or a video).
   2. Three pillars: canvas, voice, demos. The owner approves the demo, not the code.
   3. The flow in four steps: idea → agent in its own clone → demo → approval and merge.
-  4. Where the name comes from: Toyota's "big room".
+  4. Where the name comes from: Japanese for "big room", from lean management.
   5. Getting started: requirements, commands (later a download), GitHub, MIT licence.
   6. Later: Obeya is built with Obeya, and the hero video is a real demo out of Obeya.
 - **Variant B, film first.** Calm and editorial: the video on top, below it the pillars with
