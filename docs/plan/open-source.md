@@ -15,8 +15,9 @@ services are off the table for now (see Background).
 
 ## Where it stands
 
-- *README*: English, a paragraph on the idea, the status, `bun install` / `bun start`. There is
-  no `LICENSE` file and no `license` field in `package.json`.
+- *README*: English, a paragraph on the idea, the status, `bun install` / `bun start`.
+- *Licence*: MIT, in `LICENSE`, the README and `package.json` (W1). Code, tests and docs name no
+  other work projects.
 - *Logo*: three cards in the colours for working, waiting and approved, beside "obeya" in Inter
   Bold (`src/ui/logo.tsx`); as SVG in `src/ui/logo/`, also as a wordmark for light and dark. The
   UI loads Inter from Google Fonts (`src/ui/index.html`).
@@ -79,7 +80,7 @@ needs the English interface (W5, W6) and the site (W3).
 
 ## Workstreams
 
-- [ ] **W1:** MIT licence. A `LICENSE` file (MIT, copyright Daniel Sadilek), a "License" section
+- [x] **W1:** MIT licence. A `LICENSE` file (MIT, copyright Daniel Sadilek), a "License" section
   in the README, `"license": "MIT"` in `package.json`. Search the repository for references to
   other work projects; code, tests and docs carry none.
 - [ ] **W2:** README and CONTRIBUTING for strangers. The README gets a screenshot (from a scratch

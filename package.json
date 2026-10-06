@@ -1,6 +1,7 @@
 {
   "name": "obeya",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "start": "bun src/server/main.ts",

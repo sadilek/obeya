@@ -42,3 +42,7 @@ Voice needs a Python with `mlx_whisper` (`OBEYA_WHISPER_PYTHON=/path/to/python`)
 Obeya runs the sidecar through `uv run --with mlx-whisper`. Demos are recorded by the skill in
 `plugin/`, which Obeya gives its workers; what a machine needs for them (Node, a browser, ffmpeg,
 uv, a voice) is in [`docs/demo-setup.md`](docs/demo-setup.md), checked in the app's settings.
+
+## License
+
+[MIT](LICENSE), © Daniel Sadilek.
