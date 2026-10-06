@@ -655,8 +655,9 @@ export class Workers {
     if (card.state === 'inPr' && card.pr) return;
     if (card.state !== 'working' && card.state !== 'inPr' && !landed) return;
     if (landed) {
-      // what remained after the landing is done, unless the worker waits for its question or the restart
+      // what remained after the landing is done, unless the worker waits for its question, the restart or the usage limit
       if (card.state === 'waiting' || landed.waits) return;
+      if (live.limited) return this.waitForLimit(cardId, live, live.limited);
       if (live.failed) return this.failedAfterLanding(cardId, live);
       this.finish(cardId);
       return;
@@ -723,9 +724,9 @@ export class Workers {
   }
 
   /**
-   * The usage limit stopped the worker: it goes on by itself once the limit lifts. Meanwhile it is
-   * not busy (a restart need not wait for it, and resumes it into the same limit); a message from
-   * the owner reaches it at once and finds out whether the limit still holds.
+   * The usage limit stopped the worker, at work or after the landing: it goes on by itself once the
+   * limit lifts. Meanwhile it is not busy (a restart need not wait for it, and resumes it into the
+   * same limit); a message from the owner reaches it at once and finds out whether the limit still holds.
    */
   private waitForLimit(cardId: string, live: Live, at: number) {
     live.busy = false;
@@ -740,7 +741,8 @@ export class Workers {
       live.waiting = undefined;
       if (this.live.get(cardId) !== live) return;
       const state = this.o.board.item(cardId)?.state;
-      if (state !== 'working' && state !== 'inPr') return;
+      const landed = !!this.o.board.row(cardId).landed;
+      if (state !== 'working' && state !== 'inPr' && !(landed && state !== 'waiting')) return;
       this.deliver(cardId, LIMIT_LIFTED);
     }, Math.min(Math.max(0, at - Date.now()), 2 ** 31 - 1));
   }

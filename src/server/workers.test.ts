@@ -1239,6 +1239,37 @@ describe('a worktree per card', () => {
     expect(runtime.last.spec.resume).toBe('sess-1');
   });
 
+  test('a turn after the landing that the usage limit stopped waits for the limit and goes on; the card does not finish', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' }, limitMargin: 30 });
+    const c = manual();
+    workers.start(c.id);
+    commitIn(board.row(c.id).workspace!, 'c.ts', 'C');
+    const s = runtime.last;
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    const hit = "You've hit your session limit · resets 2:40pm (Europe/Berlin)";
+    s.emit({ type: 'error', message: hit, limit: { resetsAt: Date.now() + 20 } });
+    s.emit({ type: 'idle' });
+    const sent = s.inbox.length;
+    // no try that runs into the limit again, no question to the owner, and no end of the card either
+    expect(state(c.id)).toBe('live');
+    expect(s.closed).toBe(false);
+    expect(workers.busy()).toBe(false);
+    expect(board.item(c.id)!.finishing).toBe(true);
+    expect(board.item(c.id)!.statusLine).toStartWith('Nutzungslimit · weiter um ');
+    await Bun.sleep(60);
+    expect(s.inbox).toHaveLength(sent + 1);
+    expect(s.inbox.at(-1)).toContain('usage limit');
+    expect(workers.busy()).toBe(true);
+    // once it has done what remained, the card finishes
+    s.emit({ type: 'tool', name: 'Bash', input: { command: 'bun scripts/backfill.ts' } });
+    expect(board.item(c.id)!.statusLine).toBeUndefined();
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(board.item(c.id)!.finishing).toBeUndefined();
+  });
+
   test("an idea's plan doc that lands is remembered for the project it becomes", async () => {
     const i = board.create({ idea: true, title: 'Groß', x: 0, y: 0 });
     board.work(i.id, { state: 'planned' });
