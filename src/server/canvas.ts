@@ -7,7 +7,7 @@ import { pickAdapter } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
-import { type CanvasConfig, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
+import { buildableOn, type CanvasConfig, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -364,7 +364,7 @@ export class CanvasRuntime {
           throw new BadRequest('invalid', 'variants must be a list of the planned approaches');
         return this.prototype(cardId, text.trim(), a.variants);
       case 'buildPrototype':
-        return this.buildOnPrototype(cardId);
+        return this.buildOnPrototype(cardId, a.workstream);
       case 'discard':
         return this.repoOf(this.prototypeCard(cardId)).workers.endPrototype(cardId, 'discarded');
       case 'share':
@@ -433,14 +433,37 @@ export class CanvasRuntime {
    * whose worker goes on from there with the brief, the prototype's handover and the owner's answers
    * on it. The prototype goes into the archive as built, the idea's other prototypes as discarded.
    */
-  private buildOnPrototype(prototypeId: string) {
+  private buildOnPrototype(prototypeId: string, workstreamId?: string) {
     const prototype = this.prototypeCard(prototypeId);
+    const project = this.board.projectOf(prototype.prototypeOf!);
+    if (project) return this.buildWorkstreamOn(prototype, project, workstreamId);
+    const planning = this.board.item(prototype.prototypeOf!);
+    if (planning?.becomesProject) throw new BadRequest('projectPending', 'the idea becomes a project; build on the prototype once its plan doc has landed');
+    if (!planning) throw new BadRequest('ideaGone', 'the prototype’s idea is no longer on the canvas, and no project of it is');
     const idea = this.settledIdea(prototype.prototypeOf!);
     const { workers } = this.repoOf(prototype);
     const { path, branch } = workers.buildOn(prototype.id, idea);
     this.board.work(idea.id, { workspace: path, branch, built_on: prototype.id });
     this.decided(idea, { answer: `So bauen, auf Prototyp „${prototype.title}“.`, log: `So bauen, auf dem Prototyp „${prototype.title}“: Sein Branch ist jetzt der dieser Aufgabe.` });
     this.koordinator.request(idea.id);
+  }
+
+  /**
+   * The idea has become a project: the workstream the owner chose is built on the prototype's
+   * branch and starts at once; the idea's other prototypes are discarded.
+   */
+  private buildWorkstreamOn(prototype: Item, project: Item, workstreamId?: string) {
+    if (!workstreamId) throw new BadRequest('workstreamMissing', 'the idea is a project now: choose the workstream to build on the prototype');
+    const ws = this.board.item(workstreamId);
+    if (!ws || ws.parent !== project.id) throw new BadRequest('invalid', 'not a workstream of the project the idea became');
+    if (!buildableOn(ws)) throw new BadRequest('workstreamStarted', 'only a workstream nobody has started can be built on a prototype');
+    const named = `${ws.label ? `${ws.label} ` : ''}„${ws.title}“`;
+    const { path, branch } = this.repoOf(prototype).workers.buildOn(prototype.id, ws, named);
+    this.board.work(ws.id, { workspace: path, branch, built_on: prototype.id });
+    for (const p of this.board.snapshot().items.filter((i) => i.prototypeOf === prototype.prototypeOf)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
+    this.board.decide({ project_id: project.id, card_id: ws.id, question: `Auf welchem Prototyp baut ${named}?`, answer: `Auf Prototyp „${prototype.title}“.`, by: 'owner' });
+    this.board.log(ws.id, 'state', 'owner', `Auf dem Prototyp „${prototype.title}“ bauen: Sein Branch ist jetzt der dieses Workstreams.`);
+    this.koordinator.request(ws.id);
   }
 
   /** The idea is decided for building: its agent's conversation ends, the brief becomes the task, the other prototypes are discarded. */
@@ -458,12 +481,14 @@ export class CanvasRuntime {
 
   /**
    * A big idea becomes a project: a worker writes its plan doc on the idea's card at once, and once
-   * the doc lands, the project takes the idea's place.
+   * the doc lands, the project takes the idea's place. Its prototypes stay: the worker hears what
+   * they showed, and the owner builds a workstream on one of them once the project stands.
    */
   private planDoc(cardId: string) {
     const card = this.settledIdea(cardId);
     const idea = this.board.idea(cardId);
     const dir = this.repoOf(card).adapter.planDocs.dir;
+    const prototypes = this.board.snapshot().items.filter((i) => i.prototypeOf === cardId);
     this.explorers.close(cardId);
     this.board.work(cardId, {
       state: 'planned',
@@ -472,6 +497,15 @@ export class CanvasRuntime {
         `Schreibe aus dem Stand dieser Idee ein Plan-Doc in \`${dir}/\`, nach den Konventionen des Repositorys (vorhandene Plan-Docs als Vorbild). Es braucht ein \`## Ziel\` (oder \`## Goal\`) und eine Checkliste unter \`## Workstreams\` (\`- [ ] **W1:** Titel. Details\`), in Pakete geschnitten, die einzeln landen können; dann zeigt Obeya es als Projekt, das an die Stelle dieser Idee tritt. Baue nichts davon; nur das Plan-Doc (und ein Verweis darauf, wo das Repository Plan-Docs verlinkt).`,
         `Idee: „${card.title}“`,
         idea.brief.trim() || card.body.trim(),
+        prototypes.length
+          ? [
+              `Zu dieser Idee gibt es schon ${prototypes.length > 1 ? `${prototypes.length} Prototypen` : 'einen Prototyp'}. Sie bleiben auf der Leinwand stehen; steht das Projekt, wählt der Owner einen von ihnen und den Workstream, der auf seinem Branch gebaut wird („Diesen Prototyp bauen“). Plane sie also nicht noch einmal als Workstreams, sondern nimm, was sie gezeigt haben, ins Plan-Doc auf, und sag beim Workstream, der auf einem Prototyp aufbaut, dass er das tut.`,
+              ...prototypes.map((p) => {
+                const summary = this.board.summary(p.id)?.trim();
+                return summary ? `„${p.title}“, so übergeben:\n\n${summary}` : `„${p.title}“: noch in Arbeit.`;
+              }),
+            ].join('\n\n')
+          : '',
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -610,8 +644,9 @@ export class CanvasRuntime {
       case 'prototype':
         return this.act(c.card, { action: 'prototype', text: c.text });
       case 'buildPrototype':
+        return this.act(c.card, { action: 'buildPrototype', ...(c.workstream ? { workstream: c.workstream } : {}) });
       case 'discard':
-        return this.act(c.card, { action: c.do });
+        return this.act(c.card, { action: 'discard' });
       case 'build':
       case 'planDoc':
       case 'park':

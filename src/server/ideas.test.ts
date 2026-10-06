@@ -819,6 +819,68 @@ describe('a prototype', () => {
     expect(item(i.id).builtOn).toBeUndefined();
   });
 
+  test('"Als Projekt planen" keeps the prototypes; once the project stands, one of its workstreams is built on one', async () => {
+    canvas.shutdown();
+    canvas = open(3);
+    const i = idea('Webseite');
+    board().setIdea(i.id, { brief: '**Ziel:** Eine Seite. Über die Variante entscheiden die Prototypen.' });
+    canvas.act(i.id, { action: 'prototype', text: 'Film zuerst' });
+    canvas.act(i.id, { action: 'prototype', text: 'Manifest' });
+    const [film, manifest] = prototypes(i.id);
+    const [w] = workers();
+    commit(film!.id, 'film.html');
+    handOver(w!, 'Ruhige Seite mit großem Video oben.');
+    explorer().emit({ type: 'idle' });
+
+    // the plan doc's worker hears what the prototypes showed, so it does not plan them again
+    canvas.act(i.id, { action: 'planDoc' });
+    const task = item(i.id).body;
+    expect(task).toContain(`„${film!.title}“, so übergeben:\n\nRuhige Seite mit großem Video oben.`);
+    expect(task).toContain(`„${manifest!.title}“: noch in Arbeit.`);
+    expect(task).toContain('Plane sie also nicht noch einmal als Workstreams');
+    expect(prototypes(i.id).map((p) => p.id)).toEqual([film!.id, manifest!.id]);
+    // building waits for the project
+    expect(() => canvas.act(film!.id, { action: 'buildPrototype' })).toThrow(expect.objectContaining({ code: 'projectPending' }));
+
+    // the plan doc lands: the project takes the idea's place, and the idea goes to the archive
+    writeFileSync(
+      join(main, 'docs/plan/seite.md'),
+      '# Webseite\n\n## Ziel\n\nEine Seite.\n\n## Workstreams\n\n- [ ] **W1:** Lizenz. MIT.\n- [ ] **W2:** Seite bauen. Auf dem gewählten Prototyp.\n',
+    );
+    board().work(i.id, { state: 'live' });
+    board().planDocsLanded(i.id, ['docs/plan/seite.md']);
+    board().docsChanged();
+    const project = board().projectOf(i.id)!;
+    expect(project.title).toBe('Webseite');
+    expect(board().item(i.id)).toBeUndefined();
+    const [w1, w2] = board().snapshot().items.filter((x) => x.parent === project.id);
+    // the prototypes still name their idea
+    expect(prototypes(i.id).map((p) => p.ideaTitle)).toEqual(['Webseite', 'Webseite']);
+
+    expect(() => canvas.act(film!.id, { action: 'buildPrototype' })).toThrow(expect.objectContaining({ code: 'workstreamMissing' }));
+    board().work(w1!.id, { branch: 'obeya/lizenz' });
+    expect(() => canvas.act(film!.id, { action: 'buildPrototype', workstream: w1!.id })).toThrow(expect.objectContaining({ code: 'workstreamStarted' }));
+    expect(() => canvas.act(film!.id, { action: 'buildPrototype', workstream: i.id })).toThrow(expect.objectContaining({ code: 'invalid' }));
+
+    const ws = board().row(film!.id).workspace!;
+    canvas.act(film!.id, { action: 'buildPrototype', workstream: w2!.id });
+    // the workstream takes over the prototype's workspace and branch, and starts
+    expect(item(w2!.id).builtOn).toBe(film!.id);
+    expect(item(w2!.id).prototypes!.map((p) => p.id)).toEqual([film!.id]);
+    expect(board().row(w2!.id).workspace).toBe(ws);
+    expect(git(ws, 'log', '--format=%s', '-1')).toBe('Prototyp film.html');
+    expect(archived(film!.id)).toMatchObject({ prototypeEnd: 'built', builtInto: 'W2 „Seite bauen“', ideaTitle: 'Webseite' });
+    expect(archived(manifest!.id)).toMatchObject({ prototypeEnd: 'discarded' });
+    expect(prototypes(i.id)).toEqual([]);
+    expect(board().decisions(project.id).at(-1)).toMatchObject({ card_id: w2!.id, answer: `Auf Prototyp „${film!.title}“.` });
+    await settle();
+    expect(item(w2!.id).state).toBe('working');
+    const brief = workers().at(-1)!.inbox[0]!;
+    expect(brief).toContain('build this workstream on the prototype');
+    expect(brief).toContain('Ruhige Seite mit großem Video oben.');
+    expect(brief).toContain('This is workstream W2 of the project “Webseite”.');
+  });
+
   test('deleting a prototype discards it into the archive, workspace and all', () => {
     const i = idea();
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
@@ -913,6 +975,32 @@ describe('by voice', () => {
     canvas.commander.arm((await heard).token!);
     await settle(30);
     expect(item(i.id)).toMatchObject({ builtOn: prototype.id });
+  });
+
+  test('"bau diesen Prototyp für W1" builds that workstream on it once its idea is a project', async () => {
+    const i = idea('Webseite');
+    canvas.act(i.id, { action: 'prototype', text: 'Film zuerst' });
+    const prototype = board()
+      .snapshot()
+      .items.find((x) => x.prototypeOf === i.id)!;
+    writeFileSync(join(main, 'docs/plan/seite.md'), '# Webseite\n\n## Ziel\n\nEine Seite.\n\n## Workstreams\n\n- [ ] **W1:** Seite bauen. Auf dem gewählten Prototyp.\n');
+    board().work(i.id, { state: 'live' });
+    board().planDocsLanded(i.id, ['docs/plan/seite.md']);
+    board().docsChanged();
+    const w1 = board()
+      .snapshot()
+      .items.find((x) => x.label === 'W1')!;
+    const heard = canvas.commander.hear('bau diesen Prototyp für W1', { card: prototype.id });
+    await settle();
+    const list = reader().inbox[0]!;
+    expect(list).toContain('(prototype of the idea "Webseite", which became the project K');
+    const tag = list.match(/(K\d+) \[working\] "Prototyp/)![1];
+    const wTag = list.match(/(K\d+) \[planned\] "Seite bauen"/)![1];
+    expect(await reader().call('act', { actions: [{ do: 'build', card: tag }], confirm: '…' })).toContain('name the one of its workstreams');
+    reader().call('act', { actions: [{ do: 'build', card: tag, cards: [wTag] }], confirm: 'W1 wird auf diesem Prototyp gebaut.' });
+    canvas.commander.arm((await heard).token!);
+    await settle(30);
+    expect(item(w1.id)).toMatchObject({ builtOn: prototype.id });
   });
 
   test('deciding on an idea waits for undo like any command', async () => {

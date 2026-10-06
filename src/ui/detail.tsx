@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
+import { buildableOn, type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
 import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
@@ -42,6 +42,8 @@ interface Props {
 export function Detail(p: Props) {
   const { item, parent } = p;
   const [error, setError] = useState('');
+  // a prototype whose idea has become a project: the workstream to build on it
+  const [workstream, setWorkstream] = useState('');
   const all = p.all;
   const run = async (fn: () => Promise<void>, done: ActDone) => {
     setError('');
@@ -97,7 +99,9 @@ export function Detail(p: Props) {
           ● {stateLabel(item)}
           {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
         </div>
-        <p className="hint ended">{t.idea.endedLong[item.prototypeEnd](plain(p.from?.title ?? ''))}</p>
+        <p className="hint ended">
+          {item.builtInto ? t.idea.builtInto(plain(item.ideaTitle ?? ''), plain(item.builtInto)) : t.idea.endedLong[item.prototypeEnd](plain(item.ideaTitle ?? p.from?.title ?? ''))}
+        </p>
         {/* the summary is the handover in the conversation */}
         {item.demo && (
           <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
@@ -116,14 +120,45 @@ export function Detail(p: Props) {
   const target = !!p.repos.find((r) => r.id === item.repo)?.share;
   const shareBox = !!item.demo && !item.prototypeOf ? target || item.share ? <ShareBox item={item} act={act} /> : <ExportBox item={item} run={run} /> : null;
   // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
-  const ideaThinking = !!p.from?.idea?.thinking;
+  const ideaTitle = plain(item.ideaTitle ?? p.from?.title ?? '');
+  // once the idea has become a project, one of its workstreams is built on the prototype instead
+  const project = item.prototypeOf ? all.find((i) => i.kind === 'project' && i.origin === item.prototypeOf) : undefined;
+  const workstreams = project ? all.filter((i) => i.parent === project.id && buildableOn(i)) : [];
+  const chosen = workstreams.find((w) => w.id === workstream);
+  const ideaThinking = !project && !!p.from?.idea?.thinking;
+  const planning = !project && !!p.from?.becomesProject;
+  const buildOn = (label: string) => (
+    <button
+      className="btn primary"
+      disabled={ideaThinking || planning || (!!project && !chosen)}
+      title={ideaThinking ? t.idea.prototypeWaits : planning ? t.idea.waitForProject : project && !chosen ? t.idea.chooseWorkstream : undefined}
+      onClick={() =>
+        act(
+          { action: 'buildPrototype', ...(chosen ? { workstream: chosen.id } : {}) },
+          { close: true, ack: chosen ? t.idea.builtWorkstream(workstreamName(chosen)) : t.idea.builtPrototype(ideaTitle) },
+        )
+      }
+    >
+      {label}
+    </button>
+  );
+  const workstreamPick = project && (
+    <label className="build-on">
+      {t.idea.workstreamOf(plain(project.title))}
+      <select value={workstream} onChange={(e) => setWorkstream(e.target.value)}>
+        <option value="">{workstreams.length ? t.idea.chooseWorkstream : t.idea.noWorkstream}</option>
+        {workstreams.map((w) => (
+          <option key={w.id} value={w.id}>
+            {workstreamName(w)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
   const prototypeActions = item.prototypeOf && (
     <>
-      {item.branch && (
-        <button className="btn primary" disabled={ideaThinking} title={ideaThinking ? t.idea.prototypeWaits : undefined} onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
-          {t.idea.buildPrototype}
-        </button>
-      )}
+      {item.branch && workstreamPick}
+      {item.branch && buildOn(t.idea.buildPrototype)}
       <button className="btn" onClick={() => act({ action: 'discard' }, { close: true, ack: t.idea.discarded })}>
         {t.idea.discard}
       </button>
@@ -184,20 +219,16 @@ export function Detail(p: Props) {
         </div>
       )}
 
-      {item.prototypeOf && <p className="hint">{t.idea.prototypeOf(plain(p.from?.title ?? ''))}</p>}
+      {item.prototypeOf && (
+        <p className="hint">{project ? t.idea.prototypeOfProject(ideaTitle, plain(project.title)) : planning ? t.idea.prototypeOfPlanning(ideaTitle) : t.idea.prototypeOf(ideaTitle)}</p>
+      )}
       {item.buildProposal && (
         <div className="question proposal">
           <h4>{t.idea.buildProposal}</h4>
           <div className="q-text">{item.buildProposal}</div>
           <div className="actions">
-            <button
-              className="btn primary"
-              disabled={ideaThinking}
-              title={ideaThinking ? t.idea.prototypeWaits : undefined}
-              onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}
-            >
-              {t.idea.acceptBuild}
-            </button>
+            {workstreamPick}
+            {buildOn(t.idea.acceptBuild)}
           </div>
         </div>
       )}
@@ -636,6 +667,9 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
     </>
   );
 }
+
+/** A workstream as the owner picks it: its label and title. */
+const workstreamName = (w: Item) => `${w.label ? `${w.label} ` : ''}${plain(w.title)}`;
 
 /** The demos of an idea's prototypes, each under its title and how it stands; the latest one open. */
 function PrototypeDemos({ item }: { item: Item }) {

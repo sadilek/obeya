@@ -53,7 +53,8 @@
 // into the database:
 // state, need, statusLine, summary, noDemo, question, demo, queue (`behind` by key; `since` defaults to
 // now), scope (files), branch, createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks? }]; an idea's reply with `mocks` needs code that has them),
-// workspace (true: the card holds the next free clone, for an adapter that works in clones),
+// workspace (true: the card holds the next free clone, for an adapter that works in clones; with
+// `branch` checked out there, holding a commit), prototypeOf (the key of the idea it is a prototype of),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
 // "3d" ago. `"adapter": ""` names none: the repository's own (`.obeya/adapter/` among `files`) or the generic one. `share` is the repository's share command as the configuration holds it (a script among
 // `files`, say); `poolCheckout` makes the repository's checkout a workspace of the pool too
@@ -95,6 +96,8 @@ interface StageCard {
   scope?: string[];
   branch?: string;
   workspace?: boolean;
+  /** A prototype of the idea with this key. */
+  prototypeOf?: string;
   createdAgo?: string;
   archivedAgo?: string;
   events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[] }[];
@@ -309,7 +312,14 @@ for (const [i, c] of stage.cards.entries()) {
     if (!free) fail(`card ${c.key ?? i}: no free clone for it ("clones" in the stage, an adapter that works in clones)`);
     db.query('UPDATE workspaces SET card_id = $id WHERE path = $path').run({ id, path: free!.path });
     row.workspace = free!.path;
+    if (c.branch) {
+      run('git', ['checkout', '-q', '-b', c.branch], free!.path);
+      writeFileSync(join(free!.path, 'scratch.txt'), `${c.title ?? c.branch}\n`);
+      run('git', ['add', '-A'], free!.path);
+      run('git', ['-c', 'user.name=Scratch', '-c', 'user.email=scratch@example.com', 'commit', '-qm', c.title ?? c.branch], free!.path);
+    }
   }
+  if (c.prototypeOf !== undefined) row.prototype_of = ids[c.prototypeOf] ?? fail(`card ${c.key ?? i}: prototypeOf names ${c.prototypeOf}, which does not exist`);
   if (c.createdAgo !== undefined) row.created_at = ago(c.createdAgo);
   if (c.archivedAgo !== undefined) row.archived_at = ago(c.archivedAgo);
   Object.assign(row, c.row ?? {});

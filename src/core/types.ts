@@ -13,6 +13,9 @@ export type CardState = (typeof STATES)[number];
 /** A card whose work is over: `live` once it landed, `done` when it needed no change to the code (a demo, an analysis). */
 export const finished = (s: CardState) => s === 'live' || s === 'done';
 
+/** A workstream a prototype can be built for: nobody has worked on it yet, and the Koordinator does not hold it. */
+export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i.queue;
+
 /** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M4). */
 export type Need = 'demo' | 'question' | 'review';
 
@@ -98,11 +101,15 @@ export interface Item {
   variant?: string;
   /** A prototype in the archive: discarded (its code thrown away), or built (its idea was built on its branch). */
   prototypeEnd?: 'discarded' | 'built';
+  /** A prototype built for a workstream of the project its idea became: that workstream ("W6 „Seite bauen“"). */
+  builtInto?: string;
+  /** A prototype: its idea's title, wherever the idea is (on the canvas, or in the archive once it became a project). */
+  ideaTitle?: string;
   /** A prototype whose worker proposes to build the idea on it: why, in its words. */
   buildProposal?: string;
-  /** Ideas: their prototypes, on the canvas or in the archive, the oldest first; each shows its demo on the idea. */
+  /** Ideas: their prototypes, on the canvas or in the archive, the oldest first; each shows its demo on the idea. A workstream built on a prototype: that one. */
   prototypes?: Item[];
-  /** A card that was an idea and is built on the branch of one of its prototypes: that prototype. */
+  /** A card that was an idea, or a workstream of the project an idea became, built on the branch of one of the idea's prototypes: that prototype. */
   builtOn?: string;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
@@ -507,8 +514,12 @@ export type CardAction =
    * the idea as it stands.
    */
   | { action: 'prototype'; text?: string; variants?: string[] }
-  /** Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are discarded. */
-  | { action: 'buildPrototype' }
+  /**
+   * Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are
+   * discarded. Once the idea has become a project, `workstream` is the one of its workstreams that
+   * is built on it instead.
+   */
+  | { action: 'buildPrototype'; workstream?: string }
   /** Prototypes: thrown away, into the archive with log, demo and summary. */
   | { action: 'discard' }
   /** A video demo is published for colleagues right away, or again with the card's newer demo. */
@@ -550,6 +561,14 @@ export type ErrorCode =
   | 'ideaThinking'
   /** A prototype for the idea is still running. */
   | 'prototypeRunning'
+  /** The prototype's idea is becoming a project: its plan doc is not there yet. */
+  | 'projectPending'
+  /** The prototype's idea is gone from the canvas, and no project of it is there. */
+  | 'ideaGone'
+  /** The prototype's idea became a project: building on it needs one of its workstreams. */
+  | 'workstreamMissing'
+  /** The workstream to build on a prototype was started already. */
+  | 'workstreamStarted'
   /** Every variant the idea's agent planned has its prototype on the canvas already. */
   | 'variantsRunning'
   /** A project has no planned workstream left that is not already with the Koordinator. */

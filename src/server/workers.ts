@@ -364,9 +364,9 @@ export class Workers {
   /**
    * A prototype has served its purpose, whatever its state: its worker stops and the card goes into
    * the archive with its log, demo and summary. Discarded, its workspace and branch are thrown away;
-   * built, they went to its idea before (`buildOn`).
+   * built, they went to its idea, or the workstream `into`, before (`buildOn`).
    */
-  endPrototype(cardId: string, end: 'discarded' | 'built', by: 'owner' | 'obeya' = 'owner') {
+  endPrototype(cardId: string, end: 'discarded' | 'built', by: 'owner' | 'obeya' = 'owner', into?: string) {
     const card = this.card(cardId);
     if (!card.prototypeOf) throw new BadRequest('notPrototype', 'not a prototype');
     this.o.onWorkEnded?.(cardId, this.o.board.row(cardId).workspace);
@@ -379,16 +379,22 @@ export class Workers {
       console.error('discarding a prototype:', e);
     }
     const idea = this.o.board.card(card.prototypeOf);
-    this.o.board.log(cardId, 'state', by, end === 'built' ? `Gebaut: Die Idee „${idea?.title ?? ''}“ wird auf diesem Prototyp gebaut.` : 'Verworfen; der Code ist weg, Demo und Log bleiben im Archiv.');
-    this.o.board.endPrototype(cardId, end);
+    this.o.board.log(
+      cardId,
+      'state',
+      by,
+      end === 'discarded' ? 'Verworfen; der Code ist weg, Demo und Log bleiben im Archiv.' : `Gebaut: ${into ? `Workstream ${into}` : `Die Idee „${idea?.title ?? ''}“`} wird auf diesem Prototyp gebaut.`,
+    );
+    this.o.board.endPrototype(cardId, end, into);
     if (end === 'discarded' && this.o.board.item(card.prototypeOf)) this.o.board.log(card.prototypeOf, 'state', by, `Prototyp „${card.title}“ verworfen; er liegt mit seiner Demo im Archiv.`);
   }
 
   /**
-   * The idea is built on this prototype: its workspace and branch (renamed for the idea) go to the
-   * idea, and the prototype ends as built. Returns the workspace and branch the idea has now.
+   * The idea, or the workstream `into` names of the project it became, is built on this prototype:
+   * its workspace and branch (renamed for that card) go to the card, and the prototype ends as
+   * built. Returns the workspace and branch the card has now.
    */
-  buildOn(prototypeId: string, idea: Item): { path: string; branch: string } {
+  buildOn(prototypeId: string, idea: Item, into?: string): { path: string; branch: string } {
     const row = this.o.board.row(prototypeId);
     if (!row.workspace || !row.branch) throw new BadRequest('noWorkspace', 'the prototype has no workspace to build on');
     let moved: { path: string; branch: string };
@@ -398,7 +404,7 @@ export class Workers {
       if (e instanceof WorkspaceError) throw new BadRequest(e.code, e.message);
       throw e;
     }
-    this.endPrototype(prototypeId, 'built');
+    this.endPrototype(prototypeId, 'built', 'owner', into);
     return moved;
   }
 
@@ -1080,7 +1086,7 @@ Rules:
 
   private briefing(card: Item, branch: string, resumed = false): string {
     const parts = [`Your card: “${card.title}”.`];
-    const idea = card.prototypeOf ? this.o.board.item(card.prototypeOf) : undefined;
+    const idea = card.prototypeOf ? this.o.board.card(card.prototypeOf) : undefined;
     if (card.prototypeOf)
       parts.push(
         [
@@ -1097,7 +1103,7 @@ ${idea.idea.brief}` : '',
       );
     if (card.body.trim()) parts.push(card.body.trim());
     if (card.mocks?.length) parts.push(mocksText(card.mocks));
-    if (card.builtOn) parts.push(this.builtOnPrototype(card.builtOn));
+    if (card.builtOn) parts.push(this.builtOnPrototype(card.builtOn, !!card.parent));
     const from = card.from && !card.prototypeOf ? this.o.board.item(card.from) ?? this.o.board.archived().find((i) => i.id === card.from) : undefined;
     if (from) {
       const summary = this.o.board.summary(from.id)?.trim();
@@ -1129,13 +1135,13 @@ ${idea.idea.brief}` : '',
     return parts.join('\n\n');
   }
 
-  /** What the worker of an idea built on a prototype hears of it: what the branch holds, the prototype's handover and the owner's answers on it. */
-  private builtOnPrototype(prototypeId: string): string {
+  /** What the worker of an idea, or of a workstream of the project it became, built on a prototype hears of it: what the branch holds, the prototype's handover and the owner's answers on it. */
+  private builtOnPrototype(prototypeId: string, workstream: boolean): string {
     const prototype = this.o.board.card(prototypeId);
     const summary = this.o.board.summary(prototypeId)?.trim();
     const answers = this.o.board.decisionsOn(prototypeId);
     return [
-      `The owner chose to build this idea on its prototype “${prototype?.title ?? ''}”, and your branch is that prototype's. It is a throwaway prototype: built quickly to show the idea, without tests, polish or docs, with shortcuts. Take over what carries and bring it to production quality: tests, the repository's checks, the design doc and other docs, shortcuts removed. Rewrite or drop what does not hold up; nothing on the branch counts as reviewed code. The task is the idea's brief above; the prototype is a means to it, not the result.`,
+      `The owner chose to build this ${workstream ? 'workstream' : 'idea'} on the prototype “${prototype?.title ?? ''}”${workstream ? `, one of those built for the idea the project came from` : ''}, and your branch is that prototype's. It is a throwaway prototype: built quickly to show the idea, without tests, polish or docs, with shortcuts. Take over what carries and bring it to production quality: tests, the repository's checks, the design doc and other docs, shortcuts removed. Rewrite or drop what does not hold up; nothing on the branch counts as reviewed code. The task is ${workstream ? 'the workstream as its plan doc describes it' : "the idea's brief above"}; the prototype is a means to it, not the result.`,
       summary ? `The prototype's worker handed it over with this summary:\n\n${summary}` : '',
       answers.length ? `What the owner answered on the prototype:\n${answers.map((d) => `- ${d.question} → ${d.answer}`).join('\n')}` : '',
     ]

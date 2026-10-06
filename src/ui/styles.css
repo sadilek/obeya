@@ -250,6 +250,10 @@ textarea.p-body:focus { border-color: var(--muted); }
 .btn { border: 0; border-radius: 10px; padding: 9px 16px; font-weight: 600; cursor: pointer; background: var(--chip); }
 .btn.primary { background: var(--ink); color: var(--bg); }
 .btn.danger { color: #dc2626; }
+/* a prototype whose idea became a project: the workstream to build on it, on a line of its own above the buttons */
+.actions:has(.build-on) { flex-wrap: wrap; }
+.build-on { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.build-on select { font: inherit; font-size: 13px; color: var(--ink); padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); max-width: 100%; }
 /* an idea's next step as its agent would take it: a line above the decisions, and the button it means */
 .next-step { display: flex; flex-direction: column; gap: 3px; margin-top: 16px; padding: 2px 0 2px 12px; max-width: 80ch;
   border-left: 3px solid var(--idea); font-size: 14px; }

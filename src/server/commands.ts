@@ -14,8 +14,9 @@ export type Command = (
   | { do: 'newIdea'; title: string; body: string; repo?: string }
   /** `force` starts a card that waits behind others now, despite the likely merge conflict. */
   | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
-  /** On a prototype: build its idea on it, or throw it away. */
-  | { do: 'buildPrototype' | 'discard'; card: string }
+  /** On a prototype: build its idea on it (or `workstream`, of the project the idea became), or throw it away. */
+  | { do: 'buildPrototype'; card: string; workstream?: string }
+  | { do: 'discard'; card: string }
   /** `spoken`: the words came through speech recognition (the default), not typed. */
   | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string; spoken?: boolean }
   /** Saves Obeya's configuration, which then starts again with it. */
@@ -322,7 +323,7 @@ export class Commander {
             "- work_retro (no card): the Arbeitsrückschau of a repository, now („Mach eine Arbeitsrückschau für den Shop“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill) or CLAUDE.md lines for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself every 10 finished cards of a repository. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. „Ich mache die Arbeitsrückschau für den Shop; Vorschläge erscheinen als Karten.“",
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once; while its agent works on a reply, or starts on one with a discuss in the same command, once that reply is there, unless the reply asks questions), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words; empty: one prototype for each variant its agent planned that has none running yet, all at once, or without planned variants one of the idea as it stands), park (for later), drop (it stays on the canvas with its brief). Planning an idea waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that planning goes by a click once the reply is there.",
             `- group: put cards into a group, shown on the canvas as a coloured territory behind them. cards: their tags; text: the group's name (group is only for rename_group), one the canvas has (see the list) or a new one, which is then created. A card is in one group at most, so this takes it out of its group. A workstream stands for its project: the whole project goes into the group. ungroup: take cards (cards) out of their group. rename_group: group the group's current name, text its new name. A group no card belongs to any more goes. confirm e.g. „„Export“ und „Rabatt“ gehören jetzt zur Gruppe Abrechnung.“`,
-            '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
+            '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away; when the idea became a project, cards: the tag of the one workstream of it that is built on the branch instead), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
             "Texts for a card's agent (note, answer, feedback) in the owner's own words, not rephrased: all they said, or with several actions in one sentence the part for that action. Other texts (a new card's body, a rule, talk to an idea) as the owner meant them (fix obvious recognition errors).",
           ].join('\n'),
           schema: {
@@ -530,7 +531,14 @@ export class Commander {
     if (!card) return `unknown tag ${a.card ?? '(none)'}`;
     const reviewable = card.state === 'waiting' && (card.need === 'review' || card.need === 'demo');
     const is = `it is ${card.need ? `${card.state}: ${card.need}` : card.state}`;
-    if (card.prototypeOf && (a.do === 'build' || a.do === 'drop')) return { do: a.do === 'build' ? 'buildPrototype' : 'discard', card: card.id };
+    if (card.prototypeOf && a.do === 'drop') return { do: 'discard', card: card.id };
+    if (card.prototypeOf && a.do === 'build') {
+      const project = this.o.board.projectOf(card.prototypeOf);
+      if (!project) return { do: 'buildPrototype', card: card.id };
+      const ws = a.cards?.length === 1 ? s.tags.get(a.cards[0]!) : undefined;
+      if (!ws || this.o.board.item(ws)?.parent !== project.id) return `the prototype's idea is the project "${project.title}" now: name the one of its workstreams to build on the prototype with cards (its tag)`;
+      return { do: 'buildPrototype', card: card.id, workstream: ws };
+    }
     if (['discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop'].includes(a.do) !== (card.state === 'idea'))
       return card.state === 'idea' ? `the card is an idea: discuss it, or build, plan_doc, prototype, park or drop it` : `only an idea can be discussed, built, prototyped, parked or dropped (${is})`;
     switch (a.do) {
@@ -654,8 +662,9 @@ export class Commander {
               : i.state;
       const repo = this.o.board.canvas.repos.length > 1 ? ` in ${i.repo}` : '';
       const idea = i.prototypeOf ? items.find((x) => x.id === i.prototypeOf) : undefined;
+      const became = i.prototypeOf ? items.find((x) => x.kind === 'project' && x.origin === i.prototypeOf) : undefined;
       const group = i.group ? groups.get(i.group) : undefined;
-      return `${tag(i.id)} [${state}] "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${group ? ` (group "${group}")` : ''}${idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.proposal ? ` — proposed ${i.proposal.idea ? 'idea' : 'task'}${i.proposal.questions.length ? `, open questions: ${i.proposal.questions.map((q) => q.text).join(' | ')}` : ''}` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}${i.idea?.variants.length ? ` — prototypes its agent planned: ${i.idea.variants.map((v) => v.approach).join(', ')}` : ''}`;
+      return `${tag(i.id)} [${state}] "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${group ? ` (group "${group}")` : ''}${became ? ` (prototype of the idea "${i.ideaTitle ?? ''}", which became the project ${tag(became.id)} "${became.title}"${i.buildProposal ? '; its worker proposes to build on it' : ''})` : idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.proposal ? ` — proposed ${i.proposal.idea ? 'idea' : 'task'}${i.proposal.questions.length ? `, open questions: ${i.proposal.questions.map((q) => q.text).join(' | ')}` : ''}` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}${i.idea?.variants.length ? ` — prototypes its agent planned: ${i.idea.variants.map((v) => v.approach).join(', ')}` : ''}`;
     };
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);

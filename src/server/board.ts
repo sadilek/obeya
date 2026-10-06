@@ -449,11 +449,11 @@ export class Board {
    * A prototype has served its purpose: discarded or built, it goes into the archive with its log,
    * demo and summary, and never comes back. Its workspace is no longer its own.
    */
-  endPrototype(id: string, end: 'discarded' | 'built') {
+  endPrototype(id: string, end: 'discarded' | 'built', into?: string) {
     const row = this.own(id);
     if (!row.prototype_of) throw new BadRequest('notPrototype', 'not a prototype');
     const { proposal: _, ...kept } = storedPrototype(row);
-    this.work(id, { prototype: JSON.stringify({ ...kept, end } satisfies StoredPrototype), archived_at: new Date().toISOString(), need: null, status_line: null, workspace: null, queue: null });
+    this.work(id, { prototype: JSON.stringify({ ...kept, end, ...(into ? { into } : {}) } satisfies StoredPrototype), archived_at: new Date().toISOString(), need: null, status_line: null, workspace: null, queue: null });
   }
 
   // ---------------------------------------------------------------- the Koordinator's memory
@@ -679,15 +679,28 @@ export class Board {
     };
   }
 
-  /** Ideas, and cards that were ideas, with their prototypes, wherever these are: on the canvas or in the archive. */
+  /**
+   * Ideas, and cards that were ideas, with their prototypes, wherever these are: on the canvas or in
+   * the archive; a workstream built on a prototype with that one. A prototype knows its idea's
+   * title, also once the idea is in the archive.
+   */
   private withPrototypes(items: Item[]): Item[] {
     const rows = this.store.prototypes(this.canvas.id);
     if (!rows.length) return items;
-    const prototypes = toItems(rows, [], this.home).map((p, n) => (rows[n]!.archived_at ? { ...p, archivedAt: rows[n]!.archived_at! } : p));
+    const titles = new Map<string, string>();
+    const ideaTitle = (id: string) => titles.get(id) ?? (titles.set(id, this.store.card(id)?.title ?? ''), titles.get(id)!);
+    const named = (p: Item): Item => ({ ...p, ideaTitle: ideaTitle(p.prototypeOf!) });
+    const prototypes = toItems(rows, [], this.home).map((p, n) => named(rows[n]!.archived_at ? { ...p, archivedAt: rows[n]!.archived_at! } : p));
     return items.map((i) => {
-      const own = prototypes.filter((p) => p.prototypeOf === i.id);
-      return own.length ? { ...i, prototypes: own } : i;
+      const own = prototypes.filter((p) => p.prototypeOf === i.id || (i.parent && p.id === i.builtOn));
+      const me = i.prototypeOf ? named(i) : i;
+      return own.length ? { ...me, prototypes: own } : me;
     });
+  }
+
+  /** The project an idea became, while it is on the canvas. */
+  projectOf(ideaId: string): Item | undefined {
+    return this.snapshot().items.find((i) => i.kind === 'project' && i.origin === ideaId);
   }
 
   // ---------------------------------------------------------------- preferences
@@ -1154,6 +1167,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         repo: repoOfRef(r.plan_ref, home),
         ...(w.label ? { label: w.label } : {}),
         ...work(r),
+        ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(groupOf.get(r.parent_id) ? { group: groupOf.get(r.parent_id)! } : {}),
       },
     });
@@ -1227,6 +1241,8 @@ interface StoredPrototype {
   /** The planned variant it shows. */
   variant?: string;
   end?: 'discarded' | 'built';
+  /** Built for a workstream of the project its idea became: that workstream, as the owner reads it. */
+  into?: string;
   proposal?: string;
 }
 
@@ -1236,7 +1252,7 @@ const storedPrototype = (r: CardRow): StoredPrototype => (r.prototype ? (JSON.pa
 function prototypeOf(r: CardRow): Partial<Item> {
   const p = storedPrototype(r);
   const summary = p.end && r.detail ? (JSON.parse(r.detail) as { summary?: string }).summary : undefined;
-  return { ...(p.variant ? { variant: p.variant } : {}), ...(p.end ? { prototypeEnd: p.end } : {}), ...(p.proposal && !p.end ? { buildProposal: p.proposal } : {}), ...(summary ? { summary } : {}) };
+  return { ...(p.variant ? { variant: p.variant } : {}), ...(p.end ? { prototypeEnd: p.end } : {}), ...(p.into ? { builtInto: p.into } : {}), ...(p.proposal && !p.end ? { buildProposal: p.proposal } : {}), ...(summary ? { summary } : {}) };
 }
 
 /** What is stored of an idea; `thinking` while its agent works on a reply, `yourTurn` once it replied. */

@@ -348,11 +348,16 @@ export function linkPath(a: Bounds, b: Bounds): string {
   return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
 }
 
-/** A dashed line from each proposal and each follow-up not yet started to the card it came from, and from each prototype to its idea. */
+/**
+ * A dashed line from each proposal and each follow-up not yet started to the card it came from, and
+ * from each prototype to its idea, or to the project that took the idea's place.
+ */
 export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   const byId = new Map(placed.map((p) => [p.item.id, p]));
+  const projectOf = new Map(placed.flatMap((p) => (p.item.kind === 'project' && p.item.origin ? [[p.item.origin, p]] : [])));
   const paths = placed.flatMap(({ item, b }) => {
-    const src = (item.state === 'proposal' || item.state === 'planned' || item.prototypeOf) && item.from ? byId.get(item.from) : undefined;
+    const src =
+      (item.state === 'proposal' || item.state === 'planned' || item.prototypeOf) && item.from ? (byId.get(item.from) ?? (item.prototypeOf ? projectOf.get(item.prototypeOf) : undefined)) : undefined;
     if (!src) return [];
     return [<path key={item.id} d={linkPath(src.b, b)} />];
   });
