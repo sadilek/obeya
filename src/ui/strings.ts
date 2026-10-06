@@ -695,6 +695,8 @@ const en: Strings = {
     create: 'New group',
     none: 'No group',
     name: 'Group name',
+    remove: 'Delete group',
+    removed: (name: string) => `Group “${name}” deleted`,
   },
   close: 'Close (Esc)',
   sheetGrip: 'Drag to resize · Double-click: back to the default width',
