@@ -235,14 +235,15 @@ const LABEL_MAX = 140;
 const RING_MARGIN = 120;
 
 /**
- * A ring of colour balls around `at` (screen): the groups, each with its name beside it, a new one,
- * none. Moving towards a ball or onto its name picks it, a click takes it; a new group asks for its
+ * A ring of colour balls around `at` (screen): the groups, each with its name and how many of its
+ * cards are still to be done beside it, a new one, none. Moving towards a ball or onto its name picks it, a click takes it; a new group asks for its
  * name first. The picked group's name carries a × that deletes the group.
  */
 export function Ring({
   at: pointer,
   count,
   groups,
+  open: openCards,
   onPick,
   onCreate,
   onDelete,
@@ -251,6 +252,8 @@ export function Ring({
   at: Pt;
   count: number;
   groups: Group[];
+  /** How many cards of each group are still to be done. */
+  open: Map<string, number>;
   onPick: (group: string | null) => void;
   onCreate: (name: string) => void;
   onDelete: (group: Group) => void;
@@ -330,7 +333,7 @@ export function Ring({
               // the name stands outside its ball, turned away from the middle
               <div
                 key={`n-${b.g.id}`}
-                className={`gtag${k === hot ? ' hot' : ''}`}
+                className={`gtag${k === hot ? ' hot' : ''}${openCards.get(b.g.id) ? '' : ' vacant'}`}
                 title={b.g.name}
                 style={
                   {
@@ -346,6 +349,9 @@ export function Ring({
                 onPointerDown={(e) => (e.preventDefault(), e.stopPropagation(), naming ? onClose() : pick(k))}
               >
                 <span>{b.g.name}</span>
+                <b className="gcount" title={t.groups.open(openCards.get(b.g.id) ?? 0)}>
+                  {openCards.get(b.g.id) ?? 0}
+                </b>
                 {k === hot && !naming && (
                   <button
                     className="gdel"

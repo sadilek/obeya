@@ -750,8 +750,12 @@ button.link:hover { text-decoration: underline; }
 
 #ringback { position: fixed; inset: 0; z-index: 70; cursor: crosshair; }
 #ringback .ring { position: absolute; width: 0; height: 0; }
-#ringback .ring .rhalo { position: absolute; left: -112px; top: -112px; width: 224px; height: 224px; border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 80%, transparent) 55%, transparent);
+/* the canvas behind the ring and its names steps back under a frosted halo that fades out at its
+   edge, so they stand out on a busy canvas and the cards further away stay in view */
+#ringback .ring .rhalo { position: absolute; left: -330px; top: -230px; width: 660px; height: 460px; border-radius: 50%;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(4px) saturate(.6); -webkit-backdrop-filter: blur(4px) saturate(.6);
+  mask-image: radial-gradient(closest-side, #000 62%, transparent); -webkit-mask-image: radial-gradient(closest-side, #000 62%, transparent);
   transform: scale(.3); opacity: 0; transition: transform .25s, opacity .25s; }
 #ringback .ring.open .rhalo { transform: scale(1); opacity: 1; }
 .ball { position: absolute; left: -19px; top: -19px; width: 38px; height: 38px; border-radius: 50%;
@@ -766,9 +770,15 @@ button.link:hover { text-decoration: underline; }
 .ring.open .ball.new.hot, .ring.open .ball.none.hot { box-shadow: 0 0 0 2px var(--ink); color: var(--ink); }
 .gtag { position: absolute; display: flex; align-items: center; gap: 4px; box-sizing: border-box; padding: 2px 9px; border-radius: 11px; white-space: nowrap;
   font: 500 12px/18px system-ui; color: var(--ink); cursor: pointer;
-  background: color-mix(in srgb, var(--bg) 88%, transparent); box-shadow: 0 0 0 1px hsl(var(--h) 60% 55% / .45);
+  background: var(--card); box-shadow: 0 0 0 1px hsl(var(--h) 60% 55% / .55), 0 2px 8px rgba(0,0,0,.1);
   opacity: 0; transition: opacity .2s, box-shadow .15s; }
 .gtag span { overflow: hidden; text-overflow: ellipsis; }
+/* how many of the group's cards are still to be done; an empty group's name goes pale */
+.gcount { flex: none; min-width: 18px; height: 16px; margin-right: -4px; padding: 0 5px; box-sizing: border-box; border-radius: 8px;
+  display: grid; place-items: center; font: 600 11px/1 system-ui; font-variant-numeric: tabular-nums;
+  background: hsl(var(--h) 70% 50% / .16); color: var(--ink); }
+.gtag.vacant span { color: var(--muted); }
+.gtag.vacant .gcount { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); }
 .ring.open .gtag { opacity: 1; }
 .gtag.hot { font-weight: 600; box-shadow: 0 0 0 2px hsl(var(--h) 75% 52%), 0 0 14px hsl(var(--h) 90% 55% / .45); }
 .gdel { flex: none; width: 18px; height: 18px; margin-right: -5px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;

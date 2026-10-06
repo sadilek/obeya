@@ -474,7 +474,10 @@ the owner's language (`src/core/locale.ts`).
   Assigning: Shift + drag on the canvas draws a lasso (without Shift it pans as before), a right
   click on a card takes that card (a workstream: its project); either opens a ring of colour balls
   at the pointer with the groups, "+" (a new group, named in place) and "∅" (none). Each group's
-  name stands outside its ball, so all show at once. Moving towards a ball or onto its name picks
+  name stands outside its ball, so all show at once, with how many of its cards are still to be done
+  (not finished, archived or a dropped idea; a project counts by its workstreams): a group at 0 goes
+  pale, a candidate for deleting. Behind the ring and the names the canvas steps back under a
+  frosted halo that fades out at its edge, so they read on a busy canvas. Moving towards a ball or onto its name picks
   it, a click takes it, Escape closes the ring. The picked group's name carries a ×: it deletes the
   group (its cards, archived ones too, belong to none), and "Rückgängig" brings it back in its
   colour with the same cards. By voice, the Koordinator's `group`

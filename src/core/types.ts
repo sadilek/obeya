@@ -16,6 +16,17 @@ export type CardState = (typeof STATES)[number];
 /** A card whose work is over: `live` once it landed, `done` when it needed no change to the code (a demo, an analysis). */
 export const finished = (s: CardState) => s === 'live' || s === 'done';
 
+/**
+ * How many cards of each group are still to be done: not finished, not archived, not a dropped
+ * idea. A project counts by its workstreams, not as a card of its own.
+ */
+export function openPerGroup(items: Item[]): Map<string, number> {
+  const open = new Map<string, number>();
+  for (const i of items)
+    if (i.group && i.kind === 'task' && !finished(i.state) && !i.archivedAt && i.idea?.status !== 'dropped') open.set(i.group, (open.get(i.group) ?? 0) + 1);
+  return open;
+}
+
 /** A workstream a prototype can be built for: nobody has worked on it yet, and the Koordinator does not hold it. */
 export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i.queue;
 
