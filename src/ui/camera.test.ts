@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { type Cam, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView } from './camera';
+import { type Cam, CHASE_MS, chaseStep, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView } from './camera';
 
 const view = { left: 0, top: 70, right: 1000, bottom: 800 };
 const cam: Cam = { x: 0, y: 0, s: 1 };
@@ -99,4 +99,16 @@ test('a card smaller than the strip is kept in whole', () => {
 test('an empty canvas sets no limit', () => {
   const far: Cam = { x: -5000, y: 9000, s: 1 };
   expect(keepInView(far, [], view)).toEqual(far);
+});
+
+test('a chased camera closes most of the way each frame and arrives without overshooting', () => {
+  const to: Cam = { x: -900, y: 300, s: 1 };
+  const one = chaseStep(cam, to, 16);
+  expect(one.x).toBeLessThan(0);
+  expect(one.x).toBeGreaterThan(to.x);
+  // after CHASE_MS nearly two thirds of the way are done
+  expect(chaseStep(cam, to, CHASE_MS).x).toBeCloseTo(to.x * (1 - Math.exp(-1)));
+  let c = cam;
+  for (let i = 0; i < 100 && c !== to; i++) c = chaseStep(c, to, 16);
+  expect(c).toBe(to);
 });

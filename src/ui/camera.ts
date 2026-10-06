@@ -151,6 +151,46 @@ export const flying = () => settle !== null;
 /** Ends a running flight where it is; whoever awaits it continues. */
 export function stopFlight() {
   cancelAnimationFrame(frame);
+  chased = null;
   settle?.();
   settle = null;
+}
+
+/** How long the camera takes to close nearly two thirds of the way to a chased target. */
+export const CHASE_MS = 70;
+
+/** One frame of a chase: `dt` ms closer to `to`, there once less than half a pixel is left. */
+export function chaseStep(c: Cam, to: Cam, dt: number): Cam {
+  const f = 1 - Math.exp(-dt / CHASE_MS);
+  const next = { s: to.s, x: c.x + (to.x - c.x) * f, y: c.y + (to.y - c.y) * f };
+  return Math.hypot(to.x - next.x, to.y - next.y) < 0.5 ? to : next;
+}
+
+let chased: Cam | null = null;
+
+/**
+ * Lets the camera glide after a target that keeps moving (the pointer held on the minimap): a call
+ * with a new target while it glides only changes where it is heading, so the view neither jumps
+ * nor restarts its easing. It counts as a flight and ends with `stopFlight`.
+ */
+export function chase(from: Cam, to: Cam, set: (c: Cam) => void) {
+  const running = chased !== null;
+  chased = to;
+  if (running) return;
+  stopFlight();
+  chased = to;
+  settle = () => {};
+  let cur = from;
+  let last = performance.now();
+  const step = (now: number) => {
+    if (!chased) return;
+    cur = chaseStep(cur, chased, Math.min(now - last, 50));
+    last = now;
+    set(cur);
+    if (cur === chased) {
+      chased = null;
+      settle = null;
+    } else frame = requestAnimationFrame(step);
+  };
+  frame = requestAnimationFrame(step);
 }

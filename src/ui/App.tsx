@@ -6,7 +6,7 @@ import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBound
 import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Item, needsYou, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
 import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
-import { BOTTOM, type Cam, camFor, centreOn, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
+import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail, hasAgent } from './detail';
 import type { Field } from './api';
@@ -671,6 +671,8 @@ function Canvas({
   }
   /** `c`, moved just far enough that the view outside the sheet shows some content. */
   const kept = (c: Cam) => keepInView(c, contentRef.current, { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight - BOTTOM });
+  /** The view at the current zoom with a world point in the middle, as far as content stays in sight. */
+  const viewOn = (wx: number, wy: number) => kept({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s });
   /** When no content is in view any more (cards went, the window shrank), flies to the nearest. */
   const recover = () => {
     if (focusRef.current?.type === 'card' || dragRef.current || panRef.current || flying()) return;
@@ -980,7 +982,14 @@ function Canvas({
           )}
         </div>
       </header>
-      <Minimap cam={cam} all={all} placed={placed} territories={territories.shapes} onJump={(wx, wy) => !focusRef.current && fly(kept({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s }), 500)} />
+      <Minimap
+        cam={cam}
+        all={all}
+        placed={placed}
+        territories={territories.shapes}
+        onJump={(wx, wy) => !focusRef.current && fly(viewOn(wx, wy), 500)}
+        onFollow={(wx, wy) => !focusRef.current && chase(camRef.current, viewOn(wx, wy), setCam)}
+      />
       <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
       <div id="panel" ref={panelRef}>
         <button className="close" title={t.close} onClick={() => closeCard()}>

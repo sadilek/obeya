@@ -589,12 +589,14 @@ export function Minimap({
   placed,
   territories,
   onJump,
+  onFollow,
 }: {
   cam: Cam;
   all: Bounds;
   placed: { item: Item; b: Bounds }[];
   territories: Shape[];
   onJump: (wx: number, wy: number) => void;
+  onFollow: (wx: number, wy: number) => void;
 }) {
   const W = 210;
   const H = 130;
@@ -602,13 +604,33 @@ export function Minimap({
   const k = Math.min((W - 2 * pad) / all.w, (H - 2 * pad) / all.h);
   const ox = (W - all.w * k) / 2 - all.x * k;
   const oy = (H - all.h * k) / 2 - all.y * k;
+  // a press that moves follows the pointer; one that does not jumps where it was let go
+  const press = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const world = (e: React.PointerEvent): [number, number] => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return [(e.clientX - r.left - ox) / k, (e.clientY - r.top - oy) / k];
+  };
   return (
     <div
       id="minimap"
-      onClick={(e) => {
-        const r = e.currentTarget.getBoundingClientRect();
-        onJump((e.clientX - r.left - ox) / k, (e.clientY - r.top - oy) / k);
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        press.current = { x: e.clientX, y: e.clientY, moved: false };
       }}
+      onPointerMove={(e) => {
+        const p = press.current;
+        if (!p) return;
+        if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 3) return;
+        p.moved = true;
+        onFollow(...world(e));
+      }}
+      onPointerUp={(e) => {
+        const p = press.current;
+        press.current = null;
+        if (p && !p.moved) onJump(...world(e));
+      }}
+      onPointerCancel={() => (press.current = null)}
     >
       <svg viewBox={`0 0 ${W} ${H}`}>
         <g transform={`translate(${ox} ${oy}) scale(${k})`}>

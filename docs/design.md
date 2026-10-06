@@ -1224,6 +1224,9 @@ the repository; the copy on the project is only for the archive).
   the view is crossed by the minimap. When cards go or the window shrinks and none is left in
   view, the camera flies to the nearest; the minimap and the overview key land next to content
   too (2026-10-01).
+- A click on the minimap flies there; a press that moves lets the view follow the pointer on the
+  minimap until it is let go, gliding after it so a press far from the view does not jump
+  (2026-10-06).
 - An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
   follows its content while open. Where its bottom lies under the microphone, the content gets
   that much room below it, so the last row (an idea's „Parken“, „Verwerfen“) scrolls up past the
