@@ -104,15 +104,21 @@ export function KoordinatorSheet({ on, items, preferences, repos, talk, reshare,
 function Conversation({ talk }: { talk: Talk[] }) {
   const box = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
+  const newest = useRef<number | undefined>(undefined);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
     // it takes the height the sheet leaves free; when the rest needs more, it keeps 360px, or less
     // when the conversation is shorter than that
+    const top = el.scrollTop;
     el.style.minHeight = '0';
     el.style.minHeight = `${Math.min(360, el.scrollHeight)}px`;
-    el.scrollTop = el.scrollHeight;
-    atEnd.current = true;
+    // every change on the canvas brings a new snapshot: only what the owner just said takes the
+    // conversation back to its end, so they can read further up in the meantime
+    const last = talk.at(-1)?.id;
+    if (last !== newest.current) atEnd.current = true;
+    newest.current = last;
+    el.scrollTop = atEnd.current ? el.scrollHeight : top;
   }, [talk]);
   useEffect(() => {
     // the newest exchange stays in view when the sheet grows or shrinks, or the text wraps anew once

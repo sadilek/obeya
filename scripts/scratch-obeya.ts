@@ -44,7 +44,8 @@
 //       { "text": "…", "state": "proposed", "review": true },
 //       { "text": "…", "state": "proposed", "target": "<repo id>" }
 //     ],
-//     "groups": [{ "name": "Abrechnung", "cards": ["A", "B", "P"] }]
+//     "groups": [{ "name": "Abrechnung", "cards": ["A", "B", "P"] }],
+//     "talk": [{ "said": "…", "reply": "…", "ago": "2h", "card": "A", "answer": "…" }]
 //   }
 // A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
@@ -62,7 +63,8 @@
 // `target` is the repository whose CLAUDE.md a rule is for (the canvas id names the home one).
 // What a learned rule's occasion is (card, quote, review), `replaces` and `target` need code that has them.
 // Groups are created through the API with their cards (keys; a workstream stands for its project),
-// in their colours by order.
+// in their colours by order. `talk` is the conversation with the Koordinator, oldest first (`card` a key;
+// `question` and `answer`, `answerBy` for a question it looked up).
 
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
@@ -114,6 +116,7 @@ interface Stage {
   cards: StageCard[];
   preferences?: { key?: string; text: string; state?: string; card?: string; quote?: string; review?: boolean; replaces?: string; target?: string }[];
   groups?: { name: string; cards: string[] }[];
+  talk?: { said: string; reply: string; ago?: string; card?: string; question?: string; answer?: string; answerBy?: string }[];
 }
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -346,6 +349,17 @@ for (const [i, p] of (stage.preferences ?? []).entries()) {
   const r = db.query(`INSERT INTO preferences (${keys.join(', ')}) VALUES (${keys.map((k) => `$${k}`).join(', ')}) RETURNING id`).get(row) as { id: number };
   if (p.key) prefIds[p.key] = r.id;
 }
+for (const [i, x] of (stage.talk ?? []).entries())
+  db.query('INSERT INTO talk (canvas_id, at, said, reply, card_id, question, answer, answer_by) VALUES ($c, $at, $said, $reply, $card, $question, $answer, $by)').run({
+    c: canvas,
+    at: ago(x.ago ?? '0s'),
+    said: x.said,
+    reply: x.reply,
+    card: x.card ? (ids[x.card] ?? fail(`talk ${i}: card ${x.card} does not exist`)) : null,
+    question: x.question ?? null,
+    answer: x.answer ?? null,
+    by: x.answerBy ?? null,
+  });
 db.close();
 // the server keeps a snapshot of the canvas: a change through the API makes it read the database anew
 const first = stage.cards.find((c) => !c.project && !c.workstream);
