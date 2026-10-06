@@ -327,7 +327,8 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   await heard;
   await settle();
   expect(learners()).toHaveLength(3);
-  expect(learners()[2]!.spec.cwd).toBe(web);
+  // it reads the home repository's Lesestand, the default branch, not the checkout a card may have leased
+  expect(learners()[2]!.spec.cwd).toBe(join(dir, 'read', 'web', 'web'));
   expect(learners()[2]!.inbox[0]).toContain('The Koordinator replied: Weil die Karten offen lassen');
 });
 

@@ -13,8 +13,8 @@ export class ProjectAgents {
   constructor(
     private board: Board,
     private runtime: AgentRuntime,
-    /** The checkout the plan docs are read from. */
-    private repoPath: string,
+    /** The repository's Lesestand, which the plan docs are read from (read-tree.ts). */
+    private repoPath: () => string,
     private preferences: () => string = () => '',
   ) {}
 
@@ -22,7 +22,7 @@ export class ProjectAgents {
     return this.queued(project, () =>
       consult({
         runtime: this.runtime,
-        cwd: this.repoPath,
+        cwd: this.repoPath(),
         resume: this.board.row(project.id).session_id ?? undefined,
         onSession: (id) => this.board.work(project.id, { session_id: id }),
         system: `You are the project agent of the project "${project.title}", directed through Obeya. Its plan doc is ${project.plan?.file ?? '(none)'} in this repository. Workers implement the project's workstreams and send you the questions they cannot decide themselves.\n\n${ADVICE_RULES}`,
@@ -45,7 +45,7 @@ export class ProjectAgents {
     return this.queued(project, () =>
       inform({
         runtime: this.runtime,
-        cwd: this.repoPath,
+        cwd: this.repoPath(),
         resume: this.board.row(project.id).session_id ?? undefined,
         onSession: (id) => this.board.work(project.id, { session_id: id }),
         ...(onTool ? { onTool } : {}),

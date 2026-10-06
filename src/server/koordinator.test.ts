@@ -31,7 +31,7 @@ beforeEach(() => {
   workspaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: main, dir: join(dir, 'ws') });
   runtime = new FakeRuntime();
   workers = new Workers({ board, runtime, workspaces, adapter });
-  k = new Koordinator({ board, runtime, home: main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
+  k = new Koordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -342,7 +342,7 @@ describe('Koordinator waits for a free workspace', () => {
     workspaces.ensureClones(main, n);
     clones = workspaces.list().map((w) => w.path);
     workers = new Workers({ board, runtime, workspaces, adapter });
-    k = new Koordinator({ board, runtime, home: main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
+    k = new Koordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
   }
 
   test('a card the Koordinator lets start waits for a workspace, and starts once one is free', async () => {
@@ -547,7 +547,7 @@ describe('Koordinator starts all workstreams of a project', () => {
   });
 
   test('the start waits a few seconds, in which the owner can take it back', async () => {
-    k = new Koordinator({ board, runtime, home: dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 40 });
+    k = new Koordinator({ board, runtime, home: () => dir, repoFor: () => ({ workers, workspaces, adapter: generic, path: dir }), holdMs: 40 });
     const { p, w2, w3, w4 } = project();
     k.request(p.id);
     await settle();
@@ -633,7 +633,7 @@ describe('Koordinator answers questions of cards without a project', () => {
 
   test('a fresh session after a number of questions, after a restart, and after a failure', async () => {
     const repoFor = () => ({ workers, workspaces, adapter: { ...generic, land: 'main' as const, workspaces: 'worktrees' as const, softPaths: [] }, path: dir });
-    k = new Koordinator({ board, runtime, home: dir, repoFor, sessionQuestions: 2 });
+    k = new Koordinator({ board, runtime, home: () => dir, repoFor, sessionQuestions: 2 });
     const a = card('Export');
     const answer = async (id: string, text: string) => {
       const r = k.ask(item(a.id), { text, options: [] });
@@ -651,7 +651,7 @@ describe('Koordinator answers questions of cards without a project', () => {
     expect(await answer('k-2', 'Vier?')).toBe('k-2');
 
     // a restart: the session is not resumed
-    k = new Koordinator({ board, runtime, home: dir, repoFor });
+    k = new Koordinator({ board, runtime, home: () => dir, repoFor });
     expect(await answer('k-3', 'Fünf?')).toBeUndefined();
 
     const r = k.ask(item(a.id), { text: 'Sechs?', options: [] });
@@ -902,7 +902,7 @@ describe('preference memory', () => {
 describe('Rückschau', () => {
   const texts = (state: 'proposed' | 'active') => board.preferences(state).map((p) => p.text);
   const reviews = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'done'));
-  const koordinator = () => new Koordinator({ board, runtime, home: board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });
+  const koordinator = () => new Koordinator({ board, runtime, home: () => board.canvas.repos[0]!.path, repoFor: () => ({ workers, workspaces, adapter: generic, path: board.canvas.repos[0]!.path }), reviewEvery: 4 });
 
   test('after enough inputs, counted across a restart, it reads the history since the last one and proposes rules from it', async () => {
     let k1 = koordinator();

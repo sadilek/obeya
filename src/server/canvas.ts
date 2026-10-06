@@ -18,6 +18,7 @@ import type { Forge } from './forge';
 import { Koordinator } from './koordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
+import { ReadTree } from './read-tree';
 import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import type { AgentRuntime } from './runtime';
@@ -57,6 +58,8 @@ export interface RepoRuntime {
   adapter: RepoAdapter;
   /** The command that shares its demos (the configuration's, else the adapter's); null where they are exported. */
   share: string[] | null;
+  /** Its Lesestand: the default branch, where plan docs are read and the agents that only read work. */
+  read: ReadTree;
   workspaces: Workspaces;
   workers: Workers;
   projectAgents: ProjectAgents;
@@ -86,12 +89,23 @@ export class CanvasRuntime {
     config = resolved.config;
     const home = refs[0]!.id;
     const images = (this.images = new Images(join(deps.home, 'images', id)));
+    // where work lands on the local main, the checkout is the Lesestand; otherwise it is a pool clone on a card's branch
+    const reads = infos.map(
+      (info, i) =>
+        new ReadTree({
+          repoPath: info.path,
+          dir: adapters[i]!.land === 'main' ? null : join(deps.home, 'read', id, refs[i]!.id),
+          remote: !!info.remote,
+          onChange: () => this.board.docsChanged(),
+        }),
+    );
+    this.stops.push(() => reads.forEach((r) => r.stop()));
     this.board = new Board(
       deps.store,
       { id, name, repos: refs },
       () =>
-        infos.flatMap((info, i) =>
-          readPlanDocs(info.path, adapters[i]!).map((d) => (refs[i]!.id === home ? d : { ...d, file: `${refs[i]!.id}:${d.file}` })),
+        reads.flatMap((read, i) =>
+          readPlanDocs(read.path, adapters[i]!).map((d) => (refs[i]!.id === home ? d : { ...d, file: `${refs[i]!.id}:${d.file}` })),
         ),
       images,
     );
@@ -105,12 +119,13 @@ export class CanvasRuntime {
     const workRetro = (this.workRetro = new WorkRetro({
       board,
       runtime: deps.runtime,
-      pathFor: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).info.path,
+      pathFor: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).read.path,
     }));
     config.repos.forEach((rc, i) => {
       const info = infos[i]!;
       const adapter = adapters[i]!;
       const ref = refs[i]!;
+      const read = reads[i]!;
       const isHome = ref.id === home;
       const share = shareCommandOf(rc, info, adapter);
       const workspaces = new Workspaces(deps.store, id, {
@@ -123,7 +138,7 @@ export class CanvasRuntime {
       for (const w of rc.workspaces ?? []) workspaces.register(resolve(w), [info.remote, info.path].filter((x): x is string => !!x));
       // landing on main needs clones that see the local main; otherwise they track the remote
       if (rc.clones) workspaces.ensureClones(adapter.land === 'main' || !info.remote ? info.path : info.remote, rc.clones);
-      const projectAgents = new ProjectAgents(board, deps.runtime, info.path, preferences);
+      const projectAgents = new ProjectAgents(board, deps.runtime, () => read.path, preferences);
       const workers = new Workers({
         board,
         runtime: deps.workerRuntime ?? deps.runtime,
@@ -140,6 +155,7 @@ export class CanvasRuntime {
             : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
         },
         onPrOpened: (cardId) => this.sharing.prOpened(cardId),
+        onMerged: () => void read.refresh(),
         onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
         onPrototypeAnswer: (prototype, question, answer, by) => this.prototypeAnswered(prototype, question, answer, by),
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
@@ -148,11 +164,11 @@ export class CanvasRuntime {
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
         ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       });
-      this.repos.push({ ref, info, adapter, share, workspaces, workers, projectAgents });
+      this.repos.push({ ref, info, adapter, share, read, workspaces, workers, projectAgents });
       if (deps.watch) {
-        this.stops.push(watchPlanDocs(info.path, adapter, () => board.docsChanged()));
+        this.stops.push(watchPlanDocs(read.path, adapter, () => board.docsChanged()));
         if (adapter.land === 'pr') {
-          const watcher = new PrWatcher(board, workers, deps.forge, (cardId) => board.row(cardId).workspace ?? info.path, adapter.prNoise, ref.id);
+          const watcher = new PrWatcher(board, workers, deps.forge, (cardId) => board.row(cardId).workspace ?? info.path, adapter.prNoise, ref.id, () => void read.refresh());
           watcher.start();
           this.prWatchers.push(watcher);
           this.stops.push(() => watcher.stop());
@@ -164,10 +180,10 @@ export class CanvasRuntime {
       board,
       runtime: deps.runtime,
       preferences,
-      home: this.repos[0]!.info.path,
+      home: () => this.repos[0]!.read.path,
       repoFor: (card) => {
         const r = this.repoOf(card);
-        return { workers: r.workers, workspaces: r.workspaces, adapter: r.adapter, path: r.info.path };
+        return { workers: r.workers, workspaces: r.workspaces, adapter: r.adapter, path: r.read.path };
       },
     });
     koordinator.resume();
@@ -175,7 +191,7 @@ export class CanvasRuntime {
       board,
       runtime: deps.runtime,
       preferences,
-      pathFor: (card) => this.repoOf(card).info.path,
+      pathFor: (card) => this.repoOf(card).read.path,
       onOwnerInput: (card, text) => koordinator.learn(card, 'idea', text),
       imageFiles,
     });
@@ -184,7 +200,7 @@ export class CanvasRuntime {
       board,
       runtime: deps.runtime,
       preferences,
-      pathFor: (card) => (card ? this.repoOf(card) : this.repos[0]!).info.path,
+      pathFor: (card) => (card ? this.repoOf(card) : this.repos[0]!).read.path,
       startBrief: (card) => this.repoOf(card).workers.startBrief(card),
       projectAgent: (project) => this.repoOf(project).projectAgents,
       onAnswer: (question, answer) => this.commander.tell(`The answer you looked up for the owner's question „${question}“ came in and was shown to them: ${answer.slice(0, 1500)}`),
@@ -192,7 +208,7 @@ export class CanvasRuntime {
     this.commander = new Commander({
       board,
       runtime: deps.runtime,
-      cwd: this.repos[0]!.info.path,
+      cwd: this.repos[0]!.read.path,
       execute: (c) => this.run(c),
       imageFiles,
       lookUp: (talk) => this.answers.lookUp(talk),

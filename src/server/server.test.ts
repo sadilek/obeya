@@ -150,8 +150,10 @@ describe('groups', () => {
 describe('plan docs', () => {
   test("a project's plan doc is read as written; other cards have none", async () => {
     const md = '# Export\n\n## Goal\n\nCSV for landlords.\n\n## Workstreams\n\n- [ ] **W1:** CSV. Columns as in `docs/x.md`.\n\n## Notes\n\nMore.\n';
-    mkdirSync(join(dir, 'main', 'docs', 'plan'), { recursive: true });
-    writeFileSync(join(dir, 'main', 'docs', 'plan', 'export.md'), md);
+    // where plan docs are read: the Lesestand of the repository (a worktree on its default branch)
+    const read = canvas.repos[0]!.read.path;
+    mkdirSync(join(read, 'docs', 'plan'), { recursive: true });
+    writeFileSync(join(read, 'docs', 'plan', 'export.md'), md);
     board.docsChanged();
     const project = board.snapshot().items.find((i) => i.kind === 'project')!;
     const get = (id: string) => fetch(new URL(api(`/cards/${id}/plan`), server.url));

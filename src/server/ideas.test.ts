@@ -58,7 +58,8 @@ describe('an idea', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Lass uns das durchdenken.' });
     const s = explorer();
-    expect(s.spec).toMatchObject({ readOnly: true, cwd: main });
+    expect(s.spec).toMatchObject({ readOnly: true, cwd: canvas.repos[0]!.read.path });
+    expect(canvas.repos[0]!.read.path).not.toBe(main);
     expect(s.spec.resume).toBeUndefined();
     expect(s.inbox[0]).toContain('The idea: “Export für Vermieter”.');
     expect(s.inbox[0]).toContain('Vermieter wollen ihre Zählerstände.');

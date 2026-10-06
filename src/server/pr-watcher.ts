@@ -25,6 +25,8 @@ export class PrWatcher {
     private noise: string[] = [],
     /** On a canvas with several repositories: the one whose pull requests this watches. */
     private repo?: string,
+    /** Called at the end of every round (the Lesestand fetches then). */
+    private onRound?: () => void,
   ) {}
 
   start(everyMs = 120_000) {
@@ -69,6 +71,7 @@ export class PrWatcher {
     } finally {
       this.polling = false;
     }
+    this.onRound?.();
   }
 
   private react(cardId: string, state: string, pr: PrState, s: PrStatus) {

@@ -57,7 +57,7 @@ export interface RepoHands {
   workers: Workers;
   workspaces: Workspaces;
   adapter: RepoAdapter;
-  /** The checkout the Koordinator reads (scopes, cutting, questions). */
+  /** Where the Koordinator reads (scopes, cutting, questions): the repository's Lesestand. */
   path: string;
 }
 
@@ -66,8 +66,8 @@ export interface KoordinatorOptions {
   runtime: AgentRuntime;
   /** The repository of a card; a canvas may span several. */
   repoFor: (card: Item) => RepoHands;
-  /** The checkout the Koordinator reads for what the owner says without a card (the home repository). */
-  home: string;
+  /** Where the Koordinator reads for what the owner says without a card: the home repository's Lesestand. */
+  home: () => string;
   /** The owner's recorded preferences, as agents read them. */
   preferences?: () => string;
   /** Worker questions one session answers; the next one starts fresh. */
@@ -335,7 +335,7 @@ export class Koordinator {
     const rules = this.o.board.preferences('active');
     let proposed = 0;
     return this.read(
-      this.o.home,
+      this.o.home(),
       REVIEW_SYSTEM,
       (finish): AgentTool[] => [
         {
@@ -476,7 +476,7 @@ export class Koordinator {
     const { question, overruled, reply, before } = context;
     let proposed = false;
     return this.read(
-      card ? this.o.repoFor(card).path : this.o.home,
+      card ? this.o.repoFor(card).path : this.o.home(),
       LEARN_SYSTEM,
       (finish): AgentTool[] => [
         {

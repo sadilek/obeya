@@ -21,7 +21,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/repo', branch: 'main' }] }, () => [doc]);
   runtime = new FakeRuntime();
-  agents = new ProjectAgents(board, runtime, '/repo');
+  agents = new ProjectAgents(board, runtime, () => '/repo');
 });
 
 const project = () => board.snapshot().items.find((i) => i.kind === 'project')!;

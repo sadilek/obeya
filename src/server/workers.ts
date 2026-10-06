@@ -40,6 +40,8 @@ export interface WorkerOptions {
   advisor?: (card: Item) => Advisor | null;
   /** The worker reported the card's pull request: a demo shared before gets its link. */
   onPrOpened?: (cardId: string) => void;
+  /** The card's pull request was merged: the default branch has moved. */
+  onMerged?: (cardId: string) => void;
   /** A prototype was handed over: the idea's agent hears the summary. */
   onPrototype?: (prototype: Item, summary: string, demo: string | undefined) => void;
   /** A question on a prototype was answered: the idea's agent hears both, so its brief holds them. */
@@ -406,6 +408,7 @@ export class Workers {
     this.o.board.planDocsLanded(cardId, this.planDocsAdded(cardId));
     this.o.board.work(cardId, { state: 'live', need: null, detail: null, status_line: null, landed: JSON.stringify({} satisfies LandedState) });
     this.o.board.log(cardId, 'state', 'obeya', 'Pull Request gemergt. Live.');
+    this.o.onMerged?.(cardId);
     this.afterLanding(cardId, `Your pull request was merged; the card is live.\n\n${AFTER_LANDING}`);
   }
 

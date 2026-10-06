@@ -359,6 +359,29 @@ the owner's language (`src/core/locale.ts`).
   and on a canvas with several repositories every card names its own. Cards on other canvases that
   need the owner show as a count at their entry in the switcher and, while it is closed, as the sum
   on the pill; the server pushes every canvas's count to all of them when one changes.
+- **Lesestand** (`src/server/read-tree.ts`) — every repository of a canvas has a directory on its
+  default branch that its plan docs are read from (the canvas, „Plandokument lesen“, the last state
+  kept on a project) and that the agents that only read work in: project agents, ideas'
+  exploration agents, the Koordinator (and its look-ups, learner and Rückschau), the Arbeitsrückschau
+  and the voice commands' session. Where work lands on the local main (`land: 'main'`, Obeya), it
+  is the configured checkout itself, which is always on `main`, uncommitted plan docs included.
+  Otherwise the configured checkout is often one of the pool's clones and on the branch of the card
+  that leased it last, so the Lesestand is a detached worktree of it under Obeya's home
+  (`read/<canvas>/<repo>`), on the commit `repoAdapterFile` reads too (`defaultBranchCommit`: the
+  local default branch where it has everything `origin`'s has, else `origin`'s). Branch switches,
+  `reset` and `clean` in the clone do not reach it, and the clone's `git status` stays clean, so
+  leasing is not affected; the clone's `.git/worktrees` has one entry more. A worktree there at
+  the start is used again; one missing, broken or of another repository is made afresh (`git
+  worktree prune` first), and where none can be made the checkout is read. Hooks do not run for
+  it. It refreshes with every round of the PR watcher (2 minutes), so also when the owner comes
+  back to the page, and right after a merge: `git fetch` of the default branch in the checkout
+  (only `refs/remotes/origin/<branch>`, no `FETCH_HEAD`, so safe while a card leases the clone),
+  and where the chosen commit moved, a forced detached checkout and a fresh read of the plan docs.
+  A fetch that fails (offline, a lock held by a lease) goes to the log and is tried again next
+  round; the Lesestand keeps its commit. What counts is what is on `origin` (or the local default
+  branch of the checkout, where it has all of `origin`'s): a doc committed only in another clone,
+  or only edited, does not show in such a repository. Workers, leasing, landing and the share
+  commands stay in the checkout and the clones; `repoInfo` and the configuration are unchanged.
 - **UI** — browser app, React + TypeScript. Custom canvas: camera with
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap, and a frosted top bar the
   canvas slides under. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
@@ -396,8 +419,8 @@ the owner's language (`src/core/locale.ts`).
   on the Claude Code login of the machine (tested without an API key: `apiKeySource: none`).
   A worker is one SDK session per card with streaming input, the repo's own settings and
   CLAUDE.md, and permission mode `auto` (`--permission-mode`); after a restart it resumes by
-  session id. A project agent is one read-only session per project (Read, Grep, Glob on the Obeya
-  checkout), resumed for each question, answering one question at a time. The SDK sits behind a
+  session id. A project agent is one read-only session per project (Read, Grep, Glob on the
+  repository's Lesestand), resumed for each question, answering one question at a time. The SDK sits behind a
   small runtime interface, so the orchestration is tested against a fake. Two SDK hooks ride on
   every session: before a Bash call, the refusal of long foreground sleeps; after every tool call,
   what changed since the session's instructions were built (`AgentSpec.contextUpdate`) goes to the
@@ -527,7 +550,8 @@ the owner's language (`src/core/locale.ts`).
   a second count as one press). A stop does not wait for the owner's video or dictation, since the
   owner asked for it; it turns a restart that waits into a stop. The next start resumes the
   workers it stopped like a restart does.
-- **Koordinator** — read-only SDK turns on the Obeya checkout, one decision at a time. Before a
+- **Koordinator** — read-only SDK turns on the Lesestand of the card's repository (the home
+  repository's without a card), one decision at a time. Before a
   card starts it estimates the files the card will change and judges whether running it next to
   the cards in progress likely ends in merge conflicts. Cards queued before it count too: a card
   likely to conflict with one of them waits behind it rather than overtaking it, and once that one
@@ -585,7 +609,7 @@ the owner's language (`src/core/locale.ts`).
   taken back, a rule proposal decided on; a spoken command counts once, as what was said. The
   count and when the history begins are settings of the canvas, so they survive a restart. At
   20, after the learner has read the input that completed the count, one read-only session in the
-  home checkout reads what happened since the last Rückschau (at most the latest 300 lines): the
+  home repository's Lesestand reads what happened since the last Rückschau (at most the latest 300 lines): the
   cards' milestones (the owner's notes, answers and clicks, the agents' questions and hand-overs,
   answers given in the owner's name), the owner's words in ideas and to the Koordinator, taken back
   or not, the cards they deleted or dismissed, and the rule proposals they accepted or rejected.
@@ -621,7 +645,7 @@ the owner's language (`src/core/locale.ts`).
   Rückschau, with its parts (a read-only reading session, a count in the canvas's settings,
   proposals on the usual way), but a different source (the workers' transcripts, not the owner's
   words), beat (finished cards, not the owner's inputs), place (the repository of the friction, not
-  the home checkout) and result (feature cards, not rules). Two stages:
+  the home repository) and result (feature cards, not rules). Two stages:
   - When a card's work ends (landed, closed without a change, a prototype discarded or built, or a
     card deleted with work not finished), Obeya draws an excerpt from the transcripts of its runs
     without a model. The Agent SDK keeps a session's transcript at
@@ -635,14 +659,14 @@ the owner's language (`src/core/locale.ts`).
     the worker's words before and after each, and how many tool calls the run took and after how
     many it first changed a file. Calls cut off by a restart (exit code 137) or stopped by the
     owner do not count; subagents' lines are left out. A missing file or a format it cannot read
-    gives no excerpt and no error. A short read-only session in the repository's checkout (Sonnet,
+    gives no excerpt and no error. A short read-only session in the repository's Lesestand (Sonnet,
     low effort) makes 0–3 friction notes of a non-empty excerpt (what went wrong, what it cost,
     what would have prevented it), stored per repository and card in `friction`; an empty excerpt
     gets no session.
   - Every 10 finished cards of a repository (counted when work ends, whether or not they had
     friction; a card that never ran does not count; the setting `work_retro_cards:<repo>`), after
     the notes of the card that completed the count, the retrospective runs: one read-only session
-    in that repository's checkout, so it sees its CLAUDE.md, scripts and skills, reads the notes
+    in that repository's Lesestand, so it sees its CLAUDE.md, scripts and skills, reads the notes
     since the last one (`work_retro_since:<repo>`) card by card, with the proposals of earlier
     retrospectives: those the owner dismissed, so it does not repeat them, and those waiting or
     taken. It proposes at most three things, each resting on friction on at least two cards (tags
@@ -713,7 +737,7 @@ the owner's language (`src/core/locale.ts`).
   of its workstreams goes to the project agent, in the project's session; any other to a thorough
   read-only Koordinator turn (effort medium) on the card's repository. A question about the work of
   an agent on a card (also one waiting for review: „Ist sichergestellt, dass …?“) is not looked up
-  but goes to that agent, as a note or as feedback: its work is on its branch, not in the checkout
+  but goes to that agent, as a note or as feedback: its work is on its branch, not in the Lesestand
   the look-up reads, and the card shows the agent at work while it answers. `look_up` on such a
   card is refused with that hint. Both get the question, the
   card's state and log, and the task its worker gets at the start (`Workers.startBrief`), from
@@ -1092,10 +1116,19 @@ the repository; the copy on the project is only for the archive).
   restart). Reading old content
   from the git history instead was rejected as fragile (PRs and clones, renames); it served
   only once, to backfill Obeya's own projects from before
-  (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a doc missing only for a moment (a branch
-  switch in the checkout) sends the project to the archive and back; a renamed doc makes a new
+  (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a renamed doc makes a new
   project and leaves the old one archived. A project from before the doc was kept has nothing to
   show and stays hidden.
+- Plan docs come from the Lesestand, the default branch, not from the configured checkout
+  (2026-10-06). Until then they came from the checkout's working tree: in a repository whose work
+  lands through PRs that checkout is often a pool clone on a card's branch, so a doc pushed to
+  `origin` from another clone never showed, a card's branch without a doc sent its project to the
+  archive and back at the next lease, and a workstream ticked off in a merged PR went live only by
+  chance. The agents that only read moved with the docs, so a project agent finds its doc where it
+  works. Rejected: reading only the docs with `git cat-file` (the agents would read another state),
+  pulling the configured checkout (it is a pool clone on cards' branches), and merging the docs of
+  all clones (which state counts would be chance). The fetch rides on the PR watcher's rounds and
+  the merge, without a timer of its own.
 - A canvas belongs to a repository, not a checkout: the adapter names it, so the clones share
   one. A project's adapter lives in its own repository (`.obeya/adapter/`, read from the default
   branch; see Repo adapter), not in Obeya's, which is open source: until 2026-10-05 adapters lived
@@ -1259,8 +1292,6 @@ the repository; the copy on the project is only for the archive).
 
 - Plan-doc sync: Obeya reads plan docs and never writes them; workers tick off their workstream
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
-- Plan docs are read from the working tree of the checkout Obeya is started on. Fine for Obeya,
-  where work lands there; for a repository whose work lands through PRs, read them from `origin/main`?
 - A plan doc without a `## Workstreams` checklist is not shown (its tasks under other headings,
   say). Fix such docs, or show them as projects without cards?
 - Making Obeya known as open source (MIT licence, a public repository, an English interface, voice

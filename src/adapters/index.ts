@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { defaultBranchCommit } from '../server/read-tree';
 import { GIT } from '../server/workspaces';
 import { generic } from './generic';
 import * as kit from './kit';
@@ -56,20 +57,16 @@ function loadAdapter(file: string): RepoAdapter {
 /**
  * The repository's own adapter as its default branch has it, not as the checkout has it: a clone
  * is on a card's branch most of the time, and a branch from before the adapter came would take it
- * away. The default branch is the local one where it has everything `origin`'s has (work lands
- * there first), else `origin`'s. Its files are written once per version into the repository's git
- * directory (`obeya/adapter-<tree>/`), where checkouts and `git clean` do not reach, and an
- * earlier version's files go. Null when the default branch has no `.obeya/adapter/index.ts`.
+ * away; which commit of the default branch counts is `defaultBranchCommit`'s rule. Its files are
+ * written once per version into the repository's git directory (`obeya/adapter-<tree>/`), where
+ * checkouts and `git clean` do not reach, and an earlier version's files go. Null when the default branch has no `.obeya/adapter/index.ts`.
  */
 export function repoAdapterFile(repoPath: string): string | null {
   const git = (...args: string[]) => {
     const r = Bun.spawnSync([GIT, '-C', repoPath, ...args], { stderr: 'ignore' });
     return r.exitCode === 0 ? r.stdout.toString() : null;
   };
-  const branch = git('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')?.trim().replace(/^origin\//, '') ?? 'main';
-  const local = git('rev-parse', '--verify', '--quiet', `refs/heads/${branch}`)?.trim();
-  const remote = git('rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`)?.trim();
-  const commit = local && remote ? (git('merge-base', '--is-ancestor', remote, local) !== null ? local : remote) : (local ?? remote ?? 'HEAD');
+  const { commit } = defaultBranchCommit(repoPath);
   const tree = git('rev-parse', '--verify', '--quiet', `${commit}:${REPO_ADAPTER_DIR}`)?.trim();
   if (!tree || git('cat-file', '-e', `${tree}:index.ts`) === null) return null;
   const common = git('rev-parse', '--path-format=absolute', '--git-common-dir')?.trim();
