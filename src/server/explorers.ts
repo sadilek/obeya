@@ -173,7 +173,7 @@ export class Explorers {
     );
   }
 
-  /** The owner clicked "So bauen" while the agent works: it hears so once, as its reply decides whether building goes ahead. */
+  /** The owner clicked "So bauen" while the agent works: it hears so once, as the brief it leaves becomes the task. */
   private buildNote(cardId: string, live: Live): string | undefined {
     if (live.toldBuild || !this.o.board.item(cardId)?.idea?.buildAfterReply) return;
     live.toldBuild = true;
@@ -374,7 +374,7 @@ const OPENING_PROPOSED =
 
 /** The owner clicked "So bauen" during the agent's turn. */
 const BUILD_AFTER_REPLY =
-  'The owner clicked "So bauen" while you worked on this reply: once it is there, a worker builds the idea from the brief, unless your reply asks questions, which call the building off. Bring the brief up to date with what they said; ask only what must be settled before building, and put into the brief as decided what you would decide yourself.';
+  'The owner clicked "So bauen" while you worked on this reply: once it is there, a worker builds the idea from the brief as you leave it, unless your reply asks questions; then nothing is built, and the owner decides again after answering them.';
 
 const UNREAD_NOTE: Record<Unread['why'], string> = {
   parked: 'The owner parked the idea while you were working on a reply, which ended that turn. These messages are still unanswered; take them in with the one after them:',

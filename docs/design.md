@@ -167,7 +167,7 @@ An idea is thought through on its card before anything is planned; no worker run
    its reply asks questions; then nothing is built, the conversation says why, and the owner
    decides again. The panel stays open while it waits: the button reads "Baut nach der Antwort …"
    with "Doch nicht bauen" beside it, and the canvas card says "baut nach der Antwort". The agent
-   hears of the click with its next step, so it asks only what building needs. A turn that ends
+   hears of the click with its next step, as the brief it leaves becomes the task. A turn that ends
    without a reply (an error, a restart), parking or dropping call the building off too. A voice
    command that plans such an idea, or one that also discusses it, only passes what was said to
    the agent, and the Koordinator says that planning goes by a click once the reply is there; one

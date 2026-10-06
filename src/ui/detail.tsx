@@ -499,7 +499,7 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
           <div className="actions">
             {idea.buildAfterReply ? (
               <>
-                <button className="btn primary waits" disabled aria-pressed>
+                <button className="btn primary armed" disabled aria-pressed>
                   {t.idea.buildWaits}
                 </button>
                 <button className="btn" onClick={() => act({ action: 'unbuild' }, { close: false })}>

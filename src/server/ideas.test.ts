@@ -437,7 +437,7 @@ describe('an idea', () => {
     canvas.act(i.id, { action: 'build' });
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
     expect(board().events(i.id).filter((e) => e.text.startsWith('So bauen, sobald'))).toHaveLength(1);
-    // the agent hears it with its next step, once, so it asks only what building needs
+    // the agent hears it with its next step, once: the brief it leaves becomes the task
     expect(s.toolStep()).toContain('The owner clicked "So bauen" while you worked on this reply');
     expect(s.toolStep()).toBeUndefined();
     s.call('update_brief', { brief: '**Ziel:** CSV- und PDF-Export.' });
