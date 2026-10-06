@@ -12,8 +12,14 @@ import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
 import { parseQuestion, talkTurns, type Turn } from './talk';
 
-/** What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open. */
-export type ActDone = { close: true; ack: string; undo?: () => unknown } | { close: false };
+/**
+ * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
+ * With `pending`, the card folds at once, before the server has answered, and says so until it has.
+ */
+export type ActDone = { close: true; ack: string; undo?: () => unknown; pending?: string } | { close: false };
+
+/** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
+export type Pending = { card: string; title: string; answered: Promise<void> };
 
 /** Whether an agent is on the card, so what the owner says with it open is, in doubt, for that agent. */
 export const hasAgent = (i: Item) => ['working', 'inPr', 'waiting'].includes(i.state) || !!i.finishing;
@@ -34,7 +40,7 @@ interface Props {
   /** Saves pending edits; actions wait for it, so the worker sees the card as typed. */
   flush: () => Promise<void>;
   onDelete: () => void;
-  onDone: (d: ActDone) => void;
+  onDone: (d: ActDone, pending?: Pending) => void;
   /** Reads the plan doc of a workstream's project, at the workstream. */
   onReadPlan: (project: Item, mark?: string) => void;
   onTell: Tell;
@@ -49,9 +55,11 @@ export function Detail(p: Props) {
   const all = p.all;
   const run = async (fn: () => Promise<void>, done: ActDone) => {
     setError('');
+    const answered = p.flush().then(fn);
+    // what takes the server a while (a push onto main) does not hold the card open: the canvas shows it under way
+    if (done.close && done.pending) return p.onDone(done, { card: item.id, title: plain(item.title), answered });
     try {
-      await p.flush();
-      await fn();
+      await answered;
       p.onDone(done);
     } catch (e) {
       if (!(e instanceof ApiError)) console.error(e);
@@ -184,11 +192,11 @@ export function Detail(p: Props) {
   const direct = !item.noChange && !!p.repos.find((r) => r.id === item.repo)?.direct;
   const approveButton = (
     <>
-      <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: item.noChange ? t.approvedNoChange : t.approved })}>
+      <button className="btn primary" onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.approved, pending: t.approving })}>
         {item.noChange ? t.approveNoChange : direct ? t.approvePr : t.approve}
       </button>
       {direct && (
-        <button className="btn" title={t.directHint} onClick={() => act({ action: 'approve', direct: true }, { close: true, ack: t.approvedDirect })}>
+        <button className="btn" title={t.directHint} onClick={() => act({ action: 'approve', direct: true }, { close: true, ack: t.approvedDirect, pending: t.approvingDirect })}>
           {t.approveDirect}
         </button>
       )}

@@ -8,7 +8,7 @@ import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './ap
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
-import { type ActDone, Detail, hasAgent } from './detail';
+import { type ActDone, Detail, hasAgent, type Pending } from './detail';
 import type { Field } from './api';
 import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
@@ -89,6 +89,8 @@ function Canvas({
   const [moved, setMoved] = useState<Record<string, Pos>>({});
   // Cards created here, until the snapshot carries them.
   const [pending, setPending] = useState<Item[]>([]);
+  // Approved cards the server is still landing, with what the card says meanwhile, until it moves on.
+  const [underway, setUnderway] = useState<Record<string, string>>({});
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   useEffect(() => {
@@ -101,6 +103,10 @@ function Canvas({
       return keep.length === Object.keys(m).length ? m : Object.fromEntries(keep);
     });
     setPending((p) => (p.some((i) => byId.has(i.id)) ? p.filter((i) => !byId.has(i.id)) : p));
+    setUnderway((u) => {
+      const keep = Object.entries(u).filter(([id]) => byId.get(id)?.state === 'waiting');
+      return keep.length === Object.keys(u).length ? u : Object.fromEntries(keep);
+    });
   }, [snapshot]);
 
   const items = useMemo(() => {
@@ -321,10 +327,22 @@ function Canvas({
     if (openId && !openItem && focusRef.current?.type === 'card') closeCard({ keepUntitled: true });
   }, [openId, openItem]);
 
-  function onDone(d: ActDone) {
+  function onDone(d: ActDone, p?: Pending) {
     if (!d.close) return;
     closeCard({ keepUntitled: true });
-    showAck(d.ack, d.undo);
+    if (!p || !d.pending) return showAck(d.ack, d.undo);
+    // the card says it is under way until the snapshot moves it on; a refusal puts it back as it was
+    const what = d.pending;
+    setUnderway((u) => ({ ...u, [p.card]: what }));
+    showWait(`${what.charAt(0).toUpperCase()}${what.slice(1)}`);
+    p.answered.then(
+      () => showAck(d.ack, d.undo),
+      (e) => {
+        if (!(e instanceof ApiError)) console.error(e);
+        setUnderway(({ [p.card]: _, ...rest }) => rest);
+        showAck(t.cardError(p.title, e instanceof ApiError ? errorText(e.code) : t.offlineError));
+      },
+    );
   }
 
   async function closeCard({ keepUntitled = false } = {}) {
@@ -455,7 +473,7 @@ function Canvas({
   }
 
   // ---------------------------------------------------------------- acknowledgement with undo
-  const [ack, setAck] = useState<{ text: string; undo?: () => unknown } | null>(null);
+  const [ack, setAck] = useState<{ text: string; undo?: () => unknown; wait?: boolean } | null>(null);
   const [ackOn, setAckOn] = useState(false);
   const ackTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const undoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -467,6 +485,13 @@ function Canvas({
     clearTimeout(undoTimer.current);
     if (undo) undoTimer.current = setTimeout(() => setAck((a) => (a && a.text === text ? { text } : a)), Math.max(0, undoMs - 400));
     ackTimer.current = setTimeout(() => setAckOn(false), 7000);
+  }
+  /** What the server is still at: stays, turning, until a confirmation takes its place. */
+  function showWait(text: string) {
+    setAck({ text, wait: true });
+    setAckOn(true);
+    clearTimeout(ackTimer.current);
+    clearTimeout(undoTimer.current);
   }
 
   /** The play button on a card: starts it, or one queued behind others despite the likely conflict. */
@@ -949,6 +974,7 @@ function Canvas({
                 onStart={startCard}
                 onArchive={archiveCard}
                 dep={depOf(item.id)}
+                underway={underway[item.id]}
                 onHover={setHoverId}
               />
             ),
@@ -1072,7 +1098,7 @@ function Canvas({
       {/* commands on their way and confirmations, stacked above the microphone */}
       <div id="acks">
         <ToldList told={told.told} open={focus?.type === 'card' ? focus.id : undefined} onUndo={told.undo} />
-        <div id="ack" className={`ack${ackOn ? ' on' : ''}`}>
+        <div id="ack" className={`ack${ackOn ? ' on' : ''}${ack?.wait ? ' wait' : ''}`}>
           <span>{ack?.text}</span>
           {ack?.undo && (
             <button

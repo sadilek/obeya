@@ -40,12 +40,14 @@ interface CardProps {
   dep?: 'self' | 'before' | 'after';
   /** The pointer came onto the card (its id) or left it (null). */
   onHover: (id: string | null) => void;
+  /** What the server is still doing with the card after the owner's click (pushing it onto main, say). */
+  underway?: string;
 }
 
 const sameBounds = (a: Bounds, b: Bounds) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
     const shape = shapeOf(item);
     // a card the Koordinator is checking or cutting has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
@@ -81,6 +83,7 @@ export const CardView = memo(
       item.idea && `idea-${item.idea.status}`,
       (item.idea?.thinking || item.proposal?.revising) && 'thinking',
       item.idea && needsYou(item) && 'your-turn',
+      underway && 'underway',
       item.queue && 'queued', dep && `dep-${dep}`, lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (
       <div
@@ -100,14 +103,14 @@ export const CardView = memo(
         <div className={item.title ? 'ttl' : 'ttl untitled'}>{item.title ? <Inline md={item.title} /> : t.titlePlaceholder}</div>
         {meta && <div className="meta">{meta}</div>}
         <div className="state">
-          {stateLabel(item)}
+          {underway ?? stateLabel(item)}
           {item.landedPart && <span className="landed-part">{t.landedPart.short} · {landedRef(item.landedPart)}</span>}
           {item.buildProposal && ` · ${t.idea.proposesBuild}`}
           {item.proposal?.revising && ` · ${t.revisingShort}`}
           {item.idea?.buildAfterReply && ` · ${t.idea.buildsAfterReply}`}
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
         </div>
-        {needsYou(item) && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}
+        {needsYou(item) && !underway && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}
         {startable && (
           <button
             className="play"
@@ -146,7 +149,7 @@ export const CardView = memo(
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover,
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
 );
 
 /**

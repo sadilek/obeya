@@ -241,6 +241,12 @@ An idea is thought through on its card before anything is planned; no worker run
    beside "Freigeben (PR)", or by voice ("gib frei ohne PR"): Obeya pushes the work onto the
    default branch itself, without a pull request, review or the PR's CI, and the card is `live`.
    Where work lands on `main` (Obeya), approval lands it at once.
+   A click on an approve button folds the card at once, without waiting for the server (a push
+   onto main takes seconds): until the answer, the card on the canvas says what is under way
+   („wird direkt auf main gepusht …“) and a message with a spinner stands above the microphone.
+   The answer turns the message into the confirmation, or, when the landing is refused, into the
+   card's title and why, with the card waiting for review again. Before, the card stayed open
+   with nothing to show the click had registered until the push was through.
 5. Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its
    work is on main and may finish what was waiting for that (a data migration, say) before its
    session ends. Work that changed nothing in the repository (the task wanted a demo, an analysis,
