@@ -221,7 +221,7 @@ export class CanvasRuntime {
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
     this.answers.resume();
-    this.revisions = new Revisions({ board, runtime: deps.runtime, preferences, pathFor: (card) => this.repoOf(card).read.path });
+    this.revisions = new Revisions({ board, runtime: deps.runtime, preferences, pathFor: (card) => this.repoOf(card).read.path, onRevised: (cardId, revised) => this.revised(cardId, revised) });
     this.revisions.resume();
     this.sharing = new Sharing({
       board,
@@ -347,11 +347,9 @@ export class CanvasRuntime {
       case 'approve':
         return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct });
       case 'accept':
-        // accepting a proposal is the owner's go unless they keep it to edit first: the card goes to
-        // the Koordinator like a started one, a proposed idea to its exploration agent
-        if (this.board.accept(cardId, a.picks, a.start !== false)) this.explorers.open(cardId, true);
-        else if (a.start !== false) this.koordinator.request(cardId);
-        return;
+        return this.accept(cardId, a.picks, a.start !== false);
+      case 'unaccept':
+        return this.unaccept(cardId);
       case 'dismiss':
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return this.board.remove(cardId);
@@ -396,6 +394,41 @@ export class CanvasRuntime {
     // work thrown away ended too (finished work counted when it landed)
     else if (!state || !finished(state)) this.workRetro.ended(cardId, workspace);
     this.board.remove(cardId);
+  }
+
+  // ---------------------------------------------------------------- proposals
+
+  /**
+   * Accepting a proposal is the owner's go unless they keep it to edit first (`start` false): the
+   * card goes to the Koordinator like a started one, a proposed idea to its exploration agent.
+   * Clicked while the proposal is reworked, it is accepted once the new text is there, unless that
+   * asks questions.
+   */
+  private accept(cardId: string, picks: string[][] | undefined, start: boolean) {
+    const proposal = this.board.item(cardId)?.proposal;
+    if (start && proposal?.revising) {
+      // the owner knows what comes; the new text still may ask what must be settled first
+      if (this.board.acceptAfterRevision(cardId, true))
+        this.board.log(cardId, 'state', 'owner', `${proposal.idea ? 'Übernehmen und besprechen' : 'Übernehmen und starten'}, sobald der Vorschlag überarbeitet ist; hat er noch Fragen, bleibt er Vorschlag.`);
+      return;
+    }
+    if (this.board.accept(cardId, picks, start)) this.explorers.open(cardId, true);
+    else if (start) this.koordinator.request(cardId);
+  }
+
+  /** Accepting after the revision is taken back: the proposal stays one. */
+  private unaccept(cardId: string) {
+    if (this.board.acceptAfterRevision(cardId, false)) this.board.log(cardId, 'state', 'owner', 'Doch nicht übernehmen.');
+  }
+
+  /** The revision is over (`revised`, or the agent ended without a text): a proposal accepted meanwhile is accepted now, unless it asks questions. */
+  private revised(cardId: string, revised: boolean) {
+    const card = this.board.item(cardId);
+    if (card?.state !== 'proposal' || !card.proposal?.acceptAfterRevision) return;
+    this.board.acceptAfterRevision(cardId, false);
+    const asks = card.proposal.questions.length;
+    if (revised && !asks) return this.accept(cardId, [], true);
+    this.board.log(cardId, 'state', 'obeya', !revised ? 'Nicht übernommen: Die Überarbeitung kam nicht zustande.' : asks > 1 ? 'Nicht übernommen: Der Vorschlag hat noch Fragen.' : 'Nicht übernommen: Der Vorschlag hat noch eine Frage.');
   }
 
   // ---------------------------------------------------------------- ideas

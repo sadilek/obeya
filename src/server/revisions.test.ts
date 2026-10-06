@@ -126,6 +126,64 @@ describe('a proposal reworked by what the owner says', () => {
     expect(again.result).toContain('still being reworked');
   });
 
+  test('accepted and started while it is reworked, it starts once the new text is there', async () => {
+    const p = proposal();
+    canvas.press(p.id, { action: 'revise', text: '**Welche Kodierung?** UTF-8' });
+    // the second click and the plain "Übernehmen" change nothing
+    canvas.act(p.id, { action: 'accept', picks: [['Latin-1']] });
+    canvas.act(p.id, { action: 'accept' });
+    expect(() => canvas.act(p.id, { action: 'accept', start: false })).toThrow('being reworked');
+    expect(board().item(p.id)).toMatchObject({ state: 'proposal', proposal: { revising: { words: '**Welche Kodierung?** UTF-8' }, acceptAfterRevision: true } });
+    expect(board().events(p.id).filter((e) => e.text.startsWith('Übernehmen und starten, sobald'))).toHaveLength(1);
+
+    reviser()!.call('revise_proposal', { title: 'CSV-Export prüfen', task: 'Der CSV-Export schreibt Umlaute falsch. Kodierung: UTF-8.', questions: [] });
+    reviser()!.emit({ type: 'idle' });
+    await settle();
+    // the new text is the task, without the picks clicked on the old questions, and its worker starts
+    expect(board().item(p.id)).toMatchObject({ state: 'working', body: 'Der CSV-Export schreibt Umlaute falsch. Kodierung: UTF-8.' });
+    expect(board().item(p.id)!.proposal).toBeUndefined();
+  });
+
+  test('accepted while it is reworked, it stays a proposal when the new text asks questions, when the reviser fails, or when taken back', async () => {
+    const p = proposal();
+    canvas.revisions.revise(p.id, 'Excel auch', false);
+    canvas.act(p.id, { action: 'accept' });
+    reviser()!.call('revise_proposal', { title: 'CSV- und Excel-Export', task: 'Auch Excel.', questions: [{ question: 'Welche Kodierung?', options: ['UTF-8'] }] });
+    reviser()!.emit({ type: 'idle' });
+    await settle();
+    expect(board().item(p.id)).toMatchObject({ state: 'proposal', title: 'CSV- und Excel-Export' });
+    expect(board().item(p.id)!.proposal?.acceptAfterRevision).toBeUndefined();
+    expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'state', text: 'Nicht übernommen: Der Vorschlag hat noch eine Frage.' });
+
+    canvas.revisions.revise(p.id, 'UTF-8', false);
+    canvas.act(p.id, { action: 'accept' });
+    reviser()!.emit({ type: 'idle' });
+    await settle();
+    expect(board().item(p.id)!.state).toBe('proposal');
+    expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'state', text: 'Nicht übernommen: Die Überarbeitung kam nicht zustande.' });
+
+    canvas.revisions.revise(p.id, 'UTF-8', false);
+    canvas.act(p.id, { action: 'accept' });
+    canvas.act(p.id, { action: 'unaccept' });
+    expect(board().events(p.id).at(-1)).toMatchObject({ kind: 'state', author: 'owner', text: 'Doch nicht übernehmen.' });
+    reviser()!.call('revise_proposal', { title: 'CSV-Export', task: 'UTF-8.', questions: [] });
+    reviser()!.emit({ type: 'idle' });
+    await settle();
+    expect(board().item(p.id)).toMatchObject({ state: 'proposal', title: 'CSV-Export', proposal: { questions: [] } });
+  });
+
+  test('a proposed idea accepted while it is reworked opens its discussion once the new text is there', async () => {
+    const from = board().create({ title: 'Export', x: 0, y: 0 });
+    const p = board().propose(from.id, { title: 'Exportformate', task: 'Welche Formate brauchen Vermieter?', idea: true, questions: [] });
+    canvas.revisions.revise(p.id, 'Auch an Excel denken', false);
+    canvas.act(p.id, { action: 'accept' });
+    expect(board().events(p.id).at(-1)!.text).toStartWith('Übernehmen und besprechen, sobald');
+    reviser()!.call('revise_proposal', { title: 'Exportformate', task: 'Welche Formate, auch Excel?', idea: true, questions: [] });
+    reviser()!.emit({ type: 'idle' });
+    await settle();
+    expect(board().item(p.id)).toMatchObject({ state: 'idea', body: 'Welche Formate, auch Excel?' });
+  });
+
   test('a reviser that ends without a text leaves the proposal as it was', async () => {
     const p = proposal();
     canvas.revisions.revise(p.id, 'Excel auch', false);

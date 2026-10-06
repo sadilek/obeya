@@ -14,6 +14,8 @@ export interface RevisionOptions {
   /** The checkout the agent may read in: the card's repository. */
   pathFor: (card: Item) => string;
   preferences?: () => string;
+  /** The revision is over: the new text stands (`revised`), or the agent ended without one and the old text stays. */
+  onRevised?: (cardId: string, revised: boolean) => void;
 }
 
 /** A proposal as the agent writes it back. */
@@ -49,14 +51,21 @@ export class Revisions {
     if (!card || !said) return;
     this.busy.add(cardId);
     this.ask(card, said)
-      .then((r) => {
-        const questions = r.questions.map((q) => toQuestion(q.question, q.options, q.multiple));
-        if (this.o.board.revised(cardId, { title: r.title, task: r.task, ...(r.reason ? { reason: r.reason } : {}), idea: !!r.idea, questions }))
+      .then(
+        (r) => {
+          const questions = r.questions.map((q) => toQuestion(q.question, q.options, q.multiple));
+          if (!this.o.board.revised(cardId, { title: r.title, task: r.task, ...(r.reason ? { reason: r.reason } : {}), idea: !!r.idea, questions })) return;
           this.o.board.log(cardId, 'state', 'koordinator', 'Vorschlag überarbeitet.');
-      })
-      .catch((e) => {
-        if (this.o.board.revised(cardId)) this.o.board.log(cardId, 'error', 'koordinator', `Überarbeiten ging nicht: ${e instanceof Error ? e.message : String(e)}`);
-      })
+          return true;
+        },
+        (e) => {
+          if (!this.o.board.revised(cardId)) return;
+          this.o.board.log(cardId, 'error', 'koordinator', `Überarbeiten ging nicht: ${e instanceof Error ? e.message : String(e)}`);
+          return false;
+        },
+      )
+      .then((revised) => revised !== undefined && this.o.onRevised?.(cardId, revised))
+      .catch((e) => console.error('revision:', e))
       .finally(() => this.busy.delete(cardId));
   }
 

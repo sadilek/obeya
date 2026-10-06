@@ -169,6 +169,8 @@ export interface Proposal {
   questions: Question[];
   /** What the owner said it should become (`spoken`: through speech recognition), while an agent reworks the text, the reason and the questions by it. */
   revising?: { words: string; spoken?: boolean };
+  /** "Übernehmen und starten" was clicked while it was reworked: it is accepted once the new text is there, unless that asks questions. */
+  acceptAfterRevision?: true;
 }
 
 /** A decision taken on a card: an answer to a worker's question, or the owner's call on an idea. */
@@ -516,8 +518,11 @@ export type CardAction =
   /**
    * A proposal becomes the owner's card and starts (a proposed idea: its discussion opens); with
    * `start: false` it is only planned. `picks`: the options the owner chose for each of its questions.
+   * While the proposal is reworked, it is accepted and started once the new text is there, unless that asks questions.
    */
   | { action: 'accept'; start?: boolean; picks?: string[][] }
+  /** A proposal: accepting it after its revision is taken back. */
+  | { action: 'unaccept' }
   | { action: 'dismiss' }
   /** A proposal: an agent reworks its text, reason and questions by what the owner said (`text`). */
   | { action: 'revise'; text: string; spoken?: boolean }

@@ -107,6 +107,7 @@ export const CardView = memo(
           {item.landedPart && <span className="landed-part">{t.landedPart.short} · {landedRef(item.landedPart)}</span>}
           {item.buildProposal && ` · ${t.idea.proposesBuild}`}
           {item.proposal?.revising && ` · ${t.revisingShort}`}
+          {item.proposal?.acceptAfterRevision && ` · ${t.acceptsAfterRevision}`}
           {item.idea?.buildAfterReply && ` · ${t.idea.buildsAfterReply}`}
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
         </div>

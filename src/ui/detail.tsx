@@ -571,17 +571,10 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
             </div>
           )}
           {/* planning waits for the reply, which will change the brief the owner decides on; building goes ahead after it unless it asks questions */}
-          {idea.thinking && <p className={idea.buildAfterReply ? 'hint build-waits' : 'hint'}>{idea.buildAfterReply ? t.idea.buildWaitsHint : t.idea.waitForReply}</p>}
+          {idea.thinking && <p className={idea.buildAfterReply ? 'hint go-waits' : 'hint'}>{idea.buildAfterReply ? t.idea.buildWaitsHint : t.idea.waitForReply}</p>}
           <div className="actions">
             {idea.buildAfterReply ? (
-              <>
-                <button className="btn primary armed" disabled aria-pressed>
-                  {t.idea.buildWaits}
-                </button>
-                <button className="btn" onClick={() => act({ action: 'unbuild' }, { close: false })}>
-                  {t.idea.unbuild}
-                </button>
-              </>
+              <Armed label={t.idea.buildWaits} undo={t.idea.unbuild} onUndo={() => act({ action: 'unbuild' }, { close: false })} />
             ) : (
               // while the agent works, the click waits for its reply in view; else the panel closes on the built card
               <button className={btn('build')} onClick={() => act({ action: 'build' }, idea.thinking ? { close: false } : { close: true, ack: t.idea.built })}>
@@ -639,7 +632,13 @@ function ProposalView({
   const revising = item.proposal?.revising;
   const answer = usePicks(questions);
   const idea = !!item.proposal?.idea;
-  const accept = (start: boolean) => act({ action: 'accept', ...(start ? {} : { start: false }), ...(answer.picked ? { picks: answer.picks } : {}) }, start ? { close: true, ack: idea ? t.acceptedIdea : t.accepted } : { close: false });
+  const armed = !!item.proposal?.acceptAfterRevision;
+  // while it is reworked, the click waits for the new text in view; else the panel closes on the accepted card
+  const accept = (start: boolean) =>
+    act(
+      { action: 'accept', ...(start ? {} : { start: false }), ...(answer.picked ? { picks: answer.picks } : {}) },
+      start && !revising ? { close: true, ack: idea ? t.acceptedIdea : t.accepted } : { close: false },
+    );
   return (
     <>
       {/* the proposal as it stands, and beside it the talk about what should change, as with an idea */}
@@ -665,10 +664,15 @@ function ProposalView({
           )}
         </div>
       </div>
+      {revising && <p className={armed ? 'hint go-waits' : 'hint'}>{armed ? t.acceptWaitsHint : t.acceptWaitsFor(idea ? t.acceptIdea : t.accept)}</p>}
       <div className="actions">
-        <button className="btn primary" disabled={!!revising} onClick={() => accept(true)}>
-          {idea ? t.acceptIdea : t.accept}
-        </button>
+        {armed ? (
+          <Armed label={t.acceptWaits(idea)} undo={t.unaccept} onUndo={() => act({ action: 'unaccept' }, { close: false })} />
+        ) : (
+          <button className="btn primary" onClick={() => accept(true)}>
+            {idea ? t.acceptIdea : t.accept}
+          </button>
+        )}
         <button className="btn" disabled={!!revising} onClick={() => accept(false)}>
           {idea ? t.acceptAsTask : t.acceptOnly}
         </button>
@@ -677,6 +681,20 @@ function ProposalView({
         </button>
       </div>
       {questions.length > 0 && !revising && <p className="hint">{t.proposalQuestionsHint}</p>}
+    </>
+  );
+}
+
+/** A go clicked while an agent works on the card ("So bauen", "Übernehmen und starten"): it waits armed until the agent is done, its take-back beside it. */
+function Armed({ label, undo, onUndo }: { label: string; undo: string; onUndo: () => void }) {
+  return (
+    <>
+      <button className="btn primary armed" disabled aria-pressed>
+        {label}
+      </button>
+      <button className="btn" onClick={onUndo}>
+        {undo}
+      </button>
     </>
   );
 }

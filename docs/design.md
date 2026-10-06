@@ -211,11 +211,20 @@ An idea is thought through on its card before anything is planned; no worker run
    with words or without) go to the reviser at once, without the Koordinator or an undo window, and
    stand in the conversation as the owner's words; accepting instead takes the picks into the text
    as above. Meanwhile the proposal shows „wird überarbeitet“ (in the
-   conversation, where the field was), cannot be accepted or edited, and takes no second revision;
-   it is not among the cards that need the owner. The owner's words stand in its conversation, then
-   „Vorschlag überarbeitet.“; an agent
+   conversation, where the field was), cannot be edited or only accepted („Übernehmen“), and takes
+   no second revision; it is not among the cards that need the owner. The owner's words stand in
+   its conversation, then „Vorschlag überarbeitet.“; an agent
    that ends without a text leaves the proposal as it was, with the error. A revision still running
-   at a restart starts again. Before,
+   at a restart starts again. „Übernehmen und starten“ (on a proposed idea „Übernehmen und
+   besprechen“) does not wait, as "So bauen" on an idea does not (2026-10-06: the owner who
+   answered the last question knows that starting comes next): clicked during a revision, the
+   proposal is accepted and started once the new text is there, unless it still has questions;
+   then it stays a proposal, and the conversation says why, as it does when the reviser ends
+   without a text. The panel stays open while it waits: the button reads „Startet nach der
+   Überarbeitung …“ with „Doch nicht übernehmen“ beside it, and the canvas card says „danach
+   übernommen“. The waiting button and its take-back are one component with an idea's. Said by
+   voice, accepting during a revision is still refused, see below. Before (2026-10-06), the button
+   was disabled until the new text was there. Before,
    a proposal was the worker's reason and suggestion as one text, in the first person, with open
    questions buried in it; taken as it was, it went to the next worker as if the owner had
    written it.

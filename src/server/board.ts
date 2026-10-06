@@ -582,16 +582,33 @@ export class Board {
     this.changed();
   }
 
+  /** "Übernehmen und starten" during a revision (`on`), or taken back; false when that was so already. */
+  acceptAfterRevision(id: string, on: boolean): boolean {
+    const row = this.own(id);
+    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
+    const { acceptAfterRevision: was, ...proposal }: Proposal = row.proposal ? JSON.parse(row.proposal) : { questions: [] };
+    if (!!was === on) return false;
+    this.store.update(id, { proposal: JSON.stringify({ ...proposal, ...(on ? { acceptAfterRevision: true } : {}) } satisfies Proposal) });
+    this.changed();
+    return true;
+  }
+
   /**
    * The reworked proposal takes the place of the old one, or, without one (the agent failed), the
-   * old one stands as it was. False when the card is no proposal any more (dismissed meanwhile).
+   * old one stands as it was. Accepting it after the revision stays for the caller to settle.
+   * False when the card is no proposal any more (dismissed meanwhile).
    */
   revised(id: string, p?: { title: string; task: string; reason?: string; idea?: boolean; questions: Question[] }): boolean {
     const row = this.store.card(id);
     if (!row || row.canvas_id !== this.canvas.id || row.deleted_at || row.state !== 'proposal') return false;
     const { revising: _, ...was }: Proposal = row.proposal ? JSON.parse(row.proposal) : { questions: [] };
     const proposal: Proposal = p
-      ? { ...(p.idea ? { idea: true } : {}), ...(p.reason?.trim() ? { reason: p.reason.trim().slice(0, 2000) } : {}), questions: p.questions.slice(0, 5) }
+      ? {
+          ...(p.idea ? { idea: true } : {}),
+          ...(p.reason?.trim() ? { reason: p.reason.trim().slice(0, 2000) } : {}),
+          questions: p.questions.slice(0, 5),
+          ...(was.acceptAfterRevision ? { acceptAfterRevision: true } : {}),
+        }
       : was;
     this.store.update(id, { ...(p ? { title: p.title.slice(0, 200), body: p.task.slice(0, 20000) } : {}), proposal: JSON.stringify(proposal) });
     this.changed();
