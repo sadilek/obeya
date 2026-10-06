@@ -64,6 +64,14 @@ export function voiceBackends(env: Record<string, string | undefined> = process.
 /** The Piper voice the confirmations are spoken in: the demos' default German one. */
 export const CONFIRMATION_VOICE: DemoSettings = { language: 'de', voice: 'piper' };
 
+/**
+ * A helper process in a process group of its own (POSIX): Ctrl-C in the terminal goes to the whole
+ * foreground group, and a sidecar it reached died with a traceback while Obeya still waited for its
+ * workers. Not on Windows, where a detached process has no console and every console program it
+ * starts (ffmpeg) opens a window; the Python sidecars ignore Ctrl-C there themselves.
+ */
+export const OWN_GROUP = process.platform !== 'win32';
+
 /** A helper process that stays up and answers JSON lines by id: `{id, …}` in, `{id, …}` or `{id, error}` out. */
 class Sidecar {
   private proc: Subprocess<'pipe', 'pipe', 'inherit'> | null = null;
@@ -79,8 +87,9 @@ class Sidecar {
 
   ensure() {
     if (this.proc && this.proc.exitCode === null) return this.proc;
-    // UTF-8 on stdin and stdout, also where Python would take the code page (Windows)
-    const proc = Bun.spawn(this.cmd(), { stdin: 'pipe', stdout: 'pipe', stderr: 'inherit', env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' } });
+    // UTF-8 on stdin and stdout, also where Python would take the code page (Windows); out of the
+    // terminal's process group, so its Ctrl-C reaches Obeya alone, which ends the sidecar itself
+    const proc = Bun.spawn(this.cmd(), { stdin: 'pipe', stdout: 'pipe', stderr: 'inherit', env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' }, detached: OWN_GROUP });
     this.proc = proc;
     let ready = () => {};
     let ended = (_: Error) => {};

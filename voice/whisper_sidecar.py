@@ -22,6 +22,7 @@ import argparse
 import json
 import math
 import os
+import signal
 import subprocess
 import sys
 
@@ -92,6 +93,8 @@ class Faster:
 
 
 def main() -> None:
+    # Ctrl-C in Obeya's terminal is for Obeya, which ends the sidecar itself once it stops
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     args = argparse.ArgumentParser()
     args.add_argument("--backend", choices=list(MODELS), default="mlx")
     backend = args.parse_args().backend

@@ -612,7 +612,10 @@ the owner's language (`src/core/locale.ts`).
   and pause at a safe point, and Obeya ends once none is (at most 15 minutes). The bar shows it
   ("Beenden wartet auf N Agenten", "Jetzt beenden"), and a second Ctrl-C ends it at once (the
   terminal's Ctrl-C reaches supervisor and server, and the supervisor passes it on: signals within
-  a second count as one press). A stop does not wait for the owner's video or dictation, since the
+  a second count as one press). The sidecars (transcription, speech, narration voice) run in a
+  process group of their own, so the terminal's Ctrl-C does not reach them: they keep working while
+  Obeya waits, and Obeya ends them once it stops (on Windows, where a detached process would open
+  a console window for every program it starts, the Python sidecars ignore Ctrl-C instead). A stop does not wait for the owner's video or dictation, since the
   owner asked for it; it turns a restart that waits into a stop. The next start resumes the
   workers it stopped like a restart does.
 - **Koordinator** — read-only SDK turns on the Lesestand of the card's repository (the home

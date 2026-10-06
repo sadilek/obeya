@@ -10,6 +10,7 @@ as the rest.
 
 import json
 import os
+import signal
 import sys
 import tempfile
 import wave
@@ -23,6 +24,8 @@ def speak(voice: PiperVoice, text: str, path: str) -> None:
 
 
 def main() -> None:
+    # Ctrl-C in Obeya's terminal is for Obeya, which ends the sidecar itself once it stops
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     voice = PiperVoice.load(sys.argv[1])
     warm = os.path.join(tempfile.mkdtemp(prefix="obeya-piper-"), "warm.wav")
     speak(voice, "Ok.", warm)

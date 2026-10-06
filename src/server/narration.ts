@@ -11,6 +11,7 @@
 import type { Subprocess } from 'bun';
 import { isAbsolute } from 'node:path';
 import type { HeldVoice } from '../../plugin/skills/demo/lib/voices.ts';
+import { OWN_GROUP } from './voice.ts';
 
 export interface ClipRequest {
   voice: HeldVoice;
@@ -120,7 +121,7 @@ export class NarrationHost {
     const started = performance.now();
     let child: Running['child'];
     try {
-      child = Bun.spawn(argv, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' } });
+      child = Bun.spawn(argv, { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' }, detached: OWN_GROUP });
     } catch (e) {
       return { error: `the voice did not start: ${e instanceof Error ? e.message : String(e)}` };
     }
