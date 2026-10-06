@@ -36,7 +36,9 @@ services are off the table for now (see Background).
   on ARM in Docker; on a CPU without a GPU a command takes 4–12 s to transcribe. Demo narration
   runs on all three platforms too.
 - *Starting*: only from the checkout with `bun start`. Needs Bun, Claude Code with a login, git
-  and gh; demos also need Node, a browser, ffmpeg and uv, which the settings check.
+  and gh; demos also need Node, a browser, ffmpeg and uv, which the settings check. The
+  installable app is planned in [`app.md`](app.md) (W8): a Tauri shell around the compiled
+  server, signed, updating itself from GitHub Releases, with a setup assistant.
 - *Pictures*: `bun scripts/scratch-obeya.ts <stage.json>` stages a canvas with cards in about a
   second, which is enough for screenshots. Demo videos never go into git.
 - *Site*: `site/` holds the page for obeya.si, built from prototype B (film first): plain HTML
@@ -158,7 +160,7 @@ needs the English interface (W5, W6) and the site (W3).
 - [x] **W7:** Voice on Windows and Linux. Input with faster-whisper (CUDA, else int8 on the CPU),
   output with Piper; the settings show what is missing with install hints per platform, as for
   demos. Checked on Linux (machine or VM) and at least one run on Windows.
-- [ ] **W8:** Plan doc for the installable app. `docs/plan/app.md`, with its own workstreams:
+- [x] **W8:** Plan doc for the installable app. `docs/plan/app.md`, with its own workstreams:
   packaging and builds in CI; signing and notarisation (Apple Developer ID, a Windows
   certificate); auto-update through GitHub Releases; a setup assistant on first start that checks
   Claude Code with its login, git, gh, voice and the demo tools, offers to install them and creates
