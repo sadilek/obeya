@@ -108,7 +108,9 @@ export const api = {
   archiveDone: () => call<{ ids: string[] }>('POST', at('/archive')),
   act: (id: string, a: CardAction) => call<void>('POST', at(`/cards/${id}/act`), a),
   /** A new group with the cards in it; a name a group has already puts them into that one. */
-  createGroup: (name: string, cards: string[]) => call<Group>('POST', at('/groups'), { name, cards }),
+  createGroup: (name: string, cards: string[], hue?: number) => call<Group>('POST', at('/groups'), { name, cards, hue }),
+  /** Ends the group: its cards belong to none. Returns what brings it back. */
+  deleteGroup: (id: string) => call<{ group: Group; cards: string[] }>('DELETE', at(`/groups/${id}`)),
   /** Puts the cards into the group, or with `null` into none. */
   assign: (cards: string[], group: string | null) => call<void>('POST', at('/assign'), { cards, group }),
   /** Stores a screenshot for a message; the message names it by the id. */

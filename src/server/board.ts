@@ -832,15 +832,18 @@ export class Board {
   }
 
   /**
-   * A new group with the cards in it, in the first colour no group has. A name a group has already
-   * (in any case) puts the cards into that group.
+   * A new group with the cards in it, in the colour `hue` or else the first colour no group has. A
+   * name a group has already (in any case) puts the cards into that group.
    */
-  createGroup(name: unknown, cardIds: unknown): Group {
+  createGroup(name: unknown, cardIds: unknown, hue?: unknown): Group {
     const n = this.groupName(name);
     const ids = this.groupable(cardIds);
     if (!ids.length) throw new BadRequest('invalid', 'a group needs a card');
+    if (hue !== undefined && !(Number.isInteger(hue) && (hue as number) >= 0 && (hue as number) < 360)) throw new BadRequest('invalid', 'hue must be a whole number from 0 to 359');
     const groups = this.store.groups(this.canvas.id);
-    const g = groups.find((x) => x.name.toLowerCase() === n.toLowerCase()) ?? this.store.addGroup(this.canvas.id, n, nextHue(groups.map((x) => x.hue)));
+    const g =
+      groups.find((x) => x.name.toLowerCase() === n.toLowerCase()) ??
+      this.store.addGroup(this.canvas.id, n, (hue as number | undefined) ?? nextHue(groups.map((x) => x.hue)));
     this.store.setGroup(ids, g.id);
     this.store.dropEmptyGroups(this.canvas.id);
     this.changed();
@@ -854,6 +857,19 @@ export class Board {
       throw new BadRequest('invalid', `there is a group named ${n} already`);
     this.store.renameGroup(id, n);
     this.changed();
+  }
+
+  /**
+   * Ends the group: its cards, on the canvas and in the archive, belong to none. Returns what
+   * `createGroup` needs to bring it back.
+   */
+  deleteGroup(id: string): { group: Group; cards: string[] } {
+    const g = this.ownGroup(id);
+    const cards = this.store.groupCards(g.id);
+    this.store.setGroup(cards, null);
+    this.store.dropEmptyGroups(this.canvas.id);
+    this.changed();
+    return { group: toGroup(g), cards };
   }
 
   /** The group a card's new offspring (a proposal, a follow-up, a package, a prototype) goes into. */

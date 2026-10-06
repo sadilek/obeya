@@ -141,6 +141,10 @@ describe('groups', () => {
     expect((await post(api('/assign'), JSON.stringify({ cards: [a.id, b.id], group: null }))).status).toBe(204);
     expect(board.snapshot().groups).toEqual([]);
     expect(await codeOf(patch(g.id, JSON.stringify({ name: 'X' })))).toBe('unknownGroup');
+    const h = (await (await post(api('/groups'), JSON.stringify({ name: 'Infra', cards: [a.id], hue: 77 }))).json()) as { id: string };
+    const del = await fetch(new URL(api(`/groups/${h.id}`), server.url), { method: 'DELETE' });
+    expect(await del.json()).toEqual({ group: { id: h.id, name: 'Infra', hue: 77 }, cards: [a.id] });
+    expect(board.snapshot().groups).toEqual([]);
     expect(await codeOf(post(api('/groups'), JSON.stringify({ name: '', cards: [a.id] })))).toBe('emptyText');
     expect(await codeOf(post(api('/assign'), 'null'))).toBe('invalid');
     ws.close();

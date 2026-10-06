@@ -35,6 +35,8 @@ const de = {
     create: 'Neue Gruppe',
     none: 'Keine Gruppe',
     name: 'Name der Gruppe',
+    remove: 'Gruppe löschen',
+    removed: (name: string) => `Gruppe „${name}“ gelöscht`,
   },
   close: 'Schließen (Esc)',
   sheetGrip: 'Breite ziehen · Doppelklick: zurück auf die Standardbreite',

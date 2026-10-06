@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Item, needsYou, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
 import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
@@ -628,6 +628,18 @@ function Canvas({
       showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
     }
   }
+  /** The × on a group's name in the colour ring: its cards belong to none, with a moment to undo. */
+  async function deleteGroup(g: Group) {
+    setRing(null);
+    setLasso([]);
+    try {
+      const gone = await api.deleteGroup(g.id);
+      showAck(t.groups.removed(g.name), () => api.createGroup(gone.group.name, gone.cards, gone.group.hue));
+    } catch (e) {
+      if (!(e instanceof ApiError)) console.error(e);
+      showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  }
   /** A right click on a card opens the colour ring for it; a workstream's is its project's. */
   function onContextMenu(e: React.MouseEvent) {
     if (focusRef.current) return;
@@ -939,6 +951,7 @@ function Canvas({
           groups={snapshot.groups}
           onPick={(group) => assignGroup({ group })}
           onCreate={(name) => assignGroup({ name })}
+          onDelete={deleteGroup}
           onClose={() => (setRing(null), setLasso([]))}
         />
       )}

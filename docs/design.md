@@ -50,7 +50,7 @@ visibly on the walls and decisions are made in front of the wall.
   of the card they come from, a project written from an idea into the idea's; after that the group
   is the card's own. Moving a card never changes its group: a card in another group's territory
   stands there as an island. A group exists while a card belongs to it, on the canvas or in the
-  archive; the last card leaving it ends it.
+  archive; the last card leaving it ends it, and so does deleting it, which takes all its cards out.
 - **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) →
   `approved` → `in PR` → `live`, or `done` when the work changed no code; an agent's `proposal`
   is started when accepted. An
@@ -441,11 +441,15 @@ the owner's language (`src/core/locale.ts`).
   four 5 ms (median; 14 ms at most), dragging at 60 fps, nothing at rest.
   Assigning: Shift + drag on the canvas draws a lasso (without Shift it pans as before), a right
   click on a card takes that card (a workstream: its project); either opens a ring of colour balls
-  at the pointer with the groups, "+" (a new group, named in place) and "∅" (none). Moving towards
-  a ball picks it, a click takes it, Escape closes the ring. By voice, the Koordinator's `group`
+  at the pointer with the groups, "+" (a new group, named in place) and "∅" (none). Each group's
+  name stands outside its ball, so all show at once. Moving towards a ball or onto its name picks
+  it, a click takes it, Escape closes the ring. The picked group's name carries a ×: it deletes the
+  group (its cards, archived ones too, belong to none), and "Rückgängig" brings it back in its
+  colour with the same cards. By voice, the Koordinator's `group`
   (cards into a group by name, a new name creates it), `ungroup` and `rename_group`; it sees each
   card's group and the canvas's groups. The API: `POST /api/c/<canvas>/groups` (name and first
-  cards; a name a group has already takes that group), `PATCH …/groups/<id>` (name), `POST
+  cards, a colour when one comes back; a name a group has already takes that group), `PATCH
+  …/groups/<id>` (name), `DELETE …/groups/<id>` (returns the group and its cards), `POST
   …/assign` (cards and a group, `null` for none); the snapshot carries the groups, every card its
   group.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
@@ -1209,8 +1213,9 @@ the repository; the copy on the project is only for the archive).
   drifting honeycomb, and contours. All ran smoothly at about 30 cards; the owner chose the
   contours, which are calm, need no WebGL and cost nothing at rest, over the shaders' livelier
   look, which costs frames all the time. The territories animate only when something changes.
-- A group ends with its last card instead of being deleted on its own: it is made by putting cards
-  into it, so there is never an empty group to clean up, and the colour ring stays short.
+- A group ends with its last card: it is made by putting cards into it, so there is never an empty
+  group to clean up. Deleting one ends it at once by taking its cards out, for a group whose last
+  cards sit in the archive, out of reach of the ring (2026-10-06).
 - The dashed line from a proposal, follow-up or prototype to its card joins the sides that face
   each other (left and right when the two stand more beside than above each other) and runs above
   projects but below cards, so a line from a workstream stays visible over its project

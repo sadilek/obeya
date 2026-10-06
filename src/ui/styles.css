@@ -733,6 +733,16 @@ button.link:hover { text-decoration: underline; }
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 5px hsl(var(--h) 80% 55% / .5), 0 0 26px hsl(var(--h) 90% 55% / .8); }
 .ball.new, .ball.none { background: var(--card); box-shadow: 0 0 0 1.5px var(--line), 0 4px 12px rgba(0,0,0,.12); }
 .ring.open .ball.new.hot, .ring.open .ball.none.hot { box-shadow: 0 0 0 2px var(--ink); color: var(--ink); }
+.gtag { position: absolute; display: flex; align-items: center; gap: 4px; box-sizing: border-box; padding: 2px 9px; border-radius: 11px; white-space: nowrap;
+  font: 500 12px/18px system-ui; color: var(--ink); cursor: pointer;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); box-shadow: 0 0 0 1px hsl(var(--h) 60% 55% / .45);
+  opacity: 0; transition: opacity .2s, box-shadow .15s; }
+.gtag span { overflow: hidden; text-overflow: ellipsis; }
+.ring.open .gtag { opacity: 1; }
+.gtag.hot { font-weight: 600; box-shadow: 0 0 0 2px hsl(var(--h) 75% 52%), 0 0 14px hsl(var(--h) 90% 55% / .45); }
+.gdel { flex: none; width: 18px; height: 18px; margin-right: -5px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center;
+  background: transparent; color: var(--muted); font: 600 14px/1 system-ui; cursor: pointer; }
+.gdel:hover { background: var(--ink); color: var(--bg); }
 .rcap { position: absolute; left: -60px; width: 120px; top: -9px; text-align: center; font: 600 13px/18px system-ui; color: var(--ink); white-space: nowrap; }
 .rname { position: absolute; left: -80px; top: -16px; width: 160px; height: 32px; box-sizing: border-box; border-radius: 16px; border: 1.5px solid var(--working);
   background: var(--card); color: var(--ink); font: 14px system-ui; padding: 0 12px; text-align: center; outline: none; box-shadow: 0 0 18px color-mix(in srgb, var(--working) 40%, transparent); }

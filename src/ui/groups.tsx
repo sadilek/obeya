@@ -228,11 +228,16 @@ export function inside(p: Pt, poly: Pt[]) {
 
 type Ball = { kind: 'group'; g: Group } | { kind: 'new' } | { kind: 'none' };
 const RADIUS = 84;
+/** Where a group's name starts, out from the middle: just past its ball, also when that is picked and grows. */
+const LABEL_RADIUS = 124;
+/** How wide a group's name gets before it ends in "…" (the full name shows on hover). */
+const LABEL_MAX = 140;
 const RING_MARGIN = 120;
 
 /**
- * A ring of colour balls around `at` (screen): the groups, a new one, none. Moving towards a ball
- * picks it, a click takes it; a new group asks for its name first.
+ * A ring of colour balls around `at` (screen): the groups, each with its name beside it, a new one,
+ * none. Moving towards a ball or onto its name picks it, a click takes it; a new group asks for its
+ * name first. The picked group's name carries a × that deletes the group.
  */
 export function Ring({
   at: pointer,
@@ -240,6 +245,7 @@ export function Ring({
   groups,
   onPick,
   onCreate,
+  onDelete,
   onClose,
 }: {
   at: Pt;
@@ -247,10 +253,13 @@ export function Ring({
   groups: Group[];
   onPick: (group: string | null) => void;
   onCreate: (name: string) => void;
+  onDelete: (group: Group) => void;
   onClose: () => void;
 }) {
-  // the ring stays clear of the screen's edges and the bar
-  const at = { x: Math.min(Math.max(pointer.x, RING_MARGIN), innerWidth - RING_MARGIN), y: Math.min(Math.max(pointer.y, RING_MARGIN + 50), innerHeight - RING_MARGIN) };
+  // the ring stays clear of the screen's edges and the bar, the groups' names with it
+  const mx = groups.length ? LABEL_RADIUS + LABEL_MAX : RING_MARGIN;
+  const my = groups.length ? LABEL_RADIUS + 24 : RING_MARGIN;
+  const at = { x: Math.min(Math.max(pointer.x, mx), innerWidth - mx), y: Math.min(Math.max(pointer.y, my + 50), innerHeight - my) };
   const balls: Ball[] = [...groups.map((g) => ({ kind: 'group' as const, g })), { kind: 'new' }, { kind: 'none' }];
   const [hot, setHot] = useState(-1);
   const [naming, setNaming] = useState(false);
@@ -315,6 +324,41 @@ export function Ring({
             {b.kind === 'new' ? '+' : b.kind === 'none' ? '∅' : ''}
           </div>
         ))}
+        {balls.map(
+          (b, k) =>
+            b.kind === 'group' && (
+              // the name stands outside its ball, turned away from the middle
+              <div
+                key={`n-${b.g.id}`}
+                className={`gtag${k === hot ? ' hot' : ''}`}
+                title={b.g.name}
+                style={
+                  {
+                    '--h': b.g.hue,
+                    maxWidth: LABEL_MAX,
+                    left: Math.cos(angle(k)) * LABEL_RADIUS,
+                    top: Math.sin(angle(k)) * LABEL_RADIUS,
+                    transform: `translate(${((Math.cos(angle(k)) - 1) / 2) * 100}%, ${((Math.sin(angle(k)) - 1) / 2) * 100}%)`,
+                    transitionDelay: `${k * 28 + 80}ms`,
+                  } as React.CSSProperties
+                }
+                onPointerMove={(e) => (e.stopPropagation(), naming || setHot(k))}
+                onPointerDown={(e) => (e.preventDefault(), e.stopPropagation(), naming ? onClose() : pick(k))}
+              >
+                <span>{b.g.name}</span>
+                {k === hot && !naming && (
+                  <button
+                    className="gdel"
+                    title={t.groups.remove}
+                    aria-label={t.groups.remove}
+                    onPointerDown={(e) => (e.preventDefault(), e.stopPropagation(), onDelete(b.g))}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ),
+        )}
         <div className="rcap">{caption}</div>
         {naming && (
           <input

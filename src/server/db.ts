@@ -446,6 +446,11 @@ export class Store {
     return this.group(id)!;
   }
 
+  /** The cards in the group, on the canvas or in the archive. */
+  groupCards(id: string): string[] {
+    return (this.db.query('SELECT id FROM cards WHERE group_id = $id AND deleted_at IS NULL ORDER BY rowid').all({ id }) as { id: string }[]).map((r) => r.id);
+  }
+
   renameGroup(id: string, name: string) {
     this.db.query('UPDATE groups SET name = $name WHERE id = $id').run({ id, name });
   }

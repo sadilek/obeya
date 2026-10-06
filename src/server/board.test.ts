@@ -428,6 +428,27 @@ describe('groups', () => {
     expect(board.snapshot().groups[0]!.name).toBe('NEU');
   });
 
+  test('deleting a group takes all its cards out, archived ones too, and it comes back in its colour', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const b = board.create({ title: 'B', x: 400, y: 0 });
+    const c = board.create({ title: 'C', x: 800, y: 0 });
+    const g = board.createGroup('Alt', [a.id, b.id]);
+    const other = board.createGroup('Anders', [c.id]);
+    board.work(b.id, { state: 'live' });
+    board.archive([b.id]);
+    const gone = board.deleteGroup(g.id);
+    expect(gone).toEqual({ group: g, cards: [a.id, b.id] });
+    expect(board.snapshot().groups).toEqual([other]);
+    const archived = (id: string) => board.archived().find((i) => i.id === id)!.group;
+    expect([groupOf(a.id), archived(b.id), groupOf(c.id)]).toEqual([undefined, undefined, other.id]);
+    expect(() => board.deleteGroup(g.id)).toThrow(BadRequest);
+    // back, as the undo brings it
+    const back = board.createGroup(gone.group.name, gone.cards, gone.group.hue);
+    expect(back).toMatchObject({ name: 'Alt', hue: g.hue });
+    expect([groupOf(a.id), archived(b.id)]).toEqual([back.id, back.id]);
+    expect(() => board.createGroup('Neu', [a.id], 400)).toThrow(BadRequest);
+  });
+
   test('rejects invalid input', () => {
     const a = board.create({ title: 'A', x: 0, y: 0 });
     const code = (fn: () => unknown) => {
