@@ -88,6 +88,8 @@ function Canvas({
   const [moved, setMoved] = useState<Record<string, Pos>>({});
   // Cards created here, until the snapshot carries them.
   const [pending, setPending] = useState<Item[]>([]);
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
   useEffect(() => {
     const byId = new Map(snapshot.items.map((i) => [i.id, i]));
     setMoved((m) => {
@@ -101,7 +103,9 @@ function Canvas({
   }, [snapshot]);
 
   const items = useMemo(() => {
-    const all = [...snapshot.items, ...pending];
+    // the snapshot may carry a new card before its creation answers: then it is there once
+    const ids = new Set(snapshot.items.map((i) => i.id));
+    const all = [...snapshot.items, ...pending.filter((i) => !ids.has(i.id))];
     return all.map((i) => (moved[i.id] ? { ...i, ...moved[i.id] } : i));
   }, [snapshot, pending, moved]);
   const itemsRef = useRef(items);
@@ -265,7 +269,8 @@ function Canvas({
     if (!i.archivedAt) await flyOrJump(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), FLY_MS, quick);
     const el = fromEl(i.id, !!f);
     const panel = panelRef.current;
-    if (!el || !panel) return;
+    // nothing to unfold from: the canvas stays as it was, open for the next card
+    if (!el || !panel) return setFocus(f);
     const r = el.getBoundingClientRect();
     flushSync(() => setOpenId(i.id));
     panel.style.setProperty('--c', `var(--${i.state})`);
@@ -401,7 +406,8 @@ function Canvas({
     const [w, h] = CARD_SIZE.task;
     const card = await api.create({ title: '', x: Math.round(world.x - w / 2), y: Math.round(world.y - h / 2) });
     flushSync(() => {
-      setPending((p) => [...p, card]);
+      // the snapshot that carries it may have come first: then it is no longer pending
+      if (!snapshotRef.current.items.some((i) => i.id === card.id)) setPending((p) => [...p, card]);
       setPopId(card.id);
     });
     await open(card);
