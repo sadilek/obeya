@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obeya: direct AI coding agents like a team</title>
+<meta name="description" content="Obeya is an open-source canvas for directing AI coding agents. Every task is a card, agents work in the background, and you decide by voice from a narrated demo instead of reading code.">
+<meta property="og:title" content="Obeya: direct AI coding agents like a team">
+<meta property="og:description" content="An open-source canvas for directing AI coding agents. You approve the demo, not the code.">
+<meta property="og:image" content="https://obeya.si/img/canvas.png">
+<meta property="og:url" content="https://obeya.si/">
+<link rel="icon" href="img/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="preload" href="fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <a href="#" class="brand"><img src="img/wordmark.svg" alt="Obeya" width="110" height="28"></a>
+  <nav>
+    <a href="#how">How it works</a>
+    <a href="#wall">Principles</a>
+    <a href="#start">Get started</a>
+    <a class="gh" href="https://github.com/sadilek/obeya">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <p class="eyebrow">Open source · runs on your machine</p>
+    <h1>Direct AI coding agents like an engineering director directs a team.</h1>
+    <p class="lede">Every task is a card on a canvas. Agents work in the background, each in its own clone.
+      You make the decisions, by voice, from a narrated demo video instead of reading code.</p>
+    <div class="cta">
+      <a class="btn primary" href="#start">Get started</a>
+      <a class="btn" href="https://github.com/sadilek/obeya">View on GitHub</a>
+    </div>
+  </section>
+
+  <section class="film" aria-label="Demo video">
+    <figure class="player">
+      <img src="img/canvas.png" width="1440" height="813" alt="The Obeya canvas: a project with workstreams and cards that are working, waiting for a decision or in review">
+      <span class="play" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+      </span>
+      <figcaption>Narrated demo, two minutes · <em>coming soon</em></figcaption>
+    </figure>
+  </section>
+
+  <section class="pillars">
+    <article class="pillar">
+      <div class="text">
+        <span class="tag blue">Canvas</span>
+        <h2>Space is memory.</h2>
+        <p>Every task is a card you place where it belongs. Projects hold their workstreams; related work sits together.
+          You know where things are the way you know where things are in a room, and the colour says what each card needs.</p>
+        <ul class="legend">
+          <li><i class="dot blue"></i>Agent working</li>
+          <li><i class="dot amber"></i>Waiting for you</li>
+          <li><i class="dot green"></i>Approved</li>
+        </ul>
+      </div>
+      <img class="shot" src="img/cards.png" width="1410" height="520" loading="lazy" alt="Cards on the canvas in their states">
+    </article>
+
+    <article class="pillar flip">
+      <div class="text">
+        <span class="tag amber">Voice</span>
+        <h2>Push to talk, not terminals.</h2>
+        <p>Hold the space bar and say what you want: a new task, an answer to an agent's question, feedback on a demo.
+          Obeya routes it to the card you are looking at and answers with a short confirmation and an undo.
+          No tabs of terminals to babysit.</p>
+      </div>
+      <img class="shot" src="img/voice.png" width="990" height="610" loading="lazy" alt="An agent's question, answered by holding push-to-talk">
+    </article>
+
+    <article class="pillar">
+      <div class="text">
+        <span class="tag green">Demos</span>
+        <h2>Approve the demo, not the code.</h2>
+        <p>Every change comes back as a narrated screen recording with chapters and a short report.
+          Watch it, approve it or say what to change. Obeya lands the work on main.</p>
+      </div>
+      <img class="shot" src="img/demo.png" width="1122" height="678" loading="lazy" alt="A card unfolded with its demo video, chapters and the approve button">
+    </article>
+  </section>
+
+  <section class="how" id="how">
+    <div class="head">
+      <h2>From idea to main in four steps</h2>
+      <p>You decide twice. The agents do the rest.</p>
+    </div>
+    <div class="flight" id="flight">
+      <div class="view">
+        <ol class="steps world">
+          <li class="step s-idea" data-x="0" data-y="40" data-w="380">
+            <div class="kind">Step 1 · Idea</div>
+            <h3>Say what you want</h3>
+            <div class="body">
+              <p>Say it or type it. It becomes a card on the canvas, where you put it.</p>
+              <div class="mini" aria-hidden="true"><span class="key">hold <b>Space</b></span><span class="said">“Export the invoices as CSV.”</span></div>
+            </div>
+          </li>
+          <li class="step s-working" data-x="660" data-y="-260" data-w="400">
+            <div class="kind">Step 2 · Agent works</div>
+            <h3>An agent takes the card</h3>
+            <div class="body">
+              <p>A Claude Code agent works on it in its own clone, on its own branch. You don't watch.</p>
+              <div class="mini" aria-hidden="true"><code>obeya/export-invoices-csv</code><span class="state"><i></i>Agent working</span></div>
+            </div>
+          </li>
+          <li class="step s-waiting" data-x="1180" data-y="200" data-w="420">
+            <div class="kind">Step 3 · Demo</div>
+            <h3>It comes back with a demo</h3>
+            <div class="body">
+              <p>A narrated video of the finished work and a short report. Questions come back as questions, on the card.</p>
+              <div class="mini still" aria-hidden="true"><span class="play"></span><span class="chapters"><i></i><i></i><i></i></span></div>
+            </div>
+          </li>
+          <li class="step s-approved" data-x="560" data-y="660" data-w="380">
+            <div class="kind">Step 4 · Approve</div>
+            <h3>You approve</h3>
+            <div class="body">
+              <p>Or say what to change. Obeya lands the branch on main, or carries the pull request to the merge.</p>
+              <div class="mini" aria-hidden="true"><span class="state"><i></i>Landed on main</span></div>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="wall-section" id="wall">
+    <div class="head">
+      <h2>What hangs on the wall</h2>
+      <p>Six principles every feature of Obeya answers to.</p>
+    </div>
+    <ul class="pinboard">
+      <li class="card s-working tilt-a">
+        <div class="kind">Principle 1</div>
+        <h3>One surface</h3>
+        <p>Everything starts on the canvas. Detail unfolds in place and folds back. Nothing opens a new window, and the view never jumps.</p>
+      </li>
+      <li class="card s-waiting tilt-b">
+        <div class="kind">Principle 2</div>
+        <h3>Space is memory</h3>
+        <p>A card stays where you put it, at a size you can read. A small screen shows part of the canvas, never shrunken cards.</p>
+      </li>
+      <li class="card s-approved tilt-c">
+        <div class="kind">Principle 3</div>
+        <h3>Decisions, not supervision</h3>
+        <p>You are pulled in only for a decision: a demo to approve, a question only you can answer, a proposal. Everything else runs.</p>
+      </li>
+      <li class="card s-waiting tilt-c">
+        <div class="kind">Principle 4</div>
+        <h3>Every change gets a demo</h3>
+        <p>Half a minute for a fix, a few minutes for a feature, never padded. You approve what you saw, not a diff.</p>
+      </li>
+      <li class="card s-approved tilt-a">
+        <div class="kind">Principle 5</div>
+        <h3>Voice first, mouse welcome</h3>
+        <p>Hold a key and speak, anywhere. A short confirmation answers, written and spoken, with undo. Buttons stay for the obvious.</p>
+      </li>
+      <li class="card s-working tilt-b">
+        <div class="kind">Principle 6</div>
+        <h3>Your repository, your rules</h3>
+        <p>What is specific to a project lives in an adapter inside that repository. The core stays general.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="name">
+    <div class="kanji" aria-hidden="true">大部屋</div>
+    <div>
+      <h2>Why “Obeya”</h2>
+      <p><em>Obeya</em> is Japanese for “big room”. In lean management it is the room where every project hangs on the walls,
+        so the people in charge decide in front of the whole picture instead of chasing status.
+        This is that room, for a team of agents.</p>
+    </div>
+  </section>
+
+  <section class="start" id="start">
+    <h2>Get started</h2>
+    <div class="cols">
+      <div>
+        <h3>You need</h3>
+        <ul class="req">
+          <li><a href="https://bun.sh">Bun</a> 1.3 or newer</li>
+          <li><a href="https://claude.com/claude-code">Claude Code</a>, installed and logged in</li>
+          <li>git, and the <a href="https://cli.github.com">GitHub CLI</a> <code>gh</code> for pull requests</li>
+        </ul>
+        <p class="small">Agents run locally through your own Claude Code installation and login. Your code stays on your machine.
+          Voice input needs a Mac with Apple Silicon for now; Windows and Linux follow.
+          Demos need Node, a Chromium browser, ffmpeg and uv; the settings in the app say what is missing.</p>
+      </div>
+      <div>
+        <h3>Then</h3>
+<pre><code><span class="c"># get it</span>
+git clone https://github.com/sadilek/obeya.git
+cd obeya
+bun install
+
+<span class="c"># open a canvas for one of your repositories</span>
+bun start ~/dev/your-repo</code></pre>
+        <p class="small">The canvas opens on <code>http://127.0.0.1:4417</code>. Obeya is open source under the
+          <a href="https://github.com/sadilek/obeya/blob/main/LICENSE">MIT licence</a>.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <img src="img/logo.svg" alt="" width="20" height="20">
+  <span>Obeya is built with Obeya.</span>
+  <a href="https://github.com/sadilek/obeya">GitHub</a>
+  <a href="https://github.com/sadilek/obeya/blob/main/LICENSE">MIT licence</a>
+</footer>
+
+<script src="flight.js" defer></script>
+</body>
+</html>

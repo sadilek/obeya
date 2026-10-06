@@ -38,9 +38,14 @@ services are off the table for now (see Background).
   and gh; demos also need Node, a browser, ffmpeg and uv, which the settings check.
 - *Pictures*: `bun scripts/scratch-obeya.ts <stage.json>` stages a canvas with cards in about a
   second, which is enough for screenshots. Demo videos never go into git.
-- *Site prototypes*: three variants exist as prototype cards on the canvas, each a static page in
-  `site/` on its own branch: A, a canvas to fly through; B, film first; C, the wall (manifesto).
-  The owner chose B. A and C stay on the canvas for now: ideas from them go into B.
+- *Site*: `site/` holds the page for obeya.si, built from prototype B (film first): plain HTML
+  and CSS, opened straight from the file, no build. From A it takes the four steps as cards on a
+  canvas the camera flies through, each unfolding in focus (`site/flight.js`; on a phone, with
+  reduced motion and without JavaScript they stay a plain list); from C the six principles as
+  cards on a wall. Inter and the three characters of 大部屋 (Noto Serif JP) are served from
+  `site/fonts/` with their OFL licences; logo and wordmark are copies from `src/ui/logo/`. The
+  screenshots are B's, of the German interface, and the film is a still until W9. Not published
+  yet (W4). The prototype cards A, B and C can go.
 
 ## Design
 
@@ -94,7 +99,7 @@ needs the English interface (W5, W6) and the site (W3).
   says how Obeya itself is built (with Obeya, plan docs, cards, demos). Making the repository
   public with a cleaned history is decided already and is the owner's step on GitHub; a task
   already cleaning the history gets this added rather than a second one.
-- [ ] **W3:** The site. Built from prototype B (film first) as `site/index.html` with its assets,
+- [x] **W3:** The site. Built from prototype B (film first) as `site/index.html` with its assets,
   with the ideas from prototypes A and C the owner names; Inter served from `site/`, works on a
   phone, readable without JavaScript. Once it has landed, the prototype cards A, B and C can go.
 - [ ] **W4:** Publishing on GitHub Pages under obeya.si. A GitHub Actions workflow publishes `site/` to Pages (Pages

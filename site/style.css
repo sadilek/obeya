@@ -1,0 +1,187 @@
+@font-face {
+  font-family: Inter; font-style: normal; font-weight: 400 700; font-display: swap; src: url(fonts/inter.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Noto Serif JP, cut down to the three characters of 大部屋 */
+@font-face { font-family: "Obeya Kanji"; font-weight: 700; font-display: swap; src: url(fonts/obeya-kanji.woff2) format("woff2"); }
+
+:root {
+  --paper: #f6f5f2; --ink: #1c1b19; --muted: #6b6862; --line: #e4e1da; --card: #fff; --dot: #dad6cd;
+  --blue: #3b82f6; --amber: #f59e0b; --green: #16a34a; --pink: #db2777; --grey: #a9a49a;
+  --shadow: 0 1px 2px rgba(30,25,15,.06), 0 6px 18px rgba(30,25,15,.07);
+  --lift: 0 2px 4px rgba(30,25,15,.08), 0 18px 40px rgba(30,25,15,.16);
+  --wide: 1120px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--paper); color: var(--ink);
+  font: 17px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img { display: block; max-width: 100%; height: auto; }
+h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.15; margin: 0; text-wrap: balance; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .92em; }
+
+.top { max-width: var(--wide); margin: 0 auto; padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; }
+.top nav { display: flex; gap: 26px; font-size: 15px; font-weight: 500; }
+.top nav a { text-decoration: none; color: var(--muted); }
+.top nav a:hover { color: var(--ink); }
+.top nav .gh { color: var(--ink); }
+
+section { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
+.head { margin-bottom: 36px; }
+.head h2, .start > h2 { font-size: clamp(28px, 3vw, 38px); }
+.head p { color: var(--muted); margin: 10px 0 0; }
+
+/* ---------- hero and film ---------- */
+.hero { padding-top: 72px; max-width: 900px; text-align: center; }
+.eyebrow { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 20px; }
+.hero h1 { font-size: clamp(34px, 5.2vw, 60px); font-weight: 700; letter-spacing: -0.035em; }
+.lede { font-size: clamp(17px, 1.6vw, 20px); color: var(--muted); max-width: 680px; margin: 24px auto 0; }
+.cta { display: flex; gap: 12px; justify-content: center; margin-top: 32px; flex-wrap: wrap; }
+.btn { display: inline-block; padding: 12px 22px; border-radius: 999px; font-weight: 600; font-size: 15px; text-decoration: none;
+  background: var(--card); border: 1px solid var(--line); }
+.btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+.film { margin-top: 64px; }
+.player { position: relative; margin: 0; border-radius: 16px; overflow: hidden; background: #000;
+  box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 24px 60px -20px rgba(28,27,25,.35); }
+.player img { width: 100%; opacity: .92; }
+.player .play { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 84px; height: 84px; border-radius: 50%;
+  background: rgba(28,27,25,.82); color: #fff; display: grid; place-items: center; padding-left: 4px;
+  box-shadow: 0 0 0 10px rgba(255,255,255,.35); }
+.player figcaption { position: absolute; left: 16px; bottom: 14px; font-size: 13px; font-weight: 500; color: #fff;
+  background: rgba(28,27,25,.72); padding: 6px 12px; border-radius: 999px; }
+
+/* ---------- pillars ---------- */
+.pillars { margin-top: 128px; display: grid; gap: 112px; }
+.pillar { display: grid; grid-template-columns: 5fr 7fr; gap: 56px; align-items: center; }
+.pillar.flip .text { order: 2; }
+.pillar h2 { font-size: clamp(28px, 3vw, 38px); margin: 14px 0 16px; }
+.pillar p { color: var(--muted); margin: 0; }
+.shot { border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 18px 40px -24px rgba(28,27,25,.4); }
+.tag { display: inline-block; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 6px; border-left: 4px solid; background: var(--card); }
+.tag.blue { border-color: var(--blue); } .tag.amber { border-color: var(--amber); } .tag.green { border-color: var(--green); }
+.legend { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; font-weight: 500; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
+.dot.blue { background: var(--blue); } .dot.amber { background: var(--amber); } .dot.green { background: var(--green); }
+
+/* ---------- cards, as on Obeya's canvas ---------- */
+.s-idea { --c: var(--pink); } .s-working { --c: var(--blue); } .s-waiting { --c: var(--amber); }
+.s-approved { --c: var(--green); } .s-planned { --c: var(--grey); }
+.card, .step { position: relative; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px 18px 24px;
+  background-image: linear-gradient(var(--c), var(--c)); background-size: 5px 100%; background-repeat: no-repeat; list-style: none; }
+.s-idea.card, .s-idea.step { background-color: color-mix(in srgb, var(--pink) 4%, var(--card)); }
+.kind { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.card h3, .step h3 { font-size: 19px; margin-top: 6px; }
+.card p, .step p { margin: 8px 0 0; font-size: 15px; color: #4a4741; line-height: 1.5; }
+.state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--c); }
+.state i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.s-working .state i { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.wall, .pinboard, .how.fly .view { background-color: var(--paper); background-image: radial-gradient(var(--dot) 1.2px, transparent 1.2px); background-size: 22px 22px; }
+
+/* ---------- how it works: four cards, or a canvas the camera flies through ---------- */
+.how { margin-top: 144px; }
+.steps { padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.step:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 18px; color: var(--muted); font-weight: 600; font-family: system-ui, sans-serif; }
+.step .mini { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: 13px; }
+.step .key { padding: 3px 9px; border-radius: 6px; background: var(--paper); border: 1px solid var(--line); color: var(--muted); }
+.step .said { font-style: italic; color: var(--ink); }
+.step code { font-size: 12px; padding: 3px 7px; border-radius: 6px; background: var(--paper); }
+.step .still { position: relative; height: 92px; border-radius: 8px; background: #2a2926; display: block; }
+.still .play { position: absolute; left: 50%; top: 40%; translate: -50% -50%; width: 32px; height: 32px; border-radius: 50%; background: #fff; }
+.still .play::after { content: ""; position: absolute; left: 12px; top: 9px; border: 7px solid transparent; border-left: 11px solid var(--ink); border-right: 0; }
+.still .chapters { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 3px; }
+.still .chapters i { height: 3px; flex: 1; background: rgba(255,255,255,.35); border-radius: 2px; }
+.still .chapters i:first-child { background: var(--amber); }
+
+/* with flight.js on a large screen: the steps hang on a canvas, and scrolling flies from one to the next */
+.how.fly .flight { position: relative; width: 100vw; left: 50%; margin-left: -50vw; }
+.how.fly .view { position: sticky; top: 0; height: 100vh; overflow: hidden; border-block: 1px solid var(--line); }
+.how.fly .world { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; will-change: transform; }
+.how.fly .step, .how.fly .deco { position: absolute; overflow: hidden; }
+.how.fly .step::after { content: none; }
+.how.fly .step .body { position: absolute; left: 24px; }
+.how.fly .step.focus { box-shadow: 0 0 0 2px var(--c), var(--lift); }
+.deco { width: 250px; background-color: var(--card); }
+.deco .ttl { font-size: 15px; font-weight: 600; margin-top: 3px; line-height: 1.3; }
+.deco .state { margin-top: 10px; font-size: 12px; }
+.deco.s-waiting { box-shadow: 0 0 0 2px var(--amber), var(--shadow); }
+.territory { position: absolute; border-radius: 28px; background: color-mix(in srgb, var(--c) 7%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--c) 22%, transparent); }
+.territory span { position: absolute; left: 22px; top: 14px; font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--c) 70%, var(--ink)); }
+.progress { position: absolute; right: 24px; top: 50%; translate: 0 -50%; display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.progress a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; font-size: 13px; font-weight: 500; color: var(--muted); text-decoration: none; }
+.progress a::after { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--dot); }
+.progress a span { opacity: 0; transition: opacity .2s; }
+.progress a.on { color: var(--ink); } .progress a.on span, .progress:hover span { opacity: 1; }
+.progress a.on::after { background: var(--c); }
+
+/* ---------- the wall of principles ---------- */
+.wall-section { margin-top: 144px; }
+.pinboard { list-style: none; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px 30px; padding: 44px 40px;
+  border-radius: 28px; border: 1.5px solid rgba(120,110,95,.18); }
+.pinboard .card { padding: 18px 20px 20px 26px; background-size: 6px 100%; transition: transform .25s, box-shadow .25s; }
+.pinboard .card h3 { font-size: 21px; letter-spacing: -.01em; }
+.pinboard .card:hover { transform: translateY(-3px) rotate(0deg); box-shadow: var(--lift); }
+.tilt-a { transform: rotate(-.6deg); } .tilt-b { transform: rotate(.5deg) translateY(10px); } .tilt-c { transform: rotate(-.2deg) translateY(-4px); }
+
+/* ---------- the name ---------- */
+.name { margin-top: 144px; display: grid; grid-template-columns: auto 1fr; gap: 56px; align-items: center;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding-top: 64px; padding-bottom: 64px; }
+.kanji { font-size: clamp(64px, 9vw, 120px); font-weight: 700; line-height: 1; letter-spacing: .02em; color: var(--ink);
+  font-family: "Obeya Kanji", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif; }
+.name h2 { font-size: 24px; margin-bottom: 12px; }
+.name p { color: var(--muted); margin: 0; max-width: 620px; font-size: 18px; }
+
+/* ---------- getting started ---------- */
+.start { margin-top: 128px; margin-bottom: 120px; }
+.start > h2 { margin-bottom: 36px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+.cols > div { min-width: 0; }
+.start h3 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
+.req { padding-left: 20px; margin: 0; } .req li { margin-bottom: 6px; }
+.small { font-size: 15px; color: var(--muted); margin-top: 18px; }
+pre { margin: 0; background: var(--ink); color: #f6f5f2; border-radius: 12px; padding: 22px 24px; overflow-x: auto;
+  font: 15px/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+pre code { font-size: inherit; }
+pre .c { color: #8f8b83; }
+
+footer { max-width: var(--wide); margin: 0 auto; padding: 28px 24px 48px; display: flex; gap: 18px; align-items: center;
+  font-size: 14px; color: var(--muted); border-top: 1px solid var(--line); }
+footer span { margin-right: auto; }
+
+@media (max-width: 900px) {
+  .steps { grid-template-columns: 1fr 1fr; }
+  .step:nth-child(2)::after { content: none; }
+  .pinboard { grid-template-columns: 1fr 1fr; padding: 32px 24px; }
+}
+@media (max-width: 760px) {
+  body { font-size: 16px; }
+  .top nav a:not(.gh) { display: none; }
+  .hero { padding-top: 40px; text-align: left; }
+  .lede { margin-left: 0; }
+  .cta { justify-content: flex-start; }
+  .film { margin-top: 40px; padding: 0 12px; }
+  .player { border-radius: 10px; }
+  .player .play { width: 56px; height: 56px; box-shadow: 0 0 0 6px rgba(255,255,255,.35); }
+  .player figcaption { font-size: 11px; left: 8px; bottom: 8px; }
+  .pillars { margin-top: 80px; gap: 72px; }
+  .pillar { grid-template-columns: 1fr; gap: 24px; }
+  .pillar.flip .text { order: 0; }
+  .how, .wall-section, .name { margin-top: 96px; }
+  .steps { grid-template-columns: 1fr; gap: 14px; }
+  .step:not(:last-child)::after, .step:nth-child(2)::after { content: "↓"; right: auto; left: 28px; top: auto; bottom: -21px; }
+  .pinboard { grid-template-columns: 1fr; gap: 18px; padding: 20px 16px; border-radius: 20px; }
+  .tilt-b { transform: rotate(.5deg); } .tilt-c { transform: rotate(-.2deg); }
+  .name { grid-template-columns: 1fr; gap: 20px; padding-top: 40px; padding-bottom: 40px; }
+  .cols { grid-template-columns: 1fr; gap: 32px; }
+  pre { font-size: 14px; }
+  footer { flex-wrap: wrap; }
+  footer span { flex: 1 1 calc(100% - 40px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .s-working .state i { animation: none; }
+  .pinboard .card { transition: none; }
+}
