@@ -159,6 +159,11 @@ export function serve(
             return { restarting: due };
           }),
       },
+      // the language Obeya speaks to the owner: chosen in the settings, else the system's
+      '/api/language': {
+        GET: () => (config ? Response.json(config.language()) : new Response('Not found', { status: 404 })),
+        PUT: async (req) => (config ? handle(async () => config.saveLanguage(await req.json())) : new Response('Not found', { status: 404 })),
+      },
       // the demo settings: narration language and voice, read by every render
       '/api/demo-settings': {
         GET: () => (config ? Response.json(config.demo()) : new Response('Not found', { status: 404 })),

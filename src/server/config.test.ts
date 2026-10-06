@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CanvasConfig, ConfigView, DemoSettingsView } from '../core/types';
+import type { CanvasConfig, ConfigView, DemoSettingsView, LanguageView } from '../core/types';
 import { CanvasRuntime } from './canvas';
 import { Config, demoSettingsProblems, readConfigFile } from './config';
 import { Store } from './db';
 import { serve } from './server';
+import { ownerLanguage } from './settings';
 import { FakeRuntime, noForge, gitRepo } from './testing';
 
 let dir: string;
@@ -167,6 +168,20 @@ describe('the configuration over HTTP', () => {
 
     expect((await call('PUT', '/api/config', [{ repos: [{ path: web }, { path: api }] }])).body).toEqual({ restarting: true });
     expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }, { path: api }] }]);
+  });
+
+  test('reads and saves the language in its home, keeping the file\'s other settings', async () => {
+    const before = (await call('GET', '/api/language')).body as unknown as LanguageView;
+    expect(before).toMatchObject({ file: join(dir, 'settings.json'), chosen: null });
+    expect(before.language).toBe(before.system);
+    expect((await call('PUT', '/api/language', { language: 'fr' })).status).toBe(400);
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({ later: 1 }));
+    expect((await call('PUT', '/api/language', { language: 'en' })).body).toMatchObject({ chosen: 'en', language: 'en' });
+    expect(JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))).toEqual({ later: 1, language: 'en' });
+    // the server reads it whenever it needs it
+    expect(ownerLanguage(dir)).toBe('en');
+    expect((await call('PUT', '/api/language', { language: null })).body).toMatchObject({ chosen: null, language: before.system });
+    expect(JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))).toEqual({ later: 1 });
   });
 
   test('reads and saves the demo settings in its home, without a restart', async () => {

@@ -24,8 +24,11 @@ services are off the table for now (see Background).
 - *Logo*: three cards in the colours for working, waiting and approved, beside "obeya" in Inter
   Bold (`src/ui/logo.tsx`); as SVG in `src/ui/logo/`, also as a wordmark for light and dark. The
   UI loads Inter from Google Fonts (`src/ui/index.html`).
-- *Language*: the interface is German only (`src/ui/strings.ts`, "German first, English later").
-  The Koordinator, spoken confirmations, worker prompts and server messages are German too.
+- *Language*: the interface speaks German or English (`src/ui/strings.ts`), chosen in the
+  settings and following the system language until chosen; dates and numbers follow. The choice
+  is in `settings.json` in Obeya's home, which the server reads (`ownerLanguage` in
+  `src/server/settings.ts`) (W5). The Koordinator, spoken confirmations, worker prompts and
+  server messages are still German.
   Demo narration can already be German or English (design: Architecture, Demos).
 - *Platforms*: voice input is Whisper on MLX, so Apple Silicon only. Spoken output is a JXA
   sidecar with the macOS synthesiser, `say` as fallback (`src/server/voice.ts`); its test runs on
@@ -98,7 +101,7 @@ needs the English interface (W5, W6) and the site (W3).
   serves only `/` or `/docs` from a branch), the custom domain with HTTPS. The DNS records at the
   registrar and the Pages setting are the owner's steps; the worker writes them down. Needs the
   public repository (W2) unless the account's plan has Pages for private ones.
-- [ ] **W5:** English interface. `src/ui/strings.ts` gets English beside German, chosen in the
+- [x] **W5:** English interface. `src/ui/strings.ts` gets English beside German, chosen in the
   settings and following the system language until chosen; dates and numbers follow too. The
   setting is stored where the other settings are and read by the server.
 - [ ] **W6:** English behind the interface. The language setting from W5 decides the Koordinator's

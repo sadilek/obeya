@@ -365,7 +365,20 @@ the owner's language (`src/core/locale.ts`).
   and changes it on the owner's word (`configure`, the whole new list, checked like the sheet's),
   with the usual confirmation and undo window. Below the canvases the sheet has the demo settings
   (see Demos), saved on their own into `demo.json` in Obeya's home and read by the next render, so
-  saving them restarts nothing.
+  saving them restarts nothing. Above them is the language, saved the same way into
+  `settings.json` (see Language).
+- **Language** — Obeya speaks German or English to the owner. The owner chooses it in the
+  Konfiguration sheet; until then the system's applies: on a Mac the language of its interface
+  (`AppleLanguages`), elsewhere `LC_ALL`, `LC_MESSAGES`, `LANG` in that order, then what the
+  runtime reports; a language Obeya does not speak gives English. The choice lives in
+  `settings.json` in Obeya's home (`src/server/settings.ts`), which the server reads whenever it
+  needs the language (`ownerLanguage`) and the UI asks for before its first render
+  (`/api/language`). The UI strings are two tables of one shape in `src/ui/strings.ts`, so a
+  missing English text is a type error; dates and numbers follow the language, in the browser's
+  own variant of it (`en-GB` writes the day first). Choosing another language takes effect at
+  once: the page loads again, keeping what was open, as after a restart. Behind the interface
+  (the Koordinator's replies and spoken confirmations, Whisper, server messages, what agents
+  write to the owner) Obeya is still German (`OWNER_LANGUAGE` in `src/core/locale.ts`).
 - **Canvases and repositories** — each repository on a canvas has its adapter, workspaces,
   workers, project agents and PR watcher; the canvas has one board and one Koordinator, whose
   collision checks stay within a repository. The first repository is the canvas's home: its plan
@@ -1324,6 +1337,6 @@ the repository; the copy on the project is only for the archive).
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
 - A plan doc without a `## Workstreams` checklist is not shown (its tasks under other headings,
   say). Fix such docs, or show them as projects without cards?
-- Making Obeya known as open source (MIT licence, a public repository, an English interface, voice
+- Making Obeya known as open source (MIT licence, a public repository, English behind the interface, voice
   on Windows and Linux, an installable app, the site on obeya.si): planned in
   [`docs/plan/open-source.md`](plan/open-source.md).

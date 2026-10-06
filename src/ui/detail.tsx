@@ -8,7 +8,7 @@ import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
-import { errorText, stateLabel, t } from './strings';
+import { clock as time, errorText, stateLabel, t } from './strings';
 import { parseQuestion, talkTurns, type Turn } from './talk';
 
 /** What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open. */
@@ -1443,8 +1443,6 @@ function LastFailure({ cardId }: { cardId: string }) {
     </div>
   );
 }
-
-const time = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
 /** The first line of a comment, for its folded view. */
 const firstLine = (md: string) => (md.split('\n').find((l) => l.trim()) ?? '').replace(/^\s*[-*+]\s+/, '').trim();

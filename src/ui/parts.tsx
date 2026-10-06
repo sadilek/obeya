@@ -7,7 +7,7 @@ import { api } from './api';
 import type { Cam } from './camera';
 import type { Shape } from './groups';
 import { Doc, Inline, plain } from './markdown';
-import { stateLabel, t } from './strings';
+import { clock, shortDay, stateLabel, t } from './strings';
 
 /** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
 const firstLine = (md: string) =>
@@ -195,7 +195,7 @@ export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; 
 export function RestartPill({ restart, items }: { restart: PendingRestart; items: Item[] }) {
   const [going, setGoing] = useState(false);
   const n = restart.cards.length + restart.elsewhere;
-  const until = new Date(restart.deadline).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const until = clock(restart.deadline);
   const titles = restart.cards.map((id) => plain(items.find((i) => i.id === id)?.title ?? id));
   const owner = restart.owner;
   const stop = restart.reason === 'stop';
@@ -538,7 +538,7 @@ export function Sheet({
                   <div className="q">{d.question}</div>
                   <div className="a">{d.answer}</div>
                   <div className="hint">
-                    {t.decidedBy[d.by]} · {new Date(d.at).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}
+                    {t.decidedBy[d.by]} · {shortDay(d.at)}
                   </div>
                 </li>
               ))}

@@ -6,7 +6,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { Inline, plain } from './markdown';
-import { errorText, stateLabel, t } from './strings';
+import { clock as time, errorText, stateLabel, t } from './strings';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 
 interface Props {
@@ -162,7 +162,6 @@ function Conversation({ talk }: { talk: Talk[] }) {
     return () => keep.disconnect();
   }, [talk]);
   if (!talk.length) return null;
-  const time = (iso: string) => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   return (
     <div
       className="log talk"

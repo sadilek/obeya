@@ -1,8 +1,10 @@
 // Shapes shared by the server and the UI.
 
 import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
+import type { Language } from './locale';
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
+export type { Language } from './locale';
 export type { SetupCheck, SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 
 export type CardKind = 'task' | 'project';
@@ -742,6 +744,18 @@ export interface DemoSettingsView {
   job?: VoiceInstallJob;
   /** `process.platform` of the server: `say` is offered on a Mac only. */
   platform: string;
+}
+
+/** The language Obeya speaks to the owner (`src/server/settings.ts`): chosen in the settings, else the system's. */
+export interface LanguageView {
+  /** The file it is saved in, under Obeya's home. */
+  file: string;
+  /** What the owner chose; `null` follows the system. */
+  chosen: Language | null;
+  /** The system's language, or the fallback when Obeya does not speak it. */
+  system: Language;
+  /** The one that applies. */
+  language: Language;
 }
 
 /** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved; or why it stops for good (Ctrl-C, SIGTERM). */

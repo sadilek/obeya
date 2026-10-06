@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, CardEvent, CardPatch, Item, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -69,6 +69,10 @@ export const api = {
   checkConfig: (canvases: CanvasConfig[]) => call<Pick<ConfigView, 'canvases' | 'resolved' | 'problems'>>('POST', '/api/config/check', canvases),
   /** Saves it; Obeya then starts again with it where something restarts it. */
   saveConfig: (canvases: CanvasConfig[]) => call<{ restarting: boolean }>('PUT', '/api/config', canvases),
+  /** The language Obeya speaks to the owner: chosen, or the system's. */
+  language: () => call<LanguageView>('GET', '/api/language'),
+  /** Saves the owner's choice; `null` follows the system again. */
+  saveLanguage: (language: Language | null) => call<LanguageView>('PUT', '/api/language', { language }),
   demoSettings: () => call<DemoSettingsView>('GET', '/api/demo-settings'),
   saveDemoSettings: (settings: DemoSettings) => call<DemoSettingsView>('PUT', '/api/demo-settings', settings),
   checkDemoVoice: (settings: DemoSettings) => call<DemoVoiceCheck>('POST', '/api/demo-settings/check', settings),
@@ -186,6 +190,12 @@ export function beforeReload(fn: () => void): () => void {
   return () => reloadListeners.delete(fn);
 }
 
+/** Loads the page again, keeping what is open, as after a restart. */
+export function reload() {
+  for (const fn of reloadListeners) fn();
+  location.reload();
+}
+
 /**
  * The live canvas: the server pushes a snapshot on connect and after every change, the restart that
  * waits, and how many cards on each canvas need the owner.
@@ -212,10 +222,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
         const msg = JSON.parse(e.data) as ServerMessage;
         // a new server process may run new code: the page loads it, and keeps what was open
         if (msg.type === 'hello') {
-          if (server && server !== msg.server) {
-            for (const fn of reloadListeners) fn();
-            location.reload();
-          }
+          if (server && server !== msg.server) reload();
           server = msg.server;
         } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
         else if (msg.type === 'restart') setRestart(msg.restart);

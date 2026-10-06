@@ -3,8 +3,9 @@
 // read-only.
 
 import { useEffect, useRef, useState } from 'react';
-import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, NarrationLanguage, RepoConfig, SetupCheck, SetupItem, VoiceKind } from '../core/types';
-import { api, ApiError } from './api';
+import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, Language, LanguageView, NarrationLanguage, RepoConfig, SetupCheck, SetupItem, VoiceKind } from '../core/types';
+import { LANGUAGES } from '../core/locale';
+import { api, ApiError, reload } from './api';
 import { errorText, t } from './strings';
 
 type Checked = Pick<ConfigView, 'resolved' | 'problems'>;
@@ -130,6 +131,7 @@ export function ConfigSheet({ on }: { on: boolean }) {
       </div>
       {status && <p className="hint c-status">{status}</p>}
 
+      <LanguageBlock on={on} />
       <DemoBlock on={on} />
 
       <h4 className="p-h">{t.config.server}</h4>
@@ -177,6 +179,53 @@ const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'reference' | 'command' | '
 /** A stock voice of a model or service is nobody's own. */
 const STOCK_ONLY: VoiceKind[] = ['piper', 'say'];
 const megabytes = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1).replace('.', ',')} GB` : `${mb} MB`);
+
+/** The language Obeya speaks to the owner: saved on its own, and the page loads again in it. */
+function LanguageBlock({ on }: { on: boolean }) {
+  const [view, setView] = useState<LanguageView | null>(null);
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (on) api.language().then(setView, console.error);
+  }, [on]);
+  if (!view) return null;
+  const l = t.config.language;
+  const choose = async (language: Language | null) => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const v = await api.saveLanguage(language);
+      setView(v);
+      // the strings are set before the first render: the page loads again, keeping what is open
+      reload();
+    } catch (e) {
+      setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <h4 className="p-h">{l.title}</h4>
+      <section className="c-canvas c-demo c-language">
+        <p className="hint">
+          {l.hint} <code>{view.file}</code>
+        </p>
+        <label className="c-row">
+          <span className="hint">{l.title}</span>
+          <select value={view.chosen ?? ''} disabled={busy} onChange={(e) => choose((e.target.value || null) as Language | null)}>
+            <option value="">{l.system(l.names[view.system])}</option>
+            {LANGUAGES.map((x) => (
+              <option key={x} value={x}>
+                {l.names[x]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {status && <p className="hint c-status">{status}</p>}
+      </section>
+    </>
+  );
+}
 
 /** How demos are narrated: saved on their own, read by the next render, so nothing restarts. */
 function DemoBlock({ on }: { on: boolean }) {
