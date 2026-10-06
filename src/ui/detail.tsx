@@ -79,7 +79,8 @@ export function Detail(p: Props) {
   ]
     .filter(Boolean)
     .join(' · ');
-  const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea' || item.state === 'proposal') && !item.queue;
+  // a proposal being reworked takes the agent's title and text: the fields come back with them, rather than keeping a draft
+  const editable = item.source === 'manual' && (item.state === 'planned' || item.state === 'idea' || item.state === 'proposal') && !item.queue && !item.proposal?.revising;
   if (item.state === 'idea' && item.idea)
     return (
       <>
@@ -205,8 +206,7 @@ export function Detail(p: Props) {
 
       {item.state === 'proposal' && (
         <ProposalView item={item} from={p.from} act={act} listener={listener} onRevise={tell('revise')}>
-          {/* while it is reworked, what the owner typed in it would be overwritten */}
-          {item.proposal?.revising ? <Body md={item.body} /> : <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} />}
+          {editable ? <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} /> : <Body md={item.body} />}
         </ProposalView>
       )}
 
