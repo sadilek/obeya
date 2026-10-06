@@ -593,8 +593,13 @@ the owner's language (`src/core/locale.ts`).
   each with a sentence on what it rests on and, like the learner, for the preferences or a
   repository's CLAUDE.md; the sheet shows that as their occasion („Aus der
   Rückschau: …“). Its
-  sheet (button or `K`) shows the queue, the cards in progress and the preferences; open
-  proposals stand above the rules with their occasion (the card and the owner's words, or the
+  sheet (button or `K`) gives the conversation with the Koordinator the height it has, with the
+  field to write in under it; below that come sections that open and close, each a head with its
+  count: the open proposals („Vorschläge (2)“, shown while there are any, open whenever a proposal
+  came after the owner closed them), the queue (shown while a card waits, closed by default) and
+  the preferences (always there, closed by default). Whether a section is open is kept per canvas
+  in the browser, so a reload keeps it. What runs is not listed there: the canvas shows it. Open
+  proposals come with their occasion (the card and the owner's words, or the
   Rückschau), for a change the rule it changes, and where it goes („Gehört in“: the preferences or
   the CLAUDE.md of a repository; `target` in `preferences`), which the owner may switch. The owner
   accepts one, edits it before accepting, or rejects it; an accepted change takes the place of its
@@ -700,8 +705,8 @@ the owner's language (`src/core/locale.ts`).
   that the words are typed and in which field; only clicks on answer options go straight to the
   agent. What the owner said and the Koordinator's confirmation go into the conversation of
   the card that was open (the confirmation folded away, and the words once when they became a note or an answer), and "Zurückgenommen." when taken back; with no card open, the sheet
-  shows the conversation, newest last, in all the height the rest of the sheet leaves free (360px
-  at least, unless it is shorter; with less room the sheet scrolls). Talk to an open idea is the exception: its conversation already holds it.
+  shows the conversation, newest last, in all the height the sheet has; an open section below
+  takes from it down to 200px, and below that the sheet scrolls. Talk to an open idea is the exception: its conversation already holds it.
 - **Looked-up questions** — a question that needs reading ("Was würde der Agent hier machen, wenn
   ich starte?", what the plan says, how something works) the quick turn does not answer: it
   acknowledges it ("Ich schaue im Plan nach.") and passes it on. A question about a project or one

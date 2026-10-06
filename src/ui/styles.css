@@ -470,11 +470,11 @@ textarea.p-body:focus { border-color: var(--muted); }
 .sheet h2 { margin: 2px 0 8px; font-size: 20px; letter-spacing: -.01em; }
 .sheet .goal { font-size: 13.5px; opacity: .9; }
 .sheet .src { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 8px; }
-.sheet > ol, .k-rest > ol { list-style: none; padding: 0; margin: 16px 0 0; }
-.sheet > ol > li, .k-rest > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 9px; cursor: pointer; font-size: 13px; }
-.sheet > ol > li:hover, .k-rest > ol > li:hover { background: var(--chip); }
-.sheet > ol > li .dot, .k-rest > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
-.sheet > ol > li .w, .k-rest > ol > li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
+.sheet > ol { list-style: none; padding: 0; margin: 16px 0 0; }
+.sheet > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.sheet > ol > li:hover { background: var(--chip); }
+.sheet > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
+.sheet > ol > li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
 /* the archive: per day a timeline, the time on the left, each archived card as a small card */
 .sheet ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .timeline li { position: relative; display: grid; grid-template-columns: 38px 12px 1fr; column-gap: 8px; align-items: start; padding-bottom: 8px; }
@@ -613,11 +613,27 @@ button.link:hover { text-decoration: underline; }
 .tell { margin: 4px 0 6px; }
 .log.talk .shots { margin-top: 4px; }
 .log.talk .shot img { height: 56px; max-width: 160px; }
-/* the Koordinator's sheet is a column: the conversation grows into whatever height the rest leaves
-   free (its floor, at most 360px, is set in koordinator.tsx; below it the sheet scrolls) */
+/* the Koordinator's sheet is a column: the conversation takes the height the sheet has, the field to
+   write in under it, then the sections that open and close; an open section takes from the
+   conversation down to 200px, below that the sheet scrolls */
 #ksheet { display: flex; flex-direction: column; }
 #ksheet > * { flex: none; }
-#ksheet > .log.talk { flex: 0 1 auto; max-height: none; margin: 0 0 4px; }
+#ksheet > .log.talk { flex: 1 1 0; min-height: 200px; max-height: none; margin: 0 0 4px; }
+.k-rest { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
+.k-rest .reshare { margin: 8px 0; }
+.fold-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 2px; border: 0; background: none; font: inherit; font-size: 13px;
+  font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; border-radius: 7px; }
+.fold-head:hover { background: var(--chip); }
+.fold-head .arrow { width: 6px; height: 6px; margin: 0 4px 0 2px; flex: none; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform .15s; }
+.fold.proposals .fold-head .arrow { border-color: var(--proposal); }
+.fold.open > .fold-head .arrow { transform: rotate(45deg); }
+.fold.proposals .fold-head { color: var(--proposal); }
+.fold-body { padding: 0 0 10px 18px; }
+.fold-body > .hint:first-child { margin-top: 0; }
+.fold-body > ol { list-style: none; padding: 0; margin: 0; }
+.fold-body > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+.fold-body > ol > li:hover { background: var(--chip); }
+.fold-body > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .log.talk .exchange + .exchange { margin-top: 6px; }
 .log.talk .by-koordinator .who, .log.talk .by-project .who { color: var(--working); }
 .log.talk .answer { display: block; margin: 2px 0 0 0; padding: 6px 0 0 0; border-top: 1px dashed var(--line); }

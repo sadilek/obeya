@@ -277,10 +277,8 @@ export const t = {
     kind: 'Koordinator',
     title: 'Planung und Präferenzen',
     queue: 'Warteschlange',
-    queueEmpty: 'Nichts wartet.',
-    running: 'In Arbeit',
-    runningEmpty: 'Gerade arbeitet kein Agent.',
-    proposals: 'Vorschläge',
+    queueHead: (n: number) => `Warteschlange (${n})`,
+    proposalsHead: (n: number) => `Vorschläge (${n})`,
     proposalsHint:
       'Der Koordinator hat sie aus deinen Worten gelernt. Sie gelten erst, wenn du sie übernimmst. Regeln für eine CLAUDE.md sammelt die Aufgabe „CLAUDE.md ergänzen“; sie startet, sobald kein Vorschlag mehr offen ist.',
     proposalsCount: (n: number) => (n === 1 ? 'Ein Vorschlag für eine Regel' : `${n} Vorschläge für Regeln`),
@@ -294,7 +292,7 @@ export const t = {
     change: 'Ändern',
     reject: 'Verwerfen',
     cancel: 'Abbrechen',
-    preferences: 'Deine Präferenzen',
+    preferencesHead: (n: number) => `Präferenzen (${n})`,
     preferencesHint:
       'Wie die Agenten über Obeya mit dir arbeiten, in jedem Repo. Alle Agenten halten sich daran. Was du hier einträgst oder dem Koordinator mit „Merk dir: …“ sagst, gilt sofort; was ein Repo betrifft, kommt in dessen Aufgabe „CLAUDE.md ergänzen“.',
     edit: 'Zum Bearbeiten klicken',

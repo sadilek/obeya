@@ -1,7 +1,8 @@
-// The Koordinator's sheet: the conversation, what waits, what runs, and the owner's preferences it
-// keeps, with the ones it learned and proposes; and shared demos to bring up to date at once.
+// The Koordinator's sheet: the conversation, with the height the sheet has, and below it sections
+// that open and close: the rules it learned and proposes, what waits, and the owner's preferences;
+// and shared demos to bring up to date at once.
 
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { Inline, plain } from './markdown';
@@ -10,6 +11,8 @@ import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 
 interface Props {
   on: boolean;
+  /** The canvas, whose sections stay open or closed as the owner left them. */
+  canvas: string;
   /** A command typed in the sheet: read like a spoken one, with its line above the microphone. */
   onTell: (text: string, images?: string[]) => void;
   items: Item[];
@@ -21,82 +24,113 @@ interface Props {
   onOpen: (i: Item) => void;
 }
 
-export function KoordinatorSheet({ on, items, preferences, repos, talk, reshare, onOpen, onTell }: Props) {
+export function KoordinatorSheet({ on, canvas, items, preferences, repos, talk, reshare, onOpen, onTell }: Props) {
   const queued = items.filter((i) => i.state === 'planned' && i.queue);
-  const running = items.filter((i) => (i.state === 'working' || i.state === 'waiting') && i.kind !== 'project');
   const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
   const proposals = preferences.filter((p) => p.state === 'proposed');
   const rules = preferences.filter((p) => p.state === 'active');
+  const [folds, setFolds] = useFolds(canvas);
+  // the proposals stay closed only as long as no proposal came after the owner closed them
+  const proposalsOpen = !folds.proposalsClosed || proposals.some((p) => !folds.proposalsClosed!.includes(p.id));
   return (
     <aside id="ksheet" className={on ? 'sheet on' : 'sheet'}>
       <div className="p-kind">{t.koordinator.kind}</div>
       <h2>{t.koordinator.title}</h2>
       <Conversation talk={talk} />
-      <div className="k-rest">
-        <TellKoordinator onTell={onTell} />
+      <TellKoordinator onTell={onTell} />
 
+      <div className="k-rest">
         {proposals.length > 0 && (
-          <>
-            <h4 className="p-h">{t.koordinator.proposals}</h4>
+          <Fold
+            kind="proposals"
+            head={t.koordinator.proposalsHead(proposals.length)}
+            open={proposalsOpen}
+            onToggle={() => setFolds({ ...folds, proposalsClosed: proposalsOpen ? proposals.map((p) => p.id) : undefined })}
+          >
             <p className="hint">{t.koordinator.proposalsHint}</p>
             <ul className="prefs proposals">
               {proposals.map((p) => (
                 <ProposalRow key={p.id} p={p} items={items} rules={rules} repos={repos} onOpen={onOpen} />
               ))}
             </ul>
-          </>
+          </Fold>
         )}
 
         {reshare && <ReshareBox r={reshare} items={items} onOpen={onOpen} />}
 
-        <h4 className="p-h">{t.koordinator.queue}</h4>
-        {queued.length === 0 ? (
-          <p className="hint">{t.koordinator.queueEmpty}</p>
-        ) : (
-          <ol>
-            {queued.map((i) => (
-              <li key={i.id} className="s-planned" onClick={() => onOpen(i)}>
-                <span className="dot" />
-                <span>
-                  {plain(i.title)}
-                  <br />
-                  <span className="hint">
-                    {i.queue && 'behind' in i.queue ? t.queue.behind(i.queue.behind.map(title)) : stateLabel(i)}
+        {queued.length > 0 && (
+          <Fold head={t.koordinator.queueHead(queued.length)} open={!!folds.queue} onToggle={() => setFolds({ ...folds, queue: !folds.queue })}>
+            <ol>
+              {queued.map((i) => (
+                <li key={i.id} className="s-planned" onClick={() => onOpen(i)}>
+                  <span className="dot" />
+                  <span>
+                    {plain(i.title)}
+                    <br />
+                    <span className="hint">
+                      {i.queue && 'behind' in i.queue ? t.queue.behind(i.queue.behind.map(title)) : stateLabel(i)}
+                    </span>
                   </span>
-                </span>
-              </li>
-            ))}
-          </ol>
+                </li>
+              ))}
+            </ol>
+          </Fold>
         )}
 
-        <h4 className="p-h">{t.koordinator.running}</h4>
-        {running.length === 0 ? (
-          <p className="hint">{t.koordinator.runningEmpty}</p>
-        ) : (
-          <ol>
-            {running.map((i) => (
-              <li key={i.id} className={`s-${i.state}`} onClick={() => onOpen(i)}>
-                <span className="dot" />
-                <span>
-                  {plain(i.title)}
-                  <br />
-                  <span className="hint">{i.statusLine ?? stateLabel(i)}</span>
-                </span>
-              </li>
+        <Fold head={t.koordinator.preferencesHead(rules.length)} open={!!folds.preferences} onToggle={() => setFolds({ ...folds, preferences: !folds.preferences })}>
+          <p className="hint">{t.koordinator.preferencesHint}</p>
+          <ul className="prefs">
+            {rules.map((p) => (
+              <PreferenceRow key={p.id} p={p} />
             ))}
-          </ol>
-        )}
-
-        <h4 className="p-h">{t.koordinator.preferences}</h4>
-        <p className="hint">{t.koordinator.preferencesHint}</p>
-        <ul className="prefs">
-          {rules.map((p) => (
-            <PreferenceRow key={p.id} p={p} />
-          ))}
-        </ul>
-        <NewPreference repos={repos} />
+          </ul>
+          <NewPreference repos={repos} />
+        </Fold>
       </div>
     </aside>
+  );
+}
+
+/** Which of the sheet's sections the owner opened; the proposals are open unless closed, with the ones open then. */
+interface Folds {
+  queue?: boolean;
+  preferences?: boolean;
+  proposalsClosed?: number[];
+}
+
+/** The sections' state, per canvas, so a reload keeps it. */
+function useFolds(canvas: string): [Folds, (f: Folds) => void] {
+  const key = `obeya-ksheet-${canvas}`;
+  const read = (): Folds => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? '{}') ?? {};
+    } catch {
+      return {};
+    }
+  };
+  const [folds, setFolds] = useState<{ key: string; f: Folds }>(() => ({ key, f: read() }));
+  const f = folds.key === key ? folds.f : read();
+  return [
+    f,
+    (next) => {
+      setFolds({ key, f: next });
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {}
+    },
+  ];
+}
+
+/** A section under the conversation: a head with its count that opens and closes it. */
+function Fold({ kind, head, open, onToggle, children }: { kind?: string; head: string; open: boolean; onToggle: () => void; children: ReactNode }) {
+  return (
+    <section className={['fold', kind, open && 'open'].filter(Boolean).join(' ')}>
+      <button className="fold-head" aria-expanded={open} onClick={onToggle}>
+        <span className="arrow" />
+        {head}
+      </button>
+      {open && <div className="fold-body">{children}</div>}
+    </section>
   );
 }
 
@@ -108,17 +142,12 @@ function Conversation({ talk }: { talk: Talk[] }) {
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    // it takes the height the sheet leaves free; when the rest needs more, it keeps 360px, or less
-    // when the conversation is shorter than that
-    const top = el.scrollTop;
-    el.style.minHeight = '0';
-    el.style.minHeight = `${Math.min(360, el.scrollHeight)}px`;
     // every change on the canvas brings a new snapshot: only what the owner just said takes the
     // conversation back to its end, so they can read further up in the meantime
     const last = talk.at(-1)?.id;
     if (last !== newest.current) atEnd.current = true;
     newest.current = last;
-    el.scrollTop = atEnd.current ? el.scrollHeight : top;
+    if (atEnd.current) el.scrollTop = el.scrollHeight;
   }, [talk]);
   useEffect(() => {
     // the newest exchange stays in view when the sheet grows or shrinks, or the text wraps anew once
