@@ -669,7 +669,8 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
   const box = useRef<HTMLDivElement>(null);
   const idea = item.state === 'idea' && !!item.idea;
   const asking = item.state === 'waiting' && item.need === 'question' ? item.question : undefined;
-  const working = !past && (idea ? !!item.idea?.thinking : item.state === 'working' || !!item.finishing);
+  // a worker finishing after the landing works unless it waits for the owner's answer
+  const working = !past && (idea ? !!item.idea?.thinking : item.state === 'working' || (!!item.finishing && finished(item.state)));
   const asked = JSON.stringify(item.idea?.questions ?? asking ?? []);
   useEffect(() => {
     const el = box.current;

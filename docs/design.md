@@ -483,7 +483,8 @@ the owner's language (`src/core/locale.ts`).
   resumed worker hears that Obeya now runs its change. A turn there that an error cut off (the API
   overloaded, say) does not count as done: like a turn that ends without a handover while the
   worker works, it is tried once more, and if that fails too the owner gets the reason as a question
-  ("Nochmal versuchen", or "Anhalten" to end the card without the rest). Before (until 2026-10),
+  ("Nochmal versuchen", or "Anhalten" to end the card without the rest); the card's conversation
+  shows a question asked while finishing like any other, not the worker at work. Before (until 2026-10),
   such a turn ended the card, and what remained after the landing was silently left undone. While a
   restart is due, the failed turn instead pauses for it, which resumes the worker, so that a second
   try does not hold up the restart.
