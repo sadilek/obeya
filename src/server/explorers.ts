@@ -374,7 +374,7 @@ interface Asked {
 /** A question as the card shows it, with the agent's own pick when that names its options. */
 function withPick(a: Asked): Question {
   const q = toQuestion(a.question, a.options, a.multiple);
-  const picked = (a.pick ?? []).map((o) => clip(String(o).trim(), 120)).filter((o) => q.options.includes(o));
+  const picked = (a.pick ?? []).map((o) => String(o).trim()).filter((o) => q.options.includes(o));
   const options = q.multiple ? [...new Set(picked)] : picked.slice(0, 1);
   return options.length ? { ...q, pick: { options, why: clip(String(a.pick_why ?? '').trim(), 400) } } : q;
 }

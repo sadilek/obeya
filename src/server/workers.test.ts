@@ -225,6 +225,14 @@ describe('workers', () => {
     expect(runtime.last.inbox.at(-1)).toContain('CSV');
   });
 
+  test('a long option reaches the owner whole', () => {
+    const c = manual();
+    workers.start(c.id);
+    const long = 'Die Prototypen bleiben stehen, „Diesen Prototyp bauen“ gibt es nach der Umwandlung aber nicht mehr. Sie lassen sich nur noch ansehen und verwerfen.';
+    runtime.last.call('ask', { question: 'Was passiert mit den Prototypen?', options: [long, 'Verwerfen'] });
+    expect(board.item(c.id)!.question!.options).toEqual([long, 'Verwerfen']);
+  });
+
   test('a question may let the owner choose several options', () => {
     const c = manual();
     workers.start(c.id);

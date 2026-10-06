@@ -145,7 +145,7 @@ Read what you need, then call answer_owner exactly once and end your turn. You c
  * from (the owner can always write something else), several of them when `multiple`.
  */
 export function toQuestion(text: unknown, options: unknown, multiple?: unknown): Question {
-  const opts = [...new Set((Array.isArray(options) ? options : []).map((o) => clip(String(o).trim(), 120)).filter(Boolean))];
+  const opts = [...new Set((Array.isArray(options) ? options : []).map((o) => String(o).trim()).filter(Boolean))];
   return { text: clip(String(text).trim(), 2000), options: opts, ...(multiple === true && opts.length > 1 ? { multiple: true } : {}) };
 }
 
