@@ -28,7 +28,42 @@ const de = {
   progress: (live: number, all: number) => `${live} von ${all} live`,
   needsYou: 'brauchen dich',
   newCard: 'Neue Aufgabe',
-  keys: 'Ziehen: verschieben · ⌘ + Scrollen / Pinch: Zoom · 0: Übersicht · Doppelklick: neue Aufgabe · Umschalt + Ziehen oder Rechtsklick: Gruppe · K: Koordinator · A: Archiv · Leertaste halten: sprechen',
+  /** The legend of mouse and keys, shown over the page on `?`. Each row: its alternatives, each a combination. */
+  help: {
+    button: 'Bedienung (?)',
+    title: 'Bedienung',
+    or: 'oder',
+    sections: [
+      {
+        title: 'Leinwand',
+        rows: [
+          { keys: [['Ziehen'], ['Scrollen']], text: 'Ansicht verschieben' },
+          { keys: [['⌘ / Strg', 'Scrollen'], ['Pinch']], text: 'Zoomen' },
+          { keys: [['0']], text: 'Übersicht über alles' },
+          { keys: [['Karte ziehen']], text: 'Karte verschieben' },
+          { keys: [['Umschalt', 'Ziehen'], ['Rechtsklick']], text: 'Karten gruppieren' },
+        ],
+      },
+      {
+        title: 'Aufgaben',
+        rows: [
+          { keys: [['Doppelklick']], text: 'Neue Aufgabe an dieser Stelle' },
+          { keys: [['N']], text: 'Neue Aufgabe in der Mitte' },
+          { keys: [['Tab']], text: 'Zur nächsten Karte, die dich braucht' },
+          { keys: [['Esc']], text: 'Karte oder Projekt schließen' },
+        ],
+      },
+      {
+        title: 'Seitenleisten und Stimme',
+        rows: [
+          { keys: [['K']], text: 'Koordinator ein und aus' },
+          { keys: [['A']], text: 'Archiv ein und aus' },
+          { keys: [['Leertaste halten']], text: 'Sprechen' },
+          { keys: [['?']], text: 'Diese Übersicht' },
+        ],
+      },
+    ],
+  },
   /** The colour ring that puts cards into a group. */
   groups: {
     cards: (n: number) => (n === 1 ? '1 Aufgabe' : `${n} Aufgaben`),
@@ -689,7 +724,41 @@ const en: Strings = {
   progress: (live: number, all: number) => `${live} of ${all} live`,
   needsYou: 'need you',
   newCard: 'New task',
-  keys: 'Drag: move · ⌘ + scroll / pinch: zoom · 0: overview · Double-click: new task · Shift + drag or right-click: group · K: Coordinator · A: archive · Hold space: speak',
+  help: {
+    button: 'Controls (?)',
+    title: 'Controls',
+    or: 'or',
+    sections: [
+      {
+        title: 'Canvas',
+        rows: [
+          { keys: [['Drag'], ['Scroll']], text: 'Move the view' },
+          { keys: [['⌘ / Ctrl', 'Scroll'], ['Pinch']], text: 'Zoom' },
+          { keys: [['0']], text: 'Overview of everything' },
+          { keys: [['Drag a card']], text: 'Move a card' },
+          { keys: [['Shift', 'Drag'], ['Right-click']], text: 'Group cards' },
+        ],
+      },
+      {
+        title: 'Tasks',
+        rows: [
+          { keys: [['Double-click']], text: 'New task right there' },
+          { keys: [['N']], text: 'New task in the middle' },
+          { keys: [['Tab']], text: 'Next card that needs you' },
+          { keys: [['Esc']], text: 'Close the card or project' },
+        ],
+      },
+      {
+        title: 'Side sheets and voice',
+        rows: [
+          { keys: [['K']], text: 'Coordinator on and off' },
+          { keys: [['A']], text: 'Archive on and off' },
+          { keys: [['Hold space']], text: 'Speak' },
+          { keys: [['?']], text: 'This overview' },
+        ],
+      },
+    ],
+  },
   groups: {
     cards: (n: number) => (n === 1 ? '1 task' : `${n} tasks`),
     create: 'New group',

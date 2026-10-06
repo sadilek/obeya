@@ -432,7 +432,9 @@ the owner's language (`src/core/locale.ts`).
   commands stay in the checkout and the clones; `repoInfo` and the configuration are unchanged.
 - **UI** — browser app, React + TypeScript. Custom canvas: camera with
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap, and a frosted top bar the
-  canvas slides under. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
+  canvas slides under. The bar keeps no hint line: `?` (or the round `?` button beside "Neue
+  Aufgabe") shows the legend of mouse and keys as a box over the greyed page (`src/ui/help.tsx`),
+  and Esc, `?` or a click beside it closes it. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
   and approved, "obeya" in Inter Bold as outlines) opens the bar, stands alone in the middle while
   the page loads, above "offline" when the server is gone, and is the favicon; `bun
   scripts/logo.tsx` writes it as the files in `src/ui/logo/`.

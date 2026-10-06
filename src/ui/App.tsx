@@ -16,6 +16,7 @@ import { KoordinatorSheet } from './koordinator';
 import { depsOf } from './deps';
 import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './keep';
 import { Sign, Wordmark } from './logo';
+import { Help, HelpButton } from './help';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, ToldList, usePushToTalk, useTold, type Where } from './voice';
 import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, WorkspacesPill } from './parts';
@@ -196,6 +197,7 @@ function Canvas({
     setKOn(false);
     setCOn(false);
   };
+  const [helpOn, setHelpOn] = useState(false);
   const [cOn, setCOn] = useState(false);
   const toggleConfig = () => {
     if (!cOn && focusRef.current?.type === 'project') closeProject();
@@ -847,6 +849,18 @@ function Canvas({
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     // text fields in a sheet handle their own keys (Esc cancels an edit there)
     if (typing && (e.target as Element).closest('.sheet')) return;
+    // the legend over the page takes the keys until it closes
+    if (helpOn) {
+      if (e.key === 'Escape' || e.key === '?') setHelpOn(false);
+      // Space would press the focused button behind it
+      if (e.key === 'Escape' || e.key === '?' || e.code === 'Space') e.preventDefault();
+      return;
+    }
+    if (e.key === '?' && !typing) {
+      e.preventDefault();
+      setHelpOn(true);
+      return;
+    }
     // hold Space anywhere but in a text field to speak; the demo pauses while the owner talks
     if (e.code === 'Space' && !typing) {
       e.preventDefault();
@@ -962,9 +976,7 @@ function Canvas({
         <button className="pill" onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>
           + {t.newCard}
         </button>
-        <span className="hint" id="keys">
-          {t.keys}
-        </span>
+        <HelpButton on={helpOn} onClick={() => setHelpOn(!helpOn)} />
         <div className="right">
           {!online && <div className="pill offline">{t.offline}</div>}
           {online && restart && <RestartPill restart={restart} items={items} />}
@@ -1004,6 +1016,7 @@ function Canvas({
         onFollow={(wx, wy) => !focusRef.current && chase(camRef.current, viewOn(wx, wy), setCam)}
       />
       <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
+      {helpOn && <Help onClose={() => setHelpOn(false)} />}
       <div id="panel" ref={panelRef}>
         <button className="close" title={t.close} onClick={() => closeCard()}>
           ✕

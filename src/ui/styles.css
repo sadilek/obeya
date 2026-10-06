@@ -109,7 +109,7 @@ a { color: inherit; }
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
-/* a frosted strip the canvas slides under, so cards never run into the pills and the key hint */
+/* a frosted strip the canvas slides under, so cards never run into the pills */
 #bar { position: fixed; top: 0; left: 0; right: 0; height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
@@ -194,7 +194,22 @@ button.pill:hover { box-shadow: var(--lift); }
 .pref-new .filed, .pref-new .p-error { flex-basis: 100%; }
 #attention .n { background: var(--waiting); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; }
-#keys { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+button.pill.help { width: 32px; height: 32px; padding: 0; justify-content: center; font-weight: 700; font-size: 15px; color: var(--muted); }
+button.pill.help:hover, button.pill.help.on { color: var(--ink); }
+#help { position: fixed; inset: 0; z-index: 60; background: var(--dim); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .15s ease-out; }
+#help .box { position: relative; background: var(--panel); border-radius: 14px; box-shadow: var(--lift); padding: 22px 26px 24px; width: 860px; max-width: 100%; max-height: 100%; overflow: auto; }
+#help h2 { margin: 0 0 14px; font-size: 18px; }
+#help .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); color: var(--ink); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; }
+#help .sections { columns: 2 340px; column-gap: 36px; }
+#help section { break-inside: avoid; margin-bottom: 18px; }
+#help section:last-child { margin-bottom: 0; }
+#help h3 { margin: 0 0 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+#help ul { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+#help li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+#help li:last-child { border-bottom: 0; }
+#help .keys { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; }
+#help kbd { font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; padding: 2px 7px; border-radius: 6px; background: var(--chip); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line); }
+#help .or, #help .plus { color: var(--muted); font-size: 12px; }
 .empty { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; }
 #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); animation: fade .3s ease-out; }
 
@@ -671,7 +686,7 @@ button.link:hover { text-decoration: underline; }
 .ack.reading { background: var(--card); color: var(--muted); box-shadow: var(--shadow); padding: 7px 14px; font-size: 13px; }
 .ack.reading::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--working); animation: spin .8s linear infinite; }
 .c-listener { flex-basis: 100%; margin-top: -4px; font-size: 11.5px; color: var(--muted); }
-@media (max-width: 760px) { #minimap, #keys, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; bottom: 158px; } .p-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { #minimap, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; bottom: 158px; } .p-grid { grid-template-columns: 1fr; } }
 
 /* the play button on a startable card, shown while the pointer is on the card */
 .card .play { position: absolute; right: 10px; bottom: 8px; width: 26px; height: 26px; border-radius: 13px; border: 0; padding: 0 0 0 2px;
