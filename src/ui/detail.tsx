@@ -120,7 +120,7 @@ export function Detail(p: Props) {
   const prototypeActions = item.prototypeOf && (
     <>
       {item.branch && (
-        <button className="btn primary" disabled={ideaThinking} title={ideaThinking ? t.idea.waitForReply : undefined} onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
+        <button className="btn primary" disabled={ideaThinking} title={ideaThinking ? t.idea.prototypeWaits : undefined} onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}>
           {t.idea.buildPrototype}
         </button>
       )}
@@ -193,7 +193,7 @@ export function Detail(p: Props) {
             <button
               className="btn primary"
               disabled={ideaThinking}
-              title={ideaThinking ? t.idea.waitForReply : undefined}
+              title={ideaThinking ? t.idea.prototypeWaits : undefined}
               onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(plain(p.from?.title ?? '')) })}
             >
               {t.idea.acceptBuild}
@@ -494,12 +494,24 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
               </span>
             </div>
           )}
-          {/* building or planning waits for the reply, which will change the brief the owner decides on */}
-          {idea.thinking && <p className="hint">{t.idea.waitForReply}</p>}
+          {/* planning waits for the reply, which will change the brief the owner decides on; building goes ahead after it unless it asks questions */}
+          {idea.thinking && <p className={idea.buildAfterReply ? 'hint build-waits' : 'hint'}>{idea.buildAfterReply ? t.idea.buildWaitsHint : t.idea.waitForReply}</p>}
           <div className="actions">
-            <button className={btn('build')} disabled={idea.thinking} onClick={() => act({ action: 'build' }, { close: true, ack: t.idea.built })}>
-              {t.idea.build}
-            </button>
+            {idea.buildAfterReply ? (
+              <>
+                <button className="btn primary waits" disabled aria-pressed>
+                  {t.idea.buildWaits}
+                </button>
+                <button className="btn" onClick={() => act({ action: 'unbuild' }, { close: false })}>
+                  {t.idea.unbuild}
+                </button>
+              </>
+            ) : (
+              // while the agent works, the click waits for its reply in view; else the panel closes on the built card
+              <button className={btn('build')} onClick={() => act({ action: 'build' }, idea.thinking ? { close: false } : { close: true, ack: t.idea.built })}>
+                {t.idea.build}
+              </button>
+            )}
             <button className={btn('planDoc')} disabled={idea.thinking} onClick={() => act({ action: 'planDoc' }, { close: true, ack: t.idea.planned })}>
               {t.idea.planDoc}
             </button>

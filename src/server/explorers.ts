@@ -25,6 +25,8 @@ export interface ExplorerOptions {
   onOwnerInput?: (card: Item, text: string) => void;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
   imageFiles?: (ids?: string[]) => string[];
+  /** The agent answered all it was told and its session ended (`replied`), or its turn ended without (an error, a restart). */
+  onReplied?: (cardId: string, replied: boolean) => void;
 }
 
 interface Live {
@@ -41,6 +43,8 @@ interface Live {
   quiet?: boolean;
   /** The owner's preferences as the agent last heard them: in its instructions, or since then. */
   preferences: string;
+  /** The agent heard that the owner clicked "So bauen" during its turn. */
+  toldBuild?: boolean;
 }
 
 export class Explorers {
@@ -108,7 +112,10 @@ export class Explorers {
     for (const i of this.o.board.snapshot().items) {
       if (i.state !== 'idea' || !i.idea?.thinking) continue;
       if (this.o.board.row(i.id).session_id) this.send(i, 'Obeya was restarted while you worked on your reply. Answer the owner’s last message now.', false);
-      else this.o.board.setIdea(i.id, { thinking: false });
+      else {
+        this.o.board.setIdea(i.id, { thinking: false });
+        this.o.onReplied?.(i.id, false);
+      }
     }
   }
 
@@ -157,13 +164,20 @@ export class Explorers {
         readOnly: true,
         system: SYSTEM + (preferences ? `\n\n${preferences}` : ''),
         tools: this.tools(card.id, live),
-        contextUpdate: () => this.preferencesUpdate(live),
+        contextUpdate: () => [this.buildNote(card.id, live), this.preferencesUpdate(live)].filter(Boolean).join('\n\n') || undefined,
         ...(resume ? { resume } : {}),
         onEvent: (e) => this.onEvent(card.id, live, e),
       },
       message,
       images,
     );
+  }
+
+  /** The owner clicked "So bauen" while the agent works: it hears so once, as its reply decides whether building goes ahead. */
+  private buildNote(cardId: string, live: Live): string | undefined {
+    if (live.toldBuild || !this.o.board.item(cardId)?.idea?.buildAfterReply) return;
+    live.toldBuild = true;
+    return BUILD_AFTER_REPLY;
   }
 
   /** A preference learned or changed during the session reaches the agent once, with its next tool call. */
@@ -192,6 +206,7 @@ export class Explorers {
       case 'error':
         this.o.board.log(cardId, 'error', 'obeya', e.message);
         this.interrupt(cardId, 'error');
+        this.o.onReplied?.(cardId, false);
         break;
       case 'idle': {
         // a turn without reply still said something: that is the reply, unless the turn was for the brief only
@@ -204,12 +219,13 @@ export class Explorers {
           const queued = live.queue.splice(0);
           live.current = queued;
           live.session.send(
-            queued.map((m) => m.text).join('\n\n'),
+            [...queued.map((m) => m.text), this.buildNote(cardId, live)].filter(Boolean).join('\n\n'),
             queued.flatMap((m) => m.images),
           );
           return;
         }
         this.close(cardId);
+        this.o.onReplied?.(cardId, true);
         break;
       }
     }
@@ -355,6 +371,10 @@ const OPENING =
 
 const OPENING_PROPOSED =
   "A worker proposed this idea while on another card, and the owner took it up to discuss it. They have not said more yet: what the card says above is where the conversation starts, with what the owner decided on the proposal and the questions still open. Look into it and open the discussion.";
+
+/** The owner clicked "So bauen" during the agent's turn. */
+const BUILD_AFTER_REPLY =
+  'The owner clicked "So bauen" while you worked on this reply: once it is there, a worker builds the idea from the brief, unless your reply asks questions, which call the building off. Bring the brief up to date with what they said; ask only what must be settled before building, and put into the brief as decided what you would decide yourself.';
 
 const UNREAD_NOTE: Record<Unread['why'], string> = {
   parked: 'The owner parked the idea while you were working on a reply, which ended that turn. These messages are still unanswered; take them in with the one after them:',

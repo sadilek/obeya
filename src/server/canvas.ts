@@ -194,6 +194,7 @@ export class CanvasRuntime {
       pathFor: (card) => this.repoOf(card).read.path,
       onOwnerInput: (card, text) => koordinator.learn(card, 'idea', text),
       imageFiles,
+      onReplied: (cardId, replied) => this.replied(cardId, replied),
     });
     this.explorers.resumeAll();
     this.answers = new Answers({
@@ -351,6 +352,8 @@ export class CanvasRuntime {
         return this.explorers.discuss(cardId, text.trim(), !!a.spoken, images);
       case 'build':
         return this.build(cardId);
+      case 'unbuild':
+        return this.unbuild(cardId);
       case 'planDoc':
         return this.planDoc(cardId);
       case 'park':
@@ -393,9 +396,36 @@ export class CanvasRuntime {
    * Koordinator to start. A prototype still running for it is discarded: what is built now is the brief.
    */
   private build(cardId: string) {
-    const card = this.settledIdea(cardId);
+    const card = this.ideaCard(cardId);
+    if (card.idea?.thinking) {
+      // the owner knows what comes; the reply still may ask what must be settled first
+      if (card.idea.buildAfterReply) return;
+      this.board.setIdea(cardId, { buildAfterReply: true });
+      this.board.log(cardId, 'state', 'owner', 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.');
+      return;
+    }
     this.decided(card, { answer: 'So bauen, wie der Stand der Idee sagt.', log: 'So bauen: Der Stand der Idee ist der Auftrag.' });
     this.koordinator.request(cardId);
+  }
+
+  /** Building after the reply is taken back: the idea stays in its discussion. */
+  private unbuild(cardId: string) {
+    if (!this.ideaCard(cardId).idea?.buildAfterReply) return;
+    this.board.setIdea(cardId, { buildAfterReply: false });
+    this.board.log(cardId, 'state', 'owner', 'Doch nicht bauen.');
+  }
+
+  /**
+   * The idea's agent has answered all it was told (`replied`), or its turn ended without (an error,
+   * a restart): an idea to build after the reply is built now, unless the reply asks questions.
+   */
+  private replied(cardId: string, replied: boolean) {
+    const card = this.board.item(cardId);
+    if (card?.state !== 'idea' || !card.idea?.buildAfterReply) return;
+    this.board.setIdea(cardId, { buildAfterReply: false });
+    const asks = card.idea.questions.length;
+    if (replied && !asks && card.idea.status === 'open') return this.build(cardId);
+    this.board.log(cardId, 'state', 'obeya', !replied ? 'Nicht gebaut: Die Antwort kam nicht zustande.' : asks > 1 ? 'Nicht gebaut: Der Agent hat noch Fragen.' : 'Nicht gebaut: Der Agent hat noch eine Frage.');
   }
 
   /**
@@ -455,7 +485,7 @@ export class CanvasRuntime {
   private shelve(cardId: string, how: 'park' | 'drop') {
     const card = this.ideaCard(cardId);
     this.explorers.interrupt(cardId, how === 'park' ? 'parked' : 'dropped');
-    this.board.setIdea(cardId, { status: how === 'park' ? 'parked' : 'dropped' });
+    this.board.setIdea(cardId, { status: how === 'park' ? 'parked' : 'dropped', buildAfterReply: false });
     if (how === 'drop') this.board.decide({ project_id: null, card_id: cardId, question: `Idee „${card.title}“: wie weiter?`, answer: 'Verworfen.', by: 'owner' });
     this.board.log(cardId, 'state', 'owner', how === 'park' ? 'Geparkt.' : 'Verworfen.');
   }

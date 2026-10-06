@@ -158,13 +158,21 @@ An idea is thought through on its card before anything is planned; no worker run
    a finished card; not while a prototype of it is on the canvas, and then the button is not shown): in the archive it shows its brief and conversation read-only and can go back to its
    place, where talking to it opens it again. Decisions from the conversation go into the decision log; lasting
    preferences are learned by the Koordinator as before.
-   While the agent works on a reply, building and planning wait (so does "Diesen Prototyp bauen"):
-   the buttons are disabled with "Antwort kommt gleich", and the server refuses them
-   (`ideaThinking`). The reply almost always rewrites the brief, so a decision taken before it would
-   build a brief the owner never read; once the reply is there, they decide again, nothing is kept
-   for them. A voice command that builds or plans such an idea, or one that also discusses it
-   ("nimm noch X auf und bau es dann"), only passes what was said to the agent, and the
-   Koordinator says that building goes by a click once the reply is there. Parking and dropping
+   While the agent works on a reply, planning waits (so does "Diesen Prototyp bauen"): the buttons
+   are disabled with "Antwort kommt gleich", and the server refuses them (`ideaThinking`). The
+   reply almost always rewrites the brief, so a plan taken before it would start from a brief the
+   owner never read. "So bauen" does not wait (2026-10-06: the last answer of a session is often
+   clear and simple, and the owner knows that building comes next): clicked during a reply, the
+   idea is built once the agent has answered all it was told, with the brief it leaves, unless
+   its reply asks questions; then nothing is built, the conversation says why, and the owner
+   decides again. The panel stays open while it waits: the button reads "Baut nach der Antwort …"
+   with "Doch nicht bauen" beside it, and the canvas card says "baut nach der Antwort". The agent
+   hears of the click with its next step, so it asks only what building needs. A turn that ends
+   without a reply (an error, a restart), parking or dropping call the building off too. A voice
+   command that plans such an idea, or one that also discusses it, only passes what was said to
+   the agent, and the Koordinator says that planning goes by a click once the reply is there; one
+   that builds it ("nimm noch X auf und bau es dann") passes it on and builds after the reply,
+   like the click. Parking and dropping
    act at once and end the turn, but lose nothing: the messages the agent has not answered (the
    one it worked on and those queued behind it) stay with the idea (`unread`, across restarts)
    and go to it first, with why its turn ended, when the conversation goes on. The same holds for

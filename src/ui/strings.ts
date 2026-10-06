@@ -168,7 +168,7 @@ export const t = {
     notDone: 'Archivieren lässt sich nur eine eigene Aufgabe, die live oder erledigt ist, oder eine verworfene Idee.',
     notArchived: 'Das liegt nicht mehr im Archiv.',
     notIdea: 'Das ist keine Idee (mehr).',
-    ideaThinking: 'Der Agent arbeitet noch an seiner Antwort. Bauen oder Planen geht, sobald sie da ist.',
+    ideaThinking: 'Der Agent arbeitet noch an seiner Antwort. Planen oder auf einem Prototyp bauen geht, sobald sie da ist.',
     prototypeRunning: 'Für diese Idee liegt noch ein Prototyp auf der Leinwand.',
     variantsRunning: 'Für jede geplante Variante läuft schon ein Prototyp. Für einen weiteren: den Ansatz nennen.',
     notPrototype: 'Das ist kein Prototyp (mehr).',
@@ -558,7 +558,15 @@ export const t = {
     prototypeGo: (n: number) => (n > 1 ? `${n} Prototypen starten` : 'Prototyp starten'),
     park: 'Parken',
     drop: 'Verwerfen',
-    waitForReply: 'Antwort kommt gleich: Bauen und Planen gehen, sobald sie da ist.',
+    waitForReply: 'Antwort kommt gleich. Planen geht, sobald sie da ist; „So bauen“ wartet auf sie und entfällt, wenn der Agent noch etwas fragt.',
+    /** On a prototype while its idea's agent works on a reply. */
+    prototypeWaits: 'Antwort kommt gleich: Bauen geht, sobald sie da ist.',
+    /** "So bauen" was clicked during the agent's reply: the button while it waits, the line above it, taking it back. */
+    buildWaits: 'Baut nach der Antwort …',
+    buildWaitsHint: 'Gebaut wird, sobald die Antwort da ist, außer der Agent fragt noch etwas.',
+    unbuild: 'Doch nicht bauen',
+    /** The same, short, on the canvas card. */
+    buildsAfterReply: 'baut nach der Antwort',
     built: 'Die Idee wird gebaut; der Stand der Idee ist ihr Auftrag.',
     planned: 'Ein Agent schreibt jetzt das Plan-Doc; danach steht hier das Projekt.',
     parked: 'Idee geparkt.',

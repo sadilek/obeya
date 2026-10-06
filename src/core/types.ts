@@ -172,6 +172,8 @@ export interface Idea {
   brief: string;
   /** The exploration agent is working on a reply. */
   thinking: boolean;
+  /** "So bauen" was clicked while the agent worked on a reply: the idea is built once the reply is there, unless it asks questions. */
+  buildAfterReply?: true;
   /** The agent replied and the owner has not answered yet: an open idea then needs the owner. */
   yourTurn: boolean;
   /** The questions of the agent's latest reply, until the owner says something. */
@@ -487,8 +489,13 @@ export type CardAction =
   | { action: 'dismiss' }
   /** Ideas: talk to the exploration agent; `spoken` gets a short spoken summary back. */
   | { action: 'discuss'; text: string; spoken?: boolean; images?: string[] }
-  /** Ideas: the brief becomes the card's task and the card is planned. */
+  /**
+   * Ideas: the brief becomes the card's task and the card is planned. While the agent works on a
+   * reply, the idea is built once the reply is there, unless it asks questions.
+   */
   | { action: 'build' }
+  /** Ideas: building after the reply is taken back. */
+  | { action: 'unbuild' }
   /** Ideas: a planned card whose worker writes a plan doc from the brief. */
   | { action: 'planDoc' }
   | { action: 'park' }

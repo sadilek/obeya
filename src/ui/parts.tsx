@@ -99,6 +99,7 @@ export const CardView = memo(
         <div className="state">
           {stateLabel(item)}
           {item.buildProposal && ` · ${t.idea.proposesBuild}`}
+          {item.idea?.buildAfterReply && ` · ${t.idea.buildsAfterReply}`}
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
         </div>
         {needsYou(item) && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}

@@ -416,20 +416,88 @@ describe('an idea', () => {
     expect(s.inbox[0]).toContain('Obeya was restarted');
   });
 
-  test('building and planning wait for its agent’s reply, which changes the brief they decide on', () => {
+  test('planning waits for its agent’s reply, which changes the brief it decides on', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Nimm noch den PDF-Export auf.' });
     const s = explorer();
     s.emit({ type: 'session', id: 'sess-1' });
-    s.call('update_brief', { brief: '**Ziel:** CSV- und PDF-Export.' });
-    expect(() => canvas.act(i.id, { action: 'build' })).toThrow('still working on its reply');
     expect(() => canvas.act(i.id, { action: 'planDoc' })).toThrow('still working on its reply');
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true } });
-    expect(s.closed).toBe(false);
-    s.call('reply', { text: 'PDF ist im Stand.', spoken: '' });
-    s.emit({ type: 'idle' });
+    turn(s, 'PDF ist im Stand.');
+    canvas.act(i.id, { action: 'planDoc' });
+    expect(item(i.id).state).toBe('planned');
+  });
+
+  test('built during its agent’s reply, it is built once the reply is there, with the brief it leaves', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Nimm noch den PDF-Export auf.' });
+    const s = explorer();
+    s.emit({ type: 'session', id: 'sess-1' });
     canvas.act(i.id, { action: 'build' });
+    canvas.act(i.id, { action: 'build' });
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
+    expect(board().events(i.id).filter((e) => e.text.startsWith('So bauen, sobald'))).toHaveLength(1);
+    // the agent hears it with its next step, once, so it asks only what building needs
+    expect(s.toolStep()).toContain('The owner clicked "So bauen" while you worked on this reply');
+    expect(s.toolStep()).toBeUndefined();
+    s.call('update_brief', { brief: '**Ziel:** CSV- und PDF-Export.' });
+    s.call('reply', { text: 'PDF ist im Stand.', spoken: '' });
+    expect(item(i.id).state).toBe('idea');
+    s.emit({ type: 'idle' });
     expect(item(i.id)).toMatchObject({ state: 'planned', body: '**Ziel:** CSV- und PDF-Export.' });
+    expect(board().decisions(null)).toMatchObject([{ card_id: i.id, answer: 'So bauen, wie der Stand der Idee sagt.' }]);
+  });
+
+  test('built during its agent’s reply, it is not built when the reply asks questions', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Nimm noch den PDF-Export auf.' });
+    const s = explorer();
+    s.emit({ type: 'session', id: 'sess-1' });
+    canvas.act(i.id, { action: 'build' });
+    s.call('reply', { text: 'Eine Frage noch.', spoken: '', questions: [{ question: 'Auch Excel?', options: ['Ja', 'Nein'] }] });
+    s.emit({ type: 'idle' });
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: false, yourTurn: true } });
+    expect(item(i.id).idea!.buildAfterReply).toBeUndefined();
+    expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'state', text: 'Nicht gebaut: Der Agent hat noch eine Frage.' });
+    // answered, the owner decides again
+    canvas.act(i.id, { action: 'discuss', text: 'Nein.' });
+    turn(explorer(), 'Gut, ohne Excel.');
+    expect(item(i.id).state).toBe('idea');
+  });
+
+  test('built during its agent’s reply, it waits for what the owner says after too, and can be taken back', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
+    const s = explorer();
+    s.emit({ type: 'session', id: 'sess-1' });
+    canvas.act(i.id, { action: 'build' });
+    canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
+    s.call('reply', { text: 'Zu erstens.', spoken: '' });
+    s.emit({ type: 'idle' });
+    // the second message goes in with the note, as the agent has not called a tool yet
+    expect(s.inbox.at(-1)).toContain('Zweitens.');
+    expect(s.inbox.at(-1)).toContain('"So bauen"');
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
+    canvas.act(i.id, { action: 'unbuild' });
+    expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'state', text: 'Doch nicht bauen.' });
+    s.call('reply', { text: 'Zu zweitens.', spoken: '' });
+    s.emit({ type: 'idle' });
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: false, yourTurn: true } });
+  });
+
+  test('built during its agent’s reply, it is not built when the turn ends with an error, or when it is parked', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
+    canvas.act(i.id, { action: 'build' });
+    explorer().emit({ type: 'error', message: 'rate limit' });
+    expect(item(i.id).state).toBe('idea');
+    expect(item(i.id).idea!.buildAfterReply).toBeUndefined();
+    expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'state', text: 'Nicht gebaut: Die Antwort kam nicht zustande.' });
+    canvas.act(i.id, { action: 'discuss', text: 'Hallo?' });
+    canvas.act(i.id, { action: 'build' });
+    canvas.act(i.id, { action: 'park' });
+    expect(item(i.id).idea).toMatchObject({ status: 'parked', thinking: false });
+    expect(item(i.id).idea!.buildAfterReply).toBeUndefined();
   });
 
   test('parked or dropped during a turn, what its agent has not answered goes to it first when the conversation goes on, across a restart', () => {
@@ -792,31 +860,33 @@ describe('by voice', () => {
     expect(explorer().inbox[0]).toContain('Eher als PDF.');
   });
 
-  test('"nimm noch X auf und bau es dann" only passes X on: building waits for the reply', async () => {
+  test('"nimm noch X auf und bau es dann" passes X on and builds once the reply is there, unless it asks questions', async () => {
     const i = idea();
     const heard = canvas.commander.hear('nimm noch PDF auf und bau es dann', { card: i.id });
     await settle();
-    const refused = reader().call('act', {
+    reader().call('act', {
       actions: [
         { do: 'discuss', card: 'K1', text: 'Nimm noch PDF auf.' },
         { do: 'build', card: 'K1' },
       ],
-      confirm: 'PDF kommt dazu, dann wird gebaut.',
+      confirm: 'PDF kommt dazu; gebaut wird nach der Antwort.',
     });
-    expect(refused).toContain('Nothing recorded: action 2 (build on K1): the idea\'s agent starts on a reply with the discuss in this command');
-    expect(talk(i.id)).toEqual([]);
-    reader().call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Nimm noch PDF auf.' }], confirm: 'Weitergegeben. Bauen geht per Klick, sobald die Antwort da ist.' });
     reader().emit({ type: 'idle' });
-    expect((await heard).token).toBeUndefined();
+    const h = await heard;
     expect(explorer().inbox[0]).toContain('Nimm noch PDF auf.');
-    // while it thinks, building alone is refused too, and the card says so
-    const again = canvas.commander.hear('bau es', { card: i.id });
+    canvas.commander.arm(h.token!);
+    await settle(30);
+    expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
+    // the Koordinator sees what waits
+    const again = canvas.commander.hear('was ist mit der Idee', { card: i.id });
     await settle();
-    expect(reader().inbox.at(-1)).toContain('[idea, its agent is working on its reply]');
+    expect(reader().inbox.at(-1)).toContain('[idea, its agent is working on its reply; built once the reply is there, unless it asks questions]');
+    // planning still waits for the reply
     expect(reader().call('act', { actions: [{ do: 'plan_doc', card: 'K1' }], confirm: 'Wird geplant.' })).toContain('is still working on its reply');
-    reader().call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Bau es.' }], confirm: 'Weitergegeben.' });
+    reader().call('reply', { text: 'Sie wird nach der Antwort gebaut.' });
     await again;
-    expect(item(i.id).state).toBe('idea');
+    turn(explorer(), 'PDF ist drin.', () => explorer().call('update_brief', { brief: '**Ziel:** CSV und PDF.' }));
+    expect(item(i.id)).toMatchObject({ state: 'planned', body: '**Ziel:** CSV und PDF.' });
   });
 
   test('"bau diesen Prototyp" waits for the reply of its idea’s agent', () => {

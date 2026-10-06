@@ -1244,6 +1244,8 @@ export interface StoredIdea {
   status: Idea['status'];
   brief: string;
   thinking?: boolean;
+  /** "So bauen" waits for the reply its agent works on; questions in it call the building off. */
+  buildAfterReply?: boolean;
   yourTurn?: boolean;
   questions?: Question[];
   next?: NextStep;
@@ -1278,7 +1280,7 @@ function decided(r: CardRow): Pick<Item, 'brief' | 'mocks' | 'becomesProject'> {
 
 function ideaOf(r: CardRow): Idea {
   const i = r.idea ? (JSON.parse(r.idea) as StoredIdea) : { status: 'open' as const, brief: '' };
-  return { status: i.status, brief: i.brief, thinking: !!i.thinking, yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}), variants: i.variants ?? [], mocks: i.mocks ?? [] };
+  return { status: i.status, brief: i.brief, thinking: !!i.thinking, ...(i.buildAfterReply ? { buildAfterReply: true as const } : {}), yourTurn: !!i.yourTurn, questions: i.questions ?? [], ...(i.next ? { next: i.next } : {}), variants: i.variants ?? [], mocks: i.mocks ?? [] };
 }
 
 function checkPreference(v: unknown): string {

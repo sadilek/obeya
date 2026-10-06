@@ -256,6 +256,11 @@ textarea.p-body:focus { border-color: var(--muted); }
 .next-step .next-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--idea); }
 .next-step + .actions { margin-top: 12px; }
 .btn.suggested { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--idea); }
+/* "So bauen" clicked during the agent's reply: armed, with a bar running under its label until the reply is there */
+.btn.waits:disabled { opacity: 1; position: relative; overflow: hidden; }
+.btn.waits::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--idea), transparent); background-size: 200% 100%; animation: flow 1.4s linear infinite; }
+.hint.build-waits { color: var(--ink); font-weight: 600; }
 .btn:hover { filter: brightness(1.05); }
 
 .p-status { color: var(--muted); font-weight: 500; }
