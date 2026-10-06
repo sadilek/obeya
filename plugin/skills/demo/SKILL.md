@@ -148,16 +148,27 @@ goes on screen with `showImage`, since a `goto` to another origin and back broke
 
 ```bash
 cd ~/demos/<repo-dir>-<slug> && node demo.ts --narration       # only the narration, cached
+cd ~/demos/<repo-dir>-<slug> && node demo.ts --dry              # only the scenes, no video
 cd ~/demos/<repo-dir>-<slug> && node demo.ts                    # the voice of the settings
 cd ~/demos/<repo-dir>-<slug> && DEMO_VOICE=piper node demo.ts   # another voice, into piper/
 ```
 
 Start the narration as soon as the `say` texts are written, while you still script the scenes
 (`run` may be empty then): `--narration` synthesises and caches the clips and exits, so the
-render later starts recording at once. Run both with the Bash tool's `run_in_background`; you are
-notified when they end (a render takes one to three minutes). Not with `&`, and do not wait with
-`sleep` or `pgrep` loops (sleep is blocked; `pgrep -f "node demo.ts"` matches its own command
-line). A second render of the same demo while one runs is refused with the PID of the first.
+render later starts recording at once.
+
+Before the first render, once the scenes are scripted, run `node demo.ts --dry`: it runs `login`,
+`open` and every scene against the running app as a render would, without narration, video or
+waiting for the voice, and ends with a line per scene or with the first one that failed. A scene
+waiting for a state that never comes fails there in seconds, not after synthesis and the scenes
+before it. This matters most for a state an outside trigger brings about (a limit at a proxy, a
+card that waits only after a while): bring it about in `login`/`open` or in the scene itself, and
+check with `--dry` that it comes.
+
+Run all of them with the Bash tool's `run_in_background`; you are notified when they end (a
+render takes one to three minutes). Not with `&`, and do not wait with `sleep` or `pgrep` loops
+(sleep is blocked; `pgrep -f "node demo.ts"` matches its own command line). A second run of the
+same demo while one runs is refused with the PID of the first.
 
 Narration is synthesised first by `lib/tts.py`, in the voice of the demo settings: Piper (the
 default) or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
@@ -181,7 +192,9 @@ loaded for all demos and for about 5 minutes after the last clip: the narration 
 "synthesised by Obeya", parallel demos take turns clip by clip, and only listening back waits for
 the lock. Recording uses the local Chrome, else Edge, else
 Playwright's own Chromium (`DEMO_CHROME` names another; headless screencast, 1440×900); it runs
-on macOS, Linux and Windows. A failing scene leaves `.work/failure.png`.
+on macOS, Linux and Windows. A failing scene (or `login`, `open`) stops the run with the page's
+`URL:`, a `Screenshot:` of it (`.work/failure.png`) and the `Cause:`, Playwright's message with
+the locator it waited for.
 
 ## 6. Review your own video — before the owner sees it
 

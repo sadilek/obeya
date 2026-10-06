@@ -886,6 +886,12 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   app (Obeya: a scratch instance from the worktree, staged by `scripts/scratch-obeya.ts` from a
   stage file before every take, its workers idle (`--idle-workers`) unless the change is about
   agents; elsewhere, say, the clone's own app stack), and hands over the directory and chapter titles with `ready_for_review`.
+  Before the first render it runs `node demo.ts --dry`: `login`, `open` and the scenes against the
+  app, without narration, setup check, screencast or ffmpeg (`untilSpoken` does not wait), under
+  the same per-demo lock as a render. Twice a scene waited for a state that never came and showed
+  it only in the full render, after synthesis and the scenes before it. A failing step names the
+  page's URL, the screenshot and Playwright's message on lines of their own: a worker once took
+  the screenshot's path, the only path in the message, for the page's address.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
   the card's demo (range requests). The card shows it with approve and feedback
   beside the video; feedback asks for a new render. When the result is something to look at

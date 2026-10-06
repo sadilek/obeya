@@ -3,7 +3,8 @@
 // one-page report beside it.
 //
 // A demo file default-exports nothing; it calls `runDemo(spec, import.meta.dirname)` and is run
-// with plain `node demo.ts`. Everything lands in the demo file's directory.
+// with plain `node demo.ts`. Everything lands in the demo file's directory. `node demo.ts --dry`
+// only plays the scenes against the app, to find a scene that fails before a render does.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -87,14 +88,17 @@ export class Director {
   readonly page: Page;
   readonly baseUrl: string;
   readonly workDir: string;
+  /** A dry run (`--dry`) has no narration, so `untilSpoken` does not wait. */
+  readonly #paced: boolean;
   #sceneStart = 0;
   #sceneSpeech = 0;
 
   // No parameter properties: Node runs this file by type stripping, which does not transform them.
-  constructor(page: Page, baseUrl: string, workDir: string) {
+  constructor(page: Page, baseUrl: string, workDir: string, paced = true) {
     this.page = page;
     this.baseUrl = baseUrl;
     this.workDir = workDir;
+    this.#paced = paced;
   }
 
   async goto(url: string) {
@@ -108,6 +112,7 @@ export class Director {
 
   /** Waits until `fraction` of this scene's narration has been spoken. */
   async untilSpoken(fraction = 1) {
+    if (!this.#paced) return;
     const due = this.#sceneStart + LEAD_SECONDS + this.#sceneSpeech * fraction;
     const left = due - now();
     if (left > 0) await this.wait(left * 1000);
@@ -364,10 +369,81 @@ async function login(spec: DemoSpec, dir: string) {
   const browser = await launch(spec.viewport!);
   const ctx = await browser.newContext({ viewport: spec.viewport });
   const page = await ctx.newPage();
-  await spec.login(page);
+  try {
+    await spec.login(page);
+  } catch (error) {
+    throw await failure('login', page, dir, error);
+  }
   await ctx.storageState({ path: stateFile });
   await browser.close();
   return stateFile;
+}
+
+/**
+ * The error for a step of the demo that failed: which step, the page's URL, a screenshot of it and
+ * the cause, each on its own line, so the screenshot's path is not taken for the page's address.
+ */
+async function failure(step: string, page: Page, dir: string, error: unknown) {
+  const shot = path.join(dir, 'failure.png');
+  const captured = await page.screenshot({ path: shot }).then(
+    () => true,
+    () => false,
+  );
+  await page.context().browser()?.close().catch(() => {});
+  // Playwright's message names the call and the locator it waited for; its colours are noise here.
+  const cause = (error instanceof Error ? error.message : String(error)).replace(/\x1b\[[0-9;]*m/g, '').trim();
+  const lines = [
+    `${step} failed`,
+    `  URL: ${page.url()}`,
+    `  Screenshot: ${captured ? shot : 'none (the page could not be captured)'}`,
+    `  Cause: ${cause.split('\n').join('\n    ')}`,
+  ];
+  return new Error(lines.join('\n'), { cause: error });
+}
+
+function sceneName(i: number, spec: DemoSpec) {
+  return `scene ${i + 1}/${spec.scenes.length} "${spec.scenes[i]!.title}"`;
+}
+
+/** The recording browser, with the overlay, on the opening shot. */
+async function openPage(spec: DemoSpec, viewport: { width: number; height: number }, work: string, paced: boolean) {
+  const storageState = await login({ ...spec, viewport }, work);
+  const browser = await launch(viewport);
+  const ctx = await browser.newContext({ viewport, storageState, deviceScaleFactor: 1 });
+  await ctx.addInitScript({ path: path.join(LIB, 'overlay.js') });
+  const page = await ctx.newPage();
+  const d = new Director(page, spec.baseUrl, work, paced);
+  try {
+    await spec.open(d);
+  } catch (error) {
+    throw await failure('open', page, work, error);
+  }
+  await page.evaluate(() => window.__demo.moveTo(window.innerWidth * 0.6, window.innerHeight * 0.55));
+  return { browser, ctx, page, d };
+}
+
+/**
+ * `--dry`: login, open and every scene in the order of a render, against the running app, with no
+ * narration, setup check, screencast or ffmpeg; `untilSpoken` does not wait. Ends with a line per
+ * scene, or with the first one that failed.
+ */
+async function dryRun(spec: DemoSpec, viewport: { width: number; height: number }, work: string) {
+  const { browser, d } = await openPage(spec, viewport, work, false);
+  const took: number[] = [];
+  for (const [i, scene] of spec.scenes.entries()) {
+    await d.clearHighlights();
+    console.log(sceneName(i, spec));
+    const start = now();
+    try {
+      await scene.run?.(d);
+    } catch (error) {
+      throw await failure(sceneName(i, spec), d.page, work, error);
+    }
+    took.push(now() - start);
+  }
+  await browser.close();
+  console.log(`\ndry run: all ${spec.scenes.length} scenes ran through`);
+  spec.scenes.forEach((s, i) => console.log(`  ${String(i + 1).padStart(2)}  ok  ${took[i]!.toFixed(1).padStart(5)} s  ${s.title}`));
 }
 
 interface Frame {
@@ -433,6 +509,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   const work = path.join(outDir, '.work');
   fs.mkdirSync(work, { recursive: true });
   holdRenderLock(work);
+  if (process.argv.includes('--dry')) return dryRun(spec, viewport, work);
   // Everything the render needs is there before it starts, or it stops with the whole list.
   const setup = await checkSetup(SETTINGS, { narrationOnly: process.argv.includes('--narration') });
   if (setup.items.some((i) => i.state === 'missing')) throw new Error(`cannot render yet:\n${describeSetup(setup)}`);
@@ -451,15 +528,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     return;
   }
 
-  const storageState = await login({ ...spec, viewport }, work);
-  const browser = await launch(viewport);
-  const ctx = await browser.newContext({ viewport, storageState, deviceScaleFactor: 1 });
-  await ctx.addInitScript({ path: path.join(LIB, 'overlay.js') });
-  const page = await ctx.newPage();
-  const d = new Director(page, spec.baseUrl, work);
-  await spec.open(d);
-  await page.evaluate(() => window.__demo.moveTo(window.innerWidth * 0.6, window.innerHeight * 0.55));
-
+  const { browser, ctx, page, d } = await openPage(spec, viewport, work, true);
   const cast = await startScreencast(ctx, page, framesDir, viewport);
   await d.wait(500);
   const t0 = now();
@@ -468,14 +537,11 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     const clip = clips[i]!;
     await d.clearHighlights();
     const start = d.beginScene(clip.seconds);
-    console.log(`scene ${i + 1}/${spec.scenes.length}: ${scene.title}`);
+    console.log(sceneName(i, spec));
     try {
       await scene.run?.(d);
     } catch (error) {
-      const shot = path.join(work, 'failure.png');
-      await page.screenshot({ path: shot }).catch(() => {});
-      await browser.close();
-      throw new Error(`scene ${i + 1} "${scene.title}" failed; the page at that moment: ${shot}`, { cause: error });
+      throw await failure(sceneName(i, spec), page, work, error);
     }
     await d.untilSpoken(1);
     await d.wait(GAP_SECONDS * 1000);
