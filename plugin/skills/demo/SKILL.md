@@ -135,7 +135,7 @@ is presented without "I" or "we".
 - Waiting is not shown: where the demo waits for something slow (an agent's answer, a build, a
   sync), put the wait into `d.skip` after the scene's `untilSpoken(1)`. The video cuts it out
   with a white flash that says how much later it is; the next scene's narration starts with the
-  jump ("Kurz darauf …", "Etwas später …").
+  jump ("Etwas später …"). A wait under five seconds stays in the video, without a flash.
 - Write large numbers as words ("about fifteen thousand two hundred euros"); small ones as digits
   are fine. Avoid abbreviations the voice would spell out.
 

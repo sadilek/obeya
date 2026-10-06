@@ -966,6 +966,9 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   two seconds in all. The cuts come out of the frames, the narration offsets, the chapters and
   the captions alike (`lib/timeline.ts`); a narration clip the cut falls into goes on across it,
   so a skip belongs after the scene's narration, and the next scene says the jump ("Kurz darauf").
+  A wait under five seconds stays in the video: the flash for "2 Sekunden später" disturbed more
+  than the wait. `skip` therefore fades only once the wait has run five seconds; those first
+  seconds are cut without a trace (the picture rarely changes in them), the rest falls into the white.
   The review table flags a scene with more than 5 s without narration.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
   the card's demo (range requests). The card shows it with approve and feedback

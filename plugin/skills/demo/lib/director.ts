@@ -62,6 +62,8 @@ const TTS_MATCH_WARN = 0.85;
 const NARRATION_OK = 0.93;
 /** A scene this much longer than its narration and gap has a stretch worth cutting (`Director.skip`). */
 const SILENCE_WARN = 5;
+/** A wait shorter than this stays in the video rather than being cut (`Director.skip`). */
+const MIN_CUT_SECONDS = 5;
 const SAVED = readDemoSettings();
 /** The settings of this render: `DEMO_VOICE` names another provider, or a `.wav` to clone. */
 const SETTINGS = withVoice(SAVED, process.env.DEMO_VOICE);
@@ -95,7 +97,7 @@ export class Director {
   readonly #paced: boolean;
   #sceneStart = 0;
   #sceneSpeech = 0;
-  /** Stretches `skip` cut out, and how much of them fell into the current scene. */
+  /** Stretches `skip` cut out (two per jump: before and after its fade), and how much of them fell into the current scene. */
   readonly cuts: Cut[] = [];
   #skippedInScene = 0;
 
@@ -128,17 +130,23 @@ export class Director {
   /**
    * Runs `fn`, a wait in which nothing worth watching happens (an agent at work, a build), and
    * cuts it from the video: the picture fades to white, says how much later it is, and fades back.
-   * The narration goes on across the cut, so call it after `untilSpoken(1)`.
+   * A wait shorter than `MIN_CUT_SECONDS` stays in the video: the flash would disturb more than
+   * the wait. The narration goes on across the cut, so call it after `untilSpoken(1)`.
    */
   async skip(fn: () => Promise<void>) {
     if (!this.#paced) return fn();
+    const from = now();
+    const done = fn().then(() => true);
+    if (await Promise.race([done, this.wait(MIN_CUT_SECONDS * 1000).then(() => false)])) return;
+    // Long enough: what was waited so far goes without a trace, the rest falls into the white.
+    const fadeFrom = now();
     await this.page.evaluate(() => window.__demo.whiteOut());
     await this.wait(300);
-    const from = now();
-    await fn();
+    const cutFrom = now();
+    await done;
     const to = now();
-    this.cuts.push({ from, to });
-    this.#skippedInScene += to - from;
+    this.cuts.push({ from, to: fadeFrom }, { from: cutFrom, to });
+    this.#skippedInScene += fadeFrom - from + to - cutFrom;
     await this.page.evaluate((l) => window.__demo.timeJump(l), laterLabel(to - from, LANGUAGE));
     await this.wait(1100);
     await this.page.evaluate(() => window.__demo.whiteIn());
@@ -632,7 +640,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     const idle = silent > SILENCE_WARN ? `  ← ${Math.round(silent)} s without narration: cut it with d.skip where it only waits` : '';
     console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}  ${match}${flag}${idle}`);
   });
-  if (d.cuts.length) console.log(`cut ${d.cuts.length}× (${Math.round(d.cuts.reduce((s, c) => s + c.to - c.from, 0))} s of waiting)`);
+  if (d.cuts.length) console.log(`cut ${d.cuts.length / 2}× (${Math.round(d.cuts.reduce((s, c) => s + c.to - c.from, 0))} s of waiting)`);
   if (narrated.unchecked) console.log(`narration NOT heard back (${narrated.unchecked}): name that in the report's findings`);
   console.log(`stills → ${reviewDir}: NN-mid.jpg (middle of each scene), NN.jpg (its end)`);
 }
