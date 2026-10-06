@@ -564,6 +564,7 @@ label.c-row input { width: 64px; }
 .c-demo label.c-check > .hint { display: inline; font-size: 12.5px; }
 .c-install { display: flex; gap: 10px; align-items: center; margin: 4px 0; font-size: 12.5px; }
 .c-install .hint { margin: 0; }
+.c-install .c-step { flex: none; }
 .c-install code { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .c-status { margin-top: 8px; }
 /* what demos need on this machine: one line per piece, how to install a missing one below it */

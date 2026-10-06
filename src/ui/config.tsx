@@ -362,7 +362,7 @@ function DemoBlock({ on }: { on: boolean }) {
         <p className="hint c-person">{d.person[shown.person]}</p>
         {job?.running ? (
           <p className="hint c-install">
-            {d.installing} <code>{job.line}</code>
+            <span className="c-step">{d.installing}</span> <code>{job.line}</code>
           </p>
         ) : (
           !shown.install.installed && (
@@ -533,7 +533,7 @@ function VoiceBlock({ on }: { on: boolean }) {
         {view.listen === 'faster' && <p className="hint">{v.faster}</p>}
         {view.job?.running ? (
           <p className="hint c-install">
-            {v.step[view.job.step]} <code>{view.job.line}</code>
+            <span className="c-step">{v.step[view.job.step]}</span> <code>{view.job.line}</code>
           </p>
         ) : view.fetch.parts.length ? (
           <div className="c-install">
