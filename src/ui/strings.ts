@@ -88,7 +88,7 @@ const de = {
     working: 'Hinweis an den Agenten – er arbeitet weiter',
     question: 'Eigene Antwort',
     review: 'Feedback – der Agent arbeitet daran weiter',
-    revise: 'Was soll anders werden? Ergänzen, streichen, entscheiden – oder halte die Leertaste',
+    revise: 'Was soll anders werden? – oder halte die Leertaste',
   },
   questionFromWorker: 'Frage des Agenten',
   ask: {
@@ -108,7 +108,7 @@ const de = {
   proposedByRetro: (basis: string) => `Aus der Arbeitsrückschau: ${basis}`,
   revisingShort: 'wird überarbeitet',
   revising: 'Wird nach deinen Worten überarbeitet …',
-  reviseHint: 'Sag oder schreib, was anders werden soll. Ein Agent schreibt Text und Fragen danach neu; was du nicht ansprichst, bleibt.',
+  reviseHint: 'Sag oder schreib, was anders werden soll: ergänzen, streichen, entscheiden. Ein Agent schreibt Text und Fragen danach neu; was du nicht ansprichst, bleibt.',
   followUpOf: (title: string) => `Kommt von der Aufgabe „${title}“.`,
   task: 'Auftrag',
   talk: {
@@ -748,7 +748,7 @@ const en: Strings = {
     working: 'A note to the agent – it keeps working',
     question: 'Your own answer',
     review: 'Feedback – the agent goes on working on it',
-    revise: 'What should change? Add, drop, decide – or hold the space bar',
+    revise: 'What should change? – or hold the space bar',
   },
   questionFromWorker: 'The agent asks',
   ask: {
@@ -767,7 +767,7 @@ const en: Strings = {
   proposedByRetro: (basis: string) => `From the work retrospective: ${basis}`,
   revisingShort: 'being reworked',
   revising: 'Being reworked by what you said …',
-  reviseHint: 'Say or type what should change. An agent rewrites text and questions by it; what you do not mention stays.',
+  reviseHint: 'Say or type what should change: add, drop, decide. An agent rewrites text and questions by it; what you do not mention stays.',
   followUpOf: (title: string) => `Follows from the task “${title}”.`,
   task: 'Task',
   talk: {
