@@ -7,7 +7,7 @@ import { pickAdapter } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
-import { buildableOn, type CanvasConfig, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
+import { buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -449,12 +449,13 @@ export class CanvasRuntime {
   }
 
   /**
-   * The idea has become a project: the workstream the owner chose is built on the prototype's
-   * branch and starts at once; the idea's other prototypes are discarded.
+   * The idea has become a project: the workstream the owner chose, or else the one its plan doc
+   * builds on the prototypes with, is built on the prototype's branch and starts at once; the
+   * idea's other prototypes are discarded.
    */
   private buildWorkstreamOn(prototype: Item, project: Item, workstreamId?: string) {
-    if (!workstreamId) throw new BadRequest('workstreamMissing', 'the idea is a project now: choose the workstream to build on the prototype');
-    const ws = this.board.item(workstreamId);
+    const ws = workstreamId ? this.board.item(workstreamId) : prototypeWorkstream(this.board.snapshot().items, project.id);
+    if (!ws && !workstreamId) throw new BadRequest('workstreamMissing', 'the plan doc does not say which workstream builds on the prototype: choose it');
     if (!ws || ws.parent !== project.id) throw new BadRequest('invalid', 'not a workstream of the project the idea became');
     if (!buildableOn(ws)) throw new BadRequest('workstreamStarted', 'only a workstream nobody has started can be built on a prototype');
     const named = `${ws.label ? `${ws.label} ` : ''}„${ws.title}“`;
@@ -499,7 +500,7 @@ export class CanvasRuntime {
         idea.brief.trim() || card.body.trim(),
         prototypes.length
           ? [
-              `Zu dieser Idee gibt es schon ${prototypes.length > 1 ? `${prototypes.length} Prototypen` : 'einen Prototyp'}. Sie bleiben auf der Leinwand stehen; steht das Projekt, wählt der Owner einen von ihnen und den Workstream, der auf seinem Branch gebaut wird („Diesen Prototyp bauen“). Plane sie also nicht noch einmal als Workstreams, sondern nimm, was sie gezeigt haben, ins Plan-Doc auf, und sag beim Workstream, der auf einem Prototyp aufbaut, dass er das tut.`,
+              `Zu dieser Idee gibt es schon ${prototypes.length > 1 ? `${prototypes.length} Prototypen` : 'einen Prototyp'}. Sie bleiben auf der Leinwand stehen; steht das Projekt, wählt der Owner einen von ihnen („Diesen Prototyp bauen“), und der Workstream, der darauf aufbaut, wird auf seinem Branch gebaut. Plane sie also nicht noch einmal als Workstreams, sondern nimm, was sie gezeigt haben, ins Plan-Doc auf. Nur der Workstream, der auf dem gewählten Prototyp aufbaut, erwähnt Prototypen: an ihm erkennt Obeya, welcher Workstream auf dem Branch des Prototyps gebaut wird.`,
               ...prototypes.map((p) => {
                 const summary = this.board.summary(p.id)?.trim();
                 return summary ? `„${p.title}“, so übergeben:\n\n${summary}` : `„${p.title}“: noch in Arbeit.`;

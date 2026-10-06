@@ -155,10 +155,11 @@ An idea is thought through on its card before anything is planned; no worker run
    the idea) and links back to it; the idea goes to the archive once its
    worker is done (put back, it stays). The idea's prototypes stay on the canvas, each still naming
    its idea, and the plan doc's worker hears what each showed (its handover, or that it is still
-   being built), so the doc builds on them instead of planning them again. While the doc is
-   written, "Diesen Prototyp bauen" waits for the project; once it stands, the button asks for one
-   of its workstreams nobody has started, and that workstream is built on the prototype's branch
-   as an idea would be ("Auf Prototyp „…“" in the project's decisions), its worker told to take
+   being built), so the doc builds on them instead of planning them again; only the workstream that
+   builds on the chosen prototype mentions prototypes. While the doc is written, "Diesen Prototyp
+   bauen" waits for the project; once it stands, the button builds that workstream (the one nobody
+   has started that mentions prototypes; the owner picks another, or picks one where the doc names
+   none or several), and it is built on the prototype's branch as an idea would be ("Auf Prototyp „…“" in the project's decisions), its worker told to take
    the workstream from the plan doc; the idea's other prototypes are discarded. Before
    (2026-10-06), planning left the prototypes behind unmentioned: the plan doc planned them again
    as workstreams, and once the idea was archived, building on one failed with a 400. "Parken" and "Verwerfen" leave the card with its brief; talking

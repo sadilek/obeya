@@ -16,6 +16,16 @@ export const finished = (s: CardState) => s === 'live' || s === 'done';
 /** A workstream a prototype can be built for: nobody has worked on it yet, and the Koordinator does not hold it. */
 export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i.queue;
 
+/**
+ * The workstream of a project, among `items`, that its idea's prototypes are built for: the one
+ * nobody has started that mentions prototypes, as the plan doc's worker writes it. None when no
+ * such workstream, or several, leave it to the owner.
+ */
+export function prototypeWorkstream(items: Item[], projectId: string): Item | undefined {
+  const named = items.filter((i) => i.parent === projectId && buildableOn(i) && /prototyp/i.test(`${i.title}\n${i.body}`));
+  return named.length === 1 ? named[0] : undefined;
+}
+
 /** What a `waiting` card waits for. `review` stands in for `demo` until workers record demos (M4). */
 export type Need = 'demo' | 'question' | 'review';
 
@@ -516,8 +526,8 @@ export type CardAction =
   | { action: 'prototype'; text?: string; variants?: string[] }
   /**
    * Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are
-   * discarded. Once the idea has become a project, `workstream` is the one of its workstreams that
-   * is built on it instead.
+   * discarded. Once the idea has become a project, one of its workstreams is built on it instead:
+   * `workstream`, or else the one the plan doc builds on the prototypes with.
    */
   | { action: 'buildPrototype'; workstream?: string }
   /** Prototypes: thrown away, into the archive with log, demo and summary. */
@@ -565,7 +575,7 @@ export type ErrorCode =
   | 'projectPending'
   /** The prototype's idea is gone from the canvas, and no project of it is there. */
   | 'ideaGone'
-  /** The prototype's idea became a project: building on it needs one of its workstreams. */
+  /** The prototype's idea became a project whose plan doc does not say which workstream builds on it, and none was chosen. */
   | 'workstreamMissing'
   /** The workstream to build on a prototype was started already. */
   | 'workstreamStarted'

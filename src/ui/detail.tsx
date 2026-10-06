@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { buildableOn, type CardAction, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
+import { buildableOn, type CardAction, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
 import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
@@ -44,6 +44,7 @@ export function Detail(p: Props) {
   const [error, setError] = useState('');
   // a prototype whose idea has become a project: the workstream to build on it
   const [workstream, setWorkstream] = useState('');
+  const [picking, setPicking] = useState(false);
   const all = p.all;
   const run = async (fn: () => Promise<void>, done: ActDone) => {
     setError('');
@@ -124,7 +125,9 @@ export function Detail(p: Props) {
   // once the idea has become a project, one of its workstreams is built on the prototype instead
   const project = item.prototypeOf ? all.find((i) => i.kind === 'project' && i.origin === item.prototypeOf) : undefined;
   const workstreams = project ? all.filter((i) => i.parent === project.id && buildableOn(i)) : [];
-  const chosen = workstreams.find((w) => w.id === workstream);
+  // the plan doc says which workstream builds on the prototypes; the owner picks only where it does not, or another
+  const named = project && !picking ? prototypeWorkstream(all, project.id) : undefined;
+  const chosen = named ?? workstreams.find((w) => w.id === workstream);
   const ideaThinking = !project && !!p.from?.idea?.thinking;
   const planning = !project && !!p.from?.becomesProject;
   const buildOn = (label: string) => (
@@ -142,7 +145,16 @@ export function Detail(p: Props) {
       {label}
     </button>
   );
-  const workstreamPick = project && (
+  const workstreamPick = project && named ? (
+    <div className="build-on">
+      <span>
+        {t.idea.buildsWorkstream(workstreamName(named))}{' '}
+        <button className="link" onClick={() => setPicking(true)}>
+          {t.idea.otherWorkstream}
+        </button>
+      </span>
+    </div>
+  ) : project && (
     <label className="build-on">
       {t.idea.workstreamOf(plain(project.title))}
       <select value={workstream} onChange={(e) => setWorkstream(e.target.value)}>
