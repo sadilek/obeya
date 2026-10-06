@@ -89,46 +89,26 @@
   <section class="how" id="how">
     <div class="head">
       <h2>From idea to main in four steps</h2>
-      <p>You decide twice. The agents do the rest.</p>
+      <p>The same card, moving along the wall.</p>
     </div>
-    <div class="flight" id="flight">
-      <div class="view">
-        <ol class="steps world">
-          <li class="step s-idea" data-x="0" data-y="40" data-w="380">
-            <div class="kind">Step 1 · Idea</div>
-            <h3>Say what you want</h3>
-            <div class="body">
-              <p>Say it or type it. It becomes a card on the canvas, where you put it.</p>
-              <div class="mini" aria-hidden="true"><span class="key">hold <b>Space</b></span><span class="said">“Export the invoices as CSV.”</span></div>
-            </div>
-          </li>
-          <li class="step s-working" data-x="660" data-y="-260" data-w="400">
-            <div class="kind">Step 2 · Agent works</div>
-            <h3>An agent takes the card</h3>
-            <div class="body">
-              <p>A Claude Code agent works on it in its own clone, on its own branch. You don't watch.</p>
-              <div class="mini" aria-hidden="true"><code>obeya/export-invoices-csv</code><span class="state"><i></i>Agent working</span></div>
-            </div>
-          </li>
-          <li class="step s-waiting" data-x="1180" data-y="200" data-w="420">
-            <div class="kind">Step 3 · Demo</div>
-            <h3>It comes back with a demo</h3>
-            <div class="body">
-              <p>A narrated video of the finished work and a short report. Questions come back as questions, on the card.</p>
-              <div class="mini still" aria-hidden="true"><span class="play"></span><span class="chapters"><i></i><i></i><i></i></span></div>
-            </div>
-          </li>
-          <li class="step s-approved" data-x="560" data-y="660" data-w="380">
-            <div class="kind">Step 4 · Approve</div>
-            <h3>You approve</h3>
-            <div class="body">
-              <p>Or say what to change. Obeya lands the branch on main, or carries the pull request to the merge.</p>
-              <div class="mini" aria-hidden="true"><span class="state"><i></i>Landed on main</span></div>
-            </div>
-          </li>
-        </ol>
-      </div>
-    </div>
+    <ol class="steps">
+      <li>
+        <div class="card s-planned"><div class="kind">1 · Idea</div><div class="ttl">Export invoices as CSV</div><div class="state"><i></i>Planned</div></div>
+        <p>You say what you want. A card appears on the wall.</p>
+      </li>
+      <li>
+        <div class="card s-working"><div class="kind">2 · Agent works</div><div class="ttl">Export invoices as CSV</div><div class="state"><i></i>Working</div></div>
+        <p>A worker takes the card into its own clone and builds it. You don't watch.</p>
+      </li>
+      <li>
+        <div class="card s-waiting ring"><div class="kind">3 · Demo</div><div class="ttl">Export invoices as CSV</div><div class="state"><i></i>Demo ready</div></div>
+        <p>It comes back with a narrated demo and a short report, or with a question.</p>
+      </li>
+      <li>
+        <div class="card s-approved"><div class="kind">4 · Approve</div><div class="ttl">Export invoices as CSV</div><div class="state"><i></i>Merged</div></div>
+        <p>You approve. Obeya lands the branch on main or carries the pull request to the merge.</p>
+      </li>
+    </ol>
   </section>
 
   <section class="wall-section" id="wall">
@@ -170,41 +150,49 @@
     </ul>
   </section>
 
-  <section class="name">
-    <div class="kanji" aria-hidden="true">大部屋</div>
+  <section class="room">
+    <div class="room-mark" lang="ja" aria-hidden="true">大部屋</div>
     <div>
-      <h2>Why “Obeya”</h2>
-      <p><em>Obeya</em> is Japanese for “big room”. In lean management it is the room where every project hangs on the walls,
-        so the people in charge decide in front of the whole picture instead of chasing status.
-        This is that room, for a team of agents.</p>
+      <h2>The big room</h2>
+      <p class="big">At Toyota, the <em>obeya</em> was the big room where a project lived on the walls. Every plan, every problem,
+        every status hung where anyone could see it, and decisions were made standing in front of the wall.
+        Nobody had to ask how things stood. You looked.</p>
+      <p>AI agents can now do the work of a team. What they lack is the room. Terminals scroll away, chats forget,
+        and you end up watching agents instead of directing them. Obeya gives the agents a wall to work on
+        and gives you a place to stand in front of it.</p>
     </div>
   </section>
 
+  <section class="proof">
+    <p class="big">Obeya is built with Obeya.</p>
+    <p>Its own tasks hang on its own wall, and every change to it arrived as a demo first. This page was a card there too.</p>
+  </section>
+
   <section class="start" id="start">
-    <h2>Get started</h2>
+    <div class="head">
+      <h2>Get started</h2>
+      <p>Obeya runs locally. The agents use the official Claude Code installation on your machine, with your own subscription.</p>
+    </div>
     <div class="cols">
       <div>
         <h3>You need</h3>
-        <ul class="req">
-          <li><a href="https://bun.sh">Bun</a> 1.3 or newer</li>
-          <li><a href="https://claude.com/claude-code">Claude Code</a>, installed and logged in</li>
-          <li>git, and the <a href="https://cli.github.com">GitHub CLI</a> <code>gh</code> for pull requests</li>
+        <ul class="needs">
+          <li><a href="https://bun.sh"><b>Bun</b></a> to run Obeya</li>
+          <li><a href="https://claude.com/claude-code"><b>Claude Code</b></a>, logged in</li>
+          <li><b>git</b> and <a href="https://cli.github.com"><b>gh</b></a> for clones and pull requests</li>
         </ul>
-        <p class="small">Agents run locally through your own Claude Code installation and login. Your code stays on your machine.
-          Voice input needs a Mac with Apple Silicon for now; Windows and Linux follow.
-          Demos need Node, a Chromium browser, ffmpeg and uv; the settings in the app say what is missing.</p>
       </div>
       <div>
         <h3>Then</h3>
 <pre><code><span class="c"># get it</span>
-git clone https://github.com/sadilek/obeya.git
-cd obeya
-bun install
-
-<span class="c"># open a canvas for one of your repositories</span>
-bun start ~/dev/your-repo</code></pre>
-        <p class="small">The canvas opens on <code>http://127.0.0.1:4417</code>. Obeya is open source under the
-          <a href="https://github.com/sadilek/obeya/blob/main/LICENSE">MIT licence</a>.</p>
+git clone https://github.com/sadilek/obeya && cd obeya
+<span class="c"># open the wall for one of your repositories</span>
+bun install && bun start ~/dev/your-repo</code></pre>
+        <p class="small">The wall opens on <code>http://127.0.0.1:4417</code>.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/sadilek/obeya">Source on GitHub</a>
+          <a class="btn" href="https://github.com/sadilek/obeya/blob/main/docs/design.md">Read the design</a>
+        </div>
       </div>
     </div>
   </section>
@@ -212,11 +200,10 @@ bun start ~/dev/your-repo</code></pre>
 
 <footer>
   <img src="img/logo.svg" alt="" width="20" height="20">
-  <span>Obeya is built with Obeya.</span>
+  <span>obeya.si</span>
   <a href="https://github.com/sadilek/obeya">GitHub</a>
   <a href="https://github.com/sadilek/obeya/blob/main/LICENSE">MIT licence</a>
 </footer>
 
-<script src="flight.js" defer></script>
 </body>
 </html>

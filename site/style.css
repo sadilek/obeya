@@ -68,54 +68,27 @@ section { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
 /* ---------- cards, as on Obeya's canvas ---------- */
 .s-idea { --c: var(--pink); } .s-working { --c: var(--blue); } .s-waiting { --c: var(--amber); }
 .s-approved { --c: var(--green); } .s-planned { --c: var(--grey); }
-.card, .step { position: relative; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px 18px 24px;
+.card { position: relative; background: var(--card); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px 18px 24px;
   background-image: linear-gradient(var(--c), var(--c)); background-size: 5px 100%; background-repeat: no-repeat; list-style: none; }
-.s-idea.card, .s-idea.step { background-color: color-mix(in srgb, var(--pink) 4%, var(--card)); }
+.s-idea.card { background-color: color-mix(in srgb, var(--pink) 4%, var(--card)); }
 .kind { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.card h3, .step h3 { font-size: 19px; margin-top: 6px; }
-.card p, .step p { margin: 8px 0 0; font-size: 15px; color: #4a4741; line-height: 1.5; }
+.card h3 { font-size: 19px; margin-top: 6px; }
+.card .ttl { font-weight: 650; font-size: 16px; line-height: 1.3; margin-top: 3px; }
+.card .state { display: flex; margin-top: 10px; font-size: 12.5px; }
+.card.ring { box-shadow: 0 0 0 2px var(--amber), var(--shadow); }
+.card p { margin: 8px 0 0; font-size: 15px; color: #4a4741; line-height: 1.5; }
 .state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--c); }
 .state i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 .s-working .state i { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
-.wall, .pinboard, .how.fly .view { background-color: var(--paper); background-image: radial-gradient(var(--dot) 1.2px, transparent 1.2px); background-size: 22px 22px; }
+.pinboard { background-color: var(--paper); background-image: radial-gradient(var(--dot) 1.2px, transparent 1.2px); background-size: 22px 22px; }
 
-/* ---------- how it works: four cards, or a canvas the camera flies through ---------- */
+/* ---------- how it works: the same card along the wall ---------- */
 .how { margin-top: 144px; }
-.steps { padding: 0; margin: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
-.step:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 18px; color: var(--muted); font-weight: 600; font-family: system-ui, sans-serif; }
-.step .mini { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: 13px; }
-.step .key { padding: 3px 9px; border-radius: 6px; background: var(--paper); border: 1px solid var(--line); color: var(--muted); }
-.step .said { font-style: italic; color: var(--ink); }
-.step code { font-size: 12px; padding: 3px 7px; border-radius: 6px; background: var(--paper); }
-.step .still { position: relative; height: 92px; border-radius: 8px; background: #2a2926; display: block; }
-.still .play { position: absolute; left: 50%; top: 40%; translate: -50% -50%; width: 32px; height: 32px; border-radius: 50%; background: #fff; }
-.still .play::after { content: ""; position: absolute; left: 12px; top: 9px; border: 7px solid transparent; border-left: 11px solid var(--ink); border-right: 0; }
-.still .chapters { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 3px; }
-.still .chapters i { height: 3px; flex: 1; background: rgba(255,255,255,.35); border-radius: 2px; }
-.still .chapters i:first-child { background: var(--amber); }
-
-/* with flight.js on a large screen: the steps hang on a canvas, and scrolling flies from one to the next */
-.how.fly .flight { position: relative; width: 100vw; left: 50%; margin-left: -50vw; }
-.how.fly .view { position: sticky; top: 0; height: 100vh; overflow: hidden; border-block: 1px solid var(--line); }
-.how.fly .world { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; will-change: transform; }
-.how.fly .step, .how.fly .deco { position: absolute; overflow: hidden; }
-.how.fly .step::after { content: none; }
-.how.fly .step .body { position: absolute; left: 24px; }
-.how.fly .step.focus { box-shadow: 0 0 0 2px var(--c), var(--lift); }
-.deco { width: 250px; background-color: var(--card); }
-.deco .ttl { font-size: 15px; font-weight: 600; margin-top: 3px; line-height: 1.3; }
-.deco .state { margin-top: 10px; font-size: 12px; }
-.deco.s-waiting { box-shadow: 0 0 0 2px var(--amber), var(--shadow); }
-.territory { position: absolute; border-radius: 28px; background: color-mix(in srgb, var(--c) 7%, transparent);
-  border: 1.5px solid color-mix(in srgb, var(--c) 22%, transparent); }
-.territory span { position: absolute; left: 22px; top: 14px; font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--c) 70%, var(--ink)); }
-.progress { position: absolute; right: 24px; top: 50%; translate: 0 -50%; display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
-.progress a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; font-size: 13px; font-weight: 500; color: var(--muted); text-decoration: none; }
-.progress a::after { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--dot); }
-.progress a span { opacity: 0; transition: opacity .2s; }
-.progress a.on { color: var(--ink); } .progress a.on span, .progress:hover span { opacity: 1; }
-.progress a.on::after { background: var(--c); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+.steps li { position: relative; }
+.steps li:not(:last-child)::after { content: "→"; position: absolute; right: -22px; top: 30px; color: var(--muted); font-size: 18px; }
+.steps > li > p { font-size: 15.5px; color: #4a4741; margin: 14px 0 0; line-height: 1.5; }
 
 /* ---------- the wall of principles ---------- */
 .wall-section { margin-top: 144px; }
@@ -126,23 +99,33 @@ section { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
 .pinboard .card:hover { transform: translateY(-3px) rotate(0deg); box-shadow: var(--lift); }
 .tilt-a { transform: rotate(-.6deg); } .tilt-b { transform: rotate(.5deg) translateY(10px); } .tilt-c { transform: rotate(-.2deg) translateY(-4px); }
 
-/* ---------- the name ---------- */
-.name { margin-top: 144px; display: grid; grid-template-columns: auto 1fr; gap: 56px; align-items: center;
-  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding-top: 64px; padding-bottom: 64px; }
-.kanji { font-size: clamp(64px, 9vw, 120px); font-weight: 700; line-height: 1; letter-spacing: .02em; color: var(--ink);
+/* ---------- the big room ---------- */
+.room { margin-top: 112px; display: grid; grid-template-columns: .8fr 1.2fr; gap: 56px; align-items: start;
+  border-top: 1px solid var(--line); padding-top: 72px; padding-bottom: 96px; }
+.room-mark { font-size: clamp(80px, 13vw, 170px); line-height: .95; font-weight: 700; color: var(--ink); opacity: .9;
+  writing-mode: vertical-rl; justify-self: center; letter-spacing: .05em;
   font-family: "Obeya Kanji", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif; }
-.name h2 { font-size: 24px; margin-bottom: 12px; }
-.name p { color: var(--muted); margin: 0; max-width: 620px; font-size: 18px; }
+.room h2 { font-size: clamp(28px, 3vw, 38px); margin-bottom: 22px; }
+.room p { margin: 0 0 18px; color: var(--muted); max-width: 36em; }
+.room .big { font-size: clamp(21px, 2.3vw, 26px); line-height: 1.45; color: var(--ink); font-weight: 500; letter-spacing: -.01em; }
+
+/* ---------- built with Obeya ---------- */
+.proof { max-width: none; background: var(--ink); color: #eeeae3; padding: 80px 24px; text-align: center; }
+.proof .big { color: #fff; font-size: clamp(30px, 4.4vw, 48px); font-weight: 700; letter-spacing: -.03em; line-height: 1.15; margin: 0; }
+.proof p { max-width: 36em; margin: 14px auto 0; color: #b8b3a9; font-size: 18px; }
 
 /* ---------- getting started ---------- */
-.start { margin-top: 128px; margin-bottom: 120px; }
-.start > h2 { margin-bottom: 36px; }
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+.start { margin-top: 96px; margin-bottom: 120px; }
+.start .head p { max-width: 40em; }
+.cols { display: grid; grid-template-columns: .8fr 1.2fr; gap: 48px; }
 .cols > div { min-width: 0; }
-.start h3 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 14px; }
-.req { padding-left: 20px; margin: 0; } .req li { margin-bottom: 6px; }
+.start h3 { font-size: 19px; margin-bottom: 14px; }
+.needs { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.needs li { background: var(--card); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); font-size: 16px; }
+.needs a { text-decoration: none; } .needs a:hover { text-decoration: underline; }
 .small { font-size: 15px; color: var(--muted); margin-top: 18px; }
-pre { margin: 0; background: var(--ink); color: #f6f5f2; border-radius: 12px; padding: 22px 24px; overflow-x: auto;
+.start .cta { justify-content: flex-start; margin-top: 24px; }
+pre { margin: 0; background: var(--ink); color: #f6f5f2; border-radius: 14px; padding: 20px 22px; overflow-x: auto;
   font: 15px/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 pre code { font-size: inherit; }
 pre .c { color: #8f8b83; }
@@ -152,8 +135,8 @@ footer { max-width: var(--wide); margin: 0 auto; padding: 28px 24px 48px; displa
 footer span { margin-right: auto; }
 
 @media (max-width: 900px) {
-  .steps { grid-template-columns: 1fr 1fr; }
-  .step:nth-child(2)::after { content: none; }
+  .steps { grid-template-columns: 1fr 1fr; gap: 28px 40px; }
+  .steps li:nth-child(2)::after { content: none; }
   .pinboard { grid-template-columns: 1fr 1fr; padding: 32px 24px; }
 }
 @media (max-width: 760px) {
@@ -169,14 +152,19 @@ footer span { margin-right: auto; }
   .pillars { margin-top: 80px; gap: 72px; }
   .pillar { grid-template-columns: 1fr; gap: 24px; }
   .pillar.flip .text { order: 0; }
-  .how, .wall-section, .name { margin-top: 96px; }
-  .steps { grid-template-columns: 1fr; gap: 14px; }
-  .step:not(:last-child)::after, .step:nth-child(2)::after { content: "↓"; right: auto; left: 28px; top: auto; bottom: -21px; }
+  .how, .wall-section, .room { margin-top: 96px; }
+  .steps { grid-template-columns: 1fr; gap: 26px; }
+  .steps li { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: center; }
+  .steps > li > p { margin: 0; font-size: 14.5px; }
+  .steps li:not(:last-child)::after, .steps li:nth-child(2)::after { content: "↓"; right: auto; left: 22%; top: auto; bottom: -24px; }
   .pinboard { grid-template-columns: 1fr; gap: 18px; padding: 20px 16px; border-radius: 20px; }
   .tilt-b { transform: rotate(.5deg); } .tilt-c { transform: rotate(-.2deg); }
-  .name { grid-template-columns: 1fr; gap: 20px; padding-top: 40px; padding-bottom: 40px; }
+  .room { grid-template-columns: 1fr; gap: 8px; padding-top: 48px; padding-bottom: 64px; }
+  .room-mark { writing-mode: horizontal-tb; justify-self: start; font-size: 72px; margin-bottom: 16px; }
+  .proof { padding: 56px 20px; }
+  .start { margin-top: 64px; }
   .cols { grid-template-columns: 1fr; gap: 32px; }
-  pre { font-size: 14px; }
+  pre { font-size: 13px; }
   footer { flex-wrap: wrap; }
   footer span { flex: 1 1 calc(100% - 40px); }
 }

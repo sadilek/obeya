@@ -40,10 +40,11 @@ services are off the table for now (see Background).
 - *Pictures*: `bun scripts/scratch-obeya.ts <stage.json>` stages a canvas with cards in about a
   second, which is enough for screenshots. Demo videos never go into git.
 - *Site*: `site/` holds the page for obeya.si, built from prototype B (film first): plain HTML
-  and CSS, opened straight from the file, no build. From A it takes the four steps as cards on a
-  canvas the camera flies through, each unfolding in focus (`site/flight.js`; on a phone, with
-  reduced motion and without JavaScript they stay a plain list); from C the six principles as
-  cards on a wall. Inter and the three characters of 大部屋 (Noto Serif JP) are served from
+  and CSS, opened straight from the file, no build. From C it takes the six principles as cards
+  on a wall, the four steps as the same card moving along the wall, "The big room" with 大部屋
+  set vertically, the dark band "Obeya is built with Obeya." and the getting-started block.
+  Prototype A's canvas the camera flew through while scrolling is gone again: the owner found
+  the scrolling odd. Inter and the three characters of 大部屋 (Noto Serif JP) are served from
   `site/fonts/` with their OFL licences; logo and wordmark are copies from `src/ui/logo/`. The
   screenshots are B's, of the German interface, and the film is a still until W9. The prototype
   cards A, B and C can go.
@@ -91,20 +92,22 @@ services are off the table for now (see Background).
 ### The site
 
 - **Static, in `site/`** of this repository, served by GitHub Pages under obeya.si. Plain HTML,
-  CSS and a little JavaScript, no framework and no build step. The real logo from `src/ui/logo/`
+  CSS, no JavaScript, no framework and no build step. The real logo from `src/ui/logo/`
   and Inter, served from `site/` rather than Google Fonts. Videos are placeholders until W9.
 - **English.** The site speaks English from the start, whatever the interface does.
 - **Content:**
   1. One sentence and one picture (the canvas, or a video).
   2. Three pillars: canvas, voice, demos. The owner approves the demo, not the code.
   3. The flow in four steps: idea → agent in its own clone → demo → approval and merge.
-  4. Where the name comes from: Japanese for "big room", from lean management.
-  5. Getting started: requirements, commands (later a download), GitHub, MIT licence.
-  6. Later: Obeya is built with Obeya, and the hero video is a real demo out of Obeya.
+  4. Where the name comes from: the big room at Toyota, and why agents need one.
+  5. Obeya is built with Obeya.
+  6. Getting started: requirements, commands (later a download), GitHub, the design.
+  7. Later: the hero video is a real demo out of Obeya.
 - **Variant B, film first.** Calm and editorial: the video on top, below it the pillars with
   screenshots. The site (W3) starts from prototype B's page and takes over ideas from the
-  prototypes A (a canvas the camera flies through, cards unfolding) and C (the principles as
-  cards on a wall), so that it does not look interchangeable.
+  prototype C (the principles as cards on a wall, the big room, the four steps as one card
+  moving along the wall), so that it does not look interchangeable. A canvas the camera flew
+  through while scrolling (from prototype A) was tried and dropped: scrolling felt odd.
 
 ### Groundwork
 
