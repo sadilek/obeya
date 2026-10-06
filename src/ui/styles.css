@@ -201,7 +201,7 @@ button.pill:hover { box-shadow: var(--lift); }
   transform: translate(-50%, -50%); white-space: nowrap; border: 0; }
 .edge .arr { width: 20px; height: 20px; border-radius: 50%; background: var(--c); color: #fff; display: grid; place-items: center; font-size: 12px; }
 
-#minimap { position: fixed; right: 14px; bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 12px;
+#minimap { position: fixed; left: 14px; bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 12px;
   box-shadow: var(--shadow); z-index: 20; cursor: pointer; overflow: hidden; }
 #minimap svg { width: 100%; height: 100%; display: block; }
 
@@ -463,13 +463,15 @@ textarea.p-body:focus { border-color: var(--muted); }
 #links { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
 #links path { fill: none; stroke: var(--proposal); stroke-width: 2; stroke-dasharray: 5 6; opacity: .7; }
 
-.sheet { position: fixed; top: 64px; right: 14px; bottom: 158px; width: var(--sheet-w, 380px); background: var(--panel); border-radius: 16px; box-shadow: var(--lift);
-  z-index: 25; transform: translateX(calc(100% + 30px)); transition: transform .45s cubic-bezier(.3,.9,.3,1), width .45s cubic-bezier(.3,.9,.3,1);
+/* --sheet-b and --read-b are set by App.tsx (sheetBottom): down to the window's edge unless the sheet reaches the microphone */
+.sheet { position: fixed; top: 64px; right: 14px; bottom: var(--sheet-b, 158px); width: var(--sheet-w, 380px); background: var(--panel); border-radius: 16px; box-shadow: var(--lift);
+  z-index: 25; transform: translateX(calc(100% + 30px));
+  transition: transform .45s cubic-bezier(.3,.9,.3,1), width .45s cubic-bezier(.3,.9,.3,1), bottom .45s cubic-bezier(.3,.9,.3,1);
   overflow: auto; padding: 22px 22px 30px; }
 .sheet.on { transform: none; }
 /* the grip on the open sheet's left edge: drag to widen or narrow it, double-click for the default */
-#sheet-grip { position: fixed; top: 64px; bottom: 158px; width: 12px; z-index: 26; cursor: ew-resize; touch-action: none;
-  opacity: 0; pointer-events: none; transition: opacity .2s, right .45s cubic-bezier(.3,.9,.3,1); }
+#sheet-grip { position: fixed; top: 64px; width: 12px; z-index: 26; cursor: ew-resize; touch-action: none;
+  opacity: 0; pointer-events: none; transition: opacity .2s, right .45s cubic-bezier(.3,.9,.3,1), bottom .45s cubic-bezier(.3,.9,.3,1); }
 #sheet-grip.on { opacity: 1; pointer-events: auto; transition-delay: .3s, 0s; }
 #sheet-grip::after { content: ""; position: absolute; left: 4px; top: 50%; width: 4px; height: 44px; margin-top: -22px; border-radius: 2px;
   background: var(--planned); opacity: .55; transition: background .15s, opacity .15s, height .15s, margin-top .15s; }
@@ -559,7 +561,7 @@ label.c-row input { width: 64px; }
 .c-json { font: 11.5px/1.4 ui-monospace, Menlo, monospace; background: var(--chip); border-radius: 9px; padding: 10px; overflow: auto; }
 
 /* the plan doc, read in the widened sheet */
-.sheet.reading { width: var(--read-w); padding: 0 30px 40px; }
+.sheet.reading { width: var(--read-w); bottom: var(--read-b, 158px); padding: 0 30px 40px; }
 .read-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; margin: 0 -30px; padding: 14px 30px 12px;
   background: var(--panel); border-bottom: 1px solid var(--line); }
 .read-head .back { border: 0; background: var(--chip); border-radius: 8px; padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: 13px; }
@@ -661,7 +663,7 @@ button.link:hover { text-decoration: underline; }
 .ack.reading { background: var(--card); color: var(--muted); box-shadow: var(--shadow); padding: 7px 14px; font-size: 13px; }
 .ack.reading::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--working); animation: spin .8s linear infinite; }
 .c-listener { flex-basis: 100%; margin-top: -4px; font-size: 11.5px; color: var(--muted); }
-@media (max-width: 760px) { #minimap, #keys, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; } .p-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { #minimap, #keys, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; bottom: 158px; } .p-grid { grid-template-columns: 1fr; } }
 
 /* the play button on a startable card, shown while the pointer is on the card */
 .card .play { position: absolute; right: 10px; bottom: 8px; width: 26px; height: 26px; border-radius: 13px; border: 0; padding: 0 0 0 2px;

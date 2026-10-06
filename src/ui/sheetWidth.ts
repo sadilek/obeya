@@ -22,6 +22,20 @@ export const readingDefault = (vw: number) => Math.min(760, Math.max(MIN.read, v
 export const clampWidth = (w: number, vw: number, kind: 'sheet' | 'read') =>
   Math.round(Math.max(MIN[kind], Math.min(w, vw - SHEET_GAP - CANVAS_MIN)));
 
+/** How far above the window's bottom edge the microphone and what shows above it reach. */
+const MIC_TOP = 158;
+/**
+ * How far right of the window's middle the microphone reaches: the attach button beside it and the
+ * usual line under it naming whom it speaks to (a project's runs about 150 px), plus some room.
+ */
+const MIC_SIDE = 170;
+
+/**
+ * Where a sheet `w` wide ends at the bottom of a window `vw` wide: at the window's edge, the
+ * same gap as on the right, unless it reaches the microphone in the middle, then above it.
+ */
+export const sheetBottom = (w: number, vw: number) => (vw - SHEET_GAP - w >= vw / 2 + MIC_SIDE ? SHEET_GAP : MIC_TOP);
+
 /** The widths in effect in a window `vw` wide. */
 export const widthsIn = (w: SheetWidths, vw: number) => ({
   sheet: clampWidth(w.sheet, vw, 'sheet'),

@@ -1168,6 +1168,9 @@ the repository; the copy on the project is only for the archive).
   follows the window until dragged. The browser remembers both; the canvas keeps 240 px beside the
   sheet, and the camera keeps a project beside it; a double-click on the edge goes back to the
   default (2026-10-02).
+- The minimap sits in the bottom left corner, as in tldraw, so the sheets coming in from the right
+  reach down to the window's edge; a sheet wide enough to reach the microphone in the middle ends
+  above it (2026-10-06).
 - A plan card gets a stored row the first time it is seen, so the owner's placement persists; its
   title, text and state always come from the doc. Each read also keeps the doc's last state on the
   project (title, goal, workstreams with key, label, title, text and state).

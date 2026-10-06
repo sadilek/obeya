@@ -19,7 +19,7 @@ import { Sign, Wordmark } from './logo';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, play, ToldList, usePushToTalk, useTold, type Where } from './voice';
 import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, WorkspacesPill } from './parts';
-import { clampWidth, loadWidths, saveWidths, SHEET_GAP, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
+import { clampWidth, loadWidths, saveWidths, SHEET_GAP, sheetBottom, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
 
 export function App() {
@@ -879,7 +879,14 @@ function Canvas({
   return (
     <div
       className={[cam.s < FAR && 'z-far', resizing && 'resizing'].filter(Boolean).join(' ') || undefined}
-      style={{ '--sheet-w': `${sheetW.sheet}px`, '--read-w': `${sheetW.read}px` } as React.CSSProperties}
+      style={
+        {
+          '--sheet-w': `${sheetW.sheet}px`,
+          '--read-w': `${sheetW.read}px`,
+          '--sheet-b': `${sheetBottom(sheetW.sheet, innerWidth)}px`,
+          '--read-b': `${sheetBottom(sheetW.read, innerWidth)}px`,
+        } as React.CSSProperties
+      }
     >
       <div
         id="viewport"
@@ -1019,7 +1026,7 @@ function Canvas({
       <div
         id="sheet-grip"
         className={gripOn ? 'on' : undefined}
-        style={{ right: SHEET_GAP + sheetW[gripKind] - 6 }}
+        style={{ right: SHEET_GAP + sheetW[gripKind] - 6, bottom: sheetBottom(sheetW[gripKind], innerWidth) }}
         title={t.sheetGrip}
         onPointerDown={onGripDown}
         onPointerMove={onGripMove}

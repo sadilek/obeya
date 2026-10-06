@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { clampWidth, loadWidths, readingDefault, saveWidths, SHEET_W, widthsIn } from './sheetWidth';
+import { clampWidth, loadWidths, readingDefault, saveWidths, SHEET_W, sheetBottom, widthsIn } from './sheetWidth';
 
 const store = () => {
   const m = new Map<string, string>();
@@ -35,4 +35,11 @@ test('a broken entry falls back to the defaults', () => {
   const s = store();
   s.setItem('obeya-sheet-width', '{nope');
   expect(loadWidths(s)).toEqual({ sheet: SHEET_W, read: null });
+});
+
+test('a sheet reaches down to the window edge unless it would run into the microphone', () => {
+  expect(sheetBottom(SHEET_W, 1440)).toBe(14);
+  // reading at its default width reaches the middle of a laptop window
+  expect(sheetBottom(readingDefault(1440), 1440)).toBe(158);
+  expect(sheetBottom(readingDefault(2560), 2560)).toBe(14);
 });
