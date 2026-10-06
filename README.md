@@ -11,19 +11,49 @@ background; you keep every essential decision — made by voice, from a narrated
 finished work, without reading code or cycling through terminals.
 
 The name is Toyota's *obeya*, the "big room" where every project hangs visibly on the walls.
+More on [obeya.si](https://obeya.si).
 
-**Status:** M7 (M5 built, its live run on a real repository pending) — canvases spanning one or more
-repositories, agents that work on their cards (a worker per card in its own clone or worktree, questions routed through a project agent
-or the Koordinator), a Koordinator that queues colliding cards, cuts large ones and learns the
-owner's preferences, every change coming back as a narrated demo on its card, pull requests
-carried to the merge, and push-to-talk for all of it.
-See [`docs/design.md`](docs/design.md).
+![An Obeya canvas: a project with its workstreams, tasks an agent works on, a question and a demo waiting for the owner, an idea](docs/images/canvas.png)
+
+Each card gets its own agent (Claude Code) in its own clone or worktree of your repository. The
+agent asks on the card when it needs a decision and hands over with a narrated demo video of the
+change; you approve it or say what to change, and approved work lands on `main` or goes out as a
+pull request that Obeya carries to the merge. A Koordinator takes spoken or typed instructions,
+queues cards whose changes would collide, cuts large ones into parallel packages and learns your
+preferences. Larger work is planned in plan docs in the repository, which show as projects with a
+card per workstream.
+
+**Status:** early, and in daily use: Obeya is built with Obeya. The interface is German for now;
+English is next. How it works and why is in [`docs/design.md`](docs/design.md).
+
+## Requirements
+
+- [Bun](https://bun.sh) 1.3 or newer.
+- [Claude Code](https://claude.com/claude-code), installed and logged in. Obeya starts it for every agent;
+  the agents run on your own login.
+- git, and the [GitHub CLI](https://cli.github.com) (`gh`, logged in) for repositories whose work
+  lands through pull requests.
+- For demos: Node.js 22.18 or newer, a Chromium browser, ffmpeg and uv. The settings in the app
+  show what is missing and how to install it; see [`docs/demo-setup.md`](docs/demo-setup.md).
+- For voice input: a Mac with Apple Silicon for now (Whisper on MLX); Windows and Linux follow.
+  Everything else works without it.
+
+## Quick start
+
+```bash
+git clone https://github.com/sadilek/obeya.git
+cd obeya
+bun install
+bun start ~/dev/shop            # your repository; then open http://127.0.0.1:4417
+```
+
+On the canvas, double-click to write a task, then start its agent ("Agent starten"). The card
+shows what the agent is doing; when it waits for you ("brauchen dich" in the top bar), open it to
+answer a question or watch the demo and approve it ("Freigeben").
 
 ## Running
 
 ```bash
-bun install
-bun start ~/dev/shop            # canvas of that repository on http://127.0.0.1:4417
 bun start ~/dev/shop ~/dev/shop-web --name Shop   # one canvas, two repositories
 bun start                       # the canvases in ~/.obeya/canvases.json (see src/server/main.ts)
 bun start --config other.json   # those of another file
@@ -42,6 +72,10 @@ Voice needs a Python with `mlx_whisper` (`OBEYA_WHISPER_PYTHON=/path/to/python`)
 Obeya runs the sidecar through `uv run --with mlx-whisper`. Demos are recorded by the skill in
 `plugin/`, which Obeya gives its workers; what a machine needs for them (Node, a browser, ffmpeg,
 uv, a voice) is in [`docs/demo-setup.md`](docs/demo-setup.md), checked in the app's settings.
+
+## Contributing
+
+How Obeya itself is built, with Obeya, is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 

@@ -15,7 +15,10 @@ services are off the table for now (see Background).
 
 ## Where it stands
 
-- *README*: English, a paragraph on the idea, the status, `bun install` / `bun start`.
+- *README*: English, for strangers: the idea, a screenshot of a scratch canvas
+  (`docs/images/canvas.png`), the status, requirements, a quick start, a link to obeya.si (W2).
+  `CONTRIBUTING.md` says how Obeya is built with Obeya: design doc, plan docs, cards, demos, and
+  what a pull request from outside brings.
 - *Licence*: MIT, in `LICENSE`, the README and `package.json` (W1). Code, tests and docs name no
   other work projects.
 - *Logo*: three cards in the colours for working, waiting and approved, beside "obeya" in Inter
@@ -83,7 +86,7 @@ needs the English interface (W5, W6) and the site (W3).
 - [x] **W1:** MIT licence. A `LICENSE` file (MIT, copyright Daniel Sadilek), a "License" section
   in the README, `"license": "MIT"` in `package.json`. Search the repository for references to
   other work projects; code, tests and docs carry none.
-- [ ] **W2:** README and CONTRIBUTING for strangers. The README gets a screenshot (from a scratch
+- [x] **W2:** README and CONTRIBUTING for strangers. The README gets a screenshot (from a scratch
   canvas), the requirements, a quick start and a link to obeya.si; a short `CONTRIBUTING.md`
   says how Obeya itself is built (with Obeya, plan docs, cards, demos). Making the repository
   public with a cleaned history is decided already and is the owner's step on GitHub; a task
