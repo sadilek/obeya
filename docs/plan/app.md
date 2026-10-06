@@ -10,9 +10,10 @@
 Someone who finds Obeya on obeya.si downloads it, opens it and has a canvas on one of their
 repositories within minutes: an app for macOS (DMG), Windows (installer) and Linux (AppImage,
 .deb), signed where the platform warns about unsigned code, that keeps itself up to date from
-GitHub Releases. On first start a setup assistant checks what Obeya needs on the machine (Claude
-Code with its login, git, gh, voice, the demo tools), installs what it can and creates the first
-canvas. The data stays in `~/.obeya` as today, and starting from the checkout with `bun start`
+GitHub Releases. Push-to-talk works in the app's window as it does in the browser, and beyond
+it: a key held anywhere on the machine, while another app is in front, gives Obeya a command. On
+first start a setup assistant checks what Obeya needs on the machine (Claude Code with its login,
+git, gh, voice, the demo tools), installs what it can and creates the first canvas. The data stays in `~/.obeya` as today, and starting from the checkout with `bun start`
 stays as it is: Obeya is developed that way and keeps updating itself from its checkout.
 
 ## Where it stands
@@ -47,7 +48,7 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
 - **Tauri shell around the compiled server**, as `open-source.md` decided: the server is
   `bun build --compile` per platform, a Tauri sidecar (`externalBin`); the shell starts it, opens
   a window on `http://127.0.0.1:<port>/` and brings installer formats, the updater, a native
-  folder picker and later global push-to-talk. The UI stays what the browser shows today; "Im
+  folder picker and global push-to-talk. The UI stays what the browser shows today; "Im
   Browser öffnen" opens the same canvas in the default browser, which also stays the way where a
   webview cannot do what the page needs (see Risks).
 - **The supervisor stays in the server.** The compiled binary supervises itself as `obeya` does
@@ -71,6 +72,39 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
 - **Version**: `package.json` gets one (0.x), a tag `v0.x.y` on `main` makes a release, and the
   settings and the logo's hover show it. The checkout shows its commit instead.
 
+### Push-to-talk
+
+- **In the window** nothing changes: the page holds Space or the mic button and records as in the
+  browser (design: Voice in). The window is a webview with the page in it, so it gets the same
+  keys; W2 checks that recording works there (microphone permission per webview, see Risks).
+- **Anywhere on the machine** ("global") is what the app adds. Space alone cannot be that key:
+  held anywhere, it would be taken from every other app, and no one could type a space while
+  Obeya runs. The key is one the owner does not type with, held alone, as dictation tools do it:
+  by default the right Option key on a Mac and the right Ctrl key on Linux and Windows, chosen in
+  the settings (any single key, or a combination such as Ctrl+Shift+Space). A tap of it does
+  nothing, so the key keeps its use in shortcuts; only holding it past 0.3 s records.
+- **How the shell hears the key**, per platform: on macOS a listen-only event tap (Quartz
+  `CGEventTap`, which sees modifier keys on their own), which needs the "Input Monitoring"
+  permission that the setup assistant asks for; on Windows a low-level keyboard hook
+  (`WH_KEYBOARD_LL`), no permission; on Linux with X11 XInput2's raw key events. Wayland gives an
+  app no keys of others: there it goes through the desktop's "Global Shortcuts" portal
+  (`org.freedesktop.portal.GlobalShortcuts`, KDE Plasma and GNOME 48 or newer), which reports
+  press and release of a shortcut the owner binds in the desktop's dialog; on a desktop without
+  the portal there is only the window's Space. Tauri's own global-shortcut plugin reports press
+  and release too, but only for combinations; it serves the combination case.
+- **The shell records**, not the page: a webview in the background or a closed window cannot be
+  relied on to record, so the shell opens the microphone itself (`cpal`), and posts the audio to
+  the canvas's `/voice` endpoint as the page does, with the focus the page last reported (open
+  card, project in view; none with the window closed). The microphone permission is the app's,
+  asked once.
+- **What the owner sees and hears**: while the key is held, a small floating panel at the edge
+  of the screen shows that Obeya listens, then what it heard and the confirmation, and the
+  confirmation is spoken as today (played by the shell when the window is not open). The
+  command's undo window shows in the panel.
+- **The browser** keeps Space in its tab; a browser cannot hear keys outside it. The checkout
+  can start the shell too (`bun run app`) to get the global key, so it is not only the
+  installed app that has it.
+
 ### Claude Code
 
 - The app runs the **user's own installation** of Claude Code (`pathToClaudeCodeExecutable`, found
@@ -93,14 +127,17 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
 
 ### Signing and notarisation
 
-- **macOS**: a Developer ID Application certificate (Apple Developer Program, open question 1),
+- **macOS**: a Developer ID Application certificate (the owner is enrolled in the Apple Developer
+  Program, 99 USD a year),
   `notarytool` with an App Store Connect API key, the ticket stapled to the DMG. The Bun binary is
   signed with the hardened runtime and the entitlements a JIT needs (`allow-jit`,
   `allow-unsigned-executable-memory`, `disable-library-validation`), after `--remove-signature`
   (see Where it stands); the microphone needs `NSMicrophoneUsageDescription` and the
-  `audio-input` entitlement.
-- **Windows**: one of the routes in open question 1. Until then unsigned, and the site says what
-  SmartScreen shows and how to go on ("Weitere Informationen" → "Trotzdem ausführen").
+  `audio-input` entitlement. The global key needs the "Input Monitoring" permission, which the
+  app asks for at run time (`CGRequestListenEventAccess`), not an entitlement.
+- **Windows**: unsigned for now (decided 2026-10-06); the site says what SmartScreen shows and how
+  to go on ("Weitere Informationen" → "Trotzdem ausführen"). A certificate later is open
+  question 1.
 - **Linux**: unsigned, with SHA-256 checksums in the release.
 - **The updater's own key pair** (Tauri signs update artefacts, free) lives in the repository's
   secrets like the certificates. Enrolment, certificates and secrets are the owner's steps; the
@@ -153,7 +190,7 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
 
 W1 first: it says whether the compiled server carries everything. W2 and W6 then in parallel (the
 assistant is UI and server, and works in the checkout without the shell). W3 after W2, W4 and W5
-after W3. W7 beside W2. W4 for Windows waits for open question 1, the rest does not.
+after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
 
 ## Workstreams
 
@@ -168,12 +205,12 @@ after W3. W7 beside W2. W4 for Windows waits for open question 1, the rest does 
   per home (port and pid in the home), stop through HTTP like Ctrl-C, single instance, "Im Browser
   öffnen". Microphone and demo video checked in WKWebView, WebView2 and WebKitGTK. Unsigned DMG,
   NSIS installer, AppImage and .deb built locally.
-- [ ] **W3:** Builds in CI. A GitHub Actions workflow with the platform matrix. On a push to `main`
+- [ ] **W3:** Builds in CI: a GitHub Actions workflow with the platform matrix. On a push to `main`
   that changes code, unsigned builds with a smoke test plus `bun test` and `bun run typecheck`; on
   a tag `v*`, a draft release with all installers, checksums and `latest.json`.
 - [ ] **W4:** Signing and notarisation. macOS: Developer ID, hardened runtime with the Bun
-  entitlements, notarised and stapled in CI. Windows: the route open question 1 decides. The
-  owner's steps (enrolment, certificates, secrets) in `docs/release.md`.
+  entitlements, notarised and stapled in CI. Windows and Linux unsigned, with checksums. The
+  owner's steps (certificate, API key, secrets) in `docs/release.md`.
 - [ ] **W5:** Auto-update through GitHub Releases. Tauri's updater with its own key pair; the bar
   shows a newer version; installing waits for the workers like a restart, then replaces and
   restarts the app; the app refuses a database newer than it knows.
@@ -185,6 +222,14 @@ after W3. W7 beside W2. W4 for Windows waits for open question 1, the rest does 
   home opening the first; README with the download first and "From source" after it; the site's
   "Getting started" with the release; `docs/design.md` gets the app (its Decision on Tauri, which
   says "only if global push-to-talk needs it", changes with it).
+- [ ] **W8:** Global push-to-talk. A key held anywhere on the machine records a command while
+  another app is in front: right Option on a Mac, right Ctrl elsewhere by default, any key or
+  combination in the settings, a tap passing through. The shell hears it (macOS event tap with
+  the Input Monitoring permission, which the setup assistant asks for; Windows keyboard hook; X11
+  XInput2; Wayland's Global Shortcuts portal) and records itself, posting to `/voice` with the
+  page's last focus; a floating panel shows listening, what was heard, the confirmation and its
+  undo window. Space in the window stays as in the browser. `bun run app` starts the shell from
+  the checkout too.
 
 ## Risks
 
@@ -199,6 +244,11 @@ after W3. W7 beside W2. W4 for Windows waits for open question 1, the rest does 
   larger question". The Windows app depends on it; W1 checks it with a real worker.
 - **SmartScreen** warns about a new download until it has a reputation, signed or not (an EV
   certificate no longer skips that). The first Windows users see a warning either way.
+- **Global keys**: macOS asks the owner to allow Input Monitoring in the system settings, and
+  until that is done the global key does nothing (the assistant and the settings say so). On
+  Wayland it depends on the desktop having the Global Shortcuts portal; without it, only the
+  window's Space works. A webview recording in a background window is not relied on, which is
+  why the shell records.
 - **Claude Code versions**: running the user's installation (open question 3) can break when
   Claude Code and the SDK drift apart; the setup assistant would then say which version Obeya
   needs.
@@ -207,20 +257,17 @@ after W3. W7 beside W2. W4 for Windows waits for open question 1, the rest does 
 
 ## Open questions
 
-1. **What the certificates cost** (as of 2026-10-06):
-   - Apple Developer Program: 99 USD a year, charged in local currency, for Developer ID and
-     notarisation. No alternative for macOS without warnings.
-   - Windows, route a: **SignPath Foundation**, free for open-source projects; the signature
-     names "SignPath Foundation" as publisher and the project in its details. Conditions: an
-     OSI licence, no proprietary component in what is signed (one more reason not to bundle the
-     Claude binary), and an existing release with some reputation, so it comes after the first
-     unsigned release.
-   - Route b: **Azure Artifact Signing**, 9.99 USD a month; individuals only in the USA and
-     Canada, in the EU only organisations (a company with a verifiable history).
-   - Route c: an **OV certificate** from a CA, a few hundred euros a year, the key on a hardware
-     token or in a cloud HSM (required since 2023), so signing in CI goes through the CA's cloud
-     signing.
-   - Recommendation: Apple from the start; Windows unsigned for the first release, then route a.
+1. **A Windows certificate, later.** Decided (2026-10-06): Apple from the start (the owner is
+   enrolled), Windows unsigned for now. The routes for later, as of 2026-10-06:
+   - **SignPath Foundation**, free for open-source projects; the signature names "SignPath
+     Foundation" as publisher and the project in its details. Conditions: an OSI licence, no
+     proprietary component in what is signed (one more reason not to bundle the Claude binary),
+     and an existing release with some reputation, so it comes after the first unsigned release.
+   - **Azure Artifact Signing**, 9.99 USD a month; individuals only in the USA and Canada, in the
+     EU only organisations (a company with a verifiable history).
+   - An **OV certificate** from a CA, a few hundred euros a year, the key on a hardware token or
+     in a cloud HSM (required since 2023), so signing in CI goes through the CA's cloud signing.
+   - Recommendation: SignPath once the first release is out.
 2. **Python sidecars bundled or fetched through uv**: recommendation, through uv on first use as
    today; only the scripts ship, and uv itself ships with the app (one binary, about 40 MB, no
    install step for voice and demos). Bundling Python with mlx-whisper or faster-whisper would add
@@ -229,6 +276,7 @@ after W3. W7 beside W2. W4 for Windows waits for open question 1, the rest does 
    models (the large part) are downloaded on first use anyway.
 3. **Which Claude Code the app runs**: the user's installation (recommended, see Claude Code) or
    the SDK's own binary. W1 tries both; if the user's does not work with the SDK reliably, the
-   app ships the SDK's binary after all and question 1 loses route a.
-4. **Global push-to-talk**: the shell makes it possible, with a key combination (a global
-   shortcut cannot be Space alone). After this plan, as a card of its own.
+   app ships the SDK's binary after all and SignPath (question 1) is out.
+4. **The default key for global push-to-talk**: right Option on a Mac, right Ctrl elsewhere
+   (right Alt is AltGr on many European layouts). Fn on a Mac would be nearer to hand, but macOS
+   gives it to dictation and the emoji picker, and an external keyboard often has none.
