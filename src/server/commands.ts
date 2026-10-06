@@ -20,7 +20,8 @@ export type Command = (
   | { do: 'buildPrototype'; card: string; workstream?: string }
   | { do: 'discard'; card: string }
   /** `spoken`: the words came through speech recognition (the default), not typed. */
-  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype'; card: string; text: string; spoken?: boolean }
+  /** `revise`: the owner's words on a proposal, which an agent reworks it by. */
+  | { do: 'note' | 'answer' | 'feedback' | 'discuss' | 'prototype' | 'revise'; card: string; text: string; spoken?: boolean }
   /** Saves Obeya's configuration, which then starts again with it. */
   | { do: 'configure'; canvases: CanvasConfig[] }
   /**
@@ -64,8 +65,8 @@ const picks = (i: Item) => {
 /** The actions a command's screenshots go with: those that create a card, start one or say something to its agent. */
 const TAKES_IMAGES: Command['do'][] = ['newCard', 'newIdea', 'start', 'force', 'note', 'answer', 'feedback', 'discuss'];
 
-/** Actions whose text goes to a card's agent. */
-const TO_AGENT: Command['do'][] = ['note', 'answer', 'feedback', 'discuss'];
+/** Actions whose text goes to an agent: a card's, or the one that reworks a proposal. */
+const TO_AGENT: Command['do'][] = ['note', 'answer', 'feedback', 'discuss', 'revise'];
 
 export interface Heard {
   /** What the owner hears and reads back. */
@@ -85,12 +86,13 @@ export interface Focus {
 }
 
 /** The field on the open card a typed command came from. */
-export type Field = 'note' | 'answer' | 'feedback' | 'discuss';
+export type Field = 'note' | 'answer' | 'feedback' | 'discuss' | 'revise';
 const FIELDS: Record<Field, string> = {
   note: "the field for a note to the card's agent",
   answer: "the field for an answer to the card's open question",
   feedback: "the field for feedback on the card's work",
   discuss: "the idea's conversation",
+  revise: 'the field for what should change in the proposal',
 };
 export const isField = (f: unknown): f is Field => typeof f === 'string' && f in FIELDS;
 
@@ -149,7 +151,7 @@ type LookUp = { question: string; about?: string };
 type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp };
 
 /** The actions `act` takes, as the Koordinator names them. */
-const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group'] as const;
+const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'revise', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group'] as const;
 type Action = (typeof ACTIONS)[number];
 
 /** Actions in one command, at most: "start all queued cards" may name many. */
@@ -199,7 +201,7 @@ export class Commander {
     }
     const { confirm, lookUp } = decision;
     // the open card's agent gets what was said to it in the owner's words, however the Koordinator put them
-    const verbatim = decision.commands.length === 1 && ['note', 'answer', 'feedback'].includes(decision.commands[0]!.do);
+    const verbatim = decision.commands.length === 1 && ['note', 'answer', 'feedback', 'revise'].includes(decision.commands[0]!.do);
     const commands = decision.commands.map((c): Command => {
       // a rule said with a card open has that card as its occasion
       if (c.do === 'remember') return card ? { ...c, card } : c;
@@ -319,14 +321,14 @@ export class Commander {
             "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Whatever the owner says to the agent: an instruction, a remark on its work, a question to it; never a question the owner asks you about the canvas.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary), a question about that work included; the agent works on it again.',
-            '- approve: approve work waiting for review; direct: true when the owner wants it straight onto main without a pull request („ohne PR“, „direkt auf main“), which a repository whose work goes out as a pull request allows only where the list of repositories says so. accept: take a proposed card and start it (a proposed idea: its discussion opens; the open questions on it go along). dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
+            '- approve: approve work waiting for review; direct: true when the owner wants it straight onto main without a pull request („ohne PR“, „direkt auf main“), which a repository whose work goes out as a pull request allows only where the list of repositories says so. accept: take a proposed card and start it (a proposed idea: its discussion opens; the open questions on it go along). dismiss: discard a proposed card. revise: text what the owner wants changed in a proposed card, or their thoughts on it (added, dropped, decided, put differently); an agent rewrites its text and questions by it in a minute or so, and accepting it waits for that (by a click once it is there). split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
             "- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card „CLAUDE.md ergänzen“, whose worker writes it into the CLAUDE.md. confirm says where it goes („Gemerkt, gilt ab sofort für alle Agenten.“ / „Kommt in die CLAUDE.md von <repository name>, über die Aufgabe „CLAUDE.md ergänzen“.“).",
             "- work_retro (no card): the Arbeitsrückschau of a repository, now („Mach eine Arbeitsrückschau für den Shop“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill) or CLAUDE.md lines for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself every 10 finished cards of a repository. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. „Ich mache die Arbeitsrückschau für den Shop; Vorschläge erscheinen als Karten.“",
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once; while its agent works on a reply, or starts on one with a discuss in the same command, once that reply is there, unless the reply asks questions), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words; empty: one prototype for each variant its agent planned that has none running yet, all at once, or without planned variants one of the idea as it stands), park (for later), drop (it stays on the canvas with its brief). Planning an idea waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that planning goes by a click once the reply is there.",
             `- group: put cards into a group, shown on the canvas as a coloured territory behind them. cards: their tags; text: the group's name (group is only for rename_group), one the canvas has (see the list) or a new one, which is then created. A card is in one group at most, so this takes it out of its group. A workstream stands for its project: the whole project goes into the group. ungroup: take cards (cards) out of their group. rename_group: group the group's current name, text its new name. A group no card belongs to any more goes. confirm e.g. „„Export“ und „Rabatt“ gehören jetzt zur Gruppe Abrechnung.“`,
             '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away; when the idea became a project, one of its workstreams is built on the branch instead: the one its plan doc builds on the prototype with, or cards: the tag of the one the owner names), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
-            "Texts for a card's agent (note, answer, feedback) in the owner's own words, not rephrased: all they said, or with several actions in one sentence the part for that action. Other texts (a new card's body, a rule, talk to an idea) as the owner meant them (fix obvious recognition errors).",
+            "Texts for a card's agent (note, answer, feedback) and for revise in the owner's own words, not rephrased: all they said, or with several actions in one sentence the part for that action. Other texts (a new card's body, a rule, talk to an idea) as the owner meant them (fix obvious recognition errors).",
           ].join('\n'),
           schema: {
             actions: z
@@ -458,6 +460,8 @@ export class Commander {
    * is there. Building it as it stands goes ahead after the reply, unless that asks questions.
    */
   private waitsForReply(c: Command, all: Command[]): string | undefined {
+    if (c.do === 'accept' && all.some((d) => d.do === 'revise' && d.card === c.card))
+      return 'accepting a proposal waits for its reworked text, so the owner sees what they take: drop this action, keep revise, and say in confirm that accepting goes by a click once the new text is there';
     if (c.do !== 'planDoc' && c.do !== 'buildPrototype') return;
     const id = c.do === 'buildPrototype' ? this.o.board.item(c.card)?.prototypeOf : c.card;
     const idea = id ? this.o.board.item(id) : undefined;
@@ -587,7 +591,14 @@ export class Commander {
       case 'accept':
       case 'dismiss':
         if (card.state !== 'proposal') return `the card is no proposal (${is})`;
+        if (a.do === 'accept' && card.proposal?.revising)
+          return 'the proposal is being reworked by what the owner said; accepting it goes by a click once the new text is there: drop this action and say so in confirm';
         break;
+      case 'revise':
+        if (card.state !== 'proposal') return `only a proposed card can be revised (${is})`;
+        if (!a.text?.trim()) return 'the text is missing';
+        if (card.proposal?.revising) return 'the proposal is still being reworked by what the owner said before; reply that the new text comes in a moment, and to say it again then';
+        return { do: 'revise', card: card.id, text: a.text.trim() };
       case 'split':
         if (card.source !== 'manual' || card.state !== 'planned' || card.queue) return 'only a planned card of the owner can be split';
         break;
@@ -677,7 +688,7 @@ export class Commander {
       const became = i.prototypeOf ? items.find((x) => x.kind === 'project' && x.origin === i.prototypeOf) : undefined;
       const builds = became && prototypeWorkstream(items, became.id);
       const group = i.group ? groups.get(i.group) : undefined;
-      return `${tag(i.id)} [${state}] "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${group ? ` (group "${group}")` : ''}${became ? ` (prototype of the idea "${i.ideaTitle ?? ''}", which became the project ${tag(became.id)} "${became.title}"${builds ? `; build starts its workstream ${tag(builds.id)} "${builds.title}" on it` : ''}${i.buildProposal ? '; its worker proposes to build on it' : ''})` : idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.proposal ? ` — proposed ${i.proposal.idea ? 'idea' : 'task'}${i.proposal.questions.length ? `, open questions: ${i.proposal.questions.map((q) => q.text).join(' | ')}` : ''}` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}${i.idea?.variants.length ? ` — prototypes its agent planned: ${i.idea.variants.map((v) => v.approach).join(', ')}` : ''}`;
+      return `${tag(i.id)} [${state}] "${i.title}"${repo}${project ? ` (project "${project.title}")` : ''}${group ? ` (group "${group}")` : ''}${became ? ` (prototype of the idea "${i.ideaTitle ?? ''}", which became the project ${tag(became.id)} "${became.title}"${builds ? `; build starts its workstream ${tag(builds.id)} "${builds.title}" on it` : ''}${i.buildProposal ? '; its worker proposes to build on it' : ''})` : idea ? ` (prototype of ${tag(idea.id)} "${idea.title}"${i.buildProposal ? '; its worker proposes to build the idea on it' : ''})` : ''}${i.proposal ? ` — proposed ${i.proposal.idea ? 'idea' : 'task'}${i.proposal.revising ? ', being reworked by what the owner said' : ''}${i.proposal.questions.length ? `, open questions: ${i.proposal.questions.map((q) => q.text).join(' | ')}` : ''}` : ''}${i.statusLine ? ` — status: ${clip(i.statusLine, 160)}` : ''}${i.question ? ` — open question${i.need === 'demo' ? ' in its demo report' : ''}: ${i.question.text}` : ''}${i.idea?.next ? ` — its agent would ${NEXT_ACTION[i.idea.next.step]} next: ${clip(i.idea.next.why, 200)}${picks(i)}` : ''}${i.idea?.variants.length ? ` — prototypes its agent planned: ${i.idea.variants.map((v) => v.approach).join(', ')}` : ''}`;
     };
     const step = (m: Moment) => {
       const card = items.find((i) => i.id === m.cardId);
@@ -811,6 +822,7 @@ In German, a card is an „Aufgabe“ (a follow-up: „Folgeaufgabe“), an idea
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
 When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent. Decide where it goes: only a rule on how the agents work with the owner through Obeya, whatever the repository, is one of the owner's rules (no repos); anything about a repository (named, "hier", "in diesem Repo", or about its code, UI, wording, tests, tools or product) goes into that repository's CLAUDE.md: pass repos. Leave the place out of the rule's text, and say in confirm where it went (for a CLAUDE.md: into the repository's card „CLAUDE.md ergänzen“, which writes it into the file).
 When an agent works on the open card (working, in PR, waiting, waiting for review, or finishing what remains), what the owner says is, in doubt, for that agent: note, or answer when the card has an open question, or feedback when it waits for review. Pass their words as they are; the agent learns whether they were spoken. Talking to the agent ("mach …", "kannst du …", "warum hast du …"), a remark on the work, a question about it ("ist sichergestellt, dass …", "was passiert, wenn …"), a bare answer: all for the agent, which knows its work; never look_up. Only what clearly asks something of Obeya goes elsewhere: approve, stop, start, a follow-up or new card, a new idea, remember, grouping cards, an action on another card, or a question to you about the canvas (reply or look_up).
+When the open card is a proposal, what the owner says about it (what should be added, dropped, decided or put differently, or their thoughts on it) is revise with their words, unless they clearly accept or dismiss it or ask for something else.
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). "Mach, was du vorschlägst" on an idea takes the step its agent would take next, as its line says; when that is answering, discuss with its own answers. Wanting to think about something, rather than have it done, is new_idea.
 `.trim();
 

@@ -517,10 +517,36 @@ export class Board {
     const row = this.own(id);
     if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
     const proposal = row.proposal ? (JSON.parse(row.proposal) as Proposal) : undefined;
+    if (proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
     const idea = asIdea && !!proposal?.idea;
     this.store.update(id, { state: idea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks), proposal: null });
     this.changed();
     return idea;
+  }
+
+  /** The owner wants a proposal changed: an agent reworks it by their words, and it waits for that. */
+  revising(id: string, words: string, spoken: boolean) {
+    const row = this.own(id);
+    if (row.state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
+    const proposal: Proposal = row.proposal ? JSON.parse(row.proposal) : { questions: [] };
+    this.store.update(id, { proposal: JSON.stringify({ ...proposal, revising: { words: words.slice(0, 20000), ...(spoken ? { spoken } : {}) } } satisfies Proposal) });
+    this.changed();
+  }
+
+  /**
+   * The reworked proposal takes the place of the old one, or, without one (the agent failed), the
+   * old one stands as it was. False when the card is no proposal any more (dismissed meanwhile).
+   */
+  revised(id: string, p?: { title: string; task: string; reason?: string; idea?: boolean; questions: Question[] }): boolean {
+    const row = this.store.card(id);
+    if (!row || row.canvas_id !== this.canvas.id || row.deleted_at || row.state !== 'proposal') return false;
+    const { revising: _, ...was }: Proposal = row.proposal ? JSON.parse(row.proposal) : { questions: [] };
+    const proposal: Proposal = p
+      ? { ...(p.idea ? { idea: true } : {}), ...(p.reason?.trim() ? { reason: p.reason.trim().slice(0, 2000) } : {}), questions: p.questions.slice(0, 5) }
+      : was;
+    this.store.update(id, { ...(p ? { title: p.title.slice(0, 200), body: p.task.slice(0, 20000) } : {}), proposal: JSON.stringify(proposal) });
+    this.changed();
+    return true;
   }
 
   // ---------------------------------------------------------------- archive

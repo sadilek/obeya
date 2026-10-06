@@ -76,7 +76,7 @@ export const CardView = memo(
       shape,
       `s-${item.state}`,
       item.idea && `idea-${item.idea.status}`,
-      item.idea?.thinking && 'thinking',
+      (item.idea?.thinking || item.proposal?.revising) && 'thinking',
       item.idea && needsYou(item) && 'your-turn',
       item.queue && 'queued', dep && `dep-${dep}`, lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
     return (
@@ -99,6 +99,7 @@ export const CardView = memo(
         <div className="state">
           {stateLabel(item)}
           {item.buildProposal && ` · ${t.idea.proposesBuild}`}
+          {item.proposal?.revising && ` · ${t.revisingShort}`}
           {item.idea?.buildAfterReply && ` · ${t.idea.buildsAfterReply}`}
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
         </div>

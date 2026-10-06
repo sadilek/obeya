@@ -82,6 +82,9 @@ a { color: inherit; }
 .card.s-live, .card.s-done { opacity: .72; }
 .card.s-live .ttl, .card.s-done .ttl { font-weight: 500; }
 .card.s-proposal { background: transparent; box-shadow: none; border: 2px dashed var(--proposal); }
+.card.s-proposal.thinking .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--proposal), transparent); background-size: 200% 100%;
+  animation: flow 1.4s linear infinite; }
 .card.s-proposal::before { display: none; }
 .card.s-waiting, .card.s-idea.your-turn { box-shadow: 0 0 0 2px var(--waiting), var(--shadow); }
 .card.s-working .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;
@@ -313,6 +316,9 @@ textarea.p-body:focus { border-color: var(--muted); }
 .prototype-demo > summary .hint { font-weight: 400; }
 .prototype-demo[open] > summary { margin-bottom: 8px; }
 .question.proposal { border-style: dashed; border-color: var(--proposal); }
+.question.revising { border-style: dashed; border-color: var(--proposal); }
+.question.revising .q-text::after { content: ""; display: inline-block; vertical-align: middle; margin-left: 10px; width: 34px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--proposal), transparent); background-size: 200% 100%; animation: flow 1.4s linear infinite; }
 .question.brief .p-lead { margin-top: 6px; font-size: 14px; }
 .question.brief .p-list { margin-top: 4px; }
 .talk { background: var(--chip); border-radius: 12px; padding: 12px 14px; overflow: auto;

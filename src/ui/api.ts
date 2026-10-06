@@ -59,7 +59,7 @@ export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${pat
 
 type Where = { card: string } | { project: string } | null;
 /** The field on a card words were typed into, which tells the Koordinator what they were meant as. */
-export type Field = 'note' | 'answer' | 'feedback' | 'discuss';
+export type Field = 'note' | 'answer' | 'feedback' | 'discuss' | 'revise';
 type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string; quiet?: boolean; unheard?: boolean };
 
 export const api = {

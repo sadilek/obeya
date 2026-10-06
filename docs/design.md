@@ -200,7 +200,16 @@ An idea is thought through on its card before anything is planned; no worker run
    "Offene Fragen:", so the new worker reads what is settled and asks the rest. A worker may also
    propose an idea, for something to think through first: it shows as "✦ Vorschlag · Idee", and
    "Übernehmen und besprechen" makes it an open idea whose exploration agent opens the discussion
-   with the text and its questions; "Als Aufgabe übernehmen" plans it as a task instead. Before,
+   with the text and its questions; "Als Aufgabe übernehmen" plans it as a task instead. Instead
+   of editing a proposal by hand, the owner may say (or type into its field „Was soll anders
+   werden?“) what should change: the Koordinator reads it as `revise`, and after the undo window a
+   read-only agent (`revisions.ts`, effort medium, in the card's repository) rewrites title, text,
+   reason and questions by those words, keeping what they did not touch; a question the words
+   settle goes, and its decision into the text. Meanwhile the proposal shows „wird überarbeitet“,
+   cannot be accepted or edited, and takes no second revision; it is not among the cards that need
+   the owner. The owner's words stand in its conversation, then „Vorschlag überarbeitet.“; an agent
+   that ends without a text leaves the proposal as it was, with the error. A revision still running
+   at a restart starts again. Before,
    a proposal was the worker's reason and suggestion as one text, in the first person, with open
    questions buried in it; taken as it was, it went to the next worker as if the owner had
    written it.
@@ -743,7 +752,7 @@ the owner's language (`src/core/locale.ts`).
   early would keep the browser's microphone indicator on all the time. A Koordinator turn (effort medium) reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
-  approve, accept, dismiss, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
+  approve, accept, dismiss, revise, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
   park, drop; on prototypes: build on it, discard),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
@@ -762,7 +771,9 @@ the owner's language (`src/core/locale.ts`).
   für den ambient-Ton an" makes a follow-up of that card with what the summary says about it. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
   talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
-  confirmation, since the conversation shows it. The same holds for a note or an answer to the
+  confirmation, since the conversation shows it. With a proposal open, what the owner says about it is,
+  in doubt, a revision (`revise`, with their words and the undo window); accepting in the same
+  breath is refused, since the owner should see what they take. The same holds for a note or an answer to the
   agent of the open card, alone in what the owner said: it goes out at once and quietly, and the
   card's conversation shows it under „Du“. Feedback on work waiting for review keeps the confirmation and
   the undo window, as does every command to Obeya. With an agent on the open card (working, in a
@@ -773,7 +784,7 @@ the owner's language (`src/core/locale.ts`).
   (approve, stop, start, a follow-up, remember, grouping cards, an action on another card, a question about the
   canvas) goes elsewhere; `commands.live.test.ts` checks this against the real model
   (`OBEYA_LIVE=1`). Typing goes the same way as speaking: the Koordinator's sheet, and the fields
-  on a card (note, answer, feedback, an idea's conversation) post to the Koordinator, which learns
+  on a card (note, answer, feedback, an idea's conversation, a proposal's revision) post to the Koordinator, which learns
   that the words are typed and in which field; only clicks on answer options go straight to the
   agent. What the owner said and the Koordinator's confirmation go into the conversation of
   the card that was open (the confirmation folded away, and the words once when they became a note or an answer), and "Zurückgenommen." when taken back; with no card open, the sheet
@@ -1361,6 +1372,10 @@ the repository; the copy on the project is only for the archive).
   server that restarted on the worker's commit, a staged "working" card that a real agent resumed,
   real agents the Koordinator started mid-take. The script writes the cards' fields straight into
   the database, so any state is a line in the stage file, and the workers are idle unless asked.
+- A proposal the owner talks about is rewritten by an agent of its own, not by its proposing worker
+  or in the Koordinator's quick turn (2026-10-06): the worker may be gone or busy with its own card,
+  and writing a whole card text would slow every confirmation down. Before, the owner could only
+  type the changes into the proposal's text themselves.
 
 ## Open questions
 

@@ -88,6 +88,7 @@ const de = {
     working: 'Hinweis an den Agenten – er arbeitet weiter',
     question: 'Eigene Antwort',
     review: 'Feedback – der Agent arbeitet daran weiter',
+    revise: 'Was soll anders werden? Ergänzen, streichen, entscheiden – oder halte die Leertaste',
   },
   questionFromWorker: 'Frage des Agenten',
   ask: {
@@ -105,6 +106,9 @@ const de = {
   proposalQuestions: 'Offene Fragen',
   proposalQuestionsHint: 'Was du hier wählst, steht danach als entschieden im Text; der Rest geht als offene Frage mit.',
   proposedByRetro: (basis: string) => `Aus der Arbeitsrückschau: ${basis}`,
+  revisingShort: 'wird überarbeitet',
+  revising: 'Wird nach deinen Worten überarbeitet …',
+  reviseHint: 'Der Agent schreibt Text und Fragen danach neu; was du nicht ansprichst, bleibt.',
   followUpOf: (title: string) => `Kommt von der Aufgabe „${title}“.`,
   task: 'Auftrag',
   talk: {
@@ -167,6 +171,7 @@ const de = {
     notReady: 'Das ist nicht bereit zur Abnahme.',
     noDirect: 'In diesem Repository geht freigegebene Arbeit nur per Pull Request auf main.',
     notProposal: 'Das ist kein Vorschlag mehr.',
+    revising: 'Der Vorschlag wird gerade überarbeitet. Gleich ist er da.',
     planCard: 'Das kommt aus dem Plan-Dokument; geändert wird es dort.',
     noWorkspace: 'Kein Workspace frei: Alle sind belegt oder es ist keiner eingerichtet.',
     dirtyWorkspaces: 'Kein Workspace frei: Jeder freie hat noch nicht committete Änderungen.',

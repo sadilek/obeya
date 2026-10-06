@@ -204,8 +204,9 @@ export function Detail(p: Props) {
       </div>
 
       {item.state === 'proposal' && (
-        <ProposalView item={item} from={p.from} act={act}>
-          <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} />
+        <ProposalView item={item} from={p.from} act={act} listener={listener} onRevise={tell('revise')}>
+          {/* while it is reworked, what the owner typed in it would be overwritten */}
+          {item.proposal?.revising ? <Body md={item.body} /> : <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} />}
         </ProposalView>
       )}
 
@@ -597,8 +598,24 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
  * A proposal: its text as the agent taking it on will read it (`children`, editable), why it was
  * proposed, and the questions to decide, which the owner may answer before taking it.
  */
-function ProposalView({ item, from, act, children }: { item: Item; from?: Item; act: (a: CardAction, done: ActDone) => Promise<void>; children: ReactNode }) {
+function ProposalView({
+  item,
+  from,
+  act,
+  listener,
+  onRevise,
+  children,
+}: {
+  item: Item;
+  from?: Item;
+  act: (a: CardAction, done: ActDone) => Promise<void>;
+  listener: string;
+  /** What should change in it, typed: an agent reworks the proposal by it. */
+  onRevise: (text: string) => Promise<void>;
+  children: ReactNode;
+}) {
   const questions = item.proposal?.questions ?? [];
+  const revising = item.proposal?.revising;
   const answer = usePicks(questions);
   const idea = !!item.proposal?.idea;
   const accept = (start: boolean) => act({ action: 'accept', ...(start ? {} : { start: false }), ...(answer.picked ? { picks: answer.picks } : {}) }, start ? { close: true, ack: idea ? t.acceptedIdea : t.accepted } : { close: false });
@@ -613,11 +630,22 @@ function ProposalView({ item, from, act, children }: { item: Item; from?: Item; 
           <p className="hint">{t.proposalQuestionsHint}</p>
         </>
       )}
+      {revising ? (
+        // what the owner said stands in the conversation below
+        <div className="question revising">
+          <div className="q-text">{t.revising}</div>
+        </div>
+      ) : (
+        <>
+          <Composer placeholder={t.compose.revise} listener={listener} onSend={(text) => onRevise(text)} noImages />
+          <p className="hint">{t.reviseHint}</p>
+        </>
+      )}
       <div className="actions">
-        <button className="btn primary" onClick={() => accept(true)}>
+        <button className="btn primary" disabled={!!revising} onClick={() => accept(true)}>
           {idea ? t.acceptIdea : t.accept}
         </button>
-        <button className="btn" onClick={() => accept(false)}>
+        <button className="btn" disabled={!!revising} onClick={() => accept(false)}>
           {idea ? t.acceptAsTask : t.acceptOnly}
         </button>
         <button className="btn" onClick={() => act({ action: 'dismiss' }, { close: true, ack: t.dismissed })}>

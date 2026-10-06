@@ -51,7 +51,7 @@ export const formatQuestion = (q: Question): string =>
  * owner's merge, or is an open idea whose agent has replied and is done.
  */
 export const needsYou = (i: Item) =>
-  i.state === 'waiting' || i.state === 'proposal' || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
+  i.state === 'waiting' || (i.state === 'proposal' && !i.proposal?.revising) || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
 
 export interface Item {
   id: string;
@@ -161,6 +161,8 @@ export interface Proposal {
   /** Why the worker proposes it, for the owner only; the card's text does not say it. */
   reason?: string;
   questions: Question[];
+  /** What the owner said it should become (`spoken`: through speech recognition), while an agent reworks the text, the reason and the questions by it. */
+  revising?: { words: string; spoken?: boolean };
 }
 
 /** A decision taken on a card: an answer to a worker's question, or the owner's call on an idea. */
@@ -511,6 +513,8 @@ export type CardAction =
    */
   | { action: 'accept'; start?: boolean; picks?: string[][] }
   | { action: 'dismiss' }
+  /** A proposal: an agent reworks its text, reason and questions by what the owner said (`text`). */
+  | { action: 'revise'; text: string; spoken?: boolean }
   /** Ideas: talk to the exploration agent; `spoken` gets a short spoken summary back. */
   | { action: 'discuss'; text: string; spoken?: boolean; images?: string[] }
   /**
@@ -563,6 +567,7 @@ export type ErrorCode =
   /** Approving directly onto main: the card's repository lands approved work only through a pull request. */
   | 'noDirect'
   | 'notProposal'
+  | 'revising'
   | 'planCard'
   | 'noWorkspace'
   | 'dirtyWorkspaces'

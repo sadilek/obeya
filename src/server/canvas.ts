@@ -19,6 +19,7 @@ import { Koordinator } from './koordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
 import { ReadTree } from './read-tree';
+import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import type { AgentRuntime } from './runtime';
@@ -75,6 +76,7 @@ export class CanvasRuntime {
   /** Screenshots the owner attaches to what they write. */
   readonly images: Images;
   readonly answers: Answers;
+  readonly revisions: Revisions;
   /** Demos shared with colleagues, through the share command of the card's repository. */
   readonly sharing: Sharing;
   readonly repos: RepoRuntime[] = [];
@@ -218,6 +220,8 @@ export class CanvasRuntime {
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
     this.answers.resume();
+    this.revisions = new Revisions({ board, runtime: deps.runtime, preferences, pathFor: (card) => this.repoOf(card).read.path });
+    this.revisions.resume();
     this.sharing = new Sharing({
       board,
       runtime: deps.runtime,
@@ -348,6 +352,8 @@ export class CanvasRuntime {
       case 'dismiss':
         if (this.board.row(cardId).state !== 'proposal') throw new BadRequest('notProposal', 'not a proposal');
         return this.board.remove(cardId);
+      case 'revise':
+        return this.revisions.revise(cardId, text.trim(), !!a.spoken);
       case 'discuss':
         return this.explorers.discuss(cardId, text.trim(), !!a.spoken, images);
       case 'build':
@@ -663,6 +669,8 @@ export class CanvasRuntime {
         return this.act(c.card, { action: 'message', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
       case 'answer':
         return this.act(c.card, { action: 'answer', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
+      case 'revise':
+        return this.act(c.card, { action: 'revise', text: c.text, spoken: c.spoken ?? true });
       case 'approve':
         return this.act(c.card, { action: 'approve', ...(c.direct ? { direct: true } : {}) });
       case 'accept':

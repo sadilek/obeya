@@ -27,6 +27,7 @@ const STATES: Record<string, Record<string, string>> = {
   inPr: { state: 'inPr' },
   finishing: { state: 'live', workspace: '/w', landed: '{}' },
   planned: { state: 'planned' },
+  proposal: { state: 'proposal', proposal: JSON.stringify({ reason: 'Beim Login aufgefallen.', questions: [{ text: 'Welche Kodierung?', options: ['UTF-8', 'Latin-1'] }] }) },
 };
 
 /** State of the open card, what the owner says, whether typed, the actions expected, and whether it goes out at once. */
@@ -56,6 +57,10 @@ const CASES: [string, string, boolean, Command['do'][], boolean][] = [
   ['review', 'Export und Login gehören zur Gruppe Konto', true, ['group'], false],
   ['working', 'Wie gehst du mit leeren Zeilen um?', false, ['note'], true],
   ['planned', 'Was würde der Agent hier machen, wenn ich starte?', false, [], false],
+  ['proposal', 'Nimm den Excel-Export gleich mit dazu, und die Kodierung ist UTF-8', false, ['revise'], false],
+  ['proposal', 'Ich glaube, das Problem liegt eher beim Import, der Export ist in Ordnung', true, ['revise'], false],
+  ['proposal', 'übernimm das', false, ['accept'], false],
+  ['proposal', 'das brauchen wir nicht, weg damit', false, ['dismiss'], false],
 ];
 
 /** What the Koordinator makes of one sentence: the actions as they run, and whether it went out at once. */
