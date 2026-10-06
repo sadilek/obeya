@@ -132,6 +132,10 @@ is presented without "I" or "we".
   sometimes) is measured before the narration is written, and narrated so it holds in any take
   ("several seconds", "mostly"), not with the value of one run. Other agents load the same
   machine: compare CPU time or counts rather than wall-clock time.
+- Waiting is not shown: where the demo waits for something slow (an agent's answer, a build, a
+  sync), put the wait into `d.skip` after the scene's `untilSpoken(1)`. The video cuts it out
+  with a white flash that says how much later it is; the next scene's narration starts with the
+  jump ("Kurz darauf …", "Etwas später …").
 - Write large numbers as words ("about fifteen thousand two hundred euros"); small ones as digits
   are fine. Avoid abbreviations the voice would spell out.
 
@@ -140,8 +144,8 @@ clears), `drag(from, to, ms?)` (onto an element or a point, the pointer moving a
 `scrollTo`, `highlight(locator | locator[], label?)` (ring that follows scrolling; cleared at each
 scene and by `clearHighlights()`; not inside iframes), `untilSpoken(fraction)` to time an action
 to the narration, `pdfFrom(button, name)` (PDF from a new-tab button → PNG pages),
-`showImage(png, top, caption)`, `panImage(top)`, `hideImage`, `wait`, and `d.page` for raw
-Playwright. Keep the recording on the app's own pages: other material (a results page, a report)
+`showImage(png, top, caption)`, `panImage(top)`, `hideImage`, `skip(fn)` (runs a wait and cuts
+it from the video, see above), `wait`, and `d.page` for raw Playwright. Keep the recording on the app's own pages: other material (a results page, a report)
 goes on screen with `showImage`, since a `goto` to another origin and back broke the timeline.
 
 ## 5. Render
@@ -201,6 +205,8 @@ the locator it waited for.
 - The render ends with a review table: per scene its chapter time and how well the heard
   narration matched what was said (`match`, flagged below 0.93 with what was heard; all of it in
   `.work/narration-check.json`). Rephrase a flagged sentence and render again.
+  A scene flagged with seconds "without narration" shows a stretch where nothing is said: if it
+  only waits, wrap the wait in `d.skip`; otherwise let the narration say what happens there.
 - `review/NN-mid.jpg` and `review/NN.jpg`: a still from the middle and from the end of each
   scene. Look at all of them: is the thing being talked about on screen, ringed, legible? Pull
   further frames only for fast transitions (`ffmpeg -ss <t> -i demo.mp4 -frames:v 1 x.png`).

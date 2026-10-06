@@ -11,6 +11,7 @@ import path from 'node:path';
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { type NarrationLanguage, readDemoSettings, withVoice } from './settings.ts';
 import { checkSetup, describeSetup, whisperKit } from './setup.ts';
+import { type Cut, type Frame, frameDurations, laterLabel, videoTime } from './timeline.ts';
 import { TTS_LOCK, voiceSpec } from './voices.ts';
 
 export interface Scene {
@@ -59,6 +60,8 @@ const GAP_SECONDS = 0.6;
 const TTS_MATCH_WARN = 0.85;
 /** Below this, the sentence is worth rephrasing: the voice or Whisper stumbled over it. */
 const NARRATION_OK = 0.93;
+/** A scene this much longer than its narration and gap has a stretch worth cutting (`Director.skip`). */
+const SILENCE_WARN = 5;
 const SAVED = readDemoSettings();
 /** The settings of this render: `DEMO_VOICE` names another provider, or a `.wav` to clone. */
 const SETTINGS = withVoice(SAVED, process.env.DEMO_VOICE);
@@ -92,6 +95,9 @@ export class Director {
   readonly #paced: boolean;
   #sceneStart = 0;
   #sceneSpeech = 0;
+  /** Stretches `skip` cut out, and how much of them fell into the current scene. */
+  readonly cuts: Cut[] = [];
+  #skippedInScene = 0;
 
   // No parameter properties: Node runs this file by type stripping, which does not transform them.
   constructor(page: Page, baseUrl: string, workDir: string, paced = true) {
@@ -113,9 +119,30 @@ export class Director {
   /** Waits until `fraction` of this scene's narration has been spoken. */
   async untilSpoken(fraction = 1) {
     if (!this.#paced) return;
-    const due = this.#sceneStart + LEAD_SECONDS + this.#sceneSpeech * fraction;
+    // A cut stops the clock of the video, not of the narration: what was cut is added on.
+    const due = this.#sceneStart + LEAD_SECONDS + this.#sceneSpeech * fraction + this.#skippedInScene;
     const left = due - now();
     if (left > 0) await this.wait(left * 1000);
+  }
+
+  /**
+   * Runs `fn`, a wait in which nothing worth watching happens (an agent at work, a build), and
+   * cuts it from the video: the picture fades to white, says how much later it is, and fades back.
+   * The narration goes on across the cut, so call it after `untilSpoken(1)`.
+   */
+  async skip(fn: () => Promise<void>) {
+    if (!this.#paced) return fn();
+    await this.page.evaluate(() => window.__demo.whiteOut());
+    await this.wait(300);
+    const from = now();
+    await fn();
+    const to = now();
+    this.cuts.push({ from, to });
+    this.#skippedInScene += to - from;
+    await this.page.evaluate((l) => window.__demo.timeJump(l), laterLabel(to - from, LANGUAGE));
+    await this.wait(1100);
+    await this.page.evaluate(() => window.__demo.whiteIn());
+    await this.wait(450);
   }
 
   async pointAt(target: Locator) {
@@ -231,6 +258,7 @@ export class Director {
   beginScene(speechSeconds: number) {
     this.#sceneStart = now();
     this.#sceneSpeech = speechSeconds;
+    this.#skippedInScene = 0;
     return this.#sceneStart;
   }
 }
@@ -446,13 +474,6 @@ async function dryRun(spec: DemoSpec, viewport: { width: number; height: number 
   spec.scenes.forEach((s, i) => console.log(`  ${String(i + 1).padStart(2)}  ok  ${took[i]!.toFixed(1).padStart(5)} s  ${s.title}`));
 }
 
-interface Frame {
-  file: string;
-  t: number;
-  width: number;
-  height: number;
-}
-
 async function startScreencast(ctx: BrowserContext, page: Page, dir: string, size: { width: number; height: number }) {
   const frames: Frame[] = [];
   const cdp = await ctx.newCDPSession(page);
@@ -474,19 +495,14 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
   };
 }
 
-/** Writes an ffconcat list that holds each frame until the next one, from t0 to tEnd. */
-function frameList(frames: Frame[], t0: number, tEnd: number, file: string) {
-  const firstIdx = Math.max(0, frames.findLastIndex((f) => f.t <= t0));
-  const used = frames.slice(firstIdx).filter((f) => f.t < tEnd);
+/** Writes an ffconcat list that holds each frame until the next one, from t0 to tEnd, less the cuts. */
+function frameList(frames: Frame[], t0: number, tEnd: number, cuts: Cut[], file: string) {
+  const held = frameDurations(frames, t0, tEnd, cuts);
   // Relative, with forward slashes: ffmpeg reads them on every platform, a Windows drive path not always.
-  const entry = (f: Frame) => `file '${path.relative(path.dirname(file), f.file).split(path.sep).join('/')}'`;
+  const entry = (f: string) => `file '${path.relative(path.dirname(file), f).split(path.sep).join('/')}'`;
   const lines = ['ffconcat version 1.0'];
-  used.forEach((f, i) => {
-    const from = Math.max(f.t, t0);
-    const to = i + 1 < used.length ? used[i + 1]!.t : tEnd;
-    lines.push(entry(f), `duration ${Math.max(0.001, to - from).toFixed(4)}`);
-  });
-  lines.push(entry(used[used.length - 1]!));
+  for (const h of held) lines.push(entry(h.file), `duration ${h.seconds.toFixed(4)}`);
+  lines.push(entry(held[held.length - 1]!.file));
   fs.writeFileSync(file, `${lines.join('\n')}\n`);
 }
 
@@ -545,18 +561,15 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     }
     await d.untilSpoken(1);
     await d.wait(GAP_SECONDS * 1000);
-    marks.push({
-      title: scene.title,
-      start: start - t0,
-      speechStart: start - t0 + LEAD_SECONDS,
-      speechEnd: start - t0 + LEAD_SECONDS + clip.seconds,
-    });
+    // In video time: what `skip` cut out is gone from the scenes after it.
+    const at = videoTime(start, t0, d.cuts);
+    marks.push({ title: scene.title, start: at, speechStart: at + LEAD_SECONDS, speechEnd: at + LEAD_SECONDS + clip.seconds });
   }
   const tEnd = now() + 0.8;
   await d.wait(800);
   await cast.stop();
   await browser.close();
-  const total = tEnd - t0;
+  const total = videoTime(tEnd, t0, d.cuts);
   const cut = cast.frames.find((f) => Math.round(f.width) !== viewport.width || Math.round(f.height) !== viewport.height);
   if (cut) console.warn(`screencast frames are ${Math.round(cut.width)}×${Math.round(cut.height)}, not ${viewport.width}×${viewport.height}: part of the page is missing`);
 
@@ -571,7 +584,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   run('ffmpeg', ['-y', '-loglevel', 'error', ...inputs, '-filter_complex', [...delays, mix].join(';'), '-map', '[out]', '-ar', '48000', narration]);
 
   const list = path.join(work, 'frames.txt');
-  frameList(cast.frames, t0, tEnd, list);
+  frameList(cast.frames, t0, tEnd, d.cuts, list);
   const video = path.join(outDir, 'demo.mp4');
   run('ffmpeg', [
     '-y', '-loglevel', 'error',
@@ -614,8 +627,12 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     const clip = clips[i]!;
     const flag = clip.match !== null && clip.match < NARRATION_OK ? `  ← heard: "${clip.heard}"` : '';
     const match = clip.match === null ? 'not heard back' : `match ${clip.match.toFixed(2)}`;
-    console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}  ${match}${flag}`);
+    const end = i + 1 < marks.length ? marks[i + 1]!.start : total;
+    const silent = end - m.speechEnd - GAP_SECONDS;
+    const idle = silent > SILENCE_WARN ? `  ← ${Math.round(silent)} s without narration: cut it with d.skip where it only waits` : '';
+    console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}  ${match}${flag}${idle}`);
   });
+  if (d.cuts.length) console.log(`cut ${d.cuts.length}× (${Math.round(d.cuts.reduce((s, c) => s + c.to - c.from, 0))} s of waiting)`);
   if (narrated.unchecked) console.log(`narration NOT heard back (${narrated.unchecked}): name that in the report's findings`);
   console.log(`stills → ${reviewDir}: NN-mid.jpg (middle of each scene), NN.jpg (its end)`);
 }

@@ -1,7 +1,8 @@
 // Injected into every page of a demo recording. Headless Chrome paints no mouse pointer and no
 // focus cues a viewer could follow, so the recording carries its own: a pointer that glides to
 // each target, a click ripple, highlight rings that track their elements through scrolling, and
-// an image stage for things the page itself cannot show (a PDF, a rendered e-mail).
+// an image stage for things the page itself cannot show (a PDF, a rendered e-mail), and a white
+// veil over a time jump, a stretch the video leaves out.
 (() => {
   if (window.__demo) return;
   const ACCENT = '#f5a524';
@@ -9,6 +10,7 @@
   let cursor = null;
   let rings = [];
   let stage = null;
+  let veil = null;
   let pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 
   function ensureRoot() {
@@ -156,6 +158,35 @@
     hideImage() {
       if (stage) stage.remove();
       stage = null;
+    },
+    // A time jump: the page fades to white, the cut falls while it is white, and it fades back
+    // in with how much later it is.
+    whiteOut() {
+      ensureRoot();
+      if (veil) veil.remove();
+      veil = document.createElement('div');
+      veil.style.cssText =
+        'position:absolute;inset:0;background:#fff;display:grid;place-items:center;' +
+        'color:#57534e;font:600 30px/1.2 system-ui,sans-serif;opacity:0;transition:opacity 250ms ease-in;';
+      root.appendChild(veil);
+      requestAnimationFrame(() => (veil.style.opacity = '1'));
+    },
+    timeJump(label) {
+      // A page that reloaded while it was white has lost its veil: it comes back without a fade.
+      if (!veil || !veil.isConnected) {
+        this.whiteOut();
+        veil.style.transition = 'none';
+        veil.style.opacity = '1';
+      }
+      veil.textContent = label;
+    },
+    whiteIn() {
+      if (!veil) return;
+      const v = veil;
+      veil = null;
+      v.style.transition = 'opacity 400ms ease-out';
+      v.style.opacity = '0';
+      setTimeout(() => v.remove(), 450);
     },
   };
 })();

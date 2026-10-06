@@ -909,6 +909,13 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   it only in the full render, after synthesis and the scenes before it. A failing step names the
   page's URL, the screenshot and Playwright's message on lines of their own: a worker once took
   the screenshot's path, the only path in the message, for the page's address.
+  Waiting is cut out of the video: a demo of real agents had half a minute of a canvas where
+  nothing happened. The scene wraps such a wait in `d.skip`; the page fades to white, the cut falls
+  while it is white, and it fades back in with how much later it is ("31 Sekunden später"), about
+  two seconds in all. The cuts come out of the frames, the narration offsets, the chapters and
+  the captions alike (`lib/timeline.ts`); a narration clip the cut falls into goes on across it,
+  so a skip belongs after the scene's narration, and the next scene says the jump ("Kurz darauf").
+  The review table flags a scene with more than 5 s without narration.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
   the card's demo (range requests). The card shows it with approve and feedback
   beside the video; feedback asks for a new render. When the result is something to look at
