@@ -677,6 +677,7 @@ export class CanvasRuntime {
         return this.act(c.card, { action: 'approve', ...(c.direct ? { direct: true } : {}) });
       case 'accept':
       case 'dismiss':
+      case 'dequeue':
       case 'split':
       case 'stop':
         return this.act(c.card, { action: c.do });

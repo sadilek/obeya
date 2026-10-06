@@ -759,13 +759,14 @@ the owner's language (`src/core/locale.ts`).
   after them) the first recording after a load failed no more often than later ones, and opening it
   early would keep the browser's microphone indicator on all the time. A Koordinator turn (effort medium) reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
-  more actions from one sentence, up to 20 (new card, new idea, start, note, answer, feedback,
+  more actions from one sentence, up to 20 (new card, new idea, start, taking a card out of the queue, note, answer, feedback,
   approve, accept, dismiss, revise, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
   park, drop; on prototypes: build on it, discard),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
-  one waits for, so "starte alle wartenden Aufgaben" works. A reply answers questions too
+  one waits for, so "starte alle wartenden Aufgaben" works; "nimm sie aus der Warteschlange" takes a
+  queued card back to planned, like "Aus der Warteschlange nehmen". A reply answers questions too
   ("Was ist seit gestern passiert?"), as far as the cards and their history answer them.
   "Merk dir: …" ("ab jetzt immer …") is remember, with the open card as its occasion, once the undo
   window has passed. A rule on how agents work with the owner through Obeya becomes one of the

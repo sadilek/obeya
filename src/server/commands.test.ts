@@ -240,6 +240,24 @@ describe('the Koordinator remembers', () => {
     expect(executed).toEqual([{ do: 'force', card: behind.id }]);
   });
 
+  test('a queued card is taken out of the queue; one that waits for nothing is not', async () => {
+    const running = board.create({ title: 'Export', x: 0, y: 0 });
+    board.work(running.id, { state: 'working' });
+    const behind = board.create({ title: 'Archiv', x: 0, y: 0 });
+    board.work(behind.id, { queue: JSON.stringify({ behind: [running.id], reason: 'beide ändern export.ts' }) });
+    const k = commander();
+    const heard = k.hear('nimm Archiv und Export aus der Warteschlange', {});
+    await settle();
+    const s = runtime.last;
+    const refused = await s.call('act', { actions: [{ do: 'dequeue', card: 'K2' }, { do: 'dequeue', card: 'K1' }], confirm: 'Beide raus.' });
+    expect(refused).toContain('action 2 (dequeue on K1): the card is not in the queue (it is working)');
+    s.call('act', { actions: [{ do: 'dequeue', card: 'K2' }], confirm: '„Archiv“ ist aus der Warteschlange.' });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([{ do: 'dequeue', card: behind.id }]);
+  });
+
   test('starting a project hands its planned workstreams to the Koordinator together', async () => {
     const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: '', done, inReview: false });
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => [

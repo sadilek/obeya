@@ -27,6 +27,8 @@ const STATES: Record<string, Record<string, string>> = {
   inPr: { state: 'inPr' },
   finishing: { state: 'live', workspace: '/w', landed: '{}' },
   planned: { state: 'planned' },
+  // LOGIN: the card „Login“, which it waits for
+  queued: { state: 'planned', queue: JSON.stringify({ behind: ['LOGIN'], reason: 'Beide ändern die Sitzungsverwaltung.' }) },
   proposal: { state: 'proposal', proposal: JSON.stringify({ reason: 'Beim Login aufgefallen.', questions: [{ text: 'Welche Kodierung?', options: ['UTF-8', 'Latin-1'] }] }) },
 };
 
@@ -57,6 +59,9 @@ const CASES: [string, string, boolean, Command['do'][], boolean][] = [
   ['review', 'Export und Login gehören zur Gruppe Konto', true, ['group'], false],
   ['working', 'Wie gehst du mit leeren Zeilen um?', false, ['note'], true],
   ['planned', 'Was würde der Agent hier machen, wenn ich starte?', false, [], false],
+  ['queued', 'nimm das aus der Warteschlange', false, ['dequeue'], false],
+  ['queued', 'Das soll doch noch nicht starten, lass es erst mal liegen', true, ['dequeue'], false],
+  ['queued', 'starte das trotzdem', false, ['force'], false],
   ['proposal', 'Nimm den Excel-Export gleich mit dazu, und die Kodierung ist UTF-8', false, ['revise'], false],
   ['proposal', 'Ich glaube, das Problem liegt eher beim Import, der Export ist in Ordnung', true, ['revise'], false],
   ['proposal', 'übernimm das', false, ['accept'], false],
@@ -66,9 +71,10 @@ const CASES: [string, string, boolean, Command['do'][], boolean][] = [
 /** What the Koordinator makes of one sentence: the actions as they run, and whether it went out at once. */
 async function hear(state: string, text: string, typed: boolean) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => []);
-  board.create({ title: 'Login', x: 0, y: 0 });
+  const login = board.create({ title: 'Login', x: 0, y: 0 });
+  if (state === 'queued') board.work(login.id, { state: 'working' });
   const card = board.create({ title: 'Export als CSV', x: 0, y: 0 });
-  board.work(card.id, STATES[state]!);
+  board.work(card.id, Object.fromEntries(Object.entries(STATES[state]!).map(([k, v]) => [k, v.replace('LOGIN', login.id)])));
   const executed: Command[] = [];
   // what the session said: a command not understood shows why (not logged in, an API error)
   const said: string[] = [];

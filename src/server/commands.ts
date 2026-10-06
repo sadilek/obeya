@@ -15,7 +15,7 @@ export type Command = (
   /** `force` starts a card that waits behind others now, despite the likely merge conflict. */
   /** `direct`: onto the default branch without a pull request, where the card's repository allows it. */
   | { do: 'approve'; card: string; direct?: boolean }
-  | { do: 'start' | 'force' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
+  | { do: 'start' | 'force' | 'dequeue' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
   /** On a prototype: build its idea on it (or `workstream`, of the project the idea became), or throw it away. */
   | { do: 'buildPrototype'; card: string; workstream?: string }
   | { do: 'discard'; card: string }
@@ -151,7 +151,7 @@ type LookUp = { question: string; about?: string };
 type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp };
 
 /** The actions `act` takes, as the Koordinator names them. */
-const ACTIONS = ['new_card', 'new_idea', 'start', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'revise', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group'] as const;
+const ACTIONS = ['new_card', 'new_idea', 'start', 'dequeue', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'revise', 'split', 'stop', 'discuss', 'build', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group'] as const;
 type Action = (typeof ACTIONS)[number];
 
 /** Actions in one command, at most: "start all queued cards" may name many. */
@@ -318,6 +318,7 @@ export class Commander {
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
             `- new_card: a new card. title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to the Koordinator together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
+            '- dequeue: take a card out of the queue (waiting behind other cards, for a free workspace, or still being checked or split by the Koordinator); it goes back to planned and does not start until started again („nimm … aus der Warteschlange“, „lass … doch noch nicht starten“).',
             "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Whatever the owner says to the agent: an instruction, a remark on its work, a question to it; never a question the owner asks you about the canvas.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary), a question about that work included; the agent works on it again.',
@@ -577,6 +578,9 @@ export class Commander {
         if (card.queue && 'behind' in card.queue) return { do: 'force', card: card.id };
         if (card.queue && 'workspace' in card.queue) return 'the card waits for a free workspace and starts by itself once one is free';
         if (card.queue) return `the Koordinator is still ${'cutting' in card.queue ? 'splitting' : 'checking'} the card; it starts by itself unless it collides`;
+        break;
+      case 'dequeue':
+        if (card.state !== 'planned' || !card.queue) return `the card is not in the queue (${is})`;
         break;
       case 'approve': {
         if (!reviewable) return `the card does not wait for review (${is})`;
