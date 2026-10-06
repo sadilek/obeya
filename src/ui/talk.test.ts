@@ -149,3 +149,16 @@ test('a question reads back from the log with its options', () => {
   expect(parseQuestion(formatQuestion({ text: 'Welche Spalten?', options: ['Datum', 'Stand'], multiple: true }))).toEqual({ text: 'Welche Spalten?', options: ['Datum', 'Stand'] });
   expect(parseQuestion('Weiter so?')).toEqual({ text: 'Weiter so?', options: [] });
 });
+
+test("why an idea clicked to build was not built stands after the agent's reply", () => {
+  const owner = ev('talk', 'owner', 'Nimm den Ton aus dem Styleguide.');
+  const armed = ev('state', 'owner', 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.');
+  const reply = ev('talk', 'explorer', 'Wo liegt der Styleguide?');
+  const why = ev('state', 'obeya', 'Nicht gebaut: Der Agent hat noch eine Frage.');
+  expect(talkTurns([owner, armed, reply, why]).shown).toEqual([
+    { e: owner, steps: [] },
+    { e: armed, steps: [], line: true },
+    { e: reply, steps: [] },
+    { e: why, steps: [], line: true },
+  ]);
+});
