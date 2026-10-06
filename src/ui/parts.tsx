@@ -16,6 +16,9 @@ const firstLine = (md: string) =>
     .map((l) => l.replace(/^\s*[-*]\s+/, '').replace(/^(Ziel|Goal)\s*:?\s*/i, '').trim())
     .find(Boolean) ?? '';
 
+/** What of a workstream planned again has landed: its pull request, else its commit. */
+export const landedRef = (l: NonNullable<Item['landedPart']>) => (l.pr ? `PR #${l.pr.number}` : (l.commit?.slice(0, 7) ?? ''));
+
 // ------------------------------------------------------------------ cards
 
 interface CardProps {
@@ -98,6 +101,7 @@ export const CardView = memo(
         {meta && <div className="meta">{meta}</div>}
         <div className="state">
           {stateLabel(item)}
+          {item.landedPart && <span className="landed-part">{t.landedPart.short} · {landedRef(item.landedPart)}</span>}
           {item.buildProposal && ` · ${t.idea.proposesBuild}`}
           {item.proposal?.revising && ` · ${t.revisingShort}`}
           {item.idea?.buildAfterReply && ` · ${t.idea.buildsAfterReply}`}

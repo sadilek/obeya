@@ -75,7 +75,7 @@ export class PrWatcher {
   }
 
   private react(cardId: string, state: string, pr: PrState, s: PrStatus) {
-    if (s.state === 'MERGED') return this.workers.merged(cardId);
+    if (s.state === 'MERGED') return this.workers.merged(cardId, s.mergeCommit);
     const next: PrState = { ...pr, checks: s.checks, review: reviewOf(s, this.noise) };
     // while the owner is being asked, news waits: it is passed on once the card is back in the PR
     if (state === 'inPr') {
@@ -138,10 +138,10 @@ export class PrWatcher {
         delete next.held;
         // the owner's approval covered the merge: Obeya merges, and tries again each round while GitHub refuses
         try {
-          this.forge.merge(this.cwd(cardId), pr.url!, s.head);
+          const commit = this.forge.merge(this.cwd(cardId), pr.url!, s.head);
           delete next.mergeError;
           this.save(cardId, next);
-          return this.workers.merged(cardId);
+          return this.workers.merged(cardId, commit || undefined);
         } catch (e) {
           const reason = (e instanceof Error ? e.message : String(e)).replace(/^gh pr merge \S+: /, '');
           if (pr.mergeError !== reason || pr.readyHead !== s.head) this.board.log(cardId, 'state', 'obeya', `Obeya konnte nicht mergen: ${reason}`);

@@ -97,6 +97,23 @@ describe('plan docs', () => {
     expect(board.item(w2.id)!.state).toBe('live');
   });
 
+  test('a stored live gives way to an empty box once the Lesestand holds what landed; a stored done stays', () => {
+    const items = board.snapshot().items;
+    const w2 = items.find((i) => i.label === 'W2')!;
+    const w3 = items.find((i) => i.label === 'W3')!;
+    // landed before the commit was kept, as a pull request; with its handover
+    board.work(w2.id, { state: 'live', pr: JSON.stringify({ url: 'https://github.com/acme/app/pull/821', number: 821, seen: [], reported: [] }) });
+    board.work(w3.id, { state: 'done' });
+    board.docsChanged();
+    expect(board.item(w2.id)).toMatchObject({ state: 'planned', landedPart: { pr: { url: 'https://github.com/acme/app/pull/821', number: 821 } } });
+    expect(board.item(w2.id)!.pr).toBeUndefined();
+    expect(board.events(w2.id).map((e) => e.text)).toEqual(['Teil gelandet, im Plan-Doc weiter offen.']);
+    expect(board.item(w3.id)!.state).toBe('done');
+    // reading again changes nothing more
+    board.docsChanged();
+    expect(board.events(w2.id)).toHaveLength(1);
+  });
+
   test('plan cards are read-only apart from placement and state', () => {
     const [p, w1] = board.snapshot().items;
     expect(() => board.patch(w1!.id, { title: 'x' })).toThrow(BadRequest);

@@ -80,6 +80,7 @@ a { color: inherit; }
   background: linear-gradient(90deg, transparent, var(--idea), transparent); background-size: 200% 100%;
   animation: flow 1.4s linear infinite; }
 .card.s-live, .card.s-done { opacity: .72; }
+.card .landed-part { color: var(--approved); background: color-mix(in srgb, var(--approved) 11%, transparent); border-radius: 4px; padding: 1px 6px; font-weight: 500; }
 .card.s-live .ttl, .card.s-done .ttl { font-weight: 500; }
 .card.s-proposal { background: transparent; box-shadow: none; border: 2px dashed var(--proposal); }
 .card.s-proposal.thinking .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;

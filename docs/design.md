@@ -1205,6 +1205,25 @@ the repository; the copy on the project is only for the archive).
   `## Workstreams` section has a checklist; each top-level item is a workstream (`**W3:** Title.
   Details`). Checked means `live`, `(in review)` after the label means `in PR`, anything else
   `planned`. The goal is the first paragraph under `## Goal` / `## Ziel`.
+- A workstream card's state: work in progress (`working`, `waiting`, `inPr`, `approved`) wins over
+  the doc, so a workstream ticked off on its branch still waits for its merge; then a ticked-off
+  workstream is `live`; otherwise the stored state counts (`done`, `planned`), and without one the
+  doc's. Stored `live` means its work landed, and holds only until the Lesestand has what landed
+  (2026-10-06): a card keeps the commit it landed with (`shipped`: the commit on main after a
+  direct landing, the merge commit GitHub names for a pull request, else the Lesestand's commit
+  after the first fetch following the merge). When the plan docs are read again and the Lesestand
+  has that commit while the workstream is still unchecked, only a part of it is done: the card is
+  stored as `planned` again, with the line „Teil gelandet, im Plan-Doc weiter offen.“ in its log,
+  and shows „Teil gelandet · PR #821“ (or the commit). Its log and handover stay; its pull request
+  moves into `shipped`, and its branch goes, so a new run starts on a fresh branch from main and
+  hears what landed. Cards that landed before the commit was kept count as landed in the Lesestand.
+  A worker still finishing after the landing keeps its card live until it is done. `done` (finished
+  without a change) stays: without a commit the doc has nothing to say about it. Until then a
+  stored `live` or `done` beat an empty box: that came from the time plan docs were read from a
+  pool clone's working tree, where the doc was often behind; it hid a workstream the doc kept open
+  on purpose (configuration landed, commissioning waiting for the plant) as `live`. Rejected: the
+  worker reporting "only a part" at the handover (a second source beside the doc that can
+  contradict it), and a "Wieder öffnen" button (the problem shows only when someone asks).
 - The owner reads a plan doc where the project is: "Plandokument lesen" in the project's sheet
   widens it and shows the doc as written, rendered, kept current with the file; a workstream's
   card opens it at the workstream's item. Esc goes back to the workstreams. The server hands out

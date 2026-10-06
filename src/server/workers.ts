@@ -14,7 +14,7 @@ import { imageNote } from './images';
 import type { InputContext } from './koordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, failureReason } from './runtime';
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
-import type { PrState } from './board';
+import type { PrState, Shipped } from './board';
 import { parsePrUrl } from './forge';
 import { earlierRun } from './work-retro';
 
@@ -161,7 +161,9 @@ export class Workers {
     if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
     // once work has begun the branch stays the card's, whatever the title says now
     const row = this.o.board.row(card.id);
-    const branch = row.branch ?? branchName(card.title, card.id);
+    // a workstream planned again after a part landed: the branch of that part may still be in a clone
+    const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
+    const branch = row.branch ?? `${branchName(card.title, card.id)}${shipped ? `-${shipped.commit?.slice(0, 7) ?? 'rest'}` : ''}`;
     let path: string;
     try {
       path = this.o.workspaces.lease(card.id, branch);
@@ -306,7 +308,15 @@ export class Workers {
     this.bump(cardId);
     // a push leaves the Obeya checkout as it is
     const restarts = !direct && (this.o.restartsFor?.(result) ?? false);
-    this.o.board.work(cardId, { state: 'live', need: null, detail: null, status_line: null, approved_at: null, landed: JSON.stringify({ commit: result.to, ...(restarts ? { restarts } : {}) } satisfies LandedState) });
+    this.o.board.work(cardId, {
+      state: 'live',
+      need: null,
+      detail: null,
+      status_line: null,
+      approved_at: null,
+      landed: JSON.stringify({ commit: result.to, ...(restarts ? { restarts } : {}) } satisfies LandedState),
+      shipped: JSON.stringify({ commit: result.to } satisfies Shipped),
+    });
     if (direct) this.o.board.log(cardId, 'state', by, by === 'owner' ? 'Freigegeben und direkt auf main gepusht.' : 'Nach der Freigabe direkt auf main gepusht.');
     else this.o.board.log(cardId, 'state', by, by === 'owner' ? 'Freigegeben und auf main.' : 'Nach der Freigabe auf main gelandet.');
     if (direct) this.o.onMerged?.(cardId);
@@ -422,11 +432,24 @@ export class Workers {
     return moved;
   }
 
-  /** The card's pull request was merged: the work is live, the workspace free. */
-  merged(cardId: string) {
+  /**
+   * The card's pull request was merged, with `commit` the merge put on the base branch where GitHub
+   * said: the work is live, the workspace free.
+   */
+  merged(cardId: string, commit?: string) {
     this.bump(cardId);
     this.o.board.planDocsLanded(cardId, this.planDocsAdded(cardId));
-    this.o.board.work(cardId, { state: 'live', need: null, detail: null, status_line: null, landed: JSON.stringify({} satisfies LandedState) });
+    const pr = this.o.board.row(cardId).pr;
+    const { url, number } = pr ? (JSON.parse(pr) as PrState) : { url: null, number: undefined };
+    const shipped: Shipped = { ...(commit ? { commit } : { fetch: true }), ...(url && number ? { pr: { url, number } } : {}) };
+    this.o.board.work(cardId, {
+      state: 'live',
+      need: null,
+      detail: null,
+      status_line: null,
+      landed: JSON.stringify((commit ? { commit } : {}) satisfies LandedState),
+      shipped: JSON.stringify(shipped),
+    });
     this.o.board.log(cardId, 'state', 'obeya', 'Pull Request gemergt. Live.');
     this.o.onMerged?.(cardId);
     this.afterLanding(cardId, `Your pull request was merged; the card is live.\n\n${AFTER_LANDING}`);
@@ -1128,6 +1151,14 @@ ${idea.idea.brief}` : '',
       parts.push(`${shots.length === 1 ? 'The owner attached a screenshot' : `The owner attached ${shots.length} screenshots`} to the card (shown with this message; files: ${shots.join(', ')}).`);
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
+    const part = project?.plan && this.o.board.row(card.id).shipped;
+    if (part) {
+      const s = JSON.parse(part) as Shipped;
+      const what = [s.pr && `pull request #${s.pr.number} (${s.pr.url})`, s.commit && `commit ${s.commit.slice(0, 7)}`].filter(Boolean).join(', ');
+      parts.push(
+        `A part of this workstream has landed already${what ? ` (${what})` : ''}, but the plan doc keeps the workstream open. Look at what landed and do the rest.`,
+      );
+    }
     parts.push(
       card.builtOn
         ? `You are on branch ${branch}, which holds the prototype's commits (and any earlier work on this card): look at its log and diff first.`

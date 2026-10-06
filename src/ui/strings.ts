@@ -106,6 +106,10 @@ const de = {
   waitingThere: (n: number) => (n === 1 ? '1 Aufgabe braucht dich dort' : `${n} Aufgaben brauchen dich dort`),
   waitingElsewhere: (n: number) => (n === 1 ? '1 Aufgabe auf einer anderen Leinwand braucht dich' : `${n} Aufgaben auf anderen Leinwänden brauchen dich`),
   start: 'Agent starten',
+  landedPart: {
+    short: 'Teil gelandet',
+    long: 'Ein Teil ist schon gelandet, das Plan-Doc hält den Workstream aber offen. Ein neuer Lauf macht den Rest.',
+  },
   stop: 'Anhalten',
   approve: 'Freigeben',
   approvePr: 'Freigeben (PR)',
@@ -818,6 +822,10 @@ const en: Strings = {
   waitingThere: (n: number) => (n === 1 ? '1 task needs you there' : `${n} tasks need you there`),
   waitingElsewhere: (n: number) => (n === 1 ? '1 task on another canvas needs you' : `${n} tasks on other canvases need you`),
   start: 'Start agent',
+  landedPart: {
+    short: 'Part landed',
+    long: 'A part has landed already, but the plan doc keeps the workstream open. A new run does the rest.',
+  },
   stop: 'Stop',
   approve: 'Approve',
   approvePr: 'Approve (PR)',

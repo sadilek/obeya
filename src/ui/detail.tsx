@@ -6,6 +6,7 @@ import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
+import { landedRef } from './parts';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
@@ -390,6 +391,18 @@ export function Detail(p: Props) {
         </div>
       )}
       {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
+      {item.landedPart && (
+        <p className="hint">
+          {t.landedPart.long}{' '}
+          {item.landedPart.pr ? (
+            <a href={item.landedPart.pr.url} target="_blank" rel="noreferrer">
+              {t.pr.title(item.landedPart.pr.number)} ↗
+            </a>
+          ) : (
+            <code>{landedRef(item.landedPart)}</code>
+          )}
+        </p>
+      )}
 
       {item.finishing && finished(item.state) && <p className="hint">{item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
 

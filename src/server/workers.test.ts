@@ -41,7 +41,9 @@ function setup(adapter: RepoAdapter, withOrigin = false) {
   if (withOrigin) git(dir, 'clone', '--quiet', '--bare', main, origin);
   store = new Store(':memory:');
   docs = [doc];
-  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs);
+  // the checkout is the Lesestand: work lands on its main
+  const holds = (_repo: string, commit: string) => Bun.spawnSync([GIT, '-C', main, 'merge-base', '--is-ancestor', commit, 'HEAD'], { stderr: 'ignore' }).exitCode === 0;
+  board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs, undefined, holds);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
   if (adapter.workspaces === 'clones') {
@@ -1442,5 +1444,113 @@ describe('a worktree per card', () => {
     workers.start(a.id);
     expect(board.row(a.id).workspace).toBe(wa);
     expect(git(wa, 'status', '--porcelain')).toContain('draft.ts');
+  });
+});
+
+describe('a workstream whose plan doc keeps it open after its work landed', () => {
+  const w1 = () => board.snapshot().items.find((i) => i.label === 'W1')!;
+  /** Starts W1, commits a file in its clone and hands it over. */
+  const handOver = () => {
+    const w = w1();
+    workers.start(w.id);
+    const clone = board.row(w.id).workspace!;
+    writeFileSync(join(clone, 'config.ts'), 'export {}\n');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Config');
+    runtime.last.call('ready_for_review', { summary: 'Konfiguration vorbereitet.' });
+    runtime.last.emit({ type: 'idle' });
+    return w;
+  };
+
+  test('landed and ticked off in the doc: live', async () => {
+    const w = handOver();
+    // the worker ticked it off on its branch
+    docs = [{ ...doc, workstreams: [{ ...ws('W1'), done: true }] }];
+    await workers.approve(w.id);
+    runtime.last.emit({ type: 'idle' });
+    expect(board.row(w.id).landed).toBeNull();
+    board.docsChanged();
+    expect(state(w.id)).toBe('live');
+  });
+
+  test('landed on main, the box still empty: once its worker is done, the card is planned again and starts for the rest', async () => {
+    const w = handOver();
+    await workers.approve(w.id);
+    // its worker still finishes: the card stays live until then
+    board.docsChanged();
+    expect(state(w.id)).toBe('live');
+    runtime.last.emit({ type: 'idle' });
+    const commit = git(main, 'rev-parse', 'HEAD');
+    expect(state(w.id)).toBe('planned');
+    expect(w1().landedPart).toEqual({ commit });
+    expect(board.events(w.id).at(-1)).toMatchObject({ author: 'obeya', text: 'Teil gelandet, im Plan-Doc weiter offen.' });
+    // the handover stays in the log, the summary with it
+    expect(board.events(w.id).some((e) => e.text.includes('Freigegeben'))).toBe(true);
+
+    workers.start(w.id);
+    expect(state(w.id)).toBe('working');
+    // a fresh branch from main, not the landed one
+    expect(board.row(w.id).branch).toEndWith(`-${commit.slice(0, 7)}`);
+    expect(git(board.row(w.id).workspace!, 'rev-parse', 'HEAD')).toBe(commit);
+    expect(runtime.last.inbox[0]).toContain(`A part of this workstream has landed already (commit ${commit.slice(0, 7)})`);
+    expect(w1().landedPart).toBeUndefined();
+  });
+});
+
+describe('a workstream merged as a pull request, its box still empty', () => {
+  beforeEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+  });
+
+  const w1 = () => board.snapshot().items.find((i) => i.label === 'W1')!;
+  /** W1 in its pull request #821, its worker idle. */
+  const inPr = async () => {
+    const w = w1();
+    workers.start(w.id);
+    const clone = board.row(w.id).workspace!;
+    writeFileSync(join(clone, 'config.ts'), 'export {}\n');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Config');
+    runtime.last.call('ready_for_review', { summary: 'S' });
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(w.id);
+    board.work(w.id, { pr: JSON.stringify({ url: 'https://github.com/acme/app/pull/821', number: 821, seen: [], reported: [] }) });
+    return w;
+  };
+
+  test('stays live while the Lesestand lacks the merge commit, and is planned again once it holds it', async () => {
+    const w = await inPr();
+    // the merge as GitHub made it, not yet on the Lesestand's main
+    git(main, 'checkout', '--quiet', '-b', 'merged');
+    writeFileSync(join(main, 'config.ts'), 'export {}\n');
+    git(main, 'add', '.');
+    git(main, 'commit', '--quiet', '-m', 'Config (#821)');
+    const commit = git(main, 'rev-parse', 'HEAD');
+    git(main, 'checkout', '--quiet', 'main');
+    workers.merged(w.id, commit);
+    runtime.last.emit({ type: 'idle' });
+    board.docsChanged();
+    expect(state(w.id)).toBe('live');
+
+    git(main, 'merge', '--quiet', '--ff-only', 'merged');
+    board.docsChanged();
+    expect(state(w.id)).toBe('planned');
+    expect(w1().landedPart).toEqual({ commit, pr: { url: 'https://github.com/acme/app/pull/821', number: 821 } });
+    // the pull request is history now: starting again opens a new one
+    expect(w1().pr).toBeUndefined();
+    workers.start(w.id);
+    expect(runtime.last.inbox[0]).toContain('pull request #821 (https://github.com/acme/app/pull/821)');
+  });
+
+  test('without the merge commit, the Lesestand after the next fetch stands in for it', async () => {
+    const w = await inPr();
+    workers.merged(w.id);
+    runtime.last.emit({ type: 'idle' });
+    board.docsChanged();
+    expect(state(w.id)).toBe('live');
+    board.lesestandMoved('home', git(main, 'rev-parse', 'HEAD'));
+    expect(state(w.id)).toBe('planned');
+    expect(w1().landedPart).toEqual({ commit: git(main, 'rev-parse', 'HEAD'), pr: { url: 'https://github.com/acme/app/pull/821', number: 821 } });
   });
 });

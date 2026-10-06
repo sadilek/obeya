@@ -98,7 +98,7 @@ export class CanvasRuntime {
           repoPath: info.path,
           dir: adapters[i]!.land === 'main' ? null : join(deps.home, 'read', id, refs[i]!.id),
           remote: !!info.remote,
-          onChange: () => this.board.docsChanged(),
+          onChange: () => this.board.lesestandMoved(refs[i]!.id, reads[i]!.head()),
         }),
     );
     this.stops.push(() => reads.forEach((r) => r.stop()));
@@ -110,6 +110,7 @@ export class CanvasRuntime {
           readPlanDocs(read.path, adapters[i]!).map((d) => (refs[i]!.id === home ? d : { ...d, file: `${refs[i]!.id}:${d.file}` })),
         ),
       images,
+      (repo, commit) => !!reads[refs.findIndex((r) => r.id === repo)]?.holds(commit),
     );
     const board = this.board;
     const imageFiles = (ids: string[] = []) => ids.flatMap((i) => images.path(i) ?? []);

@@ -70,6 +70,16 @@ export class ReadTree {
     this.stopped = true;
   }
 
+  /** The commit the Lesestand is on. */
+  head(): string {
+    return gitIn(this.path)('rev-parse', 'HEAD') ?? '';
+  }
+
+  /** Whether the Lesestand holds `commit`: it is the commit the Lesestand is on, or an ancestor of it. */
+  holds(commit: string): boolean {
+    return gitIn(this.path)('merge-base', '--is-ancestor', commit, 'HEAD') !== null;
+  }
+
   private async fetch() {
     if (!this.o.remote) return;
     const { branch } = defaultBranchCommit(this.o.repoPath);

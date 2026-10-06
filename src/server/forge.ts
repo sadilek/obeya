@@ -44,6 +44,8 @@ export interface PrStatus {
   }[];
   /** Who opened the PR (the owner's account; the worker's own replies carry it too). */
   author: string;
+  /** Once merged: the commit the merge put on the base branch. */
+  mergeCommit?: string;
 }
 
 export interface Forge {
@@ -52,8 +54,11 @@ export interface Forge {
   body(cwd: string, url: string): string;
   /** Replaces the PR's description. */
   setBody(cwd: string, url: string, body: string): void;
-  /** Merges the PR, if its head is still `head`, the way the repository allows; throws with GitHub's reason when it cannot. */
-  merge(cwd: string, url: string, head: string): void;
+  /**
+   * Merges the PR, if its head is still `head`, the way the repository allows; throws with GitHub's
+   * reason when it cannot. Returns the commit the merge put on the base branch, where GitHub says.
+   */
+  merge(cwd: string, url: string, head: string): string | void;
 }
 
 /** A GitHub pull request URL: `https://github.com/<owner>/<repo>/pull/<n>`. */
@@ -73,6 +78,7 @@ interface GhPr {
   mergeable: PrStatus['mergeable'];
   mergeStateStatus?: string;
   headRefOid: string;
+  mergeCommit?: { oid: string } | null;
   author: { login: string };
   statusCheckRollup: { __typename: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string }[];
   comments: { id: string; author: { login: string }; body: string; url: string; createdAt?: string }[];
@@ -84,7 +90,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
   status(cwd, url) {
     const ref = parsePrUrl(url);
     if (!ref) throw new Error(`not a GitHub pull request URL: ${url}`);
-    const pr = JSON.parse(run(cwd, 'pr', 'view', url, '--json', 'state,mergeable,mergeStateStatus,headRefOid,author,statusCheckRollup,comments,reviews')) as GhPr;
+    const pr = JSON.parse(run(cwd, 'pr', 'view', url, '--json', 'state,mergeable,mergeStateStatus,headRefOid,mergeCommit,author,statusCheckRollup,comments,reviews')) as GhPr;
     const inline = JSON.parse(run(cwd, 'api', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`, '--paginate')) as {
       id: number;
       user: { login: string };
@@ -151,6 +157,7 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
       head: pr.headRefOid,
       ...(changedAt ? { changedAt } : {}),
       author: pr.author.login,
+      ...(pr.state === 'MERGED' && pr.mergeCommit?.oid ? { mergeCommit: pr.mergeCommit.oid } : {}),
       checks,
       comments: [
         ...pr.comments.map((c) => ({
@@ -200,6 +207,12 @@ export const makeGhForge = (run: (cwd: string, ...args: string[]) => string): Fo
     const method = (['squash', 'merge', 'rebase'] as const).find((m) => allows[m] !== false) ?? 'squash';
     // no --delete-branch: that also switches branches in the workspace; the repository deletes merged branches or not
     run(cwd, 'pr', 'merge', url, `--${method}`, '--match-head-commit', head);
+    try {
+      return run(cwd, 'pr', 'view', url, '--json', 'mergeCommit', '--jq', '.mergeCommit.oid').trim() || undefined;
+    } catch {
+      // merged all the same: the first fetch after it stands in for the commit (Workers.merged)
+      return undefined;
+    }
   },
 });
 

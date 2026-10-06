@@ -104,6 +104,11 @@ export interface Item {
   queue?: Queue;
   /** The pull request, once the worker opened it after approval. */
   pr?: PullRequest;
+  /**
+   * A workstream planned again: a part of it landed (this commit, this pull request), but its plan
+   * doc keeps it open. A new run does the rest.
+   */
+  landedPart?: { commit?: string; pr?: { url: string; number: number } };
   /** When the owner archived the card; archived cards are not on the canvas but in its archive. */
   archivedAt?: string;
   /** Ideas only: what the discussion has settled so far. */

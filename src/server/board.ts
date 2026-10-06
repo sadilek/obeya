@@ -59,6 +59,16 @@ export interface PrState {
   review?: PrReviewEntry[];
 }
 
+/** What a card's work landed with (`CardRow.shipped`); it stays after the worker is done. */
+export interface Shipped {
+  /** The commit on the default branch that holds the work; none on cards that landed before it was kept. */
+  commit?: string;
+  /** Merged as a pull request: that one. */
+  pr?: { url: string; number: number };
+  /** The merge commit is not known: the Lesestand's commit after the next fetch stands in for it. */
+  fetch?: true;
+}
+
 /** What Obeya keeps about a card's shared demo page (share.ts). */
 export interface StoredShare {
   /** The page's name on the site; it stays with the card, so its link keeps working. */
@@ -142,6 +152,8 @@ export class Board {
     private readDocs: () => PlanDoc[],
     /** The owner's screenshots, which a card's images must be among. */
     private images?: Pick<Images, 'resolve'>,
+    /** Whether the Lesestand of the repository holds the commit; without it, every commit counts as held. */
+    private holds?: (repo: string, commit: string) => boolean,
   ) {
     store.ensureCanvas(canvas.id, canvas.name);
     // a new card whose page closed before it got a title was never wanted
@@ -184,6 +196,43 @@ export class Board {
   docsChanged() {
     this.docs = null;
     this.changed();
+  }
+
+  /**
+   * The repository's Lesestand moved to `commit` after a fetch: pull requests merged before it,
+   * whose merge commit GitHub did not say, count as landed with it. Then the plan docs are read again.
+   */
+  lesestandMoved(repo: string, commit: string) {
+    for (const r of this.store.cards(this.canvas.id)) {
+      const s = r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
+      if (!commit || !s?.fetch || (r.repo ?? (r.plan_ref ? repoOfRef(r.plan_ref, this.home) : this.home)) !== repo) continue;
+      const { fetch: _, ...rest } = s;
+      this.store.update(r.id, { shipped: JSON.stringify({ ...rest, commit } satisfies Shipped) });
+    }
+    this.docsChanged();
+  }
+
+  /**
+   * The plan doc decides a workstream's state. Stored `live` means its work landed; once the
+   * Lesestand holds what landed and the doc still leaves the workstream open, only a part of it is
+   * done: the card is planned again, to be started for the rest. Its log, PR and handover stay.
+   */
+  private reopen(docs: PlanDoc[]) {
+    const byFile = new Map(docs.map((d) => [d.file, d]));
+    for (const r of this.store.cards(this.canvas.id)) {
+      // a worker still finishing after the landing keeps its card until it is done (workDone)
+      if (r.state !== 'live' || !r.plan_ref?.includes('#') || r.landed) continue;
+      const hash = r.plan_ref.indexOf('#');
+      const w = byFile.get(r.plan_ref.slice(0, hash))?.workstreams.find((x) => x.key === r.plan_ref!.slice(hash + 1));
+      if (!w || w.done) continue;
+      const s = r.shipped ? (JSON.parse(r.shipped) as Shipped) : {};
+      if (s.fetch || (s.commit && this.holds && !this.holds(repoOfRef(r.plan_ref, this.home), s.commit))) continue;
+      const pr = r.pr ? (JSON.parse(r.pr) as PrState) : null;
+      const shipped: Shipped = { ...s, ...(!s.pr && pr?.url && pr.number ? { pr: { url: pr.url, number: pr.number } } : {}) };
+      // a new run starts on a fresh branch: the old one is merged, perhaps squashed
+      this.store.update(r.id, { state: 'planned', need: null, pr: null, branch: null, shipped: JSON.stringify(shipped) });
+      this.log(r.id, 'state', 'obeya', 'Teil gelandet, im Plan-Doc weiter offen.');
+    }
   }
 
   /** Appends a line to the card's log. */
@@ -636,7 +685,9 @@ export class Board {
 
   /** A card's landed work is done, its worker gone: an idea whose plan doc is a project now gives way to it. */
   workDone(cardId: string) {
-    if (this.retire(cardId)) this.changed();
+    // a workstream its doc keeps open is planned again (reopen) once its worker is done
+    if (this.own(cardId).plan_ref) this.docs = null;
+    if (this.retire(cardId) || !this.docs) this.changed();
   }
 
   /** The canvas as the UI sees it; built once per change (every write here ends in `changed`). */
@@ -645,6 +696,7 @@ export class Board {
     if (!this.docs) {
       this.docs = this.readDocs();
       this.keepDocs(this.docs);
+      this.reopen(this.docs);
     }
     const docs = this.docs;
     let items = toItems(this.store.cards(this.canvas.id), docs, this.home);
@@ -1192,13 +1244,15 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
     const w = doc.workstreams[order];
     if (!w || !r.parent_id) continue;
     const derived = w.done ? 'live' : w.inReview ? 'inPr' : 'planned';
+    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge
+    const state = r.state && ACTIVE.includes(r.state) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
+    const shipped = state === 'planned' && r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
     workstreams.push({
       order,
       item: {
         id: r.id,
         kind: r.kind,
-        // work in progress wins over the doc: a ticked-off workstream may still wait for its merge
-        state: r.state && ACTIVE.includes(r.state) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived),
+        state,
         ...(r.need ? { need: r.need } : {}),
         title: w.title,
         body: w.body,
@@ -1209,6 +1263,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         repo: repoOfRef(r.plan_ref, home),
         ...(w.label ? { label: w.label } : {}),
         ...work(r),
+        ...(shipped ? { landedPart: { ...(shipped.commit ? { commit: shipped.commit } : {}), ...(shipped.pr ? { pr: shipped.pr } : {}) } } : {}),
         ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(groupOf.get(r.parent_id) ? { group: groupOf.get(r.parent_id)! } : {}),
       },

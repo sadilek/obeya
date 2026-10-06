@@ -230,18 +230,19 @@ test('the description is read with gh pr view and replaced through a file', () =
   expect(written).toBe('Text\n\nDemo-Video: https://d/a/');
 });
 
-test('a merge uses the method the repository allows, and only the commit that was found ready', () => {
+test('a merge uses the method the repository allows, and only the commit that was found ready; it returns the merge commit', () => {
   const calls: string[][] = [];
   let allows = { squash: true, merge: false, rebase: false };
   const forge = makeGhForge((_cwd, ...args) => {
     calls.push(args);
-    return args[0] === 'api' ? JSON.stringify(allows) : '';
+    return args[0] === 'api' ? JSON.stringify(allows) : args[1] === 'view' ? 'f00d\n' : '';
   });
   const url = 'https://github.com/acme/app/pull/42';
-  forge.merge('/repo', url, 'abc');
+  expect(forge.merge('/repo', url, 'abc')).toBe('f00d');
   expect(calls[0]!.slice(0, 2)).toEqual(['api', 'repos/acme/app']);
   expect(calls[1]).toEqual(['pr', 'merge', url, '--squash', '--match-head-commit', 'abc']);
+  expect(calls[2]).toEqual(['pr', 'view', url, '--json', 'mergeCommit', '--jq', '.mergeCommit.oid']);
   allows = { squash: false, merge: true, rebase: true };
   forge.merge('/repo', url, 'abc');
-  expect(calls[3]).toEqual(['pr', 'merge', url, '--merge', '--match-head-commit', 'abc']);
+  expect(calls[4]).toEqual(['pr', 'merge', url, '--merge', '--match-head-commit', 'abc']);
 });

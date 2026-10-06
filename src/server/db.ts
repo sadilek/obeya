@@ -72,6 +72,12 @@ export interface CardRow {
   share: string | null;
   /** The group the card belongs to; a project's covers its workstreams, whose own stays null. */
   group_id: string | null;
+  /**
+   * JSON, once the card's work landed (`Shipped` in board.ts): the commit it landed with and its
+   * pull request. Kept after its worker is done: a workstream whose plan doc keeps it open is
+   * planned again once the Lesestand holds that commit.
+   */
+  shipped: string | null;
 }
 
 export interface GroupRow {
@@ -268,6 +274,8 @@ export const MIGRATIONS = [
    ALTER TABLE cards ADD COLUMN group_id TEXT REFERENCES groups(id);`,
   // an idea's agent shows how a variant looks in a few lines of HTML beside its reply
   `ALTER TABLE events ADD COLUMN mocks TEXT;`,
+  // what a card's work landed with, kept after its worker is done
+  `ALTER TABLE cards ADD COLUMN shipped TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -306,6 +314,7 @@ export type RowUpdate = Partial<
     | 'share'
     | 'proposal'
     | 'group_id'
+    | 'shipped'
   >
 >;
 
