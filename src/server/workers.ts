@@ -708,7 +708,8 @@ export class Workers {
     }
     live.nudged = false;
     live.stalled = true;
-    this.toOwner(cardId, { text: `${failureReason(clip(live.failed!, 1200))} Was nach der Landung noch zu tun war, ist nicht erledigt; „Anhalten“ schließt die Karte ohne den Rest ab.`, options: ['Nochmal versuchen'] });
+    const reason = failureReason(clip(live.failed!, 1200));
+    this.toOwner(cardId, { text: `${reason}${/[.!?]$/.test(reason) ? '' : '.'} Was nach der Landung noch zu tun war, ist nicht erledigt; „Anhalten“ schließt die Karte ohne den Rest ab.`, options: ['Nochmal versuchen'] });
   }
 
   /** Waits for a sign of life from the worker; without one for a long while, its turn counts as ended. */
