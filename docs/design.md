@@ -222,6 +222,9 @@ An idea is thought through on its card before anything is planned; no worker run
    worker; only what needs judgement — a review comment that questions a decision, a conflict with
    product meaning — comes back to the owner as a question on the card, and the answer returns it
    to the PR. A PR closed without a merge asks the owner whether to open it again or drop the work.
+   Where the adapter allows it (`direct`), the owner may instead approve with "Direkt auf main"
+   beside "Freigeben (PR)", or by voice ("gib frei ohne PR"): Obeya pushes the work onto the
+   default branch itself, without a pull request, review or the PR's CI, and the card is `live`.
    Where work lands on `main` (Obeya), approval lands it at once.
 5. Merged (or landed on `main`) → `live`. The demo stays on the card. The worker hears that its
    work is on main and may finish what was waiting for that (a data migration, say) before its
@@ -469,8 +472,19 @@ the owner's language (`src/core/locale.ts`).
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
   is `live`. Commits that conflict one by one but not as a whole land squashed into one commit.
   Uncommitted work or a real conflict sends the card back to its worker with the approval kept:
-  its next handover (no new demo needed) lands on its own.
-- **PR loop** — on approval the worker hears that its work goes out as a pull request, opened the
+  its next handover (no new demo needed) lands on its own. `pr` with `direct`: an approval "Direkt
+  auf main" (`approve(card, { direct })`, refused with `noDirect` where the adapter lacks `direct`)
+  lands in the card's clone or worktree instead of a PR (`pushToMain`): fetch, rebase onto
+  `origin/<default>` (squash as above), `git push origin HEAD:<default>`, never forced. A push
+  turned away because the default branch moved meanwhile is fetched, rebased and pushed once
+  more; any other refusal (a protected branch, missing rights) stays with the owner (`landPush`),
+  the card back in review. Conflicts and uncommitted work go back to the worker with the approval
+  kept as above; since only a direct approval is held where work goes out as a PR, its next
+  handover is pushed directly too. The Obeya checkout is left alone; the read tree is refreshed
+  and plan docs the card adds are registered, as after a merge. The worker hears that its work is
+  on main, as after a landing. The adapter's checks run before the handover as always; Obeya does
+  not watch the CI on the default branch.
+- **PR loop** — on approval (unless "Direkt auf main", see Landing) the worker hears that its work goes out as a pull request, opened the
   way the repository does it (its own skills and conventions, a description for readers who have
   not seen Obeya), and reports it with the tool `pr_opened(url)`. From then on it may push its
   branch, never merges, and ends its turn after each round instead of handing over again. Per
@@ -1105,6 +1119,12 @@ the repository; the copy on the project is only for the archive).
   PR, the repository says how to answer it.
 - Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
+- A repository whose work goes out as pull requests may let the owner push a card's work straight
+  onto its default branch instead, chosen per card at the approval, by button or voice
+  (2026-10-06): an approval "mit direktem Commit auf main ohne Pull Request" had opened a PR
+  anyway, since approval took no parameter and the spoken "ohne PR" was lost. Whether a repository
+  allows it is its adapter's `direct`, off by default; there is no rule by path. Obeya pushes, not
+  the worker, and only fast-forwards. A card already in its PR does not switch.
 - Work without a change to the code ends in a state of its own, `done` ("Erledigt"), not `live`
   (2026-10-02): nothing went live. Whether there is anything to land Obeya reads from the
   workspace on approval, rather than from the worker's word; the worker's `close_unchanged` only

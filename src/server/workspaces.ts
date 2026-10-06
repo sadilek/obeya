@@ -19,14 +19,14 @@ export class WorkspaceError extends Error {
 }
 
 export interface LandProblem {
-  code: 'landDirty' | 'landConflict' | 'landEmpty' | 'landCheckout' | 'landMerge' | 'land';
-  /** Whether the worker can fix it in its workspace; otherwise it is the owner's (the Obeya checkout). */
+  code: 'landDirty' | 'landConflict' | 'landEmpty' | 'landCheckout' | 'landMerge' | 'landPush' | 'land';
+  /** Whether the worker can fix it in its workspace; otherwise it is the owner's (the Obeya checkout, a push turned away). */
   worker: boolean;
   detail: string;
   files?: string[];
 }
 
-/** Work that landed: the default branch moved from `from` to `to`. */
+/** Work that landed: the default branch (of the Obeya checkout, or of `origin` when pushed) moved from `from` to `to`. */
 export interface Landed {
   from: string;
   to: string;
@@ -78,6 +78,28 @@ function squashOnto(ws: string, upstream: string): boolean {
   const commit = git(ws, 'commit-tree', tree, '-p', git(ws, 'rev-parse', upstream), '-m', message);
   git(ws, 'reset', '--quiet', '--hard', commit);
   return true;
+}
+
+/**
+ * Rebases the workspace's branch onto `upstream`, or squashes it there when only the replay of its
+ * commits conflicts. Returns the conflict if neither works, the branch then as it was.
+ */
+function rebaseOnto(ws: string, upstream: string, base: string): LandProblem | null {
+  try {
+    git(ws, 'rebase', '--quiet', upstream);
+    return null;
+  } catch (e) {
+    const files = git(ws, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
+    git(ws, 'rebase', '--abort');
+    // replayed one by one, the commits may conflict where the change as a whole does not
+    if (squashOnto(ws, upstream)) return null;
+    return {
+      code: 'landConflict',
+      worker: true,
+      files,
+      detail: `rebase onto ${base} failed${files.length ? `; conflicts in ${files.join(', ')}` : ''}: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
 }
 
 /** How long free clones found dirty count as dirty before `leasable` looks again. */
@@ -216,21 +238,8 @@ export class Workspaces {
       base = defaultBranch(this.o.mode === 'worktrees' ? this.o.repoPath : ws);
       const upstream = this.o.mode === 'worktrees' ? base : `origin/${base}`;
       if (this.o.mode === 'clones') git(ws, 'fetch', '--quiet', 'origin');
-      try {
-        git(ws, 'rebase', '--quiet', upstream);
-      } catch (e) {
-        const files = git(ws, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
-        git(ws, 'rebase', '--abort');
-        // replayed one by one, the commits may conflict where the change as a whole does not
-        if (!squashOnto(ws, upstream)) {
-          return {
-            code: 'landConflict',
-            worker: true,
-            files,
-            detail: `rebase onto ${base} failed${files.length ? `; conflicts in ${files.join(', ')}` : ''}: ${e instanceof Error ? e.message : String(e)}`,
-          };
-        }
-      }
+      const conflict = rebaseOnto(ws, upstream, base);
+      if (conflict) return conflict;
       if (git(ws, 'rev-list', '--count', `${upstream}..HEAD`) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
       if (git(this.o.repoPath, 'branch', '--show-current') !== base) return { code: 'landCheckout', worker: false, detail: `the Obeya checkout is not on ${base}` };
     } catch (e) {
@@ -247,6 +256,42 @@ export class Workspaces {
     } catch (e) {
       // typically local changes in the Obeya checkout that the fast-forward would overwrite
       return { code: 'landMerge', worker: false, detail: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /**
+   * Lands the card's committed branch on the default branch of `origin` without a pull request:
+   * rebased (or squashed) onto it as in `landOnMain`, then pushed there, never forced. When the
+   * push is turned away because the default branch moved meanwhile, it fetches, rebases and pushes
+   * once more. The Obeya checkout is left as it is; the workspace stays with the card.
+   */
+  pushToMain(cardId: string): LandProblem | Landed {
+    const ws = this.leasedBy(cardId);
+    if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
+    for (let attempt = 0; ; attempt++) {
+      let base: string;
+      let from: string;
+      try {
+        if (git(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
+        base = defaultBranch(ws);
+        const upstream = `origin/${base}`;
+        git(ws, 'fetch', '--quiet', 'origin');
+        const conflict = rebaseOnto(ws, upstream, base);
+        if (conflict) return conflict;
+        if (git(ws, 'rev-list', '--count', `${upstream}..HEAD`) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
+        from = git(ws, 'rev-parse', upstream);
+      } catch (e) {
+        return { code: 'landPush', worker: false, detail: e instanceof Error ? e.message : String(e) };
+      }
+      try {
+        git(ws, 'push', '--quiet', 'origin', `HEAD:refs/heads/${base}`);
+        return { from, to: git(ws, 'rev-parse', 'HEAD') };
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        // the default branch moved since the fetch, or while pushing; anything else (a protected branch, say) is the owner's
+        if (attempt === 0 && /non-fast-forward|fetch first|\[rejected\]|cannot lock ref|failed to update ref/.test(detail)) continue;
+        return { code: 'landPush', worker: false, detail };
+      }
     }
   }
 

@@ -87,6 +87,49 @@ describe('the Koordinator remembers', () => {
     ]);
   });
 
+  test('"ohne PR" approves directly where the repository allows it, and is refused with the reason where it does not', async () => {
+    board = new Board(
+      store,
+      {
+        id: 'c',
+        name: 'C',
+        repos: [
+          { id: 'shop', name: 'Shop', path: '/r', branch: 'main', pullRequests: true, direct: true },
+          { id: 'app', name: 'App', path: '/a', branch: 'main', pullRequests: true },
+          { id: 'self', name: 'Self', path: '/s', branch: 'main' },
+        ],
+      },
+      () => [],
+    );
+    const a = board.create({ title: 'Export', x: 0, y: 0, repo: 'shop' });
+    const b = board.create({ title: 'Login', x: 0, y: 0, repo: 'app' });
+    const c = board.create({ title: 'Logo', x: 0, y: 0, repo: 'self' });
+    for (const card of [a, b, c]) board.work(card.id, { state: 'waiting', need: 'review' });
+    const k = commander();
+    const heard = k.hear('gib Export frei, direkt auf main ohne PR', {});
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain('shop (Shop; approved work goes out as a pull request, or directly onto main where the owner says so)');
+    expect(s.inbox[0]).toContain('app (App; approved work goes out as a pull request)');
+    const refused = await s.call('act', { actions: [{ do: 'approve', card: 'K2', direct: true }], confirm: '…' });
+    expect(refused).toContain('the repository app lands approved work only through a pull request');
+    // where work lands on main anyway, "direkt" is a plain approval
+    s.call('act', {
+      actions: [
+        { do: 'approve', card: 'K1', direct: true },
+        { do: 'approve', card: 'K3', direct: true },
+      ],
+      confirm: '„Export“ geht direkt auf main, „Logo“ ist freigegeben.',
+    });
+    s.emit({ type: 'idle' });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed).toEqual([
+      { do: 'approve', card: a.id, direct: true },
+      { do: 'approve', card: c.id },
+    ]);
+  });
+
   test("the open card brings its whole summary, so a follow-up carries what it is about", async () => {
     const a = board.create({ title: 'Export', x: 0, y: 0 });
     const finding = 'Der `ambient`-Ton läuft nach dem Stopp weiter.';

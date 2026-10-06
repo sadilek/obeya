@@ -28,6 +28,12 @@ export interface RepoAdapter {
    */
   land: 'main' | 'pr';
   /**
+   * With `land: 'pr'`: the owner may approve a card's work directly onto the default branch
+   * instead, without a pull request. Obeya rebases it onto `origin`'s default branch and pushes it
+   * there (never forced); review and the CI of a pull request are skipped.
+   */
+  direct?: boolean;
+  /**
    * Paths (a trailing `/` covers a directory) whose edits never count as a merge conflict between
    * two cards: they are resolved when a branch is rebased (docs, plan docs).
    */

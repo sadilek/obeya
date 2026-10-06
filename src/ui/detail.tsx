@@ -178,10 +178,19 @@ export function Detail(p: Props) {
   );
 
   // work that changes nothing in the repository ends with the approval: no pull request, nothing lands
+  // where work goes out as a pull request, the owner may have it pushed onto main directly instead
+  const direct = !item.noChange && !!p.repos.find((r) => r.id === item.repo)?.direct;
   const approveButton = (
-    <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: item.noChange ? t.approvedNoChange : t.approved })}>
-      {item.noChange ? t.approveNoChange : t.approve}
-    </button>
+    <>
+      <button className="btn primary" onClick={() => act({ action: 'approve' }, { close: true, ack: item.noChange ? t.approvedNoChange : t.approved })}>
+        {item.noChange ? t.approveNoChange : direct ? t.approvePr : t.approve}
+      </button>
+      {direct && (
+        <button className="btn" title={t.directHint} onClick={() => act({ action: 'approve', direct: true }, { close: true, ack: t.approvedDirect })}>
+          {t.approveDirect}
+        </button>
+      )}
+    </>
   );
 
   return (
@@ -326,6 +335,7 @@ export function Detail(p: Props) {
             {prototypeActions || approveButton}
           </div>
           {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
+          {direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
           <Composer placeholder={t.compose.review} listener={listener} onSend={tell('feedback')} />
           {shareBox}
         </DemoView>
@@ -345,6 +355,7 @@ export function Detail(p: Props) {
             {prototypeActions || approveButton}
           </div>
           {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
+          {direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
         </>
       )}
 

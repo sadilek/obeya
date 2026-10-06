@@ -27,28 +27,37 @@ let workers: Workers;
 let projectReply: Reply | null;
 let spaces: Workspaces;
 let store: Store;
+/** With `setup(adapter, true)`: the bare repository the clones come from and push to. */
+let origin: string;
+/** The cards `onMerged` was called for. */
+let merged: string[];
 
-function setup(adapter: RepoAdapter) {
+/** `withOrigin`: clones come from a bare `origin`, as from a remote, instead of from the checkout. */
+function setup(adapter: RepoAdapter, withOrigin = false) {
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
   main = join(dir, 'main');
   gitRepo(main);
+  origin = join(dir, 'origin.git');
+  if (withOrigin) git(dir, 'clone', '--quiet', '--bare', main, origin);
   store = new Store(':memory:');
   docs = [doc];
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => docs);
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
   if (adapter.workspaces === 'clones') {
-    workspaces.ensureClones(main, 1);
+    workspaces.ensureClones(withOrigin ? origin : main, 1);
     for (const w of workspaces.list()) identify(w.path);
   }
   runtime = new FakeRuntime();
   projectReply = null;
+  merged = [];
   workers = new Workers({
     board,
     runtime,
     workspaces,
     adapter,
     advisor: (card) => (card.parent ? { by: 'project', ask: async () => projectReply! } : null),
+    onMerged: (cardId) => void merged.push(cardId),
     env: { OBEYA_URL: 'http://127.0.0.1:4417' },
   });
 }
@@ -852,6 +861,136 @@ describe('landing through a pull request', () => {
     s.emit({ type: 'idle' });
     expect(s.closed).toBe(true);
     expect(board.row(c.id).workspace).toBeNull();
+  });
+});
+
+describe('approving directly onto main where work goes out as a pull request', () => {
+  beforeEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'pr', direct: true, workspaces: 'clones' }, true);
+  });
+
+  const commitIn = (path: string, file: string, msg: string) => {
+    writeFileSync(join(path, file), msg);
+    git(path, 'add', '.');
+    git(path, 'commit', '--quiet', '-m', msg);
+  };
+  /** Someone else pushes a commit onto origin's main. */
+  const pushElsewhere = (file: string, msg: string) => {
+    const other = join(dir, `other-${msg}`);
+    git(dir, 'clone', '--quiet', origin, other);
+    identify(other);
+    commitIn(other, file, msg);
+    git(other, 'push', '--quiet', 'origin', 'main');
+  };
+  const handedOver = (title = 'Zählerstände exportieren') => {
+    const c = board.create({ title, x: 0, y: 0 });
+    workers.start(c.id);
+    const session = runtime.last;
+    return { c, session, clone: board.row(c.id).workspace! };
+  };
+
+  test('Obeya pushes the work onto origin/main itself: no pull request, the card is live, the Obeya checkout stays', async () => {
+    const { c, session, clone } = handedOver();
+    commitIn(clone, 'x.ts', 'X');
+    session.call('ready_for_review', { summary: 'S' });
+    session.emit({ type: 'idle' });
+    await workers.approve(c.id, { direct: true });
+    expect(state(c.id)).toBe('live');
+    expect(board.item(c.id)!.pr).toBeUndefined();
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['X', 'init']);
+    expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
+    expect(board.events(c.id).at(-1)).toMatchObject({ author: 'owner', text: 'Freigegeben und direkt auf main gepusht.' });
+    expect(session.inbox.at(-1)).toContain('Obeya pushed it there without a pull request');
+    expect(merged).toEqual([c.id]);
+    // the worker may finish what remains; then its clone is free again
+    session.emit({ type: 'idle' });
+    expect(session.closed).toBe(true);
+    expect(spaces.list().every((w) => !w.card_id)).toBe(true);
+  });
+
+  test('main moved on: the work is rebased onto it, also when it moves again between fetch and push', async () => {
+    const { c, session, clone } = handedOver();
+    commitIn(clone, 'x.ts', 'X');
+    session.call('ready_for_review', { summary: 'S' });
+    pushElsewhere('y.ts', 'Y');
+    // the first push finds main moved once more, as when someone pushes while Obeya rebases
+    const hook = join(clone, '.git/hooks/pre-push');
+    mkdirSync(join(clone, '.git/hooks'), { recursive: true });
+    const other = join(dir, 'other-Y');
+    writeFileSync(
+      hook,
+      `#!/bin/sh\nunset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE\nif [ ! -f "${dir}/raced" ]; then\n  touch "${dir}/raced"\n  echo z > "${other}/z.ts" && git -C "${other}" add . && git -C "${other}" commit --quiet -m Z && git -C "${other}" push --quiet origin main\nfi\n`,
+      { mode: 0o755 },
+    );
+    await workers.approve(c.id, { direct: true });
+    expect(state(c.id)).toBe('live');
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['X', 'Z', 'Y', 'init']);
+  });
+
+  test('a conflict goes back to the worker with the approval kept: its next handover is pushed directly too', async () => {
+    const { c, session, clone } = handedOver();
+    commitIn(clone, 'same.ts', 'A');
+    session.call('ready_for_review', { summary: 'S' });
+    pushElsewhere('same.ts', 'B');
+    await workers.approve(c.id, { direct: true });
+    expect(state(c.id)).toBe('working');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', code: 'landConflict' });
+    expect(session.inbox.at(-1)).toContain('conflicts in same.ts');
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['B', 'init']);
+    // the worker brings its branch up to date and hands over again
+    git(clone, 'reset', '--quiet', '--hard', 'origin/main');
+    commitIn(clone, 'same.ts', 'A nach B');
+    session.call('ready_for_review', { summary: 'S' });
+    expect(board.item(c.id)!.statusLine).toBe('Landet auf main');
+    session.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('live');
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['A nach B', 'B', 'init']);
+    expect(board.events(c.id).at(-1)).toMatchObject({ author: 'obeya', text: 'Nach der Freigabe direkt auf main gepusht.' });
+    expect(board.item(c.id)!.pr).toBeUndefined();
+  });
+
+  test('a push the remote turns away (a protected branch) stays with the owner, who approves again', async () => {
+    const { c, session, clone } = handedOver();
+    commitIn(clone, 'x.ts', 'X');
+    session.call('ready_for_review', { summary: 'S' });
+    writeFileSync(join(origin, 'hooks/pre-receive'), '#!/bin/sh\necho "protected branch" >&2\nexit 1\n', { mode: 0o755 });
+    const err = await workers.approve(c.id, { direct: true }).catch((e) => e);
+    expect(err).toMatchObject({ code: 'landPush' });
+    expect(err.message).toContain('protected branch');
+    expect(state(c.id)).toBe('waiting:review');
+    expect(board.row(c.id).approved_at).toBeNull();
+    // approved the usual way, it goes out as a pull request
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('inPr');
+  });
+
+  test('without `direct` in the adapter the approval is refused; where work lands on main anyway it is a plain approval', async () => {
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' } });
+    const { c, session, clone } = handedOver();
+    commitIn(clone, 'x.ts', 'X');
+    session.call('ready_for_review', { summary: 'S' });
+    const err = await workers.approve(c.id, { direct: true }).catch((e) => e);
+    expect(err).toMatchObject({ code: 'noDirect' });
+    expect(state(c.id)).toBe('waiting:review');
+    expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
+
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    const d = handedOver('Logo');
+    commitIn(d.clone, 'logo.svg', 'Logo');
+    d.session.call('ready_for_review', { summary: 'S' });
+    await workers.approve(d.c.id, { direct: true });
+    expect(state(d.c.id)).toBe('live');
+    expect(git(main, 'log', '--format=%s', '-1')).toBe('Logo');
+  });
+
+  test('work that changed nothing closes as done, approved directly or not', async () => {
+    const { c, session } = handedOver();
+    session.call('ready_for_review', { summary: 'Nur eine Analyse.' });
+    await workers.approve(c.id, { direct: true });
+    expect(state(c.id)).toBe('done');
+    expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
   });
 });
 

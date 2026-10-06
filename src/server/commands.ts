@@ -13,7 +13,9 @@ export type Command = (
   | { do: 'newCard'; title: string; body: string; start: boolean; repo?: string; from?: string }
   | { do: 'newIdea'; title: string; body: string; repo?: string }
   /** `force` starts a card that waits behind others now, despite the likely merge conflict. */
-  | { do: 'start' | 'force' | 'approve' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
+  /** `direct`: onto the default branch without a pull request, where the card's repository allows it. */
+  | { do: 'approve'; card: string; direct?: boolean }
+  | { do: 'start' | 'force' | 'accept' | 'dismiss' | 'split' | 'stop' | 'build' | 'planDoc' | 'park' | 'drop'; card: string }
   /** On a prototype: build its idea on it (or `workstream`, of the project the idea became), or throw it away. */
   | { do: 'buildPrototype'; card: string; workstream?: string }
   | { do: 'discard'; card: string }
@@ -317,7 +319,7 @@ export class Commander {
             "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Whatever the owner says to the agent: an instruction, a remark on its work, a question to it; never a question the owner asks you about the canvas.",
             "- answer: text as the answer to the card's open question: the agent's, or the one in its demo report (the demo then still waits for approval). A bare „ja“ or „nein“ to a card with an open question is an answer, not an approval.",
             '- feedback: text as feedback on work waiting for review (demo or summary), a question about that work included; the agent works on it again.',
-            '- approve: approve work waiting for review. accept: take a proposed card and start it (a proposed idea: its discussion opens; the open questions on it go along). dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
+            '- approve: approve work waiting for review; direct: true when the owner wants it straight onto main without a pull request („ohne PR“, „direkt auf main“), which a repository whose work goes out as a pull request allows only where the list of repositories says so. accept: take a proposed card and start it (a proposed idea: its discussion opens; the open questions on it go along). dismiss: discard a proposed card. split: let the Koordinator cut a planned card into packages. stop: stop the agent on a card.',
             `- new_idea: a new idea to think through with an exploration agent before anything is planned ("Ich will über … nachdenken", "Idee: …"). title short and precise, body what the owner said about it, in their words${repos.length > 1 ? ', repo as for new_card' : ''}.`,
             "- remember (no card): a rule the owner wants kept for all future work („Merk dir: …“, „ab jetzt immer …“). text: the rule, short and general, in German; replaces: the number of a rule of the owner it changes or contradicts, also when it moves that rule into a CLAUDE.md. It goes to one of two places. The owner's rules, for how the agents work with the owner through Obeya whatever the repository (what to ask and what to decide alone, how to report, hand over and demo): leave repos out; it applies at once. A repository's CLAUDE.md, for anything about a repository (its conventions, product, tools, how its code is written, tested and landed, its UI and wording, taste in code even when it holds in every repository): repos the ids of the repositories it concerns (usually the open card's; every one when it holds in all of them); it goes into the repository's card „CLAUDE.md ergänzen“, whose worker writes it into the CLAUDE.md. confirm says where it goes („Gemerkt, gilt ab sofort für alle Agenten.“ / „Kommt in die CLAUDE.md von <repository name>, über die Aufgabe „CLAUDE.md ergänzen“.“).",
             "- work_retro (no card): the Arbeitsrückschau of a repository, now („Mach eine Arbeitsrückschau für den Shop“): it reads the friction noted on the workers' runs of its finished cards since the last one and proposes cards (a script, a skill) or CLAUDE.md lines for what recurs on several cards; they come as proposals for the owner, and the owner hears when it is done. It also runs by itself every 10 finished cards of a repository. repo: the repository's id (the one the owner names, else the open card's, else the first). confirm e.g. „Ich mache die Arbeitsrückschau für den Shop; Vorschläge erscheinen als Karten.“",
@@ -341,6 +343,7 @@ export class Commander {
                   repos: z.array(z.string()).optional(),
                   cards: z.array(z.string()).optional(),
                   group: z.string().optional(),
+                  direct: z.boolean().optional(),
                 }),
               )
               .min(1)
@@ -571,9 +574,16 @@ export class Commander {
         if (card.queue && 'workspace' in card.queue) return 'the card waits for a free workspace and starts by itself once one is free';
         if (card.queue) return `the Koordinator is still ${'cutting' in card.queue ? 'splitting' : 'checking'} the card; it starts by itself unless it collides`;
         break;
-      case 'approve':
+      case 'approve': {
         if (!reviewable) return `the card does not wait for review (${is})`;
-        break;
+        const repo = this.o.board.canvas.repos.find((r) => r.id === card.repo);
+        // where work lands on main anyway, approving it directly is approving it
+        if (!a.direct || !repo?.pullRequests) break;
+        // the owner hears why rather than getting a pull request they did not want
+        if (!repo.direct) return `the repository ${card.repo} lands approved work only through a pull request; it does not allow pushing it directly onto main. Tell the owner so with reply, and approve without direct only once they want the pull request`;
+        if (card.prototypeOf) return 'a prototype never lands; approving it throws it away';
+        return { do: 'approve', card: card.id, direct: true };
+      }
       case 'accept':
       case 'dismiss':
         if (card.state !== 'proposal') return `the card is no proposal (${is})`;
@@ -736,7 +746,7 @@ export class Commander {
       rules.length
         ? `The owner's rules, which every agent follows (follow them yourself too):\n${rules.map((r, n) => `${n + 1}. ${r.text}`).join('\n')}`
         : 'The owner has recorded no rules yet.',
-      `Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name})`).join(', ')}`,
+      `Repositories on this canvas (the first is the default for a new card): ${this.o.board.canvas.repos.map((r) => `${r.id} (${r.name}${r.pullRequests ? `; approved work goes out as a pull request${r.direct ? ', or directly onto main where the owner says so' : ''}` : ''})`).join(', ')}`,
     ].join('\n\n');
   }
 }
@@ -754,6 +764,7 @@ interface ActionArgs {
   repos?: string[];
   cards?: string[];
   group?: string;
+  direct?: boolean;
 }
 
 /** How a step of a card's history reads. */

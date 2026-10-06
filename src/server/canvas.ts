@@ -338,7 +338,7 @@ export class CanvasRuntime {
       case 'answer':
         return this.repoOf(cardId).workers.answer(cardId, text.trim(), 'owner', images, !!a.spoken);
       case 'approve':
-        return this.repoOf(cardId).workers.approve(cardId);
+        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct });
       case 'accept':
         // accepting a proposal is the owner's go unless they keep it to edit first: the card goes to
         // the Koordinator like a started one, a proposed idea to its exploration agent
@@ -664,6 +664,7 @@ export class CanvasRuntime {
       case 'answer':
         return this.act(c.card, { action: 'answer', text: c.text, spoken: c.spoken ?? true, ...(c.images ? { images: c.images } : {}) });
       case 'approve':
+        return this.act(c.card, { action: 'approve', ...(c.direct ? { direct: true } : {}) });
       case 'accept':
       case 'dismiss':
       case 'split':
@@ -788,6 +789,7 @@ function uniqueRefs(configs: RepoConfig[], infos: RepoInfo[], adapters: RepoAdap
       branch: info.branch,
       ...(shareCommandOf(configs[i]!, info, adapters[i]!) ? { share: true } : {}),
       ...(adapters[i]!.workspaces === 'clones' ? { clones: true } : {}),
+      ...(adapters[i]!.land === 'pr' ? { pullRequests: true, ...(adapters[i]!.direct ? { direct: true } : {}) } : {}),
     };
   });
 }

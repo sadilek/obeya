@@ -40,7 +40,7 @@ export interface WorkerOptions {
   advisor?: (card: Item) => Advisor | null;
   /** The worker reported the card's pull request: a demo shared before gets its link. */
   onPrOpened?: (cardId: string) => void;
-  /** The card's pull request was merged: the default branch has moved. */
+  /** The default branch has moved: the card's pull request was merged, or its work pushed there directly. */
   onMerged?: (cardId: string) => void;
   /** A prototype was handed over: the idea's agent hears the summary. */
   onPrototype?: (prototype: Item, summary: string, demo: string | undefined) => void;
@@ -241,14 +241,19 @@ export class Workers {
     );
   }
 
-  async approve(cardId: string) {
+  /** `direct`: the work goes onto the default branch at once instead of into a pull request, where the adapter allows it. */
+  async approve(cardId: string, { direct = false }: { direct?: boolean } = {}) {
     const card = this.card(cardId);
     if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
+    // where work lands on main anyway, approving it directly is approving it
+    if (direct && this.o.adapter.land === 'pr' && !this.o.adapter.direct)
+      throw new BadRequest('noDirect', 'this repository lands approved work only through a pull request; its adapter does not allow pushing it directly');
+    if (direct && card.prototypeOf) throw new BadRequest('noDirect', 'a prototype never lands');
     // a prototype never lands: approving it is having seen enough
     if (card.prototypeOf) return this.endPrototype(cardId, 'discarded');
     // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open
     if (!this.o.workspaces.hasWork(cardId)) return this.close(cardId, 'owner');
-    if (this.o.adapter.land === 'main') return this.land(cardId, 'owner');
+    if (this.o.adapter.land === 'main' || direct) return this.land(cardId, 'owner');
     // the worker opens the PR the way the repository does it, then Obeya watches it
     const pr: PrState = { url: null, seen: [], reported: [] };
     this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, pr: JSON.stringify(pr) });
@@ -268,15 +273,19 @@ export class Workers {
   }
 
   /**
-   * Lands approved work on main. What the worker can fix (main moved on and the change conflicts,
-   * uncommitted work) goes back to it with the approval kept: its next handover lands without the
-   * owner approving again. What blocks the Obeya checkout stays with the owner and needs a new approval.
+   * Lands approved work on main: on the Obeya checkout, or, where work otherwise goes out as a pull
+   * request, pushed directly onto `origin`'s default branch. What the worker can fix (main moved on
+   * and the change conflicts, uncommitted work) goes back to it with the approval kept: its next
+   * handover lands without the owner approving again, the same way. What blocks the Obeya checkout,
+   * or a push turned away, stays with the owner and needs a new approval.
    */
   private land(cardId: string, by: 'owner' | 'obeya') {
     const row = this.o.board.row(cardId);
+    // only a direct approval is held where work goes out as a pull request
+    const direct = this.o.adapter.land === 'pr';
     // read before landing: the landed branch adds nothing against main
     const added = this.planDocsAdded(cardId);
-    const result = this.o.workspaces.landOnMain(cardId, row.branch!);
+    const result = direct ? this.o.workspaces.pushToMain(cardId) : this.o.workspaces.landOnMain(cardId, row.branch!);
     if ('code' in result && !result.worker) {
       this.o.board.work(cardId, { approved_at: null });
       throw new BadRequest(result.code, result.detail);
@@ -295,13 +304,18 @@ export class Workers {
     }
     this.o.board.planDocsLanded(cardId, added);
     this.bump(cardId);
-    const restarts = this.o.restartsFor?.(result) ?? false;
+    // a push leaves the Obeya checkout as it is
+    const restarts = !direct && (this.o.restartsFor?.(result) ?? false);
     this.o.board.work(cardId, { state: 'live', need: null, detail: null, status_line: null, approved_at: null, landed: JSON.stringify({ commit: result.to, ...(restarts ? { restarts } : {}) } satisfies LandedState) });
-    this.o.board.log(cardId, 'state', by, by === 'owner' ? 'Freigegeben und auf main.' : 'Nach der Freigabe auf main gelandet.');
+    if (direct) this.o.board.log(cardId, 'state', by, by === 'owner' ? 'Freigegeben und direkt auf main gepusht.' : 'Nach der Freigabe direkt auf main gepusht.');
+    else this.o.board.log(cardId, 'state', by, by === 'owner' ? 'Freigegeben und auf main.' : 'Nach der Freigabe auf main gelandet.');
+    if (direct) this.o.onMerged?.(cardId);
     this.afterLanding(
       cardId,
       [
-        `${by === 'owner' ? 'The owner approved your work, and it' : 'Your work'} is on main now (${result.to.slice(0, 7)}); the card is live.`,
+        direct
+          ? `${by === 'owner' ? 'The owner approved your work to go directly onto main, and Obeya' : 'Obeya'} pushed it there without a pull request (${result.to.slice(0, 7)}); the card is live.`
+          : `${by === 'owner' ? 'The owner approved your work, and it' : 'Your work'} is on main now (${result.to.slice(0, 7)}); the card is live.`,
         restarts
           ? 'Obeya runs from that checkout and starts again with your change as soon as no worker is in the middle of a turn, which stops whatever you run then. If something that remains needs Obeya to run your change, call after_restart and end your turn: Obeya tells you once it runs it.'
           : '',

@@ -365,6 +365,10 @@ export interface RepoRef {
   share?: boolean;
   /** Its workers work in a pool of clones (else a worktree per card, as many as there are cards). */
   clones?: boolean;
+  /** Its approved work goes out as a pull request (else it lands on the default branch of the Obeya checkout). */
+  pullRequests?: boolean;
+  /** With `pullRequests`: the owner may have approved work pushed directly onto the default branch instead (the adapter's `direct`). */
+  direct?: boolean;
 }
 
 /** A repository's pool of clones: how many there are, and the cards that hold one now. */
@@ -493,7 +497,8 @@ export type CardAction =
   /** `spoken`: the words came through speech recognition, which the agent is told. */
   | { action: 'message'; text: string; spoken?: boolean; images?: string[] }
   | { action: 'answer'; text: string; spoken?: boolean; images?: string[] }
-  | { action: 'approve' }
+  /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
+  | { action: 'approve'; direct?: boolean }
   /** Start a queued card although it may collide. */
   | { action: 'force' }
   /** On a project: takes back a start of all its workstreams while the Koordinator has not planned them yet. */
@@ -555,6 +560,8 @@ export type ErrorCode =
   | 'noAgent'
   | 'noQuestion'
   | 'notReady'
+  /** Approving directly onto main: the card's repository lands approved work only through a pull request. */
+  | 'noDirect'
   | 'notProposal'
   | 'planCard'
   | 'noWorkspace'
@@ -609,6 +616,8 @@ export type ErrorCode =
   | 'landEmpty'
   | 'landCheckout'
   | 'landMerge'
+  /** Pushing approved work directly onto `origin`'s default branch was turned away (a protected branch, say). */
+  | 'landPush'
   | 'land'
   /** A configuration with problems; they come with it. */
   | 'config'
