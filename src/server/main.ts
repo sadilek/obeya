@@ -32,7 +32,8 @@ import { NarrationHost } from './narration';
 import { idleRuntime, sdkRuntime } from './runtime';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, watchOwnCode } from './self-update';
 import { serve } from './server';
-import { SpeechSidecar, WhisperSidecar } from './voice';
+import { PiperSpeaker, SpeechSidecar, voiceBackends, WhisperSidecar } from './voice';
+import { VoiceSetup } from './voice-setup';
 import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
 
 const { values, positionals } = parseArgs({
@@ -181,8 +182,10 @@ if (new Set(ids).size !== ids.length) {
   console.error(`two canvases share an id: ${ids.join(', ')}; give them different names`);
   process.exit(2);
 }
-const transcriber = new WhisperSidecar();
-const speaker = new SpeechSidecar();
+const backends = voiceBackends();
+const transcriber = new WhisperSidecar(backends.listen);
+const speaker = backends.speech === 'macos' ? new SpeechSidecar() : new PiperSpeaker(home);
+const voiceSetup = new VoiceSetup({ home, backends, prepare: () => transcriber.prepare() });
 const shutdown = (code: number) => {
   for (const c of canvases) c.shutdown();
   transcriber.stop();
@@ -208,7 +211,7 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const)
     if (!restarter.now()) shutdown(0);
   });
 
-server = serve(canvases, { transcriber, speaker }, Number(values.port), values.dev, config, restarter, narration);
+server = serve(canvases, { transcriber, speaker, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration);
 console.log(`Obeya on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'})`);
 if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
 for (const c of canvases) {

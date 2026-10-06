@@ -107,16 +107,17 @@ export function installHint(id: SetupId, platform: string, arch: string, family:
 /**
  * Whisper for listening back, as the render brings it with uv: mlx-whisper on Apple Silicon,
  * faster-whisper elsewhere (CTranslate2 has wheels for released Pythons only, so 3.12). The
- * models are those `tts.py` loads (`STT_MODELS`).
+ * models are those `tts.py` loads (`STT_MODELS`). Obeya's own Whisper for voice commands
+ * (`voice/whisper_sidecar.py`) runs the same kit.
  */
-export function whisperKit() {
-  return onMlx()
+export function whisperKit(backend: 'mlx' | 'faster' = onMlx() ? 'mlx' : 'faster') {
+  return backend === 'mlx'
     ? { backend: 'mlx' as const, uvArgs: ['--with', 'mlx-whisper'], module: 'mlx_whisper', model: 'mlx-community/whisper-large-v3-turbo' }
     : { backend: 'faster' as const, uvArgs: ['--python', '3.12', '--with', 'faster-whisper'], module: 'faster_whisper', model: 'mobiuslabsgmbh/faster-whisper-large-v3-turbo' };
 }
 
 /** Runs a program; `null` when it is not there or fails. */
-function output(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<string | null> {
+export function output(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(cmd, args, { env, timeout: 30_000, maxBuffer: 1 << 22, windowsHide: true }, (error, stdout, stderr) => resolve(error ? null : `${stdout}${stderr}`));
   });

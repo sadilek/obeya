@@ -1,6 +1,7 @@
 // Shapes shared by the server and the UI.
 
 import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
+import type { SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { Language } from './locale';
 
 export type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
@@ -770,6 +771,23 @@ export interface LanguageView {
   system: Language;
   /** The one that applies. */
   language: Language;
+}
+
+/** What Obeya's own voice in and out needs on this machine (`src/server/voice-setup.ts`). */
+export type VoiceSetupId = 'whisper' | 'speech' | 'ffmpeg' | 'uv';
+export type VoiceSetupItem = Omit<SetupItem, 'id'> & { id: VoiceSetupId };
+
+export interface VoiceSetupView {
+  platform: string;
+  arch: string;
+  /** Whisper on MLX (Apple Silicon) or faster-whisper; the macOS voice or Piper. */
+  listen: 'mlx' | 'faster';
+  speech: 'macos' | 'piper';
+  items: VoiceSetupItem[];
+  /** What "Installieren" fetches and about how much: Piper and its voice, Whisper and its model. */
+  fetch: { parts: ('piper' | 'whisper')[]; mb: number };
+  /** The installation running or last run. */
+  job?: { running: boolean; step: 'piper' | 'whisper'; line: string; error?: string };
 }
 
 /** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved; or why it stops for good (Ctrl-C, SIGTERM). */

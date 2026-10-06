@@ -3,7 +3,7 @@
 // read-only.
 
 import { useEffect, useRef, useState } from 'react';
-import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, Language, LanguageView, NarrationLanguage, RepoConfig, SetupCheck, SetupItem, VoiceKind } from '../core/types';
+import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, Language, LanguageView, NarrationLanguage, RepoConfig, SetupCheck, SetupItem, VoiceKind, VoiceSetupItem, VoiceSetupView } from '../core/types';
 import { LANGUAGES } from '../core/locale';
 import { api, ApiError, reload } from './api';
 import { errorText, t } from './strings';
@@ -132,6 +132,7 @@ export function ConfigSheet({ on }: { on: boolean }) {
       {status && <p className="hint c-status">{status}</p>}
 
       <LanguageBlock on={on} />
+      <VoiceBlock on={on} />
       <DemoBlock on={on} />
 
       <h4 className="p-h">{t.config.server}</h4>
@@ -437,37 +438,115 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
       <h4 className="p-h">{s.title}</h4>
       <section className="c-canvas c-setup">
         <p className="hint">{s.hint(`${PLATFORMS[setup.platform] ?? setup.platform} (${setup.arch})`)}</p>
-        <ul>
-          {items.map((i) => (
-            <li key={i.id} className={i.state}>
-              <span className="c-mark" aria-hidden>
-                {{ ok: '✓', missing: '✗', later: '…', off: '–' }[i.state]}
-              </span>
-              <span className="c-name">{s.names[i.id]}</span>
-              <span className="hint" title={i.found}>
-                {state(i)}
-              </span>
-              {i.state === 'missing' && i.install && (
-                <div className="c-how">
-                  {!!i.install.commands.length && <span className="hint">{s.install}</span>}
-                  {i.install.commands.map((c) => (
-                    <code key={c}>{c}</code>
-                  ))}
-                  {i.install.url && (
-                    <a href={i.install.url} target="_blank" rel="noreferrer">
-                      {s.more}
-                    </a>
-                  )}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
+        <SetupList items={items} names={s.names} state={state} />
         {!items.some((i) => i.state === 'missing') && <p className="hint">{s.ready}</p>}
         <p className="hint">
           {s.guide} <code>docs/demo-setup.md</code>
         </p>
         <button className="btn small" disabled={checking} onClick={recheck}>
+          {checking ? s.checking : s.recheck}
+        </button>
+      </section>
+    </>
+  );
+}
+
+/** A setup check's pieces, each missing one with the commands that install it here. */
+function SetupList<I extends SetupItem | VoiceSetupItem>({ items, names, state }: { items: I[]; names: Record<I['id'], string>; state: (i: I) => string }) {
+  const s = t.config.setup;
+  return (
+    <ul>
+      {items.map((i) => (
+        <li key={i.id} className={i.state}>
+          <span className="c-mark" aria-hidden>
+            {{ ok: '✓', missing: '✗', later: '…', off: '–' }[i.state]}
+          </span>
+          <span className="c-name">{names[i.id as I['id']]}</span>
+          <span className="hint" title={i.found}>
+            {state(i)}
+          </span>
+          {i.state === 'missing' && i.install && (
+            <div className="c-how">
+              {!!i.install.commands.length && <span className="hint">{s.install}</span>}
+              {i.install.commands.map((c) => (
+                <code key={c}>{c}</code>
+              ))}
+              {i.install.url && (
+                <a href={i.install.url} target="_blank" rel="noreferrer">
+                  {s.more}
+                </a>
+              )}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * What the owner's voice commands and the spoken confirmations need on this machine, with one
+ * button that installs Piper and loads Whisper (fetching it the first time). Follows an
+ * installation until it ends.
+ */
+function VoiceBlock({ on }: { on: boolean }) {
+  const [view, setView] = useState<VoiceSetupView | null>(null);
+  const [status, setStatus] = useState('');
+  const [checking, setChecking] = useState(false);
+  const recheck = () => {
+    setChecking(true);
+    return api.voiceSetup().then(setView, console.error).finally(() => setChecking(false));
+  };
+  useEffect(() => {
+    if (on) recheck();
+  }, [on]);
+  const running = !!view?.job?.running;
+  useEffect(() => {
+    if (!on || !running) return;
+    const timer = setInterval(() => api.voiceSetup().then(setView, console.error), 1500);
+    return () => clearInterval(timer);
+  }, [on, running]);
+  if (!view) return null;
+  const v = t.config.voice;
+  const s = t.config.setup;
+  const state = (i: VoiceSetupItem) => {
+    if (i.id === 'speech' && i.state === 'missing') return v.speechMissing(megabytes(i.mb ?? 0));
+    if (i.state === 'later') return v.later(megabytes(i.mb ?? 0));
+    if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
+    return (i.found && v.found[i.found]) ?? i.found ?? s.there;
+  };
+  const install = async () => {
+    setStatus('');
+    try {
+      setView(await api.installVoice());
+    } catch (e) {
+      setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  };
+  const blocked = view.items.some((i) => i.state === 'missing' && i.id !== 'speech');
+  return (
+    <>
+      <h4 className="p-h">{v.title}</h4>
+      <section className="c-canvas c-setup c-voice">
+        <p className="hint">{v.hint(`${PLATFORMS[view.platform] ?? view.platform} (${view.arch})`)}</p>
+        <SetupList items={view.items} names={v.names} state={state} />
+        {view.listen === 'faster' && <p className="hint">{v.faster}</p>}
+        {view.job?.running ? (
+          <p className="hint c-install">
+            {v.step[view.job.step]} <code>{view.job.line}</code>
+          </p>
+        ) : view.fetch.parts.length ? (
+          <div className="c-install">
+            <button className="btn small" disabled={blocked} onClick={install}>
+              {v.install(megabytes(view.fetch.mb))}
+            </button>
+          </div>
+        ) : (
+          !view.items.some((i) => i.state === 'missing') && <p className="hint">{v.ready}</p>
+        )}
+        {view.job?.error && !view.job.running && <p className="p-error">{v.failed(view.job.error.split('\n').at(-1) ?? '')}</p>}
+        {status && <p className="hint c-status">{status}</p>}
+        <button className="btn small" disabled={checking || running} onClick={recheck}>
           {checking ? s.checking : s.recheck}
         </button>
       </section>

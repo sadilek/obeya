@@ -94,6 +94,12 @@ function piperVoice(s: DemoSettings) {
   return { name, url: `${PIPER_BASE}/${locale.split('_')[0]}/${locale}/${rest.join('-')}/${quality}/${name}.onnx` };
 }
 
+/** Piper's Python and the voice file of these settings, as installed under Obeya's home. */
+export function piperFiles(s: DemoSettings, home = obeyaHome()) {
+  const dir = path.join(voicesHome(home), 'piper');
+  return { python: envPython(dir), onnx: path.join(dir, `${piperVoice(s).name}.onnx`) };
+}
+
 /** The Hugging Face cache, where Qwen3's models go (and where an earlier download already is). */
 function hfHub() {
   if (process.env.HF_HUB_CACHE) return process.env.HF_HUB_CACHE;
@@ -219,9 +225,8 @@ export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
   const keyFile = s.keyFile ? expandHome(s.keyFile) : undefined;
   switch (s.voice) {
     case 'piper': {
-      const dir = path.join(voicesHome(home), 'piper');
-      const { name } = piperVoice(s);
-      return { kind: 'command', argv: [envPython(dir), '-m', 'piper', '-m', path.join(dir, `${name}.onnx`), '-f', '{out}'], tag: `piper|${name}`, heavy: false };
+      const { python, onnx } = piperFiles(s, home);
+      return { kind: 'command', argv: [python, '-m', 'piper', '-m', onnx, '-f', '{out}'], tag: `piper|${piperVoice(s).name}`, heavy: false };
     }
     case 'qwen3': {
       const reference = s.reference && expandHome(s.reference);

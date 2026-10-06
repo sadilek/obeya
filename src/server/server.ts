@@ -14,17 +14,20 @@ import { serveDemoFile } from './demo';
 import { type NarrationHost, parseClipRequest } from './narration';
 import type { Restarter } from './self-update';
 import { looping, silence, type Speaker, type Transcriber } from './voice';
+import type { VoiceSetup } from './voice-setup';
 
 type Req = Request & { params: Record<string, string> };
 
 export interface Voice {
   transcriber: Transcriber;
   speaker: Speaker;
+  /** What voice in and out need on this machine, for the settings sheet. */
+  setup?: VoiceSetup;
 }
 
 export function serve(
   canvases: CanvasRuntime[],
-  { transcriber, speaker }: Voice,
+  { transcriber, speaker, setup }: Voice,
   port: number,
   development = false,
   config?: Config,
@@ -140,6 +143,8 @@ export function serve(
   return Bun.serve({
     port,
     hostname: '127.0.0.1',
+    // a voice command answers once transcribed and read: with Whisper on a CPU that can take longer than Bun's 10 s
+    idleTimeout: 120,
     development: development && { hmr: true, console: true },
     routes: {
       '/': index,
@@ -164,6 +169,9 @@ export function serve(
         GET: () => (config ? Response.json(config.language()) : new Response('Not found', { status: 404 })),
         PUT: async (req) => (config ? handle(async () => config.saveLanguage(await req.json())) : new Response('Not found', { status: 404 })),
       },
+      // what Obeya's own voice in and out need here, and installing it
+      '/api/voice-setup': { GET: () => (setup ? handle(() => setup.view()) : new Response('Not found', { status: 404 })) },
+      '/api/voice-setup/install': { POST: () => (setup ? handle(() => setup.install()) : new Response('Not found', { status: 404 })) },
       // the demo settings: narration language and voice, read by every render
       '/api/demo-settings': {
         GET: () => (config ? Response.json(config.demo()) : new Response('Not found', { status: 404 })),

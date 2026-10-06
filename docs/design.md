@@ -744,9 +744,19 @@ the owner's language (`src/core/locale.ts`).
     for it at once („Mach eine Arbeitsrückschau für den Shop“, the action `work_retro`): it reads the
     notes since the last one, the count starts again, and the owner hears what came of it.
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
-  audio with the focus (open card, project in view). A Whisper (MLX) sidecar keeps the model
-  loaded and transcribes in German with the canvas's titles as vocabulary
-  (`OBEYA_WHISPER_PYTHON`, else `uv` with mlx-whisper). A recording without audible speech gives
+  audio with the focus (open card, project in view). A Whisper sidecar keeps the model
+  loaded and transcribes in German with the canvas's titles as vocabulary: mlx-whisper on Apple
+  Silicon, faster-whisper elsewhere (CUDA when there is a GPU, falling back to the CPU when its
+  libraries are missing; int8 on the CPU), large-v3-turbo on both, the recording decoded by ffmpeg
+  (`OBEYA_WHISPER_PYTHON`, a Python with the package, else `uv` with the same kit the demos listen
+  back with; `OBEYA_WHISPER_BACKEND` chooses the other backend). On a CPU large-v3-turbo in int8
+  takes about 4 s for a spoken command on GitHub's 4-core Ubuntu runner and 12 s on its 4-core
+  Windows Server runner (float32 took twice as long; `small` 1–2.5 s, but on Windows it heard
+  „rechnen“ for „Rechnungen“), so it stays turbo for what it hears, and `OBEYA_WHISPER_MODEL` picks
+  a smaller model where that is too slow (measured 2026-10-06). Checked on macOS, Ubuntu on ARM in
+  Docker, and GitHub's Ubuntu x64 and Windows Server 2025 runners: the settings check, installing
+  from it, a spoken command through `POST /voice` heard word for word, and the confirmation
+  spoken by Piper (`src/server/voice.live.test.ts` with `OBEYA_LIVE_VOICE=<home>`). A recording without audible speech gives
   „Ich habe nichts gehört.“, one Whisper cannot make sense of „Das habe ich nicht verstanden.“; the
   Koordinator gets neither to guess from. How Whisper fails on such recordings (the titles talk it
   into loops, guesses or its words for silence) and how they are told apart is in
@@ -845,9 +855,18 @@ the same command; should that fail too, the owner hears the reason („Ich konnt
 Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden“. A session is not resumed: after a restart, and after 30
   commands so the context stays short, a fresh one starts from memory: the last 20 exchanges and
   the canvas's last 14 days (at most 60 steps), with times.
-- **Voice out** — the default system voice speaks the confirmation, which the browser plays: a
-  JXA sidecar keeps the macOS synthesizer loaded (about half a second a sentence), with `say` as
-  the fallback. While a demo video plays nothing is said (the owner often gives a command and
+- **Voice out** — a voice on the server speaks the confirmation, which the browser plays. On a Mac
+  the default system voice: a JXA sidecar keeps the macOS synthesizer loaded (about half a second
+  a sentence), with `say` as the fallback. Elsewhere Piper (`de_DE-thorsten-high`, the demos'
+  default voice and the same installation under `voices/` in Obeya's home): a sidecar in Piper's
+  environment keeps the voice loaded (`voice/piper_sidecar.py`); without Piper nothing is spoken.
+  `OBEYA_SPEECH=piper` takes Piper on a Mac too. The settings sheet's section "Spracheingabe und -ausgabe" ("Voice") checks
+  what voice in and out need on this machine (`src/server/voice-setup.ts`): Whisper (the package
+  in uv's cache or the given Python, the model in the Hugging Face cache), ffmpeg, uv, and the
+  voice, each missing piece with how to install it here, as for demos. "Installieren" installs
+  Piper and loads Whisper, which fetches it the first time (about 1.9 GB), so the first command
+  does not wait for the download. The server lets a request run 120 s idle instead of Bun's 10 s:
+  a command answers once it is transcribed and read, which on a busy CPU took longer. While a demo video plays nothing is said (the owner often gives a command and
   turns to the next demo), nor while the owner holds the microphone; a video that starts or a press
   of the microphone cuts off what is being said. The written confirmation still shows.
 - **Demos** — the demo skill's pipeline (scripted walkthrough, narrated video, report) is part of
@@ -947,7 +966,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   installs a voice itself but asks the owner for system software. The guide for setting up a
   machine is `docs/demo-setup.md`. Not tried yet (2026-10-05): Edge as the fallback, a voice
   command through `cmd.exe`, Qwen3-TTS through PyTorch (no machine with a GPU); Obeya itself on
-  Windows and its own voice in and out outside macOS are separate, larger questions. How to run each project's app
+  Windows is a separate, larger question. How to run each project's app
   for a demo is the adapter's `demo.howToRun` (say, the app stack, login, test data, migrations;
   Obeya: the scratch instance); without Obeya, `bun lib/recipe.ts` in a repository prints it. The
   worker records once the change is committed and checked, as the adapter says how to run the

@@ -35,7 +35,9 @@ English is next. How it works and why is in [`docs/design.md`](docs/design.md).
   lands through pull requests.
 - For demos: Node.js 22.18 or newer, a Chromium browser, ffmpeg and uv. The settings in the app
   show what is missing and how to install it; see [`docs/demo-setup.md`](docs/demo-setup.md).
-- For voice input: a Mac with Apple Silicon for now (Whisper on MLX); Windows and Linux follow.
+- For voice: ffmpeg and uv. Whisper hears the commands (MLX on Apple Silicon, faster-whisper
+  elsewhere, on an NVIDIA GPU with CUDA or on the CPU), the macOS voice or Piper speaks the
+  confirmations. The settings in the app ("Voice") show what is missing and install the rest.
   Everything else works without it.
 
 ## Quick start
@@ -68,8 +70,10 @@ clones, `--permission-mode <mode>` for workers (default `auto`). Data and worktr
 The canvases and their repositories can be seen and changed in the app ("Konfiguration") or by
 telling the Koordinator; saving writes `canvases.json` and restarts Obeya with it.
 
-Voice needs a Python with `mlx_whisper` (`OBEYA_WHISPER_PYTHON=/path/to/python`); without it
-Obeya runs the sidecar through `uv run --with mlx-whisper`. Demos are recorded by the skill in
+Voice runs Whisper in a sidecar through `uv run` (mlx-whisper on Apple Silicon, faster-whisper
+elsewhere), or in a Python of your own with that package (`OBEYA_WHISPER_PYTHON=/path/to/python`).
+Off the Mac the confirmations are spoken by Piper, which the settings install into Obeya's home;
+`OBEYA_WHISPER_BACKEND=faster` and `OBEYA_SPEECH=piper` choose those on a Mac too. Demos are recorded by the skill in
 `plugin/`, which Obeya gives its workers; what a machine needs for them (Node, a browser, ffmpeg,
 uv, a voice) is in [`docs/demo-setup.md`](docs/demo-setup.md), checked in the app's settings.
 

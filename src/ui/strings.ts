@@ -3,7 +3,7 @@
 // page again. Dates and numbers follow the language, in the browser's own variant of it.
 
 import { type Language, languageOf } from '../core/locale';
-import { type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId } from '../core/types';
+import { type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId } from '../core/types';
 
 const de = {
   kind: { task: 'Aufgabe', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
@@ -437,6 +437,24 @@ const de = {
       shareCommand: 'Das Programm des Befehls zum Teilen gibt es nicht.',
       invalid: 'Die Konfiguration ist fehlerhaft.',
     } satisfies Record<ConfigProblemCode, string>,
+    voice: {
+      title: 'Spracheingabe und -ausgabe',
+      hint: (platform: string) => `Was Spracheingabe und gesprochene Bestätigungen auf diesem Rechner brauchen, geprüft auf ${platform}.`,
+      names: {
+        whisper: 'Whisper (Spracheingabe)',
+        speech: 'Stimme (Bestätigungen)',
+        ffmpeg: 'ffmpeg (liest die Aufnahme)',
+        uv: 'uv (bringt Python mit)',
+      } satisfies Record<VoiceSetupId, string>,
+      found: { macOS: 'Stimme von macOS' } as Record<string, string>,
+      faster: 'faster-whisper rechnet auf der Grafikkarte, wenn CUDA da ist, sonst auf dem Prozessor (langsamer, ein paar Sekunden je Befehl).',
+      later: (size: string) => `wird beim ersten Sprechen geladen (etwa ${size})`,
+      speechMissing: (size: string) => `Piper fehlt (etwa ${size}); bis dahin bleiben Bestätigungen stumm`,
+      install: (size: string) => `Installieren (${size})`,
+      step: { piper: 'Piper wird installiert …', whisper: 'Whisper wird geladen, beim ersten Mal mit Download …' },
+      failed: (why: string) => `Fehlgeschlagen: ${why}. Mehr dazu im Log von Obeya.`,
+      ready: 'Alles da: Spracheingabe und gesprochene Bestätigungen gehen.',
+    },
     demo: {
       title: 'Demos',
       hint: 'Wie Agenten ihre Demos vertonen. Gilt ab der nächsten Aufnahme, ohne Neustart.',
@@ -1122,6 +1140,24 @@ const en: Strings = {
       notClone: 'A clone in the list is not a git repository.',
       shareCommand: 'The share command’s program does not exist.',
       invalid: 'The configuration is invalid.',
+    },
+    voice: {
+      title: 'Voice',
+      hint: (platform: string) => `What voice commands and spoken confirmations need on this machine, checked on ${platform}.`,
+      names: {
+        whisper: 'Whisper (voice input)',
+        speech: 'Voice (confirmations)',
+        ffmpeg: 'ffmpeg (reads the recording)',
+        uv: 'uv (brings Python)',
+      },
+      found: { macOS: 'macOS voice' } as Record<string, string>,
+      faster: 'faster-whisper runs on the graphics card when CUDA is there, else on the processor (slower, a few seconds per command).',
+      later: (size: string) => `loaded with the first command (about ${size})`,
+      speechMissing: (size: string) => `Piper is missing (about ${size}); until then confirmations stay silent`,
+      install: (size: string) => `Install (${size})`,
+      step: { piper: 'Installing Piper …', whisper: 'Loading Whisper, with a download the first time …' },
+      failed: (why: string) => `Failed: ${why}. More in Obeya’s log.`,
+      ready: 'All there: voice commands and spoken confirmations work.',
     },
     demo: {
       title: 'Demos',

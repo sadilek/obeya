@@ -30,10 +30,11 @@ services are off the table for now (see Background).
   `src/server/settings.ts`) (W5). The Koordinator, spoken confirmations, worker prompts and
   server messages are still German.
   Demo narration can already be German or English (design: Architecture, Demos).
-- *Platforms*: voice input is Whisper on MLX, so Apple Silicon only. Spoken output is a JXA
-  sidecar with the macOS synthesiser, `say` as fallback (`src/server/voice.ts`); its test runs on
-  `darwin` only. Demo narration already runs on all three platforms: off the Mac with Piper,
-  faster-whisper and Qwen3 on PyTorch.
+- *Platforms*: voice in and out run on all three platforms (W7): Whisper on MLX and the macOS
+  voice on a Mac, faster-whisper and Piper elsewhere, with a section "Voice" in the settings
+  that checks and installs them. Checked on GitHub's Windows Server and Ubuntu runners and Linux
+  on ARM in Docker; on a CPU without a GPU a command takes 4–12 s to transcribe. Demo narration
+  runs on all three platforms too.
 - *Starting*: only from the checkout with `bun start`. Needs Bun, Claude Code with a login, git
   and gh; demos also need Node, a browser, ffmpeg and uv, which the settings check.
 - *Pictures*: `bun scripts/scratch-obeya.ts <stage.json>` stages a canvas with cards in about a
@@ -113,7 +114,7 @@ needs the English interface (W5, W6) and the site (W3).
   replies and its spoken confirmations, the Whisper language, server messages the owner sees, the
   language worker and idea-agent prompts ask for in owner-facing text, and the narration language
   a demo is offered with. Prompts stay as they are where only agents read them.
-- [ ] **W7:** Voice on Windows and Linux. Input with faster-whisper (CUDA, else int8 on the CPU),
+- [x] **W7:** Voice on Windows and Linux. Input with faster-whisper (CUDA, else int8 on the CPU),
   output with Piper; the settings show what is missing with install hints per platform, as for
   demos. Checked on Linux (machine or VM) and at least one run on Windows.
 - [ ] **W8:** Plan doc for the installable app. `docs/plan/app.md`, with its own workstreams:

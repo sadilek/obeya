@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -73,6 +73,8 @@ export const api = {
   language: () => call<LanguageView>('GET', '/api/language'),
   /** Saves the owner's choice; `null` follows the system again. */
   saveLanguage: (language: Language | null) => call<LanguageView>('PUT', '/api/language', { language }),
+  voiceSetup: () => call<VoiceSetupView>('GET', '/api/voice-setup'),
+  installVoice: () => call<VoiceSetupView>('POST', '/api/voice-setup/install'),
   demoSettings: () => call<DemoSettingsView>('GET', '/api/demo-settings'),
   saveDemoSettings: (settings: DemoSettings) => call<DemoSettingsView>('PUT', '/api/demo-settings', settings),
   checkDemoVoice: (settings: DemoSettings) => call<DemoVoiceCheck>('POST', '/api/demo-settings/check', settings),

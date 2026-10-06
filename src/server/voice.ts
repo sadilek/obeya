@@ -1,9 +1,13 @@
-// Voice in and out: the Whisper sidecar transcribes, the speech sidecar (else `say`) speaks.
+// Voice in and out: the Whisper sidecar transcribes (mlx-whisper on Apple Silicon, faster-whisper
+// elsewhere), the speech sidecar speaks (the macOS synthesizer, else `say`, on a Mac; Piper elsewhere).
 
 import type { Subprocess } from 'bun';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { whisperKit } from '../../plugin/skills/demo/lib/setup.ts';
+import type { DemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { installState, piperFiles } from '../../plugin/skills/demo/lib/voices.ts';
 
 /** `doubtful`: Whisper itself counts the decode as failed (a loop, or too unsure of its words). */
 export interface Transcript {
@@ -42,11 +46,31 @@ export const silence = (text: string) =>
 
 const VOICE = join(import.meta.dir, '../../voice');
 
+export type ListenBackend = 'mlx' | 'faster';
+export type SpeechBackend = 'macos' | 'piper';
+
+/**
+ * How Obeya hears and speaks on this machine: MLX and the macOS voice on a Mac (MLX on Apple
+ * Silicon only), faster-whisper and Piper elsewhere. `OBEYA_WHISPER_BACKEND` (mlx, faster) and
+ * `OBEYA_SPEECH` (macos, piper) choose otherwise, say Piper on a Mac.
+ */
+export function voiceBackends(env: Record<string, string | undefined> = process.env, platform: string = process.platform, arch: string = process.arch) {
+  const listen: ListenBackend =
+    env.OBEYA_WHISPER_BACKEND === 'mlx' || env.OBEYA_WHISPER_BACKEND === 'faster' ? env.OBEYA_WHISPER_BACKEND : platform === 'darwin' && arch === 'arm64' ? 'mlx' : 'faster';
+  const speech: SpeechBackend = env.OBEYA_SPEECH === 'macos' || env.OBEYA_SPEECH === 'piper' ? env.OBEYA_SPEECH : platform === 'darwin' ? 'macos' : 'piper';
+  return { listen, speech };
+}
+
+/** The Piper voice the confirmations are spoken in: the demos' default German one. */
+export const CONFIRMATION_VOICE: DemoSettings = { language: 'de', voice: 'piper' };
+
 /** A helper process that stays up and answers JSON lines by id: `{id, …}` in, `{id, …}` or `{id, error}` out. */
 class Sidecar {
   private proc: Subprocess<'pipe', 'pipe', 'inherit'> | null = null;
   private pending = new Map<number, { resolve: (msg: Record<string, unknown>) => void; reject: (e: Error) => void }>();
   private next = 1;
+  /** Settles once the running process has loaded its model (`{"ready": true}`), or has ended before. */
+  private loaded: Promise<void> = Promise.resolve();
 
   constructor(
     private name: string,
@@ -55,8 +79,13 @@ class Sidecar {
 
   ensure() {
     if (this.proc && this.proc.exitCode === null) return this.proc;
-    const proc = Bun.spawn(this.cmd(), { stdin: 'pipe', stdout: 'pipe', stderr: 'inherit' });
+    // UTF-8 on stdin and stdout, also where Python would take the code page (Windows)
+    const proc = Bun.spawn(this.cmd(), { stdin: 'pipe', stdout: 'pipe', stderr: 'inherit', env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' } });
     this.proc = proc;
+    let ready = () => {};
+    let ended = (_: Error) => {};
+    this.loaded = new Promise<void>((resolve, reject) => ((ready = resolve), (ended = reject)));
+    this.loaded.catch(() => {});
     (async () => {
       let buf = '';
       for await (const chunk of proc.stdout as ReadableStream<Uint8Array>) {
@@ -66,7 +95,8 @@ class Sidecar {
           const line = buf.slice(0, nl).trim();
           buf = buf.slice(nl + 1);
           if (!line) continue;
-          const msg = JSON.parse(line) as { id?: number; error?: string };
+          const msg = JSON.parse(line) as { id?: number; error?: string; ready?: boolean };
+          if (msg.ready) ready();
           const job = msg.id !== undefined ? this.pending.get(msg.id) : undefined;
           if (!job) continue;
           this.pending.delete(msg.id!);
@@ -75,10 +105,17 @@ class Sidecar {
         }
       }
       // the sidecar died: fail what waits, the next request starts a new one
+      ended(new Error(`${this.name} sidecar exited (${await proc.exited})`));
       for (const [, job] of this.pending) job.reject(new Error(`${this.name} sidecar exited`));
       this.pending.clear();
     })();
     return proc;
+  }
+
+  /** Starts the process if needed and waits until it has loaded its model. */
+  ready(): Promise<void> {
+    this.ensure();
+    return this.loaded;
   }
 
   request(job: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -98,18 +135,28 @@ class Sidecar {
 
 /**
  * The sidecar keeps the model loaded between recordings. Its Python comes from
- * `OBEYA_WHISPER_PYTHON` (one with `mlx_whisper`), else from `uv` with mlx-whisper.
+ * `OBEYA_WHISPER_PYTHON` (one with `mlx_whisper` or `faster_whisper`), else from `uv` with the
+ * backend's package (the same kit the demos listen back with).
  */
 export class WhisperSidecar implements Transcriber {
-  private sidecar = new Sidecar('transcription', () => {
-    const script = join(VOICE, 'whisper_sidecar.py');
-    const python = process.env.OBEYA_WHISPER_PYTHON;
-    return python ? [python, script] : ['uv', 'run', '--quiet', '--with', 'mlx-whisper', 'python', script];
-  });
+  private sidecar: Sidecar;
+
+  constructor(readonly backend: ListenBackend = voiceBackends().listen) {
+    this.sidecar = new Sidecar('transcription', () => {
+      const script = [join(VOICE, 'whisper_sidecar.py'), '--backend', backend];
+      const python = process.env.OBEYA_WHISPER_PYTHON;
+      return python ? [python, ...script] : ['uv', 'run', '--quiet', '--no-project', ...whisperKit(backend).uvArgs, 'python', ...script];
+    });
+  }
 
   /** Starts the sidecar, which loads the model before its first recording arrives. */
   warm() {
     this.sidecar.ensure();
+  }
+
+  /** Loads the model, which the first time fetches the package and the model. */
+  prepare(): Promise<void> {
+    return this.sidecar.ready();
   }
 
   async transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
@@ -147,6 +194,53 @@ export class SpeechSidecar implements Speaker {
       // a stuck sidecar would hold up every confirmation after this one: the next starts afresh
       this.sidecar.stop();
       return say(text);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  stop() {
+    this.sidecar.stop();
+  }
+}
+
+/**
+ * The confirmation in Piper's voice, off the Mac: a sidecar in Piper's environment under Obeya's
+ * home keeps the voice loaded. Without Piper installed nothing is spoken (the settings sheet
+ * installs it); the written confirmation shows all the same.
+ */
+export class PiperSpeaker implements Speaker {
+  private sidecar: Sidecar;
+  private told = false;
+
+  constructor(private home: string) {
+    const { python, onnx } = piperFiles(CONFIRMATION_VOICE, home);
+    this.sidecar = new Sidecar('Piper', () => [python, join(VOICE, 'piper_sidecar.py'), onnx]);
+  }
+
+  private installed() {
+    if (installState(CONFIRMATION_VOICE, this.home).installed) return true;
+    if (!this.told) console.log('Obeya: Piper is not installed, confirmations are not spoken (the settings sheet installs it)');
+    this.told = true;
+    return false;
+  }
+
+  warm() {
+    if (this.installed()) this.sidecar.ensure();
+  }
+
+  async speak(text: string): Promise<Uint8Array<ArrayBuffer> | null> {
+    if (!this.installed()) return null;
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-piper-'));
+    const wav = join(dir, 'ack.wav');
+    try {
+      // the first one may wait for the voice to load
+      await within(15_000, this.sidecar.request({ text, path: wav }));
+      return new Uint8Array(readFileSync(wav));
+    } catch (e) {
+      console.error('Piper sidecar:', e instanceof Error ? e.message : e);
+      this.sidecar.stop();
+      return null;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
