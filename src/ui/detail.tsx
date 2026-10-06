@@ -463,7 +463,7 @@ export function Detail(p: Props) {
       )}
 
       {/* a card nobody worked on shows its conversation once there is something, such as a talk with the Koordinator */}
-      {!worked && <Conversation item={item} past hideEmpty />}
+      {!worked && item.state !== 'proposal' && <Conversation item={item} past hideEmpty />}
     </>
   );
 }
@@ -621,26 +621,25 @@ function ProposalView({
   const accept = (start: boolean) => act({ action: 'accept', ...(start ? {} : { start: false }), ...(answer.picked ? { picks: answer.picks } : {}) }, start ? { close: true, ack: idea ? t.acceptedIdea : t.accepted } : { close: false });
   return (
     <>
-      {children}
-      {from && <p className="hint">{t.proposedBy(plain(from.title))}{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
-      {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
-      {questions.length > 0 && (
-        <>
-          <Questions questions={questions} heading={t.proposalQuestions} {...answer} />
-          <p className="hint">{t.proposalQuestionsHint}</p>
-        </>
-      )}
-      {revising ? (
-        // what the owner said stands in the conversation below
-        <div className="question revising">
-          <div className="q-text">{t.revising}</div>
+      {/* the proposal as it stands, and beside it the talk about what should change, as with an idea */}
+      <div className="idea-grid proposal-grid">
+        <div className="idea-brief">
+          {children}
+          {from && <p className="hint">{t.proposedBy(plain(from.title))}{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
+          {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
+          {questions.length > 0 && (
+            <>
+              <Questions questions={questions} heading={t.proposalQuestions} {...answer} />
+              <p className="hint">{t.proposalQuestionsHint}</p>
+            </>
+          )}
         </div>
-      ) : (
-        <>
-          <Composer placeholder={t.compose.revise} listener={listener} onSend={(text) => onRevise(text)} noImages />
-          <p className="hint">{t.reviseHint}</p>
-        </>
-      )}
+        <div className="idea-talk">
+          <Conversation item={item} />
+          {/* while it is reworked, the owner's words stand in the conversation and wait there */}
+          {!revising && <Composer placeholder={t.compose.revise} listener={listener} onSend={(text) => onRevise(text)} noImages />}
+        </div>
+      </div>
       <div className="actions">
         <button className="btn primary" disabled={!!revising} onClick={() => accept(true)}>
           {idea ? t.acceptIdea : t.accept}
@@ -765,9 +764,10 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
   const events = useEvents(item.id);
   const box = useRef<HTMLDivElement>(null);
   const idea = item.state === 'idea' && !!item.idea;
+  const proposal = item.state === 'proposal';
   const asking = item.state === 'waiting' && item.need === 'question' ? item.question : undefined;
   // a worker finishing after the landing works unless it waits for the owner's answer
-  const working = !past && (idea ? !!item.idea?.thinking : item.state === 'working' || (!!item.finishing && finished(item.state)));
+  const working = !past && (idea ? !!item.idea?.thinking : proposal ? !!item.proposal?.revising : item.state === 'working' || (!!item.finishing && finished(item.state)));
   const asked = JSON.stringify(item.idea?.questions ?? asking ?? []);
   useEffect(() => {
     const el = box.current;
@@ -783,7 +783,7 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
     <>
       <h4 className="p-h">{t.talk.heading}</h4>
       <div className="talk conv" ref={box}>
-        {turns.shown.length === 0 && !working && !turns.asked && <div className="hint">{idea ? t.idea.talkEmpty : t.talk.empty}</div>}
+        {turns.shown.length === 0 && !working && !turns.asked && <div className="hint">{idea ? t.idea.talkEmpty : proposal ? t.reviseHint : t.talk.empty}</div>}
         {idea && !past && item.body.trim() && !opened(events, item.body) && (
           <div className="msg by-owner seed">
             <div className="who">{t.idea.seed}</div>
@@ -800,10 +800,8 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
           ),
         )}
         {working ? (
-          <div className={`msg by-${idea ? 'explorer' : 'worker'} thinking`}>
-            <div className="who">
-              {agent} {idea ? t.idea.thinking : t.talk.working}
-            </div>
+          <div className={`msg by-${idea ? 'explorer' : proposal ? 'koordinator' : 'worker'} thinking`}>
+            <div className="who">{proposal ? t.revising : `${agent} ${idea ? t.idea.thinking : t.talk.working}`}</div>
             {turns.pending.at(-1) && <div className="hint">{clipLine(turns.pending.at(-1)!.text)}</div>}
             <Steps steps={turns.pending} />
           </div>

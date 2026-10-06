@@ -205,9 +205,12 @@ An idea is thought through on its card before anything is planned; no worker run
    werden?“) what should change: the Koordinator reads it as `revise`, and after the undo window a
    read-only agent (`revisions.ts`, effort medium, in the card's repository) rewrites title, text,
    reason and questions by those words, keeping what they did not touch; a question the words
-   settle goes, and its decision into the text. Meanwhile the proposal shows „wird überarbeitet“,
-   cannot be accepted or edited, and takes no second revision; it is not among the cards that need
-   the owner. The owner's words stand in its conversation, then „Vorschlag überarbeitet.“; an agent
+   settle goes, and its decision into the text. As with an idea, the conversation about it stands
+   beside the proposal, with the field under it; the proposal's text, reason and questions are on
+   the left, its buttons below both. Meanwhile the proposal shows „wird überarbeitet“ (in the
+   conversation, where the field was), cannot be accepted or edited, and takes no second revision;
+   it is not among the cards that need the owner. The owner's words stand in its conversation, then
+   „Vorschlag überarbeitet.“; an agent
    that ends without a text leaves the proposal as it was, with the error. A revision still running
    at a restart starts again. Before,
    a proposal was the worker's reason and suggestion as one text, in the first person, with open

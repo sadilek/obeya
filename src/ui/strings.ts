@@ -108,7 +108,7 @@ const de = {
   proposedByRetro: (basis: string) => `Aus der Arbeitsrückschau: ${basis}`,
   revisingShort: 'wird überarbeitet',
   revising: 'Wird nach deinen Worten überarbeitet …',
-  reviseHint: 'Der Agent schreibt Text und Fragen danach neu; was du nicht ansprichst, bleibt.',
+  reviseHint: 'Sag oder schreib, was anders werden soll. Ein Agent schreibt Text und Fragen danach neu; was du nicht ansprichst, bleibt.',
   followUpOf: (title: string) => `Kommt von der Aufgabe „${title}“.`,
   task: 'Auftrag',
   talk: {
@@ -767,7 +767,7 @@ const en: Strings = {
   proposedByRetro: (basis: string) => `From the work retrospective: ${basis}`,
   revisingShort: 'being reworked',
   revising: 'Being reworked by what you said …',
-  reviseHint: 'The agent rewrites text and questions by it; what you do not mention stays.',
+  reviseHint: 'Say or type what should change. An agent rewrites text and questions by it; what you do not mention stays.',
   followUpOf: (title: string) => `Follows from the task “${title}”.`,
   task: 'Task',
   talk: {
