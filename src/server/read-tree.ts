@@ -118,7 +118,16 @@ export class ReadTree {
         return true;
       }
     }
-    rmSync(dir, { recursive: true, force: true });
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (e) {
+      // on Windows a process working in it (an agent reading there) keeps it: the server died of
+      // that EBUSY; this time the checkout is read, and the next refresh tries again
+      console.error(`Lesestand: ${dir} cannot be made afresh now (${(e as NodeJS.ErrnoException).code ?? e}); reading the checkout`);
+      const moved = this.path !== this.o.repoPath;
+      this.path = this.o.repoPath;
+      return moved;
+    }
     repo('worktree', 'prune');
     mkdirSync(dirname(dir), { recursive: true });
     if (repo(...quiet, 'worktree', 'add', '--quiet', '--detach', '--force', dir, target) === null) {

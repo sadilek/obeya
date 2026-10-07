@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
@@ -151,6 +151,21 @@ describe('the Lesestand', () => {
     git(origin, 'worktree', 'add', '--quiet', '--detach', read);
     make();
     expect(git(read, 'rev-parse', '--path-format=absolute', '--git-common-dir')).toBe(git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'));
+  });
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('reads the checkout while its directory cannot be made afresh', () => {
+    // a directory that is no worktree and whose files cannot go, as one an agent works in on Windows
+    const read = join(dir, 'read');
+    mkdirSync(read);
+    writeFileSync(join(read, 'kept'), '');
+    chmodSync(read, 0o555);
+    try {
+      const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+      expect(tree.path).toBe(checkout);
+    } finally {
+      chmodSync(read, 0o755);
+    }
+    expect(new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} }).path).toBe(read);
   });
 
   test('keeps its commit when the fetch fails, and catches up once it works again', async () => {
