@@ -514,7 +514,9 @@ the owner's language (`src/core/locale.ts`).
   `reset` and `clean` in the clone do not reach it, and the clone's `git status` stays clean, so
   leasing is not affected; the clone's `.git/worktrees` has one entry more. A worktree there at
   the start is used again; one missing, broken or of another repository is made afresh (`git
-  worktree prune` first), and where none can be made the checkout is read. Hooks do not run for
+  worktree prune` first), and where none can be made the checkout is read, as also while its
+  directory cannot be removed (on Windows, while an agent works in it; until 2026-10-07 that
+  ended the server); the next refresh tries again. Hooks do not run for
   it. It refreshes with every round of the PR watcher (2 minutes), so also when the owner comes
   back to the page, and right after a merge: `git fetch` of the default branch in the checkout
   (only `refs/remotes/origin/<branch>`, no `FETCH_HEAD`, so safe while a card leases the clone),
