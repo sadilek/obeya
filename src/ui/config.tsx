@@ -2,8 +2,8 @@
 // Obeya then starts again with it. The server's own settings come from its command line and show
 // read-only.
 
-import { useEffect, useRef, useState } from 'react';
-import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettings, DemoSettingsView, DemoVoiceCheck, Language, LanguageView, NarrationLanguage, RepoConfig, SetupCheck, SetupItem, VoiceKind, VoiceSetupItem, VoiceSetupView } from '../core/types';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentChoice, type AgentEffort, type AgentModel, type AgentRole, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type SetupItem, type VoiceKind, type VoiceSetupItem, type VoiceSetupView } from '../core/types';
 import { LANGUAGES } from '../core/locale';
 import { api, ApiError, reload } from './api';
 import { errorText, t } from './strings';
@@ -132,6 +132,7 @@ export function ConfigSheet({ on }: { on: boolean }) {
       {status && <p className="hint c-status">{status}</p>}
 
       <LanguageBlock on={on} />
+      <AgentsBlock on={on} />
       <VoiceBlock on={on} />
       <DemoBlock on={on} />
 
@@ -222,6 +223,71 @@ function LanguageBlock({ on }: { on: boolean }) {
             ))}
           </select>
         </label>
+        {status && <p className="hint c-status">{status}</p>}
+      </section>
+    </>
+  );
+}
+
+/** The model and effort of each group of agents: saved on each change, taken by the next agent that starts. */
+function AgentsBlock({ on }: { on: boolean }) {
+  const [view, setView] = useState<AgentsView | null>(null);
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (on) api.agents().then(setView, console.error);
+  }, [on]);
+  if (!view) return null;
+  const a = t.config.agents;
+  const choose = async (role: AgentRole, choice: AgentChoice) => {
+    setBusy(true);
+    setStatus('');
+    try {
+      setView(await api.saveAgents(role, { model: choice.model ?? null, effort: choice.effort ?? null }));
+    } catch (e) {
+      setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+    setBusy(false);
+  };
+  return (
+    <>
+      <h4 className="p-h">{a.title}</h4>
+      <section className="c-canvas c-demo c-agents">
+        <p className="hint">
+          {a.hint} <code>{view.file}</code>
+        </p>
+        <div className="c-agents-grid">
+          <span />
+          <span className="hint">{a.model}</span>
+          <span className="hint">{a.effort}</span>
+          {AGENT_ROLES.map((role) => {
+            const chosen = view.chosen[role];
+            return (
+              <Fragment key={role}>
+                <div className="c-agent-name">
+                  {a.roles[role].name}
+                  <span className="hint">{a.roles[role].hint}</span>
+                </div>
+                <select aria-label={`${a.roles[role].name}: ${a.model}`} value={chosen.model ?? ''} disabled={busy} onChange={(e) => choose(role, { ...chosen, model: (e.target.value || undefined) as AgentModel | undefined })}>
+                  <option value="">{a.unset}</option>
+                  {AGENT_MODELS.map((m) => (
+                    <option key={m} value={m}>
+                      {a.models[m]}
+                    </option>
+                  ))}
+                </select>
+                <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={chosen.effort ?? ''} disabled={busy} onChange={(e) => choose(role, { ...chosen, effort: (e.target.value || undefined) as AgentEffort | undefined })}>
+                  <option value="">{a.unset}</option>
+                  {AGENT_EFFORTS.map((x) => (
+                    <option key={x} value={x}>
+                      {a.efforts[x]}
+                    </option>
+                  ))}
+                </select>
+              </Fragment>
+            );
+          })}
+        </div>
         {status && <p className="hint c-status">{status}</p>}
       </section>
     </>

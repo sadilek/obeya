@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import type { z } from 'zod';
 import { mediaType } from './images';
 import type { Messages } from '../core/messages';
+import type { AgentChoice, AgentEffort, AgentRole } from '../core/types';
 
 export interface AgentTool {
   name: string;
@@ -55,9 +56,11 @@ export interface AgentSpec {
   /** Added to the agent's environment (Obeya's own, cleaned). */
   env?: Record<string, string>;
   /** How much the model thinks; low for quick, small jobs. */
-  effort?: 'low' | 'medium' | 'high';
+  effort?: AgentEffort;
   /** The model, when not the default: a smaller one for small, frequent jobs. */
   model?: string;
+  /** The group the agent belongs to, whose model and effort the owner may choose (`withAgentChoice`). */
+  role?: AgentRole;
   /**
    * Asked after every tool step: what changed since the session's instructions were built, for the
    * agent to read with that step's result without being stopped; nothing when nothing did.
@@ -78,6 +81,19 @@ export interface AgentSession {
 export interface AgentRuntime {
   /** Without a first message the agent starts up and waits, so a later `send` skips the start-up. */
   start(spec: AgentSpec, firstMessage?: string, images?: string[]): AgentSession;
+}
+
+/**
+ * A runtime that starts each agent with the model and effort the owner chose for its group, asked
+ * at every start; what the owner left open stays as the job sets it.
+ */
+export function withAgentChoice(runtime: AgentRuntime, choice: (role: AgentRole) => AgentChoice): AgentRuntime {
+  return {
+    start(spec, firstMessage, images) {
+      const chosen = spec.role ? choice(spec.role) : {};
+      return runtime.start({ ...spec, ...chosen }, firstMessage, images);
+    },
+  };
 }
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];

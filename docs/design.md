@@ -404,7 +404,21 @@ the owner's language (`src/core/locale.ts`).
   with the usual confirmation and undo window. Below the canvases the sheet has the demo settings
   (see Demos), saved on their own into `demo.json` in Obeya's home and read by the next render, so
   saving them restarts nothing. Above them is the language, saved the same way into
-  `settings.json` (see Language).
+  `settings.json` (see Language), and the model and effort of each group of agents (see Models
+  and effort).
+- **Models and effort** — the owner chooses a model (Fable, Opus, Sonnet, Haiku: Claude Code's
+  aliases, each the newest of its family) and an effort (low to max) for four groups of agents in
+  the Konfiguration sheet: the Koordinator (voice commands, estimates, cuts and schedules, look-ups,
+  project agents, learner, Rückschau, proposal rewrites), the workers on cards, the exploration
+  agents of ideas, and small jobs (the Arbeitsrückschau's notes and proposals, the text of a
+  shared demo's page). Left open, a group keeps what each job sets: workers and exploration agents
+  run on Claude Code's defaults, the Koordinator's turns mostly at medium effort, small jobs on
+  Sonnet at low. The choices live in `settings.json` under `agents` (`src/server/settings.ts`);
+  every session names its group (`AgentSpec.role`), and `withAgentChoice` (`runtime.ts`), which
+  wraps the canvas's runtimes, asks for the choice at each start and puts it over the job's own.
+  Saving restarts nothing and takes effect for every agent that starts afterwards; a session at
+  work keeps what it started with, except the voice commands' session, which is opened anew once
+  the Koordinator's choice changed, as it is for another language.
 - **Language** — Obeya speaks German or English to the owner. The owner chooses it in the
   Konfiguration sheet; until then the system's applies: on a Mac the language of its interface
   (`AppleLanguages`), elsewhere `LC_ALL`, `LC_MESSAGES`, `LANG` in that order, then what the

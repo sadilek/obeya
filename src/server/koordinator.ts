@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import { type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
+import { type AgentEffort, type AgentRole, type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
 import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { Utterance } from './db';
@@ -200,6 +200,7 @@ export class Koordinator {
         {
           cwd: this.o.repoFor(card).path,
           readOnly: true,
+          role: 'koordinator',
           system: CUT_SYSTEM(this.language),
           tools: [
             {
@@ -452,7 +453,7 @@ export class Koordinator {
 
   /** A reading session of the learner's, read-only: it ends with its turn, or once a tool calls `finish`. */
   private read(cwd: string, system: string, tools: (finish: (r: string) => string) => AgentTool[], brief: string): Promise<void> {
-    return readSession(this.o.runtime, { cwd, system, tools, brief });
+    return readSession(this.o.runtime, { cwd, system, tools, brief, role: 'koordinator' });
   }
 
   /** What the learner reads an input in: the card's text, the agent's last message before it, what the owner said in the last days. */
@@ -745,6 +746,7 @@ export class Koordinator {
         {
           cwd: this.o.repoFor(card).path,
           readOnly: true,
+          role: 'koordinator',
           system: SYSTEM(this.language),
           tools: [
             {
@@ -792,6 +794,7 @@ export class Koordinator {
         {
           cwd: this.o.repoFor(project).path,
           readOnly: true,
+          role: 'koordinator',
           system: SCHEDULE_SYSTEM(this.language),
           tools: [
             {
@@ -1063,7 +1066,7 @@ Do not add scope the card does not ask for.
  */
 export function readSession(
   runtime: AgentRuntime,
-  o: { cwd: string; system: string; tools: (finish: (r: string) => string) => AgentTool[]; brief: string; model?: string; effort?: 'low' | 'medium' | 'high' },
+  o: { cwd: string; system: string; tools: (finish: (r: string) => string) => AgentTool[]; brief: string; model?: string; effort?: AgentEffort; role: AgentRole },
 ): Promise<void> {
   return new Promise((resolve) => {
     let done = false;
@@ -1078,6 +1081,7 @@ export function readSession(
       {
         cwd: o.cwd,
         readOnly: true,
+        role: o.role,
         system: o.system,
         tools: o.tools(finish),
         ...(o.model ? { model: o.model } : {}),

@@ -575,6 +575,7 @@ export class Workers {
     live.session = this.o.runtime.start(
       {
         cwd: row.workspace,
+        role: 'worker',
         system: this.system(preferences, !!row.prototype_of),
         tools: this.tools(cardId, live, !!row.prototype_of),
         ...(this.o.adapter.demo ? { plugins: [OBEYA_PLUGIN] } : {}),

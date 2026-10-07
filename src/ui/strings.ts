@@ -3,7 +3,7 @@
 // page again. Dates and numbers follow the language, in the browser's own variant of it.
 
 import { type Language, languageOf } from '../core/locale';
-import { type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId } from '../core/types';
+import { type AgentEffort, type AgentModel, type AgentRole, type CardState, type ConfigProblemCode, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId } from '../core/types';
 
 const de = {
   kind: { task: 'Aufgabe', project: 'Projekt', workstream: 'Workstream', idea: 'Idee', prototype: 'Prototyp', becomesProject: 'Idee → Projekt' },
@@ -402,6 +402,21 @@ const de = {
       system: (name: string) => `Wie das System (${name})`,
       /** Each language in its own words, as a stranger looks for it. */
       names: { de: 'Deutsch', en: 'English' } satisfies Record<Language, string>,
+    },
+    agents: {
+      title: 'Modelle und Effort',
+      hint: 'Welches Modell jede Gruppe von Agenten nimmt und wie viel es nachdenkt (Effort). „Wie bisher“ lässt es, wie Obeya die Aufgabe einstellt: die Agenten an Aufgaben und Ideen nehmen den Standard von Claude Code, der Koordinator überlegt meist mit mittlerem Effort, kleine Aufgaben nehmen Sonnet mit niedrigem. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.',
+      model: 'Modell',
+      effort: 'Effort',
+      unset: 'wie bisher',
+      roles: {
+        koordinator: { name: 'Koordinator', hint: 'Befehle, Einplanen und Aufteilen, Nachschlagen, Projekt-Agenten, Lernen und Rückschau' },
+        worker: { name: 'Agenten an Aufgaben', hint: 'bauen, was eine Aufgabe verlangt' },
+        explorer: { name: 'Explorations-Agenten', hint: 'denken Ideen mit dir durch' },
+        chores: { name: 'Kleine Aufgaben', hint: 'Reibungsnotizen und Arbeitsrückschau, Text für geteilte Demos' },
+      } satisfies Record<AgentRole, { name: string; hint: string }>,
+      models: { fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' } satisfies Record<AgentModel, string>,
+      efforts: { low: 'niedrig', medium: 'mittel', high: 'hoch', xhigh: 'sehr hoch', max: 'maximal' } satisfies Record<AgentEffort, string>,
     },
     canvas: (n: number) => `Leinwand ${n}`,
     name: 'Name',
@@ -1120,6 +1135,21 @@ const en: Strings = {
       hint: 'The language Obeya speaks to you: the interface with its dates and numbers, the Coordinator, voice in and out, what agents write to you, and demos unless they have a language of their own below. Applies at once; the page loads again for it.',
       system: (name: string) => `As the system (${name})`,
       names: { de: 'Deutsch', en: 'English' },
+    },
+    agents: {
+      title: 'Models and effort',
+      hint: 'Which model each group of agents uses and how much it thinks (effort). “As before” leaves it as Obeya sets each job: agents on tasks and ideas take Claude Code’s default, the Coordinator mostly thinks at medium effort, small jobs take Sonnet at low. Applies at once to every agent that starts afterwards; one at work keeps what it started with.',
+      model: 'Model',
+      effort: 'Effort',
+      unset: 'as before',
+      roles: {
+        koordinator: { name: 'Coordinator', hint: 'commands, scheduling and splitting, look-ups, project agents, learning and retrospective' },
+        worker: { name: 'Agents on tasks', hint: 'build what a task asks for' },
+        explorer: { name: 'Exploration agents', hint: 'think ideas through with you' },
+        chores: { name: 'Small jobs', hint: 'friction notes and the work retrospective, text for shared demos' },
+      },
+      models: { fable: 'Fable', opus: 'Opus', sonnet: 'Sonnet', haiku: 'Haiku' },
+      efforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'very high', max: 'maximum' },
     },
     canvas: (n: number) => `Canvas ${n}`,
     name: 'Name',

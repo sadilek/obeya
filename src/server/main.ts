@@ -35,7 +35,7 @@ import { serve } from './server';
 import { PiperSpeaker, SpeechSidecar, voiceBackends, WhisperSidecar } from './voice';
 import { VoiceSetup } from './voice-setup';
 import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
-import { ownerLanguage } from './settings';
+import { agentChoice, ownerLanguage } from './settings';
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -177,6 +177,7 @@ canvases = configs.map(
       config,
       workerEnv: { OBEYA_URL: url },
       language: () => ownerLanguage(home),
+      agents: (role) => agentChoice(home, role),
     }),
 );
 const ids = canvases.map((c) => c.id);

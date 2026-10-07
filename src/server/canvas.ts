@@ -8,7 +8,7 @@ import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { Language } from '../core/locale';
-import { buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
+import { type AgentChoice, type AgentRole, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -23,7 +23,7 @@ import { ReadTree } from './read-tree';
 import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
-import type { AgentRuntime } from './runtime';
+import { type AgentRuntime, withAgentChoice } from './runtime';
 import { changesCode } from './self-update';
 import { Sharing, shareArgv } from './share';
 import { type DueRestart, Workers } from './workers';
@@ -54,6 +54,8 @@ export interface CanvasDeps {
   workerEnv?: Record<string, string>;
   /** The language Obeya speaks to the owner now (`ownerLanguage`); German when left out (the tests). */
   language?: () => Language;
+  /** The model and effort the owner chose for a group of agents (`agentChoice`), asked whenever one starts. */
+  agents?: (role: AgentRole) => AgentChoice;
 }
 
 export interface RepoRuntime {
@@ -89,6 +91,11 @@ export class CanvasRuntime {
   private writing = new Map<string, { before: string; timer: ReturnType<typeof setTimeout> }>();
 
   constructor(config: CanvasConfig, private deps: CanvasDeps) {
+    if (deps.agents) {
+      const agents = deps.agents;
+      deps = { ...deps, runtime: withAgentChoice(deps.runtime, agents), ...(deps.workerRuntime ? { workerRuntime: withAgentChoice(deps.workerRuntime, agents) } : {}) };
+      this.deps = deps;
+    }
     const resolved = resolveCanvas(config, deps.store);
     const { id, name, infos, adapters, refs, stored } = resolved;
     config = resolved.config;
@@ -222,6 +229,7 @@ export class CanvasRuntime {
       lookUp: (talk) => this.answers.lookUp(talk),
       onOwnerInput: (card, kind, text, reply) => this.koordinator.learn((card && board.item(card)) || null, kind, text, { reply }),
       ...(deps.config ? { config: deps.config } : {}),
+      ...(deps.agents ? { agentChoice: () => deps.agents!('koordinator') } : {}),
       ...(deps.commandDelayMs !== undefined ? { delayMs: deps.commandDelayMs } : {}),
     });
     this.answers.resume();

@@ -7,7 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { adapterNames } from '../adapters';
-import type { CanvasConfig, ConfigProblem, ConfigView, DemoSettingsProblem, DemoSettingsView, DemoVoiceCheck, LanguageView, ResolvedCanvas, VoiceInstallJob } from '../core/types';
+import type { AgentsView, CanvasConfig, ConfigProblem, ConfigView, DemoSettingsProblem, DemoSettingsView, DemoVoiceCheck, LanguageView, ResolvedCanvas, VoiceInstallJob } from '../core/types';
 import {
   DEMO_SETTINGS_FILE,
   type DemoSettings,
@@ -26,7 +26,7 @@ import { BadRequest } from './board';
 import { ConfigError, resolveCanvas } from './canvas';
 import type { Store } from './db';
 import { repoInfo } from './repo';
-import { languageView, saveLanguage } from './settings';
+import { agentsView, languageView, saveAgents, saveLanguage } from './settings';
 import { shareArgv, shareProblem } from './share';
 
 export const CONFIG_FILE = 'canvases.json';
@@ -248,6 +248,15 @@ export class Config {
 
   saveLanguage(input: unknown): LanguageView {
     return saveLanguage(this.o.server.home, input);
+  }
+
+  /** The model and effort of each group of agents, in `settings.json` too; read whenever an agent starts. */
+  agents(): AgentsView {
+    return agentsView(this.o.server.home);
+  }
+
+  saveAgents(input: unknown): AgentsView {
+    return saveAgents(this.o.server.home, input);
   }
 
   saveDemo(input: unknown): DemoSettingsView {

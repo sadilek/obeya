@@ -77,6 +77,7 @@ export class Revisions {
           cwd: this.o.pathFor(card),
           readOnly: true,
           effort: 'medium',
+          role: 'koordinator',
           system: [SYSTEM, this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
           tools: [
             {

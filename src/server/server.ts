@@ -170,6 +170,11 @@ export function serve(
         GET: () => (config ? Response.json(config.language()) : new Response('Not found', { status: 404 })),
         PUT: async (req) => (config ? handle(async () => config.saveLanguage(await req.json())) : new Response('Not found', { status: 404 })),
       },
+      // the model and effort of each group of agents, read whenever one starts
+      '/api/agents': {
+        GET: () => (config ? Response.json(config.agents()) : new Response('Not found', { status: 404 })),
+        PUT: async (req) => (config ? handle(async () => config.saveAgents(await req.json())) : new Response('Not found', { status: 404 })),
+      },
       // what Obeya's own voice in and out need here, and installing it
       '/api/voice-setup': { GET: () => (setup ? handle(() => setup.view()) : new Response('Not found', { status: 404 })) },
       '/api/voice-setup/install': { POST: () => (setup ? handle(() => setup.install()) : new Response('Not found', { status: 404 })) },

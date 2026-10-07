@@ -801,6 +801,26 @@ export interface LanguageView {
   language: Language;
 }
 
+/** The agents Obeya runs, grouped as the owner sets their model and effort (`src/server/settings.ts`). */
+export const AGENT_ROLES = ['koordinator', 'worker', 'explorer', 'chores'] as const;
+export type AgentRole = (typeof AGENT_ROLES)[number];
+/** The models offered, as Claude Code's aliases: each stands for the newest of its family. */
+export const AGENT_MODELS = ['fable', 'opus', 'sonnet', 'haiku'] as const;
+export type AgentModel = (typeof AGENT_MODELS)[number];
+export const AGENT_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type AgentEffort = (typeof AGENT_EFFORTS)[number];
+/** What the owner chose for a group of agents; what is left out stays as Obeya sets it for each job. */
+export interface AgentChoice {
+  model?: AgentModel;
+  effort?: AgentEffort;
+}
+
+/** The model and effort the owner chose for each group of agents, in `settings.json`. */
+export interface AgentsView {
+  file: string;
+  chosen: Record<AgentRole, AgentChoice>;
+}
+
 /** What Obeya's own voice in and out needs on this machine (`src/server/voice-setup.ts`). */
 export type VoiceSetupId = 'whisper' | 'speech' | 'ffmpeg' | 'uv';
 export type VoiceSetupItem = Omit<SetupItem, 'id'> & { id: VoiceSetupId };

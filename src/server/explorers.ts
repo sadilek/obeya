@@ -163,6 +163,7 @@ export class Explorers {
       {
         cwd: this.o.pathFor(card),
         readOnly: true,
+        role: 'explorer',
         system: system(this.o.board.language()) + (preferences ? `\n\n${preferences}` : ''),
         tools: this.tools(card.id, live),
         contextUpdate: () => [this.buildNote(card.id, live), this.preferencesUpdate(live)].filter(Boolean).join('\n\n') || undefined,
