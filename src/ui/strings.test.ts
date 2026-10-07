@@ -24,3 +24,8 @@ test('the browser\'s variant of the language writes dates its way', () => {
   expect(t.archive.day(new Date(2026, 9, 6), new Date(2026, 9, 9))).toBe('Tuesday 6 October');
   expect(clock(new Date(2026, 9, 6, 15, 4))).toBe('15:04');
 });
+
+test('a language tag Intl refuses falls back to the usual variant', () => {
+  setLanguage('en', ['en-US@posix']);
+  expect(clock(new Date(2026, 9, 6, 15, 4))).toMatch(/03:04\sPM/);
+});

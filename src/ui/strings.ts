@@ -1480,12 +1480,21 @@ let locale = 'de-DE';
 
 /**
  * Puts `language` into effect, before the first render. Dates and numbers take the browser's
- * variant of it (`en-GB` writes the day first), or the usual one.
+ * variant of it (`en-GB` writes the day first), or the usual one. A browser on Linux with the
+ * POSIX locale says `en-US@posix`, which `Intl` refuses: the page stayed blank on it.
  */
 export function setLanguage(language: Language, preferred: readonly string[] = typeof navigator === 'undefined' ? [] : navigator.languages) {
   t = tables[language];
-  locale = preferred.find((l) => languageOf(l) === language) ?? (language === 'de' ? 'de-DE' : 'en-US');
+  locale = preferred.find((l) => languageOf(l) === language && validTag(l)) ?? (language === 'de' ? 'de-DE' : 'en-US');
   if (typeof document !== 'undefined') document.documentElement.lang = language;
+}
+
+function validTag(tag: string): boolean {
+  try {
+    return Intl.getCanonicalLocales(tag).length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /** A time of day, hours and minutes. */
