@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { type CardEvent, formatQuestion } from '../core/types';
-import { parseQuestion, talkTurns } from './talk';
+import { ownerField, parseQuestion, talkTurns } from './talk';
 
 let id = 0;
 const ev = (kind: CardEvent['kind'], author: CardEvent['author'], text: string): CardEvent => ({ id: ++id, cardId: 'c', at: '2026-10-01T10:00:00Z', kind, author, text });
@@ -162,4 +162,14 @@ test("why an idea clicked to build was not built stands after the agent's reply"
     { e: reply, steps: [] },
     { e: why, steps: [], line: true },
   ]);
+});
+
+test('a card has one field for the owner, and under a demo with a question it takes the answer and feedback together', () => {
+  expect(ownerField({ state: 'working' })).toBe('note');
+  expect(ownerField({ state: 'live', finishing: true })).toBe('note');
+  expect(ownerField({ state: 'waiting', need: 'question', question: { text: 'A oder B?', options: [] } })).toBe('answer');
+  expect(ownerField({ state: 'waiting', need: 'review' })).toBe('feedback');
+  expect(ownerField({ state: 'waiting', need: 'demo' })).toBe('feedback');
+  expect(ownerField({ state: 'waiting', need: 'demo', question: { text: 'Welche Stimme?', options: [] } })).toBe('demo');
+  expect(ownerField({ state: 'done' })).toBeNull();
 });

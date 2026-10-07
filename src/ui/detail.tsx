@@ -10,7 +10,7 @@ import { landedRef } from './parts';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
-import { parseQuestion, talkTurns, type Turn } from './talk';
+import { ownerField, parseQuestion, talkTurns, type Turn } from './talk';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -337,8 +337,6 @@ export function Detail(p: Props) {
           run={run}
           summary=""
           demo={item.demo}
-          onAnswer={tell('answer')}
-          listener={listener}
         >
           {/* the decision sits beside the video, so it needs no scrolling */}
           <div className="actions">
@@ -346,7 +344,7 @@ export function Detail(p: Props) {
           </div>
           {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
           {direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
-          <Composer placeholder={t.compose.review} listener={listener} onSend={tell('feedback')} />
+          <OwnerComposer item={item} listener={listener} tell={tell} />
           {shareBox}
         </DemoView>
       )}
@@ -981,8 +979,6 @@ function DemoView({
   demo,
   children,
   autoplay = true,
-  onAnswer,
-  listener,
 }: {
   item: Item;
   all?: Item[];
@@ -991,10 +987,6 @@ function DemoView({
   demo: Demo;
   children: ReactNode;
   autoplay?: boolean;
-  /** Answers the report's open question; without it the question only shows. */
-  onAnswer?: (text: string, images?: string[]) => Promise<void>;
-  /** Who reads what the owner types into the answer field. */
-  listener?: string;
 }) {
   const cardId = item.id;
   const video = useRef<HTMLVideoElement>(null);
@@ -1069,16 +1061,15 @@ function DemoView({
               ))}
             </ol>
           )}
+          {/* answered in the card's one field, with feedback or without */}
           {demo.question && (
             <div className="question">
               <h4>{t.demo.question}</h4>
               <div className="q-text">{demo.question}</div>
-              {demo.answer ? (
+              {demo.answer && (
                 <p className="hint">
                   {t.demo.yourAnswer}: {demo.answer}
                 </p>
-              ) : (
-                onAnswer && <Composer placeholder={t.demo.answerPlaceholder} listener={listener} onSend={onAnswer} />
               )}
             </div>
           )}
@@ -1346,7 +1337,6 @@ function TaskTalk({ item, listener, act, tell }: { item: Item; listener: string;
   const key = JSON.stringify(item.question ?? null);
   const questions = useMemo(() => (asking && item.question ? [item.question] : []), [asking, key]);
   const answer = usePicks(questions);
-  const review = item.state === 'waiting' && item.need === 'review';
   return (
     <>
       <Conversation item={item} questions={asking && <Questions questions={questions} heading={t.questionFromWorker} {...answer} />} />
@@ -1363,12 +1353,19 @@ function TaskTalk({ item, listener, act, tell }: { item: Item; listener: string;
           }
         />
       ) : (
-        (item.state === 'working' || item.state === 'inPr' || review || item.finishing) && (
-          <Composer key={`${item.state}:${item.need ?? ''}`} placeholder={review ? t.compose.review : t.compose.working} listener={listener} onSend={tell(review ? 'feedback' : 'note')} />
-        )
+        // a demo's field sits beside it
+        !(item.state === 'waiting' && item.need === 'demo') && <OwnerComposer item={item} listener={listener} tell={tell} />
       )}
     </>
   );
+}
+
+/** The card's one field for the owner's words (`ownerField`): one Send for whatever they write to its agent. */
+function OwnerComposer({ item, listener, tell }: { item: Item; listener: string; tell: (field: Field) => (text: string, images?: string[]) => Promise<void> }) {
+  const field = ownerField(item);
+  if (!field) return null;
+  const placeholder = { note: t.compose.working, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo, discuss: '', revise: t.compose.revise }[field];
+  return <Composer key={`${item.state}:${item.need ?? ''}:${field}`} placeholder={placeholder} listener={listener} onSend={tell(field)} />;
 }
 
 /** The options the owner picked for each question; they start over when the questions change. */

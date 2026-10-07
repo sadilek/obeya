@@ -430,6 +430,18 @@ describe('what the owner says or types with a card open', () => {
     await heard;
   });
 
+  test('words typed under a demo whose report asks a question reach the Koordinator as answer, feedback or both', async () => {
+    const a = open('demo');
+    const k = commander();
+    const heard = k.hear('Ryan, und kürz das Intro', { card: a.id }, [], { typed: true, field: 'demo' });
+    await settle();
+    const brief = runtime.last.inbox.at(-1)!;
+    expect(brief).toContain("The owner typed into the one field under the card's demo, for the answer to the question in its report, feedback on the work, or both");
+    runtime.last.call('reply', { confirm: 'Gut.' });
+    runtime.last.emit({ type: 'idle' });
+    await heard;
+  });
+
   for (const state of ['working', 'question', 'demo', 'review', 'inPr', 'finishing'])
     for (const typed of [false, true])
       test(`on a card ${state}, ${typed ? 'typed' : 'spoken'}: a note goes out at once in the owner's words, Obeya's commands wait for undo`, async () => {

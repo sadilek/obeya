@@ -248,6 +248,10 @@ An idea is thought through on its card before anything is planned; no worker run
    ended it to pause for the restart. Before (2026-10-07), the card kept its badge while the
    worker reworked the demo the answer asked for, and a worker that paused for a restart there
    was never resumed: the card waited with a demo its worker had not finished.
+   A card has one field for the owner's words with one Send (`ownerField` in `src/ui/talk.ts`):
+   under such a demo it takes the answer and feedback together, and the Koordinator sorts them out
+   as it does spoken words: words that only answer are the answer, words that ask for a change are
+   feedback, the answer among them.
 4. Where work lands through pull requests, approval puts the card `in PR`: its worker opens
    the PR and Obeya carries it through the merge, which it does itself. Review comments, failed checks and conflicts go to the
    worker; only what needs judgement — a review comment that questions a decision, a conflict with

@@ -1,7 +1,8 @@
 // A card's conversation, from its events.
 
 import { LANGUAGES } from '../core/locale';
-import { type CardEvent, formatQuestion, type Question } from '../core/types';
+import { type CardEvent, formatQuestion, type Item, type Question } from '../core/types';
+import type { Field } from './api';
 
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
 export interface Turn {
@@ -162,4 +163,15 @@ export function parseQuestion(text: string): { text: string; options: string[] }
       .replace(/ \((Mehrfachauswahl|multiple choice)\)$/, ''),
     options: lines.slice(n).map((l) => l.slice(2)),
   };
+}
+
+/**
+ * The one field a card has for the owner's words, by its state: the answer to its agent's question,
+ * a note while the agent works, feedback on work waiting for review; under a demo whose report asks
+ * a question, the answer and feedback together, sorted out by the Koordinator as spoken words are.
+ * Null where no agent hears it. Ideas and proposals have fields of their own.
+ */
+export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'finishing'>): Field | null {
+  if (item.state === 'waiting') return item.need === 'question' ? 'answer' : item.need === 'demo' && item.question ? 'demo' : 'feedback';
+  return item.state === 'working' || item.state === 'inPr' || item.finishing ? 'note' : null;
 }

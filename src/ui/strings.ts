@@ -129,6 +129,7 @@ const de = {
     working: 'Hinweis an den Agenten – er arbeitet weiter',
     question: 'Eigene Antwort',
     review: 'Feedback – der Agent arbeitet daran weiter',
+    demo: 'Antwort oder Feedback an den Agenten',
     revise: 'Was soll anders werden? – oder halte die Leertaste',
   },
   questionFromWorker: 'Frage des Agenten',
@@ -307,7 +308,7 @@ const de = {
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { question: 'Offene Frage', answerPlaceholder: 'Antwort an den Agenten', yourAnswer: 'Deine Antwort', kept: 'Die Demo bleibt hier abrufbar.',
+  demo: { question: 'Offene Frage', yourAnswer: 'Deine Antwort', kept: 'Die Demo bleibt hier abrufbar.',
     artifact: 'HTML-Artefakt des Agenten',
     play: 'Abspielen',
   },
@@ -870,6 +871,7 @@ const en: Strings = {
     working: 'A note to the agent – it keeps working',
     question: 'Your own answer',
     review: 'Feedback – the agent goes on working on it',
+    demo: 'Answer or feedback to the agent',
     revise: 'What should change? – or hold the space bar',
   },
   questionFromWorker: 'The agent asks',
@@ -1040,7 +1042,7 @@ const en: Strings = {
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { question: 'Open question', answerPlaceholder: 'Answer to the agent', yourAnswer: 'Your answer', kept: 'The demo stays available here.',
+  demo: { question: 'Open question', yourAnswer: 'Your answer', kept: 'The demo stays available here.',
     artifact: 'The agent’s HTML artifact',
     play: 'Play',
   },

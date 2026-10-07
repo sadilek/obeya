@@ -88,11 +88,12 @@ export interface Focus {
 }
 
 /** The field on the open card a typed command came from. */
-export type Field = 'note' | 'answer' | 'feedback' | 'discuss' | 'revise';
+export type Field = 'note' | 'answer' | 'feedback' | 'demo' | 'discuss' | 'revise';
 const FIELDS: Record<Field, string> = {
   note: "the field for a note to the card's agent",
   answer: "the field for an answer to the card's open question",
   feedback: "the field for feedback on the card's work",
+  demo: "the one field under the card's demo, for the answer to the question in its report, feedback on the work, or both",
   discuss: "the idea's conversation",
   revise: 'the field for what should change in the proposal',
 };
@@ -872,7 +873,7 @@ All three take confirm: one short ${LANGUAGE_NAMES[language]} sentence (two at m
 ${CONFIRM[language].words}
 Questions about Obeya's configuration (which canvases and repositories it serves, adapters, clones, port) you answer with reply after reading it with config; a change to it the owner asks for is configure.
 When the owner wants something kept for all future work ("Merk dir …", "ab jetzt immer …", "nie wieder …"), that is remember, not a note to the open card's agent. Decide where it goes: only a rule on how the agents work with the owner through Obeya, whatever the repository, is one of the owner's rules (no repos); anything about a repository (named, "hier", "in diesem Repo", or about its code, UI, wording, tests, tools or product) goes into that repository's CLAUDE.md: pass repos. Leave the place out of the rule's text, and say in confirm where it went (for a CLAUDE.md: into the repository's card ${MESSAGES[language].quote(MESSAGES[language].claudeMd.title)}, which writes it into the file).
-When an agent works on the open card (working, in PR, waiting, waiting for review, or finishing what remains), what the owner says is, in doubt, for that agent: note, or answer when the card has an open question, or feedback when it waits for review. Pass their words as they are; the agent learns whether they were spoken. Talking to the agent ("mach …", "kannst du …", "warum hast du …"), a remark on the work, a question about it ("ist sichergestellt, dass …", "was passiert, wenn …"), a bare answer: all for the agent, which knows its work; never look_up. Only what clearly asks something of Obeya goes elsewhere: approve, stop, start, a follow-up or new card, a new idea, remember, grouping cards, an action on another card, or a question to you about the canvas (reply or look_up).
+When an agent works on the open card (working, in PR, waiting, waiting for review, or finishing what remains), what the owner says is, in doubt, for that agent: note, or answer when the card has an open question, or feedback when it waits for review. A demo whose report asks a question waits for both: words that only answer it are answer (the demo goes on waiting for approval); words that ask for anything to change, the answer among them or not, are feedback, all of them, in one action. Pass their words as they are; the agent learns whether they were spoken. Talking to the agent ("mach …", "kannst du …", "warum hast du …"), a remark on the work, a question about it ("ist sichergestellt, dass …", "was passiert, wenn …"), a bare answer: all for the agent, which knows its work; never look_up. Only what clearly asks something of Obeya goes elsewhere: approve, stop, start, a follow-up or new card, a new idea, remember, grouping cards, an action on another card, or a question to you about the canvas (reply or look_up).
 When the open card is a proposal, what the owner says about it (what should be added, dropped, decided or put differently, or their thoughts on it) is revise with their words, unless they clearly accept or dismiss it or ask for something else.
 When the open card is an idea, what the owner says is part of its discussion: act with discuss and their words, unless they clearly ask for an action on it (build, plan_doc, prototype, park, drop). "Mach, was du vorschlägst" on an idea takes the step its agent would take next, as its line says; when that is answering, discuss with its own answers. Wanting to think about something, rather than have it done, is new_idea.
 `.trim();
