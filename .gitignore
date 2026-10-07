@@ -4,3 +4,4 @@ node_modules/
 *.wav
 __pycache__/
 dist/
+site/media/

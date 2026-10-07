@@ -49,11 +49,21 @@ services are off the table for now (see Background).
   Prototype A's canvas the camera flew through while scrolling is gone again: the owner found
   the scrolling odd. Inter and the three characters of 大部屋 (Noto Serif JP) are served from
   `site/fonts/` with their OFL licences; logo and wordmark are copies from `src/ui/logo/`. The
-  screenshots are B's, of the German interface, and the film is a still until W9. The prototype
-  cards A, B and C can go.
+  screenshots are B's, of the German interface. The film is a `<video>` with native controls, a
+  poster (`site/img/hero-poster.jpg`) and English captions, nothing loaded before a click
+  (`preload="none"`). The prototype cards A, B and C can go.
+- *Hero video* (W9): a real run, recorded with Obeya's demo pipeline on a scratch canvas with a
+  small tip calculator (Tipjar): an idea by voice, a real worker building it and recording its
+  demo, the approval landing it on main. Its script, stage and the Tipjar app live in
+  `~/demos/obeya-hero/` on the owner's machine, not in git. The video and its captions are assets
+  `hero.mp4` and `hero.vtt` of the GitHub release `site-media`; the Pages workflow fetches them into
+  `site/media/` before it publishes, so obeya.si serves them itself (no third party, no tracking)
+  and git holds no video. Opened from the file, the site shows the poster without the video.
 - *Publishing*: the workflow `.github/workflows/pages.yml` publishes `site/` to GitHub Pages on
   every push to `main` on GitHub that touches `site/` (or the workflow), and on demand from the
-  Actions tab. Pages serves a branch only from `/` or `/docs`, hence the workflow. The repository
+  Actions tab. Pages serves a branch only from `/` or `/docs`, hence the workflow. It needs the
+  release `site-media` with the hero video (step 4 below); after the video is replaced it is run
+  again by hand. The repository
   is public, so the free plan has Pages. Not live yet: GitHub's `main` lags the local one until it
   is pushed, and the owner's steps below are open. Today obeya.si and www.obeya.si point to the
   registrar's parking page (2.57.91.91; registrar OpusDNS, nameservers `aurora` and
@@ -81,13 +91,17 @@ services are off the table for now (see Background).
    | `@`   | AAAA  | `2606:50c0:8003::153`  |
    | `www` | CNAME | `sadilek.github.io.`   |
 
-4. **Push `main`** to GitHub. The workflow runs and publishes to sadilek.github.io/obeya until the
+4. **Upload the hero video** as a release that holds only it (the workflow fails without it):
+   `gh release create site-media hero.mp4 hero.vtt --title "Site media" --notes "Video for obeya.si, fetched by the Pages workflow." --latest=false`,
+   from the directory with the rendered video and captions. A new render replaces them with
+   `gh release upload site-media hero.mp4 hero.vtt --clobber`, then `gh workflow run pages.yml`.
+5. **Push `main`** to GitHub. The workflow runs and publishes to sadilek.github.io/obeya until the
    domain is set (the site uses relative paths, so it works there too).
-5. **Custom domain.** Settings → Pages → Custom domain: `obeya.si` → Save. GitHub checks the DNS
+6. **Custom domain.** Settings → Pages → Custom domain: `obeya.si` → Save. GitHub checks the DNS
    (minutes to an hour after step 3) and then issues the certificate; once it has, tick
    *Enforce HTTPS*. www.obeya.si then redirects to obeya.si. The domain lives in this setting,
    not in a `CNAME` file, which workflow deployments ignore.
-6. **Check:** `dig +short obeya.si` shows the four addresses above, https://obeya.si shows the
+7. **Check:** `dig +short obeya.si` shows the four addresses above, https://obeya.si shows the
    site, http://obeya.si redirects to it.
 
 ## Design
@@ -96,7 +110,8 @@ services are off the table for now (see Background).
 
 - **Static, in `site/`** of this repository, served by GitHub Pages under obeya.si. Plain HTML,
   CSS, no JavaScript, no framework and no build step. The real logo from `src/ui/logo/`
-  and Inter, served from `site/` rather than Google Fonts. Videos are placeholders until W9.
+  and Inter, served from `site/` rather than Google Fonts. The hero video comes from a release
+  asset at publishing time, not from git.
 - **English.** The site speaks English from the start, whatever the interface does.
 - **Content:**
   1. One sentence and one picture (the canvas, or a video).
@@ -105,7 +120,7 @@ services are off the table for now (see Background).
   4. Where the name comes from: the big room at Toyota, and why agents need one.
   5. Obeya is built with Obeya.
   6. Getting started: requirements, commands (later a download), GitHub, the design.
-  7. Later: the hero video is a real demo out of Obeya.
+  7. The hero video is a real demo out of Obeya.
 - **Variant B, film first.** Calm and editorial: the video on top, below it the pillars with
   screenshots. The site (W3) starts from prototype B's page and takes over ideas from the
   prototype C (the principles as cards on a wall, the big room, the four steps as one card
@@ -168,7 +183,7 @@ needs the English interface (W5, W6) and the site (W3).
   the first canvas; data in `~/.obeya` as today, starting from the checkout stays. Open there: what
   the certificates cost, and whether the Python sidecars are bundled or fetched through uv on first
   use. Written after W7.
-- [ ] **W9:** Hero video for obeya.si. In English, 1½–2 minutes, on a scratch canvas: an idea by
+- [x] **W9:** Hero video for obeya.si. In English, 1½–2 minutes, on a scratch canvas: an idea by
   voice, the agent at work, its demo, the approval. Rendered with Obeya's own demo pipeline, not in
   git: hosted where the site can embed it (see Open questions). Replaces the placeholder in the
   site.
@@ -177,16 +192,12 @@ needs the English interface (W5, W6) and the site (W3).
 
 - **Ideas from A on phones.** Camera flights and unfolding cards taken over from A fight touch
   scrolling and screen readers; on a phone and with reduced motion the site stays plain B.
-- **B depends on the video.** Until the hero video (W9) exists, the site shows a still with a
-  placeholder.
 - **Voice on Windows** has no machine here; one run in a VM or on a colleague's machine is the
   minimum before the site says it works there.
 
 ## Open questions
 
-- Where the hero video lives (W9): a GitHub release asset is served as a download, not reliably
-  as an embeddable video; Pages takes files up to 100 MB but they would be in git. Decided with
-  W9, once the video exists.
+- None at the moment.
 
 ## Background: Obeya as a business (parked)
 

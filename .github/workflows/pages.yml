@@ -1,6 +1,9 @@
 # Publishes site/ to GitHub Pages under obeya.si. Pages serves a branch only from / or /docs,
 # so the site goes out through this workflow; the custom domain is set in the repository's
-# Pages settings (a CNAME file is ignored for workflow deployments).
+# Pages settings (a CNAME file is ignored for workflow deployments). The hero video and its
+# captions stay out of git: they are assets of the release `site-media`, fetched into site/media/
+# before the upload. After replacing them, run this workflow again (Actions tab, or
+# `gh workflow run pages.yml`).
 name: Pages
 
 on:
@@ -26,6 +29,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      - name: Fetch the hero video
+        run: gh release download site-media --pattern 'hero.*' --dir site/media
+        env:
+          GH_TOKEN: ${{ github.token }}
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
