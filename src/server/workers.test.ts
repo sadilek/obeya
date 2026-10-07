@@ -9,7 +9,7 @@ import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { DEMO_SKILL, OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
-import { FakeRuntime, gitRepo, identify } from './testing';
+import { FakeRuntime, gitRepo, identify, until } from './testing';
 import type { Reply } from './advisor';
 import { Restarter } from './self-update';
 import { Workers } from './workers';
@@ -963,7 +963,7 @@ describe('approving directly onto main where work goes out as a pull request', (
     session.call('ready_for_review', { summary: 'S' });
     expect(board.item(c.id)!.statusLine).toBe('Landet auf main');
     session.emit({ type: 'idle' });
-    expect(state(c.id)).toBe('live');
+    await until(() => state(c.id) === 'live');
     expect(git(origin, 'log', '--format=%s', 'main').split('\n')).toEqual(['A nach B', 'B', 'init']);
     expect(board.events(c.id).at(-1)).toMatchObject({ author: 'obeya', text: 'Nach der Freigabe direkt auf main gepusht.' });
     expect(board.item(c.id)!.pr).toBeUndefined();
@@ -1169,7 +1169,7 @@ describe('a worktree per card', () => {
     expect(sb.call('ready_for_review', { summary: 'Konflikt gelöst' })).toContain('lands your work');
     expect(state(b.id)).toBe('working');
     sb.emit({ type: 'idle' });
-    expect(state(b.id)).toBe('live');
+    await until(() => state(b.id) === 'live');
     expect(git(main, 'show', 'HEAD:same.ts')).toBe('A and B');
     expect(board.events(b.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: 'Nach der Freigabe auf main gelandet.' });
     expect(board.row(b.id).approved_at).toBeNull();
@@ -1193,7 +1193,7 @@ describe('a worktree per card', () => {
     sc.call('ready_for_review', { summary: 'S' });
     expect(state(c.id)).toBe('working');
     sc.emit({ type: 'idle' });
-    expect(state(c.id)).toBe('waiting:review');
+    await until(() => state(c.id) === 'waiting:review');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'error', code: 'landCheckout' });
     expect(board.row(c.id).approved_at).toBeNull();
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CardAction, ClientMessage, ServerMessage } from '../core/types';
@@ -9,7 +9,8 @@ import type { Command } from './commands';
 import { Store } from './db';
 import { Restarter } from './self-update';
 import { serve } from './server';
-import { FakeRuntime, gitRepo, noForge } from './testing';
+import { FakeRuntime, gitRepo, identify, noForge, until } from './testing';
+import { git } from './workspaces';
 import type { Transcript } from './voice';
 
 let dir: string;
@@ -56,14 +57,6 @@ afterEach(() => {
 });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/**
- * Waits until `done` holds. A request reaches the server only after a round trip, which on a
- * loaded machine (other workers' test runs) takes longer than any fixed pause; a test that went
- * on too early failed and left its request open, and stopping the server reset it in the next test.
- */
-const until = async (done: () => unknown, ms = 3000) => {
-  for (const end = Date.now() + ms; !(await done()); await sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
-};
 const card = () => board.create({ title: 'A', x: 0, y: 0 });
 const post = (path: string, body: string) => fetch(new URL(path, server.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body });
 const codeOf = async (res: Promise<Response>) => ((await (await res).json()) as { code: string }).code;
@@ -559,4 +552,55 @@ describe('cards that need the owner', () => {
     expect(counts()[2]).toEqual({ main: 0, other: 1 });
     ws.close();
   });
+});
+
+describe('landing approved work', () => {
+  test('a slow push onto main leaves the server answering, and two approvals at once land one after the other', async () => {
+    // a repository whose origin takes its time with every push
+    const repo = join(dir, 'pushed');
+    gitRepo(repo);
+    const origin = join(dir, 'origin.git');
+    git(dir, 'clone', '--quiet', '--bare', repo, origin);
+    git(repo, 'remote', 'add', 'origin', origin);
+    git(repo, 'fetch', '--quiet', 'origin');
+    const pushing = join(dir, 'pushing');
+    writeFileSync(join(origin, 'hooks/pre-receive'), `#!/bin/sh\ntouch '${pushing}'\nsleep 1\n`, { mode: 0o755 });
+    const adapter = join(dir, 'adapter.ts');
+    writeFileSync(adapter, "export default { name: 'pushed', land: 'pr', direct: true, workspaces: 'clones' };\n");
+    const pushed = new CanvasRuntime({ repos: [{ path: repo, adapter, clones: 2 }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    server.stop(true);
+    server = serve([canvas, pushed], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0);
+    const handedOver = (title: string) => {
+      const c = pushed.board.create({ title, x: 0, y: 0 });
+      pushed.repoOf(c.id).workers.start(c.id);
+      const session = runtime.last;
+      const clone = pushed.board.row(c.id).workspace!;
+      identify(clone);
+      writeFileSync(join(clone, `${title}.ts`), title);
+      git(clone, 'add', '.');
+      git(clone, 'commit', '--quiet', '-m', title);
+      session.call('ready_for_review', { summary: 'S' });
+      session.emit({ type: 'idle' });
+      return c;
+    };
+    const a = handedOver('A');
+    const b = handedOver('B');
+    const approve = (id: string) => post(`/api/c/${pushed.board.canvas.id}/cards/${id}/act`, JSON.stringify({ action: 'approve', direct: true }));
+
+    let answered = 0;
+    const landings = [approve(a.id), approve(b.id)].map((r) => r.then((res) => (answered++, res)));
+    // while git pushes, the server answers other requests, on this canvas and the others
+    await until(() => existsSync(pushing));
+    expect((await fetch(new URL(`/api/c/${pushed.board.canvas.id}/canvas`, server.url))).status).toBe(200);
+    expect((await fetch(new URL(api('/canvas'), server.url))).status).toBe(200);
+    expect(answered).toBe(0);
+    // approving again while it lands is refused
+    expect(await codeOf(approve(a.id))).toBe('notReady');
+
+    for (const res of await Promise.all(landings)) expect(res.ok).toBe(true);
+    expect(pushed.board.item(a.id)!.state).toBe('live');
+    expect(pushed.board.item(b.id)!.state).toBe('live');
+    expect(git(origin, 'log', '--format=%s', 'main').split('\n').sort()).toEqual(['A', 'B', 'init']);
+    pushed.shutdown();
+  }, 15_000);
 });

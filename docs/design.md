@@ -532,6 +532,13 @@ the owner's language (`src/core/locale.ts`).
   and plan docs the card adds are registered, as after a merge. The worker hears that its work is
   on main, as after a landing. The adapter's checks run before the handover as always; Obeya does
   not watch the CI on the default branch.
+  Landing runs git without blocking the server (`gitAsync`): fetch, rebase and push take seconds
+  over the network, in which the page, the workers and the other canvases go on being served
+  (before, the whole server stood still until the push was through). Landings of one repository
+  run one after the other, so two approvals at once do not race on its main; a card whose work is
+  landing refuses another approval (`notReady`), and a restart of Obeya waits for it like for a
+  worker in the middle of a turn. The approval's answer still waits for the
+  landing, and its refusals (`landPush`, say) come back as before.
 - **PR loop** — on approval (unless "Direkt auf main", see Landing) the worker hears that its work goes out as a pull request, opened the
   way the repository does it (its own skills and conventions, a description for readers who have
   not seen Obeya), and reports it with the tool `pr_opened(url)`. From then on it may push its

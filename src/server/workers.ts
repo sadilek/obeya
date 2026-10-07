@@ -141,6 +141,8 @@ const AFTER_LANDING =
 
 export class Workers {
   private live = new Map<string, Live>();
+  /** Cards whose approved work is landing: the server answers meanwhile, but approving again is refused, and a restart waits. */
+  private landing = new Set<string>();
   /** Bumped whenever a card's work starts, stops or ends: replies and tool calls from before are stale. */
   private generation = new Map<string, number>();
   /** The restart that waits for workers, if one does. */
@@ -246,7 +248,7 @@ export class Workers {
   /** `direct`: the work goes onto the default branch at once instead of into a pull request, where the adapter allows it. */
   async approve(cardId: string, { direct = false }: { direct?: boolean } = {}) {
     const card = this.card(cardId);
-    if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo'))) throw new BadRequest('notReady', 'the card is not ready for review');
+    if (!(card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) || this.landing.has(cardId)) throw new BadRequest('notReady', 'the card is not ready for review');
     // where work lands on main anyway, approving it directly is approving it
     if (direct && this.o.adapter.land === 'pr' && !this.o.adapter.direct)
       throw new BadRequest('noDirect', 'this repository lands approved work only through a pull request; its adapter does not allow pushing it directly');
@@ -281,13 +283,23 @@ export class Workers {
    * handover lands without the owner approving again, the same way. What blocks the Obeya checkout,
    * or a push turned away, stays with the owner and needs a new approval.
    */
-  private land(cardId: string, by: 'owner' | 'obeya') {
+  private async land(cardId: string, by: 'owner' | 'obeya') {
+    if (this.landing.has(cardId)) return;
+    this.landing.add(cardId);
+    try {
+      await this.landNow(cardId, by);
+    } finally {
+      this.landing.delete(cardId);
+    }
+  }
+
+  private async landNow(cardId: string, by: 'owner' | 'obeya') {
     const row = this.o.board.row(cardId);
     // only a direct approval is held where work goes out as a pull request
     const direct = this.o.adapter.land === 'pr';
     // read before landing: the landed branch adds nothing against main
     const added = this.planDocsAdded(cardId);
-    const result = direct ? this.o.workspaces.pushToMain(cardId) : this.o.workspaces.landOnMain(cardId, row.branch!);
+    const result = await (direct ? this.o.workspaces.pushToMain(cardId) : this.o.workspaces.landOnMain(cardId, row.branch!));
     if ('code' in result && !result.worker) {
       this.o.board.work(cardId, { approved_at: null });
       throw new BadRequest(result.code, result.detail);
@@ -517,9 +529,9 @@ export class Workers {
     return this.busyCards().length > 0;
   }
 
-  /** The cards whose worker is busy, as `busy` means it. */
+  /** The cards whose worker is busy, as `busy` means it, and those whose work is landing: a restart would cut off git midway. */
   busyCards(): string[] {
-    return [...this.live].filter(([, l]) => l.busy).map(([id]) => id);
+    return [...new Set([...[...this.live].filter(([, l]) => l.busy).map(([id]) => id), ...this.landing])];
   }
 
   /**
@@ -659,12 +671,12 @@ export class Workers {
     }
   }
 
-  private landApproved(cardId: string) {
+  private async landApproved(cardId: string) {
     try {
-      this.land(cardId, 'obeya');
+      await this.land(cardId, 'obeya');
     } catch (e) {
       // the Obeya checkout is in the way: the card waits for the owner, who approves again
-      if (!(e instanceof BadRequest)) throw e;
+      if (!(e instanceof BadRequest)) return this.o.board.log(cardId, 'error', 'obeya', e instanceof Error ? e.message : String(e));
       this.o.board.work(cardId, { state: 'waiting', need: this.o.board.row(cardId).demo ? 'demo' : 'review', status_line: null });
       this.o.board.log(cardId, 'error', 'obeya', e.message, e.code);
     }
@@ -692,7 +704,7 @@ export class Workers {
     }
     if (handedOver) {
       // work the owner approved already lands once its worker handed over what stood in the way
-      if (card.state === 'working' && row.approved_at) this.landApproved(cardId);
+      if (card.state === 'working' && row.approved_at) void this.landApproved(cardId);
       return;
     }
     const landed = row.landed ? (JSON.parse(row.landed) as LandedState) : null;

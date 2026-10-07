@@ -99,3 +99,12 @@ export function removeTemplates() {
 export function identify(repo: string) {
   appendFileSync(join(repo, '.git/config'), '[user]\n\temail = t@example.com\n\tname = T\n');
 }
+
+/**
+ * Waits until `done` holds. A request reaches the server only after a round trip, which on a
+ * loaded machine (other workers' test runs) takes longer than any fixed pause; a test that went
+ * on too early failed and left its request open, and stopping the server reset it in the next test.
+ */
+export const until = async (done: () => unknown, ms = 3000) => {
+  for (const end = Date.now() + ms; !(await done()); await Bun.sleep(2)) if (Date.now() > end) throw new Error(`timed out after ${ms} ms: ${done}`);
+};

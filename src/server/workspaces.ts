@@ -52,19 +52,41 @@ export function git(cwd: string, ...args: string[]): string {
 }
 
 /**
+ * `git` without blocking the server while it runs: landing approved work fetches, rebases and
+ * pushes, over the network seconds in which the server would answer nothing else.
+ */
+export async function gitAsync(cwd: string, ...args: string[]): Promise<string> {
+  const p = Bun.spawn([GIT, '-C', cwd, ...args], { stdout: 'pipe', stderr: 'pipe' });
+  const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+  if (code !== 0) throw new WorkspaceError(`git ${args.join(' ')} in ${cwd}: ${err.trim()}`);
+  return out.trim();
+}
+
+/** The landing under way per Obeya checkout: landings of one repository run one after the other. */
+const landings = new Map<string, Promise<unknown>>();
+
+function oneAtATime<T>(key: string, f: () => Promise<T>): Promise<T> {
+  const next = (landings.get(key) ?? Promise.resolve()).then(f);
+  const done = next.catch(() => {});
+  landings.set(key, done);
+  void done.then(() => landings.get(key) === done && landings.delete(key));
+  return next;
+}
+
+/**
  * Puts the branch's whole change onto `upstream` as one commit, if it merges cleanly there; the
  * commits' messages are kept in order, their trailers once at the end. Returns whether it did.
  */
-function squashOnto(ws: string, upstream: string): boolean {
+async function squashOnto(ws: string, upstream: string): Promise<boolean> {
   let tree: string;
   try {
     // exits non-zero on a conflict
-    tree = git(ws, 'merge-tree', '--write-tree', upstream, 'HEAD').split('\n')[0]!;
+    tree = (await gitAsync(ws, 'merge-tree', '--write-tree', upstream, 'HEAD')).split('\n')[0]!;
   } catch {
     return false;
   }
   const trailers: string[] = [];
-  const bodies = git(ws, 'log', '--reverse', '--format=%B%x00', `${upstream}..HEAD`)
+  const bodies = (await gitAsync(ws, 'log', '--reverse', '--format=%B%x00', `${upstream}..HEAD`))
     .split('\0')
     .map((m) =>
       m
@@ -75,8 +97,8 @@ function squashOnto(ws: string, upstream: string): boolean {
     )
     .filter(Boolean);
   const message = [...bodies, [...new Set(trailers)].join('\n')].filter(Boolean).join('\n\n');
-  const commit = git(ws, 'commit-tree', tree, '-p', git(ws, 'rev-parse', upstream), '-m', message);
-  git(ws, 'reset', '--quiet', '--hard', commit);
+  const commit = await gitAsync(ws, 'commit-tree', tree, '-p', await gitAsync(ws, 'rev-parse', upstream), '-m', message);
+  await gitAsync(ws, 'reset', '--quiet', '--hard', commit);
   return true;
 }
 
@@ -84,15 +106,15 @@ function squashOnto(ws: string, upstream: string): boolean {
  * Rebases the workspace's branch onto `upstream`, or squashes it there when only the replay of its
  * commits conflicts. Returns the conflict if neither works, the branch then as it was.
  */
-function rebaseOnto(ws: string, upstream: string, base: string): LandProblem | null {
+async function rebaseOnto(ws: string, upstream: string, base: string): Promise<LandProblem | null> {
   try {
-    git(ws, 'rebase', '--quiet', upstream);
+    await gitAsync(ws, 'rebase', '--quiet', upstream);
     return null;
   } catch (e) {
-    const files = git(ws, 'diff', '--name-only', '--diff-filter=U').split('\n').filter(Boolean);
-    git(ws, 'rebase', '--abort');
+    const files = (await gitAsync(ws, 'diff', '--name-only', '--diff-filter=U')).split('\n').filter(Boolean);
+    await gitAsync(ws, 'rebase', '--abort');
     // replayed one by one, the commits may conflict where the change as a whole does not
-    if (squashOnto(ws, upstream)) return null;
+    if (await squashOnto(ws, upstream)) return null;
     return {
       code: 'landConflict',
       worker: true,
@@ -229,30 +251,34 @@ export class Workspaces {
    * (`worker` problems are the worker's to fix, the others stop at the Obeya checkout), or how
    * the default branch moved.
    */
-  landOnMain(cardId: string, branch: string): LandProblem | Landed {
+  landOnMain(cardId: string, branch: string): Promise<LandProblem | Landed> {
+    return oneAtATime(this.o.repoPath, () => this.land(cardId, branch));
+  }
+
+  private async land(cardId: string, branch: string): Promise<LandProblem | Landed> {
     const ws = this.leasedBy(cardId);
     if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
     let base = 'main';
     try {
-      if (git(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
+      if (await gitAsync(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
       base = defaultBranch(this.o.mode === 'worktrees' ? this.o.repoPath : ws);
       const upstream = this.o.mode === 'worktrees' ? base : `origin/${base}`;
-      if (this.o.mode === 'clones') git(ws, 'fetch', '--quiet', 'origin');
-      const conflict = rebaseOnto(ws, upstream, base);
+      if (this.o.mode === 'clones') await gitAsync(ws, 'fetch', '--quiet', 'origin');
+      const conflict = await rebaseOnto(ws, upstream, base);
       if (conflict) return conflict;
-      if (git(ws, 'rev-list', '--count', `${upstream}..HEAD`) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
-      if (git(this.o.repoPath, 'branch', '--show-current') !== base) return { code: 'landCheckout', worker: false, detail: `the Obeya checkout is not on ${base}` };
+      if ((await gitAsync(ws, 'rev-list', '--count', `${upstream}..HEAD`)) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
+      if ((await gitAsync(this.o.repoPath, 'branch', '--show-current')) !== base) return { code: 'landCheckout', worker: false, detail: `the Obeya checkout is not on ${base}` };
     } catch (e) {
       return { code: 'land', worker: false, detail: e instanceof Error ? e.message : String(e) };
     }
     try {
-      const from = git(this.o.repoPath, 'rev-parse', 'HEAD');
-      if (this.o.mode === 'worktrees') git(this.o.repoPath, 'merge', '--ff-only', '--quiet', branch);
+      const from = await gitAsync(this.o.repoPath, 'rev-parse', 'HEAD');
+      if (this.o.mode === 'worktrees') await gitAsync(this.o.repoPath, 'merge', '--ff-only', '--quiet', branch);
       else {
-        git(this.o.repoPath, 'fetch', '--quiet', ws, branch);
-        git(this.o.repoPath, 'merge', '--ff-only', '--quiet', 'FETCH_HEAD');
+        await gitAsync(this.o.repoPath, 'fetch', '--quiet', ws, branch);
+        await gitAsync(this.o.repoPath, 'merge', '--ff-only', '--quiet', 'FETCH_HEAD');
       }
-      return { from, to: git(this.o.repoPath, 'rev-parse', 'HEAD') };
+      return { from, to: await gitAsync(this.o.repoPath, 'rev-parse', 'HEAD') };
     } catch (e) {
       // typically local changes in the Obeya checkout that the fast-forward would overwrite
       return { code: 'landMerge', worker: false, detail: e instanceof Error ? e.message : String(e) };
@@ -265,27 +291,31 @@ export class Workspaces {
    * push is turned away because the default branch moved meanwhile, it fetches, rebases and pushes
    * once more. The Obeya checkout is left as it is; the workspace stays with the card.
    */
-  pushToMain(cardId: string): LandProblem | Landed {
+  pushToMain(cardId: string): Promise<LandProblem | Landed> {
+    return oneAtATime(this.o.repoPath, () => this.push(cardId));
+  }
+
+  private async push(cardId: string): Promise<LandProblem | Landed> {
     const ws = this.leasedBy(cardId);
     if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
     for (let attempt = 0; ; attempt++) {
       let base: string;
       let from: string;
       try {
-        if (git(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
+        if (await gitAsync(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
         base = defaultBranch(ws);
         const upstream = `origin/${base}`;
-        git(ws, 'fetch', '--quiet', 'origin');
-        const conflict = rebaseOnto(ws, upstream, base);
+        await gitAsync(ws, 'fetch', '--quiet', 'origin');
+        const conflict = await rebaseOnto(ws, upstream, base);
         if (conflict) return conflict;
-        if (git(ws, 'rev-list', '--count', `${upstream}..HEAD`) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
-        from = git(ws, 'rev-parse', upstream);
+        if ((await gitAsync(ws, 'rev-list', '--count', `${upstream}..HEAD`)) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
+        from = await gitAsync(ws, 'rev-parse', upstream);
       } catch (e) {
         return { code: 'landPush', worker: false, detail: e instanceof Error ? e.message : String(e) };
       }
       try {
-        git(ws, 'push', '--quiet', 'origin', `HEAD:refs/heads/${base}`);
-        return { from, to: git(ws, 'rev-parse', 'HEAD') };
+        await gitAsync(ws, 'push', '--quiet', 'origin', `HEAD:refs/heads/${base}`);
+        return { from, to: await gitAsync(ws, 'rev-parse', 'HEAD') };
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
         // the default branch moved since the fetch, or while pushing; anything else (a protected branch, say) is the owner's
