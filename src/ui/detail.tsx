@@ -1,6 +1,6 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { buildableOn, type CardAction, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
 import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
@@ -215,7 +215,7 @@ export function Detail(p: Props) {
 
       {item.state === 'proposal' && (
         <ProposalView item={item} from={p.from} act={act} listener={listener} onRevise={tell('revise')}>
-          {editable ? <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} /> : <Body md={item.body} />}
+          {editable ? <ManualFields item={item} repos={p.repos} onEdit={p.onEdit} grow /> : <Body md={item.body} />}
         </ProposalView>
       )}
 
@@ -1232,17 +1232,14 @@ function PlanSource({ file, onRead }: { file: string; onRead?: () => void }) {
 
 // ------------------------------------------------------------------ manual cards
 
-function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => void }) {
-  // a local draft: the server echo must not overwrite what is being typed
-  const [title, setTitle] = useState(item.title);
-  // one line of text that wraps: a long title shows in full instead of running out of the box
-  const ref = useRef<HTMLTextAreaElement>(null);
+/** Keeps a text box as tall as its text (within its CSS min- and max-height), on every change and when its width changes. */
+function useFitHeight(ref: RefObject<HTMLTextAreaElement | null>, text: string, on = true) {
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !on) return;
     const fit = () => {
       el.style.height = 'auto';
-      el.style.height = `${el.scrollHeight}px`;
+      el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
     };
     fit();
     // the panel unfolds from the card's width, and a narrower box needs more lines
@@ -1260,7 +1257,15 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
       ro.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [title]);
+  }, [text, on]);
+}
+
+function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => void }) {
+  // a local draft: the server echo must not overwrite what is being typed
+  const [title, setTitle] = useState(item.title);
+  // one line of text that wraps: a long title shows in full instead of running out of the box
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useFitHeight(ref, title);
   return (
     <textarea
       ref={ref}
@@ -1279,8 +1284,11 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
   );
 }
 
-function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; onEdit: (p: CardPatch) => void }) {
+function ManualFields({ item, repos, onEdit, grow }: { item: Item; repos: RepoRef[]; onEdit: (p: CardPatch) => void; grow?: boolean }) {
   const [body, setBody] = useState(item.body);
+  // a proposal's text shows in full as far as the screen allows, the panel growing with it
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useFitHeight(ref, body, grow);
   const [repo, setRepo] = useState(item.repo);
   const shots = useShotInput({ initial: item.images, onChange: (images) => onEdit({ images }) });
   return (
@@ -1308,6 +1316,7 @@ function ManualFields({ item, repos, onEdit }: { item: Item; repos: RepoRef[]; o
         <ShotStrip shots={shots} />
         <div className="c-field">
           <textarea
+            ref={ref}
             className="p-body"
             value={body}
             placeholder={t.bodyPlaceholder}

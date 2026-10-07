@@ -1131,7 +1131,8 @@ function panelRect(i: Item, inner: HTMLElement) {
   const pad = getComputedStyle(inner);
   const base = parseFloat(pad.paddingBottom);
   const need = (inner.firstElementChild as HTMLElement).offsetHeight + parseFloat(pad.paddingTop) + base;
-  const max = Math.min(demo ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
+  // a proposal grows with its text as far as the screen allows
+  const max = Math.min(i.state === 'proposal' ? Infinity : demo ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
   // the microphone sits over the bottom of a tall panel: the content gets room below it to scroll
   // up past the microphone, and the panel grows by that room where it can
   const mic = (document.getElementById('ptt')?.getBoundingClientRect().top ?? innerHeight) - MIC_GAP;
