@@ -357,10 +357,18 @@ is answered by the first words the worker said after it. Once no agent works on 
 question is open, no message is coming for the steps after the last one: they go where they
 happened, before the lines that came later. The agent's last words among them stand as its message
 (the closing words after a landing, say), a turn it ended without words as its steps, and what only
-Obeya or the Koordinator noted there goes. While the worker works, its latest step shows; the question the card waits on stands at the end with its options, and the answer field
-under it; a question a note took back stays, without options, „Durch deinen Hinweis erledigt“.
-Demo, pull request and buttons stay above it. A card that was an idea continues the idea's
-conversation in the same list.
+Obeya or the Koordinator noted there goes. While the worker works, its latest step shows; the question the card waits on (its own, or the one in its demo report) stands at the end with its options,
+and the card's one field under it; a question a note took back stays, without options, „Durch deinen Hinweis erledigt“.
+A card that was an idea continues the idea's conversation in the same list.
+
+Every card with a conversation is laid out the same way (`Split` and `Talk` in
+`src/ui/detail.tsx`): idea, proposal, and a task an agent worked on. What the card is about stands
+on the left (an idea's brief, a proposal's text, a task's demo with its chapters and sharing, its
+pull request, its text and branch), the conversation on the right with the questions it waits on
+at its end and the owner's one field with one Send under it, and the decisions (build, accept,
+approve, stop, archive) in a row below both. Before (2026-10-07) a task stacked demo, buttons,
+feedback field and conversation in one column, and a demo with a question had a field and a Send
+of its own inside the question, with „Freigeben“ between it and the feedback field.
 
 Obeya's messages to a worker say what happened — feedback, an answer, a note, a landing that
 failed, the landing — not step by step what to do: workers are full agents. Whether a demo is
@@ -1068,8 +1076,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   seconds are cut without a trace (the picture rarely changes in them), the rest falls into the white.
   The review table flags a scene with more than 5 s without narration.
   Obeya takes the chapter times from the captions and serves the video, poster and captions of
-  the card's demo (range requests). The card shows it with approve and feedback
-  beside the video; feedback asks for a new render. When the result is something to look at
+  the card's demo (range requests). The card shows it on the left, the
+  conversation with the field for feedback beside it and approve below both; feedback asks for a new render. When the result is something to look at
   rather than something that happens, the worker makes an HTML artifact instead (`kind: 'html'`):
   a directory with an `index.html` and the files it loads, handed over the same way. The
   card shows the page in a frame where the video would be (no chapters); Obeya serves any file of

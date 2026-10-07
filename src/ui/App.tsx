@@ -22,6 +22,7 @@ import { type Heard, PushToTalk, play, ToldList, usePushToTalk, useTold, type Wh
 import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_GAP, sheetBottom, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
+import { split } from './talk';
 
 export function App() {
   const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
@@ -1126,16 +1127,16 @@ function Canvas({
  */
 function panelRect(i: Item, inner: HTMLElement) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
-  // a demo gets the room of the mock's demo panel, and so does an idea's brief or a proposal beside its conversation
-  const demo = (i.state === 'waiting' && i.need === 'demo') || i.state === 'idea' || i.state === 'proposal';
-  const W = Math.min(demo ? 1120 : tall ? 980 : 900, innerWidth - 80);
+  // a card with a conversation beside what it is about (an idea, a proposal, a task an agent worked on) gets the room of the mock's demo panel
+  const wide = split(i);
+  const W = Math.min(wide ? 1120 : tall ? 980 : 900, innerWidth - 80);
   inner.style.width = `${W}px`;
   inner.style.paddingBottom = '';
   const pad = getComputedStyle(inner);
   const base = parseFloat(pad.paddingBottom);
   const need = (inner.firstElementChild as HTMLElement).offsetHeight + parseFloat(pad.paddingTop) + base;
   // a proposal grows with its text as far as the screen allows
-  const max = Math.min(i.state === 'proposal' ? Infinity : demo ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
+  const max = Math.min(i.state === 'proposal' ? Infinity : wide ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
   // the microphone sits over the bottom of a tall panel: the content gets room below it to scroll
   // up past the microphone, and the panel grows by that room where it can
   const mic = (document.getElementById('ptt')?.getBoundingClientRect().top ?? innerHeight) - MIC_GAP;

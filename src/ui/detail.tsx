@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
-import { buildableOn, type CardAction, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type Question, type RepoRef } from '../core/types';
+import { buildableOn, type CardAction, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type PullRequest, type Question, type RepoRef } from '../core/types';
 import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
@@ -10,7 +10,7 @@ import { landedRef } from './parts';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
-import { ownerField, parseQuestion, talkTurns, type Turn } from './talk';
+import { ownerField, parseQuestion, talkTurns, type Turn, worked as isWorked } from './talk';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -113,20 +113,26 @@ export function Detail(p: Props) {
         <p className="hint ended">
           {item.builtInto ? t.idea.builtInto(plain(item.ideaTitle ?? ''), plain(item.builtInto)) : t.idea.endedLong[item.prototypeEnd](plain(item.ideaTitle ?? p.from?.title ?? ''))}
         </p>
-        {/* the summary is the handover in the conversation */}
-        {item.demo && (
-          <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
-            {null}
-          </DemoView>
-        )}
-        <Conversation item={item} past />
-        <details className="p-task">
-          <summary>{t.task}</summary>
-          <Body md={item.body} />
-        </details>
+        <Split
+          main={
+            <>
+              {/* the summary is the handover in the conversation */}
+              {item.demo && (
+                <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
+                  {null}
+                </DemoView>
+              )}
+              <details className="p-task" open={!item.demo}>
+                <summary>{t.task}</summary>
+                <Body md={item.body} />
+              </details>
+            </>
+          }
+          talk={<Talk item={item} past />}
+        />
       </>
     );
-  const worked = ['working', 'waiting', 'approved', 'inPr', 'live', 'done'].includes(item.state) && !!item.branch;
+  const worked = isWorked(item);
   // a demo, video or HTML artifact, goes to a page where the repository has a share target, else it is exported as a file; prototypes stay here
   const target = !!p.repos.find((r) => r.id === item.repo)?.share;
   const shareBox = !!item.demo && !item.prototypeOf ? target || item.share ? <ShareBox item={item} act={act} /> : <ExportBox item={item} run={run} /> : null;
@@ -200,6 +206,40 @@ export function Detail(p: Props) {
           {t.approveDirect}
         </button>
       )}
+    </>
+  );
+
+  // work waiting for the owner's verdict, with a demo or a summary
+  const review = item.state === 'waiting' && (item.need === 'demo' || item.need === 'review');
+  const demoWaits = item.state === 'waiting' && item.need === 'demo';
+  // an agent is on the card and can be stopped
+  const running = item.state === 'working' || item.state === 'waiting' || !!item.finishing;
+  const archivable = finished(item.state) && item.source === 'manual' && !item.finishing;
+  const scope = !!item.scope?.length && (
+    <details className="p-task">
+      <summary>
+        {t.scope} ({item.scope.length})
+      </summary>
+      <ul className="p-files">
+        {item.scope.map((f) => (
+          <li key={f}>
+            <code>{f}</code>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+  // a decided idea keeps what it was decided on, and how
+  const brief = item.brief !== undefined && (
+    <>
+      {item.brief.trim() && (
+        <div className="question brief">
+          <h4>{t.idea.brief}</h4>
+          <Body md={item.brief} />
+          <Mocks mocks={item.mocks} />
+        </div>
+      )}
+      <PrototypeDemos item={item} />
     </>
   );
 
@@ -314,175 +354,95 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {item.scope && item.scope.length > 0 && (item.state === 'planned' || item.state === 'working') && (
-        <details className="p-task">
-          <summary>
-            {t.scope} ({item.scope.length})
-          </summary>
-          <ul className="p-files">
-            {item.scope.map((f) => (
-              <li key={f}>
-                <code>{f}</code>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {item.state === 'planned' && scope}
 
-      {item.state === 'waiting' && item.need === 'demo' && item.demo && (
-        // the summary is the handover in the conversation below
-        <DemoView
-          item={item}
-          all={all}
-          run={run}
-          summary=""
-          demo={item.demo}
-        >
-          {/* the decision sits beside the video, so it needs no scrolling */}
-          <div className="actions">
-            {prototypeActions || approveButton}
-          </div>
-          {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
-          {direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
-          <OwnerComposer item={item} listener={listener} tell={tell} />
-          {shareBox}
-        </DemoView>
-      )}
-
-      {item.demo && (item.state === 'inPr' || item.state === 'approved' || finished(item.state)) && (
-        <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={false}>
-          <p className="hint">{t.demo.kept}</p>
-          {shareBox}
-        </DemoView>
-      )}
-
-      {item.state === 'waiting' && item.need === 'review' && (
-        <>
-          {/* the summary, and why there is no demo, are the handover in the conversation below */}
-          <div className="actions">
-            {prototypeActions || approveButton}
-          </div>
-          {item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
-          {direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
-        </>
-      )}
-
-      {item.pr && (item.state === 'inPr' || item.state === 'waiting') && (
-        <div className="question pr">
-          <h4>
-            <a href={item.pr.url} target="_blank" rel="noreferrer">
-              {t.pr.title(item.pr.number)} ↗
-            </a>
-          </h4>
-          {item.pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
-          {item.pr.ready && <div className="q-text">{item.pr.held ? t.pr.held(item.pr.held.score, item.pr.held.by) : t.pr.ready(item.pr.mergeError ?? '')}</div>}
-          {item.pr.checks.length > 0 ? (
-            <ul className="checks">
-              {item.pr.checks.map((c) => (
-                <li key={c.name} className={c.state}>
-                  {c.url ? (
-                    <a href={c.url} target="_blank" rel="noreferrer">
-                      {c.name}
+      {worked ? (
+        // what the work is and what came of it on the left, the conversation with the owner's one field on the right
+        <Split
+          main={
+            <>
+              {/* the summary is the handover in the conversation */}
+              {item.demo && (demoWaits || item.state === 'inPr' || item.state === 'approved' || finished(item.state)) && (
+                <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={demoWaits}>
+                  {!demoWaits && <p className="hint">{t.demo.kept}</p>}
+                  {shareBox}
+                </DemoView>
+              )}
+              {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} />}
+              {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
+              {item.landedPart && (
+                <p className="hint">
+                  {t.landedPart.long}{' '}
+                  {item.landedPart.pr ? (
+                    <a href={item.landedPart.pr.url} target="_blank" rel="noreferrer">
+                      {t.pr.title(item.landedPart.pr.number)} ↗
                     </a>
                   ) : (
-                    c.name
+                    <code>{landedRef(item.landedPart)}</code>
                   )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="hint">{t.pr.noChecks}</div>
-          )}
-          {item.pr.review && <PrReview entries={item.pr.review} />}
-        </div>
-      )}
-      {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
-      {item.landedPart && (
-        <p className="hint">
-          {t.landedPart.long}{' '}
-          {item.landedPart.pr ? (
-            <a href={item.landedPart.pr.url} target="_blank" rel="noreferrer">
-              {t.pr.title(item.landedPart.pr.number)} ↗
-            </a>
-          ) : (
-            <code>{landedRef(item.landedPart)}</code>
-          )}
-        </p>
-      )}
-
-      {item.finishing && finished(item.state) && <p className="hint">{item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
-
-      {/* what was said on the card and how the work went, from its idea's discussion on; the owner's words go below it */}
-      {worked && <TaskTalk item={item} listener={listener} act={act} tell={tell} />}
-
-      {finished(item.state) && item.source === 'manual' && !item.finishing && (
-        <div className="actions">
-          <ArchiveButton item={item} run={run} />
-        </div>
-      )}
-
-      {error && <p className="p-error">{error}</p>}
-
-      {/* a decided idea keeps what it was decided on, and how */}
-      {item.brief !== undefined && (
+                </p>
+              )}
+              {item.finishing && finished(item.state) && <p className="hint">{item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
+              {brief}
+              {((item.body.trim() && item.body.trim() !== item.brief?.trim()) || !!item.images?.length) && (
+                // the task stays in view until there is a result to look at
+                <details className="p-task" open={!item.demo && !item.brief?.trim()}>
+                  <summary>{t.task}</summary>
+                  <Body md={item.body} />
+                  <Shots ids={item.images} />
+                </details>
+              )}
+              {item.state === 'working' && scope}
+              <p className="p-src">
+                {t.branch} <code>{item.branch}</code>
+                {parent?.plan && (
+                  <>
+                    {' · '}
+                    <code>{parent.plan.file}</code>{' '}
+                    {/* an archived project's doc is gone */}
+                    {!parent.archivedAt && (
+                      <button className="link" onClick={() => p.onReadPlan(parent, item.label)}>
+                        {t.plan.readAt}
+                      </button>
+                    )}
+                  </>
+                )}
+              </p>
+            </>
+          }
+          talk={<TaskTalk item={item} listener={listener} act={act} tell={tell} />}
+        />
+      ) : (
         <>
-          {item.brief.trim() && (
-            <div className="question brief">
-              <h4>{t.idea.brief}</h4>
-              <Body md={item.brief} />
-              <Mocks mocks={item.mocks} />
-            </div>
-          )}
-          <PrototypeDemos item={item} />
-        </>
-      )}
-
-      {worked && (
-        <>
-          {((item.body.trim() && item.body.trim() !== item.brief?.trim()) || !!item.images?.length) && (
-            <details className="p-task">
-              <summary>{t.task}</summary>
+          {brief}
+          {item.state !== 'planned' && item.state !== 'proposal' && (
+            <>
               <Body md={item.body} />
               <Shots ids={item.images} />
-            </details>
+              {parent?.plan && <PlanSource file={parent.plan.file} onRead={parent.archivedAt ? undefined : () => p.onReadPlan(parent, item.label)} />}
+            </>
           )}
-          <p className="p-src">
-            {t.branch} <code>{item.branch}</code>
-            {parent?.plan && (
-              <>
-                {' · '}
-                <code>{parent.plan.file}</code>{' '}
-                {/* an archived project's doc is gone */}
-                {!parent.archivedAt && (
-                  <button className="link" onClick={() => p.onReadPlan(parent, item.label)}>
-                    {t.plan.readAt}
-                  </button>
-                )}
-              </>
-            )}
-          </p>
-          {(item.state === 'working' || item.state === 'waiting' || item.finishing) && (
-            <div className="actions">
-              {/* a prototype that waits for review has its decision beside the demo */}
-              {item.prototypeOf && !(item.state === 'waiting' && item.need !== 'question') && prototypeActions}
-              <button className="btn" onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
-                {t.stop}
-              </button>
-            </div>
-          )}
+          {/* a card nobody worked on shows its conversation once there is something, such as a talk with the Koordinator */}
+          {item.state !== 'proposal' && <Conversation item={item} past hideEmpty />}
         </>
       )}
 
-      {!worked && item.state !== 'planned' && item.state !== 'proposal' && (
-        <>
-          <Body md={item.body} />
-          <Shots ids={item.images} />
-          {parent?.plan && <PlanSource file={parent.plan.file} onRead={parent.archivedAt ? undefined : () => p.onReadPlan(parent, item.label)} />}
-        </>
+      {/* the decisions go below both columns, as on an idea or a proposal */}
+      {worked && (running || archivable) && (
+        <div className="actions">
+          {review ? prototypeActions || approveButton : running && prototypeActions}
+          {running && (
+            <button className="btn" onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
+              {t.stop}
+            </button>
+          )}
+          {archivable && <ArchiveButton item={item} run={run} />}
+        </div>
       )}
+      {review && item.noChange && !item.prototypeOf && <p className="hint">{t.noChangeHint}</p>}
+      {review && direct && !item.prototypeOf && <p className="hint">{t.directHint}</p>}
 
-      {/* a card nobody worked on shows its conversation once there is something, such as a talk with the Koordinator */}
-      {!worked && item.state !== 'proposal' && <Conversation item={item} past hideEmpty />}
+      {error && <p className="p-error">{error}</p>}
     </>
   );
 }
@@ -508,48 +468,47 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
         {item.archivedAt && <span className="p-status"> · {t.archive.when(new Date(item.archivedAt))}</span>}
       </div>
       {/* the brief is what stays; the conversation beside it is how it came about */}
-      <div className="idea-grid">
-        <div className="idea-brief">
-          <div className="question brief">
-            <h4>{t.idea.brief}</h4>
-            {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
-            <Mocks mocks={idea.mocks} />
-          </div>
-          {/* a demo copied onto the idea, from before every prototype kept its own */}
-          {item.demo && !item.prototypes?.length && (
-            <>
-              <h4 className="p-h">{t.idea.prototypeDemo}</h4>
-              <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
-                <p className="hint">{t.idea.prototypeKept}</p>
-              </DemoView>
-            </>
-          )}
-          <PrototypeDemos item={item} />
-        </div>
-        <div className="idea-talk">
-          {/* the questions stand under the agent's reply, in the conversation; the owner's words go with their picks */}
-          {/* an archived idea is read only: it comes back onto the canvas before anyone talks to it again */}
-          {item.archivedAt ? (
-            <Conversation item={item} past />
+      <Split
+        main={
+          <>
+            <div className="question brief">
+              <h4>{t.idea.brief}</h4>
+              {idea.brief.trim() ? <Body md={idea.brief} /> : <div className="hint">{t.idea.briefEmpty}</div>}
+              <Mocks mocks={idea.mocks} />
+            </div>
+            {/* a demo copied onto the idea, from before every prototype kept its own */}
+            {item.demo && !item.prototypes?.length && (
+              <>
+                <h4 className="p-h">{t.idea.prototypeDemo}</h4>
+                <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
+                  <p className="hint">{t.idea.prototypeKept}</p>
+                </DemoView>
+              </>
+            )}
+            <PrototypeDemos item={item} />
+          </>
+        }
+        talk={
+          // an archived idea is read only: it comes back onto the canvas before anyone talks to it again
+          item.archivedAt ? (
+            <Talk item={item} past />
           ) : (
-            <>
-              <Conversation item={item} questions={<Questions questions={idea.questions} heading={idea.questions.length > 1 ? t.ask.questions : t.ask.question} {...answer} />} />
-              <Composer
-                placeholder={idea.questions.length ? t.ask.words : t.idea.compose}
-                button={idea.questions.length ? t.ask.send : t.send}
-                allowEmpty={answer.picked}
-                listener={t.voice.idea(plain(item.title))}
-                // picked options go to the agent as they are; words alone go through the Koordinator, like spoken ones
-                onSend={async (words, images) =>
-                  answer.picked
-                    ? act({ action: 'discuss', text: answerText(idea.questions, answer.picks, words, true), images }, { close: false })
-                    : onTell(words, images, 'discuss')
-                }
-              />
-            </>
-          )}
-        </div>
-      </div>
+            <Talk
+              item={item}
+              questions={idea.questions}
+              heading={idea.questions.length > 1 ? t.ask.questions : t.ask.question}
+              picks={answer}
+              field={{
+                placeholder: t.idea.compose,
+                listener: t.voice.idea(plain(item.title)),
+                quote: true,
+                onWords: async (words, images) => onTell(words, images, 'discuss'),
+                onPicked: (text, images) => act({ action: 'discuss', text, images }, { close: false }),
+              }}
+            />
+          )
+        }
+      />
       {idea.status !== 'open' && !item.archivedAt && <p className="hint">{t.idea.reopen}</p>}
       {item.archivedAt ? (
         <div className="actions">
@@ -640,28 +599,30 @@ function ProposalView({
   return (
     <>
       {/* the proposal as it stands, and beside it the talk about what should change, as with an idea */}
-      <div className="idea-grid proposal-grid">
-        <div className="idea-brief">
-          {children}
-          {from && <p className="hint">{t.proposedBy(plain(from.title))}{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
-          {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
-        </div>
-        <div className="idea-talk">
-          {/* its questions stand at the end of the conversation; the options picked go to the reviser as they are, words through the Koordinator */}
-          <Conversation item={item} questions={<Questions questions={questions} heading={t.proposalQuestions} {...answer} />} />
-          {/* while it is reworked, the owner's words stand in the conversation and wait there */}
-          {!revising && (
-            <Composer
-              placeholder={questions.length ? t.ask.words : t.compose.revise}
-              button={questions.length ? t.ask.send : t.send}
-              allowEmpty={answer.picked}
-              listener={listener}
-              noImages
-              onSend={(words) => (answer.picked ? act({ action: 'revise', text: answerText(questions, answer.picks, words, true) }, { close: false }) : onRevise(words))}
-            />
-          )}
-        </div>
-      </div>
+      <Split
+        className="proposal-grid"
+        main={
+          <>
+            {children}
+            {from && <p className="hint">{t.proposedBy(plain(from.title))}{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
+            {item.retro && <p className="hint">{t.proposedByRetro(item.retro)}</p>}
+          </>
+        }
+        talk={
+          <Talk
+            item={item}
+            questions={questions}
+            heading={t.proposalQuestions}
+            picks={answer}
+            // while it is reworked, the owner's words stand in the conversation and wait there
+            field={
+              revising
+                ? undefined
+                : { placeholder: t.compose.revise, listener, noImages: true, quote: true, onWords: (words) => onRevise(words), onPicked: (text) => act({ action: 'revise', text }, { close: false }) }
+            }
+          />
+        }
+      />
       {revising && <p className={armed ? 'hint go-waits' : 'hint'}>{armed ? t.acceptWaitsHint : t.acceptWaitsFor(idea ? t.acceptIdea : t.accept)}</p>}
       <div className="actions">
         {armed ? (
@@ -823,7 +784,8 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
   const since = proposal && turns.shown.length ? events.indexOf(turns.shown.at(-1)!.e) : -1;
   const pending = proposal ? turns.pending.filter((s) => events.indexOf(s) > since) : turns.pending;
   // the demo report's question goes with the handover it came with
-  const handover = item.demo?.question ? turns.shown.findLast((x) => x.e.kind === 'review') : undefined;
+  // an open one stands at the end instead, where it is answered
+  const handover = item.demo?.question && !(item.state === 'waiting' && item.need === 'demo' && item.question) ? turns.shown.findLast((x) => x.e.kind === 'review') : undefined;
   return (
     <>
       <h4 className="p-h">{t.talk.heading}</h4>
@@ -1005,7 +967,7 @@ function DemoView({
   const current = demo.chapters.reduce((cur, [at], i) => (at <= now + 0.05 ? i : cur), 0);
   return (
     <>
-      <div className="p-grid">
+      <div className="demo-view">
         {demo.kind === 'html' ? (
           // the worker's page: scripts run, but in an origin of its own, away from Obeya's API
           <iframe className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} />
@@ -1040,44 +1002,64 @@ function DemoView({
             )}
           </div>
         )}
-        <div>
-          {demo.chapters.length > 0 && (
-            <ol className="chapters">
-              {demo.chapters.map(([at, title], i) => (
-                <li key={i}>
-                  <button
-                    className={i === current ? 'on' : ''}
-                    onClick={() => {
-                      const v = video.current;
-                      if (!v) return;
-                      v.currentTime = at;
-                      v.play().catch(() => {});
-                    }}
-                  >
-                    <span className="t">{mmss(at)}</span>
-                    {title}
-                  </button>
-                </li>
-              ))}
-            </ol>
-          )}
-          {/* answered in the card's one field, with feedback or without */}
-          {demo.question && (
-            <div className="question">
-              <h4>{t.demo.question}</h4>
-              <div className="q-text">{demo.question}</div>
-              {demo.answer && (
-                <p className="hint">
-                  {t.demo.yourAnswer}: {demo.answer}
-                </p>
-              )}
-            </div>
-          )}
-          {children}
-        </div>
+        {demo.chapters.length > 0 && (
+          <ol className="chapters">
+            {demo.chapters.map(([at, title], i) => (
+              <li key={i}>
+                <button
+                  className={i === current ? 'on' : ''}
+                  onClick={() => {
+                    const v = video.current;
+                    if (!v) return;
+                    v.currentTime = at;
+                    v.play().catch(() => {});
+                  }}
+                >
+                  <span className="t">{mmss(at)}</span>
+                  {title}
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+        {/* its report's question stands in the conversation, where it is answered */}
+        {children}
       </div>
       <Body md={summary} />
     </>
+  );
+}
+
+/** A card's pull request: its checks, whether it is ready, and its review. */
+function PrBox({ pr }: { pr: PullRequest }) {
+  return (
+    <div className="question pr">
+      <h4>
+        <a href={pr.url} target="_blank" rel="noreferrer">
+          {t.pr.title(pr.number)} ↗
+        </a>
+      </h4>
+      {pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
+      {pr.ready && <div className="q-text">{pr.held ? t.pr.held(pr.held.score, pr.held.by) : t.pr.ready(pr.mergeError ?? '')}</div>}
+      {pr.checks.length > 0 ? (
+        <ul className="checks">
+          {pr.checks.map((c) => (
+            <li key={c.name} className={c.state}>
+              {c.url ? (
+                <a href={c.url} target="_blank" rel="noreferrer">
+                  {c.name}
+                </a>
+              ) : (
+                c.name
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="hint">{t.pr.noChecks}</div>
+      )}
+      {pr.review && <PrReview entries={pr.review} />}
+    </div>
   );
 }
 
@@ -1329,44 +1311,90 @@ function ManualFields({ item, repos, onEdit, grow }: { item: Item; repos: RepoRe
 // ------------------------------------------------------------------ talking to the worker
 
 /**
- * A worked card's conversation, and below it what the owner says to its agent: the answer to the
- * question it waits on (options picked and own words go out as one answer), a note, or feedback.
+ * A task's conversation, from its idea's discussion on: the question its worker waits on (its own,
+ * or the one in its demo report) stands at the end, and under it the card's one field (`ownerField`).
  */
 function TaskTalk({ item, listener, act, tell }: { item: Item; listener: string; act: (a: CardAction, done: ActDone) => Promise<void>; tell: (field: Field) => (text: string, images?: string[]) => Promise<void> }) {
-  const asking = item.state === 'waiting' && item.need === 'question';
+  const field = ownerField(item);
   const key = JSON.stringify(item.question ?? null);
-  const questions = useMemo(() => (asking && item.question ? [item.question] : []), [asking, key]);
-  const answer = usePicks(questions);
+  const questions = useMemo(() => ((field === 'answer' || field === 'demo') && item.question ? [item.question] : []), [field, key]);
+  const picks = usePicks(questions);
+  return (
+    <Talk
+      item={item}
+      questions={questions}
+      heading={field === 'demo' ? t.demo.question : t.questionFromWorker}
+      picks={picks}
+      field={
+        field
+          ? {
+              key: `${item.state}:${item.need ?? ''}:${field}:${key}`,
+              placeholder: { note: t.compose.working, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo, discuss: '', revise: t.compose.revise }[field],
+              listener,
+              onWords: tell(field),
+              onPicked: (text, images) => act({ action: 'answer', text, images }, { close: true, ack: t.answered }),
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+/**
+ * The layout every card with a conversation shares, idea, proposal or task: what the card is about
+ * on the left (brief, text, demo), the conversation on the right; the decisions go below both.
+ */
+function Split({ main, talk, className }: { main: ReactNode; talk: ReactNode; className?: string }) {
+  return (
+    <div className={className ? `split ${className}` : 'split'}>
+      <div className="split-main">{main}</div>
+      <div className="split-talk">{talk}</div>
+    </div>
+  );
+}
+
+/** The owner's one field under a conversation: words, and the options picked, go out with one Send. */
+interface TalkField {
+  placeholder: string;
+  listener: string;
+  /** Starts the field afresh when it changes (another question, another state). */
+  key?: string;
+  noImages?: boolean;
+  /** The picks name their questions also when there is one: the conversation is read later without it beside. */
+  quote?: boolean;
+  /** Words alone go through the Koordinator, like spoken ones. */
+  onWords: (text: string, images?: string[]) => Promise<void>;
+  /** Picked options go to the agent as they are, with the words. */
+  onPicked: (text: string, images?: string[]) => Promise<void>;
+}
+
+/**
+ * The right column of every card with a conversation: the conversation with the questions it waits
+ * on at its end, and under it the owner's one field (none where nobody hears it). `past`: nobody
+ * works on the card any more.
+ */
+function Talk({ item, questions = [], heading = t.ask.question, picks, past, field }: { item: Item; questions?: Question[]; heading?: string; picks?: Picks; past?: boolean; field?: TalkField }) {
+  const options = questions.some((q) => q.options.length > 0);
+  const picked = !!picks?.picked;
   return (
     <>
-      <Conversation item={item} questions={asking && <Questions questions={questions} heading={t.questionFromWorker} {...answer} />} />
-      {asking ? (
+      <Conversation item={item} past={past} questions={picks && <Questions questions={questions} heading={heading} {...picks} />} />
+      {field && (
         <Composer
-          key={key}
-          placeholder={item.question?.options.length ? t.ask.words : t.compose.question}
-          button={questions.length ? t.ask.send : t.send}
-          allowEmpty={answer.picked}
-          listener={listener}
-          // picked options go to the worker as they are; words alone go through the Koordinator, like spoken ones
-          onSend={(words, images) =>
-            answer.picked ? act({ action: 'answer', text: answerText(questions, answer.picks, words), images }, { close: true, ack: t.answered }) : tell('answer')(words, images)
-          }
+          key={field.key}
+          placeholder={options ? t.ask.words : field.placeholder}
+          button={options ? t.ask.send : t.send}
+          allowEmpty={picked}
+          listener={field.listener}
+          noImages={field.noImages}
+          onSend={(words, images) => (picked ? field.onPicked(answerText(questions, picks!.picks, words, field.quote), images) : field.onWords(words, images))}
         />
-      ) : (
-        // a demo's field sits beside it
-        !(item.state === 'waiting' && item.need === 'demo') && <OwnerComposer item={item} listener={listener} tell={tell} />
       )}
     </>
   );
 }
 
-/** The card's one field for the owner's words (`ownerField`): one Send for whatever they write to its agent. */
-function OwnerComposer({ item, listener, tell }: { item: Item; listener: string; tell: (field: Field) => (text: string, images?: string[]) => Promise<void> }) {
-  const field = ownerField(item);
-  if (!field) return null;
-  const placeholder = { note: t.compose.working, answer: t.compose.question, feedback: t.compose.review, demo: t.compose.demo, discuss: '', revise: t.compose.revise }[field];
-  return <Composer key={`${item.state}:${item.need ?? ''}:${field}`} placeholder={placeholder} listener={listener} onSend={tell(field)} />;
-}
+type Picks = ReturnType<typeof usePicks>;
 
 /** The options the owner picked for each question; they start over when the questions change. */
 function usePicks(questions: Question[]) {

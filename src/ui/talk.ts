@@ -175,3 +175,9 @@ export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'fin
   if (item.state === 'waiting') return item.need === 'question' ? 'answer' : item.need === 'demo' && item.question ? 'demo' : 'feedback';
   return item.state === 'working' || item.state === 'inPr' || item.finishing ? 'note' : null;
 }
+
+/** A task an agent has worked on: what came of it stands beside its conversation. */
+export const worked = (i: Pick<Item, 'state' | 'branch'>) => ['working', 'waiting', 'approved', 'inPr', 'live', 'done'].includes(i.state) && !!i.branch;
+
+/** A card laid out with its conversation beside what it is about (`Split` in detail.tsx): an idea, a proposal, a task an agent worked on. */
+export const split = (i: Pick<Item, 'state' | 'branch' | 'prototypeEnd'>) => i.state === 'idea' || i.state === 'proposal' || !!i.prototypeEnd || worked(i);
