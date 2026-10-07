@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import type { AgentChoice, CanvasConfig, ConfigProblem, ConfigView } from '../core/types';
+import type { AgentSetting, CanvasConfig, ConfigProblem, ConfigView } from '../core/types';
 import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Store } from './db';
@@ -55,13 +55,13 @@ describe("the owner's language", () => {
 
 describe("the owner's choice of model and effort", () => {
   test('the Koordinator reads the next command in a new session once the owner chose another model or effort for it', async () => {
-    let choice: AgentChoice = {};
+    let choice: AgentSetting = { model: 'default', effort: 'medium' };
     board.create({ title: 'Export', x: 0, y: 0 });
-    const k = new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, agentChoice: () => choice });
+    const k = new Commander({ board, runtime, cwd: '/r', execute: (c) => void executed.push(c), delayMs: 20, agentSetting: () => choice });
     const first = await say(k, 'starte Export', 'reply', { confirm: 'Gleich.' });
     const same = await say(k, 'und?', 'reply', { confirm: 'Läuft.' });
     expect(same.session).toBe(first.session);
-    choice = { model: 'haiku' };
+    choice = { model: 'haiku', effort: 'medium' };
     const second = await say(k, 'und jetzt?', 'reply', { confirm: 'Läuft.' });
     expect(second.session).not.toBe(first.session);
     expect(first.session.closed).toBe(true);

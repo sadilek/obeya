@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import type { z } from 'zod';
 import { mediaType } from './images';
 import type { Messages } from '../core/messages';
-import type { AgentChoice, AgentEffort, AgentRole } from '../core/types';
+import type { AgentEffort, AgentRole, AgentSetting } from '../core/types';
 
 export interface AgentTool {
   name: string;
@@ -59,7 +59,7 @@ export interface AgentSpec {
   effort?: AgentEffort;
   /** The model, when not the default: a smaller one for small, frequent jobs. */
   model?: string;
-  /** The group the agent belongs to, whose model and effort the owner may choose (`withAgentChoice`). */
+  /** The group the agent belongs to, whose model and effort the owner chooses (`withAgentSetting`). */
   role?: AgentRole;
   /**
    * Asked after every tool step: what changed since the session's instructions were built, for the
@@ -84,14 +84,16 @@ export interface AgentRuntime {
 }
 
 /**
- * A runtime that starts each agent with the model and effort the owner chose for its group, asked
- * at every start; what the owner left open stays as the job sets it.
+ * A runtime that starts each agent of a group with its group's model and effort (`agentSetting`),
+ * asked at every start; Claude Code's default model is no model given.
  */
-export function withAgentChoice(runtime: AgentRuntime, choice: (role: AgentRole) => AgentChoice): AgentRuntime {
+export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
-      const chosen = spec.role ? choice(spec.role) : {};
-      return runtime.start({ ...spec, ...chosen }, firstMessage, images);
+      if (!spec.role) return runtime.start(spec, firstMessage, images);
+      const { model, effort } = setting(spec.role);
+      const { model: _, ...rest } = spec;
+      return runtime.start({ ...rest, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
     },
   };
 }

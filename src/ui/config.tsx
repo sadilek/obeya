@@ -3,7 +3,7 @@
 // read-only.
 
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentChoice, type AgentEffort, type AgentModel, type AgentRole, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type SetupItem, type VoiceKind, type VoiceSetupItem, type VoiceSetupView } from '../core/types';
+import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type SetupItem, type VoiceKind, type VoiceSetupItem, type VoiceSetupView } from '../core/types';
 import { LANGUAGES } from '../core/locale';
 import { api, ApiError, reload } from './api';
 import { errorText, t } from './strings';
@@ -239,16 +239,17 @@ function AgentsBlock({ on }: { on: boolean }) {
   }, [on]);
   if (!view) return null;
   const a = t.config.agents;
-  const choose = async (role: AgentRole, choice: AgentChoice) => {
+  const choose = async (role: AgentRole, choice: Partial<AgentSetting>) => {
     setBusy(true);
     setStatus('');
     try {
-      setView(await api.saveAgents(role, { model: choice.model ?? null, effort: choice.effort ?? null }));
+      setView(await api.saveAgents(role, choice));
     } catch (e) {
       setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
     }
     setBusy(false);
   };
+  const preset = (label: string, is: boolean) => (is ? a.preset(label) : label);
   return (
     <>
       <h4 className="p-h">{a.title}</h4>
@@ -261,23 +262,21 @@ function AgentsBlock({ on }: { on: boolean }) {
           <span className="hint">{a.model}</span>
           <span className="hint">{a.effort}</span>
           {AGENT_ROLES.map((role) => {
-            const chosen = view.chosen[role];
+            const setting = view.agents[role];
             return (
               <Fragment key={role}>
                 <div className="c-agent-name">{a.roles[role].name}</div>
-                <select aria-label={`${a.roles[role].name}: ${a.model}`} value={chosen.model ?? ''} disabled={busy} onChange={(e) => choose(role, { ...chosen, model: (e.target.value || undefined) as AgentModel | undefined })}>
-                  <option value="">{a.unset}</option>
+                <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value as AgentModel })}>
                   {AGENT_MODELS.map((m) => (
                     <option key={m} value={m}>
-                      {a.models[m]}
+                      {preset(a.models[m], m === AGENT_DEFAULTS[role].model)}
                     </option>
                   ))}
                 </select>
-                <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={chosen.effort ?? ''} disabled={busy} onChange={(e) => choose(role, { ...chosen, effort: (e.target.value || undefined) as AgentEffort | undefined })}>
-                  <option value="">{a.unset}</option>
+                <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={setting.effort} disabled={busy} onChange={(e) => choose(role, { effort: e.target.value as AgentEffort })}>
                   {AGENT_EFFORTS.map((x) => (
                     <option key={x} value={x}>
-                      {a.efforts[x]}
+                      {preset(a.efforts[x], x === AGENT_DEFAULTS[role].effort)}
                     </option>
                   ))}
                 </select>

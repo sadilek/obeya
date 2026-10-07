@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import { type AgentChoice, answering, type CanvasConfig, finished, type Item, type NextStep, prototypeWorkstream, type Queue } from '../core/types';
+import { type AgentSetting, answering, type CanvasConfig, finished, type Item, type NextStep, prototypeWorkstream, type Queue } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Config } from './config';
 import type { Moment } from './db';
@@ -120,8 +120,8 @@ export interface CommanderOptions {
   imageFiles?: (ids?: string[]) => string[];
   /** Obeya's configuration: the Koordinator reads it, and changes it on the owner's word. */
   config?: Pick<Config, 'view' | 'check'>;
-  /** The model and effort the owner chose for the Koordinator; another one chosen since takes a new session. */
-  agentChoice?: () => AgentChoice;
+  /** The Koordinator's model and effort; another one chosen since takes a new session. */
+  agentSetting?: () => AgentSetting;
   /**
    * Called with what the owner said, so lasting preferences can be learned: a question or remark
    * the Koordinator replied to (`talk`), or a command once it runs; `card` is the one open.
@@ -135,7 +135,7 @@ interface Session {
   ended: boolean;
   /** The language it speaks to the owner in; another one chosen since takes a new session. */
   language: Language;
-  /** The owner's choice of model and effort it started with, as JSON. */
+  /** The model and effort it started with, as JSON. */
   choice: string;
   /** Tags of the cards it has seen; they stay the same for the session, so earlier messages stay right. */
   tags: Map<string, string>;
@@ -308,7 +308,7 @@ export class Commander {
     if (!this.live()) this.session = this.open();
   }
 
-  private choice = () => JSON.stringify(this.o.agentChoice?.() ?? {});
+  private choice = () => JSON.stringify(this.o.agentSetting?.() ?? {});
 
   /** The session that reads the next command, if it is still up, speaks the owner's language and runs as they chose. */
   private live(): Session | null {
@@ -333,7 +333,6 @@ export class Commander {
     s.agent = this.o.runtime.start({
       cwd: this.o.cwd,
       readOnly: true,
-      effort: 'medium',
       role: 'koordinator',
       system: system(language),
       tools: [

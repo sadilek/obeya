@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AgentEffort, AgentModel, AgentRole, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -73,10 +73,10 @@ export const api = {
   language: () => call<LanguageView>('GET', '/api/language'),
   /** Saves the owner's choice; `null` follows the system again. */
   saveLanguage: (language: Language | null) => call<LanguageView>('PUT', '/api/language', { language }),
-  /** The model and effort the owner chose for each group of agents. */
+  /** The model and effort of each group of agents. */
   agents: () => call<AgentsView>('GET', '/api/agents'),
-  /** Saves the choice for one group; a model or effort `null` is Obeya's own again. */
-  saveAgents: (role: AgentRole, choice: { model: AgentModel | null; effort: AgentEffort | null }) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
+  /** Saves the model or the effort of one group. */
+  saveAgents: (role: AgentRole, choice: Partial<AgentSetting>) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
   voiceSetup: () => call<VoiceSetupView>('GET', '/api/voice-setup'),
   installVoice: () => call<VoiceSetupView>('POST', '/api/voice-setup/install'),
   demoSettings: () => call<DemoSettingsView>('GET', '/api/demo-settings'),

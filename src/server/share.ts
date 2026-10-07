@@ -470,7 +470,6 @@ export class Sharing {
         {
           cwd: cmd?.repo ?? this.o.home,
           readOnly: true,
-          effort: 'low',
           role: 'chores',
           system: pageSystem(LANGUAGE_NAMES[this.o.board.language()]),
           tools: [

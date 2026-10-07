@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import { type Language, LANGUAGE_NAMES } from '../core/locale';
-import type { AgentEffort, Question } from '../core/types';
+import type { Question } from '../core/types';
 import type { AgentRuntime } from './runtime';
 
 /** An advisor's reply to a worker's question. */
@@ -85,7 +85,6 @@ export interface Briefing {
   onSession?: (id: string) => void;
   /** What the agent reads, as it reads it. */
   onTool?: (name: string, input: Record<string, unknown>) => void;
-  effort?: AgentEffort;
   /** The owner's language, which the answer is in. */
   language: Language;
 }
@@ -107,7 +106,6 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
         readOnly: true,
         role: 'koordinator',
         ...(b.resume ? { resume: b.resume } : {}),
-        ...(b.effort ? { effort: b.effort } : {}),
         system: b.system,
         tools: [
           {

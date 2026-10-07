@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import { type AgentEffort, type AgentRole, type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
+import { type AgentRole, type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
 import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
 import { BadRequest, type Board } from './board';
 import type { Utterance } from './db';
@@ -1066,7 +1066,7 @@ Do not add scope the card does not ask for.
  */
 export function readSession(
   runtime: AgentRuntime,
-  o: { cwd: string; system: string; tools: (finish: (r: string) => string) => AgentTool[]; brief: string; model?: string; effort?: AgentEffort; role: AgentRole },
+  o: { cwd: string; system: string; tools: (finish: (r: string) => string) => AgentTool[]; brief: string; role: AgentRole },
 ): Promise<void> {
   return new Promise((resolve) => {
     let done = false;
@@ -1084,8 +1084,6 @@ export function readSession(
         role: o.role,
         system: o.system,
         tools: o.tools(finish),
-        ...(o.model ? { model: o.model } : {}),
-        ...(o.effort ? { effort: o.effort } : {}),
         onEvent: (e) => {
           if (e.type === 'idle' || e.type === 'error') {
             session.close();

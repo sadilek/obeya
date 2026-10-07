@@ -54,7 +54,6 @@ export class Answers {
         : inform({
             runtime: this.o.runtime,
             cwd: this.o.pathFor(about),
-            effort: 'medium',
             system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents.\n\n${INFORM_RULES}`,
             message: [message, this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
             onTool,

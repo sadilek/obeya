@@ -58,12 +58,12 @@ async function note(...notes: { what: string; cost?: string; fix?: string }[]) {
 }
 
 describe('Arbeitsrückschau', () => {
-  test('a finished card’s runs become friction notes, written by a small model from the excerpt', async () => {
+  test('a finished card’s runs become friction notes, written as a small job from the excerpt', async () => {
     files = { s1: SAMPLE };
     const a = ran('A', 's1', 's2');
     await settle();
     const s = noteSessions()[0]!;
-    expect(s.spec).toMatchObject({ readOnly: true, model: 'sonnet', cwd: main });
+    expect(s.spec).toMatchObject({ readOnly: true, role: 'chores', cwd: main });
     // the earlier run's transcript is read too; the later one has none
     expect(s.inbox[0]).toContain('The card: "A"');
     expect(s.inbox[0]).toContain("unknown option '--port=4500'");

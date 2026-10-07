@@ -91,9 +91,7 @@ export class WorkRetro {
     await readSession(this.o.runtime, {
       cwd: this.o.pathFor(card.repo),
       system: NOTES_SYSTEM(LANGUAGE_NAMES[this.o.board.language()]),
-      model: NOTES_MODEL,
       role: 'chores',
-      effort: 'low',
       brief: `The card: "${card.title}".\n\nThe excerpt of its worker's ${runs.length > 1 ? `${runs.length} runs` : 'run'}:\n\n${text}`,
       tools: (finish): AgentTool[] => [
         {
@@ -233,8 +231,6 @@ export function earlierRuns(events: CardEvent[]): string[] {
 export const WORK_RETRO_EVERY = 10;
 const WORK_RETRO_PROPOSALS = 3;
 const MAX_NOTES = 3;
-/** Notes are a small job on every finished card: a smaller model writes them. */
-const NOTES_MODEL = 'sonnet';
 /** The settings that keep a repository's count across restarts, and when its last retrospective was. */
 const countKey = (repo: string) => `work_retro_cards:${repo}`;
 const sinceKey = (repo: string) => `work_retro_since:${repo}`;

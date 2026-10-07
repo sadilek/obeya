@@ -203,7 +203,7 @@ An idea is thought through on its card before anything is planned; no worker run
    with the text and its questions; "Als Aufgabe übernehmen" plans it as a task instead. Instead
    of editing a proposal by hand, the owner may say (or type into its field „Was soll anders
    werden?“) what should change: the Koordinator reads it as `revise`, and after the undo window a
-   read-only agent (`revisions.ts`, effort medium, in the card's repository) rewrites title, text,
+   read-only agent (`revisions.ts`, a Koordinator turn, in the card's repository) rewrites title, text,
    reason and questions by those words, keeping what they did not touch; a question the words
    settle goes, and its decision into the text. As with an idea, the conversation about it stands
    beside the proposal, its questions at the end of it and the field under it; the proposal's text
@@ -406,19 +406,20 @@ the owner's language (`src/core/locale.ts`).
   saving them restarts nothing. Above them is the language, saved the same way into
   `settings.json` (see Language), and the model and effort of each group of agents (see Models
   and effort).
-- **Models and effort** — the owner chooses a model (Fable, Opus, Sonnet, Haiku: Claude Code's
-  aliases, each the newest of its family) and an effort (low to max) for four groups of agents in
-  the Konfiguration sheet: the Koordinator (voice commands, estimates, cuts and schedules, look-ups,
-  project agents, learner, Rückschau, proposal rewrites), the workers on cards, the exploration
-  agents of ideas, and small jobs (the Arbeitsrückschau's notes and proposals, the text of a
-  shared demo's page). Left open, a group keeps what each job sets: workers and exploration agents
-  run on Claude Code's defaults, the Koordinator's turns mostly at medium effort, small jobs on
-  Sonnet at low. The choices live in `settings.json` under `agents` (`src/server/settings.ts`);
-  every session names its group (`AgentSpec.role`), and `withAgentChoice` (`runtime.ts`), which
-  wraps the canvas's runtimes, asks for the choice at each start and puts it over the job's own.
-  Saving restarts nothing and takes effect for every agent that starts afterwards; a session at
-  work keeps what it started with, except the voice commands' session, which is opened anew once
-  the Koordinator's choice changed, as it is for another language.
+- **Models and effort** — every agent belongs to one of four groups, each with its model and
+  effort: the Koordinator (voice commands, estimates, cuts and schedules, look-ups, project
+  agents, learner, Rückschau, proposal rewrites), the workers on cards, the exploration agents of
+  ideas, and small jobs (the Arbeitsrückschau's notes and proposals, the text of a shared demo's
+  page). The owner chooses both in the Konfiguration sheet: the model is Claude Code's default or
+  one of its aliases (Fable, Opus, Sonnet, Haiku, each the newest of its family), the effort always
+  a fixed level (low to max). Preset (`AGENT_DEFAULTS`) are Claude Code's default model, Sonnet
+  for small jobs, and high effort, medium for the Koordinator; the sheet marks the presets. The
+  choices live in `settings.json` under `agents`, only where they differ from the presets
+  (`src/server/settings.ts`); every session names its group (`AgentSpec.role`), and
+  `withAgentSetting` (`runtime.ts`), which wraps the canvas's runtimes, asks for the group's
+  setting at each start. Saving restarts nothing and takes effect for every agent that starts
+  afterwards; a session at work keeps what it started with, except the voice commands' session,
+  which is opened anew once the Koordinator's setting changed, as it is for another language.
 - **Language** — Obeya speaks German or English to the owner. The owner chooses it in the
   Konfiguration sheet; until then the system's applies: on a Mac the language of its interface
   (`AppleLanguages`), elsewhere `LC_ALL`, `LC_MESSAGES`, `LANG` in that order, then what the
@@ -787,8 +788,8 @@ the owner's language (`src/core/locale.ts`).
     the worker's words before and after each, and how many tool calls the run took and after how
     many it first changed a file. Calls cut off by a restart (exit code 137) or stopped by the
     owner do not count; subagents' lines are left out. A missing file or a format it cannot read
-    gives no excerpt and no error. A short read-only session in the repository's Lesestand (Sonnet,
-    low effort) makes 0–3 friction notes of a non-empty excerpt (what went wrong, what it cost,
+    gives no excerpt and no error. A short read-only session in the repository's Lesestand (a small job, see Models
+    and effort) makes 0–3 friction notes of a non-empty excerpt (what went wrong, what it cost,
     what would have prevented it), stored per repository and card in `friction`; an empty excerpt
     gets no session.
   - Every 10 finished cards of a repository (counted when work ends, whether or not they had
@@ -830,7 +831,7 @@ the owner's language (`src/core/locale.ts`).
   recording that runs on unheld) and the owner hears „Das Mikrofon war noch nicht bereit“. The
   microphone is not opened on page load: in the log of 1–5 Oct 2026 (22 page loads with a recording
   after them) the first recording after a load failed no more often than later ones, and opening it
-  early would keep the browser's microphone indicator on all the time. A Koordinator turn (effort medium) reads
+  early would keep the browser's microphone indicator on all the time. A Koordinator turn reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, taking a card out of the queue, note, answer, feedback,
   approve, accept, dismiss, revise, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
@@ -876,7 +877,7 @@ the owner's language (`src/core/locale.ts`).
   ich starte?", what the plan says, how something works) the quick turn does not answer: it
   acknowledges it ("Ich schaue im Plan nach.") and passes it on. A question about a project or one
   of its workstreams goes to the project agent, in the project's session; any other to a thorough
-  read-only Koordinator turn (effort medium) on the card's repository. A question about the work of
+  read-only Koordinator turn on the card's repository. A question about the work of
   an agent on a card (also one waiting for review: „Ist sichergestellt, dass …?“) is not looked up
   but goes to that agent, as a note or as feedback: its work is on its branch, not in the Lesestand
   the look-up reads, and the card shows the agent at work while it answers. `look_up` on such a
