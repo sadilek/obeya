@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
 import type { PlanDoc } from '../core/plan-doc';
+import { needsYou } from '../core/types';
 import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { DEMO_SKILL, OBEYA_PLUGIN } from './demo';
@@ -712,12 +713,54 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.demo!.answer).toBe('Semikolon.');
     expect(runtime.last.inbox.at(-1)).toContain('answered the question in your demo report');
     expect(runtime.last.inbox.at(-1)).toContain('Semikolon.');
-    // the worker takes note and ends its turn: no nudge, the card keeps waiting
+    // while the worker takes in the answer, the card is not the owner's
+    expect(board.item(c.id)!.demo!.answering).toBe(true);
+    expect(needsYou(board.item(c.id)!)).toBe(false);
+    // the worker takes note and ends its turn: no nudge, the card keeps waiting, and is the owner's again
+    runtime.last.emit({ type: 'text', text: 'Bleibt beim Semikolon.' });
     runtime.last.emit({ type: 'idle' });
     expect(runtime.last.inbox).toHaveLength(n + 1);
     expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.demo!.answering).toBeUndefined();
+    expect(needsYou(board.item(c.id)!)).toBe(true);
     expect(board.decisions(null).at(-1)).toMatchObject({ question: 'Semikolon oder Komma?', answer: 'Semikolon.', by: 'owner' });
     expect(() => workers.answer(c.id, 'Komma.')).toThrow(BadRequest);
+  });
+
+  test('a worker that reworks its demo after the answer hands over anew; until then the card is at work', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
+    runtime.last.emit({ type: 'idle' });
+    workers.answer(c.id, 'Komma, bitte.');
+    // a turn the session ends before it took in the answer leaves the card with the worker
+    runtime.last.emit({ type: 'idle' });
+    expect(needsYou(board.item(c.id)!)).toBe(false);
+    runtime.last.emit({ type: 'tool', name: 'Edit', input: {} });
+    expect(needsYou(board.item(c.id)!)).toBe(false);
+    runtime.last.call('ready_for_review', { summary: 'Jetzt mit Komma.', demo: { dir: demoDir(), chapters: ['Vorher', 'Nachher'] } });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.summary).toBe('Jetzt mit Komma.');
+    expect(board.item(c.id)!.demo!.answering).toBeUndefined();
+    expect(needsYou(board.item(c.id)!)).toBe(true);
+  });
+
+  test('a worker taking in an answer resumes after a restart; a session that ends gives the demo back to the owner', async () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'session', id: 'sess-1' });
+    runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
+    runtime.last.emit({ type: 'idle' });
+    workers.answer(c.id, 'Semikolon.');
+    workers.shutdown();
+    workers.resumeAll();
+    expect(runtime.last.spec.resume).toBe('sess-1');
+    expect(needsYou(board.item(c.id)!)).toBe(false);
+    runtime.last.close();
+    await until(() => !board.item(c.id)!.demo!.answering);
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(needsYou(board.item(c.id)!)).toBe(true);
   });
 
   test('after feedback, the worker may hand over again without a new demo: the one on the card stands', () => {

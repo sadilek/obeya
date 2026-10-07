@@ -229,11 +229,15 @@ export class Workers {
     this.deliver(cardId, `Answer to your question (${from}${spoken ? `; ${SPOKEN}` : ''}):\n\n${text}${imageNote(images)}`, images);
   }
 
-  /** The question in a demo report, answered: the worker hears it, and the demo still waits for approval. */
+  /**
+   * The question in a demo report, answered: the worker hears it, and the demo still waits for
+   * approval. While the worker takes in the answer (it may rework the demo), the card is not the
+   * owner's; once its turn ends without a new handover, the demo is theirs again.
+   */
   private answerDemo(card: Item, text: string, images: string[], spoken: boolean) {
     const q = card.question!.text;
     const demo = JSON.parse(this.o.board.row(card.id).demo!) as Record<string, unknown>;
-    this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)' }) });
+    this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)', answering: true }) });
     this.o.board.log(card.id, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
     this.recordDecision(card, q, text || '(Screenshot)', 'owner');
     if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
@@ -506,6 +510,12 @@ export class Workers {
         this.resumeLanded(i, row.landed, row.session_id);
         continue;
       }
+      // a worker taking in the answer to its demo report's question was in the middle of a turn too
+      if (i.state === 'waiting' && i.demo?.answering) {
+        if (row.workspace && row.session_id) this.launch(i.id, RESTARTED, row.session_id);
+        else this.answerTaken(i.id);
+        continue;
+      }
       if (i.state !== 'working' && i.state !== 'inPr') continue;
       if (!row.workspace) continue;
       if (row.session_id) this.launch(i.id, RESTARTED, row.session_id);
@@ -578,7 +588,10 @@ export class Workers {
       images,
     );
     live.session.done.then(() => {
-      if (this.live.get(cardId) === live) this.live.delete(cardId);
+      if (this.live.get(cardId) !== live) return;
+      this.live.delete(cardId);
+      // a session that ended without ending its turn takes in no answer any more
+      this.answerTaken(cardId);
     });
   }
 
@@ -702,6 +715,11 @@ export class Workers {
       this.waitForWorker(cardId, live);
       if (!handedOver) return;
     }
+    if (card.demo?.answering) {
+      // a resumed session may first end a turn of its own before it takes in the answer
+      if (!acted && !handedOver) return this.waitForWorker(cardId, live);
+      this.answerTaken(cardId);
+    }
     if (handedOver) {
       // work the owner approved already lands once its worker handed over what stood in the way
       if (card.state === 'working' && row.approved_at) void this.landApproved(cardId);
@@ -769,6 +787,14 @@ export class Workers {
     const t = this.o.board.t;
     const reason = failureReason(clip(live.failed!, 1200), t);
     this.toOwner(cardId, { text: t.worker.remainsUndone(`${reason}${/[.!?]$/.test(reason) ? '' : '.'}`), options: [t.worker.tryAgain] });
+  }
+
+  /** The worker has taken in the answer to its demo report's question: a demo still waiting is the owner's again. */
+  private answerTaken(cardId: string) {
+    const demo = this.o.board.row(cardId).demo;
+    if (!demo) return;
+    const { answering, ...rest } = JSON.parse(demo) as Record<string, unknown>;
+    if (answering) this.o.board.work(cardId, { demo: JSON.stringify(rest) });
   }
 
   /** Waits for a sign of life from the worker; without one for a long while, its turn counts as ended. */

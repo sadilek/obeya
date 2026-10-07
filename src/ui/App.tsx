@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
+import { answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
 import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
@@ -69,6 +69,9 @@ async function soon<T>(get: () => T | undefined, ms = 3000): Promise<T | undefin
   }
   return get();
 }
+/** The state whose colour an open card wears: a demo whose worker takes in the owner's answer is at work. */
+const shownState = (i: Item) => (answering(i) ? 'working' : i.state);
+
 const camKey = (canvasId: string) => `obeya-cam-${canvasId}`;
 
 function Canvas({
@@ -281,7 +284,7 @@ function Canvas({
     if (!el || !panel) return setFocus(f);
     const r = el.getBoundingClientRect();
     flushSync(() => setOpenId(i.id));
-    panel.style.setProperty('--c', `var(--${i.state})`);
+    panel.style.setProperty('--c', `var(--${shownState(i)})`);
     panel.className = '';
     panel.style.setProperty('--unfold', `${quick ? 0 : UNFOLD_MS}ms`);
     Object.assign(panel.style, rect(r), { display: 'block', borderRadius: '14px' });
@@ -302,12 +305,12 @@ function Canvas({
   const openItem = openId
     ? (items.find((i) => i.id === openId) ?? archived.find((i) => i.id === openId) ?? (opened?.id === openId ? opened : undefined))
     : undefined;
-  const openState = openItem && `${openItem.state}:${openItem.need ?? ''}`;
+  const openState = openItem && `${shownState(openItem)}:${openItem.need ?? ''}`;
   useEffect(() => {
     const panel = panelRef.current;
     const i = openItem;
     if (!panel || !i || !unfolded.current) return;
-    panel.style.setProperty('--c', `var(--${i.state})`);
+    panel.style.setProperty('--c', `var(--${shownState(i)})`);
     fitPanel(i);
   }, [openState]);
   // content that grows or shrinks (a log loading, a question arriving, a resized text box) resizes it too

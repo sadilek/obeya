@@ -20,6 +20,7 @@ const de = {
   } satisfies Record<CardState, string>,
   need: { demo: 'Demo bereit', question: 'Frage an dich', review: 'Bereit zur Abnahme' } satisfies Record<Need, string>,
   demoWithQuestion: 'Demo bereit, mit Frage',
+  demoAnswering: 'Agent arbeitet an deiner Antwort',
   finishing: 'Live · Agent erledigt den Rest',
   finishingLong: 'Auf main. Der Agent erledigt noch, was nach dem Landen ansteht; danach endet seine Sitzung.',
   finishingDone: 'Erledigt · Agent räumt auf',
@@ -748,6 +749,7 @@ const en: Strings = {
   },
   need: { demo: 'Demo ready', question: 'Question for you', review: 'Ready for review' },
   demoWithQuestion: 'Demo ready, with a question',
+  demoAnswering: 'Agent works on your answer',
   finishing: 'Live · agent finishing up',
   finishingLong: 'On main. The agent still does what was waiting for the landing; then its session ends.',
   finishingDone: 'Done · agent tidying up',
@@ -1460,7 +1462,7 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; finishing?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
+export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; demo?: { answering?: true }; finishing?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
   i.prototypeEnd
     ? t.idea.ended[i.prototypeEnd]
     : i.finishing && (i.state === 'live' || i.state === 'done')
@@ -1478,9 +1480,11 @@ export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; id
           ? t.queue.workspace
           : t.queue.waiting
     : i.state === 'waiting' && i.need
-      ? i.need === 'demo' && i.question
-        ? t.demoWithQuestion
-        : t.need[i.need]
+      ? i.need === 'demo' && i.demo?.answering
+        ? t.demoAnswering
+        : i.need === 'demo' && i.question
+          ? t.demoWithQuestion
+          : t.need[i.need]
       : t.state[i.state];
 
 /** The owner's text for a refused request or a logged error code; the generic one for anything unknown. */

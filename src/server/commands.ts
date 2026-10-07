@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import { type CanvasConfig, finished, type Item, type NextStep, prototypeWorkstream, type Queue } from '../core/types';
+import { answering, type CanvasConfig, finished, type Item, type NextStep, prototypeWorkstream, type Queue } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Config } from './config';
 import type { Moment } from './db';
@@ -698,7 +698,7 @@ export class Commander {
       const state = i.queue
         ? queued(i.queue, items)
         : i.need
-          ? `${i.state}: ${i.need}`
+          ? `${i.state}: ${i.need}${answering(i) ? ", its agent works on the owner's answer to the question in its demo report" : ''}`
           : i.idea && i.idea.status !== 'open'
             ? `idea: ${i.idea.status}`
             : i.idea?.thinking

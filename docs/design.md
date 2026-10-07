@@ -241,7 +241,11 @@ An idea is thought through on its card before anything is planned; no worker run
    (`propose_card`), not a line in the report. A follow-up's worker hears which card it comes from
    and that card's summary. A question in the demo report is an
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
-   the answer, and the demo keeps waiting for approval.
+   the answer, and the demo keeps waiting for approval. While the worker takes in the answer (it
+   may rework the demo and hand over anew), the card is at work: „Agent arbeitet an deiner
+   Antwort“, no badge, not counted as needing the owner. Once its turn ends, a demo still waiting
+   is the owner's again; a restart resumes that turn like a working card's. Before (2026-10-07),
+   the card kept its badge while the worker reworked the demo the answer asked for.
 4. Where work lands through pull requests, approval puts the card `in PR`: its worker opens
    the PR and Obeya carries it through the merge, which it does itself. Review comments, failed checks and conflicts go to the
    worker; only what needs judgement — a review comment that questions a decision, a conflict with

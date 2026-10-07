@@ -93,7 +93,9 @@ a { color: inherit; }
 .card.underway .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--approved), transparent); background-size: 200% 100%;
   animation: flow 1.4s linear infinite; }
-.card.s-working .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;
+/* its worker takes in the owner's answer to the demo report's question: at work, not the owner's turn */
+.card.s-waiting.answering { --c: var(--working); box-shadow: var(--shadow); }
+.card.s-working .state::after, .card.s-waiting.answering .state::after { content: ""; width: 34px; height: 3px; border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--working), transparent); background-size: 200% 100%;
   animation: flow 1.4s linear infinite; }
 @keyframes flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }

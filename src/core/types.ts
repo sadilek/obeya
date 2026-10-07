@@ -59,12 +59,16 @@ export const formatQuestion = (q: Question, language: Language): string =>
   q.options.length ? `${q.text}${q.multiple ? ` (${MESSAGES[language].multiple})` : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
+/** Its worker takes in the owner's answer to the question in its demo report: meanwhile the card is at work. */
+export const answering = (i: Item) => i.state === 'waiting' && i.need === 'demo' && !!i.demo?.answering;
+
 /**
- * A card needs the owner: it waits, is a proposal, has a pull request that only waits for the
+ * A card needs the owner: it waits (but not while its worker takes in the answer to its demo
+ * report's question), is a proposal, has a pull request that only waits for the
  * owner's merge, or is an open idea whose agent has replied and is done.
  */
 export const needsYou = (i: Item) =>
-  i.state === 'waiting' || (i.state === 'proposal' && !i.proposal?.revising) || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
+  (i.state === 'waiting' && !answering(i)) || (i.state === 'proposal' && !i.proposal?.revising) || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
 
 export interface Item {
   id: string;
@@ -322,6 +326,8 @@ export interface Demo {
   question?: string;
   /** The owner's answer to it; the demo keeps waiting for approval. */
   answer?: string;
+  /** Its worker takes in that answer: until its turn ends, the card is not the owner's. */
+  answering?: true;
   /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */
   page?: DemoPage;
   /** An HTML artifact that is its `index.html` alone: it also goes out as one HTML file. */
