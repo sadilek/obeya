@@ -425,7 +425,10 @@ the owner's language (`src/core/locale.ts`).
   start` does (restarting for a saved configuration) but has no checkout to follow, so it never
   restarts for new code. A macOS binary is signed ad hoc after its build: as Bun writes it, macOS
   kills it at start. Bun 1.3.12 leaves a copy of its runtime in the working directory of every
-  compile (`.<hex>.bun-build`); the build compiles in the output directory and removes it.
+  compile (`.<hex>.bun-build`); the build compiles in the output directory and removes it. The
+  UI the binary carries is bundled at build time, with `NODE_ENV` defined as production, so it is
+  React's production build, as `bun start` serves it (without the define it was the development
+  one).
   `package.json` holds Obeya's version, which the settings show, with the checkout's commit
   beside it when Obeya runs from one. `bun scripts/check-binary.ts <obeya> [--voice] [--demo]
   [--worker]` checks a binary on the machine it runs on: a scratch repository with its own adapter
@@ -474,7 +477,9 @@ the owner's language (`src/core/locale.ts`).
   whenever it needs the language (`ownerLanguage`) and the UI asks for before its first render
   (`/api/language`). The UI strings are two tables of one shape in `src/ui/strings.ts`, so a
   missing English text is a type error; the English one calls the Koordinator the Coordinator; dates and numbers follow the language, in the browser's
-  own variant of it (`en-GB` writes the day first). Choosing another language takes effect at
+  own variant of it (`en-GB` writes the day first; a variant `Intl` refuses, such as
+  `en-US@posix` from a Linux browser with the POSIX locale, gives the usual one: until
+  2026-10-07 the page stayed blank on it). Choosing another language takes effect at
   once: the page loads again, keeping what was open, as after a restart. Behind the interface the
   same setting decides: what the server writes into a card's log, the questions it puts to the
   owner and what it speaks are two tables of one shape in `src/core/messages.ts` (the Board's `t`,
