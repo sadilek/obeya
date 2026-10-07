@@ -264,10 +264,7 @@ function AgentsBlock({ on }: { on: boolean }) {
             const chosen = view.chosen[role];
             return (
               <Fragment key={role}>
-                <div className="c-agent-name">
-                  {a.roles[role].name}
-                  <span className="hint">{a.roles[role].hint}</span>
-                </div>
+                <div className="c-agent-name">{a.roles[role].name}</div>
                 <select aria-label={`${a.roles[role].name}: ${a.model}`} value={chosen.model ?? ''} disabled={busy} onChange={(e) => choose(role, { ...chosen, model: (e.target.value || undefined) as AgentModel | undefined })}>
                   <option value="">{a.unset}</option>
                   {AGENT_MODELS.map((m) => (
@@ -284,6 +281,7 @@ function AgentsBlock({ on }: { on: boolean }) {
                     </option>
                   ))}
                 </select>
+                <span className="hint c-agent-hint">{a.roles[role].hint}</span>
               </Fragment>
             );
           })}

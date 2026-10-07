@@ -567,10 +567,10 @@ label.c-row input { width: 64px; }
 .c-demo .c-actions { margin-top: 10px; }
 .c-demo label.c-row > .hint { display: inline-block; min-width: 130px; }
 .c-demo > .hint:first-child { margin-top: 0; }
-.c-agents-grid { display: grid; grid-template-columns: minmax(0, 1fr) 110px 110px; gap: 6px 8px; align-items: center; margin-top: 8px; }
+.c-agents-grid { display: grid; grid-template-columns: minmax(0, 1fr) 104px 104px; gap: 6px 8px; align-items: center; margin-top: 8px; }
 .c-agents-grid > .hint { margin: 0; font-size: 11px; }
 .c-agent-name { font-size: 13px; min-width: 0; }
-.c-agent-name > .hint { display: block; font-size: 11px; margin: 1px 0 0; }
+.c-agents-grid > .c-agent-hint { grid-column: 1 / -1; margin: -4px 0 4px; }
 .c-person { font-size: 12px; margin: 2px 0 6px; }
 .c-about { font-size: 12px; margin: 2px 0 6px; }
 .c-demo label.c-check { display: flex; gap: 6px; align-items: center; margin: 6px 0 2px; }
