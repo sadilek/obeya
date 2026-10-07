@@ -21,6 +21,7 @@ import { type Subprocess } from 'bun';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import pkg from '../package.json';
 
 const args = process.argv.slice(2);
@@ -200,7 +201,7 @@ if (args.includes('--demo')) {
     const director = join(resources, 'plugin', 'skills', 'demo', 'lib', 'director.ts');
     writeFileSync(
       join(demo, 'demo.ts'),
-      `import { runDemo } from ${JSON.stringify(director)};
+      `import { runDemo } from ${JSON.stringify(pathToFileURL(director).href)};
 await runDemo(
   {
     title: 'Obeya from one file',
