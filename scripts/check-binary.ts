@@ -15,10 +15,11 @@
 // machine's own, which commits a file and hands over an HTML artifact that is then shared through
 // the repository's share command. The Koordinator's answer to the voice command needs a Claude
 // login as well; without --worker it is not waited for. Prints one line per check; exits 1 when
-// one failed. --keep leaves the scratch directory and the server running.
+// one failed. --keep leaves the scratch directory and the server running. With CHECK_ARTIFACTS set,
+// a failed render leaves its screenshot and the server's log in that directory.
 
 import { type Subprocess } from 'bun';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -217,6 +218,13 @@ await runDemo(
     );
     const p = Bun.spawnSync(['node', join(demo, 'demo.ts')], { cwd: demo, env, stdout: 'pipe', stderr: 'pipe' });
     const out = p.stdout.toString() + p.stderr.toString();
+    // what the browser showed when it failed, for a run on a machine one cannot look at (CHECK_ARTIFACTS)
+    const shot = join(demo, '.work', 'failure.png');
+    if (p.exitCode !== 0 && process.env.CHECK_ARTIFACTS && existsSync(shot)) {
+      mkdirSync(process.env.CHECK_ARTIFACTS, { recursive: true });
+      copyFileSync(shot, join(process.env.CHECK_ARTIFACTS, 'demo-failure.png'));
+      copyFileSync(log, join(process.env.CHECK_ARTIFACTS, 'server.log'));
+    }
     expect(p.exitCode === 0, `exit ${p.exitCode}\n${out.slice(-3000)}`);
     expect(Bun.file(join(demo, 'demo.mp4')).size > 0, 'no demo.mp4');
     return out.split('\n').find((l) => /video →/.test(l))?.trim();

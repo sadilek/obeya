@@ -18,10 +18,12 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
 
 ## Where it stands
 
-- *Starting*: only from the checkout, `bun start` (`src/server/main.ts`), which needs Bun. Without
+- *Starting*: from the checkout, `bun start` (`src/server/main.ts`), which needs Bun. Without
   `--dev` the process supervises the server and restarts it when its checkout moves to new code
-  (design: Self-update). There is no version number (`package.json` has none) and no CI workflow
-  in the repository.
+  (design: Self-update). Or from one file (W1, design: One file): `bun run build` compiles the
+  server for the five targets, with `resources/` beside it; the binary needs no Bun and no
+  checkout and never restarts for new code. `package.json` has the version (0.1.0), which the
+  settings show. There is no CI workflow in the repository yet.
 - *Checking the machine*: the settings sheet already checks voice (`src/server/voice-setup.ts`:
   Whisper, ffmpeg, uv, the voice) and demos (`plugin/skills/demo/lib/setup.ts`: Node, Playwright
   and a browser, ffmpeg, uv, the voice, Whisper), each missing piece with how to install it on
@@ -30,16 +32,22 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   diesem Rechner nicht angemeldet").
 - *Claude Code*: the Agent SDK brings its own Claude Code binary per platform as an optional
   package (`@anthropic-ai/claude-agent-sdk-darwin-arm64` and so on, 224 MB on macOS arm64), and
-  Obeya runs that one (`src/server/runtime.ts` sets no `pathToClaudeCodeExecutable`), on the
-  machine's login.
-- *A single file* (measured 2026-10-06, Bun 1.3.12, macOS arm64): `bun build --compile
-  src/server/main.ts` builds in 0.3 s a 66 MB binary that holds the server, the UI (the HTML
-  import) and `bun:sqlite`, without the Claude binary. As built, macOS killed it at start
-  (exit 137): it is not signed and `codesign` rejected its format until `codesign
-  --remove-signature` and an ad-hoc signature. Then it served a scratch canvas with its plan doc
-  on `--idle-workers`. What it hands to other processes resolved into Bun's embedded file system
-  and is missing there: Playwright (`bun install --cwd "/"`) and `voices.ts` (`/$bunfs/root/…`);
-  the same goes for `voice/*.py`, the plugin a worker loads and `OBEYA_KIT` for adapters.
+  the checkout runs that one, on the machine's login. The compiled binary runs the machine's own
+  installation (`claudeExecutable` in `src/server/runtime.ts`: the `PATH`, else `~/.local/bin`;
+  `OBEYA_CLAUDE` names another).
+- *A single file* (W1, 2026-10-07, Bun 1.3.12): 66 MB on macOS arm64, 71 MB x64, about 105 MB
+  on Linux, 120 MB on Windows, plus 13 MB of resources; all five built in 15 s on a Mac. The
+  macOS binary needs `codesign --remove-signature` and an ad-hoc signature, or macOS kills it
+  at start (exit 137); the build does that. `bun scripts/check-binary.ts` passed on macOS arm64
+  and on GitHub's Windows x64, Ubuntu x64 and Ubuntu arm64 runners (temporary branch, run
+  37592177744): the canvas from a binary started as `obeya` starts, a repository's own adapter
+  and its share command importing the kit through the binary's Bun, Whisper and Piper installed
+  from the settings and a spoken sentence heard word for word with the Koordinator answering, a
+  demo rendered with the director from the resources (Linux on ARM with Playwright's Chromium),
+  and a real worker that committed and handed over an artifact that was shared, once on the
+  machine's Claude Code and once on the SDK's. On macOS a worker's work also landed on main.
+  Not checked: landing through a pull request from the binary (the scratch repository has no
+  forge), and the binary in a read-only directory (it writes nothing there by design).
 
 ## Design
 
@@ -112,8 +120,9 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   224 MB per platform to every download, ship Anthropic's proprietary binary inside an MIT app,
   and freeze its version until the next app release. The setup assistant installs it if missing.
   Whether that holds is open question 3: the SDK and the binary it brings are of one release; a
-  user's Claude Code that is newer or older may not speak the SDK's protocol. The checkout keeps
-  the SDK's binary unless W1 finds the user's works as well.
+  user's Claude Code that is newer or older may not speak the SDK's protocol. W1 found both work
+  (SDK 0.3.285 with the installed 2.1.292 on all four platforms); the checkout keeps the SDK's
+  binary, which needs nothing installed.
 
 ### Builds in CI
 
@@ -194,7 +203,7 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
 
 ## Workstreams
 
-- [ ] **W1:** Obeya as one file. `bun build --compile` of the server for the five targets; one
+- [x] **W1:** Obeya as one file. `bun build --compile` of the server for the five targets; one
   function for the resources directory (beside the binary, else the checkout) used for `plugin/`,
   `voice/`, the adapter kit and the built-in adapters; what is written beside the code moves into
   Obeya's home; self-update off without a checkout; a version in `package.json`, shown in the
@@ -240,8 +249,9 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
   the app turns them on and plays H.264 only with GStreamer's plugins installed. Where the window
   cannot record or play a demo, the app opens the canvas in the browser instead.
 - **Obeya itself on Windows** has run the voice check and a voice command on a runner (W7 of
-  `open-source.md`), but not workers, worktrees and landings: design.md calls it "a separate,
-  larger question". The Windows app depends on it; W1 checks it with a real worker.
+  `open-source.md`), and in W1 the compiled binary ran a real worker there (clone, commit,
+  handover, sharing). Landings, worktrees and long sessions on Windows are still unchecked:
+  design.md calls it "a separate, larger question".
 - **SmartScreen** warns about a new download until it has a reputation, signed or not (an EV
   certificate no longer skips that). The first Windows users see a warning either way.
 - **Global keys**: macOS asks the owner to allow Input Monitoring in the system settings, and
@@ -275,8 +285,10 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
    (MLX, CUDA, CPU), and every native library in it would have to be signed and notarised; the
    models (the large part) are downloaded on first use anyway.
 3. **Which Claude Code the app runs**: the user's installation (recommended, see Claude Code) or
-   the SDK's own binary. W1 tries both; if the user's does not work with the SDK reliably, the
-   app ships the SDK's binary after all and SignPath (question 1) is out.
+   the SDK's own binary. W1 tried both on macOS, Windows and Linux: a worker and the Koordinator
+   ran on either (SDK 0.3.285, its own Claude Code 2.1.285, the installed 2.1.292). The binary
+   runs the user's; whether it stays reliable as the two drift apart shows only over releases,
+   so the setup assistant (W6) should say which version Obeya was checked with.
 4. **The default key for global push-to-talk**: right Option on a Mac, right Ctrl elsewhere
    (right Alt is AltGr on many European layouts). Fn on a Mac would be nearer to hand, but macOS
    gives it to dictation and the emoji picker, and an external keyboard often has none.

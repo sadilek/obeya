@@ -431,8 +431,9 @@ the owner's language (`src/core/locale.ts`).
   [--worker]` checks a binary on the machine it runs on: a scratch repository with its own adapter
   and share command, then the voice installed and a spoken command heard, a demo rendered with the
   director from the resources, and a real worker that commits and hands over an artifact, which is
-  shared. All of it passed on macOS arm64 (2026-10-07), the basic part also with the Linux arm64
-  binary in Docker. The installable app around it is planned in `docs/plan/app.md`.
+  shared, once on the machine's Claude Code and once on the SDK's. All of it passed on macOS
+  arm64 and on GitHub's Windows x64, Ubuntu x64 and Ubuntu arm64 runners (2026-10-07). The
+  installable app around it is planned in `docs/plan/app.md`.
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
@@ -572,8 +573,9 @@ the owner's language (`src/core/locale.ts`).
   From the checkout it runs the Claude Code binary the SDK brings for the platform (its optional
   package, 224 MB); the compiled binary carries none and runs the machine's own installation
   (`claude` on the `PATH`, else `~/.local/bin`, where the official installer puts it);
-  `OBEYA_CLAUDE` names another. Both ran workers, the Koordinator and a landing in the binary on
-  2026-10-07 (the SDK 0.3.285 with its Claude Code 2.1.285, and the installed 2.1.292). Agents get
+  `OBEYA_CLAUDE` names another. Both ran workers and the Koordinator in the binary on macOS,
+  Windows and Linux on 2026-10-07 (the SDK 0.3.285 with its Claude Code 2.1.285, and the
+  installed 2.1.292). Agents get
   Obeya's environment without the marks of a Claude Code session that may have started it
   (`CLAUDE_CODE_*`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain.
   A worker is one SDK session per card with streaming input, the repo's own settings and
