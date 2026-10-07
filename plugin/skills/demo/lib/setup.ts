@@ -11,6 +11,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { isMain, lib } from './here.ts';
 import { type DemoSettings, readDemoSettings, withVoice } from './settings.ts';
 import { hfModelPresent, installState, onMlx } from './voices.ts';
@@ -149,8 +150,9 @@ async function browser(platform: string, env: NodeJS.ProcessEnv, playwright: str
   }
   if (!playwright) return null;
   try {
-    const { chromium } = (await import(playwright)) as typeof import('playwright-core');
-    const own = chromium.executablePath();
+    // the CommonJS module by its path: Node gives its exports as `default` only, Bun by name too
+    const mod = (await import(pathToFileURL(playwright).href)) as typeof import('playwright-core') & { default?: typeof import('playwright-core') };
+    const own = (mod.chromium ?? mod.default?.chromium)?.executablePath();
     return own && fs.existsSync(own) ? own : null;
   } catch {
     return null;
