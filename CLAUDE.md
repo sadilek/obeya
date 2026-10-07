@@ -26,6 +26,9 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
 - No project-specific logic in the core: it belongs in the repository's own adapter (`.obeya/adapter/`
   in that repository), not in this repo.
 - UI strings live in one place, `src/ui/strings.ts`, in German and English (two tables of one shape).
+- An interaction that several kinds of card share (answering questions with comments and one Send
+  button, the conversation history, "Los geht's" while the agent is still working) is built once in
+  shared code and works the same on each of them; no card kind gets its own variant.
 - A button that is easy to click by accident and sets a lot in motion gets an undo. What is easy
   to reverse afterwards gets no undo window with a wait: it takes effect at once.
 - Prompts and skills for agents: fix unwanted behaviour by removing the instruction that causes
