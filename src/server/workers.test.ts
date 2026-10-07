@@ -763,6 +763,28 @@ describe('handing over with a demo', () => {
     expect(needsYou(board.item(c.id)!)).toBe(true);
   });
 
+  test('a worker taking in an answer that pauses for a restart is resumed by it', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'session', id: 'sess-1' });
+    runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
+    runtime.last.emit({ type: 'idle' });
+    workers.answer(c.id, 'Nimm die andere Stimme.');
+    const busy = runtime.last;
+    busy.emit({ type: 'text', text: 'Ich rendere mit der anderen Stimme.' });
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 15 * 60_000 });
+    busy.emit({ type: 'text', text: 'Ich pausiere für den Neustart.' });
+    busy.emit({ type: 'idle' });
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
+    expect(board.item(c.id)!.demo!.answering).toBe(true);
+    expect(needsYou(board.item(c.id)!)).toBe(false);
+    workers.shutdown();
+    workers.restartDue(null);
+    workers.resumeAll();
+    expect(runtime.last).not.toBe(busy);
+    expect(runtime.last.spec.resume).toBe('sess-1');
+  });
+
   test('after feedback, the worker may hand over again without a new demo: the one on the card stands', () => {
     rmSync(dir, { recursive: true, force: true });
     setup({ ...generic, land: 'main', workspaces: 'clones', demo: { required: true, howToRun: 'bun start' } });

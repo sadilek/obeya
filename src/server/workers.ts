@@ -719,6 +719,11 @@ export class Workers {
     if (card.demo?.answering) {
       // a resumed session may first end a turn of its own before it takes in the answer
       if (!acted && !handedOver) return this.waitForWorker(cardId, live);
+      // it paused for the restart, which resumes it, still taking in the answer
+      if (this.restart && live.toldRestart && !handedOver) {
+        this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.paused(this.restart.reason === 'stop'));
+        return;
+      }
       this.answerTaken(cardId);
     }
     if (handedOver) {
