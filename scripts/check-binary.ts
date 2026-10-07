@@ -225,7 +225,7 @@ await runDemo(
       copyFileSync(shot, join(process.env.CHECK_ARTIFACTS, 'demo-failure.png'));
       copyFileSync(log, join(process.env.CHECK_ARTIFACTS, 'server.log'));
     }
-    expect(p.exitCode === 0, `exit ${p.exitCode}\n${out.slice(-3000)}`);
+    expect(p.exitCode === 0, `exit ${p.exitCode}\n${out.slice(-3000)}\n${p.exitCode !== 0 ? pageConsole(demo) : ''}`);
     expect(Bun.file(join(demo, 'demo.mp4')).size > 0, 'no demo.mp4');
     return out.split('\n').find((l) => /video →/.test(l))?.trim();
   });
@@ -266,6 +266,31 @@ if (args.includes('--worker')) {
       });
       return events.map((e) => e.text ?? '').find((t) => /demos\.example/.test(t));
     });
+}
+
+/** What the browser says loading the canvas once more, as the director launches it: for a render that failed. */
+function pageConsole(demo: string): string {
+  const pw = join(resources, 'node_modules', 'playwright-core', 'index.js');
+  const script = join(demo, 'console.mjs');
+  writeFileSync(
+    script,
+    `const m = await import(${JSON.stringify(pathToFileURL(pw).href)});
+const chromium = m.chromium ?? m.default.chromium;
+let b;
+for (const channel of ['chrome', 'msedge', undefined]) { try { b = await chromium.launch({ channel, args: ['--window-size=1440,900'] }); console.log('browser', channel ?? 'chromium', b.version()); break; } catch {} }
+const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+p.on('console', (m) => console.log('console', m.type(), m.text().slice(0, 300)));
+p.on('pageerror', (e) => console.log('pageerror', e.message.slice(0, 500)));
+p.on('requestfailed', (r) => console.log('requestfailed', r.url(), r.failure()?.errorText));
+const started = Date.now();
+await p.goto(${JSON.stringify(`${base}/?c=${canvas}`)});
+await p.waitForTimeout(15000);
+console.log('after', Date.now() - started, 'ms the page says:', (await p.locator('body').innerText()).slice(0, 300).replace(/\\n/g, ' | '));
+await b.close();
+`,
+  );
+  const r = Bun.spawnSync(['node', script], { cwd: demo, env, stdout: 'pipe', stderr: 'pipe' });
+  return `the page loaded once more:\n${r.stdout.toString()}${r.stderr.toString().slice(-1500)}`;
 }
 
 console.log(failed ? `${failed} check(s) failed; the server's log:\n${logText().slice(-4000)}` : 'all checks passed');
