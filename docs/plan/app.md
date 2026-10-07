@@ -39,15 +39,24 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   on Linux, 120 MB on Windows, plus 13 MB of resources; all five built in 15 s on a Mac. The
   macOS binary needs `codesign --remove-signature` and an ad-hoc signature, or macOS kills it
   at start (exit 137); the build does that. `bun scripts/check-binary.ts` passed on macOS arm64
-  and on GitHub's Windows x64, Ubuntu x64 and Ubuntu arm64 runners (temporary branch, run
-  37592177744): the canvas from a binary started as `obeya` starts, a repository's own adapter
-  and its share command importing the kit through the binary's Bun, Whisper and Piper installed
+  and on GitHub's Windows x64, Ubuntu x64 and Ubuntu arm64 runners (temporary branch
+  `w1-binary-check`, runs 37594452553 and 37597463590): the canvas from a binary started as
+  `obeya` starts, a repository's own adapter and its share command importing the kit through the binary's Bun, Whisper and Piper installed
   from the settings and a spoken sentence heard word for word with the Koordinator answering, a
   demo rendered with the director from the resources (Linux on ARM with Playwright's Chromium),
   and a real worker that committed and handed over an artifact that was shared, once on the
   machine's Claude Code and once on the SDK's. On macOS a worker's work also landed on main.
   Not checked: landing through a pull request from the binary (the scratch repository has no
-  forge), and the binary in a read-only directory (it writes nothing there by design).
+  forge), and the binary in a read-only directory (it writes nothing there by design). The
+  runners found three faults that the checkout had too, now fixed: the canvas stayed blank in a
+  browser whose language is `en-US@posix` (Linux with the POSIX locale), the demo setup under
+  Node did not find Playwright's own Chromium (Linux on ARM), and on Windows the server ended
+  when the Lesestand's directory could not be removed while an agent worked in it. What the
+  runners needed for W3's smoke test: Bun 1.3.12, Node 24, uv, ffmpeg (apt, choco), Claude Code
+  from the official installer, Playwright's Chromium on Linux on ARM (`node
+  resources/node_modules/playwright-core/cli.js install --with-deps chromium`), and the
+  repository secret `CLAUDE_CODE_OAUTH_TOKEN` for agents (`claude setup-token`; agents keep that
+  variable, unlike the rest of `CLAUDE_CODE_*`).
 
 ## Design
 
