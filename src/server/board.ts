@@ -423,7 +423,7 @@ export class Board {
     return this.store.friction(this.canvas.id, repo, since);
   }
 
-  decide(d: { project_id: string | null; card_id: string; question: string; answer: string; by: 'owner' | 'project' | 'koordinator' }) {
+  decide(d: { project_id: string | null; card_id: string; question: string; answer: string; by: 'owner' }) {
     this.store.addDecision({ canvas_id: this.canvas.id, ...d });
   }
 

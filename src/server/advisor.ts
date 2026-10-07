@@ -1,74 +1,10 @@
-// One consultation of an advising agent (a project agent, the Koordinator): a read-only turn that
-// either answers a worker's question or escalates it to the owner.
+// What the agents that answer the owner's questions (the Koordinator, a project agent) share, and
+// how an agent's question to the owner is put together.
 
 import { z } from 'zod';
 import { type Language, LANGUAGE_NAMES } from '../core/locale';
 import type { Question } from '../core/types';
 import type { AgentRuntime } from './runtime';
-
-/** An advisor's reply to a worker's question. */
-export type Reply = { answer: string } | { escalate: Question };
-
-export interface Consultation {
-  runtime: AgentRuntime;
-  cwd: string;
-  system: string;
-  message: string;
-  /** Resume the advisor's session, so it remembers earlier questions. */
-  resume?: string;
-  onSession: (id: string) => void;
-  /** Returned when the turn ends without a reply. */
-  fallback: Question;
-  /** The owner's language, which the answer and the question to the owner are in. */
-  language: Language;
-}
-
-export function consult(c: Consultation): Promise<Reply> {
-  return new Promise((resolve, reject) => {
-    let reply: Reply | null = null;
-    const settle = (r: Reply) => {
-      if (reply) return 'Only the first reply counts.';
-      reply = r;
-      resolve(r);
-      return 'Delivered. End your turn now.';
-    };
-    const session = c.runtime.start(
-      {
-        cwd: c.cwd,
-        readOnly: true,
-        role: 'koordinator',
-        ...(c.resume ? { resume: c.resume } : {}),
-        system: c.system,
-        tools: [
-          {
-            name: 'answer',
-            description: `Answer the worker yourself, in ${LANGUAGE_NAMES[c.language]} (the owner reads it too), briefly. Say which source the answer rests on (plan doc section, earlier decision, preference, code).`,
-            schema: { text: z.string() },
-            run: ({ text }) => settle({ answer: String(text) }),
-          },
-          {
-            name: 'escalate',
-            description: `Pass the question to the owner, rewritten in ${LANGUAGE_NAMES[c.language]} for a reader who has not seen the code, with up to four short answer options when they exist (multiple: true when several may be chosen together).`,
-            schema: { question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() },
-            run: ({ question, options, multiple }) => settle({ escalate: toQuestion(question, options, multiple) }),
-          },
-        ],
-        onEvent: (e) => {
-          if (e.type === 'session') c.onSession(e.id);
-          else if (e.type === 'error' && !reply) {
-            session.close();
-            reject(new Error(e.message));
-          } else if (e.type === 'idle') {
-            session.close();
-            // a turn without a reply: the owner decides
-            if (!reply) settle({ escalate: c.fallback });
-          }
-        },
-      },
-      c.message,
-    );
-  });
-}
 
 /** An answer to a question the owner asked: in full for the card or the sheet, and short for the ear. */
 export interface OwnerAnswer {
@@ -153,17 +89,26 @@ export function toQuestion(text: unknown, options: unknown, multiple?: unknown):
   return { text: clip(String(text).trim(), 2000), options: opts, ...(multiple === true && opts.length > 1 ? { multiple: true } : {}) };
 }
 
+/** A question as an agent asks it through a tool: with its own pick, the options it would choose if it had to decide, and why. */
+export interface Asked {
+  question: string;
+  options?: string[];
+  multiple?: boolean;
+  pick?: string[];
+  pick_why?: string;
+}
+
+/** A question as the card shows it, with the agent's own pick when that names its options. */
+export function withPick(a: Asked): Question {
+  const q = toQuestion(a.question, a.options, a.multiple);
+  const picked = (a.pick ?? []).map((o) => String(o).trim()).filter((o) => q.options.includes(o));
+  const options = q.multiple ? [...new Set(picked)] : picked.slice(0, 1);
+  return options.length ? { ...q, pick: { options, why: clip(String(a.pick_why ?? '').trim(), 400) } } : q;
+}
+
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
-/** When to answer and when to escalate, the same for every advisor. */
-export const ADVICE_RULES = `
-For each question, either answer it or escalate it to the owner:
-- Answer when the plan doc, an earlier decision, a recorded preference of the owner or the code settles it, or when it is a technical judgement call a senior engineer on the team would make without asking.
-- Escalate product decisions, trade-offs nothing settles, anything irreversible or external (money, customers, other teams, production data), and anything you are unsure about.
-Your answers are shown to the owner, who may overrule them. Read what you need, then call exactly one of answer or escalate, and end your turn. You cannot change files.
-`.trim();
-
-/** The decisions so far, as the advisor reads them. */
+/** The decisions so far, as an agent reads them. */
 export function decisionLog(decisions: { question: string; answer: string; by: string }[]): string {
   return decisions.length
     ? decisions.map((d) => `- ${d.question.split('\n')[0]} → ${d.answer} (${d.by === 'owner' ? 'owner' : 'an agent'})`).join('\n')

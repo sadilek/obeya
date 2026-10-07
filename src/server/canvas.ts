@@ -160,16 +160,10 @@ export class CanvasRuntime {
         repo: ref.id,
         preferences,
         onOwnerInput: (card, kind, text, context) => koordinator.learn(card, kind, text, context),
-        advisor: (card) => {
-          const project = card.parent ? board.item(card.parent) : undefined;
-          return project
-            ? { by: 'project', ask: (q) => projectAgents.ask(project, card, q) }
-            : { by: 'koordinator', ask: (q) => koordinator.ask(card, q) };
-        },
         onPrOpened: (cardId) => this.sharing.prOpened(cardId),
         onMerged: () => void read.refresh(),
         onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
-        onPrototypeAnswer: (prototype, question, answer, by) => this.prototypeAnswered(prototype, question, answer, by),
+        onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
         imageFiles,
         onWorkEnded: (cardId, workspace) => workRetro.ended(cardId, workspace),
@@ -353,7 +347,7 @@ export class CanvasRuntime {
       case 'message':
         return this.repoOf(cardId).workers.message(cardId, text.trim(), images, !!a.spoken);
       case 'answer':
-        return this.repoOf(cardId).workers.answer(cardId, text.trim(), 'owner', images, !!a.spoken);
+        return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken);
       case 'approve':
         return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct });
       case 'accept':
@@ -645,11 +639,10 @@ export class CanvasRuntime {
   }
 
   /** A question on a prototype was answered: the idea's agent takes it into the brief, so the idea does not ask it again. */
-  private prototypeAnswered(prototype: Item, question: string, answer: string, by: 'owner' | 'project' | 'koordinator') {
-    const who = by === 'owner' ? 'The owner' : 'The Koordinator, on the owner’s behalf,';
+  private prototypeAnswered(prototype: Item, question: string, answer: string) {
     this.explorers.tell(
       prototype.prototypeOf!,
-      `On the prototype “${prototype.title}”, its worker asked: „${question}“\n\n${who} answered: ${answer}\n\nTake what this settles into the brief (decisions, open questions), so it is not asked again. Do not reply to the owner for it; end your turn without a reply unless it raises something they must decide now.`,
+      `On the prototype “${prototype.title}”, its worker asked: „${question}“\n\nThe owner answered: ${answer}\n\nTake what this settles into the brief (decisions, open questions), so it is not asked again. Do not reply to the owner for it; end your turn without a reply unless it raises something they must decide now.`,
       true,
     );
   }

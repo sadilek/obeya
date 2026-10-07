@@ -11,7 +11,6 @@ import { Store } from './db';
 import { DEMO_SKILL, OBEYA_PLUGIN } from './demo';
 import { Images } from './images';
 import { FakeRuntime, gitRepo, identify, until } from './testing';
-import type { Reply } from './advisor';
 import { Restarter } from './self-update';
 import { Workers } from './workers';
 import { GIT, git, Workspaces } from './workspaces';
@@ -25,7 +24,6 @@ let board: Board;
 let docs: PlanDoc[];
 let runtime: FakeRuntime;
 let workers: Workers;
-let projectReply: Reply | null;
 let spaces: Workspaces;
 let store: Store;
 /** With `setup(adapter, true)`: the bare repository the clones come from and push to. */
@@ -56,14 +54,12 @@ function setup(adapter: RepoAdapter, withOrigin = false) {
     for (const w of workspaces.list()) identify(w.path);
   }
   runtime = new FakeRuntime();
-  projectReply = null;
   merged = [];
   workers = new Workers({
     board,
     runtime,
     workspaces,
     adapter,
-    advisor: (card) => (card.parent ? { by: 'project', ask: async () => projectReply! } : null),
     onMerged: (cardId) => void merged.push(cardId),
     env: { OBEYA_URL: 'http://127.0.0.1:4417' },
   });
@@ -246,6 +242,7 @@ describe('workers', () => {
   test('a standalone card asks the owner; the answer goes back to the worker', () => {
     const c = manual();
     workers.start(c.id);
+    expect(runtime.last.inbox[0]).not.toContain('Decisions taken');
     runtime.last.call('ask', { question: 'CSV oder Excel?', options: ['CSV', 'Excel'] });
     expect(state(c.id)).toBe('waiting:question');
     expect(board.item(c.id)!.question).toEqual({ text: 'CSV oder Excel?', options: ['CSV', 'Excel'] });
@@ -301,21 +298,51 @@ describe('workers', () => {
     expect(runtime.last.inbox.length).toBe(before + 1);
   });
 
-  test('a workstream asks its project agent first', async () => {
+  test("a workstream's question goes straight to the owner, too", () => {
     const w = board.snapshot().items.find((i) => i.label === 'W1')!;
     workers.start(w.id);
-    projectReply = { answer: 'Laut Plan: CSV.' };
-    runtime.last.call('ask', { question: 'CSV oder Excel?' });
-    await flush();
-    expect(state(w.id)).toBe('working');
-    expect(board.events(w.id).at(-1)).toMatchObject({ kind: 'answer', author: 'project', text: 'Laut Plan: CSV.' });
-    expect(runtime.last.inbox.at(-1)).toContain('project agent');
-
-    projectReply = { escalate: { text: 'Budget freigeben?', options: ['Ja', 'Nein'] } };
-    runtime.last.call('ask', { question: 'Darf ich den Dienst X buchen?' });
-    await flush();
+    runtime.last.call('ask', { question: 'Darf ich den Dienst X buchen?', options: ['Ja', 'Nein'] });
     expect(state(w.id)).toBe('waiting:question');
-    expect(board.item(w.id)!.question!.text).toBe('Budget freigeben?');
+    expect(board.item(w.id)!.question).toEqual({ text: 'Darf ich den Dienst X buchen?', options: ['Ja', 'Nein'] });
+    expect(board.item(w.id)!.statusLine).toBeUndefined();
+    workers.answer(w.id, 'Nein');
+    expect(runtime.last.inbox.at(-1)).toContain('from the owner');
+    expect(board.decisions(board.item(w.id)!.parent!).at(-1)).toMatchObject({ question: expect.stringContaining('Dienst X'), answer: 'Nein', by: 'owner' });
+  });
+
+  test("the worker's own pick goes with its question, and the owner still decides", () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'CSV oder Excel?', options: ['CSV', 'Excel'], pick: ['Excel'], pick_why: 'Die Buchhaltung arbeitet in Excel.' });
+    expect(state(c.id)).toBe('waiting:question');
+    expect(board.item(c.id)!.question).toEqual({ text: 'CSV oder Excel?', options: ['CSV', 'Excel'], pick: { options: ['Excel'], why: 'Die Buchhaltung arbeitet in Excel.' } });
+    workers.answer(c.id, 'CSV');
+    expect(runtime.last.inbox.at(-1)).toContain('CSV');
+    // a pick that names no option, or several on a single choice, is left out or cut to one
+    runtime.last.call('ask', { question: 'Trennzeichen?', options: ['Komma', 'Semikolon'], pick: ['Tab'], pick_why: 'Egal.' });
+    expect(board.item(c.id)!.question!.pick).toBeUndefined();
+    workers.answer(c.id, 'Komma');
+    runtime.last.call('ask', { question: 'Kopfzeile?', options: ['Ja', 'Nein'], pick: ['Ja', 'Nein'] });
+    expect(board.item(c.id)!.question!.pick).toEqual({ options: ['Ja'], why: '' });
+  });
+
+  test("a workstream's worker gets its project's decisions, and those taken while it works once", () => {
+    const w = board.snapshot().items.find((i) => i.label === 'W1')!;
+    const project = w.parent!;
+    // the project's other cards: here the project itself stands in for them
+    board.decide({ project_id: project, card_id: project, question: 'Welche Spalten?', answer: 'Alle.', by: 'owner' });
+    workers.start(w.id);
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain('Decisions taken in this project so far:\n- Welche Spalten? → Alle. (owner)');
+    expect(s.toolStep()).toBeUndefined();
+
+    s.call('ask', { question: 'Kopfzeile?', options: ['Ja', 'Nein'] });
+    workers.answer(w.id, 'Ja');
+    // its own answer it heard as one
+    expect(s.toolStep()).toBeUndefined();
+    board.decide({ project_id: project, card_id: project, question: 'Datumsformat?', answer: 'ISO', by: 'owner' });
+    expect(s.toolStep()).toBe('Decisions taken in this project while you work:\n- Datumsformat? → ISO (owner)');
+    expect(s.toolStep()).toBeUndefined();
   });
 
   test('a turn that ends without handing over is nudged once, then goes to the owner', () => {
@@ -585,19 +612,16 @@ describe('workers', () => {
     expect(runtime.last.inbox[0]).toContain('already holds earlier work');
   });
 
-  test("a late advisor reply or a stopped session's tool call changes nothing", async () => {
+  test("a stopped session's tool call changes nothing", () => {
     const w = board.snapshot().items.find((i) => i.label === 'W1')!;
-    let reply!: (r: Reply) => void;
-    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, advisor: () => ({ by: 'project', ask: () => new Promise((r) => (reply = r)) }) });
     workers.start(w.id);
     const old = runtime.last;
-    old.call('ask', { question: 'Q?' });
     workers.stop(w.id);
-    reply({ answer: 'Zu spät.' });
-    await flush();
     expect(state(w.id)).toBe('planned');
+    expect(old.call('ask', { question: 'Q?' })).toContain('session has ended');
     expect(old.call('report', { status: 'noch da' })).toContain('session has ended');
     expect(board.item(w.id)!.statusLine).not.toBe('noch da');
+    expect(board.item(w.id)!.question).toBeUndefined();
   });
 
   test('after a restart, a worker that never reported a session starts again with its card', () => {

@@ -164,7 +164,8 @@ describe('the archive of projects', () => {
     const b = board.snapshot().items.find((i) => i.title === 'B')!;
     expect(b.origin).toBe(idea.id);
     const w1 = board.snapshot().items.find((i) => i.parent === b.id)!;
-    board.decide({ project_id: b.id, card_id: w1.id, question: 'Welche Spalten?', answer: 'Alle.', by: 'project' });
+    // one answered in the owner's name, as a project agent did before workers asked the owner directly
+    store.addDecision({ canvas_id: 'shop', project_id: b.id, card_id: w1.id, question: 'Welche Spalten?', answer: 'Alle.', by: 'project' });
     // the idea's card leaves the canvas; the project still finds it
     board.archive([idea.id]);
     const h = board.projectHistory(b.id);

@@ -1,5 +1,5 @@
 // Workers: one agent session per card, in a leased clone. Obeya is the mailbox between the
-// worker, its project agent and the owner; every exchange lands in the card's conversation.
+// worker and the owner; every exchange lands in the card's conversation.
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
@@ -8,7 +8,7 @@ import { MESSAGES, type Messages } from '../core/messages';
 import { basename } from 'node:path';
 import { type DemoKind, type DemoPage, formatQuestion, type Item, type Mock, type Question, type RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
-import { type Reply, toQuestion } from './advisor';
+import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
@@ -17,10 +17,6 @@ import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, 
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
 import type { PrState, Shipped } from './board';
 import { parsePrUrl } from './forge';
-
-/** Who answers a worker's question before the owner does, and how. */
-export type Advisor = { by: Adviser; ask: (q: Question) => Promise<Reply> };
-export type Adviser = 'project' | 'koordinator';
 
 export interface WorkerOptions {
   board: Board;
@@ -33,11 +29,9 @@ export interface WorkerOptions {
   /** The owner's preferences, added to every worker's instructions. */
   preferences?: () => string;
   /** Called with everything the owner tells a worker, so lasting preferences can be learned. */
-  onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, context: InputContext) => void;
+  onOwnerInput?: (card: Item, kind: 'answer' | 'note' | 'feedback', text: string, context?: InputContext) => void;
   /** On a canvas with several repositories: the one these workers work in. */
   repo?: string;
-  /** Who answers the card's questions on the owner's behalf, if anyone. */
-  advisor?: (card: Item) => Advisor | null;
   /** The worker reported the card's pull request: a demo shared before gets its link. */
   onPrOpened?: (cardId: string) => void;
   /** The default branch has moved: the card's pull request was merged, or its work pushed there directly. */
@@ -45,7 +39,7 @@ export interface WorkerOptions {
   /** A prototype was handed over: the idea's agent hears the summary. */
   onPrototype?: (prototype: Item, summary: string, demo: string | undefined) => void;
   /** A question on a prototype was answered: the idea's agent hears both, so its brief holds them. */
-  onPrototypeAnswer?: (prototype: Item, question: string, answer: string, by: 'owner' | Adviser) => void;
+  onPrototypeAnswer?: (prototype: Item, question: string, answer: string) => void;
   /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
   backgroundGrace?: number;
   /** How long after a usage limit lifts the worker goes on, so that clocks a little apart do not matter. */
@@ -98,6 +92,8 @@ interface Live {
   toldRestart?: boolean;
   /** The owner's preferences as the worker last heard them: in its instructions, or since then. */
   preferences: string;
+  /** The project the card is a workstream of, and the last of its decisions the worker has heard of. */
+  project?: { id: string; decision: number };
 }
 
 /** A restart that waits for workers to finish their turns: why, and when it goes ahead at the latest. */
@@ -184,12 +180,11 @@ export class Workers {
   /** A hint while the worker runs, or feedback on its review; `images` are screenshot files the owner attached. */
   message(cardId: string, text: string, images: string[] = [], spoken = false) {
     const card = this.card(cardId);
-    const overruled = this.overruled(cardId);
     if (card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) {
       // feedback instead of an approval: what comes back is reviewed again
       this.o.board.work(cardId, { state: 'working', need: null, detail: null, approved_at: null });
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
-      if (text) this.o.onOwnerInput?.(card, 'feedback', text, overruled ? { overruled } : {});
+      if (text) this.o.onOwnerInput?.(card, 'feedback', text);
       this.deliver(
         cardId,
         `Feedback from the owner instead of an approval${spoken ? ` (${SPOKEN})` : ''}; the card is back with you${card.need === 'demo' ? ', and your demo stays on it until you hand over another' : ''}:\n\n${text}${imageNote(images)}`,
@@ -200,7 +195,7 @@ export class Workers {
       const row = this.o.board.row(cardId);
       this.o.board.work(cardId, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
-      if (text) this.o.onOwnerInput?.(card, 'note', text, overruled ? { overruled } : {});
+      if (text) this.o.onOwnerInput?.(card, 'note', text);
       this.deliver(
         cardId,
         `A note from the owner instead of an answer${spoken ? ` (${SPOKEN})` : ''}. It withdraws your question („${card.question?.text ?? ''}“): if the note settles it, go on; if not, ask again.\n\n${text}${imageNote(images)}`,
@@ -208,25 +203,24 @@ export class Workers {
       );
     } else if (card.state === 'working' || card.state === 'inPr' || card.finishing) {
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
-      if (text) this.o.onOwnerInput?.(card, 'note', text, overruled ? { overruled } : {});
+      if (text) this.o.onOwnerInput?.(card, 'note', text);
       this.deliver(cardId, `A note from the owner${spoken ? ` (${SPOKEN})` : ''} (it does not stop you; adjust your plan if it changes anything):\n\n${text}${imageNote(images)}`, images);
     } else throw new BadRequest('noAgent', 'no agent works on this card');
   }
 
-  answer(cardId: string, text: string, by: 'owner' | Adviser = 'owner', images: string[] = [], spoken = false) {
+  answer(cardId: string, text: string, images: string[] = [], spoken = false) {
     const card = this.card(cardId);
-    if (card.state === 'waiting' && card.need === 'demo' && card.question && by === 'owner') return this.answerDemo(card, text, images, spoken);
-    if (!(card.state === 'waiting' && card.need === 'question') && by === 'owner') throw new BadRequest('noQuestion', 'the card has no open question');
+    if (card.state === 'waiting' && card.need === 'demo' && card.question) return this.answerDemo(card, text, images, spoken);
+    if (!(card.state === 'waiting' && card.need === 'question')) throw new BadRequest('noQuestion', 'the card has no open question');
     const row = this.o.board.row(cardId);
     const question = row.detail ? (JSON.parse(row.detail).question as Question | undefined) : undefined;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
     this.o.board.work(cardId, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
-    this.o.board.log(cardId, 'answer', by, text, undefined, images.map((f) => basename(f)));
-    this.recordDecision(card, q, text || '(Screenshot)', by);
-    if (by === 'owner' && text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
-    if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', by);
-    const from = { owner: 'from the owner', project: 'from the project agent, on the owner\u2019s behalf', koordinator: 'from the Koordinator, on the owner\u2019s behalf' }[by];
-    this.deliver(cardId, `Answer to your question (${from}${spoken ? `; ${SPOKEN}` : ''}):\n\n${text}${imageNote(images)}`, images);
+    this.o.board.log(cardId, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
+    this.recordDecision(card, q, text || '(Screenshot)');
+    if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
+    if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)');
+    this.deliver(cardId, `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${text}${imageNote(images)}`, images);
   }
 
   /**
@@ -239,9 +233,9 @@ export class Workers {
     const demo = JSON.parse(this.o.board.row(card.id).demo!) as Record<string, unknown>;
     this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)', answering: true }) });
     this.o.board.log(card.id, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
-    this.recordDecision(card, q, text || '(Screenshot)', 'owner');
+    this.recordDecision(card, q, text || '(Screenshot)');
     if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
-    if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)', 'owner');
+    if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)');
     this.deliver(
       card.id,
       `The owner answered the question in your demo report („${q}“)${spoken ? ` (${SPOKEN})` : ''}. The card still waits for their approval of what you handed over:\n\n${text}${imageNote(images)}`,
@@ -570,6 +564,8 @@ export class Workers {
     if (!row.workspace) throw new Error(`card ${cardId} has no workspace to work in`);
     const preferences = this.o.preferences?.() ?? '';
     const live: Live = { session: undefined!, handedOver: false, acted: false, nudged: false, lastText: '', busy: true, stalled: false, preferences };
+    const project = this.o.board.item(cardId)?.parent;
+    if (project) live.project = { id: project, decision: this.o.board.decisions(project).at(-1)?.id ?? 0 };
     this.live.set(cardId, live);
     message = this.withRestart(live, message);
     live.session = this.o.runtime.start(
@@ -580,7 +576,7 @@ export class Workers {
         tools: this.tools(cardId, live, !!row.prototype_of),
         ...(this.o.adapter.demo ? { plugins: [OBEYA_PLUGIN] } : {}),
         ...(this.o.env ? { env: this.o.env } : {}),
-        contextUpdate: () => this.preferencesUpdate(live),
+        contextUpdate: () => [this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
         ...(resume ? { resume } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         onEvent: (e) => this.onEvent(cardId, live, e),
@@ -619,6 +615,16 @@ export class Workers {
     if (now === live.preferences) return;
     live.preferences = now;
     return now ? `The owner's preferences changed while you work; they now read:\n\n${now}` : 'The owner withdrew their standing preferences; none apply any more.';
+  }
+
+  /** Decisions taken in the card's project since the worker last heard of them, passed with its next tool result; those on its own card it heard as answers. */
+  private decisionsUpdate(cardId: string, live: Live): string | undefined {
+    if (!live.project) return;
+    const fresh = this.o.board.decisions(live.project.id).filter((d) => d.id > live.project!.decision);
+    if (!fresh.length) return;
+    live.project.decision = fresh.at(-1)!.id;
+    const others = fresh.filter((d) => d.card_id !== cardId);
+    return others.length ? `Decisions taken in this project while you work:\n${decisionLog(others)}` : undefined;
   }
 
   /** A message that starts a turn while a restart is due tells the worker of it, once. */
@@ -893,11 +899,19 @@ export class Workers {
       },
       {
         name: 'ask',
-        description: `Ask for a decision you should not make yourself: product behaviour, trade-offs, anything irreversible or external. Write the question in ${language} for a reader who has not seen the code, and offer up to four short answer options when they exist; the owner picks one on the card (several when multiple is true) or writes their own. Then end your turn.`,
-        schema: { question: z.string(), options: z.array(z.string()).max(4).optional(), multiple: z.boolean().optional() },
-        run: ({ question, options, multiple }) => {
+        description: `Ask for a decision you should not make yourself: product behaviour, trade-offs, anything irreversible or external. Write the question in ${language} for a reader who has not seen the code, and offer up to four short answer options when they exist; the owner picks one on the card (several when multiple is true) or writes their own. pick: the options you would choose yourself if you had to decide (one, or several when multiple), and pick_why: why, in one short sentence in ${language}; the card marks them for the owner. Then end your turn.`,
+        schema: {
+          question: z.string(),
+          options: z.array(z.string()).max(4).optional(),
+          multiple: z.boolean().optional(),
+          pick: z.array(z.string()).optional(),
+          pick_why: z.string().optional(),
+        },
+        run: (args) => {
           handOver();
-          this.routeQuestion(cardId, toQuestion(question, options, multiple));
+          const q = withPick(args as unknown as Asked);
+          this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
+          this.toOwner(cardId, q);
           return END_TURN;
         },
       },
@@ -1074,30 +1088,6 @@ export class Workers {
     ]);
   }
 
-  private routeQuestion(cardId: string, q: Question) {
-    const card = this.card(cardId);
-    this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
-    const advisor = this.o.advisor?.(card);
-    if (!advisor) return this.toOwner(cardId, q);
-    const name = advisor.by === 'project' ? 'Projekt-Agent' : 'Koordinator';
-    // the owner may stop the card, or answer, before the advisor does
-    const asked = this.generation.get(cardId);
-    const stale = () => this.generation.get(cardId) !== asked || this.o.board.item(cardId)?.state === 'waiting';
-    this.o.board.work(cardId, { status_line: advisor.by === 'project' ? 'Frage beim Projekt-Agenten' : 'Frage beim Koordinator' });
-    advisor
-      .ask(q)
-      .then((reply) => {
-        if (stale()) return;
-        if ('answer' in reply) this.answer(cardId, reply.answer, advisor.by);
-        else this.toOwner(cardId, reply.escalate);
-      })
-      .catch((e) => {
-        if (stale()) return;
-        this.o.board.log(cardId, 'error', 'obeya', `${name}: ${e instanceof Error ? e.message : String(e)}`);
-        this.toOwner(cardId, q);
-      });
-  }
-
   private toOwner(cardId: string, q: Question) {
     this.o.board.work(cardId, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: q }) });
   }
@@ -1109,26 +1099,8 @@ export class Workers {
       .at(-1)?.text;
   }
 
-  /**
-   * The answer given in the owner's name to the card's last question, as long as the owner has not
-   * said anything on the card since: what they say next may overrule it.
-   */
-  private overruled(cardId: string): InputContext['overruled'] {
-    const events = this.o.board.events(cardId);
-    for (let i = events.length - 1; i >= 0; i--) {
-      const e = events[i]!;
-      if (e.author === 'owner' && (e.kind === 'hint' || e.kind === 'answer')) return undefined;
-      // a question asked later is the card's last one
-      if (e.kind === 'question') return undefined;
-      if (e.kind !== 'answer' || (e.author !== 'project' && e.author !== 'koordinator')) continue;
-      const question = events.slice(0, i).findLast((q) => q.kind === 'question');
-      return { question: question?.text ?? '', answer: e.text, by: e.author };
-    }
-    return undefined;
-  }
-
-  private recordDecision(card: Item, question: string, answer: string, by: 'owner' | Adviser) {
-    this.o.board.decide({ project_id: card.parent ?? null, card_id: card.id, question, answer, by });
+  private recordDecision(card: Item, question: string, answer: string) {
+    this.o.board.decide({ project_id: card.parent ?? null, card_id: card.id, question, answer, by: 'owner' });
   }
 
   // ---------------------------------------------------------------- prompts
@@ -1197,6 +1169,8 @@ ${idea.idea.brief}` : '',
       parts.push(`${shots.length === 1 ? 'The owner attached a screenshot' : `The owner attached ${shots.length} screenshots`} to the card (shown with this message; files: ${shots.join(', ')}).`);
     const project = card.parent ? this.o.board.item(card.parent) : undefined;
     if (project?.plan) parts.push(`This is workstream ${card.label ?? ''} of the project “${project.title}”. Read its plan doc ${project.plan.file} first; it holds the context and decisions.`);
+    const decisions = project ? this.o.board.decisions(project.id) : [];
+    if (decisions.length) parts.push(`Decisions taken in this project so far:\n${decisionLog(decisions)}`);
     const part = project?.plan && this.o.board.row(card.id).shipped;
     if (part) {
       const s = JSON.parse(part) as Shipped;

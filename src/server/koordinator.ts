@@ -4,8 +4,7 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import { type AgentRole, type CardEvent, type Item, type Preference, type Question, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
-import { ADVICE_RULES, consult, decisionLog, type Reply } from './advisor';
+import { type AgentRole, type CardEvent, type Item, type Preference, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Utterance } from './db';
 import type { AgentRuntime, AgentTool } from './runtime';
@@ -38,8 +37,6 @@ export type OwnerInput = 'answer' | 'note' | 'feedback' | 'idea' | 'command' | '
 export interface InputContext {
   /** The question the owner answered. */
   question?: string;
-  /** The answer given in the owner's name to the card's last question, which the input may overrule. */
-  overruled?: { question: string; answer: string; by: 'project' | 'koordinator' };
   /** The Koordinator's reply to what the owner said to it. */
   reply?: string;
   /** The card's text before the owner wrote in it: a proposal's, a follow-up's. */
@@ -71,8 +68,6 @@ export interface KoordinatorOptions {
   home: () => string;
   /** The owner's recorded preferences, as agents read them. */
   preferences?: () => string;
-  /** Worker questions one session answers; the next one starts fresh. */
-  sessionQuestions?: number;
   /** How long a project's start waits for the owner to take it back; START_ALL_HOLD_MS by default. */
   holdMs?: number;
   /** After how many of the owner's inputs the Rückschau runs; REVIEW_EVERY by default. */
@@ -87,14 +82,7 @@ export class Koordinator {
 
   /** Decisions to start are taken one at a time, so two colliding cards cannot both slip through. */
   private chain: Promise<unknown> = Promise.resolve();
-  private answers: Promise<unknown> = Promise.resolve();
   private learning: Promise<unknown> = Promise.resolve();
-  /**
-   * The session that answers worker questions, kept for a few questions and never across a
-   * restart, so it cannot grow without end. What it needs to remember comes with every question:
-   * the decisions so far and the preferences.
-   */
-  private questionSession: { id?: string; asked: number } = { asked: 0 };
   private draining = false;
   /** A look again at cards waiting for a workspace, which can free up without a change of the board (a dirty clone cleaned up). */
   private recheck?: ReturnType<typeof setTimeout>;
@@ -263,41 +251,7 @@ export class Koordinator {
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.dequeued);
   }
 
-  /** Answers the question of a card without a project, or escalates it. One question at a time. */
-  ask(card: Item, q: Question): Promise<Reply> {
-    const next = this.answers
-      .catch(() => {})
-      .then(() => {
-        if (this.questionSession.asked >= (this.o.sessionQuestions ?? 20)) this.questionSession = { asked: 0 };
-        const s = this.questionSession;
-        s.asked++;
-        return consult({
-          runtime: this.o.runtime,
-          cwd: this.o.repoFor(card).path,
-          resume: s.id,
-          onSession: (id) => (s.id = id),
-          language: this.o.board.language(),
-          system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Workers on cards that belong to no project send you the questions they cannot decide themselves.\n\n${ADVICE_RULES}`,
-          message: [
-            `Question from the worker on the ${card.kind} "${card.title}":`,
-            card.body ? `The card: ${card.body.slice(0, 1500)}` : '',
-            q.text,
-            q.options.length ? `Options the worker suggests${q.multiple ? ' (several may be chosen)' : ''}:\n${q.options.map((o) => `- ${o}`).join('\n')}` : '',
-            `Decisions on cards without a project so far:\n${decisionLog(this.o.board.decisions(null))}`,
-            this.o.preferences?.() ?? '',
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
-          fallback: q,
-        }).catch((e) => {
-          // a session that failed is not resumed again
-          if (this.questionSession === s) this.questionSession = { asked: 0 };
-          throw e;
-        });
-      });
-    this.answers = next;
-    return next;
-  }
+
 
   /**
    * The owner said something (to a worker, in an idea, to the Koordinator, in a card's text): if it
@@ -481,7 +435,7 @@ export class Koordinator {
   private distill(card: Item | null, kind: OwnerInput, text: string, context: InputContext, around: string[]): Promise<void> {
     const rules = this.o.board.preferences('active');
     const open = this.o.board.preferences('proposed');
-    const { question, overruled, reply, before } = context;
+    const { question, reply, before } = context;
     let proposed = false;
     return this.read(
       card ? this.o.repoFor(card).path : this.o.home(),
@@ -512,9 +466,6 @@ export class Koordinator {
           card ? `Card${kind === 'talk' || kind === 'command' ? ' the owner had open' : ''}: ${card.kind === 'project' ? 'project ' : ''}"${card.title}".` : '',
           ...around,
           question ? `The worker asked: ${question}` : '',
-          overruled
-            ? `The worker asked: ${overruled.question}\nThe ${overruled.by === 'project' ? 'project agent' : 'Koordinator'} answered it in the owner's name: ${overruled.answer}\nWhat follows is the owner's first word on the card since. If it overrules that answer, the answer missed what the owner wants: that may be a lasting preference the answering agent should have known.`
-            : '',
           before ? `Before the owner wrote in it, the card's text read:\n${before}` : '',
           `The owner's ${INPUTS[kind]}: ${text}`,
           reply ? `The Koordinator replied: ${reply}` : '',
@@ -973,7 +924,6 @@ Signals for one:
 - It is phrased generally: "immer", "nie", "ab jetzt", "grundsätzlich", "jedes Mal", "bei so etwas".
 - It corrects how an agent works rather than what it builds: the agent asked what it could have decided itself, skipped a check, wrote in a style the owner does not want, went beyond its task. The agent's last message shows what the owner reacts to.
 - It repeats something the owner said before, on this card or another: said twice, it should not need saying a third time.
-- It overrules an answer given in the owner's name: the agent that answered lacked a rule.
 Not a preference: deciding the case at hand (an option, a name, a date, what this card should do), approving, asking how things stand, correcting a fact. Most of what the owner says is like that: then call nothing.
 
 Make few, good proposals: at most one per input, and only one you expect the owner to accept; when unsure, wait until the owner says it again. Call propose with a short, general rule in ${language}, in the owner's terms and without the occasion ("Fragen an mich mit höchstens drei Optionen.", "Änderungen am Login bekommen immer das Codex-Review." for the repository with the login); the owner accepts or rejects it before it applies. If it refines or contradicts a recorded rule, pass that rule's number as replaces. Do not propose what a recorded rule or a waiting proposal already covers, nor a rejected proposal again, in other words either.
@@ -997,7 +947,6 @@ This is the Rückschau. You get what happened on the canvas since the last one, 
 - the same kind of question, answered the same way each time;
 - proposals of one kind the owner always dismisses, or always takes;
 - your advice to wait overruled again and again;
-- answers given in the owner's name that the owner then overruled;
 - commands taken back, and what the owner did instead.
 Clicks without words count here: what the owner does again and again says what they want as much as what they say.
 

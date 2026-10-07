@@ -594,14 +594,6 @@ describe('a prototype', () => {
     git(ws, 'add', '.');
     git(ws, 'commit', '--quiet', '-m', `Prototyp ${file}`);
   };
-  /** The worker asks, and the Koordinator passes the question on to the owner. */
-  const ask = async (s: FakeSession, question: string, options: string[]) => {
-    s.call('ask', { question, options });
-    await settle();
-    const advisor = runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'escalate')).at(-1)!;
-    advisor.call('escalate', { question, options });
-    await settle();
-  };
   const handOver = (s: FakeSession, summary: string, demo = 'demo') =>
     s.call('ready_for_review', { summary, demo: { dir: demoDir(demo), chapters: ['Knopf'] } });
 
@@ -736,7 +728,7 @@ describe('a prototype', () => {
     commit(chosen!.id, 'knopf.txt');
     commit(other!.id, 'menu.txt');
     // the chosen one's worker asked the owner something on its card
-    await ask(w!, 'Knopf oben oder unten?', ['oben', 'unten']);
+    w!.call('ask', { question: 'Knopf oben oder unten?', options: ['oben', 'unten'] });
     canvas.act(chosen!.id, { action: 'answer', text: 'oben' });
     handOver(w!, 'Knopf oben gebaut; Export als CSV.');
     const ws = board().row(chosen!.id).workspace!;
@@ -805,7 +797,7 @@ describe('a prototype', () => {
     turn(explorer(), 'Ein Prototyp?');
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
     const [prototype] = prototypes(i.id);
-    await ask(worker(), 'Welche Farbe?', ['Blau', 'Grün']);
+    worker().call('ask', { question: 'Welche Farbe?', options: ['Blau', 'Grün'] });
     canvas.act(prototype!.id, { action: 'answer', text: 'Blau' });
     const s = explorer();
     expect(s.inbox.at(-1)).toContain('„Welche Farbe?“');

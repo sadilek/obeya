@@ -297,9 +297,11 @@ An idea is thought through on its card before anything is planned; no worker run
 Agents never talk to each other directly; the Obeya server is the mailbox, so every exchange is
 visible on a card. A worker has five tools, served in-process: `report(status)`, a status line
 on the card; `reply(text)`, its answer to a note or feedback in the card's conversation, which
-does not end its turn; `ask(question, options, multiple)`, which returns at once — the worker ends its turn
+does not end its turn; `ask(question, options, multiple, pick, pick_why)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
-or writes their own answer); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1); and
+or writes their own answer; `pick` and `pick_why` are the options the worker would choose if it
+had to decide, and why, which the card marks "Würde ich nehmen" the way an idea's questions show
+its agent's pick); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1); and
 `ready_for_review(summary, demo | no_demo)`, whose summary is the report the owner reads. A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner; when that turn failed in the session (the
 SDK reports an error result, e.g. Claude not logged in on the machine), the question is the error
@@ -377,11 +379,14 @@ screenshots the same way: picked with the small button to the right of the micro
 it, or pasted (⌘V) anywhere outside a text field, they show beside the microphone and go with the
 next recording; one in which nothing was heard or understood leaves them there.
 
-A worker's question goes to its project agent (a standalone card's goes to the Chief of Staff),
-which answers from the plan doc, the decision log and the preference memory. Only what needs the owner reaches the owner: product decisions, trade-offs, anything
-irreversible or external. An answer given on the owner's behalf stays visible on the card and
-can be overruled: the owner's next word on the card goes to the learner with the answer it may
-overrule, so overruling feeds the preference memory. Owner-facing text from agents is in
+A worker's question goes straight to the owner, with the worker's own pick: no other agent
+answers it on the owner's behalf (Decisions, 2026-10-07). The worker asks only what it should not
+decide itself (product behaviour, trade-offs, anything irreversible or external) and settles the
+rest alone. What a project has decided reaches its workstreams' workers instead: a worker's task
+holds its project's decision log ("Decisions taken in this project so far") beside the pointer to
+the plan doc, and a decision recorded while it runs reaches it once at its next tool call, the way
+a learned preference does. Answers given in the owner's name before then stay in the decision
+logs, marked "(an agent)", and show on their cards as before. Owner-facing text from agents is in
 the owner's language (`src/core/locale.ts`).
 
 ## Architecture
@@ -530,13 +535,15 @@ the owner's language (`src/core/locale.ts`).
   A worker is one SDK session per card with streaming input, the repo's own settings and
   CLAUDE.md, and permission mode `auto` (`--permission-mode`); after a restart it resumes by
   session id. A project agent is one read-only session per project (Read, Grep, Glob on the
-  repository's Lesestand), resumed for each question, answering one question at a time. The SDK sits behind a
+  repository's Lesestand), resumed for each question, answering the owner's questions about the
+  project and its workstreams one at a time. The SDK sits behind a
   small runtime interface, so the orchestration is tested against a fake. Two SDK hooks ride on
   every session: before a Bash call, the refusal of long foreground sleeps; after every tool call,
   what changed since the session's instructions were built (`AgentSpec.contextUpdate`) goes to the
   agent with that call's result. Workers and idea agents use it for the owner's preferences: a
   preference learned or changed while one runs reaches it once, at its next tool call, without a
-  message or a new turn.
+  message or a new turn. A workstream's worker hears its project's new decisions the same way
+  (those on its own card it heard as answers).
 - **Workspaces** — per adapter. A pool of full clones leased by a card while it is worked on
   (for a repository whose tools break inside a worktree, or that runs its own app stack per clone),
   or a worktree per card (Obeya itself: any number in parallel), kept across stop and restart
@@ -716,8 +723,7 @@ the owner's language (`src/core/locale.ts`).
   in that order, so none wait for each other, and the order is the queue's from then on. The
   project's sheet names what each waiting workstream waits for. When the turn fails, each is judged
   on its own as if started alone; after a restart the joint turn runs again. Paths the adapter marks as soft (docs) do not count. "Aufteilen" cuts a planned card
-  into 2–6 packages with disjoint files, or keeps it and says why. It answers questions of cards
-  without a project, and after whatever the owner says it decides whether a lasting preference
+  into 2–6 packages with disjoint files, or keeps it and says why. After whatever the owner says it decides whether a lasting preference
   was stated and proposes it as a rule (the card's log says „Schlägt vor: …“), for the preference
   memory or, when it is about a repository, for that repository's CLAUDE.md (for each repository
   of the canvas when it holds in all of them; one proposal each); "Merk dir: …" by
@@ -726,15 +732,14 @@ the owner's language (`src/core/locale.ts`).
   reply; a command once its undo window has passed, unless its words reach the learner another
   way, as a note or an idea's discussion do); and the text the owner writes in a card, once they
   pause typing for a minute or act on the card, with the text it had before (a proposal's, a
-  follow-up's). The owner's first note, answer or feedback on a card after an answer
-  given in their name goes with that answer, which it may overrule. The learner reads an input with
+  follow-up's). The learner reads an input with
   the card's text, what the owner said in the last three days (notes, feedback and answers to
   agents, ideas' discussions, the conversation with the Koordinator; at most 30), the agent's last
   message before it (taken when the input arrives, not when the learner's turn comes), the canvas's
   repositories, the active rules, the rules accepted for a CLAUDE.md, and the open and rejected
   proposals. Its prompt names the signals for a proposal: phrased
   generally ("immer", "nie", "ab jetzt"), a correction of how an agent works, a repetition of
-  something said before, an overruled answer; it makes at most one proposal per input. The
+  something said before; it makes at most one proposal per input. The
   Rückschau counts the owner's inputs: what the learner reads, and clicks without words in a card
   (start, approve, accept or dismiss a proposal, park, start anyway, …), a deleted card, a command
   taken back, a rule proposal decided on; a spoken command counts once, as what was said. The
@@ -1499,6 +1504,15 @@ the repository; the copy on the project is only for the archive).
   or in the Koordinator's quick turn (2026-10-06): the worker may be gone or busy with its own card,
   and writing a whole card text would slow every confirmation down. Before, the owner could only
   type the changes into the proposal's text themselves.
+- A worker's question goes straight to the owner, with the worker's own pick (2026-10-07). Before,
+  a project agent answered a workstream's questions and the Koordinator those of a card without a
+  project, escalating only what they could not settle; they were allowed technical judgement calls
+  "a senior engineer would make without asking". The Koordinator then decided against building a
+  feature, weighing the work against what it would save, which was the owner's call. An advisor
+  knew barely more than the worker: the Koordinator saw no other cards, and a project agent's only
+  edge was the project's decision log, which now goes to the worker. Narrowing the advisor's rules
+  or having it only suggest were dropped: the worker's own pick gives the owner what a suggestion
+  would.
 
 ## Open questions
 

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { type Language, LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import { type Item, type Mock, NEXT_STEPS, type NextStep, type PlannedPrototype, type Question } from '../core/types';
-import { decisionLog, toQuestion } from './advisor';
+import { type Asked, decisionLog, withPick } from './advisor';
 import { BadRequest, type Board, type Message, type Unread } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { imageNote } from './images';
@@ -399,22 +399,6 @@ const UNREAD_NOTE: Record<Unread['why'], string> = {
   error: 'Your last turn ended with an error before you replied. These messages are still unanswered; take them in with the one after them:',
   restart: 'Obeya was restarted while you worked on a reply. These messages are still unanswered; take them in with the one after them:',
 };
-
-interface Asked {
-  question: string;
-  options: string[];
-  multiple?: boolean;
-  pick?: string[];
-  pick_why?: string;
-}
-
-/** A question as the card shows it, with the agent's own pick when that names its options. */
-function withPick(a: Asked): Question {
-  const q = toQuestion(a.question, a.options, a.multiple);
-  const picked = (a.pick ?? []).map((o) => String(o).trim()).filter((o) => q.options.includes(o));
-  const options = q.multiple ? [...new Set(picked)] : picked.slice(0, 1);
-  return options.length ? { ...q, pick: { options, why: clip(String(a.pick_why ?? '').trim(), 400) } } : q;
-}
 
 /** The prototypes as the agent planned them: each with an approach of its own, and a task. */
 function plannedPrototypes(list: unknown): PlannedPrototype[] {
