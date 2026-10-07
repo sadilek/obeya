@@ -47,6 +47,8 @@ const EDGE_MAX = 330;
 /** Two cards facing each other across less than this fill the gap between them. */
 const BRIDGE_MAX = 100;
 const MARGIN = R_MEMBER + 2 * CELL;
+/** How far the territory's edge lies from a lone card. */
+const REACH = R_MEMBER * (1 - Math.sqrt(T_AREA));
 
 // Math.hypot is several times slower, and this runs for every cell near a card
 const len = (dx: number, dy: number) => Math.sqrt(dx * dx + dy * dy);
@@ -82,6 +84,8 @@ interface Field {
 }
 
 type Member = { b: Bounds; w: number };
+/** How much a member's pull is squeezed towards its left, right, top and bottom. */
+type Squeeze = [number, number, number, number];
 type Stranger = { b: Bounds; s: number };
 
 /** A group's energy around its members. */
@@ -149,11 +153,14 @@ function field(members: Member[], strangers: Stranger[]): Field {
         y1 > y0 && x0 > x1 && x0 - x1 < BRIDGE_MAX ? { x: x1, y: y0, w: x0 - x1, h: y1 - y0 } : x1 > x0 && y0 > y1 && y0 - y1 < BRIDGE_MAX ? { x: x0, y: y1, w: x1 - x0, h: y0 - y1 } : undefined;
       if (bridge && !walls.some((o) => near(o, bridge, 0))) solid.push({ b: bridge, w: Math.min(members[i]!.w, members[j]!.w) });
     }
-  for (const m of solid)
-    splat(m.b.x - R_MEMBER, m.b.y - R_MEMBER, m.b.x + m.b.w + R_MEMBER, m.b.y + m.b.h + R_MEMBER, (x, y) => {
-      const d = rectDist(x, y, m.b);
+  for (const m of solid) {
+    const [kl, kr, kt, kb] = squeeze(m.b, strangers);
+    const { x: bx, y: by, w: bw, h: bh } = m.b;
+    splat(bx - R_MEMBER, by - R_MEMBER, bx + bw + R_MEMBER, by + bh + R_MEMBER, (x, y) => {
+      const d = len(bx > x ? (bx - x) * kl : x > bx + bw ? (x - bx - bw) * kr : 0, by > y ? (by - y) * kt : y > by + bh ? (y - by - bh) * kb : 0);
       return d < R_MEMBER ? m.w * (1 - d / R_MEMBER) ** 2 : 0;
     }, pull);
+  }
   for (const o of strangers)
     splat(o.b.x - R_OBST, o.b.y - R_OBST, o.b.x + o.b.w + R_OBST, o.b.y + o.b.h + R_OBST, (x, y) => {
       const d = rectDist(x, y, o.b);
@@ -161,6 +168,32 @@ function field(members: Member[], strangers: Stranger[]): Field {
     });
   for (let k = 0; k < v.length; k++) v[k]! += pull[k]!;
   return { i0, j0, nx, ny, v };
+}
+
+/**
+ * A stranger facing a side of a member across a narrow gap squeezes the member's pull on that side,
+ * so the edge runs along the middle of the gap the whole side long and turns round there: pushed
+ * back only near the stranger, the edge would hang down beside it as a tip at the member's corner.
+ */
+function squeeze(b: Bounds, strangers: Stranger[]): Squeeze {
+  const k: Squeeze = [1, 1, 1, 1];
+  for (const o of strangers) {
+    const cols = Math.min(b.x + b.w, o.b.x + o.b.w) - Math.max(b.x, o.b.x);
+    const rows = Math.min(b.y + b.h, o.b.y + o.b.h) - Math.max(b.y, o.b.y);
+    // the gap on the side it faces, if it faces one; the less it overlaps that side, the less it squeezes
+    const sides: [number, number, number][] = [
+      [0, b.x - o.b.x - o.b.w, rows],
+      [1, o.b.x - b.x - b.w, rows],
+      [2, b.y - o.b.y - o.b.h, cols],
+      [3, o.b.y - b.y - b.h, cols],
+    ];
+    for (const [side, g, along] of sides) {
+      if (g < 0 || along <= 0) continue;
+      const full = Math.max(1, REACH / Math.max(g / 2, CELL / 2));
+      k[side] = Math.max(k[side]!, 1 + (full - 1) * o.s * Math.min(1, along / REACH));
+    }
+  }
+  return k;
 }
 
 const at = (f: Field, i: number, j: number) => (i < f.i0 || j < f.j0 || i >= f.i0 + f.nx || j >= f.j0 + f.ny ? 0 : f.v[(j - f.j0) * f.nx + (i - f.i0)]!);

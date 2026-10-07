@@ -471,7 +471,10 @@ the owner's language (`src/core/locale.ts`).
   across another card), and every other card pushes back; where two groups meet, the stronger
   holds the ground, which makes a card amid another group an island. Of the cards' pull only the
   strongest counts at each point, not their sum, and the narrow gap between two cards facing each
-  other pulls like a card: summed, the edge bulged out over every gap. The browser computes it with
+  other pulls like a card: summed, the edge bulged out over every gap. A card's pull is squeezed
+  on a side that faces another card across a narrow gap, so the edge runs along the gap's middle
+  the whole side long and turns round there: pushed back only near the other card, it hung down
+  beside it as a tip at the corner. The browser computes it with
   `d3-contour`, each group on its own grid around its cards on one 16 px lattice, resamples each
   contour evenly and smooths it with a Gaussian (σ 20 px), so corners come out round and even
   rather than with the grid's facets and the kinks where territories meet, and computes a

@@ -78,3 +78,40 @@ describe('territories', () => {
     expect(Math.abs(top(-20) - overCard - (left(-20) - side))).toBeLessThanOrEqual(2);
   });
 });
+
+describe('beside a stranger', () => {
+  // how far down (or up, with dir -1) from y the territory reaches above x
+  const edge = (t: Parameters<typeof within>[0], x: number, y: number, dir: 1 | -1) => {
+    while (within(t, { x, y: y + dir })) y += dir;
+    return y;
+  };
+
+  test('a stranger below closes the territory with a round corner, not a tip beside it', () => {
+    const below = card('s', 0, 170);
+    const [t] = new Territories().compute([card('a1', 0, 0, { A: 1 }), card('a2', 330, 0, { A: 1 }), card('a3', 660, 0, { A: 1 }), below], ['A']);
+    // the edge runs along the middle of the gap, beside the stranger too
+    const gap = (140 + 170) / 2;
+    expect(Math.abs(edge(t!, 150, 70, 1) - gap)).toBeLessThanOrEqual(6);
+    expect(edge(t!, -10, 70, 1)).toBeLessThanOrEqual(gap);
+    expect(within(t!, { x: -20, y: below.b.y + 5 })).toBe(false);
+    // and turns round: the left side is where it is elsewhere, the corner in between
+    const left = (y: number) => {
+      let x = 150;
+      while (within(t!, { x: x - 1, y })) x--;
+      return x;
+    };
+    expect(left(70)).toBeLessThan(-50);
+    expect(left(gap - 5)).toBeGreaterThan(left(70) + 10);
+  });
+
+  test('a stranger above and beside: no tip runs up past it', () => {
+    const above = card('s', 0, 0);
+    const [t] = new Territories().compute([above, card('a1', 0, 170, { A: 1 }), card('a2', 330, 170, { A: 1 }), card('a3', 330, 0, { A: 1 })], ['A']);
+    const gap = (140 + 170) / 2;
+    expect(edge(t!, -10, 240, -1)).toBeGreaterThanOrEqual(gap);
+    expect(within(t!, { x: -20, y: above.b.y + above.b.h - 5 })).toBe(false);
+    // beside it, a3's left side runs along the middle of that gap up to its top
+    expect(within(t!, { x: 310, y: -20 })).toBe(false);
+    expect(within(t!, { x: 320, y: 20 })).toBe(true);
+  });
+});
