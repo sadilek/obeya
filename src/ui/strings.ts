@@ -408,7 +408,6 @@ const de = {
       hint: 'Welches Modell jede Gruppe von Agenten nimmt und wie viel es nachdenkt (Effort). Voreingestellt sind das Standardmodell von Claude Code, für kleine Aufgaben Sonnet, und hoher Effort, für den Koordinator mittlerer. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.',
       model: 'Modell',
       effort: 'Effort',
-      preset: (label: string) => `${label} (voreingestellt)`,
       roles: {
         koordinator: { name: 'Koordinator', hint: 'Befehle, Planung, Nachschlagen, Projekt-Agenten, Lernen' },
         worker: { name: 'Agenten an Aufgaben', hint: 'bauen die Aufgaben' },
@@ -1141,7 +1140,6 @@ const en: Strings = {
       hint: 'Which model each group of agents uses and how much it thinks (effort). Preset are Claude Code’s default model, Sonnet for small jobs, and high effort, medium for the Coordinator. Applies at once to every agent that starts afterwards; one at work keeps what it started with.',
       model: 'Model',
       effort: 'Effort',
-      preset: (label: string) => `${label} (preset)`,
       roles: {
         koordinator: { name: 'Coordinator', hint: 'commands, planning, look-ups, project agents, learning' },
         worker: { name: 'Agents on tasks', hint: 'build the tasks' },

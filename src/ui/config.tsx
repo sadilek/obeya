@@ -3,7 +3,7 @@
 // read-only.
 
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type SetupItem, type VoiceKind, type VoiceSetupItem, type VoiceSetupView } from '../core/types';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type SetupItem, type VoiceKind, type VoiceSetupItem, type VoiceSetupView } from '../core/types';
 import { LANGUAGES } from '../core/locale';
 import { api, ApiError, reload } from './api';
 import { errorText, t } from './strings';
@@ -249,7 +249,6 @@ function AgentsBlock({ on }: { on: boolean }) {
     }
     setBusy(false);
   };
-  const preset = (label: string, is: boolean) => (is ? a.preset(label) : label);
   return (
     <>
       <h4 className="p-h">{a.title}</h4>
@@ -258,29 +257,29 @@ function AgentsBlock({ on }: { on: boolean }) {
           {a.hint} <code>{view.file}</code>
         </p>
         <div className="c-agents-grid">
-          <span />
           <span className="hint">{a.model}</span>
           <span className="hint">{a.effort}</span>
           {AGENT_ROLES.map((role) => {
             const setting = view.agents[role];
             return (
               <Fragment key={role}>
-                <div className="c-agent-name">{a.roles[role].name}</div>
+                <div className="c-agent-name">
+                  {a.roles[role].name} <span className="hint">{a.roles[role].hint}</span>
+                </div>
                 <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value as AgentModel })}>
                   {AGENT_MODELS.map((m) => (
                     <option key={m} value={m}>
-                      {preset(a.models[m], m === AGENT_DEFAULTS[role].model)}
+                      {a.models[m]}
                     </option>
                   ))}
                 </select>
                 <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={setting.effort} disabled={busy} onChange={(e) => choose(role, { effort: e.target.value as AgentEffort })}>
                   {AGENT_EFFORTS.map((x) => (
                     <option key={x} value={x}>
-                      {preset(a.efforts[x], x === AGENT_DEFAULTS[role].effort)}
+                      {a.efforts[x]}
                     </option>
                   ))}
                 </select>
-                <span className="hint c-agent-hint">{a.roles[role].hint}</span>
               </Fragment>
             );
           })}
