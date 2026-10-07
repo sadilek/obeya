@@ -993,7 +993,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   family's package manager from `/etc/os-release`, else a page). The settings sheet shows the
   check below the demo settings ("Was Demos auf diesem Rechner brauchen", the voice left out
   since it has its own lines), again when listening back is switched, after an installation and
-  on "Erneut prüfen"; a render runs it before anything else and stops with the whole list
+  on "Erneut prüfen"; the parts a voice still lacks are named in the narration language ("Piper
+  voice en_US-ryan-high" for an English one, German until 2026-10-07); a render runs it before anything else and stops with the whole list
   (`--narration` leaves out the browser); `node lib/setup.ts` prints it for an agent, which
   installs a voice itself but asks the owner for system software. The guide for setting up a
   machine is `docs/demo-setup.md`. Not tried yet (2026-10-05): Edge as the fallback, a voice
@@ -1056,8 +1057,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   cache `wrangler pages deploy` leaves in its working directory kept that workspace from being
   leased after every share ("jeder freie hat nicht committete Änderungen"). The calls are
   `publish` with the page as JSON on stdin (slug, kind
-  `video` or `html`, title, text, chapters, PR URL, demo directory, and the slugs of the other
-  pages it has shared), which prints the page's URL; `withdraw <slug>`; and `version`, which prints
+  `video` or `html`, title, text, chapters, PR URL, the demo's language, demo directory, and the
+  slugs of the other pages it has shared), which prints the page's URL; `withdraw <slug>`; and `version`, which prints
   the version of the pages the command writes (a command that does not know it fails or prints
   nothing): the video pages' first, then `html:<version>` for artifact pages, so a change to one
   kind of page marks only those (a command that says one version marks both). The slug comes from the card's title and id once and
@@ -1111,7 +1112,11 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   is not held; the card's log names the file. Both pages carry their captions as cues in a script,
   since Chrome does not load a `<track>` for a page opened from disk. The page (`src/server/demo-page.ts`)
   is the one a share command publishes (the adapter kit, `src/adapters/kit.ts`, hands it to
-  the command), without its link to the overview. Its video waits with a big play
+  the command), without its link to the overview. Its own words (the date line, the captions' name, the
+  links, the play button) are in the demo's language: the one the demo's `index.html` names (the
+  director writes the report page in the narration language; an artifact names its own), else the
+  narration language of the demo settings. Until 2026-10-07 the page was German throughout, an
+  English demo's too; a share command that passes no language still gets the German page. Its video waits with a big play
   button over it until it first plays: a click anywhere on the video but its controls starts it,
   rather than the small button in the corner. It does not start on its own: browsers play sound
   only after a click on the page (in Obeya, the click that opens the card), so it could only start

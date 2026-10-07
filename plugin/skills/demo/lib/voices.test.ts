@@ -36,8 +36,8 @@ describe('voices', () => {
     expect(installState(s, home).missing).toEqual(['Piper-Stimme de_DE-thorsten-high']);
     writeFileSync(join(home, 'voices', 'piper', 'de_DE-thorsten-high.onnx.json'), '{}');
     expect(installState(s, home)).toEqual({ installed: true, missing: [], mb: 0 });
-    // another language needs its own voice
-    expect(installState({ language: 'en', voice: 'piper' }, home).missing).toEqual(['Piper-Stimme en_US-ryan-high']);
+    // another language needs its own voice, named in that language
+    expect(installState({ language: 'en', voice: 'piper' }, home).missing).toEqual(['Piper voice en_US-ryan-high']);
   });
 
   test('Qwen3-TTS speaks with a stock speaker, or clones a clip; a model downloaded before counts as installed', () => {

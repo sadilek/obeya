@@ -20,7 +20,8 @@ import { LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoPageHtml, withHeightReport } from './demo-page';
+import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoPageHtml, PAGE_WORDS, type PageLanguage, withHeightReport } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { branchName } from './workspaces';
@@ -38,6 +39,11 @@ export interface SharePage {
   chapters: [number, string][];
   /** The card's pull request, once it has one. */
   pr: string | null;
+  /**
+   * The demo's language, for the page's own words (`language` of the kit's page templates; since
+   * 2026-10-07, absent from commands' input before, when pages were German).
+   */
+  language: PageLanguage;
   /** The demo's directory: `demo.mp4`, `poster.jpg`, `captions.vtt`; an artifact's `index.html` and the files it loads. */
   dir: string;
   /** The slugs of the other pages Obeya has stored as shared through this command: the site must still hold them. */
@@ -306,7 +312,7 @@ export class Sharing {
       dir = demo.dir;
     }
     const pr = this.prOf(cardId);
-    const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, dir, shared: this.others(cardId, cmd.command) };
+    const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, language: this.languageOf(dir), dir, shared: this.others(cardId, cmd.command) };
     const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.repo, this.o.home);
     const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
     if (r.code !== 0 || !url) return back(r.code !== 0 ? t.commandFailed(r.code) : t.noUrl, tail(r.err || r.out));
@@ -380,13 +386,15 @@ export class Sharing {
     const file = (f: string) => (existsSync(join(demo.dir, f)) ? new Uint8Array(readFileSync(join(demo.dir, f))) : null);
     const poster = file('poster.jpg');
     const captions = file('captions.vtt');
+    const language = this.languageOf(demo.dir);
     const parts: Omit<DemoPageParts, 'video' | 'poster'> = {
       title: page.title,
       text: page.text,
       chapters: demo.chapters,
       pr: this.prOf(cardId),
-      when: `Demo vom ${day(statSync(video).mtime)}`,
+      when: PAGE_WORDS[language].demoOf(day(statSync(video).mtime, language)),
       tabTitle: page.title,
+      language,
       // a page opened from disk may not load a caption file
       captions: { vtt: captions ? new TextDecoder().decode(captions) : 'WEBVTT\n' },
     };
@@ -419,7 +427,9 @@ export class Sharing {
     const page = await this.page(card, demo);
     const slug = this.stored(card.id)?.slug ?? slugOf(card);
     const index = readFileSync(join(demo.dir, 'index.html'), 'utf8');
-    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), when: `Demo vom ${day(statSync(join(demo.dir, 'index.html')).mtime)}`, tabTitle: page.title };
+    const language = this.languageOf(demo.dir);
+    const when = PAGE_WORDS[language].demoOf(day(statSync(join(demo.dir, 'index.html')).mtime, language));
+    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), when, tabTitle: page.title, language };
     let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
     if (as === 'html') {
       out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { html: index } })) };
@@ -530,6 +540,19 @@ export class Sharing {
   private prOf(cardId: string): string | null {
     const pr = this.o.board.row(cardId).pr;
     return pr ? ((JSON.parse(pr) as PrState).url ?? null) : null;
+  }
+
+  /**
+   * The language a demo is in: the one its `index.html` names (the report page of a video, which the
+   * director writes in the narration language, or the artifact itself), else the narration
+   * language of the demo settings.
+   */
+  private languageOf(dir: string): PageLanguage {
+    try {
+      const lang = /<html\b[^>]*\blang=["']?([a-z]{2})/i.exec(readFileSync(join(dir, 'index.html'), 'utf8').slice(0, 2000))?.[1]?.toLowerCase();
+      if (lang === 'de' || lang === 'en') return lang;
+    } catch {}
+    return readDemoSettings(this.o.home).language;
   }
 
   private demo(cardId: string): (Demo & { dir: string }) | null {

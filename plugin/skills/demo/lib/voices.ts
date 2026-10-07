@@ -160,6 +160,12 @@ async function download(url: string, file: string, log: (line: string) => void) 
   fs.renameSync(`${file}.part`, file);
 }
 
+/** The names of what a voice needs, in the narration language: the settings show them as missing. */
+const PART_WORDS: Record<NarrationLanguage, { piperVoice: (name: string) => string; model: (repo: string) => string }> = {
+  de: { piperVoice: (name) => `Piper-Stimme ${name}`, model: (repo) => `Modell ${repo}` },
+  en: { piperVoice: (name) => `Piper voice ${name}`, model: (repo) => `Model ${repo}` },
+};
+
 /** What the voice of these settings needs installed; empty for a voice that needs nothing from Obeya. */
 export function components(s: DemoSettings, home = obeyaHome()): Component[] {
   if (s.voice === 'piper') {
@@ -169,7 +175,7 @@ export function components(s: DemoSettings, home = obeyaHome()): Component[] {
     return [
       pythonEnv(dir, ['piper-tts'], 'Piper', 150),
       {
-        label: `Piper-Stimme ${voice.name}`,
+        label: PART_WORDS[s.language].piperVoice(voice.name),
         mb: 115,
         installed: () => fs.existsSync(onnx) && fs.existsSync(`${onnx}.json`),
         install: async (log) => {
@@ -185,7 +191,7 @@ export function components(s: DemoSettings, home = obeyaHome()): Component[] {
     return [
       onMlx() ? pythonEnv(dir, ['mlx-audio'], 'Qwen3-TTS (MLX)', 450) : pythonEnv(dir, ['qwen-tts'], 'Qwen3-TTS (PyTorch)', 4000),
       {
-        label: `Modell ${repo}`,
+        label: PART_WORDS[s.language].model(repo),
         mb: 4300,
         installed: () => hfModelPresent(repo),
         install: (log) =>

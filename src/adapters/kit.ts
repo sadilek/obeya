@@ -6,4 +6,4 @@
 
 export { generic, repoName } from './generic';
 export type { RepoAdapter, RepoInfo } from './types';
-export { ARTIFACT_DIR, artifactFiles, artifactPageHtml, day, demoPageHtml, esc, PAGE_STYLE, withHeightReport } from '../server/demo-page';
+export { ARTIFACT_DIR, artifactFiles, artifactPageHtml, day, demoPageHtml, esc, PAGE_STYLE, PAGE_WORDS, type PageLanguage, withHeightReport } from '../server/demo-page';

@@ -1,4 +1,4 @@
-// The page a demo is shared on, for people who have never seen Obeya: title, text, the video with
+// The page a demo is shared on, for people who have never seen Obeya, in the demo's language: title, text, the video with
 // its chapters and captions (or an HTML artifact in a frame), the pull request. A repository's share
 // command builds its site from it (through the adapter kit), and a repository without a share target exports it (share.ts): as a ZIP
 // with the video or the artifact beside the page, or as one HTML file with everything inside.
@@ -8,6 +8,32 @@ import { join, relative } from 'node:path';
 import { withHeightReport } from '../core/frame';
 
 export { withHeightReport };
+
+/** The languages a page speaks: those a demo is narrated in. */
+export type PageLanguage = 'de' | 'en';
+
+/** The page's own words, in the demo's language. */
+export const PAGE_WORDS: Record<
+  PageLanguage,
+  { locale: string; captions: string; play: string; pr: string; ownWindow: string; demoOf: (day: string) => string }
+> = {
+  de: {
+    locale: 'de-DE',
+    captions: 'Deutsch',
+    play: 'Abspielen',
+    pr: 'Pull Request ansehen',
+    ownWindow: 'In eigenem Fenster öffnen',
+    demoOf: (day) => `Demo vom ${day}`,
+  },
+  en: {
+    locale: 'en-US',
+    captions: 'English',
+    play: 'Play',
+    pr: 'View pull request',
+    ownWindow: 'Open in its own window',
+    demoOf: (day) => `Demo from ${day}`,
+  },
+};
 
 export interface DemoPageParts {
   title: string;
@@ -19,6 +45,8 @@ export interface DemoPageParts {
   when: string;
   /** The browser tab's title. */
   tabTitle: string;
+  /** The demo's language, which the page's own words and the captions' name are in; German without one. */
+  language?: PageLanguage;
   /** A link above the title (say, to all demos). */
   top?: { href: string; text: string };
   /** The video's URL, or its bytes in base64 for a page that holds everything. */
@@ -43,7 +71,8 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).
 /** Text inside a `<script>` element must not close it. */
 const inScript = (s: string) => s.replace(/<\//g, '<\\/');
 
-export const day = (at: Date | string) => new Date(at).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
+export const day = (at: Date | string, language: PageLanguage = 'de') =>
+  new Date(at).toLocaleDateString(PAGE_WORDS[language].locale, { day: 'numeric', month: 'long', year: 'numeric' });
 
 export const PAGE_STYLE = `
   :root { --bg: #f4f2ee; --card: #fff; --ink: #1d1c1a; --muted: #75716a; --line: #e6e2da; --chip: #f1eee8; --accent: #0d9488; }
@@ -81,9 +110,9 @@ export const PAGE_STYLE = `
 `;
 
 // the cues of captions held in the page, for a page opened from disk
-const CUES = `
+const CUES = (language: PageLanguage) => `
   const vtt = document.getElementById('captions').textContent;
-  const track = v.addTextTrack('captions', 'Deutsch', 'de');
+  const track = v.addTextTrack('captions', ${JSON.stringify(PAGE_WORDS[language].captions)}, ${JSON.stringify(language)});
   const sec = (t) => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
   for (const block of vtt.replace(/\\r/g, '').split(/\\n\\s*\\n/)) {
     const lines = block.split('\\n');
@@ -122,6 +151,7 @@ export interface ArtifactPageParts {
   pr: string | null;
   when: string;
   tabTitle: string;
+  language?: PageLanguage;
   top?: { href: string; text: string };
   /** The artifact's page beside this one, or its HTML for a page that holds everything. */
   artifact: { src: string } | { html: string };
@@ -133,16 +163,18 @@ export interface ArtifactPageParts {
  * (`withHeightReport`); without that it stays at 80 % of the window and scrolls.
  */
 export function artifactPageHtml(p: ArtifactPageParts): string {
+  const language = p.language ?? 'de';
+  const w = PAGE_WORDS[language];
   const frame =
     'src' in p.artifact
       ? `<iframe src="${esc(p.artifact.src)}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="${esc(p.title)}"></iframe>`
       : `<iframe srcdoc="${esc(withHeightReport(p.artifact.html))}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" title="${esc(p.title)}"></iframe>`;
   const links = [
-    'src' in p.artifact ? `<a href="${esc(p.artifact.src)}" target="_blank" rel="noopener">In eigenem Fenster öffnen</a>` : '',
-    p.pr ? `<a href="${esc(p.pr)}">Pull Request ansehen</a>` : '',
+    'src' in p.artifact ? `<a href="${esc(p.artifact.src)}" target="_blank" rel="noopener">${w.ownWindow}</a>` : '',
+    p.pr ? `<a href="${esc(p.pr)}">${w.pr}</a>` : '',
   ].filter(Boolean);
   return `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}</style></head>
 <body><main>
 ${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>
@@ -164,25 +196,27 @@ ${links.length ? `<div class="links">${links.join('')}</div>\n` : ''}<div class=
 }
 
 export function demoPageHtml(p: DemoPageParts): string {
+  const language = p.language ?? 'de';
+  const w = PAGE_WORDS[language];
   const chapters = p.chapters.length
     ? `<ol>${p.chapters.map(([at, title], i) => `<li><button data-at="${at}"${i === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
     : '';
   const src = 'src' in p.video ? ` src="${esc(p.video.src)}"` : '';
-  const track = 'src' in p.captions ? `<track kind="captions" src="${esc(p.captions.src)}" srclang="de" label="Deutsch">` : '';
+  const track = 'src' in p.captions ? `<track kind="captions" src="${esc(p.captions.src)}" srclang="${language}" label="${w.captions}">` : '';
   return `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}</style></head>
 <body><main>
 ${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>
 <div class="when">${esc(p.when)}</div>
 <div class="text">${paragraphs(p.text)}</div>
 <div class="grid">
-  <div class="player"><video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}>${track}</video><button class="start" aria-label="Abspielen"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
-  <div>${chapters}${p.pr ? `<div class="pr"><a href="${esc(p.pr)}">Pull Request ansehen</a></div>` : ''}</div>
+  <div class="player"><video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}>${track}</video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
+  <div>${chapters}${p.pr ? `<div class="pr"><a href="${esc(p.pr)}">${w.pr}</a></div>` : ''}</div>
 </div>
 </main>
 ${'vtt' in p.captions ? `<script type="text/vtt" id="captions">${inScript(p.captions.vtt)}</script>\n` : ''}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>
-  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${'vtt' in p.captions ? CUES : ''}
+  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${'vtt' in p.captions ? CUES(language) : ''}
   bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
   // a big play button over the video until it first plays: a click anywhere on it but its
   // controls starts it, instead of the small button in the corner

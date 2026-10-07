@@ -7,6 +7,7 @@ import { BadRequest, Board } from './board';
 import { Store } from './db';
 import { EXPORT_HTML_MAX } from '../core/types';
 import type { Forge } from './forge';
+import { demoPageHtml } from './demo-page';
 import { DEMO_MARKER, parseVersions, SHARE_CWD, type SharePage, Sharing, shareArgv, shareProblem, withDemoLink } from './share';
 import { FakeRuntime, gitRepo } from './testing';
 import { git } from './workspaces';
@@ -91,11 +92,12 @@ function openPr(id: string, body = 'Exportiert Zählerstände.') {
   board.work(id, { pr: JSON.stringify({ url: PR, number: 42, seen: [], reported: [] }) });
 }
 
-/** A card with a video demo, as a worker hands it over. */
-function card(title = 'Zählerstände exportieren', demo: Record<string, unknown> = {}) {
+/** A card with a video demo, as a worker hands it over: its report page says the narration language. */
+function card(title = 'Zählerstände exportieren', demo: Record<string, unknown> = {}, language: string | null = 'de') {
   const c = board.create({ title, x: 0, y: 0 });
   const d = join(dir, `demo-${c.id}`);
   mkdirSync(d);
+  if (demo.kind !== 'html' && language) writeFileSync(join(d, 'index.html'), `<!doctype html>\n<html lang="${language}">\n<head><title>Bericht</title></head></html>`);
   board.work(c.id, {
     state: 'live',
     demo: JSON.stringify({ kind: 'video', dir: d, chapters: [[0, 'Vorher']], page: { title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.' }, ...demo }),
@@ -121,7 +123,7 @@ describe('sharing a demo', () => {
     expect(share(c.id)).toEqual({ state: 'shared', url: `https://demos.example/${slug}/` });
     const [call] = calls();
     expect(call!.args).toEqual(['publish']);
-    expect(call!.input).toEqual({ slug, kind: 'video', title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.', chapters: [[0, 'Vorher']], pr: null, dir: join(dir, `demo-${c.id}`), shared: [] });
+    expect(call!.input).toEqual({ slug, kind: 'video', title: 'CSV-Export', text: 'Vermieter laden Zählerstände als CSV.', chapters: [[0, 'Vorher']], pr: null, language: 'de', dir: join(dir, `demo-${c.id}`), shared: [] });
     expect(call!.home).toBe(join(dir, 'home'));
     // the helpers an adapter's command imports
     expect(call!.kit).toBe(KIT_PATH);
@@ -209,6 +211,27 @@ describe('sharing a demo', () => {
     await until(() => share(c.id)?.state === 'shared');
     expect(calls()[0]!.input).toMatchObject({ kind: 'html', title: 'Verlust und Zapfung', chapters: [], pr: PR, dir: join(dir, `demo-${c.id}`) });
     expect(bodies.get(PR)).toContain(`Demo-Seite: ${share(c.id)!.url} ${DEMO_MARKER}`);
+  });
+
+  test("tells the command the demo's language: its report page's, else the demo settings'", async () => {
+    const en = card('English', {}, 'en');
+    sharing.share(en.id);
+    await until(() => share(en.id)?.state === 'shared');
+    expect(calls().at(-1)!.input.language).toBe('en');
+    // an artifact names its own; a demo without a page that names one takes the settings' narration language
+    const artifact = card('Artifact', { kind: 'html', chapters: [], page: { title: 'Loss', text: 'From the readings.' } });
+    writeFileSync(join(dir, `demo-${artifact.id}`, 'index.html'), '<html lang="en-GB"><body>Chart</body></html>');
+    sharing.share(artifact.id);
+    await until(() => share(artifact.id)?.state === 'shared');
+    expect(calls().at(-1)!.input.language).toBe('en');
+    mkdirSync(join(dir, 'home'), { recursive: true });
+    for (const language of ['en', 'de'] as const) {
+      writeFileSync(join(dir, 'home', 'demo.json'), JSON.stringify({ language }));
+      const c = card(`Without ${language}`, {}, null);
+      sharing.share(c.id);
+      await until(() => share(c.id)?.state === 'shared');
+      expect(calls().at(-1)!.input.language).toBe(language);
+    }
   });
 
   test('only where the repository shares, never twice at once', () => {
@@ -572,6 +595,10 @@ describe('exporting a demo, where the repository has no share target', () => {
     expect(html).toContain('Der Export <\\/script> beginnt.');
     // a big play button over the video, so a click anywhere on it starts it
     expect(html).toContain('<button class="start" aria-label="Abspielen">');
+    // in the demo's language throughout
+    expect(html).toContain('<html lang="de">');
+    expect(html).toContain('<div class="when">Demo vom ');
+    expect(html).toContain(`v.addTextTrack('captions', "Deutsch", "de")`);
     expect(log(c.id).at(-1)).toBe(`Exportiert als ZIP: ${slug}.zip`);
     // exporting publishes nothing
     expect(calls()).toEqual([]);
@@ -594,6 +621,25 @@ describe('exporting a demo, where the repository has no share target', () => {
     expect((await sharing.export(big.id, 'zip')).name).toEndWith('.zip');
   });
 
+  test('an English demo gets an English page throughout', async () => {
+    const c = card('Ohne Ziel', { page: { title: 'CSV export', text: 'Landlords download meter readings as CSV.' } }, 'en');
+    files(c);
+    openPr(c.id);
+    utimesSync(join(dir, `demo-${c.id}`, 'demo.mp4'), new Date('2026-10-07T12:00:00Z'), new Date('2026-10-07T12:00:00Z'));
+    const html = new TextDecoder().decode((await sharing.export(c.id, 'html')).data);
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('<div class="when">Demo from October 7, 2026</div>');
+    expect(html).toContain('<button class="start" aria-label="Play">');
+    expect(html).toContain(`>View pull request</a>`);
+    expect(html).toContain(`v.addTextTrack('captions', "English", "en")`);
+    for (const german of ['Deutsch', 'Abspielen', 'Demo vom', 'ansehen', 'lang="de"']) expect(html).not.toContain(german);
+    // a share command's page, with the caption file beside it, names the track in English too
+    const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', video: { src: 'demo.mp4' }, captions: { src: 'captions.vtt' } };
+    expect(demoPageHtml({ ...parts, language: 'en' })).toContain('<track kind="captions" src="captions.vtt" srclang="en" label="English">');
+    // without a language, as from a command written before, the page stays German
+    expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.vtt" srclang="de" label="Deutsch">');
+  });
+
   test('a demo without its page gets one written first, kept for the next time', async () => {
     const c = card('Zähler', { page: undefined });
     files(c);
@@ -608,11 +654,11 @@ describe('exporting a demo, where the repository has no share target', () => {
   test('an HTML artifact: beside its page in the ZIP, in one HTML file only when it is its index.html alone', async () => {
     const c = card('Ohne Ziel', { kind: 'html', chapters: [], page: { title: 'Auswertung', text: 'Verlust aus den Messdaten.' } });
     const d = join(dir, `demo-${c.id}`);
-    writeFileSync(join(d, 'index.html'), '<html><body><h2>Graph</h2></body></html>');
+    writeFileSync(join(d, 'index.html'), '<html lang="de"><body><h2>Graph</h2></body></html>');
     const one = new TextDecoder().decode((await sharing.export(c.id, 'html')).data);
     expect(one).toContain('<h1>Auswertung</h1>');
     // the artifact in a sandboxed frame, telling the page its height
-    expect(one).toContain('srcdoc="&lt;html&gt;&lt;body&gt;&lt;h2&gt;Graph&lt;/h2&gt;');
+    expect(one).toContain('srcdoc="&lt;html lang=&quot;de&quot;&gt;&lt;body&gt;&lt;h2&gt;Graph&lt;/h2&gt;');
     expect(one).toContain('obeyaHeight');
     expect(one).toContain('sandbox="allow-scripts');
 
@@ -625,9 +671,23 @@ describe('exporting a demo, where the repository has no share target', () => {
     expect(Bun.spawnSync(['unzip', '-o', '-d', join(dir, 'unzipped'), join(dir, out.name)]).exitCode).toBe(0);
     const at = join(dir, 'unzipped', out.name.replace(/\.zip$/, ''));
     expect(readFileSync(join(at, 'index.html'), 'utf8')).toContain('<iframe src="artifact/index.html"');
+    expect(readFileSync(join(at, 'index.html'), 'utf8')).toContain('>In eigenem Fenster öffnen</a>');
     expect(readFileSync(join(at, 'artifact/data/chart.js'), 'utf8')).toBe('draw()');
     expect(readFileSync(join(at, 'artifact/index.html'), 'utf8')).toMatch(/<h2>Graph<\/h2><script>[\s\S]*obeyaHeight[\s\S]*<\/script><\/body>/);
     expect(existsSync(join(at, 'artifact/.DS_Store'))).toBe(false);
+  });
+
+  test('an English artifact gets an English page around it', async () => {
+    const c = card('Ohne Ziel', { kind: 'html', chapters: [], page: { title: 'Analysis', text: 'Loss from the readings.' } });
+    writeFileSync(join(dir, `demo-${c.id}`, 'index.html'), '<!doctype html><html lang="en"><body><h2>Graph</h2></body></html>');
+    openPr(c.id);
+    const out = await sharing.export(c.id, 'zip');
+    writeFileSync(join(dir, out.name), out.data);
+    expect(Bun.spawnSync(['unzip', '-o', '-d', join(dir, 'unzipped'), join(dir, out.name)]).exitCode).toBe(0);
+    const html = readFileSync(join(dir, 'unzipped', out.name.replace(/\.zip$/, ''), 'index.html'), 'utf8');
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('>Open in its own window</a><a href="https://github.com/acme/app/pull/42">View pull request</a>');
+    expect(html).toMatch(/<div class="when">Demo from \w+ \d+, \d{4}<\/div>/);
   });
 
   test('no demo, no export', async () => {
