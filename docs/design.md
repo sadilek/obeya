@@ -469,8 +469,12 @@ the owner's language (`src/core/locale.ts`).
   groups' names stand pale over their territories. A territory is the contour of an energy field
   (Bubble Sets): the group's cards pull, near cards are linked so they share one territory (not
   across another card), and every other card pushes back; where two groups meet, the stronger
-  holds the ground, which makes a card amid another group an island. The browser computes it with
-  `d3-contour`, each group on its own grid around its cards on one 16 px lattice, and computes a
+  holds the ground, which makes a card amid another group an island. Of the cards' pull only the
+  strongest counts at each point, not their sum, and the narrow gap between two cards facing each
+  other pulls like a card: summed, the edge bulged out over every gap. The browser computes it with
+  `d3-contour`, each group on its own grid around its cards on one 16 px lattice, resamples each
+  contour evenly and smooths it with a Gaussian (σ 20 px), so corners come out round and even
+  rather than with the grid's facets and the kinks where territories meet, and computes a
   group's field again only when something within its reach moved, its contour only when its own
   or a neighbour's field changed; one that took longer than 8 ms makes the next wait, so a dragged
   card keeps the frame rate and its territory follows a little later. At rest nothing is computed

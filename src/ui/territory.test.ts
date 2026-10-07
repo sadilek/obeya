@@ -56,4 +56,25 @@ describe('territories', () => {
     expect(t.last).toMatchObject({ fields: 1, contours: 1 });
     expect(second[0]).toBe(first[0]!);
   });
+
+  test('run straight past the gap between cards side by side, round at the corners', () => {
+    const [t] = new Territories().compute([card('a1', 0, 0, { A: 1 }), card('a2', 330, 0, { A: 1 })], ['A']);
+    // the territory's top edge above x
+    const top = (x: number) => {
+      let y = -150;
+      while (!within(t!, { x, y })) y++;
+      return y;
+    };
+    const overCard = top(150);
+    expect(Math.abs(top(315) - overCard)).toBeLessThanOrEqual(1);
+    expect(Math.abs(top(480) - overCard)).toBeLessThanOrEqual(1);
+    // the corner is a curve that the edge leaves evenly on both sides: as far in from the left as from the top
+    const left = (y: number) => {
+      let x = -150;
+      while (!within(t!, { x, y })) x++;
+      return x;
+    };
+    const side = left(70);
+    expect(Math.abs(top(-20) - overCard - (left(-20) - side))).toBeLessThanOrEqual(2);
+  });
 });
