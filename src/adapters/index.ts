@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { defaultBranchCommit } from '../server/read-tree';
+import { COMPILED, resource } from '../server/resources';
 import { GIT } from '../server/workspaces';
 import { generic } from './generic';
 import * as kit from './kit';
@@ -13,8 +14,11 @@ const ADAPTERS: RepoAdapter[] = [obeya, generic];
 /** Where a repository keeps its own adapter (`index.ts` in it), like `.vscode/` or `.claude/`. */
 export const REPO_ADAPTER_DIR = '.obeya/adapter';
 
-/** The module an adapter's own processes import Obeya's helpers from; passed to them as `OBEYA_KIT`. */
-export const KIT_PATH = join(import.meta.dir, 'kit.ts');
+/**
+ * The module an adapter's own processes import Obeya's helpers from; passed to them as `OBEYA_KIT`.
+ * The compiled binary's build bundles it with what it imports into one file among the resources.
+ */
+export const KIT_PATH = COMPILED ? resource('kit.js') : join(import.meta.dir, 'kit.ts');
 
 export const adapterNames = () => ADAPTERS.map((a) => a.name);
 

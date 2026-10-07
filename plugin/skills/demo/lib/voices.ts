@@ -17,9 +17,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isMain, lib } from './here.ts';
 import { type DemoSettings, expandHome, type NarrationLanguage, obeyaHome, readDemoSettings, SERVICES } from './settings.ts';
-
-const LIB = import.meta.dirname;
 
 /** Piper's voices: one per language unless the settings name another. */
 export const PIPER_VOICES: Record<NarrationLanguage, string> = { de: 'de_DE-thorsten-high', en: 'en_US-ryan-high' };
@@ -220,7 +219,7 @@ export async function installVoice(s: DemoSettings, log: (line: string) => void 
 /** `qwen3.py` for a clone of `reference` or a stock `speaker`, before `--out` or `--serve`. */
 function qwen3Command(voice: HeldVoice, language: NarrationLanguage, home: string) {
   const who = voice.reference ? ['--reference', voice.reference] : ['--speaker', voice.speaker || QWEN3_SPEAKER];
-  return [envPython(path.join(voicesHome(home), 'qwen3')), path.join(LIB, 'qwen3.py'), '--model', qwen3Model(!!voice.reference), '--language', language, ...who];
+  return [envPython(path.join(voicesHome(home), 'qwen3')), lib('qwen3.py'), '--model', qwen3Model(!!voice.reference), '--language', language, ...who];
 }
 
 /** The command Obeya holds a Qwen3 voice with across renders (`src/server/narration.ts`). */
@@ -287,7 +286,7 @@ export function sample(s: DemoSettings, out: string, home = obeyaHome(), obeyaUr
   const specFile = `${out}.spec.json`;
   fs.writeFileSync(specFile, JSON.stringify(spec));
   const lock = spec.kind === 'command' && spec.heavy ? ['--lock', lockFile] : [];
-  const args = ['run', '--quiet', '--no-project', 'python', path.join(LIB, 'tts.py'), ...lock, '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
+  const args = ['run', '--quiet', '--no-project', 'python', lib('tts.py'), ...lock, '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
   return exec('uv', args, () => {}, obeyaUrl ? { OBEYA_URL: obeyaUrl } : undefined).finally(() => fs.rmSync(specFile, { force: true }));
 }
 
@@ -301,7 +300,7 @@ export function sample(s: DemoSettings, out: string, home = obeyaHome(), obeyaUr
  */
 export const TTS_LOCK = path.join(os.homedir(), '.cache', 'demo-skill', 'tts.lock');
 
-if (import.meta.filename === process.argv[1] || (process.argv[1] && fs.realpathSync(process.argv[1]) === import.meta.filename)) {
+if (isMain(import.meta.filename)) {
   const s = readDemoSettings();
   const state = installState(s);
   if (process.argv[2] === 'install') {

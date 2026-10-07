@@ -26,6 +26,7 @@ import { BadRequest } from './board';
 import { ConfigError, resolveCanvas } from './canvas';
 import type { Store } from './db';
 import { repoInfo } from './repo';
+import { VERSION } from './resources';
 import { agentsView, languageView, saveAgents, saveLanguage } from './settings';
 import { shareArgv, shareProblem } from './share';
 
@@ -95,7 +96,8 @@ export interface ConfigOptions {
   store: Store;
   /** The ids of the canvases the server runs. */
   running: () => string[];
-  server: { port: number; home: string; permissionMode: string };
+  /** The running server's settings; `commit` the one its checkout stands at (none for the compiled binary). */
+  server: { port: number; home: string; permissionMode: string; commit?: string | null };
   /** Where this Obeya answers, so a sample's voice is held by it (`narration.ts`); none in tests. */
   narrationUrl?: string;
   /** The lock a heavy voice's sample waits for; the machine's (TTS_LOCK) unless a test gives its own. */
@@ -179,7 +181,7 @@ export class Config {
       problems,
       running: this.o.running(),
       adapters: adapterNames(),
-      server: { ...this.o.server, restarts: !!this.o.restart },
+      server: { commit: null, ...this.o.server, version: VERSION, restarts: !!this.o.restart },
       restarting: this.restarting,
     };
   }

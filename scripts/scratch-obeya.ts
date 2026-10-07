@@ -3,7 +3,7 @@
 // and after), and the cards in the states the demo needs. Running it again stages afresh, so a demo
 // calls it before every take.
 //
-//   bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit>] [--real-workers] [--restarts]
+//   bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit> | --binary <obeya>] [--real-workers] [--restarts]
 //   bun scripts/scratch-obeya.ts --stop <port>
 //
 // Prints one JSON line, also kept in <dir>/staged.json:
@@ -16,6 +16,7 @@
 // Koordinator and voice are real. --code <commit> runs that commit's code (`git archive`, with
 // this checkout's node_modules) in <dir>/code; that starts cold and on a busy machine takes well
 // over half a minute, so the script waits up to 5 minutes for the server while its process lives.
+// --binary <obeya> runs a compiled Obeya instead (`bun run build`), with the resources beside it.
 //
 // The stage file (JSON; every field but `cards` optional):
 //   {
@@ -140,8 +141,8 @@ if (stopPort) {
   process.exit(0);
 }
 
-const file = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.match(/^--(port|code|dir)$/));
-if (!file) fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit>] [--real-workers] [--restarts] | --stop <port>');
+const file = args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.match(/^--(port|code|dir|binary)$/));
+if (!file) fail('usage: bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit> | --binary <obeya>] [--real-workers] [--restarts] | --stop <port>');
 const stage = JSON.parse(readFileSync(file!, 'utf8')) as Stage;
 const port = Number(opt('port') ?? stage.port ?? fail('no port: give "port" in the stage file or --port'));
 const dir = resolve(opt('dir') ?? stage.dir ?? scratchDir(port));
@@ -184,8 +185,10 @@ if (commit) {
   if (tar.status !== 0) fail(`tar: ${tar.stderr}`);
   symlinkSync(join(ROOT, 'node_modules'), join(code, 'node_modules'));
 }
+const binary = opt('binary') && resolve(opt('binary')!);
+if (binary && !existsSync(binary)) fail(`${binary} does not exist`);
 const idle = !args.includes('--real-workers');
-const canIdle = readFileSync(join(code, 'src/server/main.ts'), 'utf8').includes("'idle-workers'");
+const canIdle = !!binary || readFileSync(join(code, 'src/server/main.ts'), 'utf8').includes("'idle-workers'");
 if (idle && !canIdle) console.error(`scratch-obeya: ${commit} has no --idle-workers; a started card gets a real agent`);
 
 // the server, in its own process group so --stop ends it with everything it started
@@ -219,11 +222,13 @@ if (configured)
     ),
   );
 const canvasArgs = configured ? ['--config', configFile] : [repo, ...(stage.adapter === '' ? [] : ['--adapter', stage.adapter ?? 'obeya']), ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
-const server = spawn(
-  process.execPath,
-  ['src/server/main.ts', ...canvasArgs, '--port', String(port), ...(supervised ? [] : ['--dev']), ...(idle && canIdle ? ['--idle-workers'] : [])],
-  { cwd: code, env, detached: true, stdio: ['ignore', out, out] },
-);
+const serverArgs = [...canvasArgs, '--port', String(port), ...(supervised ? [] : ['--dev']), ...(idle && canIdle ? ['--idle-workers'] : [])];
+const server = spawn(binary ?? process.execPath, binary ? serverArgs : ['src/server/main.ts', ...serverArgs], {
+  cwd: binary ? dir : code,
+  env,
+  detached: true,
+  stdio: ['ignore', out, out],
+});
 server.unref();
 writeFileSync(join(dir, 'server.pid'), String(server.pid));
 let exited: number | null = null;

@@ -12,8 +12,11 @@ import {
   tool,
 } from '@anthropic-ai/claude-agent-sdk';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { z } from 'zod';
 import { mediaType } from './images';
+import { COMPILED } from './resources';
 import type { Messages } from '../core/messages';
 import type { AgentEffort, AgentRole, AgentSetting } from '../core/types';
 
@@ -100,6 +103,21 @@ export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRol
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
 
+/**
+ * The Claude Code the agents run on: the one `OBEYA_CLAUDE` names; from the checkout, the binary
+ * the Agent SDK brings for this platform (undefined: the SDK finds it itself); in the compiled
+ * binary, which carries none, the machine's own installation, on the PATH or where the official
+ * installer puts it (a path that does not exist when there is none, for the SDK to say so).
+ */
+export function claudeExecutable(env: Record<string, string | undefined> = process.env, compiled = COMPILED, platform: string = process.platform): string | undefined {
+  if (env.OBEYA_CLAUDE) return env.OBEYA_CLAUDE;
+  if (!compiled) return undefined;
+  const installed = join(homedir(), '.local', 'bin', platform === 'win32' ? 'claude.exe' : 'claude');
+  const onPath = Bun.which('claude', { PATH: env.PATH ?? '' });
+  // npm's `claude.cmd` on Windows is no program to start; the installer's binary is
+  return onPath && !/\.(cmd|bat|ps1)$/i.test(onPath) ? onPath : installed;
+}
+
 /** Runs agents through the Claude Agent SDK, on the Claude Code login of the machine. */
 export const sdkRuntime: AgentRuntime = {
   start(spec, firstMessage, images) {
@@ -116,11 +134,13 @@ export const sdkRuntime: AgentRuntime = {
       ),
     });
     const ownTools = spec.tools.map((t) => `mcp__obeya__${t.name}`);
+    const claude = claudeExecutable();
     const q = query({
       prompt: inbox,
       options: {
         cwd: spec.cwd,
         abortController: abort,
+        ...(claude ? { pathToClaudeCodeExecutable: claude } : {}),
         systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.system },
         mcpServers: { obeya },
         ...(spec.plugins?.length ? { plugins: spec.plugins.map((path) => ({ type: 'local' as const, path })) } : {}),
@@ -446,11 +466,13 @@ export function backgroundWork(tasks: { task_type: string; ambient?: boolean }[]
 }
 
 /**
- * Obeya's own environment minus what belongs to a Claude Code session that may have started it, and
- * minus the supervisor's mark: an Obeya an agent starts (a scratch one for a demo) supervises itself.
+ * Obeya's own environment minus what belongs to a Claude Code session that may have started it (but
+ * the login of a machine without a keychain, `CLAUDE_CODE_OAUTH_TOKEN`), minus the supervisor's
+ * mark (an Obeya an agent starts, a scratch one for a demo, supervises itself), and minus what has
+ * the compiled binary run scripts as Bun.
  */
-function cleanEnv(): Record<string, string | undefined> {
-  return Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$|OBEYA_SUPERVISED$)/.test(k)));
+export function cleanEnv(env: Record<string, string | undefined> = process.env): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(env).filter(([k]) => k === 'CLAUDE_CODE_OAUTH_TOKEN' || !/^(CLAUDE_CODE_|CLAUDECODE$|CLAUDE_PID$|OBEYA_SUPERVISED$|BUN_BE_BUN$)/.test(k)));
 }
 
 /** The session's input: an async stream of user messages that stays open until ended. */

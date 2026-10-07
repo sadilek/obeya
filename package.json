@@ -1,11 +1,13 @@
 {
   "name": "obeya",
+  "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "type": "module",
   "scripts": {
     "start": "bun src/server/main.ts",
     "dev": "bun --hot src/server/main.ts --dev",
+    "build": "bun scripts/build.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

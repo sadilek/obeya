@@ -29,11 +29,13 @@ import { Config, CONFIG_FILE, expand, expandConfig, readConfigFile } from './con
 import { Store } from './db';
 import { ghForge } from './forge';
 import { NarrationHost } from './narration';
-import { idleRuntime, sdkRuntime } from './runtime';
+import { claudeExecutable, idleRuntime, sdkRuntime } from './runtime';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, watchOwnCode } from './self-update';
+import { COMPILED, resource, SELF, VERSION } from './resources';
 import { serve } from './server';
 import { PiperSpeaker, SpeechSidecar, voiceBackends, WhisperSidecar } from './voice';
 import { VoiceSetup } from './voice-setup';
+import { useLib } from '../../plugin/skills/demo/lib/here.ts';
 import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
 import { agentSetting, ownerLanguage } from './settings';
 
@@ -54,6 +56,8 @@ const { values, positionals } = parseArgs({
 });
 
 const home = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
+// the demo skill's modules this server carries inside the binary find their files among the resources
+if (COMPILED) useLib(resource('plugin', 'skills', 'demo', 'lib'));
 const configFile = values.config ? resolve(expand(values.config)) : join(home, CONFIG_FILE);
 
 if (!values.dev && !process.env.OBEYA_SUPERVISED) {
@@ -65,9 +69,9 @@ if (!values.dev && !process.env.OBEYA_SUPERVISED) {
       stopping = true;
       child?.kill(sig);
     });
-  let args = process.argv.slice(1);
+  let args = Bun.argv.slice(2);
   for (;;) {
-    child = Bun.spawn([process.execPath, ...args], {
+    child = Bun.spawn([...SELF, ...args], {
       env: { ...process.env, OBEYA_SUPERVISED: '1' },
       stdio: ['inherit', 'inherit', 'inherit'],
     });
@@ -75,7 +79,7 @@ if (!values.dev && !process.env.OBEYA_SUPERVISED) {
     if (stopping) process.exit(code === RESTART || code === RESTART_FROM_FILE ? 0 : code);
     if (code === RESTART_FROM_FILE) {
       // the owner saved the configuration of canvases given on the command line: the file is it now
-      args = [args[0]!, '--config', configFile, '--port', values.port, '--permission-mode', values['permission-mode'], ...(values['idle-workers'] ? ['--idle-workers'] : [])];
+      args = ['--config', configFile, '--port', values.port, '--permission-mode', values['permission-mode'], ...(values['idle-workers'] ? ['--idle-workers'] : [])];
       console.log(`Obeya: starting again with ${configFile}`);
     } else if (code === RESTART) console.log('Obeya: starting again with the new code');
     else process.exit(code);
@@ -142,6 +146,11 @@ const restart = (reason: RestartReason, why: string) => {
   if (!restarter.due()) console.log(`Obeya: ${why}; restarting${busy().length ? ' once no worker is in the middle of a turn' : ''}`);
   restarter.request(reason);
 };
+/** The commit the code runs from, for the settings beside the version; none for the compiled binary. */
+const commitOf = () => {
+  const checkout = own ?? ownCheckout();
+  return ranFrom ?? (checkout && headOf(checkout));
+};
 // where this Obeya answers: a demo's narration asks it for the voice it holds loaded (narration.ts)
 const url = `http://127.0.0.1:${values.port}`;
 const narration = new NarrationHost({ argv: (voice, language) => qwen3Serve(voice, language, home), log: (line) => console.log(line) });
@@ -151,7 +160,7 @@ const config = new Config({
   started,
   store,
   running: () => canvases.map((c) => c.id),
-  server: { port: Number(values.port), home, permissionMode: values['permission-mode'] },
+  server: { port: Number(values.port), home, permissionMode: values['permission-mode'], commit: commitOf() },
   narrationUrl: url,
   ...(process.env.OBEYA_SUPERVISED
     ? {
@@ -215,7 +224,7 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const)
   });
 
 server = serve(canvases, { transcriber, speaker, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration);
-console.log(`Obeya on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'})`);
+console.log(`Obeya ${own ? `from ${own}` : VERSION} on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'}), agents on ${claudeExecutable() ?? 'the Claude Code the Agent SDK brings'}`);
 if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
 for (const c of canvases) {
   console.log(`  ${c.board.canvas.name} (?c=${c.id})`);

@@ -11,12 +11,12 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { isMain, lib } from './here.ts';
 import { type DemoSettings, readDemoSettings, withVoice } from './settings.ts';
 import { hfModelPresent, installState, onMlx } from './voices.ts';
 
-const LIB = import.meta.dirname;
-/** The Obeya checkout the skill lives in: Playwright comes from its `node_modules`. */
-const ROOT = path.resolve(LIB, '..', '..', '..', '..');
+/** The Obeya checkout the skill lives in (or the app's resources): Playwright comes from its `node_modules`. */
+const root = () => lib('..', '..', '..', '..');
 
 /** Node runs the director's TypeScript without flags from here on. */
 export const NODE_MIN = [22, 18] as const;
@@ -76,12 +76,12 @@ export function installHint(id: SetupId, platform: string, arch: string, family:
         url: 'https://nodejs.org/en/download',
       };
     case 'playwright':
-      return { commands: [`bun install --cwd "${ROOT}"`] };
+      return { commands: [`bun install --cwd "${root()}"`] };
     case 'browser': {
       if (mac) return { commands: ['brew install --cask google-chrome'], url: 'https://www.google.com/chrome/' };
       if (win) return { commands: ['winget install Google.Chrome'], url: 'https://www.google.com/chrome/' };
       // Google builds Chrome for Linux on x64 only; elsewhere Playwright's own Chromium records.
-      const chromium = `cd "${ROOT}" && npx playwright-core install --with-deps chromium`;
+      const chromium = `cd "${root()}" && npx playwright-core install --with-deps chromium`;
       return arch === 'x64' ? { commands: [chromium], url: 'https://www.google.com/chrome/' } : { commands: [chromium] };
     }
     case 'ffmpeg':
@@ -98,7 +98,7 @@ export function installHint(id: SetupId, platform: string, arch: string, family:
         url: 'https://docs.astral.sh/uv/getting-started/installation/',
       };
     case 'voice':
-      return { commands: [`node "${path.join(LIB, 'voices.ts')}" install`] };
+      return { commands: [`node "${lib('voices.ts')}" install`] };
     case 'whisper':
       return undefined;
   }
@@ -159,7 +159,7 @@ async function browser(platform: string, env: NodeJS.ProcessEnv, playwright: str
 
 function resolvePlaywright(): string | null {
   try {
-    return createRequire(path.join(LIB, 'director.ts')).resolve('playwright-core');
+    return createRequire(lib('director.ts')).resolve('playwright-core');
   } catch {
     return null;
   }
@@ -252,7 +252,7 @@ export function describeSetup(check: SetupCheck): string {
   return lines.join('\n');
 }
 
-if (import.meta.filename === process.argv[1] || (process.argv[1] && fs.realpathSync(process.argv[1]) === import.meta.filename)) {
+if (isMain(import.meta.filename)) {
   const check = await checkSetup(withVoice(readDemoSettings(), process.env.DEMO_VOICE));
   console.log(describeSetup(check));
   process.exitCode = check.items.some((i) => i.state === 'missing') ? 1 : 0;

@@ -21,6 +21,7 @@ import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
+import { BUN_ENV } from './resources';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoPageHtml, PAGE_WORDS, type PageLanguage, withHeightReport } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
@@ -656,7 +657,7 @@ async function run(argv: string[], stdin: string, repo: string, home: string): P
   try {
     const cwd = join(home, SHARE_CWD);
     mkdirSync(cwd, { recursive: true });
-    const env = { ...process.env, OBEYA_HOME: home, OBEYA_KIT: KIT_PATH, OBEYA_REPO: repo };
+    const env = { ...process.env, ...(argv[0] === process.execPath ? BUN_ENV : {}), OBEYA_HOME: home, OBEYA_KIT: KIT_PATH, OBEYA_REPO: repo };
     const p = Bun.spawn(argv, { cwd, stdin: new Blob([stdin]), stdout: 'pipe', stderr: 'pipe', env, timeout: COMMAND_TIMEOUT });
     const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     return { code, out, err };

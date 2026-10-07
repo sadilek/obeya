@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isMain } from './here.ts';
 import { ownerLanguageIn } from './language.ts';
 
 export const NARRATION_LANGUAGES = ['de', 'en'] as const;
@@ -139,6 +140,6 @@ export function describeDemoSettings(saved: DemoSettings, override: string | und
   ].join('\n');
 }
 
-if (import.meta.filename === process.argv[1] || (process.argv[1] && fs.realpathSync(process.argv[1]) === import.meta.filename)) {
+if (isMain(import.meta.filename)) {
   console.log(describeDemoSettings(readDemoSettings()));
 }

@@ -9,6 +9,7 @@ import { whisperKit } from '../../plugin/skills/demo/lib/setup.ts';
 import type { DemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { installState, piperFiles, SAY_VOICES } from '../../plugin/skills/demo/lib/voices.ts';
 import type { Language } from '../core/locale';
+import { resource } from './resources';
 
 /** `doubtful`: Whisper itself counts the decode as failed (a loop, or too unsure of its words). */
 export interface Transcript {
@@ -47,7 +48,7 @@ export function looping(text: string): boolean {
 export const silence = (text: string) =>
   /^[[(*]?(vielen dank|danke fürs zuschauen|musik|untertitel(ung)? (im auftrag )?des zdf.*|thank you|thanks for watching|music)[.!]?[\])*]?$/i.test(text.trim());
 
-const VOICE = join(import.meta.dir, '../../voice');
+const VOICE = resource('voice');
 
 export type ListenBackend = 'mlx' | 'faster';
 export type SpeechBackend = 'macos' | 'piper';

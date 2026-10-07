@@ -138,6 +138,11 @@ export function ConfigSheet({ on }: { on: boolean }) {
 
       <h4 className="p-h">{t.config.server}</h4>
       <dl className="c-server">
+        <dt>{t.config.version}</dt>
+        <dd>
+          {view.server.version}
+          {view.server.commit && <> · {t.config.checkout(view.server.commit.slice(0, 7))}</>}
+        </dd>
         <dt>{t.config.port}</dt>
         <dd>{view.server.port}</dd>
         <dt>{t.config.dataDir}</dt>
@@ -149,7 +154,7 @@ export function ConfigSheet({ on }: { on: boolean }) {
           <code>{view.server.permissionMode}</code>
         </dd>
         <dt>{t.config.restarts}</dt>
-        <dd>{view.server.restarts ? t.config.yes : t.config.no}</dd>
+        <dd>{!view.server.restarts ? t.config.no : view.server.commit ? t.config.yes : t.config.noCheckout}</dd>
       </dl>
 
       <button className="btn small" onClick={() => setJson(!json)}>

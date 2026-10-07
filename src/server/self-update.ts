@@ -5,6 +5,7 @@
 
 import { dirname } from 'node:path';
 import type { OwnerHold, RestartReason } from '../core/types';
+import { COMPILED } from './resources';
 import { GIT } from './workspaces';
 
 /** The exit code that asks the supervisor for a fresh server. */
@@ -198,8 +199,9 @@ export function installDependencies(checkout: string, from: string, command = IN
   }
 }
 
-/** The git checkout this process's code comes from, if it is one. */
+/** The git checkout this process's code comes from, if it is one; the compiled binary comes from none. */
 export function ownCheckout(): string | null {
+  if (COMPILED) return null;
   return git(dirname(import.meta.path), 'rev-parse', '--show-toplevel');
 }
 

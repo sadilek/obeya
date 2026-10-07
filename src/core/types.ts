@@ -737,8 +737,11 @@ export interface ConfigView {
   running: string[];
   /** The adapters a repository can name. */
   adapters: string[];
-  /** Settings of the running server, from its command line. */
-  server: { port: number; home: string; permissionMode: string; restarts: boolean };
+  /**
+   * Settings of the running server, from its command line; its version (`package.json`), and the
+   * commit of the checkout it runs from (null for the compiled binary).
+   */
+  server: { port: number; home: string; permissionMode: string; restarts: boolean; version: string; commit: string | null };
   /** Saved, and Obeya starts again with it once no agent is in the middle of a turn. */
   restarting: boolean;
 }

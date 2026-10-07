@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
 import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
-import { BOUNDED_WAITS, backgroundWork, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure, usageLimit } from './runtime';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { BOUNDED_WAITS, backgroundWork, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure, usageLimit } from './runtime';
 import { MESSAGES } from '../core/messages';
 
 test('background work counts renders, test runs and watchers, not housekeeping', () => {
@@ -103,4 +105,17 @@ test('a turn the usage limit stopped says when the limit lifts', () => {
   expect(usageLimit(hit, false, undefined)).toEqual({});
   expect(usageLimit('overloaded', false, { status: 'allowed' })).toBeUndefined();
   expect(usageLimit('Not logged in · Please run /login', false, undefined)).toBeUndefined();
+});
+
+test("agents run the Agent SDK's Claude Code from the checkout, the machine's own from the binary", () => {
+  expect(claudeExecutable({ PATH: '' }, false)).toBeUndefined();
+  expect(claudeExecutable({ OBEYA_CLAUDE: '/opt/claude', PATH: '' }, true)).toBe('/opt/claude');
+  // none on the PATH: where the official installer puts it, for the SDK to say it is missing
+  expect(claudeExecutable({ PATH: '' }, true, 'linux')).toBe(join(homedir(), '.local', 'bin', 'claude'));
+  expect(claudeExecutable({ PATH: '' }, true, 'win32')).toBe(join(homedir(), '.local', 'bin', 'claude.exe'));
+});
+
+test("an agent's environment keeps a machine's Claude login but not another session's marks", () => {
+  const env = cleanEnv({ PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 't', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDECODE: '1', OBEYA_SUPERVISED: '1', BUN_BE_BUN: '1' });
+  expect(env).toEqual({ PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 't' });
 });

@@ -408,6 +408,31 @@ the owner's language (`src/core/locale.ts`).
   `obeya <repo>…` starts one canvas with the given repositories (`--name` names it);
   `obeya` starts the canvases `~/.obeya/canvases.json` lists, `obeya --config <file>` those of
   another file.
+- **One file** — `bun run build` (`scripts/build.ts`) compiles the server with Bun
+  (`bun build --compile`) into one binary per platform (macOS arm64 and x64, Linux x64 and arm64,
+  Windows x64; Bun cross-compiles, about 15 s for all five), 66–120 MB with the UI and SQLite in
+  it, that needs neither Bun nor a checkout. Its modules live in Bun's embedded file system, which
+  no other process can read, so what other processes run or import goes beside it as real files,
+  in `resources/` (13 MB): the plugin with the demo skill and the `playwright-core` it records
+  with, the voice sidecars, the adapter kit bundled into one module (`kit.js`), and the skill's
+  `recipe.ts` bundled with Obeya's built-in adapters. The server finds them through one function
+  (`resource()` in `src/server/resources.ts`): `OBEYA_RESOURCES` when set, else `resources`
+  beside the binary (or `Resources` of a macOS app bundle), else the checkout. The demo skill's
+  modules the server carries (the setup check, the voices) are told where their files are
+  (`useLib` in the skill's `lib/here.ts`). Nothing is written beside the code: the resources may
+  be read-only, what Obeya writes is in its home. The binary is its own Bun for scripts: a share
+  command's script runs as `obeya <script>` with `BUN_BE_BUN=1`. It supervises itself as `bun
+  start` does (restarting for a saved configuration) but has no checkout to follow, so it never
+  restarts for new code. A macOS binary is signed ad hoc after its build: as Bun writes it, macOS
+  kills it at start. Bun 1.3.12 leaves a copy of its runtime in the working directory of every
+  compile (`.<hex>.bun-build`); the build compiles in the output directory and removes it.
+  `package.json` holds Obeya's version, which the settings show, with the checkout's commit
+  beside it when Obeya runs from one. `bun scripts/check-binary.ts <obeya> [--voice] [--demo]
+  [--worker]` checks a binary on the machine it runs on: a scratch repository with its own adapter
+  and share command, then the voice installed and a spoken command heard, a demo rendered with the
+  director from the resources, and a real worker that commits and hands over an artifact, which is
+  shared. All of it passed on macOS arm64 (2026-10-07), the basic part also with the Linux arm64
+  binary in Docker. The installable app around it is planned in `docs/plan/app.md`.
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
@@ -544,6 +569,13 @@ the owner's language (`src/core/locale.ts`).
   group.
 - **Agents** — Claude on the owner's subscription, no API billing, through the Agent SDK: it runs
   on the Claude Code login of the machine (tested without an API key: `apiKeySource: none`).
+  From the checkout it runs the Claude Code binary the SDK brings for the platform (its optional
+  package, 224 MB); the compiled binary carries none and runs the machine's own installation
+  (`claude` on the `PATH`, else `~/.local/bin`, where the official installer puts it);
+  `OBEYA_CLAUDE` names another. Both ran workers, the Koordinator and a landing in the binary on
+  2026-10-07 (the SDK 0.3.285 with its Claude Code 2.1.285, and the installed 2.1.292). Agents get
+  Obeya's environment without the marks of a Claude Code session that may have started it
+  (`CLAUDE_CODE_*`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain.
   A worker is one SDK session per card with streaming input, the repo's own settings and
   CLAUDE.md, and permission mode `auto` (`--permission-mode`); after a restart it resumes by
   session id. A project agent is one read-only session per project (Read, Grep, Glob on the
@@ -665,7 +697,8 @@ the owner's language (`src/core/locale.ts`).
   reset), then the worker finishes what remained. Before, it too ended the card. On the canvas, a
   card finishing shows its status line as one at work does; before (until 2026-10), only the
   detail view showed it.
-- **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running.
+- **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running
+  (the compiled binary has no checkout and never restarts for new code).
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
   moves to commits that change code (not only docs, or the site for obeya.si in `site/` and its workflow in `.github/`), the server stops and starts again; when the
   commits since it started change `package.json` or `bun.lock`, it runs `bun install
@@ -1181,7 +1214,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   (`src/server/zip.ts`, stored without compression: the video is compressed already).
   A repository's own share command (in its `.obeya/adapter/`, see Repo adapter) cannot import
   Obeya's files by a relative path: Obeya runs it with `OBEYA_KIT` beside `OBEYA_HOME`, the path
-  of `src/adapters/kit.ts`, from which it imports the page templates, so its pages are the export's.
+  of `src/adapters/kit.ts` (in the compiled binary, `kit.js` among its resources), from which it
+  imports the page templates, so its pages are the export's.
   A command that publishes to a static host keeps its site in a directory of its own under Obeya's
   home and deploys all of it with each call; the first one (2026-10-02, moved into its repository
   on 2026-10-05) writes its own page and the overview, refuses files over the host's limit and a
