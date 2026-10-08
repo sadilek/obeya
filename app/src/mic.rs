@@ -77,7 +77,13 @@ impl Mic {
       let mut open: Option<(cpal::Stream, Arc<Mutex<Vec<f32>>>, u32)> = None;
       for command in rx {
         match command {
-          Command::Start if check.is_some() => {}
+          Command::Start if check.is_some() => {
+            // the file's level, as the microphone's would be while it is spoken
+            let samples = &check.as_ref().unwrap().0;
+            let rms = (samples.iter().map(|x| x * x).sum::<f32>() / samples.len().max(1) as f32).sqrt();
+            lvl.store(rms.to_bits(), Ordering::SeqCst);
+            pk.store(samples.iter().fold(0f32, |m, x| m.max(x.abs())).to_bits(), Ordering::SeqCst);
+          }
           Command::Stop(reply) if check.is_some() => {
             let (samples, rate) = check.clone().unwrap();
             let _ = reply.send(Some(Recording { samples, rate }));
