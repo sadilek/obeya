@@ -117,7 +117,8 @@ try {
     ctx.createMediaStreamSource(stream).connect(tap);
     tap.connect(ctx.destination);
   }
-  await ctx.resume();
+  // WebKit on a Mac resumes only after a gesture of the owner's, which a check has none of
+  await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 500))]);
   recorder.start();
   let level = 0;
   const buf = new Float32Array(analyser.fftSize);
