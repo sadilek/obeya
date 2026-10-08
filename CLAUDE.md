@@ -38,5 +38,11 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
 - The colleagues use Windows or Linux: features must work there; macOS-only tools (e.g. `say`)
   only as an additional option.
 - Demo videos and voice recordings never go into git.
+- Public videos (the site's hero video, anything for obeya.si) are narrated in the owner's ElevenLabs
+  voice clone (voice ID `IErGHDQU4vPqicCi8dwR`), not the voice of the demo settings. Its API key is in
+  `.voice/elevenlabs.key` of the main checkout (`/Users/sadilek/dev/obeya`, gitignored); render with
+  an `OBEYA_HOME` whose `demo.json` names both (`voice: elevenlabs`, `voiceName`, `keyFile`), as
+  `~/demos/obeya-hero/home-eleven/` does. Credits are limited: only for public videos, never as
+  Obeya's own demo voice.
 - Commit directly to `main`; this repo uses no feature branches or pull requests. An Obeya worker
   is the exception: it commits on its card's branch, and Obeya lands that branch on `main`.
