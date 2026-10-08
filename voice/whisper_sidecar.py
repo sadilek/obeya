@@ -7,6 +7,7 @@ Reads JSON lines on stdin: {"id": ..., "path": "<audio file>", "prompt": "<vocab
 the first 30 seconds and transcribes in that one: told a language the owner did not speak, it
 translates into it, badly and unsure of its words (German speech, told English: „That is quite a bit
 of a bit of a doubt“), and the longer the recording, the likelier one of its parts fails the test below.
+faster-whisper decodes the first window from the encoder pass that heard the language (see Faster.languages).
 Writes JSON lines on stdout: {"id": ..., "text": "...", "doubtful": bool} or {"id": ..., "error": "..."}.
 Audio is decoded by ffmpeg (for both backends: faster-whisper's own decoder, PyAV, broke with
 newer PyAV releases), so any format the browser records (webm/opus, wav) works. The model is
@@ -79,6 +80,7 @@ class Faster:
         import ctranslate2
 
         self._name = model
+        self._encoded = None
         self._load("cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu")
 
     def _load(self, device: str) -> None:
@@ -89,13 +91,30 @@ class Faster:
         print(f"whisper: faster-whisper {self._name} on the {device.upper()}", file=sys.stderr, flush=True)
 
     def languages(self, audio: np.ndarray) -> dict[str, float]:
-        """How likely each language is spoken in the first 30 seconds."""
-        _, _, probs = self._model.detect_language(audio)
-        return dict(probs)
+        """How likely each language is spoken in the first 30 seconds. The encoder pass this takes is
+        kept for transcribing the same recording, which decodes its first window from it: on a CPU
+        that pass is as long as a short command's whole transcription."""
+        from faster_whisper.audio import pad_or_trim
+
+        model = self._model
+        # the first window as transcribe cuts it from the features (without their last frame)
+        features = model.feature_extractor(audio)
+        window = pad_or_trim(features[:, : min(model.feature_extractor.nb_max_frames, features.shape[-1] - 1)])
+        encoded = model.encode(window)
+        self._encoded = (audio, encoded)
+        return {token[2:-2]: p for token, p in model.model.detect_language(encoded)[0]}
 
     def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
+        encoded = self._encoded[1] if self._encoded and self._encoded[0] is audio else None
+        self._encoded = None
+        model = self._model
+        if encoded is not None:
+            # transcribe hands generate_segments no encoder output, so it would encode the first window again
+            model.generate_segments = lambda features, tokenizer, options, log_progress, encoder_output=None: type(model).generate_segments(
+                model, features, tokenizer, options, log_progress, encoded
+            )
         try:
-            segments, _ = self._model.transcribe(
+            segments, _ = model.transcribe(
                 audio,
                 language=language,
                 initial_prompt=prompt,
@@ -110,6 +129,8 @@ class Faster:
                 raise
             self._load("cpu")
             return self.transcribe(audio, prompt, language)
+        finally:
+            model.__dict__.pop("generate_segments", None)
 
 
 def main() -> None:

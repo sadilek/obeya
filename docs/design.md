@@ -966,9 +966,13 @@ the owner's language (`src/core/locale.ts`).
   the first 30 seconds of the ones Obeya speaks (German or English), not the interface's: the owner
   may run the interface in English and speak German, and Whisper told to expect English then
   translated into broken English, unsure of its words, so long dictations (more windows that can
-  fail) ended in „not understood“ (6–8 Oct 2026). Hearing the language is one more encoder pass:
-  about 0.4 s with MLX on an M-series Mac, on a CPU as long as a short command's whole transcription
-  (4.2 s on that Mac's CPU, measured 2026-10-08). It runs mlx-whisper on Apple
+  fail) ended in „not understood“ (6–8 Oct 2026). With MLX hearing the language is one more encoder
+  pass, about 0.4 s on an M-series Mac. With faster-whisper it was one too, on a CPU as long as a
+  short command's whole transcription (4.2 s on that Mac's CPU); there the first 30-second window is
+  encoded once, its encoder output tells German from English and is handed to the decode of that
+  window (`generate_segments` takes it, `transcribe` passes none), so a short command costs one
+  encoder pass and as much CPU time as before (measured 2026-10-08; faster-whisper's own
+  `multilingual` would pick from all languages and may hear a short German command as Dutch). It runs mlx-whisper on Apple
   Silicon, faster-whisper elsewhere (CUDA when there is a GPU, falling back to the CPU when its
   libraries are missing; int8 on the CPU), large-v3-turbo on both, the recording decoded by ffmpeg
   (`OBEYA_WHISPER_PYTHON`, a Python with the package, else `uv` with the same kit the demos listen
