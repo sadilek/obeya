@@ -94,12 +94,12 @@
         width: `${r.width + 2 * pad}px`,
         height: `${r.height + 2 * pad}px`,
       });
-      // the hole spans the ring's border too, as the shadow used to
-      const border = 3;
-      ring.hole.setAttribute('x', r.left - pad);
-      ring.hole.setAttribute('y', r.top - pad);
-      ring.hole.setAttribute('width', r.width + 2 * (pad + border));
-      ring.hole.setAttribute('height', r.height + 2 * (pad + border));
+      // the hole is the ring as drawn, border included (the page's box-sizing decides its size)
+      const drawn = ring.box.getBoundingClientRect();
+      ring.hole.setAttribute('x', drawn.left);
+      ring.hole.setAttribute('y', drawn.top);
+      ring.hole.setAttribute('width', drawn.width);
+      ring.hole.setAttribute('height', drawn.height);
     }
     // A label sits above its ring unless that covers another ring; then it goes below.
     for (const ring of rings) {
