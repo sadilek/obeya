@@ -208,8 +208,8 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   `SHA256SUMS` and `latest.json` (`scripts/release.ts`); the owner publishes it.
 - The updater's artifacts and their signatures are made by `build-app.ts` itself when the
   updater's private key is in the environment (`TAURI_SIGNING_PRIVATE_KEY`, a repository secret
-  that W5 creates, read on tags only): `Obeya.app.tar.gz` on macOS (renamed per architecture in
-  the release), the NSIS installer, the AppImage. Tauri's own `createUpdaterArtifacts` would need
+  that W5 creates, read on tags only): `Obeya.app.tar.gz` on macOS (`Obeya-macOS-arm64.app.tar.gz`
+  and `-x64` in the release), the NSIS installer, the AppImage. Tauri's own `createUpdaterArtifacts` would need
   the updater plugin's configuration, and would sign the AppImage before the server is in it.
   Without the key, `latest.json` names no platform.
 - The release's installers carry fixed names, which the README and the site link through

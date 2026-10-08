@@ -578,7 +578,10 @@ the owner's language (`src/core/locale.ts`).
   (the paths of `INERT` in the self-update left out), the installers kept a week as the run's
   artifacts, and on a tag `v<version>`, which must be `package.json`'s: then a draft GitHub
   Release gets every installer, the updater's archives with their signatures, `SHA256SUMS` and
-  `latest.json` (`scripts/release.ts`), and the owner publishes it. The updater's archives are
+  `latest.json` (`scripts/release.ts`), and the owner publishes it. The installers carry fixed
+  names without the version (`Obeya-macOS-arm64.dmg`, `Obeya-Windows-x64-setup.exe`,
+  `obeya_amd64.deb` …), which the README and the site link through `releases/latest/download/`,
+  so the release is made the latest. The updater's archives are
   signed by `build-app.ts` itself when `TAURI_SIGNING_PRIVATE_KEY` is set (a repository secret,
   read on tags only): `Obeya.app.tar.gz` packed from the app on macOS, the NSIS installer, the
   AppImage after the server is in it. Tauri's own `createUpdaterArtifacts` needs the updater

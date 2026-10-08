@@ -74,11 +74,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: 'app -> target' }
-      - name: WebKitGTK and GStreamer
+      - name: WebKitGTK, GStreamer and ALSA
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
       - run: bun install --frozen-lockfile
       - name: The compiled server and the app around it
@@ -88,7 +88,7 @@ jobs:
         run: |
           version="$(bun -p "require('./package.json').version")"
           bun scripts/check-binary.ts "dist/obeya-$version-${{ matrix.target }}/obeya${{ runner.os == 'Windows' && '.exe' || '' }}"
-      - run: bun scripts/release.ts collect release
+      - run: bun scripts/release.ts collect ${{ matrix.target }} release
       - uses: actions/upload-artifact@v4
         with:
           name: obeya-${{ matrix.target }}
@@ -112,4 +112,4 @@ jobs:
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Obeya ${GITHUB_REF_NAME#v}" --generate-notes release/*
+        run: gh release create "$GITHUB_REF_NAME" --draft --latest --verify-tag --title "Obeya ${GITHUB_REF_NAME#v}" --generate-notes release/*

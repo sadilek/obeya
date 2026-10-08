@@ -1,53 +1,83 @@
 // What a release holds, for the build workflow (.github/workflows/build.yml): each platform's build
 // collects its installers, and the release job adds the checksums and the updater's latest.json.
 //
-//   bun scripts/release.ts collect <dir>
-//       copies this machine's installers from app/target/release/bundle/ (scripts/build-app.ts)
-//       into <dir>, with the update artifacts and their signatures when there are any; the macOS
-//       one gets its architecture into its name (Tauri calls it Obeya.app.tar.gz on both).
+//   bun scripts/release.ts collect <target> <dir>
+//       copies the installers of <target> (darwin-arm64, …, as in scripts/build.ts) from
+//       app/target/release/bundle/ (scripts/build-app.ts) into <dir> under the release's fixed
+//       names, with the update artifact and its signature when there is one.
 //   bun scripts/release.ts manifest <dir> <tag> <owner/repo>
 //       writes latest.json (the version, and per platform the update's URL in the tag's release
 //       and its signature) and SHA256SUMS over everything in <dir>.
 //
-// Without the updater's key (TAURI_SIGNING_PRIVATE_KEY at the build) there are no update artifacts,
-// and latest.json names no platform.
+// The names carry no version: the README and the site link the newest release's installers through
+// `releases/latest/download/<name>`. Without the updater's key (TAURI_SIGNING_PRIVATE_KEY at the
+// build) there are no update artifacts, and latest.json names no platform.
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
-import pkg from '../package.json';
+import { join, resolve } from 'node:path';
 
-/** Tauri's platform keys in latest.json, by how the update artifact's name ends. */
-const PLATFORMS: [RegExp, string][] = [
-  [/_aarch64\.app\.tar\.gz$/, 'darwin-aarch64'],
-  [/_x64\.app\.tar\.gz$/, 'darwin-x86_64'],
-  [/_x64-setup\.exe$/, 'windows-x86_64'],
-  [/_amd64\.AppImage$/, 'linux-x86_64'],
-  [/_aarch64\.AppImage$/, 'linux-aarch64'],
-];
+type Asset = { from: string; ends: string; name: string };
+type Release = { platform: string; installers: Asset[]; update: Asset };
 
-const INSTALLERS = /\.(dmg|AppImage|deb)$|-setup\.exe$/;
+/** Per target: where Tauri puts each installer, the name it has in the release, and the update. */
+export const RELEASE: Record<string, Release> = {
+  'darwin-arm64': {
+    platform: 'darwin-aarch64',
+    installers: [{ from: 'dmg', ends: '.dmg', name: 'Obeya-macOS-arm64.dmg' }],
+    update: { from: 'macos', ends: '.app.tar.gz', name: 'Obeya-macOS-arm64.app.tar.gz' },
+  },
+  'darwin-x64': {
+    platform: 'darwin-x86_64',
+    installers: [{ from: 'dmg', ends: '.dmg', name: 'Obeya-macOS-x64.dmg' }],
+    update: { from: 'macos', ends: '.app.tar.gz', name: 'Obeya-macOS-x64.app.tar.gz' },
+  },
+  'windows-x64': {
+    platform: 'windows-x86_64',
+    installers: [{ from: 'nsis', ends: '-setup.exe', name: 'Obeya-Windows-x64-setup.exe' }],
+    update: { from: 'nsis', ends: '-setup.exe', name: 'Obeya-Windows-x64-setup.exe' },
+  },
+  'linux-x64': {
+    platform: 'linux-x86_64',
+    installers: [
+      { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-x86_64.AppImage' },
+      { from: 'deb', ends: '.deb', name: 'obeya_amd64.deb' },
+    ],
+    update: { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-x86_64.AppImage' },
+  },
+  'linux-arm64': {
+    platform: 'linux-aarch64',
+    installers: [
+      { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-aarch64.AppImage' },
+      { from: 'deb', ends: '.deb', name: 'obeya_arm64.deb' },
+    ],
+    update: { from: 'appimage', ends: '.AppImage', name: 'Obeya-Linux-aarch64.AppImage' },
+  },
+};
 
-/** Copies the installers in `bundle` (Tauri's bundle directory) into `dir`; returns their names. */
-export function collect(bundle: string, dir: string, version = pkg.version, arch = process.arch): string[] {
+/** Copies the installers of `target` in `bundle` (Tauri's bundle directory) into `dir`; returns their names. */
+export function collect(target: string, bundle: string, dir: string): string[] {
+  const release = RELEASE[target];
+  if (!release) throw new Error(`unknown target ${target} (known: ${Object.keys(RELEASE).join(', ')})`);
   mkdirSync(dir, { recursive: true });
   const copied: string[] = [];
-  const put = (from: string, name = basename(from)) => {
+  const find = (a: Asset) => {
+    const sub = join(bundle, a.from);
+    const f = existsSync(sub) ? readdirSync(sub).find((f) => f.endsWith(a.ends)) : undefined;
+    return f && join(sub, f);
+  };
+  const put = (from: string, name: string) => {
     copyFileSync(from, join(dir, name));
     copied.push(name);
   };
-  for (const sub of ['dmg', 'nsis', 'appimage', 'deb']) {
-    if (!existsSync(join(bundle, sub))) continue;
-    for (const f of readdirSync(join(bundle, sub))) {
-      const path = join(bundle, sub, f);
-      if (INSTALLERS.test(f)) put(path);
-      else if (f.endsWith('.sig') && INSTALLERS.test(f.slice(0, -4))) put(path);
-    }
+  for (const a of release.installers) {
+    const from = find(a);
+    if (!from) throw new Error(`no ${a.ends} in ${join(bundle, a.from)}`);
+    put(from, a.name);
   }
-  const app = join(bundle, 'macos', 'Obeya.app.tar.gz');
-  if (existsSync(app)) {
-    const name = `Obeya_${version}_${arch === 'arm64' ? 'aarch64' : 'x64'}.app.tar.gz`;
-    put(app, name);
-    if (existsSync(`${app}.sig`)) put(`${app}.sig`, `${name}.sig`);
+  const update = find(release.update);
+  if (update && existsSync(`${update}.sig`)) {
+    if (!copied.includes(release.update.name)) put(update, release.update.name);
+    put(`${update}.sig`, `${release.update.name}.sig`);
   }
   return copied;
 }
@@ -57,12 +87,12 @@ export type Latest = { version: string; pub_date: string; platforms: Record<stri
 /** latest.json for Tauri's updater, from the signed update artifacts in `dir`. */
 export function latest(dir: string, tag: string, repo: string, now = new Date()): Latest {
   const platforms: Latest['platforms'] = {};
-  for (const f of readdirSync(dir).sort()) {
-    const platform = PLATFORMS.find(([end]) => end.test(f))?.[1];
-    if (!platform || !existsSync(join(dir, `${f}.sig`))) continue;
+  for (const { platform, update } of Object.values(RELEASE)) {
+    const sig = join(dir, `${update.name}.sig`);
+    if (!existsSync(join(dir, update.name)) || !existsSync(sig)) continue;
     platforms[platform] = {
-      url: `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(f)}`,
-      signature: readFileSync(join(dir, `${f}.sig`), 'utf8').trim(),
+      url: `https://github.com/${repo}/releases/download/${tag}/${update.name}`,
+      signature: readFileSync(sig, 'utf8').trim(),
     };
   }
   return { version: tag.replace(/^v/, ''), pub_date: now.toISOString().replace(/\.\d+Z$/, 'Z'), platforms };
@@ -79,12 +109,8 @@ export function sums(dir: string): string {
 
 if (import.meta.main) {
   const [command, ...rest] = process.argv.slice(2);
-  if (command === 'collect' && rest[0]) {
-    const copied = collect(resolve(import.meta.dir, '..', 'app', 'target', 'release', 'bundle'), resolve(rest[0]));
-    if (!copied.length) {
-      console.error('release: no installers in app/target/release/bundle (run scripts/build-app.ts first)');
-      process.exit(1);
-    }
+  if (command === 'collect' && rest[1]) {
+    const copied = collect(rest[0]!, resolve(import.meta.dir, '..', 'app', 'target', 'release', 'bundle'), resolve(rest[1]));
     for (const f of copied) console.log(f);
   } else if (command === 'manifest' && rest[2]) {
     const [dirArg, tag, repo] = rest as [string, string, string];
@@ -95,7 +121,7 @@ if (import.meta.main) {
     const named = Object.keys(manifest.platforms);
     console.log(`latest.json: ${named.length ? named.join(', ') : 'no platform (the builds had no updater key)'}`);
   } else {
-    console.error('usage: bun scripts/release.ts collect <dir> | manifest <dir> <tag> <owner/repo>');
+    console.error('usage: bun scripts/release.ts collect <target> <dir> | manifest <dir> <tag> <owner/repo>');
     process.exit(2);
   }
 }
