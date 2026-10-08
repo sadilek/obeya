@@ -245,7 +245,7 @@ try {
   });
 
   // ---------------------------------------------------------------- an Obeya from a terminal on the same home
-  const sidecar = join(dirname(program), win ? 'obeya-server.exe' : 'obeya-server');
+  const sidecar = [join(dirname(program), win ? 'obeya-server.exe' : 'obeya-server'), resolve(dirname(program), '..', 'lib', 'Obeya', 'obeya-server')].find((f) => existsSync(f)) ?? '';
   if (existsSync(sidecar)) {
     reports.length = 0;
     const resources = [join(dirname(program), 'resources'), resolve(dirname(program), '..', 'Resources', 'resources'), resolve(dirname(program), '..', 'lib', 'Obeya', 'resources')].find((d) => existsSync(d));
@@ -264,7 +264,7 @@ try {
     });
     await fetch(`${e.url}/api/stop`, { method: 'POST' }).catch(() => {});
     await exited(server, 30_000);
-  } else console.log(`- the app beside an Obeya from a terminal: not checked (no ${sidecar}; the .deb and the AppImage keep it elsewhere)`);
+  } else console.log('- the app beside an Obeya from a terminal: not checked (the AppImage keeps its server inside)');
 } finally {
   app?.kill();
   server?.kill();

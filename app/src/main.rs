@@ -165,8 +165,13 @@ fn fail(app: &AppHandle, why: String) {
 }
 
 fn start_server(app: &AppHandle, home: &Path, port: u16, log: &(fs::File, PathBuf)) -> std::io::Result<Child> {
-  let exe = std::env::current_exe()?;
-  let mut cmd = Command::new(exe.with_file_name(SERVER));
+  // beside this program (a sidecar), or on Linux among the resources (app/tauri.linux.conf.json)
+  let beside = std::env::current_exe()?.with_file_name(SERVER);
+  let server = match app.path().resource_dir() {
+    Ok(dir) if !beside.exists() => dir.join(SERVER),
+    _ => beside,
+  };
+  let mut cmd = Command::new(server);
   cmd
     .args(["--port", &port.to_string()])
     .env("OBEYA_APP", "1")

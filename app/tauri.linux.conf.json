@@ -1,0 +1,6 @@
+{
+  "bundle": {
+    "externalBin": [],
+    "resources": { "staged/resources/": "resources/", "staged/obeya-server": "obeya-server" }
+  }
+}

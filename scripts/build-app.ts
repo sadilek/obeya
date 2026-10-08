@@ -58,6 +58,9 @@ mkdirSync(join(APP, 'binaries'), { recursive: true });
 cpSync(join(built, `obeya${exe}`), join(APP, 'binaries', `obeya-server-${triple}${exe}`));
 rmSync(join(APP, 'staged'), { recursive: true, force: true });
 cpSync(join(built, 'resources'), join(APP, 'staged', 'resources'), { recursive: true });
+// on Linux the server goes among the resources (app/tauri.linux.conf.json): the AppImage's linuxdeploy
+// runs ldd on every program in usr/bin, and ldd fails on Bun's compiled binary
+if (os === 'linux') cpSync(join(built, 'obeya'), join(APP, 'staged', 'obeya-server'));
 
 const cross = target !== here;
 const tauri = [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : [])];
