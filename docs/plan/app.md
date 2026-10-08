@@ -67,6 +67,21 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   resources/node_modules/playwright-core/cli.js install --with-deps chromium`), and the
   repository secret `CLAUDE_CODE_OAUTH_TOKEN` for agents (`claude setup-token`; agents keep that
   variable, unlike the rest of `CLAUDE_CODE_*`).
+- *The app* (W2, 2026-10-08, Tauri 2.12; design: App): `bun run build:app` builds a DMG on macOS
+  (27 MB), an NSIS installer on Windows and an AppImage (180 MB, GStreamer inside) and a .deb
+  (46 MB) on Linux; the Linux ones built in Docker on a Mac (`app/linux.Dockerfile`, arm64) and on
+  GitHub's Ubuntu x64 runners, the installer on GitHub's Windows runner (temporary branch
+  `w2-app-check`, deleted). `bun scripts/check-app.ts` passed in full on macOS (WKWebView) and on
+  Windows (WebView2, Chromium's fake microphone): the window on the canvas, a microphone recording,
+  an H.264/AAC demo video, "Im Browser öffnen", a second start, the stop over HTTP, the app beside
+  an Obeya from a terminal. Cmd-Q from the menu (Obeya stops first and the window shows the wait)
+  was not tried: nothing here presses keys in another app; the Dock's Quit was (the server stops
+  on its own once its worker paused). On Linux (WebKitGTK 2.50 on Ubuntu 22.04, 2.52 on 24.04)
+  everything but the microphone passed: getUserMedia gives a stream, but MediaRecorder records
+  nothing, so the page takes Web Audio's samples there (`src/ui/recorder.ts`); in containers and
+  on the runners those samples were silent (a PulseAudio sine source as microphone), so voice in
+  the Linux window is unconfirmed until it is tried on a Linux desktop with a real microphone.
+  The demo video played on 22.04 and stalled on the 24.04 runner.
 
 ## Design
 
@@ -229,7 +244,7 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
   settings. Checked with the binary on macOS and on a Windows and a Linux runner: a scratch canvas,
   a real worker with the SDK's binary and with the user's Claude Code (open question 3), a demo
   render, a voice command, a repository's own adapter.
-- [ ] **W2:** The Tauri shell. The compiled server as sidecar, a window on the canvas, one Obeya
+- [x] **W2:** The Tauri shell. The compiled server as sidecar, a window on the canvas, one Obeya
   per home (port and pid in the home), stop through HTTP like Ctrl-C, single instance, "Im Browser
   öffnen". Microphone and demo video checked in WKWebView, WebView2 and WebKitGTK. Unsigned DMG,
   NSIS installer, AppImage and .deb built locally.
