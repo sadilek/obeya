@@ -55,6 +55,7 @@ describe('serveDemoFile for an HTML artifact', () => {
     const page = get('index.html');
     expect(page.headers.get('content-type')).toContain('text/html');
     expect(page.headers.get('content-security-policy')).toBe('sandbox allow-scripts');
+    expect(await page.text()).toMatch(/^<img src="img\/a.svg"><script>[\s\S]*obeyaHeight/);
     expect(await get('img/a.svg').text()).toContain('<svg');
     expect(get('../demo.mp4').status).toBe(404);
     expect(get('img').status).toBe(404);

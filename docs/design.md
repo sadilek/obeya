@@ -1124,7 +1124,10 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   a directory with an `index.html` and the files it loads, handed over the same way. The
   card shows the page in a frame where the video would be (no chapters); Obeya serves any file of
   that directory, none outside it, with a CSP sandbox and the frame's `sandbox`, so the page's
-  scripts run in an origin of their own, away from Obeya's API. A handover with `no_demo` (the
+  scripts run in an origin of their own, away from Obeya's API. Its `index.html` comes with the
+  height report a shared artifact's page has (below), so the frame grows to the page and only the
+  card's left column scrolls; before (2026-10-08) the frame scrolled inside that column, two
+  scrollbars side by side. A handover with `no_demo` (the
   reason) instead is the exception the worker's brief names as such: the card waits for review
   with the buttons on top and the summary and the reason as the handover in its conversation, and a demo from an earlier handover leaves the card, since it
   showed other work. Artifacts stay in `~/demos/`, never in git; a pull request links a demo
@@ -1429,7 +1432,13 @@ the repository; the copy on the project is only for the archive).
 - An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
   follows its content while open. Where its bottom lies under the microphone, the content gets
   that much room below it, so the last row (an idea's „Parken“, „Verwerfen“) scrolls up past the
-  microphone instead of staying under it (2026-10-05).
+  microphone instead of staying under it (2026-10-05). A card with a conversation (an idea, a task
+  an agent worked on) fills the window instead: up to 1600 px wide, from the top bar down to the
+  microphone, the conversation a third of the width (400–560 px), and what the card is about and
+  the conversation scroll inside their columns, the panel not at all. Only a window too low for a
+  split of 320 px lets the panel reach under the microphone. Before (2026-10-08) it stayed at
+  1120 × 880 px with the columns 600 px high, small on a large screen. A proposal keeps growing
+  with its text.
 - Opening a card takes 300 ms: a 130 ms flight brings it to the middle, then it unfolds in 170 ms;
   closing runs the same in reverse. Fast enough not to wait on, long enough to keep the context.
 - Manual cards are created by double-click, the button or `n`, and edited in the unfolded card;

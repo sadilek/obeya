@@ -887,24 +887,32 @@ function Mocks({ mocks }: { mocks?: Mock[] }) {
  */
 function MockFrame({ mock }: { mock: Mock }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(48);
+  const height = useReportedHeight(frame, 480) ?? 48;
   const page = useMemo(() => mockPage(mock.html), [mock.html]);
-  useEffect(() => {
-    // a mock as high as its frame would grow with each step: it stops after a few
-    let steps = 0;
-    const on = (e: MessageEvent) => {
-      const h = e.source === frame.current?.contentWindow && (e.data as { obeyaHeight?: unknown } | null)?.obeyaHeight;
-      if (typeof h === 'number' && h > 0 && steps++ < 30) setHeight(Math.min(Math.ceil(h), 480));
-    };
-    addEventListener('message', on);
-    return () => removeEventListener('message', on);
-  }, []);
   return (
     <figure className="mock">
       {mock.title && <figcaption>{mock.title}</figcaption>}
       <iframe ref={frame} sandbox="allow-scripts" srcDoc={page} title={mock.title || t.idea.mock} style={{ height }} />
     </figure>
   );
+}
+
+/**
+ * The height the page in `frame` reports (`withHeightReport` in `src/core/frame.ts`), up to `cap`;
+ * undefined until it has. A page as high as its frame would grow with each step: it stops after a few.
+ */
+function useReportedHeight(frame: RefObject<HTMLIFrameElement | null>, cap: number) {
+  const [height, setHeight] = useState<number>();
+  useEffect(() => {
+    let steps = 0;
+    const on = (e: MessageEvent) => {
+      const h = e.source === frame.current?.contentWindow && (e.data as { obeyaHeight?: unknown } | null)?.obeyaHeight;
+      if (typeof h === 'number' && h > 0 && steps++ < 30) setHeight(Math.min(Math.ceil(h), cap));
+    };
+    addEventListener('message', on);
+    return () => removeEventListener('message', on);
+  }, []);
+  return height;
 }
 
 /** What the agent did on its way to a message, folded: its history. */
@@ -952,6 +960,8 @@ function DemoView({
 }) {
   const cardId = item.id;
   const video = useRef<HTMLVideoElement>(null);
+  const artifact = useRef<HTMLIFrameElement>(null);
+  const artifactHeight = useReportedHeight(artifact, 30000);
   const [now, setNow] = useState(0);
   const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
   // start once the card has unfolded, like the mock, the first time only; a demo kept on a finished card waits to be played
@@ -970,7 +980,7 @@ function DemoView({
       <div className="demo-view">
         {demo.kind === 'html' ? (
           // the worker's page: scripts run, but in an origin of its own, away from Obeya's API
-          <iframe className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} />
+          <iframe ref={artifact} className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} style={{ height: artifactHeight }} />
         ) : (
           <div className="player">
             <video

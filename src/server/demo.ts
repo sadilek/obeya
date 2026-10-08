@@ -3,6 +3,7 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
+import { withHeightReport } from '../core/frame';
 import type { DemoKind } from '../core/types';
 import { resource } from './resources';
 
@@ -74,13 +75,14 @@ export function serveDemoFile(demo: { dir: string; kind: DemoKind }, name: strin
 /**
  * A file of an HTML artifact, never one outside its directory. The page is the worker's, so it runs
  * sandboxed: scripts yes, but in an origin of its own, without Obeya's API or the canvas's storage.
+ * Its page tells the card its height, so the frame grows to it instead of scrolling inside.
  */
 function serveArtifactFile(dir: string, name: string): Response {
   const root = resolve(dir);
   const path = resolve(root, name);
   if (!path.startsWith(root + sep) || !existsSync(path) || !statSync(path).isFile()) return new Response('Not found', { status: 404 });
   const file = Bun.file(path);
-  return new Response(file, {
-    headers: { 'content-type': file.type, 'content-security-policy': 'sandbox allow-scripts', 'cache-control': 'no-cache' },
-  });
+  const headers = { 'content-type': file.type, 'content-security-policy': 'sandbox allow-scripts', 'cache-control': 'no-cache' };
+  if (path === join(root, ARTIFACT_PAGE)) return new Response(withHeightReport(readFileSync(path, 'utf8')), { headers });
+  return new Response(file, { headers });
 }
