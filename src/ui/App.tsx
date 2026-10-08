@@ -1146,9 +1146,12 @@ function panelRect(i: Item, inner: HTMLElement) {
   const W = Math.min(wide ? 1600 : tall ? 980 : 900, innerWidth - 80);
   inner.style.width = `${W}px`;
   inner.style.paddingBottom = '';
+  inner.style.overflowY = '';
   const pad = getComputedStyle(inner);
   const base = parseFloat(pad.paddingBottom);
   const content = inner.firstElementChild as HTMLElement;
+  // heights unrounded: a content half a pixel higher than its panel scrolls it
+  const height = (e: HTMLElement) => e.getBoundingClientRect().height;
   const mic = (document.getElementById('ptt')?.getBoundingClientRect().top ?? innerHeight) - MIC_GAP;
   // an idea's or a task's split fills the window from the top bar down to the microphone: the
   // conversation and what it is about get the room, and the panel itself does not scroll
@@ -1156,11 +1159,14 @@ function panelRect(i: Item, inner: HTMLElement) {
   if (fill) {
     fill.style.height = '';
     if (getComputedStyle(fill).gridTemplateColumns.split(' ').length > 1) {
-      const rest = content.offsetHeight - fill.offsetHeight + parseFloat(pad.paddingTop) + base;
-      fill.style.height = `${Math.max(SPLIT_MIN, mic - PANEL_TOP - rest)}px`;
+      const rest = height(content) - height(fill) + parseFloat(pad.paddingTop) + base;
+      const room = Math.floor(mic - PANEL_TOP - rest);
+      fill.style.height = `${Math.max(SPLIT_MIN, room)}px`;
+      // nothing to scroll to, so no scrollbar either; on a low window the panel scrolls past the microphone
+      if (room >= SPLIT_MIN) inner.style.overflowY = 'hidden';
     }
   }
-  const need = content.offsetHeight + parseFloat(pad.paddingTop) + base;
+  const need = height(content) + parseFloat(pad.paddingTop) + base;
   // a proposal grows with its text as far as the screen allows
   const max = Math.min(i.state === 'proposal' || fill ? Infinity : wide ? 880 : tall ? 760 : i.source === 'manual' ? 480 : 560, innerHeight - 110);
   const top = (H: number) => (fill ? PANEL_TOP : Math.max(PANEL_TOP, (innerHeight - H) / 2));

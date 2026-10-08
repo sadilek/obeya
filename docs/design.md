@@ -1440,8 +1440,10 @@ the repository; the copy on the project is only for the archive).
   microphone instead of staying under it (2026-10-05). A card with a conversation (an idea, a task
   an agent worked on) fills the window instead: up to 1600 px wide, from the top bar down to the
   microphone, the conversation a third of the width (400–560 px), and what the card is about and
-  the conversation scroll inside their columns, the panel not at all. Only a window too low for a
-  split of 320 px lets the panel reach under the microphone. Before (2026-10-08) it stayed at
+  the conversation scroll inside their columns, the panel not at all: it shows no scrollbar of its
+  own, which before (2026-10-08) stood at its right edge whenever the content came out a few pixels
+  higher than the panel. Only a window too low for a split of 320 px lets the panel reach under the
+  microphone and scroll. Before (2026-10-08) it stayed at
   1120 × 880 px with the columns 600 px high, small on a large screen. A proposal keeps growing
   with its text.
 - Opening a card takes 300 ms: a 130 ms flight brings it to the middle, then it unfolds in 170 ms;
