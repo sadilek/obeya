@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, api, holdRestart } from './api';
+import { type Recording, record } from './recorder';
 import { AttachButton, type ShotInput, ShotStrip } from './shots';
 import { errorText, t } from './strings';
 
@@ -44,7 +45,7 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
   const [level, setLevel] = useState(0);
   const [flat, setFlat] = useState(false);
   const mic = useRef<Promise<{ stream: MediaStream; ctx: AudioContext; analyser: AnalyserNode }> | null>(null);
-  const rec = useRef<{ recorder: MediaRecorder; chunks: Blob[]; t0: number; target: Where } | null>(null);
+  const rec = useRef<{ recording: Recording; t0: number; target: Where } | null>(null);
   const held = useRef<number | null>(null);
   const frame = useRef(0);
 
@@ -79,10 +80,7 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
       return;
     }
     void m.ctx.resume();
-    const recorder = new MediaRecorder(m.stream);
-    const r = { recorder, chunks: [] as Blob[], t0: performance.now(), target };
-    recorder.ondataavailable = (e) => e.data.size && r.chunks.push(e.data);
-    recorder.start();
+    const r = { recording: record(m.stream, m.ctx), t0: performance.now(), target };
     rec.current = r;
     setPhase('listening');
     const buf = new Float32Array(m.analyser.fftSize);
@@ -114,17 +112,16 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
     setFlat(false);
     const length = performance.now() - r.t0;
     setPhase('idle');
-    r.recorder.onstop = async () => {
+    void r.recording.stop().then(async (audio) => {
       // a tap is not a command
       if (length < 350) return;
       // those still uploading wait for the next recording
       const images = shotsRef.current.images.filter((id) => !sending.current.has(id));
       for (const id of images) sending.current.add(id);
-      const h = await send(r.target, () => api.voice(new Blob(r.chunks, { type: r.recorder.mimeType }), r.target, images));
+      const h = await send(r.target, () => api.voice(audio, r.target, images));
       for (const id of images) sending.current.delete(id);
       if (!h.unheard) shotsRef.current.clear(images);
-    };
-    r.recorder.stop();
+    });
   }
 
   useEffect(() => () => void mic.current?.then((m) => m.stream.getTracks().forEach((tr) => tr.stop())), []);

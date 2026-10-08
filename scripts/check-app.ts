@@ -7,9 +7,10 @@
 // The program is Obeya.app/Contents/MacOS/obeya, obeya.exe where the installer put it, the AppImage,
 // or /usr/bin/obeya from the .deb. On a scratch repository and a scratch home it checks:
 //   - the app starts its server and its window shows the canvas, which knows it runs in the app;
-//   - the microphone: the page gets a stream without being asked, and MediaRecorder records it, as
-//     voice.tsx does (--fake-mic gives WebView2 Chromium's fake device, for a machine without one;
-//     on Linux a PulseAudio source is needed, not a sink's monitor: module-sine-source will do);
+//   - the microphone: the page gets a stream without being asked, and records it as src/ui/recorder.ts
+//     does (MediaRecorder; on Linux Web Audio's samples). --fake-mic gives WebView2 Chromium's fake
+//     device, for a machine without one; on Linux a PulseAudio source is needed, not a sink's
+//     monitor (WebKitGTK lists none): module-sine-source will do;
 //   - a demo video (H.264 and AAC in MP4, as the demo skill renders it) plays;
 //   - the settings offer "Im Browser öffnen" (--screenshot takes the window with them open);
 //   - starting the app a second time brings the first to the front and ends;
@@ -97,17 +98,40 @@ const report = (r) => fetch(new URL('/result', import.meta.url), { method: 'POST
 const out = { app: window.obeyaApp ?? null, location: location.href, userAgent: navigator.userAgent };
 try {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // what voice.tsx does: a level meter on the stream, and MediaRecorder
+  const ctx = new AudioContext();
+  const analyser = ctx.createAnalyser();
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  // in the app on Linux the page takes the samples from Web Audio instead (src/ui/recorder.ts)
+  const pcm = window.obeyaApp?.platform === 'linux';
   const recorder = new MediaRecorder(stream);
   const chunks = [];
+  let error = '';
+  let samples = 0;
   recorder.ondataavailable = (e) => chunks.push(e.data);
+  recorder.onerror = (e) => (error = String(e.error ?? e));
   const stopped = new Promise((r) => (recorder.onstop = r));
+  const tap = ctx.createScriptProcessor(4096, 1, 1);
+  if (pcm) {
+    tap.onaudioprocess = (e) => (samples += e.inputBuffer.length);
+    ctx.createMediaStreamSource(stream).connect(tap);
+    tap.connect(ctx.destination);
+  }
+  await ctx.resume();
   recorder.start();
-  await new Promise((r) => setTimeout(r, 1500));
+  let level = 0;
+  const buf = new Float32Array(analyser.fftSize);
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    analyser.getFloatTimeDomainData(buf);
+    level = Math.max(level, ...buf.map(Math.abs));
+  }
   recorder.stop();
   await stopped;
+  ctx.close();
   stream.getTracks().forEach((t) => t.stop());
   const types = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/wav'].filter((t) => MediaRecorder.isTypeSupported(t));
-  out.mic = { ok: true, mimeType: recorder.mimeType, bytes: chunks.reduce((n, c) => n + c.size, 0), device: stream.getAudioTracks()[0]?.label ?? '', types };
+  out.mic = { ok: true, mimeType: recorder.mimeType, bytes: chunks.reduce((n, c) => n + c.size, 0), device: stream.getAudioTracks()[0]?.label ?? '', types, level, error, pcm, wavBytes: samples * 2 };
 } catch (e) {
   out.mic = { ok: false, error: String(e) };
 }
@@ -216,10 +240,15 @@ try {
       return String(page.userAgent);
     });
     await check('the microphone records', () => {
-      const mic = page.mic as { ok: boolean; error?: string; mimeType?: string; bytes?: number; device?: string; types?: string[] };
+      const mic = page.mic as { ok: boolean; error?: string; mimeType?: string; bytes?: number; device?: string; types?: string[]; level?: number; pcm?: boolean; wavBytes?: number };
       expect(mic.ok, mic.error ?? 'no stream');
-      expect(mic.bytes! > 0, `MediaRecorder recorded nothing (it records ${mic.types?.join(', ') || 'no type'})`);
-      return `${mic.bytes} bytes of ${mic.mimeType || 'audio'} from ${mic.device || 'the default device'}`;
+      const level = `peak ${mic.level?.toFixed(2)}`;
+      if (mic.pcm) {
+        expect(mic.wavBytes! > 0 && mic.level! > 0, `Web Audio gave ${mic.wavBytes} bytes, ${level} (MediaRecorder: ${mic.bytes} bytes)`);
+        return `${mic.wavBytes} bytes of WAV from Web Audio (MediaRecorder: ${mic.bytes}) from ${mic.device || 'the default device'}, ${level}`;
+      }
+      expect(mic.bytes! > 0, `MediaRecorder recorded nothing (${[level, mic.error, `it records ${mic.types?.join(', ') || 'no type'}`].filter(Boolean).join('; ')})`);
+      return `${mic.bytes} bytes of ${mic.mimeType || 'audio'} from ${mic.device || 'the default device'}, ${level}`;
     });
     await check('a demo video plays', () => {
       const v = page.video as { ok: boolean; error?: string; canPlay?: string; currentTime?: number };
