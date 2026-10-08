@@ -595,6 +595,7 @@ const de = {
     optional: 'kann warten',
     size: (size: string) => `etwa ${size} Download`,
     ready: 'alles da',
+    readyLater: 'geht, der Rest lädt beim ersten Gebrauch',
     open: (n: number) => (n === 1 ? '1 fehlt' : `${n} fehlen`),
     sections: {
       needed: { title: 'Agenten', hint: 'Ohne Claude Code und git arbeitet kein Agent. Claude Code läuft auf deinem Claude-Abo; die Agenten committen unter deinem Namen.' },
@@ -1401,6 +1402,7 @@ const en: Strings = {
     optional: 'can wait',
     size: (size: string) => `about ${size} to download`,
     ready: 'all there',
+    readyLater: 'works, the rest loads on first use',
     open: (n: number) => `${n} missing`,
     sections: {
       needed: { title: 'Agents', hint: 'Without Claude Code and git no agent works. Claude Code runs on your Claude subscription; the agents commit under your name.' },

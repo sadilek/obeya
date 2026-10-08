@@ -227,7 +227,9 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
                   <b>{s.sections[section.id].title}</b>
                   <span className={section.id === 'needed' ? 'setup-tag needed' : 'setup-tag'}>{section.id === 'needed' ? s.needed : s.optional}</span>
                   {section.mb > 0 && <span className="hint">{s.size(megabytes(section.mb))}</span>}
-                  <span className={ready(section) ? 'setup-ok on' : 'setup-ok'}>{ready(section) ? s.ready : s.open(section.items.filter((i) => i.state === 'missing').length)}</span>
+                  <span className={ready(section) ? 'setup-ok on' : 'setup-ok'}>
+                    {!ready(section) ? s.open(section.items.filter((i) => i.state === 'missing').length) : section.items.some((i) => i.state === 'later') ? s.readyLater : s.ready}
+                  </span>
                 </div>
                 <p className="hint">{s.sections[section.id].hint}</p>
                 <SetupList items={section.items} name={name(section)} state={state(section)} action={action(section)} />
