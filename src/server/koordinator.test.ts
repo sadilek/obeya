@@ -8,6 +8,7 @@ import type { PlanDoc } from '../core/plan-doc';
 import { Board } from './board';
 import { MIGRATIONS, Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
+import { move, queueOrder } from '../core/queue';
 import { FakeRuntime, type FakeSession, gitRepo } from './testing';
 import { Workers } from './workers';
 import { git, parseChanges, Workspaces } from './workspaces';
@@ -313,6 +314,51 @@ describe('Koordinator', () => {
     workers.stop(a.id);
     await settle();
     expect(item(c.id).queue).toEqual({ behind: [b.id], reason: 'Grund.', since });
+  });
+
+  test('the owner moves a waiting card past those it has no wait with, and its turn comes in the new order', async () => {
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    const [b, c, d] = [card('B'), card('C'), card('D')];
+    k.request(b.id);
+    await scope(['src/a.ts'], ['K1']);
+    k.request(c.id);
+    await scope(['src/a.ts'], ['K1']);
+    k.request(d.id);
+    await scope(['src/c.ts'], ['K3']);
+    expect(item(d.id).queue).toMatchObject({ behind: [c.id] });
+    const order = () => queueOrder(board.snapshot().items).map((i) => i.title);
+    expect(order()).toEqual(['B', 'C', 'D']);
+
+    k.reorder(c.id, true);
+    expect(order()).toEqual(['C', 'B', 'D']);
+    expect(board.events(c.id).at(-1)).toMatchObject({ author: 'owner', text: 'In der Warteschlange vor „B“ gezogen.' });
+    k.reorder(d.id, true);
+    expect(order()).toEqual(['C', 'D', 'B']);
+    // D waits for C, which stays ahead of it, and C is first already
+    expect(() => k.reorder(d.id, true)).toThrow(expect.objectContaining({ code: 'notMovable' }));
+    expect(() => k.reorder(c.id, false)).toThrow(expect.objectContaining({ code: 'notMovable' }));
+    expect(() => k.reorder(c.id, true)).toThrow(expect.objectContaining({ code: 'notMovable' }));
+    expect(move(d.id, true, board.snapshot().items)).toMatchObject({ past: { id: c.id }, why: 'waitsFor' });
+    expect(move(c.id, false, board.snapshot().items)).toMatchObject({ past: { id: d.id }, why: 'waitedOn' });
+
+    // a card being judged is passed by none, nor does it move
+    const e = card('E');
+    k.request(e.id);
+    await settle();
+    expect(move(b.id, false, board.snapshot().items)).toMatchObject({ past: { id: e.id }, why: 'checking' });
+    expect(() => k.reorder(e.id, true)).toThrow(expect.objectContaining({ code: 'notQueued' }));
+    await scope(['src/e.ts']);
+    expect(item(e.id).state).toBe('working');
+    workers.stop(e.id);
+
+    // C now goes first: B is judged again against it
+    workers.stop(a.id);
+    await settle();
+    expect(item(c.id).state).toBe('working');
+    expect(item(b.id).queue).toMatchObject({ checking: true });
+    expect(item(d.id).queue).toMatchObject({ behind: [c.id] });
   });
 
   test('without an estimate the card still starts, and says why', async () => {

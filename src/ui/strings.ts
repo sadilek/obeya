@@ -201,6 +201,15 @@ const de = {
     dequeue: 'Aus der Warteschlange nehmen',
     forced: 'Gestartet, trotz möglicher Merge-Konflikte.',
     dequeued: 'Aus der Warteschlange genommen.',
+    earlier: 'Früher',
+    later: 'Später',
+    place: (n: number, of: number) => `Platz ${n} von ${of} in der Warteschlange.`,
+    /** Why a waiting card cannot pass the next one in the queue. */
+    stuck: {
+      waitsFor: (title: string) => `Nicht vor „${title}“: Diese Aufgabe wartet darauf.`,
+      waitedOn: (title: string) => `Nicht hinter „${title}“: Die wartet auf diese Aufgabe.`,
+      checking: (title: string) => `Nicht an „${title}“ vorbei: Der Koordinator prüft sie gerade.`,
+    },
   },
   /** Tags on the cards around the one the pointer is on: it waits for them, or they wait for it. */
   deps: {
@@ -215,6 +224,7 @@ const de = {
     notPlanned: 'Nur eine geplante Aufgabe kann gestartet werden.',
     queued: 'Die Aufgabe liegt schon beim Koordinator.',
     notQueued: 'Die Aufgabe wartet nicht in der Warteschlange.',
+    notMovable: 'Die Aufgabe kann in der Warteschlange nicht weiter.',
     notSplittable: 'Aufteilen lässt sich nur eine eigene, geplante Aufgabe, die nicht beim Koordinator liegt.',
     noAgent: 'An dieser Aufgabe arbeitet gerade kein Agent.',
     noQuestion: 'Hier ist keine Frage mehr offen.',
@@ -1015,6 +1025,14 @@ const en: Strings = {
     dequeue: 'Take out of the queue',
     forced: 'Started, despite possible merge conflicts.',
     dequeued: 'Taken out of the queue.',
+    earlier: 'Earlier',
+    later: 'Later',
+    place: (n: number, of: number) => `Place ${n} of ${of} in the queue.`,
+    stuck: {
+      waitsFor: (title: string) => `Not ahead of “${title}”: this task waits for it.`,
+      waitedOn: (title: string) => `Not behind “${title}”: it waits for this task.`,
+      checking: (title: string) => `Not past “${title}”: the Coordinator is checking it right now.`,
+    },
   },
   deps: {
     before: 'comes first',
@@ -1027,6 +1045,7 @@ const en: Strings = {
     notPlanned: 'Only a planned task can be started.',
     queued: 'The task is already with the Coordinator.',
     notQueued: 'The task is not waiting in the queue.',
+    notMovable: 'The task cannot move further in the queue.',
     notSplittable: 'Only your own planned task can be split, and only while it is not with the Coordinator.',
     noAgent: 'No agent is working on this task right now.',
     noQuestion: 'No question is open here any more.',

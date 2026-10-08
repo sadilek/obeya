@@ -792,7 +792,14 @@ the owner's language (`src/core/locale.ts`).
   free; cards queued after it count it as ahead of them. Clones only free up with a change of the
   board (stop, landing, a discarded prototype), so the Koordinator looks then; free clones found
   dirty are looked at again after a minute at the latest. Cards whose turn comes together go in the order they came
-  to the Koordinator, the one waiting longest first. On the canvas, a planned card and one waiting in the queue show a play button
+  to the Koordinator, the one waiting longest first. The owner sets the order where the waits leave
+  it open (`src/core/queue.ts`): a waiting card moves one place earlier or later ("Früher",
+  "Später" on the card, which says its place, and on its row in the Koordinator's queue) and swaps
+  its place (`since`) with the card it passes. It does not pass a card it waits for or one waiting
+  for it, nor one the Koordinator is judging, since that one's waits come from the cards ahead of
+  it; nor does a card being judged move. Such a button stays grey and says why when clicked; at
+  the head or the end of the queue it is off. The new order counts like the old one: who goes first
+  once free, who gets a free workspace, and which cards count as ahead when one is judged again. On the canvas, a planned card and one waiting in the queue show a play button
   while the pointer is on them; it starts the card (the queued one anyway) without unfolding it. While the pointer is on a card,
   the waits around it show over every step, both ways (`src/ui/deps.ts`): the cards it waits for
   ("kommt zuerst"), those waiting for it ("wartet darauf"), each with a ring and an arrow from the
@@ -1501,6 +1508,11 @@ the repository; the copy on the project is only for the archive).
 - A new card does not overtake a queued one it likely conflicts with: it queues behind it, also
   when that one waits for something far from done. Fairness over parallelism; the owner can still
   start it anyway.
+- The owner reorders the queue with buttons that move a card one place, not by dragging
+  (2026-10-08): the waits fix part of the order, and a button can say at the card where they
+  stop it, where a drag would only fail on dropping. Only cards with a decision move, and none
+  passes one being judged: its turn reads the cards ahead of it, and a card moved behind it could
+  otherwise end up waiting for a card that waits for it.
 - A project's workstreams started together are scheduled in one Koordinator turn rather than
   started one after the other through the single-card check (2026-10-02): workstreams of a plan
   often build on each other, which a check for merge conflicts alone does not see, and only a turn

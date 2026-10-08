@@ -3,10 +3,12 @@
 // and shared demos to bring up to date at once.
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { queueOrder } from '../core/queue';
 import type { Item, Preference, RepoRef, Reshare, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { Inline, plain } from './markdown';
 import { clock as time, errorText, stateLabel, t } from './strings';
+import { useQueueMove } from './queue';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 
 interface Props {
@@ -25,8 +27,9 @@ interface Props {
 }
 
 export function KoordinatorSheet({ on, canvas, items, preferences, repos, talk, reshare, onOpen, onTell }: Props) {
-  const queued = items.filter((i) => i.state === 'planned' && i.queue);
-  const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
+  // in turn, with the cards being cut after them
+  const order = queueOrder(items);
+  const queued = [...order, ...items.filter((i) => i.state === 'planned' && i.queue && !order.includes(i))];
   const proposals = preferences.filter((p) => p.state === 'proposed');
   const rules = preferences.filter((p) => p.state === 'active');
   const [folds, setFolds] = useFolds(canvas);
@@ -62,16 +65,7 @@ export function KoordinatorSheet({ on, canvas, items, preferences, repos, talk, 
           <Fold head={t.koordinator.queueHead(queued.length)} open={!!folds.queue} onToggle={() => setFolds({ ...folds, queue: !folds.queue })}>
             <ol>
               {queued.map((i) => (
-                <li key={i.id} className="s-planned" onClick={() => onOpen(i)}>
-                  <span className="dot" />
-                  <span>
-                    {plain(i.title)}
-                    <br />
-                    <span className="hint">
-                      {i.queue && 'behind' in i.queue ? t.queue.behind(i.queue.behind.map(title)) : stateLabel(i)}
-                    </span>
-                  </span>
-                </li>
+                <QueueRow key={i.id} item={i} items={items} onOpen={onOpen} />
               ))}
             </ol>
           </Fold>
@@ -88,6 +82,24 @@ export function KoordinatorSheet({ on, canvas, items, preferences, repos, talk, 
         </Fold>
       </div>
     </aside>
+  );
+}
+
+/** A card in the queue, with what it waits for and the buttons that move it. */
+function QueueRow({ item, items, onOpen }: { item: Item; items: Item[]; onOpen: (i: Item) => void }) {
+  const m = useQueueMove(item, items);
+  const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
+  return (
+    <li className="s-planned" onClick={() => onOpen(item)}>
+      <span className="dot" />
+      <span className="q-what">
+        {plain(item.title)}
+        <br />
+        <span className="hint">{item.queue && 'behind' in item.queue ? t.queue.behind(item.queue.behind.map(title)) : stateLabel(item)}</span>
+        {m?.why && <span className="hint why">{m.why}</span>}
+      </span>
+      {m?.buttons}
+    </li>
   );
 }
 

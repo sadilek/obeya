@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
+import { inQueue, move, movable } from '../core/queue';
 import { type AgentRole, type CardEvent, type Item, type Preference, type Queue, START_ALL_HOLD_MS, type WorkspaceShortage } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Utterance } from './db';
@@ -234,6 +235,25 @@ export class Koordinator {
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.startedDespite);
     this.launch(cardId, since);
+  }
+
+  /**
+   * The owner moves a waiting card one place earlier or later in the queue, past a card it has no
+   * wait with: the two swap their places (`since`).
+   */
+  reorder(cardId: string, earlier: boolean) {
+    const card = this.card(cardId);
+    if (!movable(card)) throw new BadRequest('notQueued', 'the card is not waiting');
+    const { past, why } = move(cardId, earlier, this.o.board.snapshot().items);
+    if (!past || why) throw new BadRequest('notMovable', past ? `${why}: ${past.id}` : 'nothing to pass');
+    const mine = card.queue!.since ?? new Date().toISOString();
+    let theirs = past.queue!.since ?? mine;
+    // two cards that came in the same millisecond: the order between them is the id's, so the one moved gets a time of its own
+    if (theirs === mine) theirs = new Date(Date.parse(mine) + (earlier ? -1 : 1)).toISOString();
+    this.setQueue(cardId, card.queue!, theirs);
+    this.setQueue(past.id, past.queue!, mine);
+    const t = this.o.board.t;
+    this.o.board.log(cardId, 'state', 'owner', (earlier ? t.koordinator.movedBefore : t.koordinator.movedAfter)(past.title));
   }
 
   dequeue(cardId: string) {
@@ -494,7 +514,7 @@ export class Koordinator {
     if (!since) return [];
     return this.o.board
       .snapshot()
-      .items.filter((i) => i.id !== card.id && i.repo === card.repo && waits(i) && (i.queue!.since ?? '') < since)
+      .items.filter((i) => i.id !== card.id && i.repo === card.repo && inQueue(i) && (i.queue!.since ?? '') < since)
       .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
   }
 
@@ -552,7 +572,7 @@ export class Koordinator {
     const active = this.inProgress(repo);
     // what waits already came first, as for a single card
     const ahead = items
-      .filter((i) => i.repo === repo && !ids.has(i.id) && waits(i))
+      .filter((i) => i.repo === repo && !ids.has(i.id) && inQueue(i))
       .sort((a, b) => (a.queue!.since ?? '').localeCompare(b.queue!.since ?? ''));
     let plan: Planned[];
     try {
@@ -597,7 +617,7 @@ export class Koordinator {
   /** Whether a card still holds others back: in progress, or waiting itself. */
   private blocks(id: string): boolean {
     const i = this.o.board.item(id);
-    return !!i && (this.inProgress(i.repo).some((a) => a.id === id) || waits(i));
+    return !!i && (this.inProgress(i.repo).some((a) => a.id === id) || inQueue(i));
   }
 
   private startNow(cardId: string, why: string) {
@@ -643,7 +663,7 @@ export class Koordinator {
     const items = this.o.board.snapshot().items;
     // a card queued behind another that waits itself holds on while that one waits, and once it
     // has started, until it has landed: a card started or judged again here stays in this set
-    const active = new Set([...this.inProgress(), ...items.filter(waits)].map((i) => i.id));
+    const active = new Set([...this.inProgress(), ...items.filter(inQueue)].map((i) => i.id));
     // the card waiting longest goes first: one queued later must not take its turn
     const waiting = items
       .filter((i) => i.state === 'planned' && i.queue && ('behind' in i.queue || 'workspace' in i.queue))
@@ -1046,8 +1066,6 @@ export function readSession(
 }
 
 /** A card the Koordinator holds back or is judging, before it starts. */
-const waits = (i: Item) => i.state === 'planned' && !!i.queue && ('behind' in i.queue || 'checking' in i.queue || 'workspace' in i.queue);
-
 /** The refusals of a start for want of a workspace, and what the card then waits for. */
 const SHORTAGE: Record<string, WorkspaceShortage> = { noWorkspace: 'none', dirtyWorkspaces: 'dirty' };
 

@@ -7,6 +7,7 @@ import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
 import { firstOpening } from './demoSeen';
 import { landedRef } from './parts';
+import { useQueueMove } from './queue';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
@@ -44,6 +45,19 @@ interface Props {
   /** Reads the plan doc of a workstream's project, at the workstream. */
   onReadPlan: (project: Item, mark?: string) => void;
   onTell: Tell;
+}
+
+/** Where a waiting card stands in the queue, with the buttons that move it. */
+function QueuePlace({ item, items }: { item: Item; items: Item[] }) {
+  const m = useQueueMove(item, items, true);
+  if (!m) return null;
+  return (
+    <div className="q-place">
+      <span className="hint">{m.place}</span>
+      {m.buttons}
+      {m.why && <div className="hint why">{m.why}</div>}
+    </div>
+  );
 }
 
 export function Detail(p: Props) {
@@ -266,6 +280,7 @@ export function Detail(p: Props) {
           ) : 'workspace' in item.queue ? (
             <>
               <div className="q-text">{t.queue.workspaceLong[item.queue.workspace]}</div>
+              <QueuePlace item={item} items={all} />
               <div className="actions">
                 <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>
                   {t.queue.dequeue}
@@ -277,6 +292,7 @@ export function Detail(p: Props) {
               <div className="q-text">
                 {t.queue.behind(item.queue.behind.map((id) => plain(all.find((x) => x.id === id)?.title ?? id)))} {item.queue.reason}
               </div>
+              <QueuePlace item={item} items={all} />
               <div className="actions">
                 <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: t.queue.forced })}>
                   {t.queue.force}

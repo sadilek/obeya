@@ -531,6 +531,8 @@ export type CardAction =
   | { action: 'force' }
   /** On a project: takes back a start of all its workstreams while the Koordinator has not planned them yet. */
   | { action: 'dequeue' }
+  /** A waiting card one place earlier or later in the queue, past a card it has no wait with. */
+  | { action: 'reorder'; earlier: boolean }
   /** Let the Koordinator cut the card into packages that can run in parallel. */
   | { action: 'split' }
   /**
@@ -589,6 +591,8 @@ export type ErrorCode =
   | 'notPlanned'
   | 'queued'
   | 'notQueued'
+  /** Moving a card in the queue: it is first or last already, or the card it would pass has a wait with it or is being judged. */
+  | 'notMovable'
   | 'notSplittable'
   | 'noAgent'
   | 'noQuestion'

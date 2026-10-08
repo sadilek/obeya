@@ -423,6 +423,16 @@ textarea.p-body:focus { border-color: var(--muted); }
 .question.failed { border-color: #dc2626; background: color-mix(in srgb, #dc2626 6%, transparent); }
 .question.queue .actions { margin-top: 10px; }
 .question.queue .btn { background: var(--card); border: 1px solid var(--line); }
+.q-place { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; }
+.q-place > .hint { margin: 0; }
+.q-place .why { flex-basis: 100%; }
+.qmoves { display: inline-flex; gap: 4px; flex: none; }
+.btn.qmove { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
+.btn.qmove.stuck { color: var(--muted); border-style: dashed; cursor: help; }
+.fold-body > ol > li .q-what { flex: 1; min-width: 0; }
+.fold-body > ol > li .why { display: block; margin-top: 2px; }
+.fold-body > ol > li .btn.qmove { padding: 2px 8px; background: var(--card); border: 1px solid var(--line); }
+.fold-body > ol > li .btn.qmove.stuck { border-style: dashed; }
 .p-files { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
 .card.queued .state { font-style: italic; }
 .card.queued::before { background: repeating-linear-gradient(180deg, var(--c) 0 6px, transparent 6px 10px) 0 0 / 5px 100% no-repeat; }

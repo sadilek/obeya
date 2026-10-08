@@ -340,6 +340,8 @@ export class CanvasRuntime {
         return this.koordinator.force(cardId);
       case 'dequeue':
         return this.koordinator.dequeue(cardId);
+      case 'reorder':
+        return this.koordinator.reorder(cardId, !!a.earlier);
       case 'split':
         return this.koordinator.split(cardId);
       case 'stop':
