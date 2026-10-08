@@ -31,6 +31,7 @@
   let root = null;
   let cursor = null;
   let rings = [];
+  let dim = null;
   let stage = null;
   let veil = null;
   let pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -62,11 +63,29 @@
     return { left, top, width: right - left, height: bottom - top };
   }
 
+  // One layer dims the page for all rings together, with a hole in its mask for each ring: a
+  // dimming shadow on every ring would lay itself over the other rings' elements.
+  const SVG = 'http://www.w3.org/2000/svg';
+  function ensureDim() {
+    if (dim && dim.svg.isConnected) return dim;
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity 300ms ease;';
+    const id = `demo-dim-${Math.random().toString(36).slice(2)}`;
+    svg.innerHTML =
+      `<mask id="${id}"><rect width="100%" height="100%" fill="#fff"/></mask>` +
+      `<rect width="100%" height="100%" fill="rgb(15,23,42)" fill-opacity=".18" mask="url(#${id})"/>`;
+    root.insertBefore(svg, root.firstChild);
+    requestAnimationFrame(() => (svg.style.opacity = '1'));
+    dim = { svg, mask: svg.querySelector('mask') };
+    return dim;
+  }
+
   function track() {
     for (const ring of rings) {
       const r = unionRect(ring.elements);
       // A ring whose element is gone (a closed dialog) must not linger over whatever is there now.
       ring.box.style.display = r ? '' : 'none';
+      ring.hole.style.display = r ? '' : 'none';
       if (!r) continue;
       const pad = 6;
       Object.assign(ring.box.style, {
@@ -75,6 +94,12 @@
         width: `${r.width + 2 * pad}px`,
         height: `${r.height + 2 * pad}px`,
       });
+      // the hole spans the ring's border too, as the shadow used to
+      const border = 3;
+      ring.hole.setAttribute('x', r.left - pad);
+      ring.hole.setAttribute('y', r.top - pad);
+      ring.hole.setAttribute('width', r.width + 2 * (pad + border));
+      ring.hole.setAttribute('height', r.height + 2 * (pad + border));
     }
     // A label sits above its ring unless that covers another ring; then it goes below.
     for (const ring of rings) {
@@ -120,7 +145,7 @@
       const box = document.createElement('div');
       box.style.cssText =
         `position:absolute;border:3px solid ${ACCENT};border-radius:12px;` +
-        'box-shadow:0 0 0 9999px rgba(15,23,42,.18),0 0 18px rgba(245,165,36,.55);' +
+        'box-shadow:0 0 18px rgba(245,165,36,.55);' +
         'opacity:0;transition:opacity 300ms ease;';
       let tag = null;
       if (label) {
@@ -132,14 +157,22 @@
         box.appendChild(tag);
       }
       root.insertBefore(box, cursor);
-      // Several rings would each dim the page; only the first one dims.
-      if (rings.length) box.style.boxShadow = '0 0 18px rgba(245,165,36,.55)';
-      rings.push({ box, elements, tag });
-      requestAnimationFrame(() => (box.style.opacity = '1'));
+      const hole = document.createElementNS(SVG, 'rect');
+      hole.setAttribute('rx', '12');
+      hole.setAttribute('fill', '#000');
+      hole.style.cssText = 'opacity:0;transition:opacity 300ms ease;';
+      ensureDim().mask.appendChild(hole);
+      rings.push({ box, elements, tag, hole });
+      requestAnimationFrame(() => {
+        box.style.opacity = '1';
+        hole.style.opacity = '1';
+      });
     },
     clearHighlights() {
       for (const ring of rings) ring.box.remove();
       rings = [];
+      if (dim) dim.svg.remove();
+      dim = null;
     },
     showImage(src, top, caption) {
       ensureRoot();
