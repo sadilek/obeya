@@ -318,6 +318,17 @@ export type RowUpdate = Partial<
   >
 >;
 
+/** The database was written by a newer Obeya (the checkout and the app share one home): this one leaves it alone. */
+export class NewerDatabase extends Error {
+  constructor(
+    readonly path: string,
+    readonly version: number,
+    readonly known: number,
+  ) {
+    super(`${path} is from a newer Obeya (schema ${version}; this one knows ${known}): update Obeya or start the newer one`);
+  }
+}
+
 export class Store {
   readonly db: Database;
 
@@ -327,6 +338,10 @@ export class Store {
     this.db.run('PRAGMA journal_mode = WAL');
     this.db.run('PRAGMA foreign_keys = ON');
     const { user_version } = this.db.query('PRAGMA user_version').get() as { user_version: number };
+    if (user_version > MIGRATIONS.length) {
+      this.db.close();
+      throw new NewerDatabase(path, user_version, MIGRATIONS.length);
+    }
     for (let v = user_version; v < MIGRATIONS.length; v++) {
       this.db.transaction(() => {
         this.db.run(MIGRATIONS[v]!);

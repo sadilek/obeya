@@ -171,24 +171,28 @@
   <section class="start" id="start">
     <div class="head">
       <h2>Get started</h2>
-      <p>Obeya runs locally. The agents use the official Claude Code installation on your machine, with your own subscription.</p>
+      <p>Obeya is an app for macOS, Windows and Linux and runs locally. The agents use the official Claude Code installation on your machine, with your own subscription.</p>
     </div>
     <div class="cols">
       <div>
-        <h3>You need</h3>
-        <ul class="needs">
-          <li><a href="https://bun.sh"><b>Bun</b></a> to run Obeya</li>
-          <li><a href="https://claude.com/claude-code"><b>Claude Code</b></a>, logged in</li>
-          <li><b>git</b> and <a href="https://cli.github.com"><b>gh</b></a> for clones and pull requests</li>
+        <h3>Download</h3>
+        <ul class="needs downloads">
+          <li><b>macOS</b> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-macOS-arm64.dmg">Apple Silicon</a> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-macOS-x64.dmg">Intel</a></li>
+          <li><b>Windows</b> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-Windows-x64-setup.exe">Installer (x64)</a></li>
+          <li><b>Linux</b> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage">AppImage x64</a> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage">arm64</a>
+            <a href="https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb">.deb x64</a> <a href="https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb">arm64</a></li>
         </ul>
+        <p class="small"><b>The first release is on its way.</b> Until it is out, run Obeya from source.</p>
+        <p class="small">On its first start Obeya checks for Claude Code, git and gh, installs what it can and opens your first canvas.
+          The Windows installer is not signed yet: when SmartScreen warns, choose “More info”, then “Run anyway”.</p>
       </div>
       <div>
-        <h3>Then</h3>
-<pre><code><span class="c"># get it</span>
+        <h3>From source</h3>
+<pre><code><span class="c"># needs Bun, Claude Code (logged in), git and gh</span>
 git clone https://github.com/sadilek/obeya && cd obeya
-<span class="c"># open the wall for one of your repositories</span>
-bun install && bun start ~/dev/your-repo</code></pre>
-        <p class="small">The wall opens on <code>http://127.0.0.1:4417</code>.</p>
+<span class="c"># the same setup, then your first canvas</span>
+bun install && bun start</code></pre>
+        <p class="small">The wall opens on <code>http://127.0.0.1:4417</code>. The app and the source share their data in <code>~/.obeya</code>.</p>
         <div class="cta">
           <a class="btn primary" href="https://github.com/sadilek/obeya">Source on GitHub</a>
           <a class="btn" href="https://github.com/sadilek/obeya/blob/main/docs/design.md">Read the design</a>

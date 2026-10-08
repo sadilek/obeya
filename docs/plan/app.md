@@ -95,6 +95,16 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   Input Monitoring; nothing here may press keys in other apps), nor has a combination through the
   global-shortcut plugin. The panel's look was checked in a browser; as a window over another app
   it was not seen (no screen recording here). Linux builds need ALSA's headers (`libasound2-dev`).
+- *Data and the checkout* (W7, 2026-10-08, design: Architecture, Data, Decisions): the app and the
+  checkout share `~/.obeya`; a start on a home where one runs opens it (the app) or says where it
+  runs (the checkout), and since W7 also while that one restarts: the supervisor marks its entry
+  `restarting` and a start waits up to 90 s for it, where before it gave up after 5 s and served
+  the home beside it. An Obeya older than the database (`PRAGMA user_version`) leaves it alone and
+  says to update; that came forward from W5, since the owner's checkout is always ahead of an
+  installed app. The README offers the download first and "From source" after it; the site's
+  "Get started" has a download per platform beside the source. Both link the newest release's
+  assets by fixed names (see Builds in CI) and say that the first release is on its way, a line
+  that goes with the first release.
 
 ## Design
 
@@ -180,6 +190,11 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   publishes it. A push to `main` that changes code builds unsigned and runs a smoke test (the
   binary starts a scratch canvas and answers `/api/canvases`), so a broken build shows before a
   tag. `bun test` and `bun run typecheck` run in the same workflow on Linux.
+- The release's installers carry fixed names, which the README and the site link through
+  `releases/latest/download/`: `Obeya-macOS-arm64.dmg`, `Obeya-macOS-x64.dmg`,
+  `Obeya-Windows-x64-setup.exe`, `Obeya-Linux-x86_64.AppImage`, `Obeya-Linux-aarch64.AppImage`,
+  `obeya_amd64.deb`, `obeya_arm64.deb`. The first published release removes the line "the first
+  release is on its way" from both.
 
 ### Signing and notarisation
 
@@ -208,8 +223,8 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   it go ahead; then the shell replaces the app and starts it again, and the workers resume. The
   owner decides when; the app does not update by itself while agents run.
 - An app never opens a database whose schema is newer than it knows (`PRAGMA user_version` above
-  its migrations): it says to update instead of failing later. That case comes from a checkout on
-  the same home, or a version installed by hand.
+  its migrations): it says to update instead of failing later (done in W7). That case comes from
+  a checkout on the same home, or a version installed by hand.
 
 ### Setup assistant on first start
 
@@ -269,12 +284,12 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
   owner's steps (certificate, API key, secrets) in `docs/release.md`.
 - [ ] **W5:** Auto-update through GitHub Releases. Tauri's updater with its own key pair; the bar
   shows a newer version; installing waits for the workers like a restart, then replaces and
-  restarts the app; the app refuses a database newer than it knows.
+  restarts the app.
 - [x] **W6:** Setup assistant on first start. One list of what Obeya needs (Claude Code and its
   login, git, gh and its login, voice, demos), needed and skippable parts apart, installs without
   admin rights at a click, commands for the rest, logins in a terminal; then the first canvas from
   a folder or a clone. In the app and in the checkout, and from the settings later.
-- [ ] **W7:** Data and the checkout. `~/.obeya` shared by app and checkout, the second start on one
+- [x] **W7:** Data and the checkout. `~/.obeya` shared by app and checkout, the second start on one
   home opening the first; README with the download first and "From source" after it; the site's
   "Getting started" with the release; `docs/design.md` gets the app (its Decision on Tauri, which
   says "only if global push-to-talk needs it", changes with it).

@@ -20,7 +20,8 @@
 // resumed when Obeya starts again.
 //
 // One Obeya per home (instance.ts): a start on a home where one runs says where and ends. The
-// running one has its port and pid in $OBEYA_HOME/server.json.
+// running one has its port and pid in $OBEYA_HOME/server.json; while its server starts again, a
+// start waits for it.
 //
 // --idle-workers: no agent works on a started card (a scratch Obeya for a demo, scripts/scratch-obeya.ts).
 
@@ -31,11 +32,11 @@ import { parseArgs } from 'node:util';
 import type { RestartReason } from '../core/types';
 import { type CanvasConfig, CanvasRuntime } from './canvas';
 import { Config, CONFIG_FILE, expand, expandConfig, readConfigFile } from './config';
-import { Store } from './db';
+import { NewerDatabase, Store } from './db';
 import { ghForge } from './forge';
 import { NarrationHost } from './narration';
 import { claudeExecutable, idleRuntime, sdkRuntime } from './runtime';
-import { claim, release, running } from './instance';
+import { claim, release, restarting, running } from './instance';
 import { extendPath, MachineSetup, welcome } from './machine';
 import { ShellReports } from './push-key';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, watchOwnCode } from './self-update';
@@ -95,6 +96,7 @@ if (!values.dev && !process.env.OBEYA_SUPERVISED) {
     });
     const code = await child.exited;
     if (stopping || (code !== RESTART && code !== RESTART_FROM_FILE)) release(home, process.pid);
+    else restarting(home, process.pid);
     if (stopping) process.exit(code === RESTART || code === RESTART_FROM_FILE ? 0 : code);
     if (code === RESTART_FROM_FILE) {
       // the owner saved the configuration of canvases given on the command line: the file is it now
@@ -136,7 +138,15 @@ if (source === 'file' && !values.config && !existsSync(configFile)) {
 }
 const configs = expandConfig(started);
 
-const store = new Store(join(home, 'obeya.db'));
+const store = (() => {
+  try {
+    return new Store(join(home, 'obeya.db'));
+  } catch (e) {
+    if (!(e instanceof NewerDatabase)) throw e;
+    console.error(`Obeya: ${e.message}`);
+    process.exit(1);
+  }
+})();
 // work that lands on the checkout this code comes from restarts the server, so what is live is what runs
 const own = process.env.OBEYA_SUPERVISED ? ownCheckout() : null;
 // the commit this server's code came from: what changed since decides what to install before a restart

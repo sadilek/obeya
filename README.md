@@ -26,34 +26,55 @@ card per workstream.
 **Status:** early, and in daily use: Obeya is built with Obeya. The interface is German for now;
 English is next. How it works and why is in [`docs/design.md`](docs/design.md).
 
-## Requirements
+## Download
+
+| | |
+|---|---|
+| macOS | [Apple Silicon](https://github.com/sadilek/obeya/releases/latest/download/Obeya-macOS-arm64.dmg) · [Intel](https://github.com/sadilek/obeya/releases/latest/download/Obeya-macOS-x64.dmg) (DMG) |
+| Windows | [Installer](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Windows-x64-setup.exe) (x64) |
+| Linux | AppImage for [x64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage), .deb for [x64](https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb) |
+
+The first release is being prepared; until it is out, run Obeya [from source](#from-source).
+
+The app needs neither Bun nor a checkout. On its first start it checks the machine: what Obeya
+needs ([Claude Code](https://claude.com/claude-code) with your login, git), what can wait (the
+[GitHub CLI](https://cli.github.com) for pull requests, voice, demos). It installs what it can
+without admin rights and shows the command for the rest, then opens your first canvas on one of
+your repositories. The Windows installer is not signed yet: SmartScreen warns about it, and "More
+info" → "Run anyway" goes on. On Linux, make the AppImage executable (`chmod +x`) first.
+
+On the canvas, double-click to write a task, then start its agent ("Agent starten"). The card
+shows what the agent is doing; when it waits for you ("brauchen dich" in the top bar), open it to
+answer a question or watch the demo and approve it ("Freigeben").
+
+## From source
+
+Obeya is developed this way: started from a checkout, it updates itself whenever the checkout
+moves to new code.
 
 - [Bun](https://bun.sh) 1.3 or newer.
 - [Claude Code](https://claude.com/claude-code), installed and logged in. Obeya starts it for every agent;
   the agents run on your own login.
 - git, and the [GitHub CLI](https://cli.github.com) (`gh`, logged in) for repositories whose work
   lands through pull requests.
-- For demos: Node.js 22.18 or newer, a Chromium browser, ffmpeg and uv. The settings in the app
+- For demos: Node.js 22.18 or newer, a Chromium browser, ffmpeg and uv. Obeya's settings
   show what is missing and how to install it; see [`docs/demo-setup.md`](docs/demo-setup.md).
 - For voice: ffmpeg and uv. Whisper hears the commands (MLX on Apple Silicon, faster-whisper
   elsewhere, on an NVIDIA GPU with CUDA or on the CPU), the macOS voice or Piper speaks the
-  confirmations. The settings in the app ("Voice") show what is missing and install the rest.
+  confirmations. Obeya's settings ("Voice") show what is missing and install the rest.
   Everything else works without it.
-
-## Quick start
 
 ```bash
 git clone https://github.com/sadilek/obeya.git
 cd obeya
 bun install
-bun start ~/dev/shop            # your repository; then open http://127.0.0.1:4417
+bun start                       # then open http://127.0.0.1:4417
 ```
 
-On the canvas, double-click to write a task, then start its agent ("Agent starten"). The card
-shows what the agent is doing; when it waits for you ("brauchen dich" in the top bar), open it to
-answer a question or watch the demo and approve it ("Freigeben").
+The first start without canvases shows the same setup as the app. `bun run build` compiles the
+single-file server and `bun run build:app` the app for the machine it runs on.
 
-## Running
+### Running
 
 ```bash
 bun start ~/dev/shop ~/dev/shop-web --name Shop   # one canvas, two repositories
@@ -66,7 +87,11 @@ bun test && bun run typecheck
 Options: `--port <n>` (or `OBEYA_PORT`), `--adapter <name>` to override the one picked from the
 `origin` URL, `--workspace <path>` (repeatable) or `--clones <n>` for adapters whose workers use
 clones, `--permission-mode <mode>` for workers (default `auto`). Data and worktrees live in
-`~/.obeya/` (`OBEYA_HOME` to move it). Workers run on the Claude Code login of the machine.
+`~/.obeya/` (`OBEYA_HOME` to move it), the same for the app and a checkout, so canvases,
+settings, voices and models carry over between them. One Obeya runs per home: starting the app
+while a checkout's Obeya runs opens a window on it, and `bun start` while the app runs says where
+it runs. An Obeya older than the one that last ran on the home (an app not yet updated after a
+newer checkout) leaves the database alone and says to update. Workers run on the Claude Code login of the machine.
 The canvases and their repositories can be seen and changed in the app ("Konfiguration") or by
 telling the Koordinator; saving writes `canvases.json` and restarts Obeya with it.
 

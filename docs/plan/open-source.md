@@ -143,8 +143,7 @@ services are off the table for now (see Background).
   the choice on a Mac.
 - **The installable app gets its own plan doc** (W8), since it is a project of several weeks:
   a Tauri shell around `bun build --compile` for macOS (DMG), Windows and Linux, with auto-update.
-  Tauri brings the updater and global push-to-talk, which is what the Decisions in the design doc
-  keep it for.
+  Tauri brings the installers, the updater and global push-to-talk.
 
 ### Order
 

@@ -432,7 +432,14 @@ the owner's language (`src/core/locale.ts`).
   pid (the supervisor's) and whether the app started it into `server.json` in its home, and a
   second start on that home says where the first runs and ends, instead of serving the same
   database beside it. An entry whose process is gone, or alive but silent for 5 s (another
-  program that got the pid), counts as stale.
+  program that got the pid), counts as stale. A supervisor whose server ends to start again
+  marks its entry `restarting`, and a start meanwhile waits for it up to 90 s (new dependencies
+  are installed first), so the app started during a checkout's self-update opens that Obeya
+  instead of serving the home beside it. The app and a checkout share the home (`~/.obeya`,
+  `OBEYA_HOME` moves it for both): canvases, settings, voices, models and worktrees carry over,
+  and workers one of them paused the other resumes. An Obeya older than the database
+  (`PRAGMA user_version` above its migrations, written by a newer checkout) leaves it alone and
+  says to update instead of failing later.
 - **Setup assistant** (`src/server/machine.ts`, `src/ui/setup.tsx`) — one list of what Obeya
   needs on this machine, in four parts: *Agenten* (needed: Claude Code, its login, git, and git's
   name and e-mail, without which an agent's commit fails), *Pull Requests* (gh and its login:
@@ -1431,8 +1438,11 @@ decision log, preferences, the Koordinator's conversation with the owner (what w
 reply, the screenshots that came with it, the open card, whether it was taken back; a looked-up
 question, the card it is about, its answer and who gave it), groups (name, colour) and the group of each card, per-canvas settings (the home repository; the Rückschau's count and when its history begins; per repository the Arbeitsrückschau's count and when it last ran), the friction noted on each card's runs (per repository), and on a card the Arbeitsrückschau proposed what it rests on.
 
-Files under `~/.obeya/`: the owner's screenshots (`images/<canvas>/`), the configuration
-(`canvases.json`), and what a repository's share command keeps there (a demo site, its
+Files under `~/.obeya/` (the same for the app and a checkout): the database (`obeya.db`), the
+owner's screenshots (`images/<canvas>/`), the configuration (`canvases.json`), the settings
+(`settings.json`, `demo.json`), where the running Obeya answers (`server.json`), the app's server
+log (`app.log`), voices and models (`voices/`), the workers' clones and worktrees
+(`workspaces/`), and what a repository's share command keeps there (a demo site, its
 credentials), with `share/`, the directory share commands run in.
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
@@ -1441,8 +1451,14 @@ the repository; the copy on the project is only for the archive).
 ## Decisions
 
 - Name: Obeya.
-- Runtime: Bun; browser UI served locally; native shell (Tauri) only if global push-to-talk needs
-  it.
+- Runtime: Bun; browser UI served locally. Installed, Obeya is an app: a Tauri shell around the
+  server compiled into one file, so that someone without Bun or a checkout can download and start
+  it, and the shell can hear a key held anywhere on the machine (global push-to-talk). Tauri
+  because it brings the installers, the updater and global keys, and its window is the system's
+  webview, so the shell adds a few MB and the UI stays what the browser shows; the browser stays
+  a way in, and the checkout (`bun start`, updating itself) stays how Obeya is developed. At first
+  the decision was a shell only if global push-to-talk needed one; a download for people who do
+  not develop Obeya made it needed anyway.
 - Persistent local store, not ephemeral.
 - A canvas may span several repositories, and one Obeya serves several canvases (at first it was
   one canvas per repository).

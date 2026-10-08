@@ -113,12 +113,15 @@ section { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
 /* ---------- getting started ---------- */
 .start { margin-top: 96px; margin-bottom: 120px; }
 .start .head p { max-width: 40em; }
-.cols { display: grid; grid-template-columns: .8fr 1.2fr; gap: 48px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
 .cols > div { min-width: 0; }
 .start h3 { font-size: 19px; margin-bottom: 14px; }
 .needs { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .needs li { background: var(--card); border-radius: 12px; padding: 12px 16px; box-shadow: var(--shadow); font-size: 16px; }
 .needs a { text-decoration: none; } .needs a:hover { text-decoration: underline; }
+.downloads li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.downloads b { min-width: 5.5em; }
+.downloads a { color: var(--blue); font-weight: 500; }
 .small { font-size: 15px; color: var(--muted); margin-top: 18px; }
 .start .cta { justify-content: flex-start; margin-top: 24px; }
 pre { margin: 0; background: var(--ink); color: #f6f5f2; border-radius: 14px; padding: 20px 22px; overflow-x: auto;

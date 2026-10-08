@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claim, INSTANCE_FILE, recorded, release, running } from './instance';
+import { claim, INSTANCE_FILE, recorded, release, restarting, running } from './instance';
 import { gitRepo, until } from './testing';
 
 let dir: string;
@@ -39,6 +39,32 @@ test('runs: a live process whose URL answers; not a dead one, not this one, nor 
     expect(await running(dir)).toBeNull();
   } finally {
     server.stop(true);
+    other.kill();
+  }
+});
+
+test('an Obeya starting again is waited for past the grace, until its server answers', async () => {
+  const other = Bun.spawn(['sleep', '30']);
+  let server: ReturnType<typeof Bun.serve> | undefined;
+  try {
+    claim(dir, entry(other.pid, 1));
+    restarting(dir, 1);
+    // only the supervisor that wrote the entry marks it
+    expect(recorded(dir)?.restarting).toBeUndefined();
+    restarting(dir, other.pid);
+    expect(recorded(dir)?.restarting).toBe(true);
+    const found = running(dir, process.pid, 100, 5000);
+    await Bun.sleep(400);
+    // the restarted server answers on another port and writes its own entry
+    server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => Response.json([]) });
+    claim(dir, entry(other.pid, server.port!));
+    expect(await found).toMatchObject({ pid: other.pid, port: server.port });
+    // one that does not come back counts as gone once the longer grace is over
+    server.stop(true);
+    restarting(dir, other.pid);
+    expect(await running(dir, process.pid, 100, 300)).toBeNull();
+  } finally {
+    server?.stop(true);
     other.kill();
   }
 });
