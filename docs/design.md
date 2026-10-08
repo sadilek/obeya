@@ -492,9 +492,10 @@ the owner's language (`src/core/locale.ts`).
   gets the microphone without a prompt of the webview's (the system asks once for the app;
   WebKitGTK has media streams turned on by the shell). WebKitGTK's MediaRecorder records nothing
   (2.50 and 2.52, 2026-10-08), so in the Linux window the page takes Web Audio's samples and sends
-  a WAV (`src/ui/recorder.ts`); whether those carry the voice was not seen yet: in containers and
-  on CI runners, with a PulseAudio sine source as microphone, they were silent. Downloads go into
-  the Downloads folder.
+  a WAV (`src/ui/recorder.ts`). With a PulseAudio sine source as microphone, the AppImage on
+  Ubuntu 24.04 (in a container) recorded the tone that way; the other headless runs got silent
+  samples, so a Linux desktop with a real microphone is still to be tried. Downloads go into the
+  Downloads folder.
   The server's output goes to `app.log` in the home. linuxdeploy sets the library path of every
   program in an AppDir, which breaks Bun's binary (its code sits after the ELF's end), so the
   AppImage gets the server after linuxdeploy and is packed again. `bun scripts/check-app.ts

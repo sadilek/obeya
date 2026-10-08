@@ -78,10 +78,11 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   was not tried: nothing here presses keys in another app; the Dock's Quit was (the server stops
   on its own once its worker paused). On Linux (WebKitGTK 2.50 on Ubuntu 22.04, 2.52 on 24.04)
   everything but the microphone passed: getUserMedia gives a stream, but MediaRecorder records
-  nothing, so the page takes Web Audio's samples there (`src/ui/recorder.ts`); in containers and
-  on the runners those samples were silent (a PulseAudio sine source as microphone), so voice in
-  the Linux window is unconfirmed until it is tried on a Linux desktop with a real microphone.
-  The demo video played on 22.04 and stalled on the 24.04 runner.
+  nothing, so the page takes Web Audio's samples there (`src/ui/recorder.ts`). With a PulseAudio
+  sine source as microphone, the arm64 AppImage on Ubuntu 24.04 (in a container) then passed every
+  check, the tone recorded as WAV; the .deb there, both on 22.04 and the x64 runners got silent
+  samples. Voice in the Linux window is to be tried on a desktop with a real microphone. The demo
+  video played everywhere but on the 24.04 x64 runner, where it stalled at the start.
 
 ## Design
 
