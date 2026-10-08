@@ -170,7 +170,7 @@ button.pill:hover { box-shadow: var(--lift); }
 #bar > svg { flex: none; margin-right: 4px; }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 /* the traffic lights of the app's window on a Mac sit at the bar's left */
-#bar.titlebar { padding-left: 84px; }
+#bar.titlebar { padding-left: 92px; }
 .kpill .n { background: var(--planned); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
 .prefs { list-style: none; padding: 0; margin: 10px 0 0; }

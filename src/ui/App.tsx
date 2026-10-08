@@ -1019,7 +1019,7 @@ function Canvas({
       )}
       {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={reserve} onOpen={open} />}
       {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs) */}
-      <header id="bar" className={window.obeyaApp?.platform === 'macos' ? 'titlebar' : undefined} data-tauri-drag-region={window.obeyaApp ? '' : undefined}>
+      <header id="bar" {...(window.obeyaApp?.platform === 'macos' ? { className: 'titlebar', 'data-tauri-drag-region': '' } : {})}>
         <Wordmark height={22} />
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
         <button className="pill" onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>

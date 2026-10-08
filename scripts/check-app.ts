@@ -128,6 +128,9 @@ const button = [...document.querySelectorAll('#bar button')].find((b) => /^(Konf
 button?.click();
 await new Promise((r) => setTimeout(r, 1000));
 out.browserButton = [...document.querySelectorAll('button')].some((b) => /^(Im Browser öffnen|Open in browser)$/.test(b.textContent));
+// on a Mac the bar is the title bar: the page may move the window (app/capabilities/window.json)
+if (window.obeyaApp?.platform === 'macos')
+  out.drag = await window.__TAURI_INTERNALS__.invoke('plugin:window|start_dragging', { label: 'main' }).then(() => 'allowed', (e) => String(e));
 await report(out);
 `;
 const harness = Bun.serve({
@@ -224,6 +227,7 @@ try {
       return `canPlayType "${v.canPlay}", ${v.currentTime?.toFixed(1)} s in 1.5 s`;
     });
     await check('the settings offer "Im Browser öffnen"', () => expect(page.browserButton, 'no such button'));
+    if (process.platform === 'darwin') await check('the bar may move the window', () => expect(page.drag === 'allowed', String(page.drag)));
     const shot = args[args.indexOf('--screenshot') + 1];
     if (args.includes('--screenshot') && shot) await check('a screenshot of the window', () => screenshot(app!.pid, resolve(shot)));
   }
