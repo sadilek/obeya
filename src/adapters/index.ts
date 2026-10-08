@@ -6,6 +6,7 @@ import { GIT } from '../server/workspaces';
 import { generic } from './generic';
 import * as kit from './kit';
 import { obeya } from './obeya';
+import { checkAdapter } from './schema';
 import type { RepoAdapter, RepoInfo } from './types';
 
 /** Specific adapters first; the generic one matches every repository. */
@@ -41,11 +42,18 @@ export function pickAdapter(repo: RepoInfo, name?: string): RepoAdapter {
   return ADAPTERS.find((a) => a.matches(repo))!;
 }
 
+// what was wrong with a loaded adapter's fields (`schema.ts`), by the adapter made of it
+const problems = new WeakMap<RepoAdapter, string[]>();
+
+/** What is wrong with an adapter's fields, one line each; none for a built-in one. */
+export const adapterProblems = (a: RepoAdapter): string[] => problems.get(a) ?? [];
+
 /**
  * Loads an adapter module: its default export is the adapter, or a function that makes it from
- * Obeya's helpers (`kit.ts`). What it leaves out comes from the generic adapter.
+ * Obeya's helpers (`kit.ts`). What it leaves out, or gets wrong (`adapterProblems`), comes from the
+ * generic adapter.
  */
-function loadAdapter(file: string): RepoAdapter {
+export function loadAdapter(file: string): RepoAdapter {
   let made: unknown;
   try {
     const mod = require(file) as { default?: unknown };
@@ -55,7 +63,10 @@ function loadAdapter(file: string): RepoAdapter {
   }
   if (!made || typeof made !== 'object' || typeof (made as RepoAdapter).name !== 'string')
     throw new Error(`adapter module ${file} exports no adapter (a default export with a name, or a function returning one)`);
-  return { ...generic, ...(made as Partial<RepoAdapter>) } as RepoAdapter;
+  const checked = checkAdapter(made as Record<string, unknown>);
+  const adapter = { ...generic, ...checked.adapter } as RepoAdapter;
+  if (checked.problems.length) problems.set(adapter, checked.problems);
+  return adapter;
 }
 
 /**

@@ -3,10 +3,11 @@
 // read-only.
 
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type VoiceKind, type VoiceSetupView } from '../core/types';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, blocksSaving, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type VoiceKind, type VoiceSetupView } from '../core/types';
 import { LANGUAGES } from '../core/locale';
 import { pushKeyFromEvent, type PushKeyView } from '../core/push-key';
 import { api, ApiError, reload } from './api';
+import { keep } from './keep';
 import { demoState, megabytes, PLATFORMS, SetupList, voiceState } from './setup';
 import { errorText, pushKeyLabel, t } from './strings';
 
@@ -108,6 +109,7 @@ export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void 
           resolved={checked?.resolved[i] ?? null}
           running={view.running}
           pin={origin[i] && view.running.includes(origin[i]) ? origin[i] : undefined}
+          saved={!changed}
           adapters={view.adapters}
           problems={problems.filter((p) => p.canvas === i)}
           onChange={(x) => setCanvas(i, x)}
@@ -132,7 +134,7 @@ export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void 
       {changed && gone.length > 0 && <p className="hint warn">{t.config.gone(gone.join(', '))}</p>}
 
       <div className="c-actions">
-        <button className="btn primary" disabled={!changed || busy || problems.length > 0} onClick={save}>
+        <button className="btn primary" disabled={!changed || busy || problems.some(blocksSaving)} onClick={save}>
           {view.server.restarts ? t.config.save : t.config.saveOnly}
         </button>
         {changed && (
@@ -704,12 +706,14 @@ interface CanvasProps {
   running: string[];
   /** The id of the running canvas this one is: a new name keeps it. */
   pin?: string;
+  /** The configuration shown is the one saved: a running canvas is the one shown. */
+  saved: boolean;
   adapters: string[];
   problems: ConfigProblem[];
   onChange: (c: CanvasConfig | null) => void;
 }
 
-function CanvasBlock({ n, canvas, resolved, running, pin, adapters, problems, onChange }: CanvasProps) {
+function CanvasBlock({ n, canvas, resolved, running, pin, saved, adapters, problems, onChange }: CanvasProps) {
   const fresh = resolved && !running.includes(resolved.id);
   const setRepo = (i: number, r: RepoConfig | null) =>
     onChange({ ...canvas, repos: r ? canvas.repos.map((x, j) => (j === i ? r : x)) : canvas.repos.filter((_, j) => j !== i) });
@@ -745,6 +749,7 @@ function CanvasBlock({ n, canvas, resolved, running, pin, adapters, problems, on
           repo={r}
           home={i === 0}
           resolved={resolved?.repos[i]}
+          canvasId={saved && resolved && running.includes(resolved.id) ? resolved.id : undefined}
           adapters={adapters}
           problems={problems.filter((p) => p.repo === i)}
           onChange={(x) => setRepo(i, x)}
@@ -768,12 +773,14 @@ interface RepoProps {
   repo: RepoConfig;
   home: boolean;
   resolved?: { id: string; adapter: string; workspaces: 'clones' | 'worktrees'; adapterShares?: boolean };
+  /** The running canvas the repository is on, as saved; where a card for it can go. */
+  canvasId?: string;
   adapters: string[];
   problems: ConfigProblem[];
   onChange: (r: RepoConfig | null) => void;
 }
 
-function RepoRow({ repo, home, resolved, adapters, problems, onChange }: RepoProps) {
+function RepoRow({ repo, home, resolved, canvasId, adapters, problems, onChange }: RepoProps) {
   const clones = resolved?.workspaces === 'clones' || !!repo.clones || !!repo.workspaces?.length;
   const without = <K extends keyof RepoConfig>(k: K, v: RepoConfig[K] | undefined): RepoConfig => {
     const next = { ...repo };
@@ -836,8 +843,46 @@ function RepoRow({ repo, home, resolved, adapters, problems, onChange }: RepoPro
       {problems.map((p, k) => (
         <p key={k} className="p-error">
           {t.config.problem[p.code]}
+          {DETAILED.includes(p.code) && (
+            <>
+              {' '}
+              <code>{p.detail}</code>
+            </>
+          )}
         </p>
       ))}
+      {/* a repository without an adapter of its own: a card on its canvas writes one */}
+      {canvasId && resolved?.adapter === 'generic' && !repo.adapter && <AdapterSetup canvas={canvasId} repo={resolved.id} />}
+    </div>
+  );
+}
+
+// problems whose detail says what to fix, in the repository's adapter rather than here
+const DETAILED: ConfigProblem['code'][] = ['adapterField', 'unknownAdapter'];
+
+/** Creates the card that writes the repository's adapter, and opens it on its canvas. */
+function AdapterSetup({ canvas, repo }: { canvas: string; repo: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const go = async () => {
+    setBusy(true);
+    try {
+      const card = await api.adapterSetup(canvas, repo);
+      // the canvas loads with the card open, as after a restart
+      keep(sessionStorage, canvas, { at: Date.now(), card: card.id, scroll: [], drafts: [] });
+      location.assign(`?c=${encodeURIComponent(canvas)}`);
+    } catch (e) {
+      setError(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="c-row">
+      <span className="hint">{t.config.adapterSetupHint}</span>
+      <button className="btn small" disabled={busy} onClick={go}>
+        {t.config.adapterSetup}
+      </button>
+      {error && <p className="p-error">{error}</p>}
     </div>
   );
 }

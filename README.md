@@ -105,6 +105,13 @@ takes a few minutes). The app adds push-to-talk from anywhere: hold the right Op
 the right Ctrl key elsewhere, while another app is in front (another key in the settings). On a
 Mac this needs the "Input Monitoring" permission, which macOS asks for.
 
+### Setting up a repository
+
+Obeya works on any git repository. How a project's app starts, which checks a change must pass,
+how approved work lands and how a demo is recorded, the repository says in its adapter,
+`.obeya/adapter/index.ts`; [`docs/adapter.md`](docs/adapter.md) describes it. "Konfiguration"
+offers a card whose agent writes it for a repository that has none.
+
 ## Contributing
 
 How Obeya itself is built, with Obeya, is in [`CONTRIBUTING.md`](CONTRIBUTING.md).

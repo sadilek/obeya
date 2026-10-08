@@ -6,8 +6,8 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { adapterNames } from '../adapters';
-import type { AgentsView, CanvasConfig, ConfigProblem, ConfigView, DemoSettingsProblem, DemoSettingsView, DemoVoiceCheck, LanguageView, ResolvedCanvas, VoiceInstallJob } from '../core/types';
+import { adapterNames, adapterProblems } from '../adapters';
+import { type AgentsView, blocksSaving, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettingsProblem, type DemoSettingsView, type DemoVoiceCheck, type LanguageView, type ResolvedCanvas, type VoiceInstallJob } from '../core/types';
 import {
   DEMO_SETTINGS_FILE,
   type DemoSettings,
@@ -209,6 +209,12 @@ export class Config {
       });
       try {
         const { id, name, adapters, refs, config } = resolveCanvas(c, this.o.store);
+        // what is wrong in a repository's own adapter is fixed there, not here: it keeps nothing from being saved
+        c.repos.forEach((r, repo) => {
+          const adapter = adapters[config.repos.indexOf(r)]!;
+          const share = !r.share && adapter.demo?.share && shareProblem(adapter.demo.share);
+          for (const detail of [...adapterProblems(adapter), ...(share ? [`demo.share: ${share}`] : [])]) problems.push({ code: 'adapterField', canvas, repo, detail });
+        });
         // the repositories in the order given, though the home one runs first
         return {
           id,
@@ -331,7 +337,8 @@ export class Config {
 
   /** Saves a configuration that works, and starts Obeya again with it where something restarts it. */
   save(input: unknown): { restarting: boolean } {
-    const { canvases, problems } = this.check(input);
+    const { canvases, problems: all } = this.check(input);
+    const problems = all.filter(blocksSaving);
     if (problems.length) throw new BadRequest('config', problems.map((p) => p.detail).join('; '));
     mkdirSync(dirname(this.o.file), { recursive: true });
     writeFileSync(this.o.file, `${JSON.stringify(canvases, null, 2)}\n`);

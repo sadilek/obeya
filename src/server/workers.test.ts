@@ -65,7 +65,16 @@ function setup(adapter: RepoAdapter, withOrigin = false) {
   });
 }
 
-beforeEach(() => setup({ ...generic, land: 'main', workspaces: 'clones', setup: 'bun install', checks: ['bun test'] }));
+beforeEach(() =>
+  setup({
+    ...generic,
+    land: 'main',
+    workspaces: 'clones',
+    setup: 'bun install',
+    checks: ['bun test'],
+    stack: { start: 'bun run stack', refresh: 'bun run api:restart', urls: { file: '.stack.env', frontendKey: 'WEB_URL' } },
+  }),
+);
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const manual = () => board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
@@ -108,8 +117,10 @@ describe('workers', () => {
     expect(runtime.last.spec.cwd).toBe(row.workspace!);
     expect(runtime.last.inbox[0]).toContain('Zählerstände exportieren');
     expect(runtime.last.inbox[0]).toContain('`bun install`');
-    // a repository without demos gets no demo skill
-    expect(runtime.last.spec.plugins).toBeUndefined();
+    expect(runtime.last.inbox[0]).toContain('To run the app in your workspace: `bun run stack`; after a backend change, `bun run api:restart`');
+    expect(runtime.last.inbox[0]).toContain('in `.stack.env` under WEB_URL');
+    // a repository without demos gets Obeya's skills all the same: the one that writes its adapter among them
+    expect(runtime.last.spec.plugins).toEqual([OBEYA_PLUGIN]);
     // the only clone is taken
     const d = manual();
     expect(() => workers.start(d.id)).toThrow(BadRequest);

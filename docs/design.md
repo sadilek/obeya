@@ -488,9 +488,10 @@ the owner's language (`src/core/locale.ts`).
   Windows x64; Bun cross-compiles, about 15 s for all five), 66–120 MB with the UI and SQLite in
   it, that needs neither Bun nor a checkout. Its modules live in Bun's embedded file system, which
   no other process can read, so what other processes run or import goes beside it as real files,
-  in `resources/` (13 MB): the plugin with the demo skill and the `playwright-core` it records
-  with, the voice sidecars, the adapter kit bundled into one module (`kit.js`), and the skill's
-  `recipe.ts` bundled with Obeya's built-in adapters. The server finds them through one function
+  in `resources/` (13 MB): the plugin with its skills and the `playwright-core` the demo skill
+  records with, the voice sidecars, the adapter kit bundled into one module (`kit.js`), the
+  skills' scripts that read adapters (`recipe.ts`, `check.ts`) bundled with Obeya's built-in
+  ones, and `docs/adapter.md` for the adapter skill. The server finds them through one function
   (`resource()` in `src/server/resources.ts`): `OBEYA_RESOURCES` when set, else `resources`
   beside the binary (or `Resources` of a macOS app bundle), else the checkout. The demo skill's
   modules the server carries (the setup check, the voices) are told where their files are
@@ -633,7 +634,13 @@ the owner's language (`src/core/locale.ts`).
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
   the adapter's, or an export; see Sharing a demo); problems (no git repository, an unknown
   adapter, two canvases with one id, a canvas's home repository left out, a share command whose program is not there) show at the field while
-  editing and keep it from being saved. Saving writes the file and restarts Obeya once no worker is
+  editing and keep it from being saved. Problems in a repository's own adapter (`adapterField`:
+  a field unknown, of the wrong type or incomplete, a share program not there; see Repo adapter)
+  show at the repository with what is wrong, and keep nothing from being saved, since they are
+  fixed in the repository. A repository that runs on the generic adapter (none named, none of its
+  own) offers "Adapter einrichten lassen" while its canvas runs as saved: it puts the card "Obeya
+  für <repo> einrichten" at the top right of that canvas (or finds the one still open) and opens
+  it there; its worker writes the adapter with the `obeya:adapter` skill. Saving writes the file and restarts Obeya once no worker is
   in the middle of a turn (as for new code), a tenth of a second after the answer went out; the page reloads. Started with repositories on the
   command line, Obeya shows those, and saving makes the file the configuration it restarts with.
   Renaming a running canvas keeps its id (`id` in the file), so its cards stay. The server's own
@@ -1244,8 +1251,10 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   own Chromium, as on Linux on ARM where there is no Chrome; cut with ffmpeg, run with plain
   `node`; on macOS, Linux and Windows, checked 2026-10-05), the overlay (`lib/overlay.js`) and the narration (`lib/tts.py`, synthesis and listening
   back with Whisper), with Playwright among Obeya's dependencies. Obeya loads the plugin into every
-  worker session of a repository with demos (the Agent SDK's `plugins` option, a local plugin),
-  so the worker has the skill as `obeya:demo`, which its brief names. The skill also runs without
+  worker session (the Agent SDK's `plugins` option, a local plugin), so the worker has the skill
+  as `obeya:demo`, which its brief names, and `obeya:adapter` (see Repo adapter); until 2026-10-08
+  only workers of a repository with demos got it, so a repository without an adapter had no way
+  to the skill that writes one. The skill also runs without
   Obeya: as the plugin, or as a user skill that points to `plugin/skills/demo` (the owner's
   `~/.claude/skills/demo` is a link to it in the Obeya checkout). The demo settings
   (`lib/settings.ts`; `demo.json` in Obeya's home, `OBEYA_HOME` else `~/.obeya`) give the
@@ -1511,7 +1520,20 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   templates, `esc`, `day`), so it imports nothing of Obeya's; Obeya loads it with `require` and
   fills what it leaves out from the generic adapter. An adapter that does not load is a
   configuration problem at the repository ("Diesen Adapter gibt es nicht, oder sein Modul lädt
-  nicht."). Until 2026-10-05 every adapter lived in this repository, a project's included.
+  nicht.", with the error). What it exports is checked against a schema (`src/adapters/schema.ts`,
+  zod): a field that is unknown (with the known one it probably meant: `check` → `checks`), of
+  the wrong type or incomplete does not count, the generic adapter's value stands in its place,
+  and the rest works; each is a problem at the repository (`adapterProblems`), as is a share
+  command whose program is not there, and Obeya's log names them at start. Until 2026-10-08 a
+  misspelt field was ignored without a word. `stack` is in every worker's brief (until
+  2026-10-08 nothing read it). Until 2026-10-05 every adapter lived in this repository, a
+  project's included. The reference for writing one is `docs/adapter.md`, linked from the README;
+  the plugin's skill `adapter` (`plugin/skills/adapter/`) is how a worker writes one: read the
+  repository (scripts, CI, README, compose files), ask the owner what it does not tell (login,
+  test data), write the module, check it with `lib/check.ts` (it loads the checkout's module as
+  Obeya would and lists the problems), run setup and checks, and prove `demo.howToRun` by
+  recording a demo with it. The compiled binary's resources carry `docs/adapter.md` where the
+  skill finds it up the tree, and `check.ts` bundled like `recipe.ts`.
 
 ## Data
 

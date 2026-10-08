@@ -2,7 +2,7 @@
 // no Bun and no checkout, with the UI and SQLite in it, and beside it the resources other
 // processes run or import (src/server/resources.ts): the plugin with the demo skill and the
 // Playwright it records with, the voice sidecars, and the adapter kit bundled into one module;
-// the skill's `recipe.ts`, which reads Obeya's built-in adapters, is bundled with them in place.
+// the skills' scripts that read Obeya's adapters (`recipe.ts`, `check.ts`) are bundled with them in place.
 //
 //   bun scripts/build.ts [<target>…] [--all] [--out <dir>]
 //
@@ -49,9 +49,11 @@ function resources(dir: string) {
   // the plugin's TypeScript runs on plain Node, which reads it as ES modules by this
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify({ name: 'obeya-resources', version: pkg.version, private: true, type: 'module' }, null, 2)}\n`);
   cpSync(join(ROOT, 'LICENSE'), join(dir, 'LICENSE'));
+  // the adapter skill reads the reference up the tree, as in the checkout
+  cpSync(join(ROOT, 'docs', 'adapter.md'), join(dir, 'docs', 'adapter.md'));
   run([process.execPath, 'build', 'src/adapters/kit.ts', '--target', 'bun', '--outfile', join(dir, 'kit.js')]);
-  const recipe = 'plugin/skills/demo/lib/recipe.ts';
-  run([process.execPath, 'build', recipe, '--target', 'bun', '--outfile', join(dir, recipe)]);
+  for (const script of ['plugin/skills/demo/lib/recipe.ts', 'plugin/skills/adapter/lib/check.ts'])
+    run([process.execPath, 'build', script, '--target', 'bun', '--outfile', join(dir, script)]);
 }
 
 const started = Date.now();

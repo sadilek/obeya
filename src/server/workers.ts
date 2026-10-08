@@ -627,7 +627,7 @@ export class Workers {
         role: 'worker',
         system: this.system(preferences, !!row.prototype_of),
         tools: this.tools(cardId, live, !!row.prototype_of),
-        ...(this.o.adapter.demo ? { plugins: [OBEYA_PLUGIN] } : {}),
+        plugins: [OBEYA_PLUGIN],
         ...(this.o.env ? { env: this.o.env } : {}),
         contextUpdate: () => [this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
         ...(resume ? { resume } : {}),
@@ -1255,6 +1255,11 @@ ${idea.idea.brief}` : '',
           : `You are on branch ${branch}, fresh from the default branch.`,
     );
     if (this.o.adapter.setup) parts.push(`First run \`${this.o.adapter.setup}\` in the clone.`);
+    const stack = this.o.adapter.stack;
+    if (stack)
+      parts.push(
+        `To run the app in your workspace: \`${stack.start}\`; after a backend change, \`${stack.refresh}\` rather than starting it all again. Once it runs, the frontend's URL is in \`${stack.urls.file}\` under ${stack.urls.frontendKey}.`,
+      );
     if (this.o.adapter.checks?.length && !card.prototypeOf) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
     if (this.o.adapter.demo)
       parts.push(

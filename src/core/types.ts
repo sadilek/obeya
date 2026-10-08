@@ -737,6 +737,9 @@ export interface ConfigProblem {
   detail: string;
 }
 
+/** Whether a problem keeps the configuration from being saved: not one in a repository's own adapter, which is fixed there. */
+export const blocksSaving = (p: ConfigProblem) => p.code !== 'adapterField';
+
 export type ConfigProblemCode =
   /** No canvas at all. */
   | 'noCanvas'
@@ -752,6 +755,8 @@ export type ConfigProblemCode =
   | 'notClone'
   /** A share command whose program is not there. */
   | 'shareCommand'
+  /** A field of the repository's own adapter that is unknown, of the wrong type, or names a program that is not there; it does not count. */
+  | 'adapterField'
   /** Malformed: a bug in whoever wrote it. */
   | 'invalid';
 

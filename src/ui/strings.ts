@@ -455,6 +455,8 @@ const de = {
     home: 'Heimat',
     adapter: 'Adapter',
     adapterAuto: (picked?: string) => (picked ? `automatisch (${picked})` : 'automatisch'),
+    adapterSetupHint: 'Ohne eigenen Adapter weiß Obeya nicht, wie die App startet, welche Prüfungen laufen und wie eine Demo entsteht.',
+    adapterSetup: 'Adapter einrichten lassen',
     worktrees: 'Agenten arbeiten in Worktrees',
     clonesMode: 'Agenten arbeiten in Klonen',
     clones: 'Klone anlegen',
@@ -496,6 +498,7 @@ const de = {
       homeMissing: 'Das Repository, mit dem die Leinwand angelegt wurde, fehlt; es muss dabeibleiben.',
       notClone: 'Ein Klon in der Liste ist kein git-Repository.',
       shareCommand: 'Das Programm des Befehls zum Teilen gibt es nicht.',
+      adapterField: 'Ein Feld im Adapter des Repositorys gilt nicht, an seiner Stelle steht das des allgemeinen Adapters:',
       invalid: 'Die Konfiguration ist fehlerhaft.',
     } satisfies Record<ConfigProblemCode, string>,
     voice: {
@@ -1307,6 +1310,8 @@ const en: Strings = {
     home: 'Home',
     adapter: 'Adapter',
     adapterAuto: (picked?: string) => (picked ? `automatic (${picked})` : 'automatic'),
+    adapterSetupHint: 'Without an adapter of its own, Obeya does not know how the app starts, which checks run or how a demo is made.',
+    adapterSetup: 'Have the adapter set up',
     worktrees: 'Agents work in worktrees',
     clonesMode: 'Agents work in clones',
     clones: 'Create clones',
@@ -1348,6 +1353,7 @@ const en: Strings = {
       homeMissing: 'The repository the canvas was created with is missing; it has to stay.',
       notClone: 'A clone in the list is not a git repository.',
       shareCommand: 'The share command’s program does not exist.',
+      adapterField: 'A field of the repository’s adapter does not count; the generic adapter’s stands in its place:',
       invalid: 'The configuration is invalid.',
     },
     voice: {

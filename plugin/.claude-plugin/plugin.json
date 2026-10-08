@@ -1,5 +1,5 @@
 {
   "name": "obeya",
-  "description": "What Obeya gives its workers: the demo skill, which records a narrated video of a change with a one-page report.",
+  "description": "What Obeya gives its workers: the demo skill, which records a narrated video of a change with a one-page report, and the adapter skill, which writes a repository's Obeya adapter.",
   "version": "1.0.0"
 }

@@ -97,6 +97,21 @@ describe("Obeya's configuration", () => {
     expect(c.check([{ repos: [{ path: web, share: ' ' }] }]).canvases).toEqual([{ repos: [{ path: web }] }]);
   });
 
+  test("a misspelt field in a repository's own adapter is a problem at the repository, which keeps nothing from being saved", () => {
+    const own = gitRepo(join(dir, 'shop'), {
+      '.obeya/adapter/index.ts': "export default { name: 'shop', check: ['bun test'], demo: { required: false, howToRun: 'bun dev', share: ['no-such-program-anywhere'] } };\n",
+    });
+    const c = config('args', [{ repos: [{ path: web }] }]);
+    const checked = c.check([{ repos: [{ path: web }, { path: own }] }]);
+    expect(checked.problems).toEqual([
+      { code: 'adapterField', canvas: 0, repo: 1, detail: 'check: no such field (did you mean checks?)' },
+      { code: 'adapterField', canvas: 0, repo: 1, detail: "demo.share: the share command's program no-such-program-anywhere is not on the PATH" },
+    ]);
+    // the configuration's own share command takes the adapter's place, so its program is not asked for
+    expect(c.check([{ repos: [{ path: own, share: 'git' }] }]).problems.map((p) => p.detail)).toEqual(['check: no such field (did you mean checks?)']);
+    expect(c.save([{ repos: [{ path: web }, { path: own }] }])).toEqual({ restarting: true });
+  });
+
   test("keeps a canvas's home repository: leaving it out is a problem, moving it is not", () => {
     store.ensureCanvas('produkt', 'Produkt');
     store.setSetting('produkt', 'home_repo', 'web');
@@ -168,6 +183,14 @@ describe('the configuration over HTTP', () => {
 
     expect((await call('PUT', '/api/config', [{ repos: [{ path: web }, { path: api }] }])).body).toEqual({ restarting: true });
     expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }, { path: api }] }]);
+  });
+
+  test('makes the card that writes the adapter of a repository on the generic one, once while it is open', async () => {
+    const made = await call('POST', '/api/c/web/adapter-setup', { repo: 'web' });
+    expect(made).toMatchObject({ status: 200, body: { title: 'Obeya für web einrichten', state: 'planned' } });
+    expect(made.body.body).toContain('obeya:adapter');
+    expect((await call('POST', '/api/c/web/adapter-setup', { repo: 'web' })).body.id).toBe(made.body.id);
+    expect((await call('POST', '/api/c/web/adapter-setup', { repo: 'nope' })).status).toBe(400);
   });
 
   test('reads and saves the language in its home, keeping the file\'s other settings', async () => {

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { repoInfo } from '../server/repo';
 import { gitRepo } from '../server/testing';
 import { git } from '../server/workspaces';
-import { pickAdapter } from '.';
+import { adapterProblems, pickAdapter } from '.';
 
 let dir: string;
 beforeEach(() => {
@@ -66,5 +66,41 @@ describe('pickAdapter', () => {
     const plain = gitRepo(join(dir, 'plain'));
     expect(pickAdapter(repoInfo(plain)).name).toBe('generic');
     expect(existsSync(join(plain, '.git/obeya'))).toBe(false);
+  });
+
+  test('a field that is misspelt, of the wrong type or incomplete is named and does not count; the rest of the adapter works', () => {
+    const adapter = `export default {
+      name: 'shop',
+      check: ['bun test'],
+      Setup: 'bun install',
+      land: 'merge',
+      softPaths: 'docs/',
+      canvasName: 'Shop',
+      demo: { required: true, howtorun: 'bun dev' },
+      stack: { start: 'bun dev', refresh: 'bun dev', urls: { file: '.env', frontend: 'URL' } },
+      workspaces: 'worktrees',
+    };\n`;
+    const repo = gitRepo(join(dir, 'shop'), { '.obeya/adapter/index.ts': adapter });
+    const a = pickAdapter(repoInfo(repo));
+    expect(adapterProblems(a)).toEqual([
+      'canvasName: expected a function',
+      'land: expected one of "main"|"pr"',
+      'softPaths: expected array, received string',
+      'demo.howToRun: missing',
+      'demo.howtorun: no such field (did you mean howToRun?)',
+      'stack.urls.frontendKey: missing',
+      'stack.urls.frontend: no such field (did you mean frontendKey?)',
+      'check: no such field (did you mean checks?)',
+      'Setup: no such field (did you mean setup?)',
+    ]);
+    // what is wrong goes, the generic adapter's stands in its place
+    expect(a).toMatchObject({ name: 'shop', land: 'pr', softPaths: ['docs/plan/'], workspaces: 'worktrees' });
+    expect(a.canvasName(repoInfo(repo))).toBe('shop');
+    expect(a.demo).toBeUndefined();
+    expect(a.stack).toBeUndefined();
+    expect('check' in a).toBe(false);
+    // one without mistakes has none, a built-in one neither
+    expect(adapterProblems(pickAdapter(repoInfo(gitRepo(join(dir, 'ok'), { '.obeya/adapter/index.ts': OWN('ok') }))))).toEqual([]);
+    expect(adapterProblems(pickAdapter(repoInfo(repo), 'generic'))).toEqual([]);
   });
 });

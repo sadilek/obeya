@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import { type AgentSetting, answering, askable, type CanvasConfig, finished, type Item, type NextStep, prototypeWorkstream, type Queue } from '../core/types';
+import { type AgentSetting, answering, askable, blocksSaving, type CanvasConfig, finished, type Item, type NextStep, prototypeWorkstream, type Queue } from '../core/types';
 import { BadRequest, type Board } from './board';
 import type { Config } from './config';
 import type { Moment } from './db';
@@ -446,7 +446,8 @@ export class Commander {
                   confirm: z.string(),
                 },
                 run: ({ canvases, confirm }: Record<string, unknown>) => {
-                  const { problems, canvases: checked } = config.check(canvases);
+                  const { problems: all, canvases: checked } = config.check(canvases);
+                  const problems = all.filter(blocksSaving);
                   if (problems.length)
                     return `Nothing recorded, the configuration does not work: ${problems.map((p) => p.detail).join('; ')}. Fix it and call configure again, or reply to the owner.`;
                   return finish([{ do: 'configure', canvases: checked }], String(confirm));

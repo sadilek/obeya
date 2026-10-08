@@ -3,7 +3,7 @@
 
 import { realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { pickAdapter } from '../adapters';
+import { adapterProblems, pickAdapter } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
@@ -99,6 +99,9 @@ export class CanvasRuntime {
     const resolved = resolveCanvas(config, deps.store);
     const { id, name, infos, adapters, refs, stored } = resolved;
     config = resolved.config;
+    adapters.forEach((a, i) => {
+      for (const p of adapterProblems(a)) console.warn(`Obeya: adapter of ${infos[i]!.path}, ${p} (ignored)`);
+    });
     const home = refs[0]!.id;
     const images = (this.images = new Images(join(deps.home, 'images', id)));
     // where work lands on the local main, the checkout is the Lesestand; otherwise it is a pool clone on a card's branch
@@ -436,6 +439,22 @@ export class CanvasRuntime {
     // work thrown away ended too (finished work counted when it landed)
     else if (!state || !finished(state)) this.workRetro.ended(cardId, workspace);
     this.board.remove(cardId);
+  }
+
+  /**
+   * The card whose worker writes a repository's own adapter with the `adapter` skill, for one that
+   * runs on the generic adapter; one still open for it is returned rather than a second made. It
+   * goes right of everything on the canvas, at the top.
+   */
+  adapterSetupCard(repo: string): Item {
+    const r = this.repos.find((x) => x.ref.id === repo);
+    if (!r) throw new BadRequest('invalid', 'unknown repository');
+    const { title, body } = this.board.t.adapterSetup;
+    const items = this.board.snapshot().items;
+    const open = items.find((i) => i.kind === 'task' && i.repo === repo && i.title === title(r.ref.name) && !finished(i.state) && !i.archivedAt);
+    if (open) return open;
+    const at = items.length ? { x: Math.max(...items.map((i) => i.x)) + 560, y: Math.min(...items.map((i) => i.y)) } : { x: 0, y: 0 };
+    return this.board.create({ title: title(r.ref.name), body, repo, ...at });
   }
 
   // ---------------------------------------------------------------- proposals

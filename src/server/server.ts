@@ -259,6 +259,8 @@ export function serve(
       '/api/config/check': { POST: async (req) => (config ? handle(async () => config.check(await req.json())) : new Response('Not found', { status: 404 })) },
       '/api/c/:canvas/canvas': { GET: on((c) => c.board.snapshot()) },
       '/api/c/:canvas/cards': { POST: on(async (c, req) => c.board.create((await req.json()) as NewCard)) },
+      // from "Konfiguration", for a repository on the generic adapter: the card that writes its own
+      '/api/c/:canvas/adapter-setup': { POST: on(async (c, req) => c.adapterSetupCard(String(((await req.json()) as { repo?: unknown }).repo))) },
       '/api/c/:canvas/cards/:id': {
         PATCH: on(async (c, req) => c.patch(req.params.id!, (await req.json()) as CardPatch)),
         DELETE: on((c, req) => click(c, c.remove(req.params.id!))),
