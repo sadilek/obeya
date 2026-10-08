@@ -32,18 +32,18 @@ test.skipIf(!home)(
       console.log(`a second sentence in ${((performance.now() - again) / 1000).toFixed(2)} s`);
       writeFileSync(join(dir, 'command.wav'), wav!);
       started = performance.now();
-      const heard = await whisper.transcribe(join(dir, 'command.wav'), 'Export für Vermieter', 'de');
+      const heard = await whisper.transcribe(join(dir, 'command.wav'), 'Export für Vermieter');
       console.log(`heard in ${((performance.now() - started) / 1000).toFixed(1)} s: ${heard.text}`);
       expect(heard.text.toLowerCase()).toMatch(/starte die karte,? export für vermieter/);
       expect(heard.doubtful).toBe(false);
-      // in English, Piper's English voice and Whisper told to expect English
+      // in English, Piper's English voice, which Whisper hears as English
       writeFileSync(join(dir, 'english.wav'), (await speaker.speak('Start the task Export for landlords.', 'en'))!);
-      const english = await whisper.transcribe(join(dir, 'english.wav'), 'Export for landlords', 'en');
+      const english = await whisper.transcribe(join(dir, 'english.wav'), 'Export for landlords');
       console.log(`heard in English: ${english.text}`);
       expect(english.text.toLowerCase()).toMatch(/start the task,? export for landlords/);
       // a recording without a sound is not transcribed
       writeFileSync(join(dir, 'silence.wav'), silentWav(1));
-      expect(await whisper.transcribe(join(dir, 'silence.wav'), '', 'de')).toEqual({ text: '', doubtful: false });
+      expect(await whisper.transcribe(join(dir, 'silence.wav'), '')).toEqual({ text: '', doubtful: false });
     } finally {
       speaker.stop();
       whisper.stop();

@@ -2,8 +2,11 @@
 Silicon, faster-whisper elsewhere (`--backend faster`: CUDA when there is a GPU, else int8 on the
 CPU; a GPU without the CUDA libraries falls back to the CPU).
 
-Reads JSON lines on stdin: {"id": ..., "path": "<audio file>", "prompt": "<vocabulary>", "language": "de"}
-(the language the owner speaks; German when left out).
+Reads JSON lines on stdin: {"id": ..., "path": "<audio file>", "prompt": "<vocabulary>", "languages": ["de", "en"]}
+(the languages the owner may speak; German when left out). Whisper hears which of them is spoken in
+the first 30 seconds and transcribes in that one: told a language the owner did not speak, it
+translates into it, badly and unsure of its words (German speech, told English: „That is quite a bit
+of a bit of a doubt“), and the longer the recording, the likelier one of its parts fails the test below.
 Writes JSON lines on stdout: {"id": ..., "text": "...", "doubtful": bool} or {"id": ..., "error": "..."}.
 Audio is decoded by ffmpeg (for both backends: faster-whisper's own decoder, PyAV, broke with
 newer PyAV releases), so any format the browser records (webm/opus, wav) works. The model is
@@ -47,6 +50,17 @@ class Mlx:
 
         self._whisper, self._model = mlx_whisper, model
 
+    def languages(self, audio: np.ndarray) -> dict[str, float]:
+        """How likely each language is spoken in the first 30 seconds, as Whisper's transcribe tells it without a language."""
+        import mlx.core as mx
+        from mlx_whisper.audio import N_FRAMES, N_SAMPLES, log_mel_spectrogram, pad_or_trim
+        from mlx_whisper.transcribe import ModelHolder
+
+        model = ModelHolder.get_model(self._model, mx.float16)
+        mel = log_mel_spectrogram(audio[:N_SAMPLES], n_mels=model.dims.n_mels, padding=N_SAMPLES)
+        _, probs = model.detect_language(pad_or_trim(mel, N_FRAMES, axis=-2).astype(mx.float16))
+        return probs
+
     def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
         result = self._whisper.transcribe(
             audio,
@@ -73,6 +87,11 @@ class Faster:
         self._model = WhisperModel(self._name, device=device, compute_type="float16" if device == "cuda" else "int8")
         self.device = device
         print(f"whisper: faster-whisper {self._name} on the {device.upper()}", file=sys.stderr, flush=True)
+
+    def languages(self, audio: np.ndarray) -> dict[str, float]:
+        """How likely each language is spoken in the first 30 seconds."""
+        _, _, probs = self._model.detect_language(audio)
+        return dict(probs)
 
     def transcribe(self, audio: np.ndarray, prompt: str | None, language: str = "de") -> list[dict]:
         try:
@@ -112,13 +131,15 @@ def main() -> None:
             audio = load_audio(job["path"])
             peak = np.abs(audio).max(initial=0)
             quiet = peak < 10 ** (QUIET_DBFS / 20)
-            print(f"whisper: {len(audio) / SAMPLE_RATE:.1f} s, peak {dbfs(peak)}, "
-                  f"rms {dbfs(np.sqrt(np.mean(audio ** 2)) if len(audio) else 0)}"
-                  f"{'; too quiet to transcribe' if quiet else ''}", file=sys.stderr, flush=True)
+            level = f"whisper: {len(audio) / SAMPLE_RATE:.1f} s, peak {dbfs(peak)}, rms {dbfs(np.sqrt(np.mean(audio ** 2)) if len(audio) else 0)}"
             if quiet:
+                print(f"{level}; too quiet to transcribe", file=sys.stderr, flush=True)
                 print(json.dumps({"id": job["id"], "text": "", "doubtful": False}), flush=True)
                 continue
-            segments = whisper.transcribe(audio, job.get("prompt") or None, job.get("language") or "de")
+            languages = job.get("languages") or ["de"]
+            language, sure = spoken(whisper, audio, languages)
+            print(f"{level}, {language}{f' ({sure:.0%})' if len(languages) > 1 else ''}", file=sys.stderr, flush=True)
+            segments = whisper.transcribe(audio, job.get("prompt") or None, language)
             text = " ".join(s["text"].strip() for s in segments)
             print(json.dumps({"id": job["id"], "text": text.strip(), "doubtful": any(map(doubtful, segments))}), flush=True)
         except Exception as e:  # one bad recording must not take the sidecar down
@@ -137,6 +158,16 @@ def load_audio(path: str) -> np.ndarray:
             return np.zeros(0, dtype=np.float32)
         raise RuntimeError(f"ffmpeg could not read the recording: {why}")
     return np.frombuffer(pcm.stdout, dtype=np.float32)
+
+
+def spoken(whisper: Mlx | Faster, audio: np.ndarray, languages: list[str]) -> tuple[str, float]:
+    """The most likely of the languages, and how likely it is among them."""
+    if len(languages) == 1:
+        return languages[0], 1.0
+    probs = whisper.languages(audio)
+    language = max(languages, key=lambda l: probs.get(l, 0.0))
+    total = sum(probs.get(l, 0.0) for l in languages)
+    return language, probs.get(language, 0.0) / total if total > 0 else 0.0
 
 
 def doubtful(segment: dict) -> bool:

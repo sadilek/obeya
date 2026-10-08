@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { whisperKit } from '../../plugin/skills/demo/lib/setup.ts';
 import type { DemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { installState, piperFiles, SAY_VOICES } from '../../plugin/skills/demo/lib/voices.ts';
-import type { Language } from '../core/locale';
+import { type Language, LANGUAGES } from '../core/locale';
 import { resource } from './resources';
 
 /** `doubtful`: Whisper itself counts the decode as failed (a loop, or too unsure of its words). */
@@ -18,8 +18,11 @@ export interface Transcript {
 }
 
 export interface Transcriber {
-  /** `language`: the one the owner speaks, which Whisper is told to expect. */
-  transcribe(audioPath: string, vocabulary: string, language: Language): Promise<Transcript>;
+  /**
+   * In the language Whisper hears spoken, of the ones Obeya speaks: the owner may speak another
+   * than the interface's, and Whisper told to expect that one translated into it.
+   */
+  transcribe(audioPath: string, vocabulary: string): Promise<Transcript>;
   /** Gets ready for the next recording (the owner started speaking). */
   warm?(): void;
 }
@@ -172,8 +175,8 @@ export class WhisperSidecar implements Transcriber {
     return this.sidecar.ready();
   }
 
-  async transcribe(audioPath: string, vocabulary: string, language: Language): Promise<Transcript> {
-    const { text, doubtful } = await this.sidecar.request({ path: audioPath, prompt: vocabulary, language });
+  async transcribe(audioPath: string, vocabulary: string): Promise<Transcript> {
+    const { text, doubtful } = await this.sidecar.request({ path: audioPath, prompt: vocabulary, languages: LANGUAGES });
     return { text: typeof text === 'string' ? text : '', doubtful: doubtful === true };
   }
 

@@ -515,7 +515,7 @@ the owner's language (`src/core/locale.ts`).
   owner and what it speaks are two tables of one shape in `src/core/messages.ts` (the Board's `t`,
   read when a line is written, which then stays in that language; the UI recognises the few lines
   it treats specially in either); the Koordinator's replies and spoken confirmations (its session
-  starts afresh once the language changed), the language Whisper is told to expect, the voice that
+  starts afresh once the language changed), the voice that
   speaks (on a Mac a system voice of that language, `say`'s Anna or Samantha where the default
   voice speaks another; Piper's voice of that language elsewhere), and the language every prompt
   asks agents to write the owner in (`LANGUAGE_NAMES`), with examples in it where they shape the
@@ -907,7 +907,11 @@ the owner's language (`src/core/locale.ts`).
     notes since the last one, the count starts again, and the owner hears what came of it.
 - **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
   audio with the focus (open card, project in view). A Whisper sidecar keeps the model
-  loaded and transcribes in the owner's language with the canvas's titles as vocabulary: mlx-whisper on Apple
+  loaded and transcribes with the canvas's titles as vocabulary, in the language it hears spoken in
+  the first 30 seconds of the ones Obeya speaks (German or English), not the interface's: the owner
+  may run the interface in English and speak German, and Whisper told to expect English then
+  translated into broken English, unsure of its words, so long dictations (more windows that can
+  fail) ended in „not understood“ (6–8 Oct 2026). It runs mlx-whisper on Apple
   Silicon, faster-whisper elsewhere (CUDA when there is a GPU, falling back to the CPU when its
   libraries are missing; int8 on the CPU), large-v3-turbo on both, the recording decoded by ffmpeg
   (`OBEYA_WHISPER_PYTHON`, a Python with the package, else `uv` with the same kit the demos listen
