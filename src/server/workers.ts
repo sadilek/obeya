@@ -6,7 +6,7 @@ import type { RepoAdapter } from '../adapters/types';
 import { LANGUAGE_NAMES, LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
 import { basename } from 'node:path';
-import { type DemoKind, type DemoPage, formatQuestion, type Item, type Mock, type Question, type RestartReason } from '../core/types';
+import { askable, type DemoKind, type DemoPage, formatQuestion, type Item, type Mock, type Question, type RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
@@ -63,6 +63,8 @@ interface LandedState {
   restarts?: boolean;
   /** The worker waits for that restart. */
   waits?: boolean;
+  /** Not a landing: the owner asked about the finished card, and its worker was resumed to answer. */
+  followUp?: boolean;
 }
 
 interface Live {
@@ -135,6 +137,9 @@ const restartNotice = (due: DueRestart) => {
 const AFTER_LANDING =
   'Your workspace and this session stay until you end a turn with nothing left to wait for (a question, the restart); then both end. Commits you make here no longer land.';
 
+const FOLLOW_UP =
+  "Answer with reply (ask, for a decision that is the owner's). Commits you make here do not land: a change to the code the owner's words call for becomes a card of its own (propose_card). Workspace and session end once you end a turn with nothing left to wait for.";
+
 export class Workers {
   private live = new Map<string, Live>();
   /** Cards whose approved work is landing: the server answers meanwhile, but approving again is refused, and a restart waits. */
@@ -205,7 +210,37 @@ export class Workers {
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
       if (text) this.o.onOwnerInput?.(card, 'note', text);
       this.deliver(cardId, `A note from the owner${spoken ? ` (${SPOKEN})` : ''} (it does not stop you; adjust your plan if it changes anything):\n\n${text}${imageNote(images)}`, images);
-    } else throw new BadRequest('noAgent', 'no agent works on this card');
+    } else if (askable(card)) this.followUp(card, text, images, spoken);
+    else throw new BadRequest('noAgent', 'no agent works on this card');
+  }
+
+  /**
+   * The owner asks about a card whose work is over: its worker's session is resumed in a fresh
+   * workspace on the card's branch, as after a landing, and ends again once the worker has answered.
+   */
+  private followUp(card: Item, text: string, images: string[], spoken: boolean) {
+    const row = this.o.board.row(card.id);
+    let path: string;
+    try {
+      path = this.o.workspaces.lease(card.id, row.branch!);
+    } catch (e) {
+      if (e instanceof WorkspaceError) throw new BadRequest(e.code, e.message);
+      throw e;
+    }
+    this.bump(card.id);
+    const commit = row.shipped ? (JSON.parse(row.shipped) as Shipped).commit : undefined;
+    const landed: LandedState = { ...(card.state === 'done' ? { unchanged: true } : commit ? { commit } : {}), followUp: true };
+    this.o.board.work(card.id, { workspace: path, landed: JSON.stringify(landed), status_line: null });
+    this.o.board.log(card.id, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
+    if (text) this.o.onOwnerInput?.(card, 'note', text);
+    const message = [
+      `The owner asks about this card${spoken ? ` (${SPOKEN})` : ''}. ${card.state === 'done' ? 'It was closed without a change to the repository' : `Its work is on main${commit ? ` (${commit.slice(0, 7)})` : ''}`}, and your session had ended; it goes on in a fresh workspace on the branch ${row.branch}, where main may have moved on since.`,
+      `${text}${imageNote(images)}`,
+      FOLLOW_UP,
+    ].join('\n\n');
+    // a card that never reported a session: a new one needs the card first
+    if (row.session_id) this.launch(card.id, message, row.session_id, images);
+    else this.launch(card.id, `You worked on the card „${card.title}“:\n\n${card.body}\n\n${message}`, undefined, [...this.taskImages(card), ...images]);
   }
 
   answer(cardId: string, text: string, images: string[] = [], spoken = false) {
@@ -383,7 +418,8 @@ export class Workers {
     }
     this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, ...(row.state === 'waiting' ? { state: row.landed ? landedState(row.landed) : 'live', need: null, detail: null } : {}) });
     this.o.board.workDone(cardId);
-    this.o.onWorkEnded?.(cardId, row.workspace);
+    // the Arbeitsrückschau read the card's runs when its work ended
+    if (!(row.landed && (JSON.parse(row.landed) as LandedState).followUp)) this.o.onWorkEnded?.(cardId, row.workspace);
   }
 
   /** The plan docs the card's branch adds, as plan references of the canvas. */
@@ -522,7 +558,7 @@ export class Workers {
   private resumeLanded(card: Item, stored: string, session: string | null) {
     const l = JSON.parse(stored) as LandedState;
     if (!session) return this.finish(card.id);
-    this.o.board.work(card.id, { landed: JSON.stringify({ ...(l.commit ? { commit: l.commit } : {}), ...(l.unchanged ? { unchanged: true } : {}) } satisfies LandedState) });
+    this.o.board.work(card.id, { landed: JSON.stringify({ ...(l.commit ? { commit: l.commit } : {}), ...(l.unchanged ? { unchanged: true } : {}), ...(l.followUp ? { followUp: true } : {}) } satisfies LandedState) });
     // an open question waits for its answer, which resumes the session
     if (card.state === 'waiting') return;
     this.launch(card.id, l.restarts ? `Obeya has started again and runs main with your change now. ${RESTARTED}` : RESTARTED, session);

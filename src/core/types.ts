@@ -18,6 +18,13 @@ export type CardState = (typeof STATES)[number];
 export const finished = (s: CardState) => s === 'live' || s === 'done';
 
 /**
+ * A finished card an agent worked on, on the canvas, with no agent on it now: what the owner asks
+ * about it resumes the agent that did the work, which answers and ends again.
+ */
+export const askable = (i: Pick<Item, 'state' | 'branch' | 'prototypeOf' | 'archivedAt' | 'finishing'>) =>
+  finished(i.state) && !!i.branch && !i.prototypeOf && !i.archivedAt && !i.finishing;
+
+/**
  * How many cards of each group are still to be done: not finished, not archived, not a dropped
  * idea. A project counts by its workstreams, not as a card of its own.
  */
@@ -149,6 +156,8 @@ export interface Item {
   builtOn?: string;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
+  /** While `finishing`: nothing just landed, the owner asked about the finished card and its agent answers. */
+  followUp?: boolean;
   /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
   noChange?: boolean;
   /** Screenshots the owner attached to the card's task; its worker gets them at the start. */

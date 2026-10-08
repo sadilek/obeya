@@ -237,6 +237,19 @@ describe('the Koordinator remembers', () => {
     expect(await heard).toEqual({ confirm: '„Export“ ist seit gestern auf main.' });
   });
 
+  test('a question on a live card an agent worked on is a note: it resumes that agent', async () => {
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
+    board.work(a.id, { state: 'live', branch: 'obeya/export-1' });
+    const k = commander();
+    const heard = k.hear('Wie lade ich das hoch?', { card: a.id });
+    await settle();
+    const s = runtime.last;
+    expect(s.inbox[0]).toContain("[live, its agent's session has ended; a note resumes it to answer] \"Export\"");
+    expect(await s.call('act', { actions: [{ do: 'note', card: 'K1', text: 'Wie lade ich das hoch?' }], confirm: 'Weitergegeben.' })).toContain('Done');
+    s.emit({ type: 'idle' });
+    await heard;
+  });
+
   test("the question in a demo report is the card's open question: a bare „ja“ answers it", async () => {
     const a = board.create({ title: 'Archiv', x: 0, y: 0 });
     board.work(a.id, { state: 'waiting', need: 'demo', demo: JSON.stringify({ dir: '/d', chapters: [], question: 'Alte Projekte nachtragen?' }) });

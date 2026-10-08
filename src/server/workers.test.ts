@@ -1358,6 +1358,71 @@ describe('a worktree per card', () => {
     expect(git(main, 'branch', '--list', branch)).toBe('');
   });
 
+  test('asked about a live card, its worker is resumed in a fresh workspace, answers, and ends again', async () => {
+    const ended: string[] = [];
+    workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, onWorkEnded: (id) => void ended.push(id) });
+    const c = manual();
+    workers.start(c.id);
+    commitIn(board.row(c.id).workspace!, 'c.ts', 'C');
+    const s = runtime.last;
+    s.emit({ type: 'session', id: 'sess-1' });
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(ended).toEqual([c.id]);
+    expect(state(c.id)).toBe('live');
+    expect(board.item(c.id)!.finishing).toBeUndefined();
+
+    workers.message(c.id, 'Wie lade ich das Video hoch?', [], true);
+    const f = runtime.last;
+    expect(f).not.toBe(s);
+    expect(f.spec.resume).toBe('sess-1');
+    expect(board.row(c.id).workspace).toBe(f.spec.cwd);
+    expect(f.inbox[0]).toContain('The owner asks about this card (spoken');
+    expect(f.inbox[0]).toContain('Its work is on main');
+    expect(f.inbox[0]).toContain('Wie lade ich das Video hoch?');
+    expect(board.item(c.id)).toMatchObject({ state: 'live', finishing: true, followUp: true });
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'Wie lade ich das Video hoch?' });
+    // a second word while it answers reaches the same session
+    workers.message(c.id, 'Und die Untertitel?');
+    expect(runtime.last).toBe(f);
+    expect(f.inbox.at(-1)).toContain('Und die Untertitel?');
+    expect(f.call('reply', { text: 'Mit gh release upload.' })).toContain('Shown');
+    f.emit({ type: 'idle' });
+    expect(f.closed).toBe(true);
+    expect(state(c.id)).toBe('live');
+    expect(board.item(c.id)!.finishing).toBeUndefined();
+    expect(board.item(c.id)!.followUp).toBeUndefined();
+    expect(board.row(c.id).workspace).toBeNull();
+    expect(board.row(c.id).landed).toBeNull();
+    // the Arbeitsrückschau read the card's runs when its work ended
+    expect(ended).toEqual([c.id]);
+  });
+
+  test('a card closed without a change can be asked about too; it stays done', async () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'session', id: 'sess-1' });
+    runtime.last.call('ready_for_review', { summary: 'S' });
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    runtime.last.emit({ type: 'idle' });
+    workers.message(c.id, 'Warum?');
+    expect(runtime.last.inbox[0]).toContain('closed without a change');
+    expect(board.item(c.id)).toMatchObject({ state: 'done', finishing: true, followUp: true });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('done');
+    expect(board.item(c.id)!.finishing).toBeUndefined();
+  });
+
+  test('a finished card no agent worked on cannot be asked about', () => {
+    const c = manual();
+    board.work(c.id, { state: 'live' });
+    expect(() => workers.message(c.id, 'Warum?')).toThrow(BadRequest);
+  });
+
   test('a worker whose remaining work needs the new code waits for the restart and goes on after it', async () => {
     rmSync(dir, { recursive: true, force: true });
     setup({ ...generic, land: 'main', workspaces: 'worktrees' });

@@ -172,6 +172,11 @@ test('a card has one field for the owner, and under a demo with a question it ta
   expect(ownerField({ state: 'waiting', need: 'demo' })).toBe('feedback');
   expect(ownerField({ state: 'waiting', need: 'demo', question: { text: 'Welche Stimme?', options: [] } })).toBe('demo');
   expect(ownerField({ state: 'done' })).toBeNull();
+  // a finished card an agent worked on: what the owner asks resumes that agent
+  expect(ownerField({ state: 'live', branch: 'obeya/x' })).toBe('note');
+  expect(ownerField({ state: 'done', branch: 'obeya/x' })).toBe('note');
+  expect(ownerField({ state: 'live', branch: 'obeya/x', archivedAt: '2026-10-08T10:00:00Z' })).toBeNull();
+  expect(ownerField({ state: 'live', branch: 'obeya/x', prototypeOf: 'idea' })).toBeNull();
 });
 
 test('ideas, proposals and tasks an agent worked on with a result share the layout with the conversation beside', () => {

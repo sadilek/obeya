@@ -25,6 +25,9 @@ const de = {
   finishingLong: 'Auf main. Der Agent erledigt noch, was nach dem Landen ansteht; danach endet seine Sitzung.',
   finishingDone: 'Erledigt · Agent räumt auf',
   finishingDoneLong: 'Ohne Änderung am Code gibt es nichts zu landen. Der Agent erledigt noch, was ansteht; danach endet seine Sitzung.',
+  followingUp: 'Live · Agent antwortet',
+  followingUpDone: 'Erledigt · Agent antwortet',
+  followingUpLong: 'Der Agent ist für deine Nachfrage zurück und antwortet hier; danach endet seine Sitzung wieder.',
   proposalMark: '✦ Vorschlag',
   progress: (live: number, all: number) => `${live} von ${all} live`,
   needsYou: 'brauchen dich',
@@ -126,6 +129,7 @@ const de = {
   send: 'Senden',
   compose: {
     working: 'Hinweis an den Agenten – er arbeitet weiter',
+    followUp: 'Nachfrage an den Agenten – er antwortet hier',
     question: 'Eigene Antwort',
     review: 'Feedback – der Agent arbeitet daran weiter',
     demo: 'Antwort oder Feedback an den Agenten',
@@ -887,6 +891,9 @@ const en: Strings = {
   finishingLong: 'On main. The agent still does what was waiting for the landing; then its session ends.',
   finishingDone: 'Done · agent tidying up',
   finishingDoneLong: 'Nothing changed in the code, so there is nothing to land. The agent still does what is left; then its session ends.',
+  followingUp: 'Live · agent answering',
+  followingUpDone: 'Done · agent answering',
+  followingUpLong: 'The agent is back for your follow-up question and answers here; then its session ends again.',
   proposalMark: '✦ Proposal',
   progress: (live: number, all: number) => `${live} of ${all} live`,
   needsYou: 'need you',
@@ -986,6 +993,7 @@ const en: Strings = {
   send: 'Send',
   compose: {
     working: 'A note to the agent – it keeps working',
+    followUp: 'A follow-up question to the agent – it answers here',
     question: 'Your own answer',
     review: 'Feedback – the agent goes on working on it',
     demo: 'Answer or feedback to the agent',
@@ -1749,11 +1757,13 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; demo?: { answering?: true }; finishing?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
+export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; demo?: { answering?: true }; finishing?: boolean; followUp?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
   i.prototypeEnd
     ? t.idea.ended[i.prototypeEnd]
     : i.finishing && (i.state === 'live' || i.state === 'done')
-    ? i.state === 'done' ? t.finishingDone : t.finishing
+    ? i.followUp
+      ? i.state === 'done' ? t.followingUpDone : t.followingUp
+      : i.state === 'done' ? t.finishingDone : t.finishing
     : i.idea
     ? i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking
       ? t.idea.yourTurn

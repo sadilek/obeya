@@ -1326,7 +1326,7 @@ function work(r: CardRow): Partial<Item> {
     ...(share ? { share } : {}),
     ...(r.from_id ? { from: r.from_id } : {}),
     ...(r.branch ? { branch: r.branch } : {}),
-    ...(r.landed && r.workspace ? { finishing: true } : {}),
+    ...(r.landed && r.workspace ? { finishing: true, ...((JSON.parse(r.landed) as { followUp?: boolean }).followUp ? { followUp: true } : {}) } : {}),
     ...(detail.noChange && (r.need === 'review' || r.need === 'demo') ? { noChange: true } : {}),
   };
 }

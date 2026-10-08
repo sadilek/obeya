@@ -1,7 +1,7 @@
 // A card's conversation, from its events.
 
 import { LANGUAGES } from '../core/locale';
-import { type CardEvent, finished, formatQuestion, type Item, type Question } from '../core/types';
+import { askable, type CardEvent, finished, formatQuestion, type Item, type Question } from '../core/types';
 import type { Field } from './api';
 
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
@@ -171,9 +171,10 @@ export function parseQuestion(text: string): { text: string; options: string[] }
  * a question, the answer and feedback together, sorted out by the Koordinator as spoken words are.
  * Null where no agent hears it. Ideas and proposals have fields of their own.
  */
-export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'finishing'>): Field | null {
+export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'finishing' | 'branch' | 'prototypeOf' | 'archivedAt'>): Field | null {
   if (item.state === 'waiting') return item.need === 'question' ? 'answer' : item.need === 'demo' && item.question ? 'demo' : 'feedback';
-  return item.state === 'working' || item.state === 'inPr' || item.finishing ? 'note' : null;
+  // a finished card's agent is resumed for what the owner asks about it
+  return item.state === 'working' || item.state === 'inPr' || item.finishing || askable(item) ? 'note' : null;
 }
 
 /** A task an agent has worked on: what came of it stands beside its conversation. */

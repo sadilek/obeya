@@ -279,6 +279,11 @@ An idea is thought through on its card before anything is planned; no worker run
    `close_unchanged`, which Obeya refuses while the workspace holds commits or uncommitted
    changes. Before, such a card waited in `in PR` for a pull request that could never come
    (a demo card on 2026-10-02).
+   A finished card (`live` or `done`) an agent worked on keeps its field for the owner's words
+   once that agent's session has ended: a question there („Nachfrage an den Agenten“) resumes the
+   agent that did the work (After landing, under Communication), which answers on the card and ends
+   again. Before (until 2026-10-08), a live card had no field, and asking its agent was no longer
+   possible.
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card or
    its archive button on the canvas, shown while the pointer is on it, or all finished ones at
    once in the archive), or when a prototype ends (discarded or built; Ideas, 4). The archive
@@ -834,6 +839,14 @@ the owner's language (`src/core/locale.ts`).
   reset), then the worker finishes what remained. Before, it too ended the card. On the canvas, a
   card finishing shows its status line as one at work does; before (until 2026-10), only the
   detail view showed it.
+  A follow-up on a finished card whose worker has ended goes the same way: what the owner says on
+  the card (typed in its field, or spoken with it open: in doubt for that agent, as on a card at
+  work) resumes the worker's session in a fresh workspace on the card's branch, where main may have
+  moved on since (resuming finds the session from any directory). The card stays `live` or `done`,
+  "Agent antwortet"; the worker answers with `reply`, and its turn's end frees the workspace again.
+  Commits there do not land: a change the follow-up calls for becomes a card of its own
+  (`propose_card`). The Arbeitsrückschau read the card's runs when its work ended and does not count
+  it again. A card no agent worked on (no branch), a prototype or an archived card has no field.
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running
   (the compiled binary has no checkout and never restarts for new code).
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
@@ -1073,7 +1086,7 @@ the owner's language (`src/core/locale.ts`).
   agent of the open card, alone in what the owner said: it goes out at once and quietly, and the
   card's conversation shows it under „Du“. Feedback on work waiting for review keeps the confirmation and
   the undo window, as does every command to Obeya. With an agent on the open card (working, in a
-  pull request, waiting, waiting for review, or finishing what remains), what the owner says is, in doubt, for that
+  pull request, waiting, waiting for review, or finishing what remains, or a finished card a question resumes its agent on), what the owner says is, in doubt, for that
   agent: note, answer or feedback, in the owner's own words (a single such action carries the
   whole transcript, whatever the Koordinator wrote), and spoken words reach it with the remark
   that speech recognition may have misheard them. Only what clearly asks Obeya for something
