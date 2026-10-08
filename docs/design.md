@@ -613,9 +613,12 @@ the owner's language (`src/core/locale.ts`).
   git: it and its captions are the assets `hero.mp4` and `hero.vtt` of the GitHub release
   `site-media`, which the Pages workflow fetches into `site/media/` before it publishes, so
   obeya.si serves them itself (no third party, no tracking). `publish.ts` replaces them and runs
-  the workflow again. On the page it is a `<video>` with native controls, English captions and a
-  poster (`site/img/hero-poster.jpg`, the first frame with a play button, in git), loading nothing
-  before a click (`preload="none"`); opened from the file, the site shows the poster alone.
+  the workflow again. On the page it is a `<video>` with English captions and a poster
+  (`site/img/hero-poster.jpg`, the first frame without a play button, in git), loading nothing
+  before a click (`preload="none"`); opened from the file, the site shows the poster alone. A few
+  lines of script put a big play button (a real `<button>`) over the poster and show the
+  browser's controls once it plays; without JavaScript the controls are there from the start and
+  the button stays hidden.
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:

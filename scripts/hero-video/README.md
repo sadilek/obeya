@@ -46,6 +46,8 @@ It reads the render from `~/demos/obeya-hero/` (or `HERO_OUT`), creates the rele
 time and replaces its assets after that, and acts as the GitHub account `sadilek` (with the
 token of its gh login) without switching the account gh has active.
 
-The poster (`site/img/hero-poster.jpg`) is the video's first frame with a play button. It is in
-git: when the opening changes, publish with `--poster`, then commit the new poster and push
-`main`, which publishes it.
+The poster (`site/img/hero-poster.jpg`) is the video's first frame, slightly dimmed, without a
+play button: the big play button over it is a `<button>` in `site/index.html`, whose script
+starts the video (without JavaScript the browser's controls do). The poster is in git: when the
+opening changes, publish with `--poster`, then commit the new poster and push `main`, which
+publishes it.

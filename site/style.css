@@ -46,6 +46,12 @@ section { max-width: var(--wide); margin: 0 auto; padding: 0 24px; }
 .player { position: relative; margin: 0; border-radius: 16px; overflow: hidden; background: #000;
   box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 24px 60px -20px rgba(28,27,25,.35); }
 .player video { display: block; width: 100%; height: auto; }
+.player .play { position: absolute; inset: 0; display: grid; place-items: center; padding: 0; border: 0; background: none; cursor: pointer; }
+.player .play[hidden] { display: none; }
+.player .play svg { width: clamp(72px, 10.3%, 148px); height: auto; border-radius: 50%; transition: transform .15s; }
+.player .play:hover svg { transform: scale(1.06); }
+.player .play:focus-visible { outline: none; }
+.player .play:focus-visible svg { outline: 3px solid var(--blue); outline-offset: 4px; }
 .film-note { text-align: center; font-size: 14px; color: var(--muted); margin: 16px 0 0; }
 
 /* ---------- pillars ---------- */

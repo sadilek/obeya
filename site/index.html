@@ -44,7 +44,24 @@
         <source src="media/hero.mp4" type="video/mp4">
         <track kind="captions" src="media/hero.vtt" srclang="en" label="English">
       </video>
+      <button class="play" type="button" aria-label="Play the video" hidden>
+        <svg viewBox="0 0 148 148" aria-hidden="true"><circle cx="74" cy="74" r="74" fill="#fff" fill-opacity=".38"/>
+          <circle cx="74" cy="74" r="60" fill="#1c1b19" fill-opacity=".84"/><path d="M60.5 48v52l46.8-26z" fill="#fff"/></svg>
+      </button>
     </figure>
+    <script>
+      // With JavaScript the poster shows one big play button instead of the browser's controls;
+      // without it the button stays hidden and the controls start the video.
+      const film = document.querySelector('.player video'), play = document.querySelector('.player .play');
+      film.controls = false;
+      play.hidden = false;
+      play.addEventListener('click', () => {
+        play.hidden = true;
+        film.controls = true;
+        film.play();
+        film.focus();
+      });
+    </script>
     <p class="film-note">A real run on a small app: an idea by voice, an agent at work, its demo, the approval.</p>
   </section>
 
