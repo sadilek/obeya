@@ -1566,7 +1566,9 @@ the repository; the copy on the project is only for the archive).
   automatic rather than an explicit "abschließen", which can later sit on top. Obeya watches the
   plan directory and the nearest directory above it: git removes the plan directory with its last
   doc, and the directory's own watch then reports nothing (M5 stayed on the canvas until a
-  restart). Reading old content
+  restart). Bun before 1.3.14 on Linux delivers nothing to a watch on a directory that was
+  watched before, then removed and created again (oven-sh/bun#42570): such a directory is polled
+  every half second instead. Reading old content
   from the git history instead was rejected as fragile (PRs and clones, renames); it served
   only once, to backfill Obeya's own projects from before
   (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a renamed doc makes a new

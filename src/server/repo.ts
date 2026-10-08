@@ -1,4 +1,4 @@
-import { existsSync, type FSWatcher, readdirSync, readFileSync, watch } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync, watch } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
@@ -33,7 +33,7 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): PlanDoc[] 
  */
 export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => void): () => void {
   const dir = join(repoPath, adapter.planDocs.dir);
-  let watchers: FSWatcher[] = [];
+  let stops: (() => void)[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
   const fire = () => {
     clearTimeout(timer);
@@ -43,12 +43,13 @@ export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => 
     }, 150);
   };
   const arm = () => {
-    watchers.forEach((w) => w.close());
-    watchers = [];
+    stops.forEach((stop) => stop());
+    stops = [];
+    for (let d = dir; d.length > repoPath.length; d = dirname(d)) if (!existsSync(d) && watchedInodes.has(d)) recreated.add(d);
     if (existsSync(dir))
-      watchers.push(
-        watch(dir, (_, file) => {
-          if (file && !String(file).endsWith('.md')) return;
+      stops.push(
+        watchDir(dir, (file) => {
+          if (file && !file.endsWith('.md')) return;
           fire();
         }),
       );
@@ -57,9 +58,9 @@ export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => 
     let above = dirname(dir);
     while (!existsSync(above) && above.length > repoPath.length) [below, above] = [above, dirname(above)];
     const name = basename(below);
-    watchers.push(
-      watch(above, (_, file) => {
-        if (file && String(file) !== name) return;
+    stops.push(
+      watchDir(above, (file) => {
+        if (file && file !== name) return;
         fire();
       }),
     );
@@ -67,6 +68,48 @@ export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => 
   arm();
   return () => {
     clearTimeout(timer);
-    watchers.forEach((w) => w.close());
+    stops.forEach((stop) => stop());
   };
+}
+
+/**
+ * Bun before 1.3.14 on Linux delivers no events for a directory at a path that was watched before
+ * and has since been removed and created again, even to a new watch
+ * (https://github.com/oven-sh/bun/issues/42570). Such a directory is polled instead.
+ */
+const watchIsInertAfterRecreate = process.platform === 'linux' && Bun.semver.order(Bun.version, '1.3.14') < 0;
+/** Each directory watched so far, with its inode then; and those seen gone since. */
+const watchedInodes = new Map<string, number>();
+const recreated = new Set<string>();
+
+/** Calls `onChange` with the name of an entry of `path` that changed (or none); returns the stop. */
+function watchDir(path: string, onChange: (file?: string) => void): () => void {
+  const ino = statSync(path).ino;
+  if (watchedInodes.get(path) !== undefined && watchedInodes.get(path) !== ino) recreated.add(path);
+  watchedInodes.set(path, ino);
+  if (watchIsInertAfterRecreate && recreated.has(path)) return pollDir(path, onChange);
+  const watcher = watch(path, (_, file) => onChange(file ? String(file) : undefined));
+  return () => watcher.close();
+}
+
+function pollDir(path: string, onChange: (file?: string) => void): () => void {
+  const entries = () => {
+    const seen = new Map<string, string>();
+    try {
+      for (const name of readdirSync(path)) {
+        const s = statSync(join(path, name), { throwIfNoEntry: false });
+        seen.set(name, s ? `${s.mtimeMs}:${s.size}` : '');
+      }
+    } catch {}
+    return seen;
+  };
+  let last = entries();
+  const interval = setInterval(() => {
+    const now = entries();
+    const changed = [...new Set([...last.keys(), ...now.keys()])].filter((name) => last.get(name) !== now.get(name));
+    last = now;
+    if (!existsSync(path)) onChange();
+    else changed.forEach((name) => onChange(name));
+  }, 500);
+  return () => clearInterval(interval);
 }
