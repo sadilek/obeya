@@ -9,6 +9,12 @@
 // files (libwebkit2gtk-4.1-dev and the rest Tauri lists) and ALSA's (libasound2-dev, for the
 // push-to-talk key's microphone). The bundles end up in
 // app/target/[<triple>/]release/bundle/.
+//
+// With TAURI_SIGNING_PRIVATE_KEY set (and TAURI_SIGNING_PRIVATE_KEY_PASSWORD, if the key has one),
+// it also signs what Tauri's updater installs, each with a `.sig` beside it: Obeya.app.tar.gz on
+// macOS (packed here), the NSIS installer on Windows, the AppImage on Linux (a .deb is not updated).
+// It signs them itself: Tauri's own update artifacts need the updater plugin's configuration, and
+// its signature of the AppImage would be of the one without the server.
 
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -74,6 +80,8 @@ const tauri = (bundles: string, ...more: string[]) =>
     { CI: 'true' },
   );
 const wanted = bundles.split(',');
+// the updater's archive is of the app, which a DMG's build does not leave in bundle/macos
+if (os === 'darwin' && process.env.TAURI_SIGNING_PRIVATE_KEY && !wanted.includes('app')) wanted.unshift('app');
 if (wanted.includes('appimage')) {
   if (wanted.length > 1) tauri(wanted.filter((b) => b !== 'appimage').join(','));
   // linuxdeploy sets the library path of every program in the AppDir, which breaks Bun's compiled
@@ -90,7 +98,21 @@ if (wanted.includes('appimage')) {
   const image = readdirSync(join(out, 'appimage')).find((f) => f.endsWith('.AppImage'));
   if (!image) fail('Tauri wrote no AppImage');
   run([join(cache, packer), '--appdir', appdir], join(out, 'appimage'), { OUTPUT: image, ARCH: target.endsWith('arm64') ? 'aarch64' : 'x86_64', APPIMAGE_EXTRACT_AND_RUN: '1' });
-} else tauri(bundles);
+} else tauri(wanted.join(','));
 
 if (!existsSync(out)) fail(`${out} was not written`);
+
+if (process.env.TAURI_SIGNING_PRIVATE_KEY) {
+  const sign = (file: string) => run([process.execPath, 'x', 'tauri', 'signer', 'sign', file], APP);
+  const one = (sub: string, end: string) => {
+    const f = existsSync(join(out, sub)) && readdirSync(join(out, sub)).find((f) => f.endsWith(end));
+    return f ? join(out, sub, f) : fail(`no ${end} in ${join(out, sub)} to sign for the updater`);
+  };
+  if (os === 'darwin') {
+    // as Tauri packs it: the app at the archive's top, without macOS's ._ files
+    run(['tar', '-czf', 'Obeya.app.tar.gz', 'Obeya.app'], join(out, 'macos'), { COPYFILE_DISABLE: '1' });
+    sign(join(out, 'macos', 'Obeya.app.tar.gz'));
+  } else if (os === 'windows' && wanted.includes('nsis')) sign(one('nsis', '-setup.exe'));
+  else if (wanted.includes('appimage')) sign(one('appimage', '.AppImage'));
+}
 console.log(`\n${out}\nbuilt in ${((Date.now() - started) / 1000).toFixed(0)} s`);
