@@ -9,7 +9,7 @@
 //   - the app starts its server and its window shows the canvas, which knows it runs in the app;
 //   - the microphone: the page gets a stream without being asked, and MediaRecorder records it, as
 //     voice.tsx does (--fake-mic gives WebView2 Chromium's fake device, for a machine without one;
-//     on Linux a PulseAudio source is needed, a null sink's monitor will do);
+//     on Linux a PulseAudio source is needed, not a sink's monitor: module-sine-source will do);
 //   - a demo video (H.264 and AAC in MP4, as the demo skill renders it) plays;
 //   - the settings offer "Im Browser öffnen" (--screenshot takes the window with them open);
 //   - starting the app a second time brings the first to the front and ends;

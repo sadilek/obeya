@@ -12,7 +12,7 @@ import { errorText, t } from './strings';
 declare global {
   interface Window {
     /** Set by the app (app/src/main.rs) in its window; absent in a browser. */
-    obeyaApp?: { version: string };
+    obeyaApp?: { version: string; platform: string };
   }
 }
 

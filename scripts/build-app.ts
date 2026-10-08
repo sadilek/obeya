@@ -63,9 +63,11 @@ cpSync(join(built, 'resources'), join(APP, 'staged', 'resources'), { recursive: 
 if (os === 'linux') cpSync(join(built, 'obeya'), join(APP, 'staged', 'obeya-server'));
 
 const cross = target !== here;
+const out = join(APP, 'target', ...(cross ? [triple] : []), args.includes('--debug') ? 'debug' : 'release', 'bundle');
+// a bundle of an earlier build is no part of this one (the AppImage's AppDir would be reused)
+rmSync(out, { recursive: true, force: true });
 const tauri = [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : [])];
 run(tauri, APP, { CI: 'true' });
 
-const out = join(APP, 'target', ...(cross ? [triple] : []), args.includes('--debug') ? 'debug' : 'release', 'bundle');
 if (!existsSync(out)) fail(`${out} was not written`);
 console.log(`\n${out}\nbuilt in ${((Date.now() - started) / 1000).toFixed(0)} s`);

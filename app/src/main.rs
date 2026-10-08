@@ -324,11 +324,15 @@ fn window(app: &AppHandle, obeya: Arc<Obeya>) -> tauri::Result<WebviewWindow> {
   let downloads = app.path().download_dir().ok();
   let saved: Arc<Mutex<HashMap<String, PathBuf>>> = Default::default();
   let check = std::env::var("OBEYA_APP_CHECK").ok();
-  let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+  let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
     .title("Obeya")
     .inner_size(1440.0, 900.0)
     .min_inner_size(720.0, 480.0)
-    .initialization_script(format!("window.obeyaApp = {{ version: {:?} }};", app.package_info().version.to_string()))
+    .initialization_script(format!(
+      "window.obeyaApp = {{ version: {:?}, platform: {:?} }};",
+      app.package_info().version.to_string(),
+      std::env::consts::OS
+    ))
     .on_permission_request(|_, kind| match kind {
       PermissionKind::Microphone => PermissionResponse::Allow,
       _ => PermissionResponse::Default,
@@ -372,8 +376,21 @@ fn window(app: &AppHandle, obeya: Arc<Obeya>) -> tauri::Result<WebviewWindow> {
           let _ = webview.eval(format!("import({check:?})"));
         }
       }
-    })
-    .build()?;
+    });
+  // on a Mac the window has no title bar of its own: the canvas's bar is it, with the traffic lights in it
+  #[cfg(target_os = "macos")]
+  let builder = builder
+    .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .hidden_title(true)
+    .traffic_light_position(tauri::LogicalPosition::new(18.0, 23.0));
+  // WebView2 drops WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS when the app sets arguments of its own, as wry
+  // does: they go together (scripts/check-app.ts gives it a fake microphone that way)
+  #[cfg(windows)]
+  let builder = match std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+    Ok(extra) => builder.additional_browser_args(&format!("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection {extra}")),
+    Err(_) => builder,
+  };
+  let window = builder.build()?;
   #[cfg(target_os = "linux")]
   window.with_webview(|webview| {
     use webkit2gtk::{SettingsExt, WebViewExt};
