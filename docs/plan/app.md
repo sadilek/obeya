@@ -107,16 +107,16 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   that goes with the first release.
 - *Builds in CI* (W3, 2026-10-08, design: Builds): `.github/workflows/build.yml` on GitHub's
   runners for the five targets, then the tests and the type check on Linux; on a tag a draft
-  release. Checked on a temporary branch (`w3-ci-check`, runs 37820744710, 37822095146,
-  37823578049) with a throwaway updater key: all five built and their servers passed the smoke
-  test, the whole run in about ten minutes, and the draft got 16 files (DMG and update archive for both Macs,
-  the NSIS installer, AppImage and .deb for both Linux, a `.sig` for each update, `SHA256SUMS`,
-  `latest.json` naming the five platforms); the arm64 DMG matched its checksum and held the app
-  signed ad hoc with its server. Not tried: a real tag (the release job's tag check and
-  `--verify-tag`), and the update archives against the updater, which W5 brings. `bun test` on
-  Linux has one test failing that the Mac passes: `watchPlanDocs` sees no change in a plan
-  directory that was removed and made again (Bun 1.3.12 on Linux gives a new watch on such a
-  path no events), so the test job stays red until that is fixed.
+  release. Checked on a temporary branch (`w3-ci-check`, runs 37820744710 to 37825742209) with
+  a throwaway updater key: all five built and their servers passed the smoke test, the whole run
+  in about ten minutes, and the draft got 16 files under the fixed names (DMG and update archive
+  for both Macs, the NSIS installer, AppImage and .deb for both Linux, a `.sig` for each update,
+  `SHA256SUMS`, `latest.json` naming the five platforms); the arm64 DMG of an earlier run matched
+  its checksum and held the app signed ad hoc with its server. The last run passed in full, the
+  tests on Linux too. The first runs found that the tests need uv and ffmpeg, and that
+  `watchPlanDocs` heard nothing from a plan directory that came back on Linux (fixed since by
+  polling it). Not tried: a real tag (the release job's tag check, `--verify-tag`, `--latest`),
+  and the update archives against the updater, which W5 brings.
 
 ## Design
 
