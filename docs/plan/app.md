@@ -83,6 +83,18 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   check, the tone recorded as WAV; the .deb there, both on 22.04 and the x64 runners got silent
   samples. Voice in the Linux window is to be tried on a desktop with a real microphone. The demo
   video played everywhere but on the 24.04 x64 runner, where it stalled at the start.
+- *Push-to-talk anywhere* (W8, 2026-10-08; design: Push-to-talk anywhere): the shell hears the
+  key (`app/src/keys.rs`), records with `cpal` and posts a WAV to `/voice` with the focus the
+  pages report; the floating panel is the server's `/panel`; the key is chosen in the settings;
+  `bun run app` starts the shell from the checkout. `bun scripts/check-ptt.ts` passed on macOS
+  (the shell's check mode: key from stdin, a spoken WAV, the real Koordinator made the card) and
+  under X11 in Docker on arm64 (Ubuntu 22.04, Xvfb: the real XInput2 hook pressed by xdotool, the
+  PulseAudio sine source recorded and posted; no Whisper there, so the server answered 500). The
+  Windows shell type-checks (`cargo check --target x86_64-pc-windows-msvc`) but has not run; the
+  Wayland portal and the macOS event tap have not run either (the tap needs the owner to allow
+  Input Monitoring; nothing here may press keys in other apps), nor has a combination through the
+  global-shortcut plugin. The panel's look was checked in a browser; as a window over another app
+  it was not seen (no screen recording here). Linux builds need ALSA's headers (`libasound2-dev`).
 
 ## Design
 
@@ -266,7 +278,7 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
   home opening the first; README with the download first and "From source" after it; the site's
   "Getting started" with the release; `docs/design.md` gets the app (its Decision on Tauri, which
   says "only if global push-to-talk needs it", changes with it).
-- [ ] **W8:** Global push-to-talk. A key held anywhere on the machine records a command while
+- [x] **W8:** Global push-to-talk. A key held anywhere on the machine records a command while
   another app is in front: right Option on a Mac, right Ctrl elsewhere by default, any key or
   combination in the settings, a tap passing through. The shell hears it (macOS event tap with
   the Input Monitoring permission, which the setup assistant asks for; Windows keyboard hook; X11
