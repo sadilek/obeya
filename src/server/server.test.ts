@@ -180,6 +180,8 @@ describe('voice', () => {
     expect(body.confirm).toBe('Neue Karte „Export“, der Agent fängt an.');
     expect(body.token).toBeTruthy();
     expect((body as { undoMs?: number }).undoMs).toBe(DELAY_MS);
+    // what was heard, for the app's panel
+    expect((body as { text?: string }).text).toBe('Neue Karte Export');
     expect(body.audio).toStartWith(api('/voice/speech/'));
     const speech = await fetch(new URL(body.audio!, server.url));
     expect(speech.headers.get('content-type')).toBe('audio/wav');
@@ -603,4 +605,47 @@ describe('landing approved work', () => {
     expect(git(origin, 'log', '--format=%s', 'main').split('\n').sort()).toEqual(['A', 'B', 'init']);
     pushed.shutdown();
   }, 15_000);
+});
+
+describe("the app's push-to-talk key in another app", () => {
+  test('a command goes where the page the owner looked at last has its focus', async () => {
+    const c = card();
+    const focus = async () => (await (await fetch(new URL('/api/focus', server.url))).json()) as Record<string, string>;
+    // no page: the first canvas, nothing in focus
+    expect(await focus()).toEqual({ canvas: 'main' });
+    const open = async () => {
+      const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
+      await until(() => ws.readyState === WebSocket.OPEN);
+      return ws;
+    };
+    const [a, b] = [await open(), await open()];
+    a.send(JSON.stringify({ type: 'focus', card: c.id, target: 'Koordinator · Aufgabe: A', title: 'A' } satisfies ClientMessage));
+    await until(async () => (await focus()).card === c.id);
+    expect(await focus()).toEqual({ canvas: 'main', card: c.id, target: 'Koordinator · Aufgabe: A', title: 'A' });
+    await sleep(5);
+    b.send(JSON.stringify({ type: 'focus', target: 'Koordinator' } satisfies ClientMessage));
+    await until(async () => !(await focus()).card);
+    expect(await focus()).toEqual({ canvas: 'main', target: 'Koordinator' });
+    // the page that reported last closed: the other one's focus stands
+    b.close();
+    await until(async () => (await focus()).card === c.id);
+    a.close();
+    await until(async () => !(await focus()).card);
+  });
+
+  test('the shell reports what it hears and gets the key; without a configuration the key is the default', async () => {
+    const view = async () => (await (await fetch(new URL('/api/push-to-talk', server.url))).json()) as { key: string; shell: unknown };
+    expect(await view()).toMatchObject({ shell: null });
+    const res = await post('/api/push-to-talk/shell', JSON.stringify({ state: 'permission', platform: 'macos' }));
+    expect(await res.json()).toMatchObject({ key: process.platform === 'darwin' ? 'AltRight' : 'ControlRight', shell: { state: 'permission', platform: 'macos' } });
+    expect(await view()).toMatchObject({ shell: { state: 'permission' } });
+    expect(await codeOf(post('/api/push-to-talk/shell', JSON.stringify({ state: 'on' })))).toBe('invalid');
+    expect((await fetch(new URL('/api/push-to-talk', server.url), { method: 'PUT', body: JSON.stringify({ key: 'F13' }) })).status).toBe(404);
+  });
+
+  test('the panel is served beside the canvas', async () => {
+    const res = await fetch(new URL('/panel', server.url));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('lines');
+  });
 });

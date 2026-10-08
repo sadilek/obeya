@@ -5,7 +5,7 @@
   "version": "../package.json",
   "identifier": "si.obeya",
   "build": { "frontendDist": "ui" },
-  "app": { "windows": [], "security": { "csp": null } },
+  "app": { "windows": [], "security": { "csp": null }, "macOSPrivateApi": true },
   "bundle": {
     "active": true,
     "targets": ["app", "dmg", "nsis", "appimage", "deb"],

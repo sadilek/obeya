@@ -6,7 +6,8 @@
 //
 // The target is this machine's by default (see scripts/build.ts); another needs Rust's target for it
 // and Tauri's tools for cross-building. Needs Rust (rustup) and, on Linux, WebKitGTK's development
-// files (libwebkit2gtk-4.1-dev and the rest Tauri lists). The bundles end up in
+// files (libwebkit2gtk-4.1-dev and the rest Tauri lists) and ALSA's (libasound2-dev, for the
+// push-to-talk key's microphone). The bundles end up in
 // app/target/[<triple>/]release/bundle/.
 
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';

@@ -521,6 +521,43 @@ the owner's language (`src/core/locale.ts`).
   <program>` checks an installed app in its webview: the canvas in the window, a microphone
   recording with `MediaRecorder`, an H.264/AAC video playing, the browser button, a second start,
   the stop over HTTP, and the app beside an Obeya started from a terminal.
+- **Push-to-talk anywhere** — in the app, a key held while another app is in front records a
+  command (`app/src/keys.rs`, `mic.rs`, `ptt.rs`). Space cannot be that key (it would be taken from
+  every other app), so by default it is the right Option key on a Mac and the right Ctrl key
+  elsewhere (right Alt is AltGr on many European layouts); the settings sheet takes another by
+  pressing it ("Sprachtaste überall"): a key nobody types with held alone (a modifier, an F key,
+  Pause …), or modifiers and a key such as Ctrl+Shift+Space (`src/core/push-key.ts`, saved as
+  `pushKey` in `settings.json`). A key alone is only listened to, so it still reaches the app in
+  front: a tap of it does nothing, only holding it past 0.3 s records, and another key going down
+  while it is held makes it a shortcut, not a recording (modifiers with it do not count). On a Mac
+  a listen-only event tap hears it, which needs "Input Monitoring": the system asks once, and until
+  it is allowed the settings and the setup assistant (a line under voice while the app runs) say so
+  and open the system settings' page; on Windows a low-level keyboard hook, on X11 XInput2's raw
+  key events. A combination goes through Tauri's global-shortcut plugin, which takes it for itself
+  (no permission on a Mac). Wayland gives an app no keys of others: there the desktop's Global
+  Shortcuts portal binds the key as a shortcut the owner confirms in the desktop's dialog (the
+  settings then show what it is bound to), and without the portal there is only the window's
+  Space. The shell records itself (a webview in the background cannot be relied on to): the
+  default microphone opens when the key goes down, so the first words are not lost, and the
+  recording goes as a WAV to the canvas's `/voice` with where the owner was last: every page tells
+  the server what it has in view (`focus` over its WebSocket, on every change and when it gets the
+  focus back), and `GET /api/focus` gives the newest of the open pages, else the first canvas with
+  nothing in focus. A floating panel at the bottom of the screen the pointer is on (`/panel`, served
+  by the server, so its strings are the UI's) never takes the keyboard: it shows that Obeya listens
+  and to whom (with the level, and „Das Mikrofon liefert keinen Ton.“), then the command being read,
+  then what Whisper heard (`text` in `/voice`'s answer) with the confirmation and „Rückgängig“ for
+  the undo window, and plays the spoken confirmation; it fits its window to its lines through the
+  app's one command (`panel_fit`, allowed to that page in `app/capabilities/panel.json`) and hides
+  it when none are left. Every two seconds the shell tells the server what it hears
+  (`POST /api/push-to-talk/shell`: on, permission, bind, none, unsupported, error) and gets the key
+  that applies, so a key chosen in the settings applies at once. `bun run app` (`scripts/app.ts`)
+  builds the shell and starts it from the checkout: it opens a window on the Obeya of the home, or
+  starts `bun src/server/main.ts` (which updates itself as `bun start` does), so the checkout has
+  the key too. `bun scripts/check-ptt.ts` checks it with the shell's check mode (the key from
+  stdin, a WAV as the microphone; or, under X11, the real keyboard pressed by xdotool): the
+  report, a tap, a shortcut, and a command that reaches Obeya and comes back to the panel. A
+  restart is not held off while the shell records or reads a command (the page holds it for its
+  own); a command cut off by one shows „Das hat nicht geklappt“ in the panel.
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
@@ -960,8 +997,9 @@ the owner's language (`src/core/locale.ts`).
     skills of the user (`~/.claude/skills`) are out of scope. The owner can ask the Koordinator
     for it at once („Mach eine Arbeitsrückschau für den Shop“, the action `work_retro`): it reads the
     notes since the last one, the count starts again, and the owner hears what came of it.
-- **Voice in** — push-to-talk (hold Space or the mic button); the browser records and posts the
-  audio with the focus (open card, project in view). A Whisper sidecar keeps the model
+- **Voice in** — push-to-talk (hold Space or the mic button; in the app also a key held in another
+  app, see Push-to-talk anywhere); the browser records and posts the audio with the focus (open
+  card, project in view). A Whisper sidecar keeps the model
   loaded and transcribes with the canvas's titles as vocabulary, in the language it hears spoken in
   the first 30 seconds of the ones Obeya speaks (German or English), not the interface's: the owner
   may run the interface in English and speak German, and Whisper told to expect English then

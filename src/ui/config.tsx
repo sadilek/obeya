@@ -5,9 +5,10 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type VoiceKind, type VoiceSetupView } from '../core/types';
 import { LANGUAGES } from '../core/locale';
+import { pushKeyFromEvent, type PushKeyView } from '../core/push-key';
 import { api, ApiError, reload } from './api';
 import { demoState, megabytes, PLATFORMS, SetupList, voiceState } from './setup';
-import { errorText, t } from './strings';
+import { errorText, pushKeyLabel, t } from './strings';
 
 declare global {
   interface Window {
@@ -145,6 +146,7 @@ export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void 
       <LanguageBlock on={on} />
       <AgentsBlock on={on} />
       <VoiceBlock on={on} />
+      <PushKeyBlock on={on} />
       <DemoBlock on={on} />
 
       <h4 className="p-h">{t.config.server}</h4>
@@ -249,6 +251,113 @@ function LanguageBlock({ on }: { on: boolean }) {
     </>
   );
 }
+
+/**
+ * The push-to-talk key in another app, heard by the app's shell: what it hears, and the key, chosen
+ * by pressing it. A modifier alone counts once it is let go without another key; with another key it
+ * starts a combination.
+ */
+function PushKeyBlock({ on }: { on: boolean }) {
+  const [view, setView] = useState<PushKeyView | null>(null);
+  const [status, setStatus] = useState('');
+  const [listening, setListening] = useState(false);
+  useEffect(() => {
+    if (!on) return;
+    const load = () => api.pushKey().then(setView, console.error);
+    void load();
+    // the shell reports every two seconds: what it hears shows here as it changes (an allowed permission, say)
+    const timer = setInterval(load, 3000);
+    return () => clearInterval(timer);
+  }, [on]);
+  const save = async (key: string | null) => {
+    setStatus('');
+    try {
+      setView(await api.savePushKey(key));
+    } catch (e) {
+      setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+    }
+  };
+  useEffect(() => {
+    if (!listening) return;
+    let modifier: string | null = null;
+    const down = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === 'Escape') return setListening(false);
+      if (/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(e.code)) {
+        modifier = e.code;
+        return;
+      }
+      modifier = null;
+      const key = pushKeyFromEvent(e);
+      setListening(false);
+      if (key) void save(key);
+      else setStatus(t.config.pushKey.notAKey);
+    };
+    const up = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code !== modifier) return;
+      setListening(false);
+      void save(modifier);
+    };
+    addEventListener('keydown', down, true);
+    addEventListener('keyup', up, true);
+    return () => {
+      removeEventListener('keydown', down, true);
+      removeEventListener('keyup', up, true);
+    };
+  }, [listening]);
+  if (!view) return null;
+  const p = t.config.pushKey;
+  const shell = view.shell;
+  const state = !shell
+    ? p.appOnly
+    : shell.state === 'on'
+      ? shell.detail
+        ? p.bound(shell.detail)
+        : p.on(pushKeyLabel(view.key))
+      : shell.state === 'permission' && shell.detail === 'restart'
+        ? p.states.restart
+        : shell.state === 'error'
+          ? `${p.states.error}: ${shell.detail ?? ''}`
+          : p.states[shell.state];
+  return (
+    <>
+      <h4 className="p-h">{p.title}</h4>
+      <section className={`c-canvas c-demo c-push-key${listening ? ' listening' : ''}`}>
+        <p className="hint">{p.hint}</p>
+        <div className="c-row">
+          <span className="hint">{p.key}</span>
+          <span>
+            <kbd>{listening ? p.press : pushKeyLabel(view.key)}</kbd>{' '}
+            <button className="btn small" disabled={listening} onClick={() => (setStatus(''), setListening(true))}>
+              {p.change}
+            </button>{' '}
+            {view.chosen && (
+              <button className="btn small" onClick={() => save(null)}>
+                {p.reset(pushKeyLabel(view.default))}
+              </button>
+            )}
+          </span>
+        </div>
+        {listening && <p className="hint">{p.pressHint}</p>}
+        <p className={`hint${shell && shell.state !== 'on' ? ' warn' : ''}`}>
+          {state}{' '}
+          {shell?.state === 'permission' && shell.detail !== 'restart' && (
+            <button className="btn small" onClick={() => window.open(INPUT_MONITORING, '_blank')}>
+              {p.openSettings}
+            </button>
+          )}
+        </p>
+        {status && <p className="hint c-status">{status}</p>}
+      </section>
+    </>
+  );
+}
+
+/** The macOS settings page where the app gets "Input Monitoring" (as src/server/push-key.ts). */
+const INPUT_MONITORING = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent';
 
 /** The model and effort of each group of agents: saved on each change, taken by the next agent that starts. */
 function AgentsBlock({ on }: { on: boolean }) {

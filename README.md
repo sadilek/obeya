@@ -77,6 +77,11 @@ Off the Mac the confirmations are spoken by Piper, which the settings install in
 `plugin/`, which Obeya gives its workers; what a machine needs for them (Node, a browser, ffmpeg,
 uv, a voice) is in [`docs/demo-setup.md`](docs/demo-setup.md), checked in the app's settings.
 
+`bun run app` starts Obeya in its app window from the checkout (it needs Rust; the first build
+takes a few minutes). The app adds push-to-talk from anywhere: hold the right Option key on a Mac,
+the right Ctrl key elsewhere, while another app is in front (another key in the settings). On a
+Mac this needs the "Input Monitoring" permission, which macOS asks for.
+
 ## Contributing
 
 How Obeya itself is built, with Obeya, is in [`CONTRIBUTING.md`](CONTRIBUTING.md).

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { languageOf } from '../core/locale';
 import { AGENT_DEFAULTS, type AgentSetting } from '../core/types';
 import { withAgentSetting } from './runtime';
-import { agentSetting, agentsView, saveAgents, saveLanguage, SETTINGS_FILE, systemLanguage } from './settings';
+import { agentSetting, agentsView, pushKeyChoice, saveAgents, saveLanguage, savePushKey, SETTINGS_FILE, systemLanguage } from './settings';
 import { FakeRuntime } from './testing';
 
 test('a locale names a language Obeya speaks, or none', () => {
@@ -73,4 +73,21 @@ test("an agent of a group starts with the group's model and effort, asked at eve
   runtime.start({ ...spec, effort: 'low' });
   expect(fake.last.spec.effort).toBe('low');
   expect(fake.last.spec.model).toBeUndefined();
+});
+
+test('the push-to-talk key in another app: the default until chosen, beside the other settings, which stay', () => {
+  const home = mkdtempSync(join(tmpdir(), 'obeya-settings-'));
+  expect(pushKeyChoice(home, 'darwin')).toEqual({ key: 'AltRight', chosen: null, default: 'AltRight' });
+  saveLanguage(home, { language: 'en' });
+  expect(savePushKey(home, { key: 'Shift+Control+Space' }, 'darwin')).toEqual({ key: 'Control+Shift+Space', chosen: 'Control+Shift+Space', default: 'AltRight' });
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en', pushKey: 'Control+Shift+Space' });
+  for (const bad of [{ key: 'KeyA' }, { key: 'Space' }, {}, { key: 3 }]) expect(() => savePushKey(home, bad, 'darwin')).toThrow();
+  // the default chosen is no choice: a changed default reaches it
+  savePushKey(home, { key: 'AltRight' }, 'darwin');
+  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en' });
+  savePushKey(home, { key: 'F13' }, 'darwin');
+  expect(savePushKey(home, { key: null }, 'darwin').chosen).toBeNull();
+  // a key the file holds that cannot be one is left out
+  writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ pushKey: 'KeyA' }));
+  expect(pushKeyChoice(home, 'linux').key).toBe('ControlRight');
 });

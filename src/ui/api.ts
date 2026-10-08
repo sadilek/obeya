@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { PushKeyView } from '../core/push-key';
 import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, FirstCanvas, MachineItem, MachineSectionId, MachineView, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
@@ -71,6 +72,9 @@ export const api = {
   saveConfig: (canvases: CanvasConfig[]) => call<{ restarting: boolean }>('PUT', '/api/config', canvases),
   /** The language Obeya speaks to the owner: chosen, or the system's. */
   language: () => call<LanguageView>('GET', '/api/language'),
+  /** The push-to-talk key in another app, and the app's shell that hears it. */
+  pushKey: () => call<PushKeyView>('GET', '/api/push-to-talk'),
+  savePushKey: (key: string | null) => call<PushKeyView>('PUT', '/api/push-to-talk', { key }),
   /** Saves the owner's choice; `null` follows the system again. */
   saveLanguage: (language: Language | null) => call<LanguageView>('PUT', '/api/language', { language }),
   /** The model and effort of each group of agents. */
@@ -201,6 +205,18 @@ export function holdRestart(by: string, what: OwnerHold | null) {
   sendHolds();
 }
 
+// What the owner has in view, for a command from the app's push-to-talk key in another app: the
+// server hears every change, again after a reconnect, and when the page gets the focus back, so
+// the page the owner looked at last wins.
+let focusMessage: Extract<ClientMessage, { type: 'focus' }> | null = null;
+const sendFocus = () => {
+  if (focusMessage && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(focusMessage));
+};
+export function reportFocus(where: Where, target: string, title?: string) {
+  focusMessage = { type: 'focus', ...(where ?? {}), target, ...(title ? { title } : {}) };
+  sendFocus();
+}
+
 // Whoever has something to keep across the reload a restart brings writes it down here first.
 const reloadListeners = new Set<() => void>();
 export function beforeReload(fn: () => void): () => void {
@@ -235,6 +251,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
         setOnline(true);
         delay = 500;
         sendHolds();
+        sendFocus();
       };
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data) as ServerMessage;
@@ -261,6 +278,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
     // back from GitHub, say: the server looks at the pull requests now instead of at its next round
     const back = () => {
       if (document.visibilityState === 'visible' && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'back' } satisfies ClientMessage));
+      sendFocus();
     };
     document.addEventListener('visibilitychange', back);
     window.addEventListener('focus', back);

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
-import { api, ApiError, beforeReload, onSpeak, setCanvas, useCanvas } from './api';
+import { api, ApiError, beforeReload, onSpeak, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
@@ -646,6 +646,9 @@ function Canvas({
       : focus?.type === 'project'
         ? t.voice.project(plain(focusItem?.title ?? ''))
         : t.voice.koordinator;
+  // the app's push-to-talk key in another app speaks to what is in view here
+  const focusTitle = focusItem && plain(focusItem.title);
+  useEffect(() => reportFocus(where(), target, focusTitle), [focus?.type, focus?.id, target, focusTitle]);
 
   // ---------------------------------------------------------------- pointer: pan, drag, click
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -895,6 +898,8 @@ function Canvas({
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     // text fields in a sheet handle their own keys (Esc cancels an edit there)
     if (typing && (e.target as Element).closest('.sheet')) return;
+    // the settings take the next key as the push-to-talk key in another app
+    if (document.querySelector('.c-push-key.listening')) return;
     // the legend over the page takes the keys until it closes
     if (helpOn) {
       if (e.key === 'Escape' || e.key === '?') setHelpOn(false);

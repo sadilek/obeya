@@ -9,7 +9,7 @@ import type { Language, MachineItem, MachineSection, MachineView, SetupItem, Voi
 import { LANGUAGES } from '../core/locale';
 import { api, ApiError, reload } from './api';
 import { Sign } from './logo';
-import { errorText, t } from './strings';
+import { errorText, pushKeyLabel, t } from './strings';
 
 export const megabytes = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1).replace('.', ',')} GB` : `${mb} MB`);
 export const PLATFORMS: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
@@ -83,6 +83,8 @@ export function SetupList<I extends SetupItem | VoiceSetupItem | MachineItem>({
 export function voiceState(i: VoiceSetupItem | MachineItem) {
   const v = t.config.voice;
   const s = t.config.setup;
+  // the app's key in another app: the key, or what is in the way (src/server/push-key.ts)
+  if (i.id === 'globalKey') return i.state === 'ok' ? t.config.pushKey.on(pushKeyLabel(i.found ?? '')) : (t.config.pushKey.states[i.found ?? ''] ?? t.config.pushKey.states.error!);
   if (i.id === 'speech' && i.state === 'missing') return v.speechMissing(megabytes(i.mb ?? 0));
   if (i.state === 'later') return v.later(megabytes(i.mb ?? 0));
   if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
@@ -185,7 +187,7 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
     );
   };
   const name = (section: MachineSection) => (i: MachineItem) =>
-    section.id === 'voice' ? t.config.voice.names[i.id as VoiceSetupItem['id']] : section.id === 'demos' ? t.config.setup.names[i.id as SetupItem['id']] : s.names[i.id as keyof typeof s.names];
+    section.id === 'voice' ? t.config.voice.names[i.id as VoiceSetupItem['id'] | 'globalKey'] : section.id === 'demos' ? t.config.setup.names[i.id as SetupItem['id']] : s.names[i.id as keyof typeof s.names];
   const state = (section: MachineSection) => (i: MachineItem) => {
     if (section.id === 'voice') return voiceState(i);
     if (section.id === 'demos') return demoState(i);

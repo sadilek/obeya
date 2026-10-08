@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "panel",
+  "description": "The push-to-talk panel, served by Obeya on 127.0.0.1, may have its window fitted to its lines (src/ptt.rs) and nothing else.",
+  "windows": ["panel"],
+  "remote": { "urls": ["http://127.0.0.1:*"] },
+  "permissions": ["allow-panel-fit"]
+}

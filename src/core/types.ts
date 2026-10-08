@@ -869,7 +869,8 @@ export type PrId = 'gh' | 'ghLogin';
 
 /** A piece of the list, as a setup check gives it, and what Obeya does about it at a click. */
 export type MachineItem = Omit<SetupItem, 'id'> & {
-  id: NeededId | PrId | VoiceSetupId | SetupId;
+  /** `globalKey`: the app's push-to-talk key in another app, while the app runs (src/server/push-key.ts). */
+  id: NeededId | PrId | VoiceSetupId | SetupId | 'globalKey';
   /**
    * `install`: Obeya installs it (no admin rights, or Homebrew or winget). `login`: Obeya opens a
    * terminal that logs in. `identity`: the owner gives git's name and e-mail, which Obeya sets.
@@ -943,7 +944,13 @@ export type ClientMessage =
   /** What the owner does in this page that a restart waits for (sent on every change). */
   | { type: 'hold'; hold: OwnerHold[] }
   /** The owner came back to this page (from GitHub, say): what Obeya polls is looked at now. */
-  | { type: 'back' };
+  | { type: 'back' }
+  /**
+   * What the owner has in view (sent on every change and when the page gets the focus back): a
+   * command from the app's push-to-talk key in another app goes there. `target` and `title` as the
+   * microphone shows them.
+   */
+  | { type: 'focus'; card?: string; project?: string; target: string; title?: string };
 
 /** Server → UI over the WebSocket. */
 export type ServerMessage =

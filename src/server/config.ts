@@ -27,7 +27,7 @@ import { ConfigError, resolveCanvas } from './canvas';
 import type { Store } from './db';
 import { repoInfo } from './repo';
 import { VERSION } from './resources';
-import { agentsView, languageView, saveAgents, saveLanguage } from './settings';
+import { agentsView, languageView, pushKeyChoice, saveAgents, saveLanguage, savePushKey } from './settings';
 import { shareArgv, shareProblem } from './share';
 
 export const CONFIG_FILE = 'canvases.json';
@@ -259,6 +259,15 @@ export class Config {
 
   saveAgents(input: unknown): AgentsView {
     return saveAgents(this.o.server.home, input);
+  }
+
+  /** The push-to-talk key anywhere on the machine, in `settings.json` too; the app's shell reads it every few seconds. */
+  pushKey() {
+    return pushKeyChoice(this.o.server.home);
+  }
+
+  savePushKey(input: unknown) {
+    return savePushKey(this.o.server.home, input);
   }
 
   saveDemo(input: unknown): DemoSettingsView {

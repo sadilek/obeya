@@ -15,10 +15,18 @@
 // - The page gets the microphone without asking (it records only while Space or the mic button is
 //   held); the system asks once for the app. WebKitGTK has media streams off until turned on here.
 // - Downloads go into the Downloads folder and are shown there.
+// - A key held anywhere on the machine records a command while another app is in front (ptt.rs).
 // - OBEYA_APP_CHECK=<url of a module>: the page imports it once the canvas has loaded
 //   (scripts/check-app.ts checks the microphone and video in the webview that way).
+// - OBEYA_CHECKOUT=<checkout>: started from a checkout (`bun run app`, scripts/app.ts), the shell
+//   starts `bun <checkout>/src/server/main.ts` (OBEYA_BUN names the bun) instead of the sidecar,
+//   which then updates itself from its checkout as `bun start` does.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod keys;
+mod mic;
+mod ptt;
 
 use std::{
   collections::HashMap,
@@ -49,9 +57,9 @@ const START_PATIENCE: Duration = Duration::from_secs(120);
 
 /// What the shell knows of the Obeya its window shows.
 #[derive(Default)]
-struct Obeya {
+pub(crate) struct Obeya {
   /// Where it answers; 0 until known.
-  port: AtomicU16,
+  pub(crate) port: AtomicU16,
   /// Started by the app (now or by an earlier run of it): quitting stops it.
   owned: AtomicBool,
   /// The owner quit; the server is told once it answers.
@@ -171,7 +179,14 @@ fn start_server(app: &AppHandle, home: &Path, port: u16, log: &(fs::File, PathBu
     Ok(dir) if !beside.exists() => dir.join(SERVER),
     _ => beside,
   };
-  let mut cmd = Command::new(server);
+  let mut cmd = match std::env::var_os("OBEYA_CHECKOUT") {
+    Some(checkout) => {
+      let mut cmd = Command::new(std::env::var_os("OBEYA_BUN").unwrap_or_else(|| "bun".into()));
+      cmd.arg(Path::new(&checkout).join("src").join("server").join("main.ts"));
+      cmd
+    }
+    None => Command::new(server),
+  };
   cmd
     .args(["--port", &port.to_string()])
     .env("OBEYA_APP", "1")
@@ -179,7 +194,7 @@ fn start_server(app: &AppHandle, home: &Path, port: u16, log: &(fs::File, PathBu
     .stdin(Stdio::null())
     .stdout(log.0.try_clone()?)
     .stderr(log.0.try_clone()?);
-  if let Ok(dir) = app.path().resource_dir() {
+  if let (Ok(dir), None) = (app.path().resource_dir(), std::env::var_os("OBEYA_CHECKOUT")) {
     cmd.env("OBEYA_RESOURCES", dir.join("resources"));
   }
   #[cfg(windows)]
@@ -429,6 +444,8 @@ fn main() {
     .plugin(tauri_plugin_single_instance::init(|app, _, _| show(app)))
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+    .invoke_handler(tauri::generate_handler![ptt::panel_fit])
     .setup(move |app| {
       let handle = app.handle().clone();
       if cfg!(target_os = "macos") {
@@ -445,6 +462,7 @@ fn main() {
         }
       });
       window(&handle, for_setup.clone())?;
+      ptt::start(&handle, for_setup.clone());
       let obeya = for_setup.clone();
       thread::spawn(move || serve(handle, obeya));
       Ok(())

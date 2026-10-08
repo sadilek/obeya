@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Obeya listens while you hold Space or the microphone button, and turns what you say into a command.</string>
+  <string>Obeya listens while you hold Space, the microphone button or its push-to-talk key, and turns what you say into a command.</string>
 </dict>
 </plist>

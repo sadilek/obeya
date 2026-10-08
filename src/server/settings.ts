@@ -1,5 +1,6 @@
 // Obeya's own settings, in `settings.json` under its home beside `canvases.json` and `demo.json`:
-// the language Obeya speaks to the owner, and the model and effort of each group of agents. The
+// the language Obeya speaks to the owner, the model and effort of each group of agents, and the
+// key that records a command from anywhere on the machine (heard by the app's shell). The
 // owner chooses them in the settings sheet; until then the system's language applies, and the
 // agents run as `AGENT_DEFAULTS` says. Saving restarts nothing: the page loads again in the new
 // language, and the server reads the file whenever it needs the language or starts an agent.
@@ -9,6 +10,7 @@ import { join } from 'node:path';
 import { OWNER_SETTINGS_FILE, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { type Language, LANGUAGES } from '../core/locale';
 import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentRole, type AgentSetting, type AgentsView, type LanguageView } from '../core/types';
+import { defaultPushKey, parsePushKey } from '../core/push-key';
 import { BadRequest } from './board';
 
 export { systemLanguage };
@@ -19,13 +21,16 @@ interface Settings {
   language?: Language;
   /** Only what differs from `AGENT_DEFAULTS`, so a changed default reaches what the owner left. */
   agents?: Partial<Record<AgentRole, Partial<AgentSetting>>>;
+  /** The push-to-talk key anywhere on the machine, when not the default. */
+  pushKey?: string;
 }
 
 function read(home: string): Settings {
   try {
     const o = JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8')) as Record<string, unknown>;
     const language = LANGUAGES.find((l) => l === o.language);
-    return { ...o, ...(language ? { language } : { language: undefined }), agents: agentsOf(o.agents) };
+    const pushKey = parsePushKey(o.pushKey) ?? undefined;
+    return { ...o, ...(language ? { language } : { language: undefined }), agents: agentsOf(o.agents), pushKey };
   } catch {
     return {};
   }
@@ -90,4 +95,21 @@ export function saveAgents(home: string, input: unknown): AgentsView {
   write(home, { ...settings, agents: agentsOf(agents) });
   console.log(`Obeya: models and effort of the agents saved to ${join(home, SETTINGS_FILE)}`);
   return agentsView(home);
+}
+
+/** The push-to-talk key anywhere on the machine: the owner's, else the platform's default. */
+export function pushKeyChoice(home: string, platform: string = process.platform) {
+  const chosen = read(home).pushKey ?? null;
+  return { key: chosen ?? defaultPushKey(platform), chosen, default: defaultPushKey(platform) };
+}
+
+/** Saves the owner's key (`{ key }`); `null` takes the default again. Other settings in the file stay. */
+export function savePushKey(home: string, input: unknown, platform: string = process.platform) {
+  const given = (input as { key?: unknown } | null)?.key;
+  const key = given === null ? null : parsePushKey(given);
+  if (given !== null && !key) throw new BadRequest('invalid', 'key must be a key held alone (a modifier, an F key …) or modifiers and a key, such as Control+Shift+Space');
+  const { pushKey: _, ...rest } = existsSync(join(home, SETTINGS_FILE)) ? read(home) : {};
+  write(home, key && key !== defaultPushKey(platform) ? { ...rest, pushKey: key } : rest);
+  console.log(`Obeya: push-to-talk key ${key ?? 'by default'} saved to ${join(home, SETTINGS_FILE)}`);
+  return pushKeyChoice(home, platform);
 }

@@ -24,7 +24,8 @@ import type { CanvasRuntime } from './canvas';
 import { type Config, expand } from './config';
 import { COMPILED } from './resources';
 import { claudeExecutable } from './runtime';
-import { ownerLanguage } from './settings';
+import type { ShellReports } from './push-key';
+import { ownerLanguage, pushKeyChoice } from './settings';
 import type { VoiceSetup } from './voice-setup';
 
 type Env = Record<string, string | undefined>;
@@ -213,6 +214,8 @@ export interface MachineOptions {
   compiled?: boolean;
   /** Whether saving the first canvas starts Obeya again by itself. */
   restarts: boolean;
+  /** The app's shell, for its push-to-talk key in another app (a line under voice while it runs). */
+  shells?: ShellReports;
 }
 
 /** What the check found, with how Obeya acts on each piece. */
@@ -322,6 +325,9 @@ export class MachineSetup {
     const needed = [...claudeItems, ...gitItems];
     // uv by its own installer, which needs no admin rights; the rest as the voice and demo checks say
     const ownUv = (i: MachineItem): MachineItem => (i.id === 'uv' && i.state === 'missing' ? missing({ id: 'uv', install: hint('uv') }) : i);
+    // the app's key in another app, which on a Mac needs "Input Monitoring"
+    const keyLine = this.o.shells?.item(pushKeyChoice(this.o.home).key);
+    const keyItem = keyLine ? [keyLine] : [];
     const voiceItems = (voice?.items ?? []).map((i): MachineItem => {
       if (i.id === 'speech' && i.state === 'missing') return { ...i, act: 'install' };
       if (i.id === 'whisper' && i.state === 'later') return { ...i, act: 'install' };
@@ -336,7 +342,7 @@ export class MachineSetup {
     const sections: MachineSection[] = [
       { id: 'needed', items: needed, mb: 0 },
       { id: 'pr', items: pr, mb: 0 },
-      ...(voice ? [{ id: 'voice' as const, items: voiceItems, mb: voice.fetch.mb }] : []),
+      ...(voice ? [{ id: 'voice' as const, items: [...voiceItems, ...keyItem], mb: voice.fetch.mb }] : []),
       { id: 'demos', items: demoItems, mb: mb(demoItems) },
     ];
     return { sections, logins };

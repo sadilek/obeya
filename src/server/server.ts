@@ -6,8 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, needsYou, type NewCard, type PendingRestart, type ServerMessage } from '../core/types';
 import index from '../ui/index.html';
+import panel from '../ui/panel.html';
 import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
+import { defaultPushKey, type PageFocus, type PushKeyView } from '../core/push-key';
 import { type Focus, type Heard, type Input, isField } from './commands';
 import type { Config } from './config';
 import { serveDemoFile } from './demo';
@@ -16,6 +18,7 @@ import type { Restarter } from './self-update';
 import { looping, silence, type Speaker, type Transcriber } from './voice';
 import type { MachineSetup } from './machine';
 import type { VoiceSetup } from './voice-setup';
+import { ShellReports } from './push-key';
 
 type Req = Request & { params: Record<string, string> };
 
@@ -37,6 +40,8 @@ export function serve(
   machine?: MachineSetup,
   /** Stops Obeya as Ctrl-C does: once the workers paused, a second time at once. */
   stop?: () => void,
+  /** What the app's shell reports about the push-to-talk key, shared with the setup assistant. */
+  shells = new ShellReports(),
 ) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
@@ -78,6 +83,20 @@ export function serve(
     c.board.onEvent((event) => send({ type: 'event', event }));
     c.board.onSpeak((cardId, text) => send({ type: 'speak', cardId, audio: voice(c, text) }));
   }
+
+  // The app's shell records a command when the owner holds the push-to-talk key in another app
+  // (app/src/ptt.rs): it reports what it hears every few seconds, and asks where the owner was last.
+  /** What each open page last reported as its focus, and when; the newest is where the owner was. */
+  const focused = new Map<string, PageFocus & { at: number }>();
+  const pushKeyView = (): PushKeyView => ({
+    ...(config?.pushKey() ?? { key: defaultPushKey(process.platform), chosen: null, default: defaultPushKey(process.platform) }),
+    shell: shells.current(),
+  });
+  const lastFocus = (): PageFocus | null => {
+    const last = [...focused.values()].sort((a, b) => b.at - a.at)[0];
+    if (last && byId.has(last.canvas)) return (({ at: _, ...f }) => f)(last);
+    return canvases[0] ? { canvas: canvases[0].id } : null;
+  };
 
   /** A click the Rückschau counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
   const click = <T>(c: CanvasRuntime, out: T): T => {
@@ -141,7 +160,8 @@ export function serve(
     // the written confirmation goes out now, so the undo window starts now; the voice follows
     if (h.token) c.commander.arm(h.token);
     if (h.quiet) return h;
-    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), audio: voice(c, h.confirm) };
+    // what was heard, for the app's panel, which shows it while the owner is in another app
+    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), ...(text ? { text } : {}), audio: voice(c, h.confirm) };
   };
 
   return Bun.serve({
@@ -152,6 +172,8 @@ export function serve(
     development: development && { hmr: true, console: true },
     routes: {
       '/': index,
+      // the app's floating panel for the push-to-talk key in another app
+      '/panel': panel,
       '/api/canvases': { GET: () => Response.json(canvases.map((c) => c.board.canvas) satisfies CanvasInfo[]) },
       // Obeya's configuration: read, checked while the owner edits it, and saved (Obeya then starts again)
       '/api/config': {
@@ -297,6 +319,25 @@ export function serve(
         },
       },
       // a video demo as a file to pass on, where the repository has no share target (`?as=zip|html`)
+      // the push-to-talk key anywhere on the machine, chosen in the settings, and the shell that hears it
+      '/api/push-to-talk': {
+        GET: () => Response.json(pushKeyView()),
+        PUT: async (req) => (config ? handle(async () => (config.savePushKey(await req.json()), pushKeyView())) : new Response('Not found', { status: 404 })),
+      },
+      // the app's shell, every few seconds: what it hears; it gets the key that applies
+      '/api/push-to-talk/shell': {
+        POST: async (req) =>
+          handle(async () => {
+            try {
+              shells.report(await req.json());
+            } catch (e) {
+              throw e instanceof TypeError ? new BadRequest('invalid', e.message) : e;
+            }
+            return pushKeyView();
+          }),
+      },
+      // where the owner was last in a page: the shell's command goes there
+      '/api/focus': { GET: () => Response.json(lastFocus()) },
       '/api/c/:canvas/cards/:id/export': {
         GET: async (req) => {
           const c = byId.get(req.params.canvas);
@@ -396,6 +437,7 @@ export function serve(
       close: (ws) => {
         sockets.get(ws.data.canvas)?.delete(ws);
         restarter?.hold(ws.data.page);
+        focused.delete(ws.data.page);
       },
       // the owner watching a demo video or dictating in this page holds a restart off
       message: (ws, text) => {
@@ -403,6 +445,11 @@ export function serve(
           const msg = JSON.parse(String(text)) as ClientMessage;
           if (msg.type === 'hold' && Array.isArray(msg.hold)) restarter?.hold(ws.data.page, msg.hold.filter((h) => h === 'video' || h === 'voice'));
           if (msg.type === 'back') byId.get(ws.data.canvas)?.ownerBack();
+          if (msg.type === 'focus') {
+            const text = (x: unknown) => (typeof x === 'string' && x ? x : undefined);
+            const f = { card: text(msg.card), project: text(msg.project), target: text(msg.target), title: text(msg.title) };
+            focused.set(ws.data.page, { canvas: ws.data.canvas, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)), at: Date.now() });
+          }
         } catch {}
       },
     },

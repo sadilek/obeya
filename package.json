@@ -9,6 +9,7 @@
     "dev": "bun --hot src/server/main.ts --dev",
     "build": "bun scripts/build.ts",
     "build:app": "bun scripts/build-app.ts",
+    "app": "bun scripts/app.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
