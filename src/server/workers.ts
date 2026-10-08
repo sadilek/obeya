@@ -71,6 +71,8 @@ interface Live {
   session: AgentSession;
   /** Whether the worker called `ask` or `ready_for_review` in the current turn. */
   handedOver: boolean;
+  /** Whether the worker answered the owner's follow-up with `reply` in the current turn. */
+  answered?: boolean;
   /**
    * Whether the worker said or did anything in the current turn. A resumed session may first end a
    * turn of its own, over what the previous session left (a background command the restart stopped).
@@ -422,6 +424,12 @@ export class Workers {
     if (!(row.landed && (JSON.parse(row.landed) as LandedState).followUp)) this.o.onWorkEnded?.(cardId, row.workspace);
   }
 
+  /** Whether the card's worker was resumed to answer the owner's follow-up on the finished card. */
+  private followingUp(cardId: string): boolean {
+    const landed = this.o.board.row(cardId).landed;
+    return !!landed && !!(JSON.parse(landed) as LandedState).followUp;
+  }
+
   /** The plan docs the card's branch adds, as plan references of the canvas. */
   private planDocsAdded(cardId: string): string[] {
     if (!this.o.board.row(cardId).idea) return [];
@@ -703,8 +711,8 @@ export class Workers {
       }
       case 'text':
         live.lastText = e.text;
-        // after handing over, the worker's closing words repeat what the card already shows
-        if (!live.handedOver) this.o.board.log(cardId, 'say', 'worker', clip(e.text, 600));
+        // after handing over, or answering a follow-up, the worker's closing words repeat what the card already shows
+        if (!live.handedOver && !live.answered) this.o.board.log(cardId, 'say', 'worker', clip(e.text, 600));
         break;
       case 'tool':
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input, this.o.board.t));
@@ -748,6 +756,7 @@ export class Workers {
     const handedOver = live.handedOver;
     const acted = live.acted || waited;
     live.handedOver = false;
+    live.answered = false;
     live.acted = false;
     const card = this.o.board.item(cardId);
     if (!card) return;
@@ -930,6 +939,7 @@ export class Workers {
           const s = clip(String(text).trim(), 2000);
           if (!s) return 'Not shown: the reply is empty.';
           this.o.board.log(cardId, 'talk', 'worker', s);
+          if (this.followingUp(cardId)) live.answered = true;
           return 'Shown to the owner. Carry on.';
         },
       },

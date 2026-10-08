@@ -843,7 +843,8 @@ the owner's language (`src/core/locale.ts`).
   the card (typed in its field, or spoken with it open: in doubt for that agent, as on a card at
   work) resumes the worker's session in a fresh workspace on the card's branch, where main may have
   moved on since (resuming finds the session from any directory). The card stays `live` or `done`,
-  "Agent antwortet"; the worker answers with `reply`, and its turn's end frees the workspace again.
+  "Agent antwortet"; the worker answers with `reply` (its closing words after that repeat the
+  reply and stay off the card, as after a handover), and its turn's end frees the workspace again.
   Commits there do not land: a change the follow-up calls for becomes a card of its own
   (`propose_card`). The Arbeitsrückschau read the card's runs when its work ended and does not count
   it again. A card no agent worked on (no branch), a prototype or an archived card has no field.

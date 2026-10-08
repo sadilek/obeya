@@ -1390,6 +1390,9 @@ describe('a worktree per card', () => {
     expect(runtime.last).toBe(f);
     expect(f.inbox.at(-1)).toContain('Und die Untertitel?');
     expect(f.call('reply', { text: 'Mit gh release upload.' })).toContain('Shown');
+    // its closing words repeat the reply
+    f.emit({ type: 'text', text: 'Mit gh release upload, wie gesagt.' });
+    expect(board.events(c.id).filter((e) => e.author === 'worker').at(-1)).toMatchObject({ kind: 'talk', text: 'Mit gh release upload.' });
     f.emit({ type: 'idle' });
     expect(f.closed).toBe(true);
     expect(state(c.id)).toBe('live');
