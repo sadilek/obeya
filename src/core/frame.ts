@@ -3,13 +3,14 @@
 
 /**
  * The page's height, sent to the page around it whenever it changes, by a pixel too: there the
- * frame grows to it. A page wider than its frame adds the scrollbar across its foot.
+ * frame grows to it. Rounded up (scrollHeight rounds, and a page a fraction of a pixel higher than
+ * its frame scrolls), and a page wider than its frame adds the scrollbar across its foot.
  */
 const HEIGHT_REPORT = `<script>(() => {
   let last = 0;
   const say = () => {
     const html = document.documentElement;
-    const h = html.scrollHeight + innerHeight - html.clientHeight;
+    const h = Math.max(html.scrollHeight, Math.ceil(html.getBoundingClientRect().height)) + innerHeight - html.clientHeight;
     if (h !== last) { last = h; parent.postMessage({ obeyaHeight: h }, '*'); }
   };
   addEventListener('load', say);

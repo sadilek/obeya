@@ -918,6 +918,9 @@ function useReportedHeight(frame: RefObject<HTMLIFrameElement | null>, cap: numb
   return height;
 }
 
+/** The highest an HTML demo's frame grows; a page higher still scrolls inside it. */
+const ARTIFACT_CAP = 30000;
+
 /** What the agent did on its way to a message, folded: its history. */
 function Steps({ steps }: { steps: CardEvent[] }) {
   if (!steps.length) return null;
@@ -964,7 +967,7 @@ function DemoView({
   const cardId = item.id;
   const video = useRef<HTMLVideoElement>(null);
   const artifact = useRef<HTMLIFrameElement>(null);
-  const artifactHeight = useReportedHeight(artifact, 30000);
+  const artifactHeight = useReportedHeight(artifact, ARTIFACT_CAP);
   const [now, setNow] = useState(0);
   const src = (f: string) => at(`/cards/${cardId}/demo/${f}`);
   // start once the card has unfolded, like the mock, the first time only; a demo kept on a finished card waits to be played
@@ -982,8 +985,18 @@ function DemoView({
     <>
       <div className="demo-view">
         {demo.kind === 'html' ? (
-          // the worker's page: scripts run, but in an origin of its own, away from Obeya's API
-          <iframe ref={artifact} className="artifact" sandbox="allow-scripts" src={src('index.html')} title={t.demo.artifact} style={{ height: artifactHeight }} />
+          // the worker's page: scripts run, but in an origin of its own, away from Obeya's API. Once
+          // the frame has the page's height it does not scroll: a page whose images grow with its
+          // width fits beside a scrollbar but not without one, and kept a bar that scrolled by a few pixels
+          <iframe
+            ref={artifact}
+            className="artifact"
+            sandbox="allow-scripts"
+            src={src('index.html')}
+            title={t.demo.artifact}
+            style={{ height: artifactHeight }}
+            scrolling={artifactHeight !== undefined && artifactHeight < ARTIFACT_CAP ? 'no' : undefined}
+          />
         ) : (
           <div className="player">
             <video
