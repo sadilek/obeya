@@ -64,8 +64,8 @@ services are off the table for now (see Background).
 - *Publishing*: the workflow `.github/workflows/pages.yml` publishes `site/` to GitHub Pages on
   every push to `main` on GitHub that touches `site/` (or the workflow), and on demand from the
   Actions tab. Pages serves a branch only from `/` or `/docs`, hence the workflow. It needs the
-  release `site-media` with the hero video (step 4 below); after the video is replaced it is run
-  again by hand. The repository
+  release `site-media` with the hero video (step 4 below); `scripts/hero-video/publish.ts`
+  replaces the video and runs it again. The repository
   is public, so the free plan has Pages. Not live yet: GitHub's `main` lags the local one until it
   is pushed, and the owner's steps below are open. Today obeya.si and www.obeya.si point to the
   registrar's parking page (2.57.91.91; registrar OpusDNS, nameservers `aurora` and
@@ -93,11 +93,8 @@ services are off the table for now (see Background).
    | `@`   | AAAA  | `2606:50c0:8003::153`  |
    | `www` | CNAME | `sadilek.github.io.`   |
 
-4. **Upload the hero video** as a release that holds only it (the workflow fails without it):
-   `gh release create site-media hero.mp4 hero.vtt --title "Site media" --notes "Video for obeya.si, fetched by the Pages workflow." --latest=false`,
-   from the render's directory (`scripts/hero-video/README.md`), with the video and captions
-   under these names. A new render replaces them with
-   `gh release upload site-media hero.mp4 hero.vtt --clobber`, then `gh workflow run pages.yml`.
+4. **Upload the hero video**: `node scripts/hero-video/publish.ts` (see
+   `scripts/hero-video/README.md`). The same call puts out every later render.
 5. **Push `main`** to GitHub. The workflow runs and publishes to sadilek.github.io/obeya until the
    domain is set (the site uses relative paths, so it works there too).
 6. **Custom domain.** Settings → Pages → Custom domain: `obeya.si` → Save. GitHub checks the DNS

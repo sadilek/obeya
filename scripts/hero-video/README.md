@@ -35,14 +35,17 @@ holds for one run.
 ## Publish
 
 The video is not in git. It is an asset of the GitHub release `site-media`, which the Pages
-workflow fetches into `site/media/` before it publishes:
+workflow fetches into `site/media/` before it publishes. One call puts a render out:
 
 ```sh
-cd ~/demos/obeya-hero && cp demo.mp4 hero.mp4 && cp captions.vtt hero.vtt
-gh release upload site-media hero.mp4 hero.vtt --clobber   # the first time: gh release create site-media hero.mp4 hero.vtt …
-gh workflow run pages.yml
+node scripts/hero-video/publish.ts            # uploads demo.mp4 and captions.vtt as hero.mp4 and hero.vtt, then runs the Pages workflow
+node scripts/hero-video/publish.ts --poster   # also takes the poster again from the new video
 ```
 
-The poster (`site/img/hero-poster.jpg`) is the video's first frame with a play button: when the
-opening changes, take it again from the new video with
-`uv run --with pillow python scripts/hero-video/poster.py ~/demos/obeya-hero/demo.mp4 site/img/hero-poster.jpg`.
+It reads the render from `~/demos/obeya-hero/` (or `HERO_OUT`), creates the release the first
+time and replaces its assets after that, and acts as the GitHub account `sadilek` (with the
+token of its gh login) without switching the account gh has active.
+
+The poster (`site/img/hero-poster.jpg`) is the video's first frame with a play button. It is in
+git: when the opening changes, publish with `--poster`, then commit the new poster and push
+`main`, which publishes it.

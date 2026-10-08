@@ -2,8 +2,7 @@
 # so the site goes out through this workflow; the custom domain is set in the repository's
 # Pages settings (a CNAME file is ignored for workflow deployments). The hero video and its
 # captions stay out of git: they are assets of the release `site-media`, fetched into site/media/
-# before the upload. After replacing them, run this workflow again (Actions tab, or
-# `gh workflow run pages.yml`).
+# before the upload. scripts/hero-video/publish.ts replaces them and runs this workflow again.
 name: Pages
 
 on:
