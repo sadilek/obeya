@@ -1162,7 +1162,9 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   scripts run in an origin of their own, away from Obeya's API. Its `index.html` comes with the
   height report a shared artifact's page has (below), so the frame grows to the page and only the
   card's left column scrolls; before (2026-10-08) the frame scrolled inside that column, two
-  scrollbars side by side. A handover with `no_demo` (the
+  scrollbars side by side. The frame's height is the reported one plus its border (and the report
+  counts a scrollbar across the page's foot): without the border, the page was 2 px higher than
+  the frame and kept a scrollbar of its own that scrolled by those pixels. A handover with `no_demo` (the
   reason) instead is the exception the worker's brief names as such: the card waits for review
   with the buttons on top and the summary and the reason as the handover in its conversation, and a demo from an earlier handover leaves the card, since it
   showed other work. Artifacts stay in `~/demos/`, never in git; a pull request links a demo

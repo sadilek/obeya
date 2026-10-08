@@ -1,12 +1,16 @@
 // Pages Obeya shows in a sandboxed frame (a worker's HTML artifact, an idea's mock): they tell the
 // page around them their height, so the frame grows to it instead of scrolling inside.
 
-/** The page's height, sent to the page around it whenever it changes: there the frame grows to it. */
+/**
+ * The page's height, sent to the page around it whenever it changes, by a pixel too: there the
+ * frame grows to it. A page wider than its frame adds the scrollbar across its foot.
+ */
 const HEIGHT_REPORT = `<script>(() => {
   let last = 0;
   const say = () => {
-    const h = document.documentElement.scrollHeight;
-    if (Math.abs(h - last) > 2) { last = h; parent.postMessage({ obeyaHeight: h }, '*'); }
+    const html = document.documentElement;
+    const h = html.scrollHeight + innerHeight - html.clientHeight;
+    if (h !== last) { last = h; parent.postMessage({ obeyaHeight: h }, '*'); }
   };
   addEventListener('load', say);
   new ResizeObserver(say).observe(document.documentElement);
