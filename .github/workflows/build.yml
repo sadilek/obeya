@@ -7,6 +7,12 @@
 # with every installer, SHA256SUMS and latest.json for the updater (scripts/release.ts); the owner
 # publishes it. Update artifacts and their signatures come only with the secret
 # TAURI_SIGNING_PRIVATE_KEY (and TAURI_SIGNING_PRIVATE_KEY_PASSWORD, if the key has one).
+# On a tag, the Macs' app is signed with the Developer ID and notarised, the ticket stapled to the
+# DMG (scripts/build-app.ts), with the secrets APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
+# APPLE_NOTARY_KEY, APPLE_NOTARY_KEY_ID and, for a team key, APPLE_NOTARY_ISSUER (docs/release.md);
+# without them a tag fails rather than releasing an app macOS would not open. Run by hand with
+# "sign", the workflow does that on any branch, to try the secrets before a tag. Windows and Linux
+# stay unsigned; SHA256SUMS lists every file of the release.
 name: Build
 
 on:
@@ -17,6 +23,11 @@ on:
     # do not apply to tags
     paths-ignore: ['docs/**', 'design/**', 'site/**', '**/*.md', '.github/workflows/pages.yml']
   workflow_dispatch:
+    inputs:
+      sign:
+        description: Sign and notarise the macOS app, as on a tag
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -65,6 +76,7 @@ jobs:
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      SIGN_MACOS: ${{ startsWith(matrix.target, 'darwin') && (startsWith(github.ref, 'refs/tags/') || inputs.sign) }}
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -81,8 +93,19 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
       - run: bun install --frozen-lockfile
+      - name: The Apple secrets are there
+        if: env.SIGN_MACOS == 'true'
+        env:
+          HAVE: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.APPLE_NOTARY_KEY != '' && secrets.APPLE_NOTARY_KEY_ID != '' }}
+        run: '[ "$HAVE" = true ] || { echo "::error::signing needs the secrets APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_NOTARY_KEY and APPLE_NOTARY_KEY_ID (docs/release.md)"; exit 1; }'
       - name: The compiled server and the app around it
         run: bun scripts/build-app.ts
+        env:
+          APPLE_CERTIFICATE: ${{ env.SIGN_MACOS == 'true' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ env.SIGN_MACOS == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_NOTARY_KEY: ${{ env.SIGN_MACOS == 'true' && secrets.APPLE_NOTARY_KEY || '' }}
+          APPLE_NOTARY_KEY_ID: ${{ env.SIGN_MACOS == 'true' && secrets.APPLE_NOTARY_KEY_ID || '' }}
+          APPLE_NOTARY_ISSUER: ${{ env.SIGN_MACOS == 'true' && secrets.APPLE_NOTARY_ISSUER || '' }}
       - name: Smoke test of the compiled server
         shell: bash
         run: |
@@ -112,4 +135,10 @@ jobs:
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --draft --latest --verify-tag --title "Obeya ${GITHUB_REF_NAME#v}" --generate-notes release/*
+          # goes before the notes GitHub generates
+          NOTES: >-
+            The Mac apps are signed and notarised. The Windows installer and the Linux packages are
+            not signed: SmartScreen warns about the installer ("More info", then "Run anyway"). Every
+            file's SHA-256 is in `SHA256SUMS`: `sha256sum --check --ignore-missing SHA256SUMS` beside
+            the download, or `Get-FileHash Obeya-Windows-x64-setup.exe` in PowerShell.
+        run: gh release create "$GITHUB_REF_NAME" --draft --latest --verify-tag --title "Obeya ${GITHUB_REF_NAME#v}" --generate-notes --notes "$NOTES" release/*
