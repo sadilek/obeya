@@ -14,9 +14,13 @@
 // configuration the owner saved (config.ts). Saved while the canvases came from the command line,
 // it starts the server from the file from then on.
 //
-// Ctrl-C or SIGTERM stops Obeya the way a restart goes: workers in the middle of a turn hear of it
-// and pause, and Obeya ends once none is (at most 15 minutes); a second Ctrl-C ends it at once.
-// Workers it stopped are resumed when Obeya starts again.
+// Ctrl-C, SIGTERM or `POST /api/stop` (the app, app/, and Windows, which has no SIGTERM) stops
+// Obeya the way a restart goes: workers in the middle of a turn hear of it and pause, and Obeya
+// ends once none is (at most 15 minutes); a second Ctrl-C ends it at once. Workers it stopped are
+// resumed when Obeya starts again.
+//
+// One Obeya per home (instance.ts): a start on a home where one runs says where and ends. The
+// running one has its port and pid in $OBEYA_HOME/server.json.
 //
 // --idle-workers: no agent works on a started card (a scratch Obeya for a demo, scripts/scratch-obeya.ts).
 
@@ -31,6 +35,7 @@ import { Store } from './db';
 import { ghForge } from './forge';
 import { NarrationHost } from './narration';
 import { claudeExecutable, idleRuntime, sdkRuntime } from './runtime';
+import { claim, release, running } from './instance';
 import { extendPath, MachineSetup, welcome } from './machine';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, watchOwnCode } from './self-update';
 import { COMPILED, resource, SELF, VERSION } from './resources';
@@ -64,6 +69,14 @@ extendPath();
 if (COMPILED) useLib(resource('plugin', 'skills', 'demo', 'lib'));
 const configFile = values.config ? resolve(expand(values.config)) : join(home, CONFIG_FILE);
 
+if (!process.env.OBEYA_SUPERVISED) {
+  const other = await running(home);
+  if (other) {
+    console.error(`Obeya already runs on ${home}, at ${other.url} (pid ${other.pid}); one home serves one Obeya`);
+    process.exit(1);
+  }
+}
+
 if (!values.dev && !process.env.OBEYA_SUPERVISED) {
   let child: ReturnType<typeof Bun.spawn> | undefined;
   // the server stops once its workers paused; whatever exit code it ends with, nothing starts again
@@ -80,6 +93,7 @@ if (!values.dev && !process.env.OBEYA_SUPERVISED) {
       stdio: ['inherit', 'inherit', 'inherit'],
     });
     const code = await child.exited;
+    if (stopping || (code !== RESTART && code !== RESTART_FROM_FILE)) release(home, process.pid);
     if (stopping) process.exit(code === RESTART || code === RESTART_FROM_FILE ? 0 : code);
     if (code === RESTART_FROM_FILE) {
       // the owner saved the configuration of canvases given on the command line: the file is it now
@@ -214,27 +228,30 @@ const shutdown = (code: number) => {
   transcriber.stop();
   speaker.stop();
   narration.stop();
+  // the supervisor stays across a restart, and gives the entry up when it ends
+  if (!process.env.OBEYA_SUPERVISED) release(home, process.pid);
   process.exit(code);
 };
 // stopping waits for the workers like a restart; a second Ctrl-C has it go ahead at once
 const SAME_PRESS_MS = 1000;
 let stopAsked = 0;
-for (const sig of ['SIGINT', 'SIGTERM'] as const)
-  process.on(sig, () => {
-    if (!stopAsked) {
-      stopAsked = Date.now();
-      const n = busy().length;
-      console.log(n ? `Obeya: stopping once no worker is in the middle of a turn (${n} ${n === 1 ? 'is' : 'are'}, at most ${RESTART_PATIENCE_MS / 60_000} minutes); Ctrl-C again stops at once` : 'Obeya: stopping');
-      restarter.request('stop');
-      return;
-    }
-    // Ctrl-C in the terminal reaches the supervisor too, which passes it on: one press arrives twice
-    if (Date.now() - stopAsked < SAME_PRESS_MS) return;
-    console.log('Obeya: stopping now');
-    if (!restarter.now()) shutdown(0);
-  });
+const stop = () => {
+  if (!stopAsked) {
+    stopAsked = Date.now();
+    const n = busy().length;
+    console.log(n ? `Obeya: stopping once no worker is in the middle of a turn (${n} ${n === 1 ? 'is' : 'are'}, at most ${RESTART_PATIENCE_MS / 60_000} minutes); Ctrl-C again stops at once` : 'Obeya: stopping');
+    restarter.request('stop');
+    return;
+  }
+  // Ctrl-C in the terminal reaches the supervisor too, which passes it on: one press arrives twice
+  if (Date.now() - stopAsked < SAME_PRESS_MS) return;
+  console.log('Obeya: stopping now');
+  if (!restarter.now()) shutdown(0);
+};
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, stop);
 
-server = serve(canvases, { transcriber, speaker, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine);
+server = serve(canvases, { transcriber, speaker, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop);
+claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, app: !!process.env.OBEYA_APP });
 console.log(`Obeya ${own ? `from ${own}` : VERSION} on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'}), agents on ${claudeExecutable() ?? 'the Claude Code the Agent SDK brings'}`);
 if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
 if (!canvases.length) console.log(`  no canvas yet: the setup assistant on ${server.url} checks this machine and creates the first`);

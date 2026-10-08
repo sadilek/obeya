@@ -35,6 +35,8 @@ export function serve(
   restarter?: Restarter,
   narration?: NarrationHost,
   machine?: MachineSetup,
+  /** Stops Obeya as Ctrl-C does: once the workers paused, a second time at once. */
+  stop?: () => void,
 ) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
@@ -164,6 +166,16 @@ export function serve(
             // after the answer is out: the restart stops this server
             if (due) setTimeout(() => restarter!.now(), 100);
             return { restarting: due };
+          }),
+      },
+      // the app quitting, or anything that cannot send a signal (Windows has no SIGTERM): Ctrl-C over HTTP
+      '/api/stop': {
+        POST: () =>
+          handle(() => {
+            if (!stop) return { stopping: false };
+            // after the answer is out: when no worker is busy, the stop ends this server
+            setTimeout(stop, 100);
+            return { stopping: true };
           }),
       },
       // the language Obeya speaks to the owner: chosen in the settings, else the system's
