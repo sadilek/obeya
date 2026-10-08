@@ -1430,6 +1430,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   Pages answers a range request with the whole file and 200), and a browser cannot seek in a video
   streamed that way: the chapters and the progress bar jumped back to the start. The page
   therefore asks for a range first and, getting the whole file, plays the video from memory.
+  Obeya publishing to a static site itself, from a few lines in the adapter (`demo.site`) and
+  from several machines to one site, is planned in [`docs/plan/demo-site.md`](plan/demo-site.md).
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   recipe for running the app in a demo (login, test data, migrations: `demo.howToRun`), where plan
   docs live, which reviews run, the command that shares demos (the
@@ -1804,3 +1806,6 @@ the repository; the copy on the project is only for the archive).
 - Making Obeya known as open source (MIT licence, a public repository, English behind the interface, voice
   on Windows and Linux, an installable app, the site on obeya.si): planned in
   [`docs/plan/open-source.md`](plan/open-source.md).
+- Shared demos on a static site that Obeya keeps and deploys itself, declared in the adapter
+  (`demo.site`), safe for several machines publishing to one site: planned in
+  [`docs/plan/demo-site.md`](plan/demo-site.md).
