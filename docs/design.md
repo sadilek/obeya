@@ -898,7 +898,12 @@ the owner's language (`src/core/locale.ts`).
   approve, accept, dismiss, revise, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
   park, drop; on prototypes: build on it, discard),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
-  works on) goes back to the Koordinator, which may reply instead. Start on a card queued behind
+  works on) goes back to the Koordinator, which may reply instead. A new card, a follow-up too,
+  starts at once, through the Koordinator like "Agent starten" (checked for conflicts, queued if
+  need be), unless the owner says it should wait („nur notieren“, „für später“, „noch nicht
+  starten“): then it stays planned. Left to its own judgement, the Koordinator kept about one in
+  five plainly asked-for tasks planned („Tipjar should split the bill …“), so the `start` field of
+  `new_card` says this outright, and left out it counts as starting. Start on a card queued behind
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
   one waits for, so "starte alle wartenden Aufgaben" works; "nimm sie aus der Warteschlange" takes a
   queued card back to planned, like "Aus der Warteschlange nehmen". A reply answers questions too

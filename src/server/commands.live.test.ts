@@ -1,5 +1,5 @@
 // The Koordinator's prompt against the real model: sentences said or typed with a card open, in
-// each state an agent is on. Runs only with OBEYA_LIVE=1 (it uses the machine's Claude login and
+// each state an agent is on, and new tasks that start or wait. Runs only with OBEYA_LIVE=1 (it uses the machine's Claude login and
 // takes about a minute): `OBEYA_LIVE=1 bun test src/server/commands.live.test.ts`.
 
 import { afterAll, beforeAll, expect, test } from 'bun:test';
@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { Board } from './board';
 import { type Command, Commander } from './commands';
 import { Store } from './db';
-import { type AgentRuntime, sdkRuntime } from './runtime';
+import { AGENT_DEFAULTS } from '../core/types';
+import { type AgentRuntime, sdkRuntime, withAgentSetting } from './runtime';
 
 // the sessions need the machine's Claude login, which the test setup hides behind a scratch config
 const scratch = process.env.CLAUDE_CONFIG_DIR;
@@ -94,6 +95,44 @@ test.skipIf(!process.env.OBEYA_LIVE)(
     for (const r of results)
       console.log(`${wrong.includes(r) ? '✗' : '✓'} [${r.state}] ${r.typed ? 'getippt' : 'gesprochen'} „${r.text}“ → ${r.got.did.join(', ') || 'reply'}${r.got.quiet ? ' (sofort)' : ''} · ${JSON.stringify(r.got.executed.map((c) => ('text' in c ? c.text : 'title' in c ? c.title : 'name' in c ? c.name : '')))} · ${r.got.confirm}${r.got.confirm !== 'Das habe ich nicht verstanden.' ? '' : ` · Sitzung: ${r.got.said.join(' ').slice(0, 200)}`}`);
     expect(wrong.map((r) => `[${r.state}] ${r.text}`)).toEqual([]);
+  },
+  300_000,
+);
+
+/** What the owner says for a new task, in which language, and whether it starts. */
+const NEW_TASKS: [string, 'de' | 'en', boolean][] = [
+  ['Tipjar should split the bill Add a field for how many people there are and show what each person pays', 'en', true],
+  ['Tipjar soll die Rechnung aufteilen ein Feld für die Personenzahl und zeig was jede Person zahlt', 'de', true],
+  ['Das Trinkgeld soll man auch frei in Prozent eingeben können', 'de', true],
+  ['Neue Aufgabe für später: Tipjar soll die Rechnung aufteilen', 'de', false],
+  ['Just note it down for later: a field for how many people there are', 'en', false],
+  ['Neue Aufgabe Export als PDF aber noch nicht starten', 'de', false],
+];
+
+/** The new card one sentence makes on a canvas like the one in the hero video: whether it starts. */
+async function newTask(text: string, language: 'de' | 'en') {
+  const board = new Board(new Store(':memory:'), { id: 'c', name: 'Tipjar', repos: [{ id: 'tipjar', name: 'Tipjar', path: '/r', branch: 'main' }] }, () => [], undefined, undefined, () => language);
+  board.work(board.create({ title: 'Dark mode', x: 0, y: 0 }).id, { state: 'live' });
+  board.work(board.create({ title: 'Run the tests on every push', x: 0, y: 0 }).id, { state: 'working' });
+  board.create({ title: 'Round the total up', x: 0, y: 0 });
+  const executed: Command[] = [];
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const k = new Commander({ board, runtime, cwd: mkdtempSync(join(tmpdir(), 'obeya-live-')), execute: (c) => void executed.push(c), delayMs: 1 });
+  const heard = await k.hear(text, {});
+  if (heard.token) k.arm(heard.token);
+  await new Promise((r) => setTimeout(r, 20));
+  const card = executed.find((c) => c.do === 'newCard');
+  return { start: card && 'start' in card ? card.start : undefined, confirm: heard.confirm };
+}
+
+test.skipIf(!process.env.OBEYA_LIVE)(
+  'a new task starts at once unless the owner says it should wait',
+  async () => {
+    const runs = NEW_TASKS.flatMap((c) => [c, c, c]);
+    const results = await Promise.all(runs.map(async ([text, language, want]) => ({ text, want, got: await newTask(text, language) })));
+    const wrong = results.filter((r) => r.got.start !== r.want);
+    for (const r of results) console.log(`${wrong.includes(r) ? '✗' : '✓'} „${r.text}“ → ${r.got.start === undefined ? 'no new card' : r.got.start ? 'starts' : 'planned'} · ${r.got.confirm}`);
+    expect(wrong.map((r) => r.text)).toEqual([]);
   },
   300_000,
 );

@@ -125,6 +125,31 @@ describe('the Koordinator remembers', () => {
     ]);
   });
 
+  test('a new task starts at once, like "Agent starten", unless the owner says it should wait', async () => {
+    const k = commander();
+    const { heard, session } = await say(k, 'Tipjar soll die Rechnung aufteilen', 'act', {
+      actions: [{ do: 'new_card', title: 'Rechnung aufteilen', body: 'Tipjar soll die Rechnung aufteilen.', start: true }],
+      confirm: 'Neue Aufgabe „Rechnung aufteilen“, der Agent fängt an.',
+    });
+    // the field says what the Koordinator would otherwise decide either way
+    expect(session.spec.tools.find((t) => t.name === 'act')!.description).toContain('start false only when the owner says it should wait („nur notieren“, „für später“, „noch nicht starten“), else true');
+    k.arm(heard.token!);
+    // left out, it starts too
+    const { heard: bare } = await say(k, 'und eine für das Trinkgeld in Prozent', 'act', { actions: [{ do: 'new_card', title: 'Trinkgeld in Prozent', body: 'Trinkgeld frei in Prozent.' }], confirm: '…' });
+    k.arm(bare.token!);
+    const { heard: later } = await say(k, 'für später: Export als PDF', 'act', {
+      actions: [{ do: 'new_card', title: 'Export als PDF', body: 'Export als PDF.', start: false }],
+      confirm: 'Neue Aufgabe „Export als PDF“, sie startet noch nicht.',
+    });
+    k.arm(later.token!);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(executed.map((c) => (c.do === 'newCard' ? [c.title, c.start] : c.do))).toEqual([
+      ['Rechnung aufteilen', true],
+      ['Trinkgeld in Prozent', true],
+      ['Export als PDF', false],
+    ]);
+  });
+
   test('"ohne PR" approves directly where the repository allows it, and is refused with the reason where it does not', async () => {
     board = new Board(
       store,
@@ -458,7 +483,7 @@ describe('what the owner says or types with a card open', () => {
 
         // a follow-up, a rule, an approval, feedback: confirmed, and taken back within the window
         const commands: [string, Record<string, unknown>[], Command][] = [
-          ['mach eine Folgeaufgabe für Excel', [{ do: 'new_card', card: 'K1', title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: false, from: a.id }],
+          ['mach eine Folgeaufgabe für Excel', [{ do: 'new_card', card: 'K1', title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: true, from: a.id }],
           ['Merk dir: Exporte immer mit Kopfzeile', [{ do: 'remember', text: 'Exporte immer mit Kopfzeile.' }], { do: 'remember', text: 'Exporte immer mit Kopfzeile.', card: a.id }],
         ];
         // an agent in a pull request is not stopped

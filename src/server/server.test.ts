@@ -368,7 +368,7 @@ describe('screenshots', () => {
     await res;
     await until(() => executed.length === 3, DELAY_MS + 3000);
     expect(executed).toEqual([
-      { do: 'newCard', title: 'Seite bricht um', body: 'diese Seite bricht um', start: false, images: [id] },
+      { do: 'newCard', title: 'Seite bricht um', body: 'diese Seite bricht um', start: true, images: [id] },
       { do: 'note', card: c.id, text: 'So sieht es aus.', spoken: false, images: [id] },
       { do: 'stop', card: c.id },
     ]);
@@ -389,7 +389,7 @@ describe('screenshots', () => {
     k.call('act', { actions: [{ do: 'new_card', title: 'Export', body: 'bricht um' }], confirm: 'Neue Karte „Export“.' });
     expect(await (await res).json()).not.toHaveProperty('unheard');
     await until(() => executed.length);
-    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'bricht um', start: false, images: [id] }]);
+    expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'bricht um', start: true, images: [id] }]);
     expect(board.snapshot().talk.at(-1)).toMatchObject({ said: 'Neue Karte Export', images: [id] });
 
     whisper = () => '';

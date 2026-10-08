@@ -342,7 +342,7 @@ export class Commander {
           description: [
             'Do what the owner asked: one or more actions, in the order the owner said them. They run together after a short undo window, with one confirmation for all.',
             'Actions (card: the tag of the card; new_card and new_idea take none, except a follow-up):',
-            `- new_card: a new card. title short and precise, body what the owner asked for in their words, start whether work should begin right away${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
+            `- new_card: a new card. title short and precise, body what the owner asked for in their words, start false only when the owner says it should wait („nur notieren“, „für später“, „noch nicht starten“), else true: work on it begins right away, as with a click on "Agent starten" (checked for conflicts with work in progress, queued if need be)${repos.length > 1 ? ', repo the repository it belongs to (an id from the list)' : ''}. A follow-up of a card (for one of its findings, or something from its summary): card the tag of that card, and body the finding or passage in full, then what the owner added.`,
             "- start: start work on a planned card. On a queued card (waiting behind cards in progress or queued ahead of it) it starts it now, despite the likely merge conflict; a card the Koordinator is still checking starts by itself unless its changes likely conflict with work in progress. On a project: all its planned workstreams go to the Koordinator together, which decides their order and which of them wait (for a dependency or a likely conflict); use it when the owner wants a project's workstreams started (\"starte das Projekt\", \"alle Workstreams\") rather than starting them one by one.",
             '- dequeue: take a card out of the queue (waiting behind other cards, for a free workspace, or still being checked or split by the Koordinator); it goes back to planned and does not start until started again („nimm … aus der Warteschlange“, „lass … doch noch nicht starten“).',
             "- note: text to the agent working on a card (working, in PR, waiting, or live or done while its agent finishes after the landing); it doesn't stop it. Whatever the owner says to the agent: an instruction, a remark on its work, a question to it; never a question the owner asks you about the canvas.",
@@ -558,7 +558,7 @@ export class Commander {
       const repo = repos.length > 1 && repos.some((r) => r.id === a.repo) ? a.repo : undefined;
       const from = a.card ? s.tags.get(a.card) : undefined;
       if (a.card && (!from || !this.o.board.item(from))) return `unknown tag ${a.card}; give the card a follow-up comes from, or none`;
-      return { do: 'newCard', title: a.title.trim(), body: a.body ?? '', start: Boolean(a.start), ...(repo ? { repo } : {}), ...(from ? { from } : {}) };
+      return { do: 'newCard', title: a.title.trim(), body: a.body ?? '', start: a.start !== false, ...(repo ? { repo } : {}), ...(from ? { from } : {}) };
     }
     const id = a.card ? s.tags.get(a.card) : undefined;
     const card = id ? this.o.board.item(id) : undefined;
