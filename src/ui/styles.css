@@ -320,9 +320,10 @@ textarea.p-body:focus { border-color: var(--muted); }
 .share-link { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .share-busy { color: var(--muted); flex: 1 1 100%; }
 .share .hint { margin: 0; }
-/* an idea's or a task's split fills the panel down to the microphone (panelRect in App.tsx sets its height) */
-.split { display: grid; grid-template-columns: minmax(0, 1fr) clamp(400px, 36%, 560px); gap: 24px; margin-top: 16px;
-  height: min(600px, calc(100vh - 370px)); }
+/* an idea's or a task's split is as tall as its taller column, up to the room down to the microphone
+   (panelRect in App.tsx sets that as its max-height); beyond it, the columns scroll */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) clamp(400px, 36%, 560px); grid-template-rows: minmax(0, 1fr);
+  gap: 24px; margin-top: 16px; max-height: min(600px, calc(100vh - 370px)); }
 .split-main { overflow: auto; min-height: 0; padding-right: 4px; }
 .split-main > :first-child, .split-main .question.brief { margin-top: 0; }
 .split-main .question, .split-main .p-body-field, .split-main textarea.p-body { max-width: none; }
@@ -331,7 +332,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .split .split-talk .talk { flex: 1; min-height: 0; max-height: none; max-width: none; }
 .split-talk .composer { margin-top: 10px; max-width: none; }
 /* a proposal is as tall as its text and questions (up to what the screen holds); its conversation fills that height and scrolls */
-.proposal-grid { height: auto; grid-template-rows: minmax(min(440px, calc(100vh - 380px)), auto); }
+.proposal-grid { max-height: none; grid-template-rows: minmax(min(440px, calc(100vh - 380px)), auto); }
 .proposal-grid .split-main { max-height: calc(100vh - 340px); }
 /* its text box grows with the text (detail.tsx) and leaves the reason below it in view */
 .proposal-grid textarea.p-body { min-height: min(360px, calc(100vh - 440px)); max-height: calc(100vh - 440px); resize: none; }
@@ -700,7 +701,7 @@ button.link:hover { text-decoration: underline; }
 .ack.reading { background: var(--card); color: var(--muted); box-shadow: var(--shadow); padding: 7px 14px; font-size: 13px; }
 .ack.reading::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--working); animation: spin .8s linear infinite; }
 .c-listener { flex-basis: 100%; margin-top: -4px; font-size: 11.5px; color: var(--muted); }
-@media (max-width: 760px) { #minimap, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; bottom: 158px; } .split { grid-template-columns: 1fr; height: auto; } .split .split-talk .talk { min-height: 240px; max-height: min(520px, 60vh); } }
+@media (max-width: 760px) { #minimap, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; bottom: 158px; } .split { grid-template-columns: 1fr; grid-template-rows: none; max-height: none; } .split .split-talk .talk { min-height: 240px; max-height: min(520px, 60vh); } }
 
 /* the play button on a startable card, shown while the pointer is on the card */
 .card .play { position: absolute; right: 10px; bottom: 8px; width: 26px; height: 26px; border-radius: 13px; border: 0; padding: 0 0 0 2px;
