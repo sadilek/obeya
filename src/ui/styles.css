@@ -388,7 +388,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .msg.q.settled { border-left-color: var(--line); }
 .talk .msg.q.settled .who, .talk .msg.q.settled .p-lead { color: var(--muted); }
 .talk .msg .q-opts { list-style: none; margin: 6px 0 2px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.talk .msg .q-opts li { font-size: 12.5px; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+/* rounded by half a line: a short option is a pill, a long one that wraps a rounded box around all its lines */
+.talk .msg .q-opts li { font-size: 12.5px; padding: 2px 9px; border: 1px solid var(--line); border-radius: calc(.5lh + 3px); color: var(--muted); }
 .talk .msg .q-opts li.on { color: var(--ink); border-color: var(--working); background: color-mix(in srgb, var(--working) 10%, var(--card)); font-weight: 600; }
 .talk .msg .q-opts li.on::before { content: "✓ "; color: var(--working); }
 .talk .msg .demo-q { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 13.5px; }
