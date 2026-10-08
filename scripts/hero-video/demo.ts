@@ -191,7 +191,7 @@ const scenes: Scene[] = [
     run: async (d) => {
       // the camera stands on the new card at the right; the proposal is off to the left
       await d.page.mouse.move(900, 450);
-      await pan(d, 380, -60);
+      await pan(d, 580, -60);
       await d.page.mouse.move(1380, 600);
       await d.highlight(card(d, 'Remember the last tip'), 'proposal');
       await d.untilSpoken(0.36);
@@ -208,6 +208,10 @@ const scenes: Scene[] = [
     title: 'The big room',
     say: narration.room,
     run: async (d) => {
+      // back to the task the video built, at the right edge after the pan
+      await d.page.mouse.move(900, 450);
+      await pan(d, -260, 0);
+      await d.page.mouse.move(1380, 600);
       await d.highlight(split(d), 'on main');
       await d.untilSpoken(0.25);
       await d.clearHighlights();
