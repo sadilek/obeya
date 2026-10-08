@@ -29,6 +29,8 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
 - An interaction that several kinds of card share (answering questions with comments and one Send
   button, the conversation history, "Los geht's" while the agent is still working) is built once in
   shared code and works the same on each of them; no card kind gets its own variant.
+- Dialogs and text fields use the space the screen offers (the owner works on a tall monitor)
+  instead of staying small with a scrollbar of their own; never two scrollbars side by side.
 - A button that is easy to click by accident and sets a lot in motion gets an undo. What is easy
   to reverse afterwards gets no undo window with a wait: it takes effect at once.
 - Prompts and skills for agents: fix unwanted behaviour by removing the instruction that causes
