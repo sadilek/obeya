@@ -3,14 +3,15 @@
 // read-only.
 
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type SetupItem, type VoiceKind, type VoiceSetupItem, type VoiceSetupView } from '../core/types';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettings, type DemoSettingsView, type DemoVoiceCheck, type Language, type LanguageView, type NarrationLanguage, type RepoConfig, type SetupCheck, type VoiceKind, type VoiceSetupView } from '../core/types';
 import { LANGUAGES } from '../core/locale';
 import { api, ApiError, reload } from './api';
+import { demoState, megabytes, PLATFORMS, SetupList, voiceState } from './setup';
 import { errorText, t } from './strings';
 
 type Checked = Pick<ConfigView, 'resolved' | 'problems'>;
 
-export function ConfigSheet({ on }: { on: boolean }) {
+export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void }) {
   const [view, setView] = useState<ConfigView | null>(null);
   const [draft, setDraft] = useState<CanvasConfig[]>([]);
   const [checked, setChecked] = useState<Checked | null>(null);
@@ -87,6 +88,9 @@ export function ConfigSheet({ on }: { on: boolean }) {
         <p className="hint">{t.config.fromArgs(view.file)}</p>
       )}
       <p className="hint">{t.config.koordinator}</p>
+      <button className="btn small" onClick={onSetup}>
+        {t.setup.check}
+      </button>
 
       {draft.map((c, i) => (
         <CanvasBlock
@@ -185,7 +189,6 @@ const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'reference' | 'command' | '
 };
 /** A stock voice of a model or service is nobody's own. */
 const STOCK_ONLY: VoiceKind[] = ['piper', 'say'];
-const megabytes = (mb: number) => (mb >= 1000 ? `${(mb / 1000).toFixed(1).replace('.', ',')} GB` : `${mb} MB`);
 
 /** The language Obeya speaks to the owner: saved on its own, and the page loads again in it. */
 function LanguageBlock({ on }: { on: boolean }) {
@@ -473,8 +476,6 @@ function DemoBlock({ on }: { on: boolean }) {
   );
 }
 
-const PLATFORMS: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
-
 /**
  * What a render needs on this machine besides the voice (that has its own lines above), each
  * missing piece with how to install it here. Checked again for the voice's listening back as it
@@ -493,19 +494,12 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
   }, [draft.listenBack, installing]);
   if (!setup) return null;
   const items = setup.items.filter((i) => i.id !== 'voice');
-  const state = (i: SetupItem) => {
-    if (i.state === 'later') return s.later(megabytes(i.mb ?? 0));
-    if (i.state === 'off') return s.off;
-    if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
-    // a browser by its program's name; the whole path is in the tooltip
-    return (i.id === 'browser' ? i.found?.split(/[\\/]/).at(-1) : i.found) ?? s.there;
-  };
   return (
     <>
       <h4 className="p-h">{s.title}</h4>
       <section className="c-canvas c-setup">
         <p className="hint">{s.hint(`${PLATFORMS[setup.platform] ?? setup.platform} (${setup.arch})`)}</p>
-        <SetupList items={items} names={s.names} state={state} />
+        <SetupList items={items} name={(i) => s.names[i.id]} state={demoState} />
         {!items.some((i) => i.state === 'missing') && <p className="hint">{s.ready}</p>}
         <p className="hint">
           {s.guide} <code>docs/demo-setup.md</code>
@@ -515,39 +509,6 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
         </button>
       </section>
     </>
-  );
-}
-
-/** A setup check's pieces, each missing one with the commands that install it here. */
-function SetupList<I extends SetupItem | VoiceSetupItem>({ items, names, state }: { items: I[]; names: Record<I['id'], string>; state: (i: I) => string }) {
-  const s = t.config.setup;
-  return (
-    <ul>
-      {items.map((i) => (
-        <li key={i.id} className={i.state}>
-          <span className="c-mark" aria-hidden>
-            {{ ok: '✓', missing: '✗', later: '…', off: '–' }[i.state]}
-          </span>
-          <span className="c-name">{names[i.id as I['id']]}</span>
-          <span className="hint" title={i.found}>
-            {state(i)}
-          </span>
-          {i.state === 'missing' && i.install && (
-            <div className="c-how">
-              {!!i.install.commands.length && <span className="hint">{s.install}</span>}
-              {i.install.commands.map((c) => (
-                <code key={c}>{c}</code>
-              ))}
-              {i.install.url && (
-                <a href={i.install.url} target="_blank" rel="noreferrer">
-                  {s.more}
-                </a>
-              )}
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -576,12 +537,6 @@ function VoiceBlock({ on }: { on: boolean }) {
   if (!view) return null;
   const v = t.config.voice;
   const s = t.config.setup;
-  const state = (i: VoiceSetupItem) => {
-    if (i.id === 'speech' && i.state === 'missing') return v.speechMissing(megabytes(i.mb ?? 0));
-    if (i.state === 'later') return v.later(megabytes(i.mb ?? 0));
-    if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
-    return (i.found && v.found[i.found]) ?? i.found ?? s.there;
-  };
   const install = async () => {
     setStatus('');
     try {
@@ -596,7 +551,7 @@ function VoiceBlock({ on }: { on: boolean }) {
       <h4 className="p-h">{v.title}</h4>
       <section className="c-canvas c-setup c-voice">
         <p className="hint">{v.hint(`${PLATFORMS[view.platform] ?? view.platform} (${view.arch})`)}</p>
-        <SetupList items={view.items} names={v.names} state={state} />
+        <SetupList items={view.items} name={(i) => v.names[i.id]} state={voiceState} />
         {view.listen === 'faster' && <p className="hint">{v.faster}</p>}
         {view.job?.running ? (
           <p className="hint c-install">

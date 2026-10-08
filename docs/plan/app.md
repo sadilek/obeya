@@ -28,8 +28,18 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   Whisper, ffmpeg, uv, the voice) and demos (`plugin/skills/demo/lib/setup.ts`: Node, Playwright
   and a browser, ffmpeg, uv, the voice, Whisper), each missing piece with how to install it on
   this platform, and installs Piper, Whisper's model and Qwen3-TTS itself. Claude Code, its login,
-  git and gh are not checked; a missing login shows only when an agent fails ("Claude ist auf
-  diesem Rechner nicht angemeldet").
+  git and gh are checked by the setup assistant (below).
+- *Setup assistant* (W6, 2026-10-08, design: Setup assistant): the first start without
+  `canvases.json` shows it instead of exiting, in the checkout and the binary alike, and the
+  Konfiguration sheet opens it later. One list (Agenten needed; Pull Requests, Sprachbefehle and
+  Demos can wait), installs without admin rights at a click, commands with a copy button for the
+  rest, logins in a terminal, git's name and e-mail in two fields, then the first canvas from a
+  folder or a clone, with a first card. The folder dialog is the system's, opened by the server,
+  so the app needs no dialog of its own. Checked on macOS with a scratch Obeya (the folder path,
+  the restart, the canvas with its card); not tried: the terminal and the folder dialog on a Mac
+  (they open windows on the owner's screen), and anything on Windows and Linux (the `cmd start`
+  quoting, winget, the Linux terminals, the registry's PATH), which W3's runners can at least
+  start.
 - *Claude Code*: the Agent SDK brings its own Claude Code binary per platform as an optional
   package (`@anthropic-ai/claude-agent-sdk-darwin-arm64` and so on, 224 MB on macOS arm64), and
   the checkout runs that one, on the machine's login. The compiled binary runs the machine's own
@@ -232,7 +242,7 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
 - [ ] **W5:** Auto-update through GitHub Releases. Tauri's updater with its own key pair; the bar
   shows a newer version; installing waits for the workers like a restart, then replaces and
   restarts the app; the app refuses a database newer than it knows.
-- [ ] **W6:** Setup assistant on first start. One list of what Obeya needs (Claude Code and its
+- [x] **W6:** Setup assistant on first start. One list of what Obeya needs (Claude Code and its
   login, git, gh and its login, voice, demos), needed and skippable parts apart, installs without
   admin rights at a click, commands for the rest, logins in a terminal; then the first canvas from
   a folder or a clone. In the app and in the checkout, and from the settings later.

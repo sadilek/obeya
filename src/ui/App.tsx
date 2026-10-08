@@ -12,6 +12,7 @@ import { type ActDone, Detail, hasAgent, type Pending } from './detail';
 import type { Field } from './api';
 import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
+import { Setup } from './setup';
 import { KoordinatorSheet } from './koordinator';
 import { depsOf } from './deps';
 import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './keep';
@@ -34,7 +35,8 @@ export function App() {
   // the canvas in the address, else the first
   const wanted = new URLSearchParams(location.search).get('c');
   const current = canvases.find((c) => c.id === wanted) ?? canvases[0];
-  if (!current) return <div className="empty">{t.noCanvas}</div>;
+  // the first start: no canvas yet, so the setup assistant fills the page and creates one
+  if (!current) return <Setup first />;
   setCanvas(current.id);
   return <Live canvases={canvases} />;
 }
@@ -209,6 +211,7 @@ function Canvas({
   };
   const [helpOn, setHelpOn] = useState(false);
   const [cOn, setCOn] = useState(false);
+  const [setupOn, setSetupOn] = useState(false);
   const toggleConfig = () => {
     if (!cOn && focusRef.current?.type === 'project') closeProject();
     setCOn(!cOn);
@@ -1088,7 +1091,8 @@ function Canvas({
         </div>
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
-      <ConfigSheet on={cOn} />
+      <ConfigSheet on={cOn} onSetup={() => setSetupOn(true)} />
+      {setupOn && <Setup onClose={() => setSetupOn(false)} />}
       <KoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={open} onTell={(text, images) => tellTyped(text, images, null)} />
       <PushToTalk phase={ptt.phase} level={ptt.level} flat={ptt.flat} target={target} shots={voiceShots} onDown={ptt.start} />
       <Sheet

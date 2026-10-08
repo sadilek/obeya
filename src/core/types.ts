@@ -1,7 +1,7 @@
 // Shapes shared by the server and the UI.
 
 import type { DemoSettings, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
-import type { SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
+import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { Language } from './locale';
 import { MESSAGES } from './messages';
 
@@ -638,6 +638,12 @@ export type ErrorCode =
   | 'notShared'
   /** Sharing many pages again: a run is under way already. */
   | 'reshareBusy'
+  /** Setup: the folder for the first canvas is no git repository. */
+  | 'notRepo'
+  /** Setup: the folder a clone would go to exists already. */
+  | 'cloneTarget'
+  /** Setup: an installation or a clone is running already. */
+  | 'setupBusy'
   /** Sharing many pages again: no page is outdated. */
   | 'nothingOutdated'
   /** Export: the video is too large for one HTML file. */
@@ -846,6 +852,64 @@ export interface VoiceSetupView {
   fetch: { parts: ('piper' | 'whisper')[]; mb: number };
   /** The installation running or last run. */
   job?: { running: boolean; step: 'piper' | 'whisper'; line: string; error?: string };
+}
+
+/** The setup assistant's list (`src/server/machine.ts`): what Obeya needs on this machine, by what it is for. */
+export type MachineSectionId = 'needed' | 'pr' | 'voice' | 'demos';
+/** Claude Code, its login, git and git's name and e-mail for commits. */
+export type NeededId = 'claude' | 'claudeLogin' | 'git' | 'gitUser';
+/** gh and its login. */
+export type PrId = 'gh' | 'ghLogin';
+
+/** A piece of the list, as a setup check gives it, and what Obeya does about it at a click. */
+export type MachineItem = Omit<SetupItem, 'id'> & {
+  id: NeededId | PrId | VoiceSetupId | SetupId;
+  /**
+   * `install`: Obeya installs it (no admin rights, or Homebrew or winget). `login`: Obeya opens a
+   * terminal that logs in. `identity`: the owner gives git's name and e-mail, which Obeya sets.
+   */
+  act?: 'install' | 'login' | 'identity';
+};
+
+export interface MachineSection {
+  id: MachineSectionId;
+  items: MachineItem[];
+  /** About this many megabytes still to download for what the section is for (voice, demos). */
+  mb: number;
+}
+
+/** An installation, a login or a clone Obeya runs for the assistant, one at a time. */
+export interface MachineJob {
+  kind: 'install' | 'clone';
+  section?: MachineSectionId;
+  id?: MachineItem['id'];
+  running: boolean;
+  /** The last line of its output. */
+  line: string;
+  error?: string;
+  /** A clone that became the first canvas: its id, opened once Obeya runs again. */
+  canvas?: string;
+}
+
+export interface MachineView {
+  platform: string;
+  arch: string;
+  sections: MachineSection[];
+  /** The Claude Code Obeya was checked with (the Agent SDK's); the machine's may be newer or older. */
+  checkedClaude: string;
+  job?: MachineJob;
+  /** Obeya can open the system's folder dialog here. */
+  picker: boolean;
+  /** Where a clone goes by default: the owner's home directory. */
+  cloneInto: string;
+  /** Saving the first canvas starts Obeya again by itself; else the owner starts it. */
+  restarts: boolean;
+}
+
+/** What choosing the first canvas did: it is saved, and Obeya starts again with it where something restarts it. */
+export interface FirstCanvas {
+  canvas: string;
+  restarting: boolean;
 }
 
 /** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved; or why it stops for good (Ctrl-C, SIGTERM). */

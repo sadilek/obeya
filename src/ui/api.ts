@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, FirstCanvas, MachineItem, MachineSectionId, MachineView, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -77,6 +77,16 @@ export const api = {
   agents: () => call<AgentsView>('GET', '/api/agents'),
   /** Saves the model or the effort of one group. */
   saveAgents: (role: AgentRole, choice: Partial<AgentSetting>) => call<AgentsView>('PUT', '/api/agents', { [role]: choice }),
+  /** The setup assistant's list: what Obeya needs on this machine. */
+  setup: () => call<MachineView>('GET', '/api/setup'),
+  setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),
+  /** Opens a terminal that logs in; `opened: false` where Obeya found none. */
+  setupLogin: (section: MachineSectionId, id: MachineItem['id']) => call<{ opened: boolean }>('POST', '/api/setup/login', { section, id }),
+  setupIdentity: (name: string, email: string) => call<MachineView>('POST', '/api/setup/identity', { name, email }),
+  /** A folder from the system's dialog; null when cancelled. */
+  setupPick: (prompt: string) => call<{ path: string | null }>('POST', '/api/setup/pick', { prompt }),
+  /** The first canvas from a folder (saved at once) or a clone (the view follows it). */
+  setupCanvas: (input: { path: string } | { clone: string; into: string }) => call<FirstCanvas | MachineView>('POST', '/api/setup/canvas', input),
   voiceSetup: () => call<VoiceSetupView>('GET', '/api/voice-setup'),
   installVoice: () => call<VoiceSetupView>('POST', '/api/voice-setup/install'),
   demoSettings: () => call<DemoSettingsView>('GET', '/api/demo-settings'),

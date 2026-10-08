@@ -22,6 +22,7 @@ export interface VoiceSetupOptions {
 
 export class VoiceSetup {
   private job?: VoiceSetupView['job'];
+  private done: Promise<void> = Promise.resolve();
 
   constructor(private o: VoiceSetupOptions) {}
 
@@ -75,7 +76,7 @@ export class VoiceSetup {
     if (this.job?.running) throw new BadRequest('voiceInstalling', 'voice is being installed');
     const { speech } = this.o.backends;
     const job: NonNullable<VoiceSetupView['job']> = (this.job = { running: true, step: 'piper', line: '' });
-    (async () => {
+    this.done = (async () => {
       const voice = confirmationVoice(ownerLanguage(this.o.home));
       if (speech === 'piper' && !installState(voice, this.o.home).installed) {
         console.log('Obeya: installing Piper for spoken confirmations');
@@ -94,8 +95,16 @@ export class VoiceSetup {
         job.running = false;
         job.error = e.message;
         console.error(`Obeya: installing the voice failed: ${e.message}`);
+        throw e;
       },
     );
+    // the view says how it ended; whoever waits for it hears of a failure
+    this.done.catch(() => {});
     return this.view();
+  }
+
+  /** Ends with the installation running or last run, failing as it did. */
+  finished(): Promise<void> {
+    return this.done;
   }
 }

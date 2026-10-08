@@ -14,6 +14,7 @@ import { serveDemoFile } from './demo';
 import { type NarrationHost, parseClipRequest } from './narration';
 import type { Restarter } from './self-update';
 import { looping, silence, type Speaker, type Transcriber } from './voice';
+import type { MachineSetup } from './machine';
 import type { VoiceSetup } from './voice-setup';
 
 type Req = Request & { params: Record<string, string> };
@@ -33,6 +34,7 @@ export function serve(
   config?: Config,
   restarter?: Restarter,
   narration?: NarrationHost,
+  machine?: MachineSetup,
 ) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
@@ -178,6 +180,21 @@ export function serve(
       // what Obeya's own voice in and out need here, and installing it
       '/api/voice-setup': { GET: () => (setup ? handle(() => setup.view()) : new Response('Not found', { status: 404 })) },
       '/api/voice-setup/install': { POST: () => (setup ? handle(() => setup.install()) : new Response('Not found', { status: 404 })) },
+      // the setup assistant: what Obeya needs on this machine, installed, logged in; then the first canvas
+      '/api/setup': { GET: () => (machine ? handle(() => machine.view()) : new Response('Not found', { status: 404 })) },
+      '/api/setup/install': { POST: async (req) => (machine ? handle(async () => machine.install(await req.json())) : new Response('Not found', { status: 404 })) },
+      '/api/setup/login': { POST: async (req) => (machine ? handle(async () => machine.login(await req.json())) : new Response('Not found', { status: 404 })) },
+      '/api/setup/identity': { POST: async (req) => (machine ? handle(async () => machine.identity(await req.json())) : new Response('Not found', { status: 404 })) },
+      '/api/setup/canvas': { POST: async (req) => (machine ? handle(async () => machine.canvas(await req.json())) : new Response('Not found', { status: 404 })) },
+      // the system's folder dialog, open as long as the owner takes
+      '/api/setup/pick': {
+        POST: async (req, srv) => {
+          if (!machine) return new Response('Not found', { status: 404 });
+          srv.timeout(req, 0);
+          const { prompt } = ((await req.json().catch(() => ({}))) ?? {}) as { prompt?: unknown };
+          return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));
+        },
+      },
       // the demo settings: narration language and voice, read by every render
       '/api/demo-settings': {
         GET: () => (config ? Response.json(config.demo()) : new Response('Not found', { status: 404 })),

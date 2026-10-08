@@ -210,6 +210,11 @@ const de = {
     /** The line in a pull request's description that links its demo. */
     prLine: (html: boolean): string => (html ? 'Demo-Seite' : 'Demo-Video'),
   },
+  /** The first card on the canvas the setup assistant created: what to try. */
+  welcome: {
+    title: 'Erste Aufgabe: etwas Kleines ändern',
+    body: 'Schreib in diese Karte, was ein Agent in diesem Repository tun soll, zum Beispiel: „Ergänze im README, wie man das Projekt startet.“ Dann „Agent starten“: Er arbeitet auf einem eigenen Branch, fragt nach, wenn er etwas nicht selbst entscheiden soll, und zeigt dir zum Schluss eine Demo. Du gibst sie frei oder schreibst, was noch fehlt.\n\nWeitere Aufgaben legst du mit „+ Neue Aufgabe“ an, oder du sagst sie: Leertaste halten und sprechen. „Konfiguration“ → „Einrichtung prüfen“ prüft auch später, was Obeya auf diesem Rechner braucht.',
+  },
 };
 
 export type Messages = typeof de;
@@ -410,6 +415,10 @@ const en: Messages = {
     withdrawn: 'The page is withdrawn.',
     exported: (zip: boolean, name: string) => `Exported as ${zip ? 'ZIP' : 'HTML file'}: ${name}`,
     prLine: (html: boolean) => (html ? 'Demo page' : 'Demo video'),
+  },
+  welcome: {
+    title: 'First task: change something small',
+    body: 'Write into this card what an agent should do in this repository, for example: “Add to the README how to start the project.” Then “Start agent”: it works on a branch of its own, asks when something is not its to decide, and shows you a demo at the end. You approve it or write what is still missing.\n\nMore tasks come from “+ New task”, or you say them: hold Space and speak. “Configuration” → “Check setup” checks again later what Obeya needs on this machine.',
   },
 };
 

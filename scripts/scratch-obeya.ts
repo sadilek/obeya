@@ -57,7 +57,9 @@
 // workspace (true: the card holds the next free clone, for an adapter that works in clones; with
 // `branch` checked out there, holding a commit), prototypeOf (the key of the idea it is a prototype of),
 // and `row` for any other column of `cards` (objects are stored as JSON). Times: "90s", "15m", "2h",
-// "3d" ago. `"adapter": ""` names none: the repository's own (`.obeya/adapter/` among `files`) or the generic one. `share` is the repository's share command as the configuration holds it (a script among
+// "3d" ago. `"setup": true` serves no canvas (no configuration, no repository given): the first start,
+// which shows the setup assistant; the repository is still made, for the assistant to pick, and
+// `cards` may be empty. `"adapter": ""` names none: the repository's own (`.obeya/adapter/` among `files`) or the generic one. `share` is the repository's share command as the configuration holds it (a script among
 // `files`, say); `poolCheckout` makes the repository's checkout a workspace of the pool too
 // (`workspaces` in the configuration), as a pool of clones often has it, with a bare origin in
 // <dir>; with either, the server
@@ -106,6 +108,8 @@ interface StageCard {
 }
 
 interface Stage {
+  /** No canvas: Obeya's first start, with the setup assistant. */
+  setup?: boolean;
   port?: number;
   dir?: string;
   adapter?: string;
@@ -221,7 +225,7 @@ if (configured)
       2,
     ),
   );
-const canvasArgs = configured ? ['--config', configFile] : [repo, ...(stage.adapter === '' ? [] : ['--adapter', stage.adapter ?? 'obeya']), ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
+const canvasArgs = stage.setup ? [] : configured ? ['--config', configFile] : [repo, ...(stage.adapter === '' ? [] : ['--adapter', stage.adapter ?? 'obeya']), ...(stage.clones ? ['--clones', String(stage.clones)] : [])];
 const serverArgs = [...canvasArgs, '--port', String(port), ...(supervised ? [] : ['--dev']), ...(idle && canIdle ? ['--idle-workers'] : [])];
 const server = spawn(binary ?? process.execPath, binary ? serverArgs : ['src/server/main.ts', ...serverArgs], {
   cwd: binary ? dir : code,
@@ -243,6 +247,12 @@ if (!started.up) {
   if (started.exit === null) stop(dir);
   const after = `after ${Math.round(started.waited / 1000)} s`;
   fail(`the server did not come up ${started.exit !== null ? `(exit ${started.exit}) ${after}` : `${after}, so it was stopped`}; ${log}:\n${readFileSync(log, 'utf8').slice(-2000)}`);
+}
+if (stage.setup) {
+  const staged = { url: `${base}/`, port, dir, repo, pid: server.pid, log, cards: {} };
+  writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
+  console.log(JSON.stringify(staged));
+  process.exit(0);
 }
 const canvas = ((await (await fetch(`${base}/api/canvases`)).json()) as { id: string }[])[0]!.id;
 const api = async (method: string, path: string, body?: unknown) => {

@@ -407,7 +407,37 @@ the owner's language (`src/core/locale.ts`).
   (`/api/c/<canvas>/…`, `/api/canvases` lists them); SQLite (`bun:sqlite`) under `~/.obeya/`.
   `obeya <repo>…` starts one canvas with the given repositories (`--name` names it);
   `obeya` starts the canvases `~/.obeya/canvases.json` lists, `obeya --config <file>` those of
-  another file.
+  another file. Without that file (the first start) it serves no canvas, and the page is the
+  setup assistant (see Setup assistant).
+- **Setup assistant** (`src/server/machine.ts`, `src/ui/setup.tsx`) — one list of what Obeya
+  needs on this machine, in four parts: *Agenten* (needed: Claude Code, its login, git, and git's
+  name and e-mail, without which an agent's commit fails), *Pull Requests* (gh and its login:
+  the generic adapter lands through pull requests, so it is needed at the first approval, not
+  before), *Sprachbefehle* and *Demos* (the checks the settings sheet makes, voice-setup.ts and
+  the demo skill's setup.ts, each with the size still to download; what both need shows once).
+  The checkout's agents run on the Agent SDK's own Claude Code, so there it is always there; the
+  compiled binary's run on the machine's, and the list says which version Obeya was checked with
+  (the SDK's) when the machine's differs. Logins are read from `claude auth status` and `gh auth
+  status`. "Installieren" installs what needs no admin rights: Claude Code and uv with their
+  official installers (`curl … | sh`, PowerShell's `irm … | iex` on Windows), Piper and Whisper
+  through the voice's installation, a demo's voice; system software (git, gh, ffmpeg, Node, a
+  browser) comes with the command for this platform and a copy button, and is installed at a click
+  where that needs no password (Homebrew where it is there, winget). A login opens a terminal with
+  `claude auth login` or `gh auth login` (Terminal through `osascript` on a Mac, `cmd` on Windows,
+  the first terminal found on Linux; none found: the command to run by hand); git's name and
+  e-mail are typed into two fields. The list checks again when the window gets the focus back.
+  Obeya puts `~/.local/bin` (the official installers') and on a Mac Homebrew's directories on its
+  `PATH` at start, so what was installed is found from a process the desktop started; on Windows
+  it reads the `PATH` from the registry again after an installation. On the first start the page
+  ends with the first canvas: a repository's folder (a path, or the system's folder dialog where
+  there is one: `osascript`, PowerShell's, zenity or kdialog) or a clone (`owner/name` through `gh
+  repo clone` where gh is logged in, else from GitHub by its URL; any git URL; into the home
+  directory unless another is given). Obeya writes `canvases.json` with it (its own adapter, else
+  the generic one, with two clones when the adapter works in clones), restarts and the page opens
+  the canvas, on which a first card says what to try (the marker `welcome` in Obeya's home, read
+  once when the canvas runs). Later the Konfiguration sheet opens the same list over the canvas
+  ("Einrichtung prüfen"), without the first canvas. A scratch Obeya with `"setup": true` in its
+  stage file starts like a first start.
 - **One file** — `bun run build` (`scripts/build.ts`) compiles the server with Bun
   (`bun build --compile`) into one binary per platform (macOS arm64 and x64, Linux x64 and arm64,
   Windows x64; Bun cross-compiles, about 15 s for all five), 66–120 MB with the UI and SQLite in
@@ -443,7 +473,7 @@ the owner's language (`src/core/locale.ts`).
   the adapter's, or an export; see Sharing a demo); problems (no git repository, an unknown
   adapter, two canvases with one id, a canvas's home repository left out, a share command whose program is not there) show at the field while
   editing and keep it from being saved. Saving writes the file and restarts Obeya once no worker is
-  in the middle of a turn (as for new code); the page reloads. Started with repositories on the
+  in the middle of a turn (as for new code), a tenth of a second after the answer went out; the page reloads. Started with repositories on the
   command line, Obeya shows those, and saving makes the file the configuration it restarts with.
   Renaming a running canvas keeps its id (`id` in the file), so its cards stay. The server's own
   settings (port, data directory, the agents' permission mode) come from the command line and show
