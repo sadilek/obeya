@@ -1,10 +1,32 @@
 // Injected into every page of a demo recording. Headless Chrome paints no mouse pointer and no
 // focus cues a viewer could follow, so the recording carries its own: a pointer that glides to
 // each target, a click ripple, highlight rings that track their elements through scrolling, and
-// an image stage for things the page itself cannot show (a PDF, a rendered e-mail), and a white
-// veil over a time jump, a stretch the video leaves out.
+// an image stage for things the page itself cannot show (a PDF, a rendered e-mail), a white
+// veil over a time jump, a stretch the video leaves out, and a clock strip (`CLOCK`).
 (() => {
   if (window.__demo) return;
+  // The time each frame was painted, in a strip of black and white cells at the bottom left: on a
+  // busy machine the screencast hands frames over seconds after they were painted, so the director
+  // reads the time from the picture (`readClock` in timeline.ts) and paints the strip over in the video.
+  const CLOCK = { bits: 24, cell: 3, left: 2, bottom: 3 };
+  const strip = document.createElement('canvas');
+  strip.width = CLOCK.bits * CLOCK.cell;
+  strip.height = CLOCK.cell;
+  strip.style.cssText =
+    `position:fixed;left:${CLOCK.left}px;bottom:${CLOCK.bottom}px;width:${strip.width}px;height:${strip.height}px;` +
+    'pointer-events:none;z-index:2147483647;image-rendering:pixelated;';
+  const pen = strip.getContext('2d');
+  function tick() {
+    if (!strip.isConnected && document.documentElement) document.documentElement.appendChild(strip);
+    // hundredths of a second, the low 24 bits: unique over 46 hours
+    const code = Math.floor(Date.now() / 10) % 2 ** CLOCK.bits;
+    for (let i = 0; i < CLOCK.bits; i++) {
+      pen.fillStyle = (code >> (CLOCK.bits - 1 - i)) & 1 ? '#000' : '#fff';
+      pen.fillRect(i * CLOCK.cell, 0, CLOCK.cell, CLOCK.cell);
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
   const ACCENT = '#f5a524';
   let root = null;
   let cursor = null;

@@ -1197,6 +1197,13 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   two seconds in all. The cuts come out of the frames, the narration offsets, the chapters and
   the captions alike (`lib/timeline.ts`); a narration clip the cut falls into goes on across it,
   so a skip belongs after the scene's narration, and the next scene says the jump ("Kurz darauf").
+  Frames go on the video by the time they were painted, not by when the screencast handed them
+  over: `overlay.js` paints the time into a strip of 24 black and white cells at the page's bottom
+  left, the director reads it from every frame (one ffmpeg pass, `readClock` in `lib/timeline.ts`)
+  and paints the strip over in the video. On a busy machine (other renders, builds) the screencast
+  handed frames over 1 to 5 s after they were painted, with stamps of the hand-over, more the
+  longer the take ran: the picture trailed the narration (2026-10-08, the hero video's microphone
+  lit seconds after the spoken command).
   A wait under five seconds stays in the video: the flash for "2 Sekunden später" disturbed more
   than the wait. `skip` therefore fades only once the wait has run five seconds; those first
   seconds are cut without a trace (the picture rarely changes in them), the rest falls into the white.

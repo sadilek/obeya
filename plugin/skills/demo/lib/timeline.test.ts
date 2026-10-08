@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { frameDurations, laterLabel, videoTime } from './timeline.ts';
+import { CLOCK, frameDurations, laterLabel, onPaintTime, readClock, videoTime } from './timeline.ts';
 
 const frame = (t: number) => ({ file: `f${t}`, t, width: 1440, height: 900 });
 
@@ -23,6 +23,25 @@ describe('the video timeline', () => {
   test('without cuts, frames run in real time', () => {
     const held = frameDurations([frame(100), frame(101.5)], 100, 103, []);
     expect(held.map((h) => h.seconds)).toEqual([1.5, 1.5]);
+  });
+
+  test("a frame's clock strip says when it was painted, near its stamp", () => {
+    const strip = (t: number, blur = 0) => {
+      const code = Math.floor(t * 100) % 2 ** CLOCK.bits;
+      const row = new Uint8Array(CLOCK.bits * CLOCK.cell);
+      for (let i = 0; i < CLOCK.bits; i++) row.fill((code >> (CLOCK.bits - 1 - i)) & 1 ? 0 + blur : 255 - blur, i * CLOCK.cell, (i + 1) * CLOCK.cell);
+      return row;
+    };
+    // painted at 1791458523.78, handed over 2.3 s later
+    expect(readClock(strip(1791458523.78, 30), 1791458526.08)).toBeCloseTo(1791458523.78, 2);
+    const grey = strip(1791458523.78);
+    grey[4] = 128;
+    expect(readClock(grey, 1791458526.08)).toBeNull();
+  });
+
+  test('frames take their paint time where it reads, the last delay where not, and never go back in time', () => {
+    const frames = onPaintTime([frame(102.3), frame(103.3), frame(104.3), frame(104.4)], [100, null, 102.5, 102.4]);
+    expect(frames.map((f) => +f.t.toFixed(3))).toEqual([100, 101, 102.5, 102.5]);
   });
 
   test('the picture says how much later it is', () => {

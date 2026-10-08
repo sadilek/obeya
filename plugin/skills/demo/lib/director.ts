@@ -11,7 +11,7 @@ import path from 'node:path';
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { type NarrationLanguage, readDemoSettings, withVoice } from './settings.ts';
 import { checkSetup, describeSetup, whisperKit } from './setup.ts';
-import { type Cut, type Frame, frameDurations, laterLabel, videoTime } from './timeline.ts';
+import { CLOCK, type Cut, type Frame, frameDurations, laterLabel, onPaintTime, readClock, videoTime } from './timeline.ts';
 import { TTS_LOCK, voiceSpec } from './voices.ts';
 
 export interface Scene {
@@ -498,9 +498,30 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
     maxHeight: size.height,
   });
   return {
+    /** On the time they were painted once the screencast stops (`paintTimes`). */
     frames,
-    stop: () => cdp.send('Page.stopScreencast'),
+    stop: async () => {
+      await cdp.send('Page.stopScreencast');
+      frames.splice(0, frames.length, ...onPaintTime(frames, paintTimes(frames, dir, size)));
+    },
   };
+}
+
+/**
+ * The time each frame was painted, read from the clock strip `overlay.js` puts into the page: one
+ * gray row through the strip of every frame, cut out by ffmpeg in one pass. Null for a frame
+ * whose strip cannot be read, and for all of them when ffmpeg fails.
+ */
+function paintTimes(frames: Frame[], dir: string, size: { width: number; height: number }): (number | null)[] {
+  const width = CLOCK.bits * CLOCK.cell;
+  const y = size.height - CLOCK.bottom - Math.ceil(CLOCK.cell / 2);
+  const r = spawnSync(
+    'ffmpeg',
+    ['-loglevel', 'error', '-f', 'image2', '-start_number', '0', '-i', path.join(dir, '%06d.jpg'), '-vf', `crop=${width}:1:${CLOCK.left}:${y},format=gray`, '-f', 'rawvideo', 'pipe:1'],
+    { maxBuffer: 1 << 30 },
+  );
+  if (r.status !== 0 || r.stdout.length !== frames.length * width) return frames.map(() => null);
+  return frames.map((f, i) => readClock(r.stdout.subarray(i * width, (i + 1) * width), f.t));
 }
 
 /** Writes an ffconcat list that holds each frame until the next one, from t0 to tEnd, less the cuts. */
@@ -598,7 +619,8 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     '-y', '-loglevel', 'error',
     '-f', 'concat', '-safe', '0', '-i', list,
     '-i', narration,
-    '-vf', `fps=30,scale=${viewport.width}:${viewport.height},format=yuv420p`,
+    // the clock strip, painted over from the pixels around it
+    '-vf', `fps=30,scale=${viewport.width}:${viewport.height},delogo=x=1:y=${viewport.height - CLOCK.bottom - CLOCK.cell - 2}:w=${CLOCK.bits * CLOCK.cell + 2}:h=${CLOCK.cell + 4},format=yuv420p`,
     // Screen content: CRF 30 keeps text sharp at about 2.5 MB per minute.
     '-c:v', 'libx264', '-preset', 'slow', '-crf', '30', '-tune', 'stillimage',
     '-c:a', 'aac', '-b:a', '96k',
