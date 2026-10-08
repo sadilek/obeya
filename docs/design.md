@@ -587,6 +587,35 @@ the owner's language (`src/core/locale.ts`).
   AppImage after the server is in it. Tauri's own `createUpdaterArtifacts` needs the updater
   plugin's configuration and would sign the AppImage without the server. A run takes about ten
   minutes (2026-10-08).
+- **Site** (`site/`) — the page on obeya.si, in English whatever the interface speaks: plain HTML
+  and CSS, no JavaScript, no framework and no build, so it opens straight from the file too. From
+  the top: one sentence and the hero video; three pillars with screenshots (the canvas, voice, the
+  demo the owner approves instead of the code); the four steps from idea to main as one card
+  moving along a wall; the six principles as cards on a wall; "The big room", where the name comes
+  from, with 大部屋 set vertically; the dark band "Obeya is built with Obeya."; getting started
+  with the downloads, `bun start` from the checkout, GitHub and the design doc. Inter and the
+  three characters of 大部屋 (Noto Serif JP) are served from `site/fonts/` with their OFL
+  licences, not from Google Fonts; logo and wordmark are copies from `src/ui/logo/`; the
+  screenshots show the German interface. Paths are relative, so the site works under
+  sadilek.github.io/obeya as well. `.github/workflows/pages.yml` publishes `site/` to GitHub Pages
+  on every push to `main` on GitHub that touches `site/` or the workflow, and on demand from the
+  Actions tab; Pages serves a branch only from `/` or `/docs`, hence the workflow. The domain
+  obeya.si is verified for the GitHub account and set in the repository's Pages settings, with
+  HTTPS enforced (a `CNAME` file would be ignored by a workflow deployment); at the registrar the
+  apex points at GitHub Pages' four A and four AAAA addresses and `www` is a CNAME to
+  `sadilek.github.io`, which Pages redirects to obeya.si.
+- **Hero video** (`scripts/hero-video/`) — the site's film is a real run, recorded with Obeya's
+  own demo pipeline on a scratch canvas over a small tip calculator (Tipjar, in `tipjar/` there
+  with its own adapter and plan doc): an idea by voice, a real worker building it and recording its
+  demo, the approval landing it on main; about two minutes, narrated in English in the owner's
+  ElevenLabs voice clone (see CLAUDE.md). The directory holds the narration, the scenes, the stage
+  and the render; its README says how to change, re-render and publish it. The video is not in
+  git: it and its captions are the assets `hero.mp4` and `hero.vtt` of the GitHub release
+  `site-media`, which the Pages workflow fetches into `site/media/` before it publishes, so
+  obeya.si serves them itself (no third party, no tracking). `publish.ts` replaces them and runs
+  the workflow again. On the page it is a `<video>` with native controls, English captions and a
+  poster (`site/img/hero-poster.jpg`, the first frame with a play button, in git), loading nothing
+  before a click (`preload="none"`); opened from the file, the site shows the poster alone.
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
@@ -1796,6 +1825,26 @@ the repository; the copy on the project is only for the archive).
   edge was the project's decision log, which now goes to the worker. Narrowing the advisor's rules
   or having it only suggest were dropped: the worker's own pick gives the owner what a suggestion
   would.
+- Obeya is open source under the MIT licence, copyright Daniel Sadilek (`LICENSE`, the README,
+  `package.json`), in a public repository on GitHub (2026-10-06). Code, tests and docs name no
+  other work projects. The README is written for strangers: the idea, a screenshot of a scratch
+  canvas (`docs/images/canvas.png`), the status, requirements, a quick start, a link to obeya.si;
+  `CONTRIBUTING.md` says how Obeya is built with Obeya (design doc, plan docs, cards, demos) and
+  what a pull request from outside brings.
+- Obeya is made known through a static English site on obeya.si that starts with the film
+  (2026-10-06; see Site). Of three prototypes, B (film first, calm and editorial) became the page;
+  C gave it the principles as cards on a wall, the four steps as one card moving along the wall
+  and "The big room". A's canvas that the camera flew through while scrolling was built in and
+  dropped again: the owner found the scrolling odd. The hero video is a release asset rather than
+  in git or on a video host (2026-10-07): git holds no video, and the site loads nothing from a
+  third party.
+- Agents run only through the user's own installation of Claude Code and its login: Obeya starts
+  that installation and never uses the subscription's token itself. Tools that used the token
+  against the API themselves were blocked; tools that start the official installation appear to
+  be tolerated (T3 Code, Conductor).
+- No business and no cloud service for now: being known comes first (2026-10-06). Considered and
+  parked: hosting demos for sharing, remote access from the phone through a relay, voice as a
+  service, a team canvas, and a subscription covering the costs. Hosted agents were ruled out.
 
 ## Open questions
 
@@ -1803,9 +1852,6 @@ the repository; the copy on the project is only for the archive).
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
 - A plan doc without a `## Workstreams` checklist is not shown (its tasks under other headings,
   say). Fix such docs, or show them as projects without cards?
-- Making Obeya known as open source (MIT licence, a public repository, English behind the interface, voice
-  on Windows and Linux, an installable app, the site on obeya.si): planned in
-  [`docs/plan/open-source.md`](plan/open-source.md).
 - Shared demos on a static site that Obeya keeps and deploys itself, declared in the adapter
   (`demo.site`), safe for several machines publishing to one site: planned in
   [`docs/plan/demo-site.md`](plan/demo-site.md).

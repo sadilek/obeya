@@ -1,9 +1,8 @@
 # Obeya as an installable app
 
 > Plan doc for an Obeya that a stranger downloads, installs and starts, on macOS, Windows and
-> Linux, without Bun or a checkout. Written as W8 of
-> [`open-source.md`](open-source.md). Deleted when it ships; durable content moves into
-> [`docs/design.md`](../design.md).
+> Linux, without Bun or a checkout. Written while Obeya went open source. Deleted when it ships;
+> durable content moves into [`docs/design.md`](../design.md).
 
 ## Goal
 
@@ -122,7 +121,7 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
 
 ### Shape of the app
 
-- **Tauri shell around the compiled server**, as `open-source.md` decided: the server is
+- **Tauri shell around the compiled server**, as design.md's Decisions say: the server is
   `bun build --compile` per platform, a Tauri sidecar (`externalBin`); the shell starts it, opens
   a window on `http://127.0.0.1:<port>/` and brings installer formats, the updater, a native
   folder picker and global push-to-talk. The UI stays what the browser shows today; "Im
@@ -332,8 +331,8 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
 - **Webviews**: WKWebView asks the app for the microphone, WebKitGTK has media streams off unless
   the app turns them on and plays H.264 only with GStreamer's plugins installed. Where the window
   cannot record or play a demo, the app opens the canvas in the browser instead.
-- **Obeya itself on Windows** has run the voice check and a voice command on a runner (W7 of
-  `open-source.md`), and in W1 the compiled binary ran a real worker there (clone, commit,
+- **Obeya itself on Windows** has run the voice check and a voice command on a runner (when voice
+  came to Windows and Linux), and in W1 the compiled binary ran a real worker there (clone, commit,
   handover, sharing). Landings, worktrees and long sessions on Windows are still unchecked:
   design.md calls it "a separate, larger question".
 - **SmartScreen** warns about a new download until it has a reputation, signed or not (an EV
