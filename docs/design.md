@@ -30,8 +30,9 @@ visibly on the walls and decisions are made in front of the wall.
   is nothing to show at all ("das gibt es schon") does the worker hand over without one, and says
   why.
 - **Voice first, mouse welcome.** Push-to-talk anywhere; buttons for the obvious actions. No live
-  transcript: a short confirmation, written and spoken, with undo. What was said and answered
-  stays in the conversation of the open card, or in the Koordinator's sheet.
+  transcript: what the owner says to an open card's agent shows in its conversation, a command to
+  Obeya gets a short written confirmation with undo. What was said and answered stays in the
+  conversation of the open card, or in the Koordinator's sheet. Obeya does not speak.
 - **Repo-agnostic core.** Project specifics live in a per-repo adapter, which a repository can
   carry itself (`.obeya/adapter/`).
 
@@ -94,10 +95,11 @@ An idea is thought through on its card before anything is planned; no worker run
    with answer options, shown under its reply as radio buttons, or checkboxes when several fit
    together; the owner picks, may add their own words, and both go out as one message that names
    each question. The owner types in the
-   panel or holds Space with the idea open; both go through the Koordinator, which passes the
-   words on as talk to the idea at once (picked options go straight to the agent, with the words
-   beside them). The reply stands in the panel, and only its short
-   summary is spoken, when the owner spoke. What the agent read and thought on the way to a reply
+   panel or holds Space with the idea open; both go straight to the agent, as on every card an
+   agent listens on (Voice in), spoken words as soon as Whisper has written them down (picked
+   options too, with the words beside them). The agent passes on with `to_obeya` what asks Obeya
+   for something (build it, plan it, a prototype, park, drop, anything about another card). The
+   reply stands in the panel. What the agent read and thought on the way to a reply
    folds away under that reply ("Verlauf"), for whoever wants to follow it. With every reply the
    agent also says what it would do in the owner's place: the option it would pick for each of its
    questions ("Würde ich nehmen", with why), and the next step ("Nächster Schritt, wenn der Agent
@@ -105,7 +107,7 @@ An idea is thought through on its card before anything is planned; no worker run
    that click (the suggested button instead of "So bauen", the picked options), and the canvas card
    says it short ("Tipp: Prototyp"); the owner follows or overrules it, and the suggestion goes
    with their next message. The voice Koordinator reads it too, so "mach, was du vorschlägst"
-   takes that step. Once the agent has replied, the open idea needs the
+   takes that step (said to the Koordinator, or to the agent, which passes it on). Once the agent has replied, the open idea needs the
    owner like a waiting card ("Idee · du bist dran", badge, counted in "brauchen dich") until they
    answer, park, drop or decide it.
 3. The agent keeps the brief ("Stand der Idee") on top of the card: goal, open and dropped
@@ -177,11 +179,11 @@ An idea is thought through on its card before anything is planned; no worker run
    decides again. The panel stays open while it waits: the button reads "Baut nach der Antwort …"
    with "Doch nicht bauen" beside it, and the canvas card says "baut nach der Antwort". The agent
    hears of the click with its next step, as the brief it leaves becomes the task. A turn that ends
-   without a reply (an error, a restart), parking or dropping call the building off too. A voice
-   command that plans such an idea, or one that also discusses it, only passes what was said to
-   the agent, and the Koordinator says that planning goes by a click once the reply is there; one
-   that builds it ("nimm noch X auf und bau es dann") passes it on and builds after the reply,
-   like the click. Parking and dropping
+   without a reply (an error, a restart), parking or dropping call the building off too. Asked to
+   plan such an idea while its agent works on a reply (by the agent, which passes the owner's words
+   on, or in the Koordinator's sheet along with talk to the idea), the Koordinator says that
+   planning goes by a click once the reply is there; asked to build it ("nimm noch X auf und bau es
+   dann"), it builds after the reply, like the click. Parking and dropping
    act at once and end the turn, but lose nothing: the messages the agent has not answered (the
    one it worked on and those queued behind it) stay with the idea (`unread`, across restarts)
    and go to it first, with why its turn ended, when the conversation goes on. The same holds for
@@ -231,8 +233,15 @@ An idea is thought through on its card before anything is planned; no worker run
    written it.
 2. `working`: the worker leases a workspace, implements, runs the local reviews the repo adapter
    names, and records the demo.
-3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback; feedback
-   sends the card back to `working`. The demo plays on its own the first time the card is opened
+3. `waiting: demo`: the card carries the demo. The owner approves or gives feedback. Feedback,
+   like anything the owner writes or says on the card then, goes to the worker at once, and the
+   work still waits for approval: while the worker takes the words in, the card is at work
+   („Agent arbeitet an deiner Nachricht“, no badge, not counted as needing the owner), „Freigeben“
+   stays, and a change the words call for comes as a new handover. A worker whose words asked
+   Obeya for something instead (gib frei, a follow-up) passes them on (`to_obeya`), and once its
+   turn ends the card is the owner's again. Before (2026-10-08), feedback sent the card back to
+   `working` and took the approval away until the next handover, so it waited for "Rückgängig"
+   like a command. The demo plays on its own the first time the card is opened
    (per browser; a new render counts as new), later it waits to be played, with a big play button
    over it like a shared page's (also when the browser blocks the first play). The worker's
    summary is its handover in the card's conversation below, not repeated under the demo: the
@@ -242,16 +251,14 @@ An idea is thought through on its card before anything is planned; no worker run
    and that card's summary. A question in the demo report is an
    open question like a worker's: the owner answers it on the card or by voice, the worker hears
    the answer, and the demo keeps waiting for approval. While the worker takes in the answer (it
-   may rework the demo and hand over anew), the card is at work: „Agent arbeitet an deiner
-   Antwort“, no badge, not counted as needing the owner. Once its turn ends, a demo still waiting
+   may rework the demo and hand over anew), the card is at work as after feedback. Once its turn ends, a demo still waiting
    is the owner's again; a restart resumes that turn like a working card's, also when the worker
    ended it to pause for the restart. Before (2026-10-07), the card kept its badge while the
    worker reworked the demo the answer asked for, and a worker that paused for a restart there
    was never resumed: the card waited with a demo its worker had not finished.
    A card has one field for the owner's words with one Send (`ownerField` in `src/ui/talk.ts`):
-   under such a demo it takes the answer and feedback together, and the Koordinator sorts them out
-   as it does spoken words: words that only answer are the answer, words that ask for a change are
-   feedback, the answer among them.
+   under such a demo it takes the answer and feedback together. The words go to the worker as the
+   answer (in the decision log as such), and a change they also ask for comes as a new handover.
 4. Where work lands through pull requests, approval puts the card `in PR`: its worker opens
    the PR and Obeya carries it through the merge, which it does itself. Review comments, failed checks and conflicts go to the
    worker; only what needs judgement — a review comment that questions a decision, a conflict with
@@ -304,14 +311,16 @@ An idea is thought through on its card before anything is planned; no worker run
 ## Communication
 
 Agents never talk to each other directly; the Obeya server is the mailbox, so every exchange is
-visible on a card. A worker has five tools, served in-process: `report(status)`, a status line
+visible on a card. A worker has its tools served in-process: `report(status)`, a status line
 on the card; `reply(text)`, its answer to a note or feedback in the card's conversation, which
 does not end its turn; `ask(question, options, multiple, pick, pick_why)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
 or writes their own answer; `pick` and `pick_why` are the options the worker would choose if it
 had to decide, and why, which the card marks "Würde ich nehmen" the way an idea's questions show
-its agent's pick); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1); and
-`ready_for_review(summary, demo | no_demo)`, whose summary is the report the owner reads. A turn that ends without `ask` or `ready_for_review` gets one nudge,
+its agent's pick); `propose_card(title, task, reason, idea?, questions?)` (Card lifecycle, 1);
+`ready_for_review(summary, demo | no_demo)`, whose summary is the report the owner reads; and
+`to_obeya(request)`, for what the owner's words to it ask of Obeya rather than of the worker
+(Voice in). A turn that ends without `ask` or `ready_for_review` gets one nudge,
 then its last words become a question to the owner; when that turn failed in the session (the
 SDK reports an error result, e.g. Claude not logged in on the machine), the question is the error
 in words for the owner instead. A turn the account's usage limit stopped (the five-hour session
@@ -346,12 +355,12 @@ feedback with `reply`, saying what it changes or why nothing, and asks when the 
 A note while the card waits on the worker's question takes that question back: the card goes back
 to work (in its pull request, or finishing after the landing, where it was), and the worker hears
 that its question („…“) is withdrawn, goes on if the note settled it and asks anew if not. The
-note is no answer, so nothing goes into the decision log. Feedback on a demo whose report asks a
-question leaves that question as it is.
+note is no answer, so nothing goes into the decision log. Words on a demo whose report asks a
+question answer it (Card lifecycle, 3).
 
 Every card shows its exchanges as a conversation („Gespräch“), the way an idea does (`talkTurns`
 in `src/ui/talk.ts`). Messages are what the owner says (notes, answers, feedback, spoken or typed,
-with screenshots; a spoken command that became a note stands once, as the note), the worker's
+with screenshots, standing once as the agent got them), the worker's
 questions with their options and the pick, its replies, its handovers (the last one with its demo
 report's question), and what the Koordinator looked up for the owner; small lines between them are
 the state changes (started, pull request opened, approved, landed, stopped, errors). Everything
@@ -413,7 +422,7 @@ action of the command that creates or concerns a card (new card or idea, start, 
 feedback, talk to an idea); said with a start, they join the card's task. A spoken command carries
 screenshots the same way: picked with the small button to the right of the microphone, dropped on
 it, or pasted (⌘V) anywhere outside a text field, they show beside the microphone and go with the
-next recording; one in which nothing was heard or understood leaves them there.
+next recording, to the Koordinator or to the open card's agent; one in which nothing was heard or understood leaves them there.
 
 A worker's question goes straight to the owner, with the worker's own pick: no other agent
 answers it on the owner's behalf (Decisions, 2026-10-07). The worker asks only what it should not
@@ -455,7 +464,7 @@ the owner's language (`src/core/locale.ts`).
   compiled binary's run on the machine's, and the list says which version Obeya was checked with
   (the SDK's) when the machine's differs. Logins are read from `claude auth status` and `gh auth
   status`. "Installieren" installs what needs no admin rights: Claude Code and uv with their
-  official installers (`curl … | sh`, PowerShell's `irm … | iex` on Windows), Piper and Whisper
+  official installers (`curl … | sh`, PowerShell's `irm … | iex` on Windows), Whisper
   through the voice's installation, a demo's voice; system software (git, gh, ffmpeg, Node, a
   browser) comes with the command for this platform and a copy button, and is installed at a click
   where that needs no password (Homebrew where it is there, winget). A login opens a terminal with
@@ -558,7 +567,7 @@ the owner's language (`src/core/locale.ts`).
   by the server, so its strings are the UI's) never takes the keyboard: it shows that Obeya listens
   and to whom (with the level, and „Das Mikrofon liefert keinen Ton.“), then the command being read,
   then what Whisper heard (`text` in `/voice`'s answer) with the confirmation and „Rückgängig“ for
-  the undo window, and plays the spoken confirmation; it fits its window to its lines through the
+  the undo window, or, said to the open card's agent, „An den Agenten gegangen.“; it fits its window to its lines through the
   app's one command (`panel_fit`, allowed to that page in `app/capabilities/panel.json`) and hides
   it when none are left. Every two seconds the shell tells the server what it hears
   (`POST /api/push-to-talk/shell`: on, permission, bind, none, unsupported, error) and gets the key
@@ -664,12 +673,10 @@ the owner's language (`src/core/locale.ts`).
   2026-10-07 the page stayed blank on it). Choosing another language takes effect at
   once: the page loads again, keeping what was open, as after a restart. Behind the interface the
   same setting decides: what the server writes into a card's log, the questions it puts to the
-  owner and what it speaks are two tables of one shape in `src/core/messages.ts` (the Board's `t`,
+  owner are two tables of one shape in `src/core/messages.ts` (the Board's `t`,
   read when a line is written, which then stays in that language; the UI recognises the few lines
-  it treats specially in either); the Koordinator's replies and spoken confirmations (its session
-  starts afresh once the language changed), the voice that
-  speaks (on a Mac a system voice of that language, `say`'s Anna or Samantha where the default
-  voice speaks another; Piper's voice of that language elsewhere), and the language every prompt
+  it treats specially in either); the Koordinator's replies and confirmations (its session
+  starts afresh once the language changed), and the language every prompt
   asks agents to write the owner in (`LANGUAGE_NAMES`), with examples in it where they shape the
   owner's text. A demo is narrated in it until the demo settings name a language. Prompts only
   agents read stay English with German examples of what the owner may say.
@@ -889,7 +896,7 @@ the owner's language (`src/core/locale.ts`).
   card finishing shows its status line as one at work does; before (until 2026-10), only the
   detail view showed it.
   A follow-up on a finished card whose worker has ended goes the same way: what the owner says on
-  the card (typed in its field, or spoken with it open: in doubt for that agent, as on a card at
+  the card (typed in its field, or spoken with it open: straight to that agent, as on a card at
   work) resumes the worker's session in a fresh workspace on the card's branch, where main may have
   moved on since (resuming finds the session from any directory). The card stays `live` or `done`,
   "Agent antwortet"; the worker answers with `reply` (its closing words after that repeat the
@@ -1090,8 +1097,8 @@ the owner's language (`src/core/locale.ts`).
   „rechnen“ for „Rechnungen“), so it stays turbo for what it hears, and `OBEYA_WHISPER_MODEL` picks
   a smaller model where that is too slow (measured 2026-10-06). Checked on macOS, Ubuntu on ARM in
   Docker, and GitHub's Ubuntu x64 and Windows Server 2025 runners: the settings check, installing
-  from it, a spoken command through `POST /voice` heard word for word, and the confirmation
-  spoken by Piper (`src/server/voice.live.test.ts` with `OBEYA_LIVE_VOICE=<home>`). A recording without audible speech gives
+  from it, and a command spoken by Piper heard word for word through `POST /voice`
+  (`src/server/voice.live.test.ts` with `OBEYA_LIVE_VOICE=<home>`). A recording without audible speech gives
   „Ich habe nichts gehört.“, one Whisper cannot make sense of „Das habe ich nicht verstanden.“; the
   Koordinator gets neither to guess from. How Whisper fails on such recordings (the titles talk it
   into loops, guesses or its words for silence) and how they are told apart is in
@@ -1102,7 +1109,36 @@ the owner's language (`src/core/locale.ts`).
   recording that runs on unheld) and the owner hears „Das Mikrofon war noch nicht bereit“. The
   microphone is not opened on page load: in the log of 1–5 Oct 2026 (22 page loads with a recording
   after them) the first recording after a load failed no more often than later ones, and opening it
-  early would keep the browser's microphone indicator on all the time. A Koordinator turn reads
+  early would keep the browser's microphone indicator on all the time.
+  Who hears it depends on what is open, and the line under the mic and under a card's text field
+  says so ("Agent · Aufgabe: …", "Agent · Idee: …", "Koordinator · Aufgabe: …", "Koordinator ·
+  Projekt: …"); the words go exactly where it says (`agentListens` in `src/core/types.ts`, the same
+  for the label and the route). On a card an agent listens on (its worker at work, waiting, in a
+  pull request or finishing after the landing, the one a question resumes on a finished card, a
+  prototype's worker, an idea's exploration agent) what the owner types or says goes straight to
+  that agent (`CanvasRuntime.tell`), typed words at once, spoken ones as soon as Whisper has
+  written them down, with the screenshots shown with them: by the card's state, talk to an idea,
+  the answer to the worker's question, or else words the worker takes in (a note while it works,
+  words on its handover, a question after its work; Card lifecycle, 3 and 5). Spoken words carry
+  the remark that speech recognition may have misheard them. They stand in the card's
+  conversation under „Du“ at once; nothing waits for "Rückgängig", and there is no line above the
+  mic for typed words (a recording shows „„Export“ · wird aufgeschrieben …“ while Whisper works).
+  Words that ask Obeya for something rather than the agent (approve, stop, start, a follow-up or
+  new card, "Merk dir", grouping cards, an action on another card, a question about the canvas or
+  another card) the agent passes on with `to_obeya(request)`, one tool built once for workers,
+  prototypes' workers and exploration agents (`src/server/to-obeya.ts`), whose instructions say in
+  one paragraph what Obeya does for them through it. The Koordinator reads the request with the
+  owner's own words beside it, spoken or typed, and the card in focus, as it reads any command
+  (`Commander.forward`): actions with a confirmation and „Rückgängig“ (above the mic, as a notice
+  that reaches every open page, and in the card's conversation), a reply, or a look-up. Its
+  confirmation or reply is the tool's result. It passes nothing back to that agent as a note, an
+  answer, feedback or talk: the agent has the words already (refused if it tries). An agent at
+  work probably sees the words only at its next tool call, so a forwarded request may wait behind
+  a long step (a render); "gib frei" typed on a card waiting for review costs the worker a turn
+  before it reaches the Koordinator, several seconds, where the button „Freigeben“ is immediate.
+  On any other card (planned, queued, finished without an agent, a proposal), with a project open
+  or nothing, the Koordinator reads the words, with that card or project in focus.
+  A Koordinator turn reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, taking a card out of the queue, note, answer, feedback,
   approve, accept, dismiss, revise, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
@@ -1129,26 +1165,20 @@ the owner's language (`src/core/locale.ts`).
   With a card open, the Koordinator gets its worker's whole summary, so "lege eine Folgeaufgabe
   für den ambient-Ton an" makes a follow-up of that card with what the summary says about it. One confirmation covers all actions; they run in order a few
   seconds after it reached the owner, so "Rückgängig" takes back anything, even an approval. Only
-  talking to an idea goes on at once: it changes nothing, and said to the open idea it needs no
-  confirmation, since the conversation shows it. With a proposal open, what the owner says about it is,
+  talking to an idea goes on at once: it changes nothing. With a proposal open, what the owner says about it is,
   in doubt, a revision (`revise`, with their words and the undo window); accepting in the same
-  breath is refused, since the owner should see what they take. The same holds for a note or an answer to the
-  agent of the open card, alone in what the owner said: it goes out at once and quietly, and the
-  card's conversation shows it under „Du“. Feedback on work waiting for review keeps the confirmation and
-  the undo window, as does every command to Obeya. With an agent on the open card (working, in a
-  pull request, waiting, waiting for review, or finishing what remains, or a finished card a question resumes its agent on), what the owner says is, in doubt, for that
-  agent: note, answer or feedback, in the owner's own words (a single such action carries the
-  whole transcript, whatever the Koordinator wrote), and spoken words reach it with the remark
-  that speech recognition may have misheard them. Only what clearly asks Obeya for something
-  (approve, stop, start, a follow-up, remember, grouping cards, an action on another card, a question about the
-  canvas) goes elsewhere; `commands.live.test.ts` checks this against the real model
-  (`OBEYA_LIVE=1`). Typing goes the same way as speaking: the Koordinator's sheet, and the fields
-  on a card (note, answer, feedback, an idea's conversation, a proposal's revision) post to the Koordinator, which learns
-  that the words are typed and in which field; only clicks on answer options go straight to the
-  agent. What the owner said and the Koordinator's confirmation go into the conversation of
-  the card that was open (the confirmation folded away, and the words once when they became a note or an answer), and "Zurückgenommen." when taken back; with no card open, the sheet
+  breath is refused, since the owner should see what they take. A note, an answer or feedback the
+  Koordinator passes to a card's agent (said in its sheet: „sag dem Export, …“) waits for undo like
+  every command to Obeya, and spoken words reach the agent with the remark that speech recognition
+  may have misheard them. `commands.live.test.ts` checks against the real model (`OBEYA_LIVE=1`)
+  that requests passed on from each state an agent is on become Obeya's actions, and that commands
+  on cards without an agent are read right. The Koordinator learns whether the words were typed,
+  and in which field (a proposal's). Clicks on answer options go straight to the agent, as do
+  typed and spoken words. What the owner said to the Koordinator and its confirmation go into
+  the conversation of the card that was open (the confirmation folded away), and
+  "Zurückgenommen." when taken back; with no card open, the sheet
   shows the conversation, newest last, in all the height the sheet has; an open section below
-  takes from it down to 200px, and below that the sheet scrolls. Talk to an open idea is the exception: its conversation already holds it.
+  takes from it down to 200px, and below that the sheet scrolls.
 - **Looked-up questions** — a question that needs reading ("Was würde der Agent hier machen, wenn
   ich starte?", what the plan says, how something works) the quick turn does not answer: it
   acknowledges it ("Ich schaue im Plan nach.") and passes it on. A question about a project or one
@@ -1157,59 +1187,56 @@ the owner's language (`src/core/locale.ts`).
   an agent on a card (also one waiting for review: „Ist sichergestellt, dass …?“) is not looked up
   but goes to that agent, as a note or as feedback: its work is on its branch, not in the Lesestand
   the look-up reads, and the card shows the agent at work while it answers. `look_up` on such a
-  card is refused with that hint. Both get the question, the
+  card is refused with that hint (asked with the card open, the words went to that agent anyway). Both get the question, the
   card's state and log, and the task its worker gets at the start (`Workers.startBrief`), from
   which, the plan doc and the repository's instructions they derive the worker's steps. The answer
-  comes 10–30 s later: spoken in short wherever the owner is, in full in the log of the card that
+  comes 10–30 s later: written above the mic wherever the owner is (its start), in full in the log of the card that
   was open, else in the Koordinator's sheet; what the agent reads shows on the open card meanwhile.
   The Koordinator hears the answer with the next command, and it is part of its stored memory. A
   question still open at a restart is looked up again.
 - **Commands on their way** — after letting go of Space the microphone is free at once, and the
   owner may navigate or speak again: the target is fixed when the key goes down. Each recording,
-  and each typed command while the Koordinator reads it, has its own small line above the
-  microphone („„Export“ · wird verstanden …“), which becomes its confirmation with „Rückgängig“,
-  or disappears when it went out quietly. Several stack, oldest first, and the server reads them
+  and each command typed to the Koordinator while it reads it, has its own small line above the
+  microphone („„Export“ · wird verstanden …“, for a card's agent „… · wird aufgeschrieben …“), which becomes its confirmation with „Rückgängig“,
+  or disappears when the words went to the open card's agent. Several stack, oldest first, and the server reads them
   one after the other. A confirmation that arrives while another card is open starts with the card
-  it is about.
-- **Voice latency** — pressing Space (or focusing a typed command's field) gets everything ready while
-  the owner speaks: the Whisper sidecar starts and loads its model, the speech sidecar starts, and
+  it is about; so does one for a request an agent passed on, and an answer looked up.
+- **Voice latency** — pressing Space (or focusing a field the Koordinator reads) gets everything ready while
+  the owner speaks: the Whisper sidecar starts and loads its model, and
   the Koordinator's session starts up if it is not running (one that fails is replaced once, for
-  the same command). The written confirmation comes back as
-  soon as the Koordinator has decided, and the undo window starts with it; the spoken one follows
-  from its own URL. Measured on a small scratch canvas, letting go to the written confirmation
-  takes about 2.8 s, to the spoken one about 3.3 s, the first command after a start included. Most
+  the same command). On a card with an agent the words reach it as soon as Whisper has written
+  them down (typed ones at once). Elsewhere the written confirmation comes back as
+  soon as the Koordinator has decided, and the undo window starts with it. Measured on a small
+  scratch canvas, letting go to the written confirmation
+  takes about 2.8 s, the first command after a start included. Most
   of it is the Koordinator's model turn (about 2 s); Sonnet or Haiku, or a shorter system prompt,
-  saved nothing reliable in measurements, so it stays as it is.
+  saved nothing reliable in measurements, so it stays as it is. Until 2026-10-08 every word to an
+  agent waited for that turn too.
 - **Koordinator memory** — the owner's commands go to one ongoing Koordinator session per canvas,
   one after the other, so it understands "die andere auch" or "nein, die von vorhin". It sees a
-  card's open question, also one in a demo report, so a bare "ja" to it is an answer, not an
-  approval. Under the mic, and under a card's text field, the UI names who listens: the agent when
-  one works on the open card ("Agent · Aufgabe: …"), else the Koordinator and the card, idea or
-  project in focus ("Koordinator · Aufgabe: …"). Card tags
+  card's open question, also one in a demo report, so "ja" to it is an answer, not an
+  approval. Card tags
   (`K1`, …) stay fixed for the session. Each command brings the cards as they are now and what
   happened since the previous one (state changes, questions, answers, hand-overs, the owner's
   notes, errors, new cards; not the workers' steps); a command the owner took back is told with the
-  next. Every exchange is stored (`talk`). A session that fails while reading a command (an error
+  next. Every exchange is stored (`talk`), requests agents passed on included, with the owner's words. A session that fails while reading a command (an error
 result, which the SDK also reports as a `success` with `is_error`) is replaced by a fresh one for
 the same command; should that fail too, the owner hears the reason („Ich konnte das nicht lesen.
 Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden“. A session is not resumed: after a restart, and after 30
   commands so the context stays short, a fresh one starts from memory: the last 20 exchanges and
   the canvas's last 14 days (at most 60 steps), with times.
-- **Voice out** — a voice on the server speaks the confirmation, which the browser plays. On a Mac
-  the default system voice, or one of the owner's language where it speaks another: a JXA sidecar
-  keeps the macOS synthesizer loaded (about half a second a sentence), with `say` as the fallback.
-  Elsewhere Piper (the demos' default voice of the owner's language, `de_DE-thorsten-high` or
-  `en_US-ryan-high`, and the same installation under `voices/` in Obeya's home): a sidecar in Piper's
-  environment keeps the voice loaded (`voice/piper_sidecar.py`); without Piper nothing is spoken.
-  `OBEYA_SPEECH=piper` takes Piper on a Mac too. The settings sheet's section "Spracheingabe und -ausgabe" ("Voice") checks
-  what voice in and out need on this machine (`src/server/voice-setup.ts`): Whisper (the package
-  in uv's cache or the given Python, the model in the Hugging Face cache), ffmpeg, uv, and the
-  voice, each missing piece with how to install it here, as for demos. "Installieren" installs
-  Piper and loads Whisper, which fetches it the first time (about 1.9 GB), so the first command
+- **No voice out** — Obeya does not speak. Confirmations and answers are written: in the card's
+  conversation, in the Koordinator's sheet, and in the line above the mic. Until 2026-10-08 a
+  voice on the server spoke the confirmations, the short form of looked-up answers and a summary
+  of an idea's reply (a JXA sidecar with the macOS synthesizer, `say`, or Piper); spoken replies
+  distracted the owner more than they helped. Demo narration is a pipeline of its own (Demos).
+  The settings sheet's section "Spracheingabe" ("Voice") checks
+  what voice in needs on this machine (`src/server/voice-setup.ts`): Whisper (the package
+  in uv's cache or the given Python, the model in the Hugging Face cache), ffmpeg and uv,
+  each missing piece with how to install it here, as for demos. "Installieren" loads Whisper,
+  which fetches it the first time (about 1.9 GB), so the first command
   does not wait for the download. The server lets a request run 120 s idle instead of Bun's 10 s:
-  a command answers once it is transcribed and read, which on a busy CPU took longer. While a demo video plays nothing is said (the owner often gives a command and
-  turns to the next demo), nor while the owner holds the microphone; a video that starts or a press
-  of the microphone cuts off what is being said. The written confirmation still shows.
+  a command answers once it is transcribed and read, which on a busy CPU took longer.
 - **Demos** — the demo skill's pipeline (scripted walkthrough, narrated video, report) is part of
   the repository: `plugin/` is a Claude Code plugin named `obeya` whose skill `demo`
   (`plugin/skills/demo/`) holds the instructions (`SKILL.md`, paths through `${CLAUDE_SKILL_DIR}`),
@@ -1536,7 +1563,9 @@ the repository; the copy on the project is only for the archive).
   `--force-with-lease`, while the first repository it opened PRs in merges `main` into a PR branch,
   never force-pushes, and has its own skill for review comments. Obeya says what happened on the
   PR, the repository says how to answer it.
-- Spoken output uses the macOS default voice (synthesizer sidecar, `say` as fallback).
+- Obeya does not speak (2026-10-08): confirmations and answers are written. Spoken replies
+  distracted the owner, who reads the line above the mic and the card's conversation anyway.
+  Before, the macOS default voice (a synthesizer sidecar, `say` as fallback) or Piper spoke them.
 - Obeya itself is developed without branches or PRs: approved work lands directly on `main`.
 - A repository whose work goes out as pull requests may let the owner push a card's work straight
   onto its default branch instead, chosen per card at the approval, by button or voice
@@ -1744,12 +1773,13 @@ the repository; the copy on the project is only for the archive).
   (2026-10-02): a demo video that plays, a dictation until its command can no longer be taken back.
   Everything else (an open card, a sheet scrolled halfway, a draft) is kept across the reload
   instead of holding the restart off, so new code is not held back by a page that is merely open.
-- Voice commands are read by the Koordinator, not matched by rules, and always wait a few seconds
-  for undo; nothing spoken takes effect without a confirmation the owner could take back. Talking
-  to an idea is the exception: it only adds to a conversation. So are a note and an answer to the
-  agent of the open card (2026-10-05): they only add to what the agent knows, the card's conversation shows
-  them, and waiting for a confirmation would keep the owner from going on. Feedback on waiting
-  work keeps the undo window, since it sends the work back.
+- Commands to Obeya are read by the Koordinator, not matched by rules, and always wait a few seconds
+  for undo; no command takes effect without a confirmation the owner could take back. Talking
+  to an idea is the exception: it only adds to a conversation. So is whatever the owner says to
+  the agent of the open card (2026-10-05 for notes and answers, 2026-10-08 for feedback too): it
+  only adds to what the agent knows, the card's conversation shows it, and pressing Send or
+  letting go of Space is the deliberate act. Feedback no longer takes the approval away, so it
+  needs no undo either (Card lifecycle, 3).
 - A card shows a conversation instead of its log (2026-10-05): the owner reads what was said and
   decided, not every tool call, which stays a click away under each message. Rejected: the
   conversation beside the log (every message twice). A worker answers notes with a tool of its
@@ -1757,13 +1787,21 @@ the repository; the copy on the project is only for the archive).
   jetzt", and a small model summing up each turn costs on every turn for nothing `reply` does not
   do. A note withdraws an open question rather than counting as its answer, which would put a
   remark into the decision log as a decision.
-- Typed and spoken words take one way, through the Koordinator (2026-10-05). Two ways with almost
-  the same behaviour (the card's field straight to the agent, speech through the Koordinator)
-  meant "gib frei" or "Merk dir" worked spoken but not typed. Rejected: everything straight to the
-  agent (Obeya's commands would stop working, and planned or finished cards have no agent), two
-  keys (the owner would choose who listens before every sentence), and dictating into the field
-  for the owner to send (a step more). Typed words cost the Koordinator's two seconds too, but
-  nobody waits for them.
+- On a card with an agent, what the owner types or says goes straight to that agent, which passes
+  on to the Koordinator what asks Obeya for something (`to_obeya`, 2026-10-08). Typed and spoken
+  words still take one way: the label under the field and the mic names who listens, and both
+  follow it. Before (from 2026-10-05), every word went through the Koordinator first, so that "gib
+  frei" or "Merk dir" worked typed as well as spoken; but the owner waited for a Koordinator turn
+  (about 2 s, longer for long text) before every word reached the agent or showed in the
+  conversation. That reason holds either way now, since both paths are the same and the agent
+  passes Obeya's commands on. The cost: "gib frei" typed to a worker wakes its session first,
+  several seconds and tokens (the button „Freigeben“ stays the quick way), and a request can wait
+  behind a long step of a working agent. Rejected: the Koordinator reading along in the background
+  (two readers of the same words could both act, and every message would still cost a
+  Koordinator turn), and keeping the Koordinator in front while showing the words at once (the
+  agent would still get them late). Rejected in 2026-10-05 and still: two keys (the owner would
+  choose who listens before every sentence), and dictating into the field for the owner to send
+  (a step more).
 - An agent's question to the owner is a first-class thing with answer options, not prose: the
   owner answers with a click, and their own words are always possible beside the options. The
   answer travels as text (question and pick), so the conversation reads the same later and a

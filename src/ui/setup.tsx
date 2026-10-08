@@ -85,7 +85,6 @@ export function voiceState(i: VoiceSetupItem | MachineItem) {
   const s = t.config.setup;
   // the app's key in another app: the key, or what is in the way (src/server/push-key.ts)
   if (i.id === 'globalKey') return i.state === 'ok' ? t.config.pushKey.on(pushKeyLabel(i.found ?? '')) : (t.config.pushKey.states[i.found ?? ''] ?? t.config.pushKey.states.error!);
-  if (i.id === 'speech' && i.state === 'missing') return v.speechMissing(megabytes(i.mb ?? 0));
   if (i.state === 'later') return v.later(megabytes(i.mb ?? 0));
   if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
   return (i.found && v.found[i.found]) ?? i.found ?? s.there;

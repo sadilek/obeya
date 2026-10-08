@@ -1,7 +1,7 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { askable, buildableOn, type CardAction, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type PullRequest, type Question, type RepoRef } from '../core/types';
+import { agentListens, askable, buildableOn, type CardAction, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type PullRequest, type Question, type RepoRef } from '../core/types';
 import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
 import { ApiError, api, at, type Field, holdRestart, onCardEvent } from './api';
@@ -22,10 +22,7 @@ export type ActDone = { close: true; ack: string; undo?: () => unknown; pending?
 /** An action the server is still at, after its card has folded: the answer confirms it or tells why not. */
 export type Pending = { card: string; title: string; answered: Promise<void> };
 
-/** Whether what the owner says with the card open is, in doubt, for an agent: one on it, or the one that did a finished card's work, which a question resumes. */
-export const hasAgent = (i: Item) => ['working', 'inPr', 'waiting'].includes(i.state) || !!i.finishing || askable(i);
-
-/** Words typed into a field of the card: the Koordinator reads them like spoken ones, and the panel does not wait. */
+/** Words typed into a field of the card: straight to its agent where one listens, else the Koordinator reads them like spoken ones; the panel does not wait. */
 type Tell = (text: string, images: string[] | undefined, field: Field) => void;
 
 interface Props {
@@ -82,7 +79,7 @@ export function Detail(p: Props) {
   };
   const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
   // who reads what is typed here, as under the microphone
-  const listener = (hasAgent(item) ? t.voice.agent : t.voice.card)(plain(item.title));
+  const listener = (agentListens(item) ? t.voice.agent : t.voice.card)(plain(item.title));
   const tell = (field: Field) => async (text: string, images?: string[]) => p.onTell(text, images, field);
   const repo = p.repos.length > 1 ? (p.repos.find((r) => r.id === item.repo)?.name ?? item.repo) : '';
   // a plain task says nothing of its kind
@@ -1461,7 +1458,7 @@ interface TalkField {
   noImages?: boolean;
   /** The picks name their questions also when there is one: the conversation is read later without it beside. */
   quote?: boolean;
-  /** Words alone go through the Koordinator, like spoken ones. */
+  /** Words alone go to whoever `listener` names: the card's agent, or the Koordinator. */
   onWords: (text: string, images?: string[]) => Promise<void>;
   /** Picked options go to the agent as they are, with the words. */
   onPicked: (text: string, images?: string[]) => Promise<void>;
@@ -1563,7 +1560,7 @@ function Composer({
   button?: string;
   allowEmpty?: boolean;
   noImages?: boolean;
-  /** Who reads what is typed (the Koordinator, or the card's agent through it); it then gets ready while the owner types. */
+  /** Who reads what is typed (the card's agent, or the Koordinator, which then gets ready while the owner types). */
   listener?: string;
   /** Hears the text as it is typed. */
   onText?: (text: string) => void;

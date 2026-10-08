@@ -42,7 +42,7 @@ import { ShellReports } from './push-key';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, watchOwnCode } from './self-update';
 import { COMPILED, resource, SELF, VERSION } from './resources';
 import { serve } from './server';
-import { PiperSpeaker, SpeechSidecar, voiceBackends, WhisperSidecar } from './voice';
+import { voiceBackends, WhisperSidecar } from './voice';
 import { VoiceSetup } from './voice-setup';
 import { useLib } from '../../plugin/skills/demo/lib/here.ts';
 import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
@@ -229,7 +229,6 @@ if (new Set(ids).size !== ids.length) {
 }
 const backends = voiceBackends();
 const transcriber = new WhisperSidecar(backends.listen);
-const speaker = backends.speech === 'macos' ? new SpeechSidecar() : new PiperSpeaker(home, () => ownerLanguage(home));
 const voiceSetup = new VoiceSetup({ home, backends, prepare: () => transcriber.prepare() });
 const shells = new ShellReports();
 const machine = new MachineSetup({ home, config, voice: voiceSetup, restarts: !!process.env.OBEYA_SUPERVISED, shells });
@@ -238,7 +237,6 @@ welcome(home, canvases);
 const shutdown = (code: number) => {
   for (const c of canvases) c.shutdown();
   transcriber.stop();
-  speaker.stop();
   narration.stop();
   // the supervisor stays across a restart, and gives the entry up when it ends
   if (!process.env.OBEYA_SUPERVISED) release(home, process.pid);
@@ -262,7 +260,7 @@ const stop = () => {
 };
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, stop);
 
-server = serve(canvases, { transcriber, speaker, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, shells);
+server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, shells);
 claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, app: !!process.env.OBEYA_APP });
 console.log(`Obeya ${own ? `from ${own}` : VERSION} on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'}), agents on ${claudeExecutable() ?? 'the Claude Code the Agent SDK brings'}`);
 if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));

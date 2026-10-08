@@ -250,18 +250,18 @@ describe('the Koordinator remembers', () => {
     await heard;
   });
 
-  test("the question in a demo report is the card's open question: a bare „ja“ answers it", async () => {
+  test("the question in a demo report is the card's open question: „ja“ to it answers it", async () => {
     const a = board.create({ title: 'Archiv', x: 0, y: 0 });
     board.work(a.id, { state: 'waiting', need: 'demo', demo: JSON.stringify({ dir: '/d', chapters: [], question: 'Alte Projekte nachtragen?' }) });
     const k = commander();
-    const heard = k.hear('ja', { card: a.id });
+    const heard = k.hear('ja zum Archiv', {});
     await settle();
     const s = runtime.last;
     expect(s.inbox[0]).toContain('[waiting: demo] "Archiv" — open question in its demo report: Alte Projekte nachtragen?');
     expect(await s.call('act', { actions: [{ do: 'answer', card: 'K1', text: 'ja' }], confirm: 'Antwort an „Archiv“.' })).toContain('Done');
     s.emit({ type: 'idle' });
-    // an answer to the open card goes out at once
-    expect(await heard).toEqual({ confirm: 'Antwort an „Archiv“.', quiet: true });
+    k.arm((await heard).token!);
+    await new Promise((r) => setTimeout(r, 40));
     expect(executed).toEqual([{ do: 'answer', card: a.id, text: 'ja', spoken: true }]);
   });
 
@@ -428,7 +428,7 @@ describe('the Koordinator remembers', () => {
   });
 });
 
-describe('what the owner says or types with a card open', () => {
+describe('what the agent of a card passes on from the owner\'s words', () => {
   const DEMO = JSON.stringify({ dir: '/d', chapters: [], question: 'Alte Projekte nachtragen?' });
   /** A card in each state an agent is on, as `board.work` sets it. */
   const STATES: Record<string, Record<string, string>> = {
@@ -444,86 +444,96 @@ describe('what the owner says or types with a card open', () => {
     board.work(a.id, STATES[state]!);
     return a;
   };
-  /** Says (or types) `text` with `card` open, and lets the Koordinator answer with `actions`. */
-  async function tell(k: Commander, card: string, text: string, actions: Record<string, unknown>[], typed = false) {
-    const heard = k.hear(text, { card }, [], typed ? { typed: true } : {});
-    await settle();
-    const s = runtime.last;
-    expect(await s.call('act', { actions, confirm: 'Bestätigt.' })).toContain('Done');
-    s.emit({ type: 'idle' });
-    return { heard: await heard, brief: s.inbox.at(-1)! };
-  }
   const said = (id: string) => board.events(id).filter((e) => e.kind === 'say').map((e) => [e.author, e.text]);
 
-  test('the Koordinator learns whether the words were spoken or typed, and in which field', async () => {
-    const a = open('demo');
-    const k = commander();
-    const spoken = await tell(k, a.id, 'ja', [{ do: 'answer', card: 'K1', text: 'ja' }]);
-    expect(spoken.brief).toContain('The owner said (speech recognition, may contain errors): "ja"');
-    const heard = k.hear('der Button ist zu klein', { card: a.id }, [], { typed: true, field: 'feedback' });
-    await settle();
-    expect(runtime.last.inbox.at(-1)).toContain("The owner typed into the field for feedback on the card's work (as written, no recognition errors): \"der Button ist zu klein\"");
-    runtime.last.call('reply', { confirm: 'Gut.' });
-    runtime.last.emit({ type: 'idle' });
-    await heard;
-  });
-
-  test('words typed under a demo whose report asks a question reach the Koordinator as answer, feedback or both', async () => {
-    const a = open('demo');
-    const k = commander();
-    const heard = k.hear('Ryan, und kürz das Intro', { card: a.id }, [], { typed: true, field: 'demo' });
-    await settle();
-    const brief = runtime.last.inbox.at(-1)!;
-    expect(brief).toContain("The owner typed into the one field under the card's demo, for the answer to the question in its report, feedback on the work, or both");
-    runtime.last.call('reply', { confirm: 'Gut.' });
-    runtime.last.emit({ type: 'idle' });
-    await heard;
-  });
-
   for (const state of ['working', 'question', 'demo', 'review', 'inPr', 'finishing'])
-    for (const typed of [false, true])
-      test(`on a card ${state}, ${typed ? 'typed' : 'spoken'}: a note goes out at once in the owner's words, Obeya's commands wait for undo`, async () => {
+    for (const spoken of [false, true])
+      test(`on a card ${state}, ${spoken ? 'spoken' : 'typed'}: Obeya's commands wait for undo; the words do not go back to the agent`, async () => {
         const a = open(state);
         const k = commander();
-        const answers = state === 'question' || state === 'demo';
-        // a hint or an answer to the open card's agent: at once, quietly, in the owner's words
-        const hint = await tell(k, a.id, 'nimm lieber Semikolons als Trenner', [{ do: answers ? 'answer' : 'note', card: 'K1', text: 'Semikolons als Trenner verwenden.' }], typed);
-        expect(hint.heard).toEqual({ confirm: 'Bestätigt.', quiet: true });
-        expect(executed).toEqual([{ do: answers ? 'answer' : 'note', card: a.id, text: 'nimm lieber Semikolons als Trenner', spoken: !typed }]);
-        // the card's log gets the note itself (from the worker), not the exchange with the Koordinator
-        expect(said(a.id)).toEqual([]);
-        executed = [];
-
-        // a follow-up, a rule, an approval, feedback: confirmed, and taken back within the window
-        const commands: [string, Record<string, unknown>[], Command][] = [
-          ['mach eine Folgeaufgabe für Excel', [{ do: 'new_card', card: 'K1', title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: true, from: a.id }],
-          ['Merk dir: Exporte immer mit Kopfzeile', [{ do: 'remember', text: 'Exporte immer mit Kopfzeile.' }], { do: 'remember', text: 'Exporte immer mit Kopfzeile.', card: a.id }],
+        // a follow-up, a rule, a stop, an approval: confirmed, and taken back within the window
+        const commands: [string, string, Record<string, unknown>[], Command][] = [
+          ['mach eine Folgeaufgabe für Excel', 'A follow-up card for Excel', [{ do: 'new_card', card: 'K1', title: 'Excel-Export', body: 'Auch als Excel.' }], { do: 'newCard', title: 'Excel-Export', body: 'Auch als Excel.', start: true, from: a.id }],
+          ['Merk dir: Exporte immer mit Kopfzeile', 'Remember: exports always with a header row', [{ do: 'remember', text: 'Exporte immer mit Kopfzeile.' }], { do: 'remember', text: 'Exporte immer mit Kopfzeile.', card: a.id }],
         ];
         // an agent in a pull request is not stopped
-        if (state !== 'inPr') commands.push(['halt an', [{ do: 'stop', card: 'K1' }], { do: 'stop', card: a.id }]);
-        if (state === 'demo' || state === 'review')
-          commands.push(
-            ['gib frei', [{ do: 'approve', card: 'K1' }], { do: 'approve', card: a.id }],
-            ['der Button ist zu klein', [{ do: 'feedback', card: 'K1', text: 'Button größer machen.' }], { do: 'feedback', card: a.id, text: 'der Button ist zu klein', spoken: !typed }],
-          );
-        for (const [text, actions, command] of commands) {
-          const { heard } = await tell(k, a.id, text, actions, typed);
-          expect(heard.quiet).toBeUndefined();
-          expect(heard.token).toBeDefined();
-          k.arm(heard.token!);
+        if (state !== 'inPr') commands.push(['halt an', 'Stop me', [{ do: 'stop', card: 'K1' }], { do: 'stop', card: a.id }]);
+        if (state === 'demo' || state === 'review') commands.push(['gib frei', 'Approve my work', [{ do: 'approve', card: 'K1' }], { do: 'approve', card: a.id }]);
+        for (const [words, request, actions, command] of commands) {
+          const heard = k.forward(a.id, request, { text: words, spoken });
+          await settle();
+          const s = runtime.last;
+          const brief = s.inbox.at(-1)!;
+          expect(brief).toContain(`The agent of the open card passes on a request from what the owner told it, asking Obeya for something: "${request}"`);
+          expect(brief).toContain(`The owner's own words to it, ${spoken ? 'spoken (speech recognition, may contain errors)' : 'typed (as written, no recognition errors)'}: "${words}"`);
+          expect(brief).toContain('The owner has this card open');
+          // the agent has the words: nothing goes back to it
+          expect(s.call('act', { actions: [{ do: state === 'question' ? 'answer' : 'note', card: 'K1', text: words }], confirm: 'Ok.' })).toContain("reached this card's agent already");
+          expect(await s.call('act', { actions, confirm: 'Bestätigt.' })).toContain('Done');
+          s.emit({ type: 'idle' });
+          const h = await heard;
+          expect(h.token).toBeDefined();
+          k.arm(h.token!);
           expect(executed).toEqual([]);
           await new Promise((r) => setTimeout(r, 40));
           expect(executed).toEqual([command]);
           executed = [];
         }
-        expect(said(a.id)).toHaveLength(commands.length * 2);
+        // the owner's words stand on the card as the agent got them; here only the Koordinator's confirmations
+        expect(said(a.id)).toEqual(commands.map(() => ['koordinator', 'Bestätigt.']));
       });
 
-  test('a question about the work of an agent goes to that agent, not to a look-up of main', async () => {
-    const a = open('demo');
+  test("a reply is the agent's answer, and a question about the card itself is not refused as one for its agent", async () => {
+    const a = open('working');
     const k = commander();
-    const question = 'Ist sichergestellt, dass beim Anhalten alles committed ist?';
-    const heard = k.hear(question, { card: a.id }, [], { typed: true });
+    const heard = k.forward(a.id, 'How many tasks are running?', { text: 'wie viele Aufgaben laufen gerade?', spoken: true });
+    await settle();
+    const s = runtime.last;
+    expect(s.call('look_up', { question: 'What does Export change?', card: 'K1', confirm: 'Ich schaue nach.' })).toContain('Done');
+    s.emit({ type: 'idle' });
+    expect(await heard).toEqual({ confirm: 'Ich schaue nach.' });
+  });
+
+  test('without the owner\'s words, the request alone is read', async () => {
+    const a = open('working');
+    const k = commander();
+    const heard = k.forward(a.id, 'Start the card Login');
+    await settle();
+    const brief = runtime.last.inbox.at(-1)!;
+    expect(brief).toContain('asking Obeya for something: "Start the card Login"');
+    expect(brief).not.toContain("The owner's own words");
+    runtime.last.call('reply', { confirm: 'Es gibt keine Karte Login.' });
+    runtime.last.emit({ type: 'idle' });
+    expect(await heard).toEqual({ confirm: 'Es gibt keine Karte Login.' });
+  });
+});
+
+describe('what the owner says or types to the Koordinator about a card with an agent', () => {
+  const open = (state: Record<string, string>) => {
+    const a = board.create({ title: 'Export', x: 0, y: 0 });
+    board.work(a.id, state);
+    return a;
+  };
+
+  test('the Koordinator learns whether the words were spoken or typed, and in which field', async () => {
+    const source = board.create({ title: 'Login', x: 0, y: 0 });
+    const p = board.propose(source.id, { title: 'Export', task: 'CSV', reason: 'Fehlt.', idea: false, questions: [] });
+    const k = commander();
+    const spoken = await say(k, 'ja', 'reply', { confirm: 'Gut.' });
+    expect(spoken.brief).toContain('The owner said (speech recognition, may contain errors): "ja"');
+    const heard = k.hear('lieber als Excel', { card: p.id }, [], { typed: true, field: 'revise' });
+    await settle();
+    expect(runtime.last.inbox.at(-1)).toContain('The owner typed into the field for what should change in the proposal (as written, no recognition errors): "lieber als Excel"');
+    runtime.last.call('reply', { confirm: 'Gut.' });
+    runtime.last.emit({ type: 'idle' });
+    await heard;
+  });
+
+  test('a question about the work of an agent goes to that agent, not to a look-up of main', async () => {
+    open({ state: 'waiting', need: 'demo', demo: JSON.stringify({ dir: '/d', chapters: [] }) });
+    const k = commander();
+    const question = 'Ist bei Export sichergestellt, dass beim Anhalten alles committed ist?';
+    const heard = k.hear(question, {}, [], { typed: true });
     await settle();
     const s = runtime.last;
     expect(await s.call('look_up', { question, card: 'K1', confirm: 'Ich schaue nach.' })).toContain('Pass the owner\'s words to it with act (feedback)');
@@ -531,26 +541,24 @@ describe('what the owner says or types with a card open', () => {
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
     await new Promise((r) => setTimeout(r, 40));
-    expect(executed).toEqual([{ do: 'feedback', card: a.id, text: question, spoken: false }]);
+    expect(executed[0]).toMatchObject({ do: 'feedback', text: question, spoken: false });
     expect(board.lookingUp()).toEqual([]);
   });
 
-  test('a note together with a command waits with it; a note to another card waits too', async () => {
-    const a = open('review');
-    const b = open('working');
+  test('a note together with a command waits with it', async () => {
+    const a = open({ state: 'waiting', need: 'review' });
     const k = commander();
-    const both = await tell(k, a.id, 'gib frei und sag dem Agenten danke', [
-      { do: 'approve', card: 'K1' },
-      { do: 'note', card: 'K1', text: 'Danke.' },
-    ]);
-    expect(both.heard.token).toBeDefined();
+    const heard = k.hear('gib Export frei und sag dem Agenten danke', {});
+    await settle();
+    runtime.last.call('act', { actions: [{ do: 'approve', card: 'K1' }, { do: 'note', card: 'K1', text: 'Danke.' }], confirm: 'Freigegeben.' });
+    runtime.last.emit({ type: 'idle' });
+    const { token } = await heard;
+    expect(token).toBeDefined();
     expect(executed).toEqual([]);
-    const other = await tell(k, a.id, 'sag dem Login, es soll die Tests laufen lassen', [{ do: 'note', card: 'K2', text: 'Lass die Tests laufen.' }]);
-    expect(other.heard.token).toBeDefined();
-    k.arm(other.heard.token!);
+    k.arm(token!);
     await new Promise((r) => setTimeout(r, 40));
-    // said about another card, the Koordinator's words stand
-    expect(executed).toEqual([{ do: 'note', card: b.id, text: 'Lass die Tests laufen.', spoken: true }]);
+    // said about a card, the Koordinator's words stand
+    expect(executed).toEqual([{ do: 'approve', card: a.id }, { do: 'note', card: a.id, text: 'Danke.', spoken: true }]);
   });
 });
 

@@ -1,6 +1,6 @@
 // The floating panel of the app's push-to-talk key: while the owner holds the key in another app,
 // it shows that Obeya listens and to whom, then what it heard and the confirmation, with
-// "Rückgängig" while the command waits, and plays the spoken confirmation. The shell
+// "Rückgängig" while the command waits. The shell
 // (app/src/ptt.rs) records and sends and calls `window.obeyaPanel`; the panel has the shell fit
 // the window to its lines (`panel_fit`), hiding it when none are left.
 
@@ -24,7 +24,6 @@ interface Line {
 }
 const box = document.getElementById('lines')!;
 const lines = new Map<number | 'listening', Line>();
-let playing: HTMLAudioElement | null = null;
 
 declare global {
   interface Window {
@@ -67,9 +66,8 @@ function drop(id: number | 'listening') {
 const span = (className: string, text: string) => Object.assign(document.createElement('span'), { className, textContent: text });
 
 const panel = {
-  /** The owner holds the key: what is being said stops, and the line shows who listens (as the page said; none without a page). */
+  /** The owner holds the key: the line shows who listens (as the page said; none without a page). */
   listen(target: string | null) {
-    playing?.pause();
     const what = document.createElement('span');
     what.className = 'what';
     what.append(span('', t.voice.listening), span('target', `→ ${target ?? t.voice.koordinator}`), span('flat', ''));
@@ -93,15 +91,11 @@ const panel = {
   },
   /** What Obeya made of recording `id` on `canvas`. */
   heard(id: number, canvas: string, h: Heard & { text?: string }) {
-    if (h.quiet) {
-      // said to the open card's agent: the card shows it, and the panel shows it was sent
-      drop(id);
-      return;
-    }
     const what = document.createElement('span');
     what.className = 'what';
     if (h.text) what.append(span('heard', `„${h.text}“`));
-    what.append(document.createTextNode(h.confirm));
+    // said to the open card's agent: the card shows it, and the panel that it went there
+    what.append(document.createTextNode(h.quiet ? t.voice.toAgent : h.confirm));
     const line = (() => {
       if (!(h.token && h.undoMs)) return put(id, '', what);
       const button = Object.assign(document.createElement('button'), { textContent: t.undo });
@@ -118,11 +112,6 @@ const panel = {
       return l;
     })();
     line.timers.push(setTimeout(() => drop(id), Math.max(SHOWN_MS, (h.undoMs ?? 0) + 1500)));
-    if (h.audio && !lines.has('listening')) {
-      playing?.pause();
-      playing = new Audio(h.audio);
-      playing.play().catch(() => {});
-    }
   },
   /** Recording `id` did not reach Obeya. */
   failed(id: number) {

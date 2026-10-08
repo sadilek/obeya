@@ -34,6 +34,7 @@ import {
   type Reshare,
   STATES,
   finished,
+  type Notice,
 } from '../core/types';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, NewRow, RowUpdate, Store } from './db';
 import type { Images } from './images';
@@ -143,7 +144,7 @@ export class Board {
   private docs: PlanDoc[] | null = null;
   private cache: CanvasSnapshot | null = null;
   private eventListeners = new Set<(e: CardEvent) => void>();
-  private speakListeners = new Set<(cardId: string | undefined, text: string) => void>();
+  private noticeListeners = new Set<(n: Notice) => void>();
 
   constructor(
     private store: Store,
@@ -181,15 +182,15 @@ export class Board {
     return () => this.eventListeners.delete(fn);
   }
 
-  /** Whoever voices the canvas (the server) speaks what agents say aloud. */
-  onSpeak(fn: (cardId: string | undefined, text: string) => void): () => void {
-    this.speakListeners.add(fn);
-    return () => this.speakListeners.delete(fn);
+  /** Whoever shows the canvas (the server, to its pages) shows what Obeya tells the owner above the microphone. */
+  onNotice(fn: (n: Notice) => void): () => void {
+    this.noticeListeners.add(fn);
+    return () => this.noticeListeners.delete(fn);
   }
 
-  /** A short text to speak to the owner: about a card, heard while it is open, or without one, heard anywhere. */
-  speak(cardId: string | undefined, text: string) {
-    for (const fn of this.speakListeners) fn(cardId, text);
+  /** A line for the owner above the microphone, wherever they are: an answer looked up, a confirmation that came without a command. */
+  notify(n: Notice) {
+    for (const fn of this.noticeListeners) fn(n);
   }
 
   /** A card changed. */
@@ -1307,8 +1308,10 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow): Partial<Item> {
-  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noDemo?: string; noChange?: boolean }) : {};
-  const demo = r.demo ? (({ dir: _, ...d }) => d)(JSON.parse(r.demo) as Item['demo'] & { dir: string }) : undefined;
+  const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noDemo?: string; noChange?: boolean; answering?: boolean }) : {};
+  // `answering` stood in the demo until 2026-10-08, when only a demo's question could be answered
+  const demo = r.demo ? (({ dir: _, answering: __, ...d }) => d)(JSON.parse(r.demo) as Item['demo'] & { dir: string; answering?: boolean }) : undefined;
+  const answering = (detail.answering || (r.demo && (JSON.parse(r.demo) as { answering?: boolean }).answering)) && (r.need === 'review' || r.need === 'demo');
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
   const share = shareOf(r);
@@ -1321,6 +1324,7 @@ function work(r: CardRow): Partial<Item> {
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice
     ...(demo?.question && !demo.answer && r.need === 'demo' ? { question: { text: demo.question, options: [] } } : {}),
     ...(detail.summary && (r.need === 'review' || r.need === 'demo') ? { summary: detail.summary } : {}),
+    ...(answering ? { answering: true } : {}),
     ...(detail.noDemo && r.need === 'review' ? { noDemo: detail.noDemo } : {}),
     ...(demo ? { demo } : {}),
     ...(share ? { share } : {}),

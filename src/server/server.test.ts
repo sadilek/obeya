@@ -23,7 +23,6 @@ let whisper: (vocabulary: string) => string | Transcript;
 let server: ReturnType<typeof serve>;
 let canvas: CanvasRuntime;
 let warmed: number;
-const speaker = { speak: async (text: string) => new TextEncoder().encode(`WAV ${text}`) };
 // how long a command waits for an undo; long enough that a loaded machine still undoes in time
 const DELAY_MS = 200;
 
@@ -49,7 +48,7 @@ beforeEach(() => {
     },
     warm: () => void warmed++,
   };
-  server = serve([canvas], { transcriber, speaker }, 0);
+  server = serve([canvas], { transcriber }, 0);
 });
 afterEach(() => {
   server.stop(true);
@@ -168,7 +167,7 @@ describe('voice', () => {
     return interpretation();
   };
 
-  test('a recording is transcribed, read as one action, confirmed with speech, and runs after the delay', async () => {
+  test('a recording is transcribed, read as one action, confirmed in writing, and runs after the delay', async () => {
     const res = fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' });
     const s = await briefed();
     expect(heardAudio).toEqual(['AUDIO']);
@@ -182,10 +181,8 @@ describe('voice', () => {
     expect((body as { undoMs?: number }).undoMs).toBe(DELAY_MS);
     // what was heard, for the app's panel
     expect((body as { text?: string }).text).toBe('Neue Karte Export');
-    expect(body.audio).toStartWith(api('/voice/speech/'));
-    const speech = await fetch(new URL(body.audio!, server.url));
-    expect(speech.headers.get('content-type')).toBe('audio/wav');
-    expect(await speech.text()).toBe('WAV Neue Karte „Export“, der Agent fängt an.');
+    // Obeya does not speak
+    expect(body.audio).toBeUndefined();
     expect(executed).toEqual([]);
     await until(() => executed.length);
     expect(executed).toEqual([{ do: 'newCard', title: 'Export', body: 'CSV', start: true }]);
@@ -235,18 +232,16 @@ describe('voice', () => {
       const body = (await (await fetch(new URL(api('/voice'), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { confirm: string; token?: string; audio?: string };
       expect(body.confirm).toBe(confirm);
       expect(body.token).toBeUndefined();
-      expect(await (await fetch(new URL(body.audio!, server.url))).text()).toBe(`WAV ${confirm}`);
       expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
     });
   }
 
   test('typed commands name cards by tag; undo takes one back before it runs', async () => {
     const c = card();
-    board.work(c.id, { state: 'waiting', need: 'review' });
-    const res = fetch(new URL(api(`/command?card=${c.id}`), server.url), { method: 'POST', body: JSON.stringify({ text: 'gib das frei' }) });
+    const res = fetch(new URL(api(`/command?card=${c.id}`), server.url), { method: 'POST', body: JSON.stringify({ text: 'starte das' }) });
     const s = await briefed();
     expect(s.inbox[0]).toContain('The owner has this card open');
-    s.call('act', { actions: [{ do: 'approve', card: 'K1' }], confirm: '„A“ freigegeben.' });
+    s.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: '„A“ startet.' });
     s.emit({ type: 'idle' });
     const { token } = (await (await res).json()) as { token: string };
     const undo = await (await fetch(new URL(api('/command/undo'), server.url), { method: 'POST', body: JSON.stringify({ token }) })).json();
@@ -300,6 +295,34 @@ describe('voice', () => {
     expect(confirm).toStartWith('Ich konnte das nicht lesen.');
     expect(confirm).toContain('/login');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: confirm });
+  });
+
+  test("on a card an agent listens on, typed and spoken words go straight to it, without the Koordinator", async () => {
+    const told: [string, string, string[], boolean][] = [];
+    canvas.tell = (cardId, text, images, spoken) => void told.push([cardId, text, images, spoken]);
+    const c = card();
+    board.work(c.id, { state: 'waiting', need: 'review' });
+    const typed = (await (await post(api(`/command?card=${c.id}`), JSON.stringify({ text: 'gib das frei', field: 'feedback' }))).json()) as { quiet?: boolean };
+    expect(typed).toMatchObject({ quiet: true });
+    whisper = () => 'Mach den Knopf größer';
+    const spoken = (await (await fetch(new URL(api(`/voice?card=${c.id}`), server.url), { method: 'POST', body: 'AUDIO' })).json()) as { quiet?: boolean; text?: string };
+    // the app's panel shows what was heard
+    expect(spoken).toMatchObject({ quiet: true, text: 'Mach den Knopf größer' });
+    expect(told).toEqual([
+      [c.id, 'gib das frei', [], false],
+      [c.id, 'Mach den Knopf größer', [], true],
+    ]);
+    // an idea's exploration agent listens too; a planned card has nobody but the Koordinator
+    const idea = board.create({ title: 'Export', x: 0, y: 0, idea: true });
+    await post(api(`/command?card=${idea.id}`), JSON.stringify({ text: 'Was kostet das?' }));
+    expect(told.at(-1)).toEqual([idea.id, 'Was kostet das?', [], false]);
+    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+    const planned = card();
+    const res = post(api(`/command?card=${planned.id}`), JSON.stringify({ text: 'starte das' }));
+    (await briefed()).call('reply', { confirm: 'Ok.' });
+    interpretation().emit({ type: 'idle' });
+    await res;
+    expect(told).toHaveLength(3);
   });
 
   test('nothing to do is just said', async () => {
@@ -470,7 +493,7 @@ describe('a restart that waits', () => {
     let gone = 0;
     const restarter = new Restarter({ busy: () => busy, go: () => gone++, patienceMs: 60_000, intervalMs: 10 });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0, false, undefined, restarter);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter);
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -496,7 +519,7 @@ describe('a restart that waits', () => {
     let gone = 0;
     const restarter = new Restarter({ busy: () => [], go: () => gone++, patienceMs: 0, intervalMs: 10 });
     server.stop(true);
-    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0, false, undefined, restarter);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter);
     const messages: ServerMessage[] = [];
     const connect = async () => {
       const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
@@ -535,7 +558,7 @@ describe('cards that need the owner', () => {
     const waiting = second.board.create({ title: 'B', x: 0, y: 0 });
     second.board.work(waiting.id, { state: 'waiting', need: 'review' });
     server.stop(true);
-    server = serve([canvas, second], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0);
+    server = serve([canvas, second], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
@@ -571,7 +594,7 @@ describe('landing approved work', () => {
     writeFileSync(adapter, "export default { name: 'pushed', land: 'pr', direct: true, workspaces: 'clones' };\n");
     const pushed = new CanvasRuntime({ repos: [{ path: repo, adapter, clones: 2 }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
     server.stop(true);
-    server = serve([canvas, pushed], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker }, 0);
+    server = serve([canvas, pushed], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
     const handedOver = (title: string) => {
       const c = pushed.board.create({ title, x: 0, y: 0 });
       pushed.repoOf(c.id).workers.start(c.id);

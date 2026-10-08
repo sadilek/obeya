@@ -34,7 +34,6 @@ const de = {
   },
   answer: {
     failed: (why: string) => `Ich konnte die Frage nicht beantworten (${why}).`,
-    failedSpoken: 'Ich konnte die Frage nicht beantworten.',
   },
   tool: {
     read: (file: string) => `Liest ${file}`,
@@ -245,7 +244,6 @@ const en: Messages = {
   },
   answer: {
     failed: (why: string) => `I could not answer the question (${why}).`,
-    failedSpoken: 'I could not answer the question.',
   },
   tool: {
     read: (file: string) => `Reads ${file}`,

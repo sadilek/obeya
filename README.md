@@ -59,10 +59,9 @@ moves to new code.
   lands through pull requests.
 - For demos: Node.js 22.18 or newer, a Chromium browser, ffmpeg and uv. Obeya's settings
   show what is missing and how to install it; see [`docs/demo-setup.md`](docs/demo-setup.md).
-- For voice: ffmpeg and uv. Whisper hears the commands (MLX on Apple Silicon, faster-whisper
-  elsewhere, on an NVIDIA GPU with CUDA or on the CPU), the macOS voice or Piper speaks the
-  confirmations. Obeya's settings ("Voice") show what is missing and install the rest.
-  Everything else works without it.
+- For voice: ffmpeg and uv. Whisper hears what you say (MLX on Apple Silicon, faster-whisper
+  elsewhere, on an NVIDIA GPU with CUDA or on the CPU). Obeya's settings ("Voice") show what is
+  missing and install the rest. Everything else works without it.
 
 ```bash
 git clone https://github.com/sadilek/obeya.git
@@ -97,8 +96,7 @@ telling the Koordinator; saving writes `canvases.json` and restarts Obeya with i
 
 Voice runs Whisper in a sidecar through `uv run` (mlx-whisper on Apple Silicon, faster-whisper
 elsewhere), or in a Python of your own with that package (`OBEYA_WHISPER_PYTHON=/path/to/python`).
-Off the Mac the confirmations are spoken by Piper, which the settings install into Obeya's home;
-`OBEYA_WHISPER_BACKEND=faster` and `OBEYA_SPEECH=piper` choose those on a Mac too. Demos are recorded by the skill in
+`OBEYA_WHISPER_BACKEND=faster` chooses faster-whisper on a Mac too. Demos are recorded by the skill in
 `plugin/`, which Obeya gives its workers; what a machine needs for them (Node, a browser, ffmpeg,
 uv, a voice) is in [`docs/demo-setup.md`](docs/demo-setup.md), checked in the app's settings.
 

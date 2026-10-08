@@ -114,7 +114,7 @@ describe('a voice Obeya holds', () => {
   let server: ReturnType<typeof serve>;
   beforeEach(() => {
     host = new NarrationHost({ argv: () => [...UV, join(dir, 'voice.py'), join(dir, 'log')] });
-    server = serve([], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker: { speak: async () => null } }, 0, false, undefined, undefined, host);
+    server = serve([], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, host);
     const spec = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8'));
     writeFileSync(join(dir, 'spec.json'), JSON.stringify({ ...spec, host: { speaker: 'ryan' } }));
   });

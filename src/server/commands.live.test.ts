@@ -1,6 +1,7 @@
-// The Koordinator's prompt against the real model: sentences said or typed with a card open, in
-// each state an agent is on, and new tasks that start or wait. Runs only with OBEYA_LIVE=1 (it uses the machine's Claude login and
-// takes about a minute): `OBEYA_LIVE=1 bun test src/server/commands.live.test.ts`.
+// The Koordinator's prompt against the real model: requests the agent of an open card passes on from
+// the owner's words, in each state an agent is on; sentences said or typed with a card open that no
+// agent works on; and new tasks that start or wait. Runs only with OBEYA_LIVE=1 (it uses the
+// machine's Claude login and takes about a minute): `OBEYA_LIVE=1 bun test src/server/commands.live.test.ts`.
 
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
@@ -33,44 +34,38 @@ const STATES: Record<string, Record<string, string>> = {
   proposal: { state: 'proposal', proposal: JSON.stringify({ reason: 'Beim Login aufgefallen.', questions: [{ text: 'Welche Kodierung?', options: ['UTF-8', 'Latin-1'] }] }) },
 };
 
-/** State of the open card, what the owner says, whether typed, the actions expected, and whether it goes out at once. */
-const CASES: [string, string, boolean, Command['do'][], boolean][] = [
-  ['working', 'nimm lieber Semikolons als Trenner', false, ['note'], true],
-  ['working', 'Kannst du die Spalten auch alphabetisch sortieren?', true, ['note'], true],
-  ['working', 'mach eine Folgeaufgabe für den Excel-Export', false, ['newCard'], false],
-  ['working', 'Merk dir: Exporte immer mit Kopfzeile', true, ['remember'], false],
-  ['working', 'halt den Agenten an', false, ['stop'], false],
-  ['working', 'Was ist seit gestern auf der Leinwand passiert?', true, [], false],
-  ['question', 'CSV', false, ['answer'], true],
-  ['question', 'Excel, aber mit Semikolon als Trenner', true, ['answer'], true],
-  ['question', 'mach eine Folgeaufgabe: Import aus CSV', true, ['newCard'], false],
-  ['demo', 'ja', false, ['answer'], true],
-  ['demo', 'Der Button ist zu klein und die Farbe passt nicht', true, ['feedback'], false],
-  ['demo', 'gib frei', false, ['approve'], false],
-  ['demo', 'gib frei und mach eine Folgeaufgabe für die Auffälligkeit mit dem Datum', true, ['approve', 'newCard'], false],
-  ['demo', 'Merk dir: Demos immer mit Ton', false, ['remember'], false],
-  ['demo', 'Wenn ein Projekt noch keine Zählerstände hat, ist sichergestellt, dass trotzdem eine Datei mit Kopfzeile rauskommt?', true, ['feedback'], false],
-  ['review', 'Was passiert beim Export mit Umlauten im Dateinamen?', false, ['feedback'], false],
-  ['review', 'Die Spaltenüberschriften fehlen noch', true, ['feedback'], false],
-  ['review', 'gib das frei', false, ['approve'], false],
-  ['inPr', 'Rebase bitte auf main', false, ['note'], true],
-  ['inPr', 'Merk dir: in diesem Repo nie force pushen', true, ['remember'], false],
-  ['finishing', 'Räum danach den Branch auf', true, ['note'], true],
-  ['working', 'pack das in die Gruppe Abrechnung', false, ['group'], false],
-  ['review', 'Export und Login gehören zur Gruppe Konto', true, ['group'], false],
-  ['working', 'Wie gehst du mit leeren Zeilen um?', false, ['note'], true],
-  ['planned', 'Was würde der Agent hier machen, wenn ich starte?', false, [], false],
-  ['queued', 'nimm das aus der Warteschlange', false, ['dequeue'], false],
-  ['queued', 'Das soll doch noch nicht starten, lass es erst mal liegen', true, ['dequeue'], false],
-  ['queued', 'starte das trotzdem', false, ['force'], false],
-  ['proposal', 'Nimm den Excel-Export gleich mit dazu, und die Kodierung ist UTF-8', false, ['revise'], false],
-  ['proposal', 'Ich glaube, das Problem liegt eher beim Import, der Export ist in Ordnung', true, ['revise'], false],
-  ['proposal', 'übernimm das', false, ['accept'], false],
-  ['proposal', 'das brauchen wir nicht, weg damit', false, ['dismiss'], false],
+/**
+ * State of the open card, what the owner says (or types), the request its agent passes on (`to_obeya`;
+ * none: the card has no agent, and the words reach the Koordinator themselves), whether typed, and
+ * the actions expected. What the owner says to an agent never comes back to it as a note, an answer or feedback.
+ */
+const CASES: [string, string, string | null, boolean, Command['do'][]][] = [
+  ['working', 'mach eine Folgeaufgabe für den Excel-Export', 'Create a follow-up card for an Excel export of this card.', false, ['newCard']],
+  ['working', 'Merk dir: Exporte immer mit Kopfzeile', 'The owner wants Obeya to remember: exports always with a header row.', true, ['remember']],
+  ['working', 'halt an, ich will das anders angehen', 'Stop the agent on this card.', false, ['stop']],
+  ['working', 'Was ist seit gestern auf der Leinwand passiert?', 'What happened on the canvas since yesterday?', true, []],
+  ['working', 'starte auch gleich Login', 'Start the card Login.', false, ['start']],
+  ['working', 'pack das in die Gruppe Abrechnung', 'Put this card into the group Abrechnung.', false, ['group']],
+  ['question', 'mach eine Folgeaufgabe: Import aus CSV', 'Create a follow-up card: import from CSV.', true, ['newCard']],
+  ['demo', 'gib frei', 'The owner approves my work.', false, ['approve']],
+  ['demo', 'gib frei und mach eine Folgeaufgabe für die Auffälligkeit mit dem Datum', 'Approve my work, and create a follow-up card for the date anomaly from my summary.', true, ['approve', 'newCard']],
+  ['demo', 'Merk dir: Demos immer mit Ton', 'Remember for all demos: always with sound.', false, ['remember']],
+  ['review', 'gib das frei', 'Approve my work.', false, ['approve']],
+  ['review', 'Export und Login gehören zur Gruppe Konto', 'Put the cards Export als CSV and Login into the group Konto.', true, ['group']],
+  ['inPr', 'Merk dir: in diesem Repo nie force pushen', 'Remember for this repository: never force-push.', true, ['remember']],
+  ['finishing', 'leg eine Aufgabe an: Branches nach dem Merge aufräumen', 'Create a new task: clean up branches after the merge.', false, ['newCard']],
+  ['planned', 'Was würde der Agent hier machen, wenn ich starte?', null, false, []],
+  ['queued', 'nimm das aus der Warteschlange', null, false, ['dequeue']],
+  ['queued', 'Das soll doch noch nicht starten, lass es erst mal liegen', null, true, ['dequeue']],
+  ['queued', 'starte das trotzdem', null, false, ['force']],
+  ['proposal', 'Nimm den Excel-Export gleich mit dazu, und die Kodierung ist UTF-8', null, false, ['revise']],
+  ['proposal', 'Ich glaube, das Problem liegt eher beim Import, der Export ist in Ordnung', null, true, ['revise']],
+  ['proposal', 'übernimm das', null, false, ['accept']],
+  ['proposal', 'das brauchen wir nicht, weg damit', null, false, ['dismiss']],
 ];
 
-/** What the Koordinator makes of one sentence: the actions as they run, and whether it went out at once. */
-async function hear(state: string, text: string, typed: boolean) {
+/** What the Koordinator makes of one sentence, or of a request passed on with it: the actions as they run. */
+async function hear(state: string, text: string, request: string | null, typed: boolean) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => []);
   const login = board.create({ title: 'Login', x: 0, y: 0 });
   if (state === 'queued') board.work(login.id, { state: 'working' });
@@ -81,19 +76,19 @@ async function hear(state: string, text: string, typed: boolean) {
   const said: string[] = [];
   const runtime: AgentRuntime = { start: (spec, ...rest) => sdkRuntime.start({ ...spec, onEvent: (e) => (e.type === 'text' && said.push(e.text), spec.onEvent(e)) }, ...rest) };
   const k = new Commander({ board, runtime, cwd: mkdtempSync(join(tmpdir(), 'obeya-live-')), execute: (c) => void executed.push(c), delayMs: 1 });
-  const heard = await k.hear(text, { card: card.id }, [], typed ? { typed: true } : {});
+  const heard = request ? await k.forward(card.id, request, { text, spoken: !typed }) : await k.hear(text, { card: card.id }, [], typed ? { typed: true } : {});
   if (heard.token) k.arm(heard.token);
   await new Promise((r) => setTimeout(r, 20));
-  return { did: executed.map((c) => c.do), quiet: !!heard.quiet, executed, confirm: heard.confirm, said };
+  return { did: executed.map((c) => c.do), executed, confirm: heard.confirm, said };
 }
 
 test.skipIf(!process.env.OBEYA_LIVE)(
-  'with a card open, the Koordinator gives the agent what is for it and still knows Obeya’s commands',
+  'the Koordinator does what an agent passes on, and knows Obeya’s commands on a card without one',
   async () => {
-    const results = await Promise.all(CASES.map(async ([state, text, typed, want, quiet]) => ({ state, text, typed, want, quiet, got: await hear(state, text, typed) })));
-    const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(r.want) || r.got.quiet !== r.quiet);
+    const results = await Promise.all(CASES.map(async ([state, text, request, typed, want]) => ({ state, text, request, typed, want, got: await hear(state, text, request, typed) })));
+    const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(r.want));
     for (const r of results)
-      console.log(`${wrong.includes(r) ? '✗' : '✓'} [${r.state}] ${r.typed ? 'getippt' : 'gesprochen'} „${r.text}“ → ${r.got.did.join(', ') || 'reply'}${r.got.quiet ? ' (sofort)' : ''} · ${JSON.stringify(r.got.executed.map((c) => ('text' in c ? c.text : 'title' in c ? c.title : 'name' in c ? c.name : '')))} · ${r.got.confirm}${r.got.confirm !== 'Das habe ich nicht verstanden.' ? '' : ` · Sitzung: ${r.got.said.join(' ').slice(0, 200)}`}`);
+      console.log(`${wrong.includes(r) ? '✗' : '✓'} [${r.state}] ${r.typed ? 'getippt' : 'gesprochen'} „${r.text}“${r.request ? ` (vom Agenten: ${r.request})` : ''} → ${r.got.did.join(', ') || 'reply'} · ${JSON.stringify(r.got.executed.map((c) => ('text' in c ? c.text : 'title' in c ? c.title : 'name' in c ? c.name : '')))} · ${r.got.confirm}${r.got.confirm !== 'Das habe ich nicht verstanden.' ? '' : ` · Sitzung: ${r.got.said.join(' ').slice(0, 200)}`}`);
     expect(wrong.map((r) => `[${r.state}] ${r.text}`)).toEqual([]);
   },
   300_000,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { PushKeyView } from '../core/push-key';
-import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, FirstCanvas, MachineItem, MachineSectionId, MachineView, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, FirstCanvas, MachineItem, MachineSectionId, MachineView, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -61,7 +61,7 @@ export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${pat
 type Where = { card: string } | { project: string } | null;
 /** The field on a card words were typed into, which tells the Koordinator what they were meant as. */
 export type Field = 'note' | 'answer' | 'feedback' | 'demo' | 'discuss' | 'revise';
-type HeardReply = { confirm: string; token?: string; undoMs?: number; audio?: string; quiet?: boolean; unheard?: boolean };
+type HeardReply = { confirm: string; token?: string; undoMs?: number; quiet?: boolean; unheard?: boolean };
 
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
@@ -181,12 +181,12 @@ export function onCardEvent(fn: (e: CardEvent) => void): () => void {
   return () => eventListeners.delete(fn);
 }
 
-// Short spoken summaries of agents: an idea's replies, for whoever has the card open; answers the
-// Koordinator looked up come without a card and are heard anywhere.
-const speakListeners = new Set<(cardId: string | undefined, audio: string) => void>();
-export function onSpeak(fn: (cardId: string | undefined, audio: string) => void): () => void {
-  speakListeners.add(fn);
-  return () => speakListeners.delete(fn);
+// What Obeya tells the owner without a command of theirs to answer (an answer looked up, what a
+// request an agent passed on came to): it shows above the microphone, with "Rückgängig" while actions wait.
+const noticeListeners = new Set<(n: Notice) => void>();
+export function onNotice(fn: (n: Notice) => void): () => void {
+  noticeListeners.add(fn);
+  return () => noticeListeners.delete(fn);
 }
 
 // What the owner does in this page that a restart would cut off, by who holds it (the demo video,
@@ -263,7 +263,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
         else if (msg.type === 'restart') setRestart(msg.restart);
         else if (msg.type === 'waiting') setWaiting(msg.waiting);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
-        else if (msg.type === 'speak') for (const fn of speakListeners) fn(msg.cardId, msg.audio);
+        else if (msg.type === 'notice') for (const fn of noticeListeners) fn(msg);
       };
       ws.onclose = () => {
         if (closed) return;

@@ -66,12 +66,21 @@ export const formatQuestion = (q: Question, language: Language): string =>
   q.options.length ? `${q.text}${q.multiple ? ` (${MESSAGES[language].multiple})` : ''}\n${q.options.map((o) => `– ${o}`).join('\n')}` : q.text;
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
-/** Its worker takes in the owner's answer to the question in its demo report: meanwhile the card is at work. */
-export const answering = (i: Item) => i.state === 'waiting' && i.need === 'demo' && !!i.demo?.answering;
+/** Its worker takes in the owner's words on its handover: meanwhile the card is at work, and still waits for approval. */
+export const answering = (i: Item) => i.state === 'waiting' && (i.need === 'demo' || i.need === 'review') && !!i.answering;
 
 /**
- * A card needs the owner: it waits (but not while its worker takes in the answer to its demo
- * report's question), is a proposal, has a pull request that only waits for the
+ * Whether an agent hears what the owner says or types on the card when it is open: its worker (at
+ * work, waiting, in a pull request, finishing after the landing, or one a question resumes on a
+ * finished card) or an idea's exploration agent. The words then go straight to it; on any other
+ * card they go to the Koordinator.
+ */
+export const agentListens = (i: Pick<Item, 'state' | 'branch' | 'prototypeOf' | 'archivedAt' | 'finishing'>) =>
+  !i.archivedAt && (i.state === 'idea' || i.state === 'working' || i.state === 'waiting' || i.state === 'inPr' || !!i.finishing || askable(i));
+
+/**
+ * A card needs the owner: it waits (but not while its worker takes in what the owner wrote on its
+ * handover), is a proposal, has a pull request that only waits for the
  * owner's merge, or is an open idea whose agent has replied and is done.
  */
 export const needsYou = (i: Item) =>
@@ -106,6 +115,11 @@ export interface Item {
   question?: Question;
   /** The worker's summary, when `need` is `review` or `demo`. */
   summary?: string;
+  /**
+   * Its worker takes in what the owner wrote or said on its handover (`need` is `review` or `demo`):
+   * until its turn ends, the card is at work and not the owner's, and still waits for approval.
+   */
+  answering?: true;
   /** Why the worker handed over without a demo, in the rare case there was nothing to show (`need` is `review`). */
   noDemo?: string;
   /** The demo, when `need` is `demo`; its files are served under `/api/cards/:id/demo/`. */
@@ -337,8 +351,6 @@ export interface Demo {
   question?: string;
   /** The owner's answer to it; the demo keeps waiting for approval. */
   answer?: string;
-  /** Its worker takes in that answer: until its turn ends, the card is not the owner's. */
-  answering?: true;
   /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */
   page?: DemoPage;
   /** An HTML artifact that is its `index.html` alone: it also goes out as one HTML file. */
@@ -852,21 +864,20 @@ export interface AgentsView {
   agents: Record<AgentRole, AgentSetting>;
 }
 
-/** What Obeya's own voice in and out needs on this machine (`src/server/voice-setup.ts`). */
-export type VoiceSetupId = 'whisper' | 'speech' | 'ffmpeg' | 'uv';
+/** What Obeya's own voice in needs on this machine (`src/server/voice-setup.ts`). */
+export type VoiceSetupId = 'whisper' | 'ffmpeg' | 'uv';
 export type VoiceSetupItem = Omit<SetupItem, 'id'> & { id: VoiceSetupId };
 
 export interface VoiceSetupView {
   platform: string;
   arch: string;
-  /** Whisper on MLX (Apple Silicon) or faster-whisper; the macOS voice or Piper. */
+  /** Whisper on MLX (Apple Silicon) or faster-whisper. */
   listen: 'mlx' | 'faster';
-  speech: 'macos' | 'piper';
   items: VoiceSetupItem[];
-  /** What "Installieren" fetches and about how much: Piper and its voice, Whisper and its model. */
-  fetch: { parts: ('piper' | 'whisper')[]; mb: number };
+  /** What "Installieren" fetches and about how much: Whisper and its model. */
+  fetch: { parts: 'whisper'[]; mb: number };
   /** The installation running or last run. */
-  job?: { running: boolean; step: 'piper' | 'whisper'; line: string; error?: string };
+  job?: { running: boolean; step: 'whisper'; line: string; error?: string };
 }
 
 /** The setup assistant's list (`src/server/machine.ts`): what Obeya needs on this machine, by what it is for. */
@@ -971,5 +982,18 @@ export type ServerMessage =
   | { type: 'restart'; restart: PendingRestart | null }
   /** On connect and whenever it changes: how many cards on each canvas need the owner, by canvas id. */
   | { type: 'waiting'; waiting: Record<string, number> }
-  /** A short spoken summary of a card's agent (an idea's reply), to play while the card is open. */
-  | { type: 'speak'; cardId?: string; audio: string };
+  /** A line for the owner above the microphone, wherever they are. */
+  | ({ type: 'notice' } & Notice);
+
+/**
+ * What Obeya tells the owner above the microphone without a command of theirs to answer: an answer
+ * the Koordinator looked up, or what it did with a request a card's agent passed on from the
+ * owner's words (`to_obeya`), with `token` while those actions wait for "Rückgängig".
+ */
+export interface Notice {
+  /** The card it is about, named when another one is open. */
+  cardId?: string;
+  text: string;
+  token?: string;
+  undoMs?: number;
+}

@@ -635,9 +635,8 @@ function SetupBlock({ draft, installing }: { draft: DemoSettings; installing: bo
 }
 
 /**
- * What the owner's voice commands and the spoken confirmations need on this machine, with one
- * button that installs Piper and loads Whisper (fetching it the first time). Follows an
- * installation until it ends.
+ * What the owner's voice input needs on this machine, with one button that loads Whisper
+ * (fetching it the first time). Follows an installation until it ends.
  */
 function VoiceBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<VoiceSetupView | null>(null);
@@ -667,7 +666,7 @@ function VoiceBlock({ on }: { on: boolean }) {
       setStatus(e instanceof ApiError ? errorText(e.code) : t.offlineError);
     }
   };
-  const blocked = view.items.some((i) => i.state === 'missing' && i.id !== 'speech');
+  const blocked = view.items.some((i) => i.state === 'missing');
   return (
     <>
       <h4 className="p-h">{v.title}</h4>

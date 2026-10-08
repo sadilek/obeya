@@ -171,7 +171,7 @@ await check("a script on the binary's Bun imports the adapter kit", async () => 
 });
 
 if (args.includes('--voice')) {
-  await check('voice: Whisper and Piper install from the settings', async () => {
+  await check('voice: Whisper installs from the settings', async () => {
     await api('/api/voice-setup/install', { method: 'POST' });
     const view = await until('the installation ends', 30 * 60_000, async () => {
       const v = await json('/api/voice-setup');
@@ -180,18 +180,18 @@ if (args.includes('--voice')) {
     expect(!view.job?.error, view.job?.error);
     const missing = (view.items as { id: string; state: string }[]).filter((i) => i.state !== 'ok');
     expect(!missing.length, `still missing: ${JSON.stringify(missing)}`);
-    // the demo voice (Piper) too, which on a Mac is not the one confirmations are spoken in
+    // the demo voice (Piper) too, which speaks the sentence heard below
     await api('/api/demo-settings/install', { json: { language: 'en', voice: 'piper' } });
     const done = await until('the demo voice is installed', 30 * 60_000, async () => /voice piper installed|installing the voice piper failed.*/.exec(logText())?.[0]);
     expect(!/failed/.test(done), done);
-    return `${view.listen}, ${view.speech}`;
+    return view.listen;
   });
   await check('voice: a sentence in the demo voice, heard as a command', async () => {
     const wav = await (await api('/api/demo-settings/sample', { json: { language: 'en', voice: 'piper' } })).arrayBuffer();
     const res = await json(`/api/c/${canvas}/voice`, { method: 'POST', body: wav, headers: { 'content-type': 'audio/wav' } });
     const heard = /heard on check: (.*)/.exec(logText())?.[1] ?? '';
     expect(/voice sounds/i.test(heard), `heard „${heard}“`);
-    return `heard „${heard}“; Obeya answered „${res.confirm}“${res.audio ? ', spoken' : ''}`;
+    return `heard „${heard}“; Obeya answered „${res.confirm}“`;
   });
 }
 

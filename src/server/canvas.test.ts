@@ -362,3 +362,32 @@ describe('groups by voice', () => {
     expect(item(a.id).group).toBeUndefined();
   });
 });
+
+describe("the owner's words on a card with an agent", () => {
+  test('go straight to its worker, which passes on to the Koordinator what asks Obeya for something', async () => {
+    const c = canvas.board.create({ title: 'Export', x: 0, y: 0, repo: 'web' });
+    canvas.repoOf(c.id).workers.start(c.id);
+    const worker = runtime.last;
+    expect(worker.spec.system).toContain('Pass those on with to_obeya');
+    const notices: unknown[] = [];
+    canvas.board.onNotice((n) => notices.push(n));
+
+    canvas.tell(c.id, 'mach noch eine Folgeaufgabe für Excel', [], true);
+    expect(worker.inbox.at(-1)).toContain('mach noch eine Folgeaufgabe für Excel');
+    expect(worker.inbox.at(-1)).toContain('speech recognition may have misheard');
+    expect(canvas.board.events(c.id).at(-1)).toMatchObject({ kind: 'hint', author: 'owner', text: 'mach noch eine Folgeaufgabe für Excel' });
+
+    const result = worker.call('to_obeya', { request: 'A follow-up card for an Excel export' }) as Promise<string>;
+    await settle();
+    const k = runtime.sessions.find((s) => s.spec.tools.some((t) => t.name === 'act'))!;
+    expect(k.inbox[0]).toContain('"A follow-up card for an Excel export"');
+    expect(k.inbox[0]).toContain('"mach noch eine Folgeaufgabe für Excel"');
+    k.call('act', { actions: [{ do: 'new_card', card: 'K1', title: 'Excel-Export', body: 'Auch als Excel.' }], confirm: 'Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.' });
+    k.emit({ type: 'idle' });
+    expect(await result).toBe('Obeya: Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.');
+    // the owner sees it above the microphone, with „Rückgängig“ while it waits, and in the card's conversation
+    expect(notices).toEqual([{ cardId: c.id, text: 'Folgeaufgabe „Excel-Export“ angelegt, der Agent fängt an.', token: expect.any(String), undoMs: 5000 }]);
+    expect(canvas.board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator' });
+    expect(canvas.commander.undo((notices[0] as { token: string }).token)).toBe(true);
+  });
+});

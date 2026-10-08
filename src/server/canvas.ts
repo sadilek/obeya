@@ -8,7 +8,7 @@ import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, type AgentRole, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -87,6 +87,8 @@ export class CanvasRuntime {
   readonly repos: RepoRuntime[] = [];
   private stops: (() => void)[] = [];
   private prWatchers: PrWatcher[] = [];
+  /** What the owner last said or typed to each card's agent, for the Koordinator to read beside a request the agent passes on. */
+  private said = new Map<string, { text: string; spoken: boolean }>();
   /** Cards the owner is writing in, with their text before; a pause in typing hands it to the learner. */
   private writing = new Map<string, { before: string; timer: ReturnType<typeof setTimeout> }>();
 
@@ -167,6 +169,7 @@ export class CanvasRuntime {
         ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
         imageFiles,
         onWorkEnded: (cardId, workspace) => workRetro.ended(cardId, workspace),
+        toObeya: (cardId, request) => this.forward(cardId, request),
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
         ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       });
@@ -201,6 +204,7 @@ export class CanvasRuntime {
       onOwnerInput: (card, text) => koordinator.learn(card, 'idea', text),
       imageFiles,
       onReplied: (cardId, replied) => this.replied(cardId, replied),
+      toObeya: (cardId, request) => this.forward(cardId, request),
     });
     this.explorers.resumeAll();
     this.answers = new Answers({
@@ -314,6 +318,38 @@ export class CanvasRuntime {
       const card = this.board.collecting(r.id);
       if (card) this.koordinator.request(card.id);
     }
+  }
+
+  /**
+   * What the owner says or types with a card open that an agent listens on (`agentListens`) goes
+   * straight to that agent, by the card's state: talk to an idea, the answer to its worker's
+   * question, or else words the worker takes in (a note while it works, words on its handover, a
+   * question once its work is done). The agent passes on what asks Obeya for something (`to_obeya`).
+   */
+  tell(cardId: string, text: string, images: string[], spoken: boolean) {
+    const card = this.board.item(cardId);
+    if (!card) throw new BadRequest('unknownCard', 'unknown card');
+    if (!agentListens(card)) throw new BadRequest('noAgent', 'no agent works on this card');
+    const said = { text, spoken, ...(images.length ? { images } : {}) };
+    // the agent passes a request on in its words; the Koordinator reads the owner's own beside them
+    this.said.set(cardId, { text, spoken });
+    if (card.state === 'idea') return this.act(cardId, { action: 'discuss', ...said });
+    if (card.state === 'waiting' && card.need === 'question') return this.act(cardId, { action: 'answer', ...said });
+    return this.act(cardId, { action: 'message', ...said });
+  }
+
+  /**
+   * A request a card's agent passes on from the owner's words (`to_obeya`): the Koordinator reads it
+   * with those words and the card in focus, as a command, and its confirmation (or reply, or that it
+   * looks the question up) is the agent's answer. Actions wait for "Rückgängig" as usual; the owner
+   * sees the confirmation above the microphone and in the card's conversation.
+   */
+  async forward(cardId: string, request: string): Promise<string> {
+    const said = this.said.get(cardId);
+    const h = await this.commander.forward(cardId, request, said);
+    if (h.token) this.commander.arm(h.token);
+    this.board.notify({ cardId, text: h.confirm, ...(h.token ? { token: h.token, undoMs: this.commander.delayMs } : {}) });
+    return h.confirm;
   }
 
   /** The owner clicks in the card's panel: a click without words the learner reads counts towards the Rückschau. */

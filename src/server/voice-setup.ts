@@ -1,20 +1,18 @@
-// What Obeya's own voice in and out needs on this machine, checked for the settings sheet like a
-// demo's setup (`plugin/skills/demo/lib/setup.ts`): Whisper (the package in uv's cache or in
-// `OBEYA_WHISPER_PYTHON`, the model in the Hugging Face cache), ffmpeg (it decodes the recordings),
-// uv (it brings Whisper and Piper's environment), and the voice confirmations are spoken in (the
-// macOS one, or Piper under Obeya's home). "Installieren" installs Piper and loads Whisper, which
-// fetches it the first time, so the first command does not wait minutes for it.
+// What Obeya's voice in needs on this machine, checked for the settings sheet like a demo's setup
+// (`plugin/skills/demo/lib/setup.ts`): Whisper (the package in uv's cache or in
+// `OBEYA_WHISPER_PYTHON`, the model in the Hugging Face cache), ffmpeg (it decodes the recordings)
+// and uv (it brings Whisper). "Installieren" loads Whisper, which fetches it the first time, so the
+// first command does not wait minutes for it.
 
 import type { VoiceSetupItem, VoiceSetupView } from '../core/types';
 import { installHint, linuxFamily, output, whisperKit } from '../../plugin/skills/demo/lib/setup.ts';
-import { hfModelPresent, installState, installVoice } from '../../plugin/skills/demo/lib/voices.ts';
+import { hfModelPresent } from '../../plugin/skills/demo/lib/voices.ts';
 import { BadRequest } from './board';
-import { ownerLanguage } from './settings';
-import { confirmationVoice, type ListenBackend, type SpeechBackend } from './voice';
+import type { ListenBackend } from './voice';
 
 export interface VoiceSetupOptions {
   home: string;
-  backends: { listen: ListenBackend; speech: SpeechBackend };
+  backends: { listen: ListenBackend };
   /** Loads Whisper: the transcriber's `prepare`. */
   prepare: () => Promise<void>;
   env?: Record<string, string | undefined>;
@@ -29,7 +27,7 @@ export class VoiceSetup {
   async view(): Promise<VoiceSetupView> {
     const env = this.o.env ?? process.env;
     const { platform, arch } = process;
-    const { listen, speech } = this.o.backends;
+    const { listen } = this.o.backends;
     const family = platform === 'linux' ? linuxFamily() : null;
     const hint = (id: 'ffmpeg' | 'uv') => installHint(id, platform, arch, family);
     const kit = whisperKit(listen);
@@ -55,35 +53,19 @@ export class VoiceSetup {
     }
     const ffmpeg = ffmpegOut?.match(/ffmpeg version (\S+)/)?.[1];
     items.push(ffmpeg ? { id: 'ffmpeg', state: 'ok', found: ffmpeg } : { id: 'ffmpeg', state: 'missing', install: hint('ffmpeg') });
-    // uv fetches Whisper unless its Python is given, and makes Piper's environment
-    if (!python || speech === 'piper') {
+    // uv fetches Whisper unless its Python is given
+    if (!python) {
       const uv = uvOut?.match(/uv (\S+)/)?.[1];
       items.push(uv ? { id: 'uv', state: 'ok', found: uv } : { id: 'uv', state: 'missing', install: hint('uv') });
     }
-    let piperMb = 0;
-    if (speech === 'macos') items.push({ id: 'speech', state: 'ok', found: 'macOS' });
-    else {
-      const piper = installState(confirmationVoice(ownerLanguage(this.o.home)), this.o.home);
-      piperMb = piper.mb;
-      items.push(piper.installed ? { id: 'speech', state: 'ok', found: 'Piper' } : { id: 'speech', state: 'missing', found: piper.missing.join(', '), mb: piper.mb });
-    }
-    const parts = [...(piperMb ? (['piper'] as const) : []), ...(whisperMb ? (['whisper'] as const) : [])];
-    return { platform, arch, listen, speech, items, fetch: { parts, mb: piperMb + whisperMb }, ...(this.job ? { job: this.job } : {}) };
+    return { platform, arch, listen, items, fetch: { parts: whisperMb ? ['whisper'] : [], mb: whisperMb }, ...(this.job ? { job: this.job } : {}) };
   }
 
-  /** Installs Piper if it is missing and loads Whisper, in the background; the view says how far it got. */
+  /** Loads Whisper, in the background; the view says how far it got. */
   async install(): Promise<VoiceSetupView> {
     if (this.job?.running) throw new BadRequest('voiceInstalling', 'voice is being installed');
-    const { speech } = this.o.backends;
-    const job: NonNullable<VoiceSetupView['job']> = (this.job = { running: true, step: 'piper', line: '' });
+    const job: NonNullable<VoiceSetupView['job']> = (this.job = { running: true, step: 'whisper', line: '' });
     this.done = (async () => {
-      const voice = confirmationVoice(ownerLanguage(this.o.home));
-      if (speech === 'piper' && !installState(voice, this.o.home).installed) {
-        console.log('Obeya: installing Piper for spoken confirmations');
-        await installVoice(voice, (line) => (job.line = line.slice(0, 300)), this.o.home);
-      }
-      job.step = 'whisper';
-      job.line = '';
       console.log('Obeya: loading Whisper (fetched the first time)');
       await this.o.prepare();
     })().then(

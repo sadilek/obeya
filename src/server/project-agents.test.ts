@@ -36,8 +36,8 @@ describe('project agents', () => {
     expect(s.spec).toMatchObject({ cwd: '/repo', readOnly: true });
     expect(s.inbox[0]).toContain('Was macht W1 als Nächstes?');
     expect(s.inbox[0]).toContain('Trennzeichen? → Semikolon (owner)');
-    s.call('answer_owner', { text: 'Es baut den CSV-Export.', spoken: 'Den CSV-Export.' });
-    expect(await answer).toEqual({ text: 'Es baut den CSV-Export.', spoken: 'Den CSV-Export.' });
+    s.call('answer_owner', { text: 'Es baut den CSV-Export.' });
+    expect(await answer).toEqual({ text: 'Es baut den CSV-Export.' });
     s.emit({ type: 'idle' });
     expect(s.closed).toBe(true);
   });
@@ -48,13 +48,13 @@ describe('project agents', () => {
     await tick();
     expect(runtime.sessions).toHaveLength(1);
     runtime.last.emit({ type: 'session', id: 'p-1' });
-    runtime.last.call('answer_owner', { text: 'A1', spoken: '' });
+    runtime.last.call('answer_owner', { text: 'A1' });
     runtime.last.emit({ type: 'idle' });
     await r1;
     await tick();
     expect(runtime.sessions).toHaveLength(2);
     expect(runtime.last.spec.resume).toBe('p-1');
-    runtime.last.call('answer_owner', { text: 'A2', spoken: '' });
-    expect(await r2).toEqual({ text: 'A2', spoken: '' });
+    runtime.last.call('answer_owner', { text: 'A2' });
+    expect(await r2).toEqual({ text: 'A2' });
   });
 });

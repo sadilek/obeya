@@ -6,10 +6,9 @@ import { type Language, LANGUAGE_NAMES } from '../core/locale';
 import type { Question } from '../core/types';
 import type { AgentRuntime } from './runtime';
 
-/** An answer to a question the owner asked: in full for the card or the sheet, and short for the ear. */
+/** An answer to a question the owner asked, for the card or the sheet. */
 export interface OwnerAnswer {
   text: string;
-  spoken: string;
 }
 
 export interface Briefing {
@@ -46,9 +45,9 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
         tools: [
           {
             name: 'answer_owner',
-            description: `Your answer to the owner, in ${LANGUAGE_NAMES[b.language]}: text in full (markdown, short paragraphs or a list; it stands in the card's log), spoken one or two short sentences that sum it up for the ear.`,
-            schema: { text: z.string(), spoken: z.string() },
-            run: ({ text, spoken }) => settle({ text: String(text).trim(), spoken: String(spoken).trim() }),
+            description: `Your answer to the owner, in ${LANGUAGE_NAMES[b.language]}: text in full (markdown, short paragraphs or a list; it stands in the card's log).`,
+            schema: { text: z.string() },
+            run: ({ text }) => settle({ text: String(text).trim() }),
           },
         ],
         onEvent: (e) => {
@@ -61,7 +60,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
           } else if (e.type === 'idle') {
             session.close();
             if (answer) return;
-            if (last.trim()) settle({ text: last.trim(), spoken: '' });
+            if (last.trim()) settle({ text: last.trim() });
             else reject(new Error('no answer'));
           }
         },
@@ -73,7 +72,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
 
 /** How to answer a question of the owner's, the same for every agent that answers one. */
 export const INFORM_RULES = `
-The owner asked a question about the canvas by voice. The Koordinator, which reads every command in a quick turn, could not answer it from the cards alone and passed it to you; it told the owner the answer comes in a moment. Take the time to look it up: the repository's docs and plan docs, CLAUDE.md, the code, and what the message gives you.
+The owner asked a question about the canvas, spoken or typed. The Koordinator, which reads every command in a quick turn, could not answer it from the cards alone and passed it to you; it told the owner the answer comes in a moment. Take the time to look it up: the repository's docs and plan docs, CLAUDE.md, the code, and what the message gives you.
 - "What would the agent do on this card?": the message holds the task the card's worker gets at its start. Derive from it, the plan doc and the repository's instructions the concrete steps the worker would take, in order, and what it would ask the owner. Say what it would change, and where the plan leaves it open.
 - Answer what was asked, concretely and grounded in what you read; name the source (plan doc section, file). Say where you are guessing. Never answer that you cannot know: say what the sources say.
 - The owner does not read code: no code blocks, file paths only where they help.

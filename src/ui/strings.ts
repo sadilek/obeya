@@ -20,7 +20,7 @@ const de = {
   } satisfies Record<CardState, string>,
   need: { demo: 'Demo bereit', question: 'Frage an dich', review: 'Bereit zur Abnahme' } satisfies Record<Need, string>,
   demoWithQuestion: 'Demo bereit, mit Frage',
-  demoAnswering: 'Agent arbeitet an deiner Antwort',
+  answering: 'Agent arbeitet an deiner Nachricht',
   finishing: 'Live · Agent erledigt den Rest',
   finishingLong: 'Auf main. Der Agent erledigt noch, was nach dem Landen ansteht; danach endet seine Sitzung.',
   finishingDone: 'Erledigt · Agent räumt auf',
@@ -289,9 +289,9 @@ const de = {
     hold: 'Halten zum Sprechen (Leertaste)',
     koordinator: 'Koordinator',
     card: (title: string) => `Koordinator · Aufgabe: ${title}`,
-    /** A card an agent works on: what the owner says goes to it, unless it is a command to Obeya. */
+    /** A card an agent works on: what the owner says goes straight to it, and it passes requests to Obeya on. */
     agent: (title: string) => `Agent · Aufgabe: ${title}`,
-    idea: (title: string) => `Koordinator · Idee: ${title}`,
+    idea: (title: string) => `Agent · Idee: ${title}`,
     project: (title: string) => `Koordinator · Projekt: ${title}`,
     noMic: 'Kein Mikrofon: der Browser hat den Zugriff nicht erlaubt.',
     /** In the app's floating panel, while the owner holds the push-to-talk key in another app. */
@@ -303,6 +303,10 @@ const de = {
     tooLate: 'Zu spät: das ist schon passiert.',
     /** A command while the Koordinator reads it: the card it was said to, or the words typed. */
     reading: (what: string) => `${what} · wird verstanden …`,
+    /** A recording for the open card's agent while Whisper writes it down. */
+    transcribing: (what: string) => `${what} · wird aufgeschrieben …`,
+    /** In the app's panel: what was heard went to the open card's agent. */
+    toAgent: 'An den Agenten gegangen.',
     /** A confirmation about a card other than the open one starts with it. */
     about: (title: string) => `„${title}“: `,
     attach: 'Screenshot für die nächste Sprachnachricht – oder mit ⌘V einfügen oder auf das Mikrofon ziehen',
@@ -421,7 +425,7 @@ const de = {
     koordinator: 'Der Koordinator kennt sie auch: frag ihn danach oder sag ihm, was sich ändern soll.',
     language: {
       title: 'Sprache',
-      hint: 'Die Sprache, in der Obeya mit dir spricht: die Oberfläche mit Daten und Zahlen, der Koordinator, Spracheingabe und -ausgabe, was die Agenten dir schreiben, und die Demos, solange unten keine eigene Sprache gewählt ist. Gilt sofort; die Seite lädt dazu neu.',
+      hint: 'Die Sprache, in der Obeya mit dir spricht: die Oberfläche mit Daten und Zahlen, der Koordinator, die Spracheingabe, was die Agenten dir schreiben, und die Demos, solange unten keine eigene Sprache gewählt ist. Gilt sofort; die Seite lädt dazu neu.',
       system: (name: string) => `Wie das System (${name})`,
       /** Each language in its own words, as a stranger looks for it. */
       names: { de: 'Deutsch', en: 'English' } satisfies Record<Language, string>,
@@ -495,23 +499,21 @@ const de = {
       invalid: 'Die Konfiguration ist fehlerhaft.',
     } satisfies Record<ConfigProblemCode, string>,
     voice: {
-      title: 'Spracheingabe und -ausgabe',
-      hint: (platform: string) => `Was Spracheingabe und gesprochene Bestätigungen auf diesem Rechner brauchen, geprüft auf ${platform}.`,
+      title: 'Spracheingabe',
+      hint: (platform: string) => `Was die Spracheingabe auf diesem Rechner braucht, geprüft auf ${platform}.`,
       names: {
         whisper: 'Whisper (Spracheingabe)',
-        speech: 'Stimme (Bestätigungen)',
         ffmpeg: 'ffmpeg (liest die Aufnahme)',
         uv: 'uv (bringt Python mit)',
         globalKey: 'Sprachtaste überall (App)',
       } satisfies Record<VoiceSetupId | 'globalKey', string>,
-      found: { macOS: 'Stimme von macOS' } as Record<string, string>,
+      found: {} as Record<string, string>,
       faster: 'faster-whisper rechnet auf der Grafikkarte, wenn CUDA da ist, sonst auf dem Prozessor (langsamer, ein paar Sekunden je Befehl).',
       later: (size: string) => `wird beim ersten Sprechen geladen (etwa ${size})`,
-      speechMissing: (size: string) => `Piper fehlt (etwa ${size}); bis dahin bleiben Bestätigungen stumm`,
       install: (size: string) => `Installieren (${size})`,
-      step: { piper: 'Piper wird installiert …', whisper: 'Whisper wird geladen, beim ersten Mal mit Download …' },
+      step: { whisper: 'Whisper wird geladen, beim ersten Mal mit Download …' },
       failed: (why: string) => `Fehlgeschlagen: ${why}. Mehr dazu im Log von Obeya.`,
-      ready: 'Alles da: Spracheingabe und gesprochene Bestätigungen gehen.',
+      ready: 'Alles da: die Spracheingabe geht.',
     },
     pushKey: {
       title: 'Sprachtaste überall',
@@ -886,7 +888,7 @@ const en: Strings = {
   },
   need: { demo: 'Demo ready', question: 'Question for you', review: 'Ready for review' },
   demoWithQuestion: 'Demo ready, with a question',
-  demoAnswering: 'Agent works on your answer',
+  answering: 'Agent works on your message',
   finishing: 'Live · agent finishing up',
   finishingLong: 'On main. The agent still does what was waiting for the landing; then its session ends.',
   finishingDone: 'Done · agent tidying up',
@@ -1147,7 +1149,7 @@ const en: Strings = {
     koordinator: 'Coordinator',
     card: (title: string) => `Coordinator · Task: ${title}`,
     agent: (title: string) => `Agent · Task: ${title}`,
-    idea: (title: string) => `Coordinator · Idea: ${title}`,
+    idea: (title: string) => `Agent · Idea: ${title}`,
     project: (title: string) => `Coordinator · Project: ${title}`,
     noMic: 'No microphone: the browser did not allow access.',
     listening: 'Obeya is listening',
@@ -1157,6 +1159,8 @@ const en: Strings = {
     typePlaceholder: 'Write to the Coordinator, e.g. “New task: …”',
     tooLate: 'Too late: that has happened already.',
     reading: (what: string) => `${what} · being understood …`,
+    transcribing: (what: string) => `${what} · being written down …`,
+    toAgent: 'Sent to the agent.',
     about: (title: string) => `“${title}”: `,
     attach: 'Screenshot for the next voice message – or paste it with ⌘V or drop it on the microphone',
   },
@@ -1274,7 +1278,7 @@ const en: Strings = {
     koordinator: 'The Coordinator knows it too: ask it about it or tell it what should change.',
     language: {
       title: 'Language',
-      hint: 'The language Obeya speaks to you: the interface with its dates and numbers, the Coordinator, voice in and out, what agents write to you, and demos unless they have a language of their own below. Applies at once; the page loads again for it.',
+      hint: 'The language Obeya speaks to you: the interface with its dates and numbers, the Coordinator, voice input, what agents write to you, and demos unless they have a language of their own below. Applies at once; the page loads again for it.',
       system: (name: string) => `As the system (${name})`,
       names: { de: 'Deutsch', en: 'English' },
     },
@@ -1348,22 +1352,20 @@ const en: Strings = {
     },
     voice: {
       title: 'Voice',
-      hint: (platform: string) => `What voice commands and spoken confirmations need on this machine, checked on ${platform}.`,
+      hint: (platform: string) => `What voice input needs on this machine, checked on ${platform}.`,
       names: {
         whisper: 'Whisper (voice input)',
-        speech: 'Voice (confirmations)',
         ffmpeg: 'ffmpeg (reads the recording)',
         uv: 'uv (brings Python)',
         globalKey: 'Push-to-talk anywhere (app)',
       },
-      found: { macOS: 'macOS voice' } as Record<string, string>,
+      found: {} as Record<string, string>,
       faster: 'faster-whisper runs on the graphics card when CUDA is there, else on the processor (slower, a few seconds per command).',
       later: (size: string) => `loaded with the first command (about ${size})`,
-      speechMissing: (size: string) => `Piper is missing (about ${size}); until then confirmations stay silent`,
       install: (size: string) => `Install (${size})`,
-      step: { piper: 'Installing Piper …', whisper: 'Loading Whisper, with a download the first time …' },
+      step: { whisper: 'Loading Whisper, with a download the first time …' },
       failed: (why: string) => `Failed: ${why}. More in Obeya’s log.`,
-      ready: 'All there: voice commands and spoken confirmations work.',
+      ready: 'All there: voice input works.',
     },
     pushKey: {
       title: 'Push-to-talk anywhere',
@@ -1757,7 +1759,7 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; demo?: { answering?: true }; finishing?: boolean; followUp?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
+export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; finishing?: boolean; followUp?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
   i.prototypeEnd
     ? t.idea.ended[i.prototypeEnd]
     : i.finishing && (i.state === 'live' || i.state === 'done')
@@ -1777,8 +1779,8 @@ export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; id
           ? t.queue.workspace
           : t.queue.waiting
     : i.state === 'waiting' && i.need
-      ? i.need === 'demo' && i.demo?.answering
-        ? t.demoAnswering
+      ? i.answering
+        ? t.answering
         : i.need === 'demo' && i.question
           ? t.demoWithQuestion
           : t.need[i.need]

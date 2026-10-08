@@ -12,7 +12,6 @@ let main: string;
 let store: Store;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
-let spoken: [string | undefined, string][];
 
 const open = (clones = 1) =>
   new CanvasRuntime({ repos: [{ path: main, clones }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10 });
@@ -25,8 +24,6 @@ beforeEach(() => {
   store = new Store(':memory:');
   runtime = new FakeRuntime();
   canvas = open();
-  spoken = [];
-  canvas.board.onSpeak((id, text) => spoken.push([id, text]));
 });
 afterEach(() => {
   canvas.shutdown();
@@ -50,7 +47,7 @@ const talk = (id: string) => board().events(id).filter((e) => e.kind === 'talk')
 const turn = (s: FakeSession, reply: string, extra?: () => void) => {
   s.emit({ type: 'session', id: 'sess-1' });
   extra?.();
-  s.call('reply', { text: reply, spoken: `Kurz: ${reply}` });
+  s.call('reply', { text: reply });
   s.emit({ type: 'idle' });
 };
 
@@ -84,8 +81,6 @@ describe('an idea', () => {
       ['explorer', 'CSV oder PDF?'],
     ]);
     expect(board().decisions(null)).toMatchObject([{ card_id: i.id, question: 'Format?', answer: 'CSV', by: 'owner' }]);
-    // typed: nothing is spoken
-    expect(spoken).toEqual([]);
   });
 
   test('keeps what its agent read and thought on the way to a reply, but not its words after it', () => {
@@ -96,7 +91,7 @@ describe('an idea', () => {
     s.emit({ type: 'text', text: 'Das Archiv nimmt keine Projekte auf.' });
     s.call('update_brief', { brief: '**Ziel:** Archiv für Projekte.' });
     s.emit({ type: 'tool', name: 'mcp__obeya__update_brief', input: {} });
-    s.call('reply', { text: 'Ziel und Ist-Stand stehen im Stand. Eine offene Frage.', spoken: '' });
+    s.call('reply', { text: 'Ziel und Ist-Stand stehen im Stand. Eine offene Frage.' });
     s.emit({ type: 'text', text: 'Fertig.' });
     s.emit({ type: 'idle' });
     expect(board().events(i.id).filter((e) => e.author === 'explorer').map((e) => [e.kind, e.text])).toEqual([
@@ -114,12 +109,12 @@ describe('an idea', () => {
     first.emit({ type: 'session', id: 'sess-1' });
     canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
     expect(first.inbox).toHaveLength(1);
-    first.call('reply', { text: 'Zu erstens.', spoken: '' });
+    first.call('reply', { text: 'Zu erstens.' });
     first.emit({ type: 'idle' });
     // the queued message is the next turn of the same session
     expect(first.closed).toBe(false);
     expect(first.inbox[1]).toContain('Zweitens.');
-    first.call('reply', { text: 'Zu zweitens.', spoken: '' });
+    first.call('reply', { text: 'Zu zweitens.' });
     first.emit({ type: 'idle' });
     expect(first.closed).toBe(true);
     // days later
@@ -160,11 +155,11 @@ describe('an idea', () => {
     expect(item(c.id).images).toEqual([task, shown]);
   });
 
-  test('a spoken message gets a spoken summary; a turn without reply still answers with its words', () => {
+  test('a spoken message says so to the agent; a turn without reply still answers with its words', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Was kostet das?', spoken: true });
+    expect(explorer().inbox[0]).toContain('speech recognition may have misheard');
     turn(explorer(), 'Etwa zwei Tage.');
-    expect(spoken).toEqual([[i.id, 'Kurz: Etwa zwei Tage.']]);
     canvas.act(i.id, { action: 'discuss', text: 'Und dann?' });
     const s = explorer();
     s.emit({ type: 'text', text: 'Dann ein Plan-Doc.' });
@@ -179,11 +174,11 @@ describe('an idea', () => {
     s.emit({ type: 'session', id: 'sess-1' });
     expect(item(i.id).idea).toMatchObject({ thinking: true, yourTurn: false });
     canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
-    s.call('reply', { text: 'Zu erstens.', spoken: '' });
+    s.call('reply', { text: 'Zu erstens.' });
     s.emit({ type: 'idle' });
     // the owner's second message is still to be answered
     expect(item(i.id).idea).toMatchObject({ thinking: true });
-    s.call('reply', { text: 'Zu zweitens.', spoken: '' });
+    s.call('reply', { text: 'Zu zweitens.' });
     s.emit({ type: 'idle' });
     expect(item(i.id).idea).toMatchObject({ thinking: false, yourTurn: true, questions: [], variants: [] });
     canvas.act(i.id, { action: 'discuss', text: 'Drittens.' });
@@ -199,7 +194,6 @@ describe('an idea', () => {
     const s = explorer();
     s.call('reply', {
       text: 'Zwei Fragen.',
-      spoken: '',
       questions: [
         { question: 'Welches Format?', options: ['CSV', 'PDF', 'CSV'] },
         { question: 'Für wen?', options: ['Vermieter', 'Verwalter'], multiple: true },
@@ -229,7 +223,6 @@ describe('an idea', () => {
     let s = explorer();
     s.call('reply', {
       text: 'Eine Frage noch.',
-      spoken: '',
       questions: [
         { question: 'Welches Format?', options: ['CSV', 'PDF'], pick: ['CSV '], pick_why: 'Vermieter rechnen in Excel weiter.' },
         { question: 'Für wen?', options: ['Vermieter', 'Verwalter'], multiple: true, pick: ['Vermieter', 'Mieter', 'Verwalter'], pick_why: 'Beide.' },
@@ -254,17 +247,17 @@ describe('an idea', () => {
     expect(item(i.id).idea!.next).toBeUndefined();
     s = explorer();
     // answering without questions, or a step there is no button for, is no suggestion
-    s.call('reply', { text: 'Danke.', spoken: '', next: { step: 'answer', why: '?' } });
+    s.call('reply', { text: 'Danke.', next: { step: 'answer', why: '?' } });
     s.emit({ type: 'idle' });
     expect(item(i.id).idea!.next).toBeUndefined();
     canvas.act(i.id, { action: 'discuss', text: 'Und jetzt?' });
     s = explorer();
-    s.call('reply', { text: 'Bauen.', spoken: '', next: { step: 'deploy', why: '?' } });
+    s.call('reply', { text: 'Bauen.', next: { step: 'deploy', why: '?' } });
     s.emit({ type: 'idle' });
     expect(item(i.id).idea!.next).toBeUndefined();
     canvas.act(i.id, { action: 'discuss', text: 'Und jetzt?' });
     s = explorer();
-    s.call('reply', { text: 'Bauen.', spoken: '', next: { step: 'build', why: 'Der Stand reicht als Auftrag.' } });
+    s.call('reply', { text: 'Bauen.', next: { step: 'build', why: 'Der Stand reicht als Auftrag.' } });
     s.emit({ type: 'idle' });
     expect(item(i.id).idea!.next).toEqual({ step: 'build', why: 'Der Stand reicht als Auftrag.' });
   });
@@ -336,7 +329,7 @@ describe('an idea', () => {
     const b = { title: 'B Menü', html: '<select><option>Export</option></select>' };
     s.emit({ type: 'session', id: 'sess-1' });
     s.call('update_brief', { brief: '**Varianten:** A oder B.', mocks: [a, b, { title: 'C zu lang', html: 'x'.repeat(20001) }] });
-    s.call('reply', { text: 'Zwei Varianten, siehe Stand. Und so sähe es im Dialog aus:', spoken: '', mocks: [{ title: '  Im   Dialog ', html: ' <dialog open>Export</dialog> ' }] });
+    s.call('reply', { text: 'Zwei Varianten, siehe Stand. Und so sähe es im Dialog aus:', mocks: [{ title: '  Im   Dialog ', html: ' <dialog open>Export</dialog> ' }] });
     s.emit({ type: 'idle' });
     // a mock too long for a sketch is left out
     expect(item(i.id).idea!.mocks).toEqual([a, b]);
@@ -449,7 +442,7 @@ describe('an idea', () => {
     expect(s.toolStep()).toContain('The owner clicked "So bauen" while you worked on this reply');
     expect(s.toolStep()).toBeUndefined();
     s.call('update_brief', { brief: '**Ziel:** CSV- und PDF-Export.' });
-    s.call('reply', { text: 'PDF ist im Stand.', spoken: '' });
+    s.call('reply', { text: 'PDF ist im Stand.' });
     expect(item(i.id).state).toBe('idea');
     s.emit({ type: 'idle' });
     expect(item(i.id)).toMatchObject({ state: 'planned', body: '**Ziel:** CSV- und PDF-Export.' });
@@ -462,7 +455,7 @@ describe('an idea', () => {
     const s = explorer();
     s.emit({ type: 'session', id: 'sess-1' });
     canvas.act(i.id, { action: 'build' });
-    s.call('reply', { text: 'Eine Frage noch.', spoken: '', questions: [{ question: 'Auch Excel?', options: ['Ja', 'Nein'] }] });
+    s.call('reply', { text: 'Eine Frage noch.', questions: [{ question: 'Auch Excel?', options: ['Ja', 'Nein'] }] });
     s.emit({ type: 'idle' });
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: false, yourTurn: true } });
     expect(item(i.id).idea!.buildAfterReply).toBeUndefined();
@@ -480,7 +473,7 @@ describe('an idea', () => {
     s.emit({ type: 'session', id: 'sess-1' });
     canvas.act(i.id, { action: 'build' });
     canvas.act(i.id, { action: 'discuss', text: 'Zweitens.' });
-    s.call('reply', { text: 'Zu erstens.', spoken: '' });
+    s.call('reply', { text: 'Zu erstens.' });
     s.emit({ type: 'idle' });
     // the second message goes in with the note, as the agent has not called a tool yet
     expect(s.inbox.at(-1)).toContain('Zweitens.');
@@ -488,7 +481,7 @@ describe('an idea', () => {
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: true, buildAfterReply: true } });
     canvas.act(i.id, { action: 'unbuild' });
     expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'state', text: 'Doch nicht bauen.' });
-    s.call('reply', { text: 'Zu zweitens.', spoken: '' });
+    s.call('reply', { text: 'Zu zweitens.' });
     s.emit({ type: 'idle' });
     expect(item(i.id)).toMatchObject({ state: 'idea', idea: { thinking: false, yourTurn: true } });
   });
@@ -914,18 +907,36 @@ describe('by voice', () => {
     expect(i.title).toBe('Export für Vermieter');
     expect(talk(i.id)).toEqual([['owner', 'Über Export für Vermieter nachdenken.']]);
     turn(explorer(), 'Für welche Vermieter?');
-    expect(spoken).toEqual([[i.id, 'Kurz: Für welche Vermieter?']]);
   });
 
-  test('talking to the open idea reaches its agent at once, and needs no confirmation', async () => {
+  test('what the owner says on the open idea goes straight to its agent, without the Koordinator', () => {
     const i = idea();
-    const heard = canvas.commander.hear('eher als PDF', { card: i.id });
+    canvas.tell(i.id, 'eher als PDF', [], true);
+    expect(talk(i.id)).toEqual([['owner', 'eher als PDF']]);
+    expect(explorer().inbox[0]).toContain('eher als PDF');
+    expect(explorer().inbox[0]).toContain('speech recognition may have misheard');
+    expect(runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'act'))).toEqual([]);
+  });
+
+  test("its agent passes on what asks Obeya for something; the Koordinator reads it with the owner's words", async () => {
+    const i = idea();
+    canvas.tell(i.id, 'Mach daraus ein Projekt', [], true);
+    const s = explorer();
+    expect(s.spec.system).toContain('Pass those on with to_obeya');
+    const result = s.call('to_obeya', { request: 'Plan this idea as a project' }) as Promise<string>;
     await settle();
-    expect(reader().inbox[0]).toContain('[idea] "Export für Vermieter"');
-    reader().call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Eher als PDF.' }], confirm: 'An die Idee weitergegeben.' });
-    expect(await heard).toEqual({ confirm: 'An die Idee weitergegeben.', quiet: true });
-    expect(talk(i.id)).toEqual([['owner', 'Eher als PDF.']]);
-    expect(explorer().inbox[0]).toContain('Eher als PDF.');
+    const k = reader();
+    expect(k.inbox[0]).toContain('passes on a request from what the owner told it, asking Obeya for something: "Plan this idea as a project"');
+    expect(k.inbox[0]).toContain('The owner\'s own words to it, spoken (speech recognition, may contain errors): "Mach daraus ein Projekt"');
+    expect(k.inbox[0]).toContain('The owner has this card open');
+    // the agent has the words already; planning waits for the reply it works on
+    expect(k.call('act', { actions: [{ do: 'discuss', card: 'K1', text: 'Projekt' }], confirm: 'Ok.' })).toContain('reached this card');
+    expect(k.call('act', { actions: [{ do: 'plan_doc', card: 'K1' }], confirm: 'Ok.' })).toContain("waits for the reply the idea's agent is working on");
+    k.call('reply', { confirm: 'Planen geht per Klick, sobald deine Antwort da ist.' });
+    expect(await result).toBe('Obeya: Planen geht per Klick, sobald deine Antwort da ist.');
+    // the owner's words are on the card once, the Koordinator's answer under them
+    expect(board().events(i.id).filter((e) => e.author === 'owner').map((e) => e.text)).toEqual(['Mach daraus ein Projekt']);
+    expect(board().events(i.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: 'Planen geht per Klick, sobald deine Antwort da ist.' });
   });
 
   test('"nimm noch X auf und bau es dann" passes X on and builds once the reply is there, unless it asks questions', async () => {

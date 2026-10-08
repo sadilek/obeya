@@ -14,6 +14,7 @@ import { BadRequest, type Board, type Message, type Unread } from './board';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentTool } from './runtime';
 import { imageNote } from './images';
 import { describeTool, SPOKEN } from './workers';
+import { TO_OBEYA, toObeyaTool } from './to-obeya';
 
 export interface ExplorerOptions {
   board: Board;
@@ -28,6 +29,8 @@ export interface ExplorerOptions {
   imageFiles?: (ids?: string[]) => string[];
   /** The agent answered all it was told and its session ended (`replied`), or its turn ended without (an error, a restart). */
   onReplied?: (cardId: string, replied: boolean) => void;
+  /** Passes on to the Koordinator what the owner's words to the idea's agent ask of Obeya (`to_obeya`); without it the agent has no such tool. */
+  toObeya?: (cardId: string, request: string) => Promise<string>;
 }
 
 interface Live {
@@ -38,8 +41,6 @@ interface Live {
   queue: Message[];
   replied: boolean;
   lastText: string;
-  /** The owner spoke: the reply is summed up aloud. */
-  speak: boolean;
   /** The turn only takes something into the brief: words without a reply are no reply. */
   quiet?: boolean;
   /** The owner's preferences as the agent last heard them: in its instructions, or since then. */
@@ -64,7 +65,7 @@ export class Explorers {
     this.o.board.log(cardId, 'talk', 'owner', text, undefined, images.map((f) => basename(f)));
     this.o.board.setIdea(cardId, { yourTurn: false, questions: [], next: undefined });
     if (text) this.o.onOwnerInput?.(card, text);
-    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${text}${imageNote(images)}`, spoken, images);
+    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${text}${imageNote(images)}`, images);
   }
 
   /**
@@ -82,7 +83,7 @@ export class Explorers {
   tell(cardId: string, text: string, quiet = false) {
     const card = this.o.board.item(cardId);
     if (!card || card.state !== 'idea') return;
-    this.send(card, text, false, [], quiet);
+    this.send(card, text, [], quiet);
   }
 
   /** Ends the idea's session; its id stays, so the conversation can go on later. */
@@ -112,7 +113,7 @@ export class Explorers {
   resumeAll() {
     for (const i of this.o.board.snapshot().items) {
       if (i.state !== 'idea' || !i.idea?.thinking) continue;
-      if (this.o.board.row(i.id).session_id) this.send(i, 'Obeya was restarted while you worked on your reply. Answer the owner’s last message now.', false);
+      if (this.o.board.row(i.id).session_id) this.send(i, 'Obeya was restarted while you worked on your reply. Answer the owner’s last message now.');
       else {
         this.o.board.setIdea(i.id, { thinking: false });
         this.o.onReplied?.(i.id, false);
@@ -134,12 +135,11 @@ export class Explorers {
     this.live.clear();
   }
 
-  private send(card: Item, message: string, spoken: boolean, images: string[] = [], quiet = false) {
+  private send(card: Item, message: string, images: string[] = [], quiet = false) {
     const live = this.live.get(card.id);
     if (live) {
       // queued, it goes in with whatever else came, which may well need a reply
       live.queue.push({ text: message, images });
-      live.speak ||= spoken;
       return;
     }
     const row = this.o.board.row(card.id);
@@ -149,22 +149,22 @@ export class Explorers {
     this.o.board.setIdea(card.id, { thinking: true, unread: undefined });
     const text = unread ? `${UNREAD_NOTE[unread.why]}\n\n${unread.messages.map((m) => m.text).join('\n\n')}\n\n---\n\n${message}` : message;
     const all = current.flatMap((m) => m.images);
-    if (row.session_id) return this.launch(card, current, text, row.session_id, spoken, all, quiet);
+    if (row.session_id) return this.launch(card, current, text, row.session_id, all, quiet);
     // a planned card that became an idea brings the screenshots of its task
     const shots = this.o.imageFiles?.(card.images) ?? [];
-    this.launch(card, current, `${this.briefing(card, shots)}\n\n${text}`, undefined, spoken, [...shots, ...all], quiet);
+    this.launch(card, current, `${this.briefing(card, shots)}\n\n${text}`, undefined, [...shots, ...all], quiet);
   }
 
-  private launch(card: Item, current: Message[], message: string, resume: string | undefined, speak: boolean, images: string[], quiet = false) {
+  private launch(card: Item, current: Message[], message: string, resume: string | undefined, images: string[], quiet = false) {
     const preferences = this.o.preferences?.() ?? '';
-    const live: Live = { session: undefined!, current, queue: [], replied: false, lastText: '', speak, quiet, preferences };
+    const live: Live = { session: undefined!, current, queue: [], replied: false, lastText: '', quiet, preferences };
     this.live.set(card.id, live);
     live.session = this.o.runtime.start(
       {
         cwd: this.o.pathFor(card),
         readOnly: true,
         role: 'explorer',
-        system: system(this.o.board.language()) + (preferences ? `\n\n${preferences}` : ''),
+        system: system(this.o.board.language(), !!this.o.toObeya) + (preferences ? `\n\n${preferences}` : ''),
         tools: this.tools(card.id, live),
         contextUpdate: () => [this.buildNote(card.id, live), this.preferencesUpdate(live)].filter(Boolean).join('\n\n') || undefined,
         ...(resume ? { resume } : {}),
@@ -249,10 +249,9 @@ export class Explorers {
     return current([
       {
         name: 'reply',
-        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. spoken: one or two short sentences in ${OWNER_LANGUAGE} for the ear, with the question you need answered next. questions: the questions you ask now, each with its answer options (multiple: true when several may be chosen together); the card shows them under your reply for the owner to pick from, so the reply does not repeat them; pick: the options you would choose yourself if you had to decide (one, or several when multiple), and pick_why: why, in one short sentence in ${OWNER_LANGUAGE}. next: what you would do next in the owner's place, always: answer (the open questions come first), build, planDoc, prototype, park or drop, with why in one short sentence in ${OWNER_LANGUAGE}; the card marks that click for the owner. mocks: only when the owner asked to see something the brief has no place for; ${MOCKS}. Call it once per message, then end your turn.`,
+        description: `Your turn in the conversation, shown on the card beside the brief (markdown, in ${OWNER_LANGUAGE}): a few sentences that do not repeat the brief. questions: the questions you ask now, each with its answer options (multiple: true when several may be chosen together); the card shows them under your reply for the owner to pick from, so the reply does not repeat them; pick: the options you would choose yourself if you had to decide (one, or several when multiple), and pick_why: why, in one short sentence in ${OWNER_LANGUAGE}. next: what you would do next in the owner's place, always: answer (the open questions come first), build, planDoc, prototype, park or drop, with why in one short sentence in ${OWNER_LANGUAGE}; the card marks that click for the owner. mocks: only when the owner asked to see something the brief has no place for; ${MOCKS}. Call it once per message, then end your turn.`,
         schema: {
           text: z.string(),
-          spoken: z.string(),
           questions: z
             .array(
               z.object({
@@ -268,13 +267,11 @@ export class Explorers {
           next: z.object({ step: z.enum(NEXT_STEPS), why: z.string() }).optional(),
           mocks: MOCK_SCHEMA,
         },
-        run: ({ text, spoken, questions, next, mocks }) => {
+        run: ({ text, questions, next, mocks }) => {
           if (live.replied) return 'Already replied. End your turn now.';
           live.replied = true;
           const asked = ((questions as Asked[] | undefined) ?? []).map(withPick).filter((q) => q.text);
           this.answer(cardId, clip(String(text), 12000), asked, nextStep(next, asked), mocksOf(mocks));
-          if (live.speak && String(spoken).trim()) this.o.board.speak(cardId, clip(String(spoken).trim(), 400));
-          live.speak = false;
           return 'Shown to the owner. End your turn now; their next message arrives as a new one.';
         },
       },
@@ -309,6 +306,7 @@ export class Explorers {
           return 'Recorded.';
         },
       },
+      ...(this.o.toObeya ? [toObeyaTool((request) => this.o.toObeya!(cardId, request))] : []),
     ]);
   }
 
@@ -337,13 +335,13 @@ const WORDS: Record<Language, { parts: [string, string, string, string, string, 
   en: { parts: ['Goal', 'Today', 'Variants', 'Decisions', 'Open questions', 'Effort'], changed: 'Added variants A to C', pointer: 'Two open questions, see the brief', approach: '"A Plasma fields"' },
 };
 
-const system = (language: Language) => {
+const system = (language: Language, toObeya: boolean) => {
   const w = WORDS[language];
   const [goal, today, variants, decisions, open, effort] = w.parts.map((p) => `**${p}**`);
   return `
 You are the exploration agent of one idea on Obeya, a canvas on which the owner directs coding agents like an engineering director directs a team. The owner wants to think the idea through with you before anything is planned or built. It is one long conversation; it may go on days later.
 
-You can only read: the code, the repository's docs and plan docs, and what the messages give you (decisions taken so far, the owner's preferences). You cannot change files, and nothing you do starts work.
+You can only read: the code, the repository's docs and plan docs, and what the messages give you (decisions taken so far, the owner's preferences). You cannot change files, and nothing you do yourself starts work.${toObeya ? `\n\n${TO_OBEYA}` : ''}
 
 The card shows the brief ("${MESSAGES[language].idea.briefName}") and the conversation side by side. The brief holds the substance, the conversation only the turns: nothing stands in both.
 
@@ -359,7 +357,7 @@ Tools, within a turn in this order:
 - record_decision: when the owner decided something in the message. General preferences (how they like to work) are not decisions; Obeya learns those on its own.
 - update_brief: keep the brief current whenever the conversation changed it. It has these parts, as short bold-labelled paragraphs or lists: ${goal}, ${today} (what the code does today, when it matters), ${variants} (open and dropped ones, each with why), ${decisions}, ${open}, and ${effort} once you can say. An answered question leaves the open questions; what it decided goes where it belongs. Whoever opens the card later reads only the brief, so it must stand on its own. When the owner builds the idea as it stands, the brief is the worker's task.
 - plan_prototypes: whenever the brief plans prototypes you have not passed to it yet, or the plan changes (which variants are to be seen side by side, and what each is to show). The owner then starts them all with one click, one worker per variant.
-- reply, last: your turn in the conversation, and spoken, its summary for the ear. Exactly once per message, then end your turn.
+- reply, last: your turn in the conversation. Exactly once per message, then end your turn.
 
 The owner decides on the card whether to build the idea, turn it into a plan doc, have a throwaway prototype built, park it or drop it. With every reply, say through next what you would do in their place if you had to decide, and why; the card marks that click, so the owner sees at a glance where to go on:
 - answer: an open question has to be settled before anything else makes sense. Then give your own pick for each question too, so the owner can follow it or overrule it.
@@ -372,7 +370,7 @@ Owner-facing text is in ${LANGUAGE_NAMES[language]}.
 `.trim();
 };
 
-const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'record_decision'];
+const OWN_TOOLS = ['reply', 'update_brief', 'plan_prototypes', 'record_decision', 'to_obeya'];
 
 /** At most this many prototypes are planned for one idea. */
 const MAX_VARIANTS = 6;

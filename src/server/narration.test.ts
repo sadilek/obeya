@@ -97,7 +97,7 @@ describe('the voice Obeya holds', () => {
 describe('a clip over HTTP', () => {
   test('is taken as JSON only, with an absolute WAV and a plain voice', async () => {
     hold();
-    const server = serve([], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) }, speaker: { speak: async () => null } }, 0, false, undefined, undefined, host);
+    const server = serve([], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, host);
     try {
       const post = (body: unknown, type = 'application/json') =>
         fetch(new URL('/api/narration/clip', server.url), { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': type } });

@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
-import { api, ApiError, beforeReload, onSpeak, reportFocus, setCanvas, useCanvas } from './api';
+import { agentListens, answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
+import { api, ApiError, beforeReload, onNotice, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
-import { type ActDone, Detail, hasAgent, type Pending } from './detail';
+import { type ActDone, Detail, type Pending } from './detail';
 import type { Field } from './api';
 import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
@@ -19,7 +19,7 @@ import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './k
 import { Sign, Wordmark } from './logo';
 import { Help, HelpButton } from './help';
 import { imageFiles, useShotInput } from './shots';
-import { type Heard, PushToTalk, play, ToldList, usePushToTalk, useTold, type Where } from './voice';
+import { type Heard, PushToTalk, ToldList, usePushToTalk, useTold, type Where } from './voice';
 import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_GAP, sheetBottom, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
@@ -570,22 +570,42 @@ function Canvas({
   // a command that makes a card: when it appears, the camera goes there
   const newCardWatch = useRef<{ known: Set<string>; until: number } | null>(null);
   function onHeard(h: Heard) {
-    // said to the open card's agent or idea: the card shows it
+    // said to the open card's agent: the card shows it
     if (h.quiet) return;
-    play(h.audio);
     if (h.token && !focusRef.current) newCardWatch.current = { known: new Set(itemsRef.current.map((i) => i.id)), until: Date.now() + 20_000 };
   }
   const told = useTold(onHeard);
-  /** Hands a command for `target` on, with its line above the microphone. */
+  /** The card in `target` when an agent listens on it: what the owner says there goes straight to that agent. */
+  const listening = (target: Where) => {
+    const i = target && 'card' in target ? itemsRef.current.find((x) => x.id === target.card) : undefined;
+    return i && agentListens(i) ? i : undefined;
+  };
+  /**
+   * Hands a command for `target` on, with its line above the microphone: while Whisper writes it
+   * down for the open card's agent, or while the Koordinator reads it.
+   */
   const tellAbout = (target: Where, label: string | null, request: () => Promise<Heard>) => {
     const i = target ? itemsRef.current.find((x) => x.id === ('card' in target ? target.card : target.project)) : undefined;
     const title = plain(i?.title ?? '');
-    return told.tell(label ?? (i ? `„${title}“` : t.voice.koordinator), target && 'card' in target && i ? { id: i.id, title } : undefined, request);
+    const what = label ?? (i ? `„${title}“` : t.voice.koordinator);
+    return told.tell(listening(target) ? t.voice.transcribing(what) : t.voice.reading(what), target && 'card' in target && i ? { id: i.id, title } : undefined, request);
   };
-  /** Words typed on a card, in its idea or in the Koordinator's sheet: read by the Koordinator like spoken ones. */
-  const tellTyped = useCallback((text: string, images: string[] | undefined, target: Where, field?: Field) => {
-    const words = text.replace(/\s+/g, ' ');
-    void tellAbout(target, `„${words.length > 40 ? `${words.slice(0, 39)}…` : words}“`, () => api.command(text, target, images, field));
+  /**
+   * Words typed on a card, in its idea or in the Koordinator's sheet: on a card an agent listens on
+   * they go straight to it, and its conversation shows them; else the Koordinator reads them like spoken ones.
+   */
+  const tellTyped = useCallback(async (text: string, images: string[] | undefined, target: Where, field?: Field) => {
+    if (listening(target))
+      try {
+        await api.command(text, target, images, field);
+      } catch (e) {
+        if (!(e instanceof ApiError)) console.error(e);
+        showAck(e instanceof ApiError ? errorText(e.code) : t.offlineError);
+      }
+    else {
+      const words = text.replace(/\s+/g, ' ');
+      void tellAbout(target, `„${words.length > 40 ? `${words.slice(0, 39)}…` : words}“`, () => api.command(text, target, images, field));
+    }
   }, []);
   useEffect(() => {
     const w = newCardWatch.current;
@@ -602,13 +622,13 @@ function Canvas({
     }
     else fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8)), 700);
   }, [snapshot]);
-  // an idea's agent sums up its reply aloud, for the owner who has the idea open; an answer the
-  // Koordinator looked up is heard wherever the owner is
+  // what Obeya tells the owner without a command to answer: an answer looked up, what a request a
+  // card's agent passed on came to (with "Rückgängig" while its actions wait)
   useEffect(
     () =>
-      onSpeak((cardId, audio) => {
-        const f = focusRef.current;
-        if (!cardId || (f?.type === 'card' && f.id === cardId)) play(audio);
+      onNotice((n) => {
+        const i = itemsRef.current.find((x) => x.id === n.cardId);
+        told.show(i ? { id: i.id, title: plain(i.title) } : undefined, { confirm: n.text, ...(n.token ? { token: n.token } : {}), ...(n.undoMs ? { undoMs: n.undoMs } : {}) });
       }),
     [],
   );
@@ -642,7 +662,7 @@ function Canvas({
   const focusItem = focus ? (items.find((i) => i.id === focus.id) ?? archived.find((i) => i.id === focus.id)) : undefined;
   const target =
     focus?.type === 'card'
-      ? (focusItem?.state === 'idea' ? t.voice.idea : focusItem && hasAgent(focusItem) ? t.voice.agent : t.voice.card)(plain(focusItem?.title ?? ''))
+      ? (focusItem && agentListens(focusItem) ? (focusItem.state === 'idea' ? t.voice.idea : t.voice.agent) : t.voice.card)(plain(focusItem?.title ?? ''))
       : focus?.type === 'project'
         ? t.voice.project(plain(focusItem?.title ?? ''))
         : t.voice.koordinator;

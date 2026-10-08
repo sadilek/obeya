@@ -6,7 +6,7 @@ import type { RepoAdapter } from '../adapters/types';
 import { LANGUAGE_NAMES, LANGUAGES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
 import { basename } from 'node:path';
-import { askable, type DemoKind, type DemoPage, formatQuestion, type Item, type Mock, type Question, type RestartReason } from '../core/types';
+import { answering, askable, type DemoKind, type DemoPage, formatQuestion, type Item, type Mock, type Question, type RestartReason } from '../core/types';
 import { BadRequest, type Board } from './board';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
@@ -14,6 +14,7 @@ import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import type { InputContext } from './koordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, failureReason } from './runtime';
+import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
 import type { PrState, Shipped } from './board';
 import { parsePrUrl } from './forge';
@@ -52,6 +53,8 @@ export interface WorkerOptions {
   env?: Record<string, string>;
   /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
   onWorkEnded?: (cardId: string, workspace: string | null) => void;
+  /** Passes on to the Koordinator what the owner's words to a card's worker ask of Obeya (`to_obeya`); without it the worker has no such tool. */
+  toObeya?: (cardId: string, request: string) => Promise<string>;
 }
 
 /** What is stored while landed work's worker finishes (`CardRow.landed`). */
@@ -184,17 +187,22 @@ export class Workers {
     this.launch(card.id, this.briefing(card, branch, !!row.branch), undefined, this.taskImages(card));
   }
 
-  /** A hint while the worker runs, or feedback on its review; `images` are screenshot files the owner attached. */
+  /**
+   * A hint while the worker runs, words on its handover, or a question once its work is done;
+   * `images` are screenshot files the owner attached.
+   */
   message(cardId: string, text: string, images: string[] = [], spoken = false) {
     const card = this.card(cardId);
     if (card.state === 'waiting' && (card.need === 'review' || card.need === 'demo')) {
-      // feedback instead of an approval: what comes back is reviewed again
-      this.o.board.work(cardId, { state: 'working', need: null, detail: null, approved_at: null });
+      // under a demo whose report asks a question, the words answer it, whatever else they say
+      if (card.question) return this.answerDemo(card, text, images, spoken);
+      // the work still waits for approval while the worker takes the words in; a change they call for comes as a new handover
+      this.takingIn(cardId);
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
       if (text) this.o.onOwnerInput?.(card, 'feedback', text);
       this.deliver(
         cardId,
-        `Feedback from the owner instead of an approval${spoken ? ` (${SPOKEN})` : ''}; the card is back with you${card.need === 'demo' ? ', and your demo stays on it until you hand over another' : ''}:\n\n${text}${imageNote(images)}`,
+        `The owner wrote on your handover${spoken ? ` (${SPOKEN})` : ''}. The card still waits for their approval of what you handed over; a change their words call for goes into a new handover:\n\n${text}${imageNote(images)}`,
         images,
       );
     } else if (card.state === 'waiting' && card.need === 'question') {
@@ -268,14 +276,15 @@ export class Workers {
   private answerDemo(card: Item, text: string, images: string[], spoken: boolean) {
     const q = card.question!.text;
     const demo = JSON.parse(this.o.board.row(card.id).demo!) as Record<string, unknown>;
-    this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)', answering: true }) });
+    this.o.board.work(card.id, { demo: JSON.stringify({ ...demo, answer: text || '(Screenshot)' }) });
+    this.takingIn(card.id);
     this.o.board.log(card.id, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
     this.recordDecision(card, q, text || '(Screenshot)');
     if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)');
     this.deliver(
       card.id,
-      `The owner answered the question in your demo report („${q}“)${spoken ? ` (${SPOKEN})` : ''}. The card still waits for their approval of what you handed over:\n\n${text}${imageNote(images)}`,
+      `The owner answered the question in your demo report („${q}“)${spoken ? ` (${SPOKEN})` : ''}. The card still waits for their approval of what you handed over; a change their words call for goes into a new handover:\n\n${text}${imageNote(images)}`,
       images,
     );
   }
@@ -548,8 +557,8 @@ export class Workers {
         this.resumeLanded(i, row.landed, row.session_id);
         continue;
       }
-      // a worker taking in the answer to its demo report's question was in the middle of a turn too
-      if (i.state === 'waiting' && i.demo?.answering) {
+      // a worker taking in the owner's words on its handover was in the middle of a turn too
+      if (answering(i)) {
         if (row.workspace && row.session_id) this.launch(i.id, RESTARTED, row.session_id);
         else this.answerTaken(i.id);
         continue;
@@ -767,8 +776,8 @@ export class Workers {
       this.waitForWorker(cardId, live);
       if (!handedOver) return;
     }
-    if (card.demo?.answering) {
-      // a resumed session may first end a turn of its own before it takes in the answer
+    if (answering(card)) {
+      // a resumed session may first end a turn of its own before it takes in the owner's words
       if (!acted && !handedOver) return this.waitForWorker(cardId, live);
       // it paused for the restart, which resumes it, still taking in the answer
       if (this.restart && live.toldRestart && !handedOver) {
@@ -846,12 +855,24 @@ export class Workers {
     this.toOwner(cardId, { text: t.worker.remainsUndone(`${reason}${/[.!?]$/.test(reason) ? '' : '.'}`), options: [t.worker.tryAgain] });
   }
 
-  /** The worker has taken in the answer to its demo report's question: a demo still waiting is the owner's again. */
+  /** The worker takes in the owner's words on its handover: the card is at work meanwhile, and still waits for approval. */
+  private takingIn(cardId: string) {
+    const detail = this.o.board.row(cardId).detail;
+    this.o.board.work(cardId, { detail: JSON.stringify({ ...(detail ? (JSON.parse(detail) as Record<string, unknown>) : {}), answering: true }) });
+  }
+
+  /** The worker has taken in the owner's words on its handover: work still waiting is the owner's again. */
   private answerTaken(cardId: string) {
-    const demo = this.o.board.row(cardId).demo;
-    if (!demo) return;
-    const { answering, ...rest } = JSON.parse(demo) as Record<string, unknown>;
-    if (answering) this.o.board.work(cardId, { demo: JSON.stringify(rest) });
+    const { detail, demo } = this.o.board.row(cardId);
+    if (detail) {
+      const { answering, ...rest } = JSON.parse(detail) as Record<string, unknown>;
+      if (answering) this.o.board.work(cardId, { detail: JSON.stringify(rest) });
+    }
+    // where it stood until 2026-10-08
+    if (demo) {
+      const { answering, ...rest } = JSON.parse(demo) as Record<string, unknown>;
+      if (answering) this.o.board.work(cardId, { demo: JSON.stringify(rest) });
+    }
   }
 
   /** Waits for a sign of life from the worker; without one for a long while, its turn counts as ended. */
@@ -1131,6 +1152,7 @@ export class Workers {
           return 'Recorded. End your turn now.';
         },
       },
+      ...(this.o.toObeya ? [toObeyaTool((request) => this.o.toObeya!(cardId, request))] : []),
     ]);
   }
 
@@ -1161,10 +1183,10 @@ The owner does not watch you work and does not read code. They see your card: st
 - reply: your answer to a note or feedback from the owner, in a sentence or two: what you change because of it, or why nothing.
 - ask: a decision that is not yours (product behaviour, trade-offs, anything irreversible or external). Make routine judgement calls yourself. After ask, end your turn; the answer arrives as the next message.
 ${prototype ? '- propose_build: propose that the idea be built on your prototype, once it convinced. You make no other cards; mention other problems you noticed in your summary.' : '- propose_card: a separate problem or idea you noticed, as a card for the agent who will take it on; do not widen your task.'}
-- ready_for_review: the work is committed and the checks pass. Then end your turn.
+- ready_for_review: the work is committed and the checks pass. Then end your turn.${this.o.toObeya ? '\n- to_obeya: what the owner\'s words ask of Obeya rather than you.' : ''}
 
 Obeya's messages tell you what happened: feedback, an answer, a note from the owner, a landing that failed, your work landing. What to do about it is yours to judge. Approved work lands (or goes out as a pull request) and Obeya tells you once it is on main; your session ends with the turn after that, so whatever was waiting for the landing can still be done then. Work that changed nothing in the repository (the task needed only a demo, an analysis or an answer) lands nothing: approving it makes the card done, and Obeya tells you so the same way.
-
+${this.o.toObeya ? `\n${TO_OBEYA}\n` : ''}
 Rules:
 - Commit your work on your branch in this workspace. Do not push, do not open pull requests, do not switch branches.
 - Follow the repository's own instructions (CLAUDE.md and docs).

@@ -1,14 +1,10 @@
-// Voice in and out: the Whisper sidecar transcribes (mlx-whisper on Apple Silicon, faster-whisper
-// elsewhere), the speech sidecar speaks (the macOS synthesizer, else `say`, on a Mac; Piper elsewhere).
+// Voice in: the Whisper sidecar transcribes (mlx-whisper on Apple Silicon, faster-whisper elsewhere).
+// Obeya does not speak; its confirmations and answers are written.
 
 import type { Subprocess } from 'bun';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { whisperKit } from '../../plugin/skills/demo/lib/setup.ts';
-import type { DemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { installState, piperFiles, SAY_VOICES } from '../../plugin/skills/demo/lib/voices.ts';
-import { type Language, LANGUAGES } from '../core/locale';
+import { LANGUAGES } from '../core/locale';
 import { resource } from './resources';
 
 /** `doubtful`: Whisper itself counts the decode as failed (a loop, or too unsure of its words). */
@@ -24,12 +20,6 @@ export interface Transcriber {
    */
   transcribe(audioPath: string, vocabulary: string): Promise<Transcript>;
   /** Gets ready for the next recording (the owner started speaking). */
-  warm?(): void;
-}
-
-export interface Speaker {
-  /** The text, in `language`, as WAV the browser plays; null when it could not be spoken. */
-  speak(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null>;
   warm?(): void;
 }
 
@@ -54,22 +44,16 @@ export const silence = (text: string) =>
 const VOICE = resource('voice');
 
 export type ListenBackend = 'mlx' | 'faster';
-export type SpeechBackend = 'macos' | 'piper';
 
 /**
- * How Obeya hears and speaks on this machine: MLX and the macOS voice on a Mac (MLX on Apple
- * Silicon only), faster-whisper and Piper elsewhere. `OBEYA_WHISPER_BACKEND` (mlx, faster) and
- * `OBEYA_SPEECH` (macos, piper) choose otherwise, say Piper on a Mac.
+ * How Obeya hears on this machine: MLX on Apple Silicon, faster-whisper elsewhere.
+ * `OBEYA_WHISPER_BACKEND` (mlx, faster) chooses otherwise.
  */
 export function voiceBackends(env: Record<string, string | undefined> = process.env, platform: string = process.platform, arch: string = process.arch) {
   const listen: ListenBackend =
     env.OBEYA_WHISPER_BACKEND === 'mlx' || env.OBEYA_WHISPER_BACKEND === 'faster' ? env.OBEYA_WHISPER_BACKEND : platform === 'darwin' && arch === 'arm64' ? 'mlx' : 'faster';
-  const speech: SpeechBackend = env.OBEYA_SPEECH === 'macos' || env.OBEYA_SPEECH === 'piper' ? env.OBEYA_SPEECH : platform === 'darwin' ? 'macos' : 'piper';
-  return { listen, speech };
+  return { listen };
 }
-
-/** The Piper voice the confirmations are spoken in: the demos' default one of the owner's language. */
-export const confirmationVoice = (language: Language): DemoSettings => ({ language, voice: 'piper' });
 
 /**
  * A helper process in a process group of its own (POSIX): Ctrl-C in the terminal goes to the whole
@@ -183,117 +167,4 @@ export class WhisperSidecar implements Transcriber {
   stop() {
     this.sidecar.stop();
   }
-}
-
-/**
- * The confirmation in the default system voice. A JXA sidecar keeps the synthesizer loaded (about
- * half a second a sentence); when it fails, `say` renders it (about a second and a half).
- */
-export class SpeechSidecar implements Speaker {
-  private sidecar = new Sidecar('speech', () => ['osascript', '-l', 'JavaScript', join(VOICE, 'speech_sidecar.js')]);
-
-  warm() {
-    this.sidecar.ensure();
-  }
-
-  async speak(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null> {
-    const dir = mkdtempSync(join(tmpdir(), 'obeya-say-'));
-    const aiff = join(dir, 'ack.aiff');
-    const wav = join(dir, 'ack.wav');
-    try {
-      await within(8000, this.sidecar.request({ text, path: aiff, language, voice: SAY_VOICES[language] }));
-      const convert = Bun.spawn(['afconvert', '-f', 'WAVE', '-d', 'LEI16', aiff, wav], { stdout: 'ignore', stderr: 'ignore' });
-      if ((await convert.exited) !== 0) throw new Error('afconvert failed');
-      return new Uint8Array(readFileSync(wav));
-    } catch (e) {
-      console.error('speech sidecar:', e instanceof Error ? e.message : e);
-      // a stuck sidecar would hold up every confirmation after this one: the next starts afresh
-      this.sidecar.stop();
-      return say(text, language);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
-  stop() {
-    this.sidecar.stop();
-  }
-}
-
-/**
- * The confirmation in Piper's voice, off the Mac: a sidecar in Piper's environment under Obeya's
- * home keeps the voice of a language loaded, one per language spoken. Without the voice installed
- * nothing is spoken (the settings sheet installs it); the written confirmation shows all the same.
- */
-export class PiperSpeaker implements Speaker {
-  private sidecars = new Map<Language, Sidecar>();
-  private told = new Set<Language>();
-
-  constructor(
-    private home: string,
-    /** The language spoken now, for the voice to warm up. */
-    private language: () => Language,
-  ) {}
-
-  private sidecar(language: Language): Sidecar | null {
-    const voice = confirmationVoice(language);
-    if (!installState(voice, this.home).installed) {
-      if (!this.told.has(language)) console.log(`Obeya: Piper's ${language} voice is not installed, confirmations are not spoken (the settings sheet installs it)`);
-      this.told.add(language);
-      return null;
-    }
-    let sidecar = this.sidecars.get(language);
-    if (!sidecar) {
-      const { python, onnx } = piperFiles(voice, this.home);
-      sidecar = new Sidecar('Piper', () => [python, join(VOICE, 'piper_sidecar.py'), onnx]);
-      this.sidecars.set(language, sidecar);
-    }
-    return sidecar;
-  }
-
-  warm() {
-    this.sidecar(this.language())?.ensure();
-  }
-
-  async speak(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null> {
-    const sidecar = this.sidecar(language);
-    if (!sidecar) return null;
-    const dir = mkdtempSync(join(tmpdir(), 'obeya-piper-'));
-    const wav = join(dir, 'ack.wav');
-    try {
-      // the first one may wait for the voice to load
-      await within(15_000, sidecar.request({ text, path: wav }));
-      return new Uint8Array(readFileSync(wav));
-    } catch (e) {
-      console.error('Piper sidecar:', e instanceof Error ? e.message : e);
-      sidecar.stop();
-      return null;
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }
-
-  stop() {
-    for (const sidecar of this.sidecars.values()) sidecar.stop();
-  }
-}
-
-/** The confirmation as speech: macOS `say` with a voice of its language, as WAV the browser plays. */
-export async function say(text: string, language: Language): Promise<Uint8Array<ArrayBuffer> | null> {
-  const dir = mkdtempSync(join(tmpdir(), 'obeya-say-'));
-  const out = join(dir, 'ack.wav');
-  try {
-    const proc = Bun.spawn(['say', '-v', SAY_VOICES[language], '-o', out, '--data-format=LEI16@22050', text], { stdout: 'ignore', stderr: 'ignore' });
-    return (await within(8000, proc.exited)) === 0 ? new Uint8Array(readFileSync(out)) : null;
-  } catch {
-    return null;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-function within<T>(ms: number, p: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer in ${ms} ms`)), ms)));
-  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }

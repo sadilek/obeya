@@ -1,7 +1,8 @@
-// Push-to-talk: hold Space or the microphone, speak, let go. The recording goes to Obeya, which
-// answers with a confirmation to show and play. Screenshots picked or pasted beside the microphone
-// go with the next recording. The microphone is free again at once: each command, spoken or typed,
-// has its own line above it while the Koordinator reads it, which becomes its confirmation.
+// Push-to-talk: hold Space or the microphone, speak, let go. The recording goes to Obeya: with an
+// agent on the open card straight to that agent, else to the Koordinator, which answers with a
+// confirmation to show. Screenshots picked or pasted beside the microphone go with the next
+// recording. The microphone is free again at once: each command, spoken or typed to the
+// Koordinator, has its own line above it while it is read, which becomes its confirmation.
 
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, api, holdRestart } from './api';
@@ -14,9 +15,7 @@ export interface Heard {
   token?: string;
   /** How long the command still waits for "Rückgängig". */
   undoMs?: number;
-  /** Where the spoken confirmation plays from; it may still be rendering. */
-  audio?: string;
-  /** Said to the open card's agent or idea: the card shows it, so there is nothing to confirm. */
+  /** Said to the open card's agent: the card shows it, so there is nothing to confirm. */
   quiet?: boolean;
   /** Nothing was heard: the screenshots shown with it wait for the next recording. */
   unheard?: boolean;
@@ -53,7 +52,6 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
     if (held.current !== null || rec.current) return;
     const pressed = performance.now();
     held.current = pressed;
-    hush(true);
     const target = where();
     api.warmVoice();
     let m;
@@ -70,7 +68,6 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
     } catch {
       mic.current = null;
       held.current = null;
-      hush(false);
       onHeard({ confirm: t.voice.noMic });
       return;
     }
@@ -103,7 +100,6 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
 
   function stop() {
     held.current = null;
-    hush(false);
     const r = rec.current;
     if (!r) return;
     rec.current = null;
@@ -133,11 +129,11 @@ export function usePushToTalk(where: () => Where, send: (target: Where, request:
   return { phase, level, flat, start, stop };
 }
 
-/** A command on its way: while the Koordinator reads it, then its confirmation. */
+/** A command on its way: while it is transcribed or the Koordinator reads it, then its confirmation. */
 export interface Told {
   id: number;
-  /** What it is about while it is read: the card in view, or the words typed. */
-  label: string;
+  /** What the line says meanwhile: the card in view, or the words typed, and what happens to them. */
+  pending: string;
   /** The card it was said to, named in the confirmation when another card is open by then. */
   card?: { id: string; title: string };
   heard?: Heard;
@@ -150,37 +146,46 @@ const SHOWN_MS = 7000;
 
 /**
  * Commands spoken or typed, each with its own line from sending to its confirmation; one that went
- * out quietly (to the open card's agent or idea) leaves no line. The server reads them one after the other.
+ * out quietly (to the open card's agent) leaves no line. The server reads them one after the other.
+ * `show` adds a confirmation that comes without a request: a request a card's agent passed on.
  */
 export function useTold(onHeard: (h: Heard) => void) {
   const [told, setTold] = useState<Told[]>([]);
   const next = useRef(0);
   const update = (id: number, fn: (x: Told) => Told | null) => setTold((ts) => ts.flatMap((x) => (x.id === id ? (fn(x) ?? []) : [x])));
 
-  async function tell(label: string, card: Told['card'], request: () => Promise<Heard>): Promise<Heard> {
+  function settle(id: number, h: Heard) {
+    if (h.quiet) return update(id, () => null);
+    const undo = !!(h.token && h.undoMs);
+    update(id, (x) => ({ ...x, heard: h, undo }));
+    if (undo) {
+      // a restart within the undo window would lose the command
+      const by = `undo-${h.token}`;
+      holdRestart(by, 'voice');
+      setTimeout(() => holdRestart(by, null), h.undoMs! + 1000);
+      setTimeout(() => update(id, (x) => ({ ...x, undo: false })), Math.max(0, h.undoMs! - 400));
+    }
+    setTimeout(() => update(id, () => null), Math.max(SHOWN_MS, (h.undoMs ?? 0) + 1500));
+  }
+
+  async function tell(pending: string, card: Told['card'], request: () => Promise<Heard>): Promise<Heard> {
     const id = ++next.current;
-    setTold((ts) => [...ts, { id, label, ...(card ? { card } : {}) }]);
+    setTold((ts) => [...ts, { id, pending, ...(card ? { card } : {}) }]);
     let h: Heard;
     try {
       h = await request();
     } catch (e) {
       h = { confirm: e instanceof ApiError ? errorText(e.code) : t.voice.failed };
     }
-    if (h.quiet) update(id, () => null);
-    else {
-      const undo = !!(h.token && h.undoMs);
-      update(id, (x) => ({ ...x, heard: h, undo }));
-      if (undo) {
-        // a restart within the undo window would lose the command
-        const by = `undo-${h.token}`;
-        holdRestart(by, 'voice');
-        setTimeout(() => holdRestart(by, null), h.undoMs! + 1000);
-        setTimeout(() => update(id, (x) => ({ ...x, undo: false })), Math.max(0, h.undoMs! - 400));
-      }
-      setTimeout(() => update(id, () => null), Math.max(SHOWN_MS, (h.undoMs ?? 0) + 1500));
-    }
+    settle(id, h);
     onHeard(h);
     return h;
+  }
+
+  function show(card: Told['card'], h: Heard) {
+    const id = ++next.current;
+    setTold((ts) => [...ts, { id, pending: '', ...(card ? { card } : {}) }]);
+    settle(id, h);
   }
 
   async function undo(x: Told) {
@@ -199,7 +204,7 @@ export function useTold(onHeard: (h: Heard) => void) {
     holdRestart('told', reading ? 'voice' : null);
     return () => holdRestart('told', null);
   }, [reading]);
-  return { told, tell, undo };
+  return { told, tell, show, undo };
 }
 
 /** The commands on their way, above the microphone, oldest first; `open`: the card open now. */
@@ -215,7 +220,7 @@ export function ToldList({ told, open, onUndo }: { told: Told[]; open?: string; 
                 {x.heard.confirm}
               </>
             ) : (
-              t.voice.reading(x.label)
+              x.pending
             )}
           </span>
           {x.undo && <button onClick={() => onUndo(x)}>{t.undo}</button>}
@@ -261,25 +266,4 @@ export function PushToTalk({ phase, level, flat, target, shots, onDown }: { phas
       )}
     </div>
   );
-}
-
-/**
- * Plays a spoken confirmation; the previous one stops. Nothing is said while a demo video plays or
- * the owner holds the microphone.
- */
-let playing: HTMLAudioElement | null = null;
-let micHeld = false;
-export function play(audio: string | undefined) {
-  playing?.pause();
-  if (!audio || micHeld || videoPlaying()) return;
-  playing = new Audio(audio);
-  playing.play().catch(() => {});
-}
-const videoPlaying = () => [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended);
-// a video the owner starts silences what is being said ('play' does not bubble, so listen on the way down)
-addEventListener('play', (e) => e.target instanceof HTMLVideoElement && playing?.pause(), true);
-/** Pressing the microphone cuts off what is being said, which would otherwise be recorded too. */
-function hush(held: boolean) {
-  micHeld = held;
-  if (held) playing?.pause();
 }

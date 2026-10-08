@@ -143,13 +143,13 @@ describe('Arbeitsrückschau', () => {
   });
 
   test('asked for with nothing noted, the owner hears so', async () => {
-    const spoken: string[] = [];
-    board.onSpeak((_, text) => spoken.push(text));
+    const notices: string[] = [];
+    board.onNotice((n) => notices.push(n.text));
     board.setSetting('work_retro_cards:home', '2');
     retro.now('home');
     await retro.idle();
     expect(retroSessions()).toHaveLength(0);
-    expect(spoken).toEqual(['Arbeitsrückschau für Home: Seit der letzten gibt es keine Reibung zu lesen.']);
+    expect(notices).toEqual(['Arbeitsrückschau für Home: Seit der letzten gibt es keine Reibung zu lesen.']);
     expect(board.setting('work_retro_cards:home')).toBe('0');
   });
 

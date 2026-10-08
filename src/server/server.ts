@@ -4,7 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, needsYou, type NewCard, type PendingRestart, type ServerMessage } from '../core/types';
+import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, needsYou, type NewCard, type PendingRestart, type ServerMessage } from '../core/types';
 import index from '../ui/index.html';
 import panel from '../ui/panel.html';
 import { BadRequest } from './board';
@@ -15,7 +15,7 @@ import type { Config } from './config';
 import { serveDemoFile } from './demo';
 import { type NarrationHost, parseClipRequest } from './narration';
 import type { Restarter } from './self-update';
-import { looping, silence, type Speaker, type Transcriber } from './voice';
+import { looping, silence, type Transcriber } from './voice';
 import type { MachineSetup } from './machine';
 import type { VoiceSetup } from './voice-setup';
 import { ShellReports } from './push-key';
@@ -24,14 +24,13 @@ type Req = Request & { params: Record<string, string> };
 
 export interface Voice {
   transcriber: Transcriber;
-  speaker: Speaker;
-  /** What voice in and out need on this machine, for the settings sheet. */
+  /** What voice in needs on this machine, for the settings sheet. */
   setup?: VoiceSetup;
 }
 
 export function serve(
   canvases: CanvasRuntime[],
-  { transcriber, speaker, setup }: Voice,
+  { transcriber, setup }: Voice,
   port: number,
   development = false,
   config?: Config,
@@ -46,15 +45,6 @@ export function serve(
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
   const sockets = new Map<string, Set<ServerWebSocket<{ canvas: string; page: string }>>>(canvases.map((c) => [c.id, new Set()]));
-  /** Spoken texts by id, rendered while the owner already reads them. */
-  const speech = new Map<string, Promise<Uint8Array<ArrayBuffer> | null>>();
-  /** Starts speaking `text` and returns where the browser fetches it. */
-  const voice = (c: CanvasRuntime, text: string) => {
-    const id = crypto.randomUUID();
-    speech.set(id, speaker.speak(text, c.board.language()));
-    setTimeout(() => speech.delete(id), 60_000);
-    return `/api/c/${encodeURIComponent(c.id)}/voice/speech/${id}`;
-  };
   /** The restart that waits, as canvas `id` sees it. */
   const pending = (id: string): PendingRestart | null => {
     const due = restarter?.due();
@@ -81,7 +71,7 @@ export function serve(
       for (const set of sockets.values()) for (const ws of set) ws.send(text);
     });
     c.board.onEvent((event) => send({ type: 'event', event }));
-    c.board.onSpeak((cardId, text) => send({ type: 'speak', cardId, audio: voice(c, text) }));
+    c.board.onNotice((n) => send({ type: 'notice', ...n }));
   }
 
   // The app's shell records a command when the owner holds the push-to-talk key in another app
@@ -146,22 +136,27 @@ export function serve(
       rmSync(dir, { recursive: true, force: true });
     }
   };
-  /** `null`: Whisper heard nothing it could write down, which the Koordinator should not guess from. */
+  /**
+   * What the owner said or typed: with an agent on the open card, straight to that agent (which
+   * passes on what asks Obeya for something); else the Koordinator reads it. `null`: Whisper heard
+   * nothing it could write down, which nobody should guess from.
+   */
   const heard = async (c: CanvasRuntime, text: string | null, focus: Focus, images: string[] = [], input: Input = {}) => {
     // the owner sees only the confirmation; the transcript is for whoever reads the server's log
     console.log(`heard on ${c.id}: ${text === null ? '(not understood)' : text || '(nothing)'}`);
     // nothing heard or understood: screenshots shown with it stay in the browser for the next try
-    const h: Heard & { unheard?: true } =
-      text === null
-        ? { confirm: c.board.t.voice.notUnderstood, unheard: true }
-        : text
-          ? await c.commander.hear(text, focus, images, input)
-          : { confirm: c.board.t.voice.nothingHeard, unheard: true };
-    // the written confirmation goes out now, so the undo window starts now; the voice follows
+    if (text === null || (!text && !(input.typed && images.length))) return { confirm: text === null ? c.board.t.voice.notUnderstood : c.board.t.voice.nothingHeard, unheard: true };
+    const card = focus.card ? c.board.item(focus.card) : undefined;
+    if (card && agentListens(card)) {
+      c.tell(card.id, text, images, !input.typed);
+      // the card's conversation shows the words; the app's panel shows what was heard
+      return { confirm: '', quiet: true, text } satisfies Heard & { text: string };
+    }
+    const h = await c.commander.hear(text, focus, images, input);
+    // the written confirmation goes out now, so the undo window starts now
     if (h.token) c.commander.arm(h.token);
-    if (h.quiet) return h;
     // what was heard, for the app's panel, which shows it while the owner is in another app
-    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), ...(text ? { text } : {}), audio: voice(c, h.confirm) };
+    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), text };
   };
 
   return Bun.serve({
@@ -210,7 +205,7 @@ export function serve(
         GET: () => (config ? Response.json(config.agents()) : new Response('Not found', { status: 404 })),
         PUT: async (req) => (config ? handle(async () => config.saveAgents(await req.json())) : new Response('Not found', { status: 404 })),
       },
-      // what Obeya's own voice in and out need here, and installing it
+      // what Obeya's own voice in needs here, and installing it
       '/api/voice-setup': { GET: () => (setup ? handle(() => setup.view()) : new Response('Not found', { status: 404 })) },
       '/api/voice-setup/install': { POST: () => (setup ? handle(() => setup.install()) : new Response('Not found', { status: 404 })) },
       // the setup assistant: what Obeya needs on this machine, installed, logged in; then the first canvas
@@ -353,7 +348,7 @@ export function serve(
           }
         },
       },
-      // what the owner said (audio) or typed, read by the Koordinator as one action
+      // what the owner said (audio), for the open card's agent or the Koordinator
       '/api/c/:canvas/voice': {
         POST: on(async (c, req) => {
           // screenshots shown with the recording (`?image=<id>`, repeated), checked before transcribing
@@ -362,25 +357,21 @@ export function serve(
           return heard(c, await transcribe(c, req), focusOf(req), images);
         }),
       },
-      // the owner started speaking: transcription, speech and the Koordinator get ready meanwhile
+      // the owner started speaking: transcription and the Koordinator get ready meanwhile
       '/api/c/:canvas/voice/warm': {
         POST: on((c) => {
           transcriber.warm?.();
-          speaker.warm?.();
           c.commander.warm();
         }),
-      },
-      '/api/c/:canvas/voice/speech/:id': {
-        GET: async (req) => {
-          const audio = await speech.get(req.params.id);
-          return audio ? new Response(audio, { headers: { 'content-type': 'audio/wav' } }) : new Response('Not found', { status: 404 });
-        },
       },
       '/api/c/:canvas/command': {
         POST: on(async (c, req) => {
           // `field`: typed into that field of the open card rather than into the Koordinator's sheet
           const { text, images, field } = (await req.json()) as { text: string; images?: string[]; field?: unknown };
-          if (typeof text !== 'string' || !text.trim()) throw new BadRequest('emptyText', 'text must be a non-empty string');
+          // a screenshot alone may speak for itself to the open card's agent
+          const card = focusOf(req).card;
+          const listens = !!card && !!c.board.item(card) && agentListens(c.board.item(card)!);
+          if (typeof text !== 'string' || (!text.trim() && !(listens && images?.length))) throw new BadRequest('emptyText', 'text must be a non-empty string');
           // screenshots pasted into the typed command go to the cards it creates or concerns
           c.images.resolve(images);
           return heard(c, text.trim(), focusOf(req), images ?? [], { typed: true, ...(isField(field) ? { field } : {}) });

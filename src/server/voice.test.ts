@@ -2,21 +2,8 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { looping, silence, SpeechSidecar, voiceBackends } from './voice';
+import { looping, silence, voiceBackends } from './voice';
 import { VoiceSetup } from './voice-setup';
-
-test.skipIf(process.platform !== 'darwin')('the speech sidecar renders confirmations as WAV, one after another', async () => {
-  const speaker = new SpeechSidecar();
-  try {
-    const [a, b, c] = await Promise.all([speaker.speak('Ok.', 'de'), speaker.speak('Neue Karte „Export“, der Agent fängt an.', 'de'), speaker.speak('New task “Export”, the agent starts.', 'en')]);
-    for (const wav of [a, b, c]) expect(new TextDecoder().decode(wav!.slice(0, 4))).toBe('RIFF');
-    expect(b!.length).toBeGreaterThan(a!.length);
-    expect(c!.length).toBeGreaterThan(a!.length);
-  } finally {
-    speaker.stop();
-  }
-  // the sidecar starts in about 4 s, and a voice of another language loads in about 2 s more
-}, 20_000);
 
 test('a loop is one word, phrase or syllable six times in a row, whatever the case and punctuation', () => {
   for (const loop of [
@@ -45,19 +32,19 @@ test("Whisper's words for silence are told from a command", () => {
   for (const s of ['Vielen Dank, das war gut.', 'Danke, gib das frei.', 'Musik im Demo-Video leiser.']) expect(silence(s)).toBe(false);
 });
 
-test('a Mac hears with MLX on Apple Silicon and speaks with its own voice; elsewhere faster-whisper and Piper', () => {
-  expect(voiceBackends({}, 'darwin', 'arm64')).toEqual({ listen: 'mlx', speech: 'macos' });
-  expect(voiceBackends({}, 'darwin', 'x64')).toEqual({ listen: 'faster', speech: 'macos' });
-  expect(voiceBackends({}, 'linux', 'x64')).toEqual({ listen: 'faster', speech: 'piper' });
-  expect(voiceBackends({}, 'win32', 'arm64')).toEqual({ listen: 'faster', speech: 'piper' });
-  expect(voiceBackends({ OBEYA_WHISPER_BACKEND: 'faster', OBEYA_SPEECH: 'piper' }, 'darwin', 'arm64')).toEqual({ listen: 'faster', speech: 'piper' });
-  expect(voiceBackends({ OBEYA_WHISPER_BACKEND: 'nope', OBEYA_SPEECH: 'nope' }, 'linux', 'x64')).toEqual({ listen: 'faster', speech: 'piper' });
+test('a Mac on Apple Silicon hears with MLX, everything else with faster-whisper', () => {
+  expect(voiceBackends({}, 'darwin', 'arm64')).toEqual({ listen: 'mlx' });
+  expect(voiceBackends({}, 'darwin', 'x64')).toEqual({ listen: 'faster' });
+  expect(voiceBackends({}, 'linux', 'x64')).toEqual({ listen: 'faster' });
+  expect(voiceBackends({}, 'win32', 'arm64')).toEqual({ listen: 'faster' });
+  expect(voiceBackends({ OBEYA_WHISPER_BACKEND: 'faster' }, 'darwin', 'arm64')).toEqual({ listen: 'faster' });
+  expect(voiceBackends({ OBEYA_WHISPER_BACKEND: 'nope' }, 'linux', 'x64')).toEqual({ listen: 'faster' });
 });
 
 test('the voice check names what is missing, how to install it here, and what "Installieren" fetches', async () => {
   const home = mkdtempSync(join(tmpdir(), 'obeya-voice-setup-'));
   try {
-    const setup = new VoiceSetup({ home, backends: { listen: 'faster', speech: 'piper' }, prepare: async () => {}, env: { PATH: join(home, 'none') } });
+    const setup = new VoiceSetup({ home, backends: { listen: 'faster' }, prepare: async () => {}, env: { PATH: join(home, 'none') } });
     const view = await setup.view();
     const by = Object.fromEntries(view.items.map((i) => [i.id, i]));
     expect(by.ffmpeg).toMatchObject({ state: 'missing' });
@@ -66,14 +53,13 @@ test('the voice check names what is missing, how to install it here, and what "I
     expect(by.uv!.install?.url).toContain('astral');
     // without uv the package is not in its cache: fetched by "Installieren" or the first command
     expect(by.whisper).toMatchObject({ state: 'later', found: 'faster-whisper' });
-    expect(by.speech).toMatchObject({ state: 'missing', mb: 265 });
-    expect(view.fetch.parts).toEqual(['piper', 'whisper']);
-    expect(view.fetch.mb).toBe(265 + by.whisper!.mb!);
+    expect(by.speech).toBeUndefined();
+    expect(view.fetch.parts).toEqual(['whisper']);
+    expect(view.fetch.mb).toBe(by.whisper!.mb!);
 
-    // the macOS voice needs nothing, and a Python of one's own without the package is missing
-    const own = new VoiceSetup({ home, backends: { listen: 'mlx', speech: 'macos' }, prepare: async () => {}, env: { PATH: join(home, 'none'), OBEYA_WHISPER_PYTHON: join(home, 'python') } });
+    // a Python of one's own without the package is missing
+    const own = new VoiceSetup({ home, backends: { listen: 'mlx' }, prepare: async () => {}, env: { PATH: join(home, 'none'), OBEYA_WHISPER_PYTHON: join(home, 'python') } });
     const mac = Object.fromEntries((await own.view()).items.map((i) => [i.id, i]));
-    expect(mac.speech).toMatchObject({ state: 'ok', found: 'macOS' });
     expect(mac.whisper).toMatchObject({ state: 'missing', need: 'mlx-whisper' });
     expect(mac.uv).toBeUndefined();
   } finally {
@@ -85,12 +71,12 @@ test('"Installieren" loads Whisper, and says why when it fails', async () => {
   const home = mkdtempSync(join(tmpdir(), 'obeya-voice-setup-'));
   try {
     let loaded = 0;
-    const setup = new VoiceSetup({ home, backends: { listen: 'mlx', speech: 'macos' }, prepare: async () => void loaded++, env: { PATH: join(home, 'none') } });
+    const setup = new VoiceSetup({ home, backends: { listen: 'mlx' }, prepare: async () => void loaded++, env: { PATH: join(home, 'none') } });
     await setup.install();
     await Bun.sleep(10);
     expect(loaded).toBe(1);
     expect((await setup.view()).job).toEqual({ running: false, step: 'whisper', line: '' });
-    const failing = new VoiceSetup({ home, backends: { listen: 'mlx', speech: 'macos' }, prepare: () => Promise.reject(new Error('transcription sidecar exited (1)')), env: { PATH: join(home, 'none') } });
+    const failing = new VoiceSetup({ home, backends: { listen: 'mlx' }, prepare: () => Promise.reject(new Error('transcription sidecar exited (1)')), env: { PATH: join(home, 'none') } });
     await failing.install();
     await Bun.sleep(10);
     expect((await failing.view()).job).toMatchObject({ running: false, error: 'transcription sidecar exited (1)' });

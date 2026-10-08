@@ -12,11 +12,11 @@ let main: string;
 let store: Store;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
-let spoken: [string | undefined, string][];
+let notices: [string | undefined, string][];
 
 const open = () => {
   const c = new CanvasRuntime({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10 });
-  c.board.onSpeak((id, text) => spoken.push([id, text]));
+  c.board.onNotice((n) => notices.push([n.cardId, n.text]));
   return c;
 };
 
@@ -26,7 +26,7 @@ beforeEach(() => {
   gitRepo(main, { 'docs/plan/pr-loop.md': '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live im Shop. Mit dem Go des Owners.\n' });
   store = new Store(':memory:');
   runtime = new FakeRuntime();
-  spoken = [];
+  notices = [];
   canvas = open();
 });
 afterEach(() => {
@@ -70,7 +70,7 @@ describe('a question the Koordinator looks up', () => {
 
     a.emit({ type: 'session', id: 'project-1' });
     a.emit({ type: 'tool', name: 'Read', input: { file_path: `${main}/docs/plan/pr-loop.md` } });
-    a.call('answer_owner', { text: '1. Liest das Plan-Doc.\n2. Fragt nach dem Go.', spoken: 'Er würde zuerst nach deinem Go fragen.' });
+    a.call('answer_owner', { text: '1. Liest das Plan-Doc.\n2. Fragt nach dem Go.' });
     a.emit({ type: 'idle' });
     await settle();
 
@@ -80,7 +80,8 @@ describe('a question the Koordinator looks up', () => {
       ['activity', 'project', 'Liest plan/pr-loop.md'],
       ['say', 'project', '1. Liest das Plan-Doc.\n2. Fragt nach dem Go.'],
     ]);
-    expect(spoken).toEqual([[undefined, 'Er würde zuerst nach deinem Go fragen.']]);
+    // above the microphone too, written
+    expect(notices).toEqual([[w4.id, '1. Liest das Plan-Doc.\n2. Fragt nach dem Go.']]);
     // the project agent keeps its session: it knows the plan and the history
     expect(board().row(w4.parent!).session_id).toBe('project-1');
     expect(board().talk().at(-1)).toMatchObject({ question: 'What would the worker do on W4 if the owner started it now?', answer: '1. Liest das Plan-Doc.\n2. Fragt nach dem Go.', answerBy: 'project' });
@@ -102,11 +103,11 @@ describe('a question the Koordinator looks up', () => {
     expect(board().snapshot().talk.at(-1)).toMatchObject({ said: 'was würde der agent bei login machen?', reply: 'Moment, ich lese nach.', question: 'What would the worker do on Login?' });
     expect(board().snapshot().talk.at(-1)!.answer).toBeUndefined();
 
-    a.call('answer_owner', { text: 'Er sucht den Hänger.', spoken: 'Er sucht den Hänger.' });
+    a.call('answer_owner', { text: 'Er sucht den Hänger.' });
     a.emit({ type: 'idle' });
     await settle();
     expect(board().snapshot().talk.at(-1)).toMatchObject({ answer: 'Er sucht den Hänger.', answerBy: 'koordinator' });
-    expect(spoken).toEqual([[undefined, 'Er sucht den Hänger.']]);
+    expect(notices).toEqual([[undefined, 'Er sucht den Hänger.']]);
   });
 
   test('an unknown card tag goes back to the Koordinator', async () => {

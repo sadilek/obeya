@@ -63,7 +63,7 @@ export class Answers {
       .then((a) => this.deliver(talkId, by, t.question!, a, reading))
       .catch((e) => {
         const said = this.o.board.t.answer;
-        this.deliver(talkId, by, t.question!, { text: said.failed(e instanceof Error ? e.message : String(e)), spoken: said.failedSpoken }, reading);
+        this.deliver(talkId, by, t.question!, { text: said.failed(e instanceof Error ? e.message : String(e)) }, reading);
       })
       .finally(() => this.busy.delete(talkId));
   }
@@ -74,11 +74,11 @@ export class Answers {
   }
 
   private deliver(talkId: number, by: 'koordinator' | 'project', question: string, a: OwnerAnswer, card: string | undefined) {
-    const text = clip(a.text || a.spoken, 12000);
+    const text = clip(a.text, 12000);
     this.o.board.answerTalk(talkId, text, by);
     if (card && this.o.board.item(card)) this.o.board.log(card, 'say', by, text);
-    const spoken = a.spoken || (text.length <= 300 ? text : '');
-    if (spoken) this.o.board.speak(undefined, clip(spoken, 400));
+    // above the microphone too, wherever the owner is by now; in full on the card or in the sheet
+    this.o.board.notify({ ...(card ? { cardId: card } : {}), text: clip(text, 300) });
     this.o.onAnswer?.(question, text);
   }
 

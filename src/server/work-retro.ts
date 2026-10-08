@@ -127,7 +127,7 @@ export class WorkRetro {
     const notes = b.friction(repo, since);
     b.setSetting(sinceKey(repo), new Date().toISOString());
     if (!notes.length) {
-      if (told) b.speak(undefined, b.t.retro.nothingToRead(name));
+      if (told) b.notify({ text: b.t.retro.nothingToRead(name) });
       return;
     }
     // the cards as tags, in the order their notes came
@@ -201,7 +201,7 @@ export class WorkRetro {
         ];
       },
     });
-    if (told) b.speak(undefined, b.t.retro.done(name, made));
+    if (told) b.notify({ text: b.t.retro.done(name, made) });
   }
 
   private serial(fn: () => Promise<void>) {

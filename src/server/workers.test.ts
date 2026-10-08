@@ -567,11 +567,17 @@ describe('workers', () => {
     expect(state(c.id)).toBe('waiting:review');
     expect(board.item(c.id)!.summary).toBe('Export gebaut.');
 
+    // feedback: the work still waits for approval while the worker takes it in, and is at work meanwhile
     workers.message(c.id, 'Bitte mit Kopfzeile.');
-    expect(state(c.id)).toBe('working');
+    expect(state(c.id)).toBe('waiting:review');
+    expect(board.item(c.id)!.answering).toBe(true);
+    expect(needsYou(board.item(c.id)!)).toBe(false);
+    expect(runtime.last.inbox.at(-1)).toContain('The owner wrote on your handover');
+    expect(runtime.last.inbox.at(-1)).toContain('still waits for their approval');
     expect(runtime.last.inbox.at(-1)).toContain('Bitte mit Kopfzeile.');
 
     runtime.last.call('ready_for_review', { summary: 'Mit Kopfzeile.' });
+    expect(board.item(c.id)!.answering).toBeUndefined();
     runtime.last.emit({ type: 'idle' });
     await workers.approve(c.id);
     expect(state(c.id)).toBe('live');
@@ -719,7 +725,7 @@ describe('handing over with a demo', () => {
     expect(runtime.last.inbox[0]).toContain(`recorded with the demo skill (\`${DEMO_SKILL}\`)`);
   });
 
-  test('the card waits with the demo; its files are found; feedback leaves the demo to the worker', () => {
+  test('the card waits with the demo; its files are found; words under it answer its question and leave the demo', () => {
     const c = manual();
     workers.start(c.id);
     const d = demoDir();
@@ -728,9 +734,11 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.demo).toEqual({ kind: 'video', chapters: [[0, 'Vorher'], [6, 'Nachher']], question: 'Semikolon oder Komma?' });
     expect(board.item(c.id)!.summary).toBe('S');
     expect(board.demoFiles(c.id)).toEqual({ dir: d, kind: 'video' });
-    workers.message(c.id, 'Bitte mit Kopfzeile.');
-    expect(state(c.id)).toBe('working');
-    expect(runtime.last.inbox.at(-1)).toContain('your demo stays on it');
+    workers.message(c.id, 'Semikolon, und bitte mit Kopfzeile.');
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.answering).toBe(true);
+    expect(board.item(c.id)!.demo!.answer).toBe('Semikolon, und bitte mit Kopfzeile.');
+    expect(runtime.last.inbox.at(-1)).toContain('a change their words call for goes into a new handover');
     // the demo stays with the card while it is reworked and after it is done
     expect(board.demoFiles(c.id)).toEqual({ dir: d, kind: 'video' });
     expect(board.item(c.id)!.demo!.chapters).toHaveLength(2);
@@ -750,14 +758,14 @@ describe('handing over with a demo', () => {
     expect(runtime.last.inbox.at(-1)).toContain('answered the question in your demo report');
     expect(runtime.last.inbox.at(-1)).toContain('Semikolon.');
     // while the worker takes in the answer, the card is not the owner's
-    expect(board.item(c.id)!.demo!.answering).toBe(true);
+    expect(board.item(c.id)!.answering).toBe(true);
     expect(needsYou(board.item(c.id)!)).toBe(false);
     // the worker takes note and ends its turn: no nudge, the card keeps waiting, and is the owner's again
     runtime.last.emit({ type: 'text', text: 'Bleibt beim Semikolon.' });
     runtime.last.emit({ type: 'idle' });
     expect(runtime.last.inbox).toHaveLength(n + 1);
     expect(state(c.id)).toBe('waiting:demo');
-    expect(board.item(c.id)!.demo!.answering).toBeUndefined();
+    expect(board.item(c.id)!.answering).toBeUndefined();
     expect(needsYou(board.item(c.id)!)).toBe(true);
     expect(board.decisions(null).at(-1)).toMatchObject({ question: 'Semikolon oder Komma?', answer: 'Semikolon.', by: 'owner' });
     expect(() => workers.answer(c.id, 'Komma.')).toThrow(BadRequest);
@@ -778,7 +786,7 @@ describe('handing over with a demo', () => {
     runtime.last.emit({ type: 'idle' });
     expect(state(c.id)).toBe('waiting:demo');
     expect(board.item(c.id)!.summary).toBe('Jetzt mit Komma.');
-    expect(board.item(c.id)!.demo!.answering).toBeUndefined();
+    expect(board.item(c.id)!.answering).toBeUndefined();
     expect(needsYou(board.item(c.id)!)).toBe(true);
   });
 
@@ -794,7 +802,7 @@ describe('handing over with a demo', () => {
     expect(runtime.last.spec.resume).toBe('sess-1');
     expect(needsYou(board.item(c.id)!)).toBe(false);
     runtime.last.close();
-    await until(() => !board.item(c.id)!.demo!.answering);
+    await until(() => !board.item(c.id)!.answering);
     expect(state(c.id)).toBe('waiting:demo');
     expect(needsYou(board.item(c.id)!)).toBe(true);
   });
@@ -812,7 +820,7 @@ describe('handing over with a demo', () => {
     busy.emit({ type: 'text', text: 'Ich pausiere für den Neustart.' });
     busy.emit({ type: 'idle' });
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
-    expect(board.item(c.id)!.demo!.answering).toBe(true);
+    expect(board.item(c.id)!.answering).toBe(true);
     expect(needsYou(board.item(c.id)!)).toBe(false);
     workers.shutdown();
     workers.restartDue(null);

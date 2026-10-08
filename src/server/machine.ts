@@ -3,7 +3,7 @@
 // settings. Claude Code with a login and git are needed; gh with a login is for pull requests;
 // voice and demos are the checks the settings sheet makes (voice-setup.ts, the demo skill's
 // setup.ts). What installs without admin rights Obeya installs at a click (Claude Code and uv with
-// their official installers, Piper and Whisper through the voice's installation, a demo's voice);
+// their official installers, Whisper through the voice's installation, a demo's voice);
 // system software comes with the command for this platform, which Obeya runs at a click where it
 // needs no password (Homebrew, winget); a login opens a terminal. Then the first canvas: a
 // repository's folder, or a clone of one.
@@ -329,7 +329,6 @@ export class MachineSetup {
     const keyLine = this.o.shells?.item(pushKeyChoice(this.o.home).key);
     const keyItem = keyLine ? [keyLine] : [];
     const voiceItems = (voice?.items ?? []).map((i): MachineItem => {
-      if (i.id === 'speech' && i.state === 'missing') return { ...i, act: 'install' };
       if (i.id === 'whisper' && i.state === 'later') return { ...i, act: 'install' };
       if (i.state === 'missing' && i.id !== 'whisper') return ownUv(missing(i));
       return i;
@@ -364,7 +363,7 @@ export class MachineSetup {
     const job: MachineJob = (this.job = { kind: 'install', section, id, running: true, line: '' });
     const log = (line: string) => (job.line = line.slice(0, 300));
     let work: Promise<void>;
-    if (section === 'voice' && (id === 'speech' || id === 'whisper')) {
+    if (section === 'voice' && id === 'whisper') {
       const voice = this.o.voice!;
       work = voice.install().then(() => voice.finished());
     } else if (section === 'demos' && id === 'voice') work = installVoice(readDemoSettings(this.o.home), log, this.o.home);
