@@ -251,7 +251,7 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 .p-title { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin: 2px 0 6px; line-height: 1.2; }
 textarea.p-title { display: block; width: calc(100% - 40px); border: 0; background: transparent; padding: 0; outline: none; resize: none; overflow: hidden; }
 textarea.p-title::placeholder { color: var(--muted); font-weight: 500; }
-.p-state { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; font-weight: 600; color: var(--c); }
+.p-state { font-size: 13px; font-weight: 600; color: var(--c); }
 .p-lead { font-size: 15.5px; max-width: 76ch; margin: 14px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .p-list { max-width: 76ch; margin: 12px 0 0; padding-left: 0; list-style: none; font-size: 14px; }
 .p-list li { margin: 5px 0; padding-left: 24px; position: relative; }
@@ -326,6 +326,9 @@ textarea.p-body:focus { border-color: var(--muted); }
    (panelRect in App.tsx sets that as its max-height); beyond it, the columns scroll */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) clamp(400px, 36%, 560px); grid-template-rows: minmax(0, 1fr);
   gap: 24px; margin-top: 16px; max-height: min(600px, calc(100vh - 370px)); }
+/* a task without a result yet: the conversation alone, the panel only as wide as it (TALK_W in App.tsx) */
+.split.alone { grid-template-columns: minmax(0, 1fr); }
+.p-state + .p-src { margin-top: 4px; }
 .split-main { overflow: auto; min-height: 0; padding-right: 4px; }
 .split-main > :first-child, .split-main .question.brief { margin-top: 0; }
 .split-main .question, .split-main .p-body-field, .split-main textarea.p-body { max-width: none; }
@@ -490,6 +493,13 @@ textarea.p-body:focus { border-color: var(--muted); }
 .shot { border: 1px solid var(--line); border-radius: 8px; padding: 0; background: var(--card); cursor: zoom-in; line-height: 0; }
 .shot img { height: 88px; max-width: 240px; object-fit: cover; border-radius: 7px; display: block; }
 .talk .msg.by-owner .shots { justify-content: flex-end; }
+/* where a conversation starts, long ones folded to about eight lines */
+.talk .msg.seed .p-task { margin-top: 6px; font-size: 13px; }
+.talk .msg.by-plan .who, .talk .msg.by-proposal .who { color: var(--muted); }
+.fold { font-size: 14px; }
+.fold.folded { max-height: calc(8lh + 2px); overflow: hidden; }
+.fold.cut { mask-image: linear-gradient(to bottom, #000 75%, transparent); }
+.fold-more { font-size: 12.5px; margin-top: 2px; }
 .lightbox { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 12, 8, .78); display: flex; align-items: center; justify-content: center;
   padding: 4vh 4vw; cursor: zoom-out; animation: fade .15s ease-out; }
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: var(--lift); background: #fff; }

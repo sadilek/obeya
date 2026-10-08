@@ -23,7 +23,7 @@ import { type Heard, PushToTalk, play, ToldList, usePushToTalk, useTold, type Wh
 import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_GAP, sheetBottom, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
-import { split } from './talk';
+import { split, talkAlone } from './talk';
 
 export function App() {
   const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
@@ -309,7 +309,7 @@ function Canvas({
   const openItem = openId
     ? (items.find((i) => i.id === openId) ?? archived.find((i) => i.id === openId) ?? (opened?.id === openId ? opened : undefined))
     : undefined;
-  const openState = openItem && `${shownState(openItem)}:${openItem.need ?? ''}`;
+  const openState = openItem && `${shownState(openItem)}:${openItem.need ?? ''}:${split(openItem)}`;
   useEffect(() => {
     const panel = panelRef.current;
     const i = openItem;
@@ -1148,7 +1148,8 @@ function panelRect(i: Item, inner: HTMLElement) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
   // a card with a conversation beside what it is about (an idea, a proposal, a task an agent worked on) gets the room of the mock's demo panel
   const wide = split(i);
-  const W = Math.min(wide ? 1600 : tall ? 980 : 900, innerWidth - 80);
+  // a task an agent works on without a result yet is its conversation alone, and only as wide
+  const W = Math.min(wide ? 1600 : talkAlone(i) ? TALK_W : tall ? 980 : 900, innerWidth - 80);
   inner.style.width = `${W}px`;
   inner.style.paddingBottom = '';
   inner.style.overflowY = '';
@@ -1163,7 +1164,7 @@ function panelRect(i: Item, inner: HTMLElement) {
   const fill = content.querySelector<HTMLElement>('.split:not(.proposal-grid)');
   if (fill) {
     fill.style.minHeight = fill.style.maxHeight = '';
-    if (getComputedStyle(fill).gridTemplateColumns.split(' ').length > 1) {
+    if (!matchMedia(NARROW).matches) {
       const rest = height(content) - height(fill) + parseFloat(pad.paddingTop) + base;
       const room = Math.floor(mic - PANEL_TOP - rest);
       fill.style.minHeight = `${SPLIT_MIN}px`;
@@ -1186,6 +1187,11 @@ function panelRect(i: Item, inner: HTMLElement) {
   if (extra) inner.style.paddingBottom = `${base + extra}px`;
   return { left: `${(innerWidth - W) / 2}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
 }
+
+/** A panel holding a conversation alone: its column at its widest (560 px, styles.css) and the panel's padding. */
+const TALK_W = 640;
+/** Below this the split's columns stack (styles.css) and the panel scrolls as a whole. */
+const NARROW = '(max-width: 760px)';
 
 /** Where a panel starts at the top: below the bar. */
 const PANEL_TOP = 64;

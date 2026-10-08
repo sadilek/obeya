@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { type CardEvent, formatQuestion } from '../core/types';
-import { ownerField, parseQuestion, split, talkTurns } from './talk';
+import { ownerField, parseQuestion, split, talkAlone, talkTurns } from './talk';
 
 let id = 0;
 const ev = (kind: CardEvent['kind'], author: CardEvent['author'], text: string): CardEvent => ({ id: ++id, cardId: 'c', at: '2026-10-01T10:00:00Z', kind, author, text });
@@ -174,11 +174,25 @@ test('a card has one field for the owner, and under a demo with a question it ta
   expect(ownerField({ state: 'done' })).toBeNull();
 });
 
-test('ideas, proposals and tasks an agent worked on share the layout with the conversation beside', () => {
+test('ideas, proposals and tasks an agent worked on with a result share the layout with the conversation beside', () => {
+  const demo = { chapters: [] };
   expect(split({ state: 'idea' })).toBe(true);
   expect(split({ state: 'proposal' })).toBe(true);
-  expect(split({ state: 'waiting', branch: 'obeya/x' })).toBe(true);
-  expect(split({ state: 'done', branch: 'obeya/x' })).toBe(true);
+  expect(split({ state: 'waiting', branch: 'obeya/x', demo })).toBe(true);
+  // the demo stays when the owner sends the agent a message
+  expect(split({ state: 'working', branch: 'obeya/x', demo })).toBe(true);
+  expect(split({ state: 'inPr', branch: 'obeya/x' })).toBe(true);
+  expect(split({ state: 'working', branch: 'obeya/x', brief: 'Kurz' })).toBe(true);
   expect(split({ state: 'planned' })).toBe(false);
   expect(split({ state: 'done' })).toBe(false);
+});
+
+test('a task an agent works on shows its conversation alone until there is a result', () => {
+  expect(talkAlone({ state: 'working', branch: 'obeya/x' })).toBe(true);
+  expect(talkAlone({ state: 'waiting', branch: 'obeya/x' })).toBe(true);
+  expect(talkAlone({ state: 'done', branch: 'obeya/x' })).toBe(true);
+  expect(talkAlone({ state: 'working', branch: 'obeya/x', demo: { chapters: [] } })).toBe(false);
+  expect(talkAlone({ state: 'working', branch: 'obeya/x', brief: '' })).toBe(true);
+  expect(talkAlone({ state: 'planned' })).toBe(false);
+  expect(talkAlone({ state: 'idea' })).toBe(false);
 });

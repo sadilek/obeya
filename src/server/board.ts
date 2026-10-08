@@ -574,7 +574,9 @@ export class Board {
     const proposal = row.proposal ? (JSON.parse(row.proposal) as Proposal) : undefined;
     if (proposal?.revising) throw new BadRequest('revising', 'the proposal is being reworked');
     const idea = asIdea && !!proposal?.idea;
-    this.store.update(id, { state: idea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks, this.t), proposal: null });
+    // an agent's proposal keeps that it was one: its task is not the owner's words
+    const kept = proposal && JSON.stringify({ ...(proposal.idea ? { idea: true } : {}), questions: [] } satisfies Proposal);
+    this.store.update(id, { state: idea ? 'idea' : 'planned', body: withQuestions(row.body ?? '', proposal?.questions ?? [], picks, this.t), proposal: kept ?? null });
     this.changed();
     return idea;
   }
@@ -1237,7 +1239,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
         ...(r.built_on ? { builtOn: r.built_on } : {}),
         ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
         ...(r.retro ? { retro: r.retro } : {}),
-        ...(r.proposal && r.state === 'proposal' ? { proposal: JSON.parse(r.proposal) as Proposal } : {}),
+        ...(r.proposal ? (r.state === 'proposal' ? { proposal: JSON.parse(r.proposal) as Proposal } : { proposed: true as const }) : {}),
         ...(r.group_id ? { group: r.group_id } : {}),
       });
       continue;

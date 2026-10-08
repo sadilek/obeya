@@ -167,6 +167,10 @@ const de = {
     handover: 'Übergabe',
     settled: 'Durch deinen Hinweis erledigt.',
     demoQuestion: 'Frage im Demo-Bericht:',
+    // who the task an agent started on comes from, at the top of its conversation
+    opening: { owner: 'Du', plan: 'Plan-Doc', koordinator: 'Koordinator', idea: 'Idee', proposal: 'Vorschlag' },
+    more: 'mehr',
+    less: 'weniger',
   },
   lastFailure: (at: string) => `Zuletzt gescheitert (${at})`,
   author: { worker: 'Agent', owner: 'Du', project: 'Projekt-Agent', koordinator: 'Koordinator', obeya: 'Obeya', explorer: 'Explorations-Agent' },
@@ -320,7 +324,7 @@ const de = {
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { question: 'Offene Frage', yourAnswer: 'Deine Antwort', kept: 'Die Demo bleibt hier abrufbar.',
+  demo: { question: 'Offene Frage', yourAnswer: 'Deine Antwort', kept: 'Die Demo bleibt hier abrufbar.', again: 'Die Demo der letzten Übergabe. Der Agent arbeitet wieder an der Aufgabe.',
     artifact: 'HTML-Artefakt des Agenten',
     play: 'Abspielen',
   },
@@ -994,6 +998,9 @@ const en: Strings = {
     handover: 'Handover',
     settled: 'Settled by your note.',
     demoQuestion: 'Question in the demo report:',
+    opening: { owner: 'You', plan: 'Plan doc', koordinator: 'Coordinator', idea: 'Idea', proposal: 'Proposal' },
+    more: 'more',
+    less: 'less',
   },
   lastFailure: (at: string) => `Last failed (${at})`,
   author: { worker: 'Agent', owner: 'You', project: 'Project agent', koordinator: 'Coordinator', obeya: 'Obeya', explorer: 'Exploration agent' },
@@ -1140,7 +1147,7 @@ const en: Strings = {
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { question: 'Open question', yourAnswer: 'Your answer', kept: 'The demo stays available here.',
+  demo: { question: 'Open question', yourAnswer: 'Your answer', kept: 'The demo stays available here.', again: 'The demo of the last handover. The agent is working on the task again.',
     artifact: 'The agent’s HTML artifact',
     play: 'Play',
   },

@@ -111,6 +111,8 @@ export interface Item {
   retro?: string;
   /** A worker's proposal, while it waits: an idea or a task, why, and what the owner has to decide. */
   proposal?: Proposal;
+  /** An agent's proposal the owner accepted: its text is that agent's. */
+  proposed?: true;
   /** The repository the card belongs to (an id from the canvas's `repos`). */
   repo: string;
   branch?: string;

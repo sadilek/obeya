@@ -1,7 +1,7 @@
 // A card's conversation, from its events.
 
 import { LANGUAGES } from '../core/locale';
-import { type CardEvent, formatQuestion, type Item, type Question } from '../core/types';
+import { type CardEvent, finished, formatQuestion, type Item, type Question } from '../core/types';
 import type { Field } from './api';
 
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
@@ -179,5 +179,21 @@ export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'fin
 /** A task an agent has worked on: what came of it stands beside its conversation. */
 export const worked = (i: Pick<Item, 'state' | 'branch'>) => ['working', 'waiting', 'approved', 'inPr', 'live', 'done'].includes(i.state) && !!i.branch;
 
-/** A card laid out with its conversation beside what it is about (`Split` in detail.tsx): an idea, a proposal, a task an agent worked on. */
-export const split = (i: Pick<Item, 'state' | 'branch' | 'prototypeEnd'>) => i.state === 'idea' || i.state === 'proposal' || !!i.prototypeEnd || worked(i);
+/** What decides a card's layout. */
+type Laid = Pick<Item, 'state' | 'branch' | 'prototypeEnd' | 'demo' | 'pr' | 'landedPart' | 'finishing' | 'brief' | 'prototypes'>;
+
+/**
+ * What a task an agent worked on shows beside its conversation: a demo, a pull request, what landed,
+ * what remains after the landing, a decided idea's brief.
+ */
+export const result = (i: Laid) =>
+  !!i.demo || i.state === 'inPr' || (!!i.pr && i.state === 'waiting') || !!i.landedPart || (!!i.finishing && finished(i.state)) || (i.brief !== undefined && (!!i.brief.trim() || !!i.prototypes?.length));
+
+/** A card laid out with its conversation beside what it is about (`Split` in detail.tsx): an idea, a proposal, a task an agent worked on once there is a result. */
+export const split = (i: Laid) => i.state === 'idea' || i.state === 'proposal' || ((!!i.prototypeEnd || worked(i)) && result(i));
+
+/** A task an agent works or worked on without a result yet: its conversation stands alone, the card only as wide as it. */
+export const talkAlone = (i: Laid) => (!!i.prototypeEnd || worked(i)) && !result(i);
+
+/** Obeya's line that the agent started: the task stands above it, as the conversation's first message. */
+export const started = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && /^(Agent gestartet|Agent started)/.test(e.text);

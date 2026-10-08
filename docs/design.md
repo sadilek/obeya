@@ -361,19 +361,38 @@ Obeya or the Koordinator noted there goes. While the worker works, its latest st
 and the card's one field under it; a question a note took back stays, without options, „Durch deinen Hinweis erledigt“.
 A card that was an idea continues the idea's conversation in the same list.
 
+A task's conversation starts with the task: once the agent starts, the card's text and screenshots
+stand as its first message, above the line that the agent started, the way an idea's starting
+point does (`Seed` in `src/ui/detail.tsx`), so the conversation reads from the start: what was
+asked, what the agent did, what the owner added. Its label says where the text comes from: „Du“
+on the owner's own card (typed or spoken), „Plan-Doc“ for a workstream, „Idee“ for a prototype,
+„Vorschlag“ for an agent's proposal the owner accepted (the card keeps that it was one,
+`proposed`), „Koordinator“ for one from the Arbeitsrückschau. A long text shows its first eight
+lines or so, with „mehr“ for the rest (an idea's starting point too), and „Voraussichtlich
+betroffen“ folds under it. A card that was an idea has no such message: its brief stands on the
+left, and its conversation goes on from the idea's. Before (2026-10-08) the task stood on the left
+as a section of its own („Auftrag“), open until there was a demo, and tasks were the only cards
+whose starting point was not in their conversation.
+
 Every card with a conversation is laid out the same way (`Split` and `Talk` in
 `src/ui/detail.tsx`): idea, proposal, and a task an agent worked on. What the card is about stands
 on the left (an idea's brief, a proposal's text, a task's demo with its chapters and sharing, its
-pull request, its text and branch), the conversation on the right with the questions it waits on
-at its end and the owner's one field with one Send under it, and the decisions (build, accept,
-approve, stop, archive) in a row below both. Before (2026-10-07) a task stacked demo, buttons,
+pull request, what landed, a decided idea's brief), the conversation on the right with the
+questions it waits on at its end and the owner's one field with one Send under it, and the
+decisions (build, accept, approve, stop, archive) in a row below both. A task's branch (and its
+plan doc) stands under its title. A task that has nothing for the left yet (the agent at work, a
+question before the first demo) is its conversation alone, the card only as wide as it
+(`talkAlone` in `src/ui/talk.ts`), and widens to the split once there is a result. Before (2026-10-07) a task stacked demo, buttons,
 feedback field and conversation in one column, and a demo with a question had a field and a Send
 of its own inside the question, with „Freigeben“ between it and the feedback field.
 
 Obeya's messages to a worker say what happened — feedback, an answer, a note, a landing that
 failed, the landing — not step by step what to do: workers are full agents. Whether a demo is
 recorded again after feedback is the worker's call; a handover without a new demo keeps the one on
-the card.
+the card. The card shows that demo while its worker works again or waits on a question, without
+playing it on its own and with the hint that it is the last handover's and the agent is working on
+the task again; sharing stays beside it. Before (2026-10-08) feedback or a note hid it until the
+next handover.
 
 What the owner writes on a card (a note, feedback, an answer, talk to an idea) may carry
 screenshots: pasted (⌘V), dropped or picked in the text field, scaled down in the browser to at
@@ -1527,8 +1546,10 @@ the repository; the copy on the project is only for the archive).
 - An unfolded card is as tall as its content, up to a limit per state beyond which it scrolls, and
   follows its content while open. Where its bottom lies under the microphone, the content gets
   that much room below it, so the last row (an idea's „Parken“, „Verwerfen“) scrolls up past the
-  microphone instead of staying under it (2026-10-05). A card with a conversation (an idea, a task
-  an agent worked on) is up to 1600 px wide instead, the conversation a third of the width
+  microphone instead of staying under it (2026-10-05). A task whose conversation stands alone is
+  640 px wide, the conversation's widest, and otherwise sized like a split. A card with a
+  conversation beside what it is about (an idea, a task an agent worked on with a result) is up to
+  1600 px wide instead, the conversation a third of the width
   (400–560 px), and as tall as its taller column, at least 320 px, up to the room from the top bar
   down to the microphone; it stands in the middle of the window, above the microphone. Beyond that
   room what the card is about and the conversation scroll inside their columns, the panel not at

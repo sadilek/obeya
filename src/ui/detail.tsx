@@ -1,6 +1,6 @@
 // The unfolded card: what it is, what its worker does, and what the owner decides.
 
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildableOn, type CardAction, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, EXPORT_HTML_MAX, finished, type Item, type Mock, type NextStep, type PrComment, type PrReviewEntry, type PullRequest, type Question, type RepoRef } from '../core/types';
 import { mockPage } from '../core/frame';
 import { answerText, toggle } from './answer';
@@ -11,7 +11,7 @@ import { useQueueMove } from './queue';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
-import { ownerField, parseQuestion, talkTurns, type Turn, worked as isWorked } from './talk';
+import { ownerField, parseQuestion, started, talkAlone, talkTurns, type Turn, worked as isWorked } from './talk';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -129,18 +129,12 @@ export function Detail(p: Props) {
         </p>
         <Split
           main={
-            <>
-              {/* the summary is the handover in the conversation */}
-              {item.demo && (
-                <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
-                  {null}
-                </DemoView>
-              )}
-              <details className="p-task" open={!item.demo}>
-                <summary>{t.task}</summary>
-                <Body md={item.body} />
-              </details>
-            </>
+            // the summary is the handover in the conversation, the task its first message
+            item.demo && (
+              <DemoView item={item} summary="" demo={item.demo} autoplay={false}>
+                {null}
+              </DemoView>
+            )
           }
           talk={<Talk item={item} past />}
         />
@@ -229,19 +223,22 @@ export function Detail(p: Props) {
   // an agent is on the card and can be stopped
   const running = item.state === 'working' || item.state === 'waiting' || !!item.finishing;
   const archivable = finished(item.state) && item.source === 'manual' && !item.finishing;
-  const scope = !!item.scope?.length && (
-    <details className="p-task">
-      <summary>
-        {t.scope} ({item.scope.length})
-      </summary>
-      <ul className="p-files">
-        {item.scope.map((f) => (
-          <li key={f}>
-            <code>{f}</code>
-          </li>
-        ))}
-      </ul>
-    </details>
+  const where = (
+    <p className="p-src">
+      {t.branch} <code>{item.branch}</code>
+      {parent?.plan && (
+        <>
+          {' · '}
+          <code>{parent.plan.file}</code>{' '}
+          {/* an archived project's doc is gone */}
+          {!parent.archivedAt && (
+            <button className="link" onClick={() => p.onReadPlan(parent, item.label)}>
+              {t.plan.readAt}
+            </button>
+          )}
+        </>
+      )}
+    </p>
   );
   // a decided idea keeps what it was decided on, and how
   const brief = item.brief !== undefined && (
@@ -370,61 +367,41 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {item.state === 'planned' && scope}
+      {item.state === 'planned' && <Scope files={item.scope} />}
 
+      {worked && where}
       {worked ? (
-        // what the work is and what came of it on the left, the conversation with the owner's one field on the right
+        // what came of the work on the left, once there is something, the conversation with the owner's one field on the right;
+        // the task is the conversation's first message, and the summary its handover
         <Split
           main={
-            <>
-              {/* the summary is the handover in the conversation */}
-              {item.demo && (demoWaits || item.state === 'inPr' || item.state === 'approved' || finished(item.state)) && (
-                <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={demoWaits}>
-                  {!demoWaits && <p className="hint">{t.demo.kept}</p>}
-                  {shareBox}
-                </DemoView>
-              )}
-              {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} />}
-              {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
-              {item.landedPart && (
-                <p className="hint">
-                  {t.landedPart.long}{' '}
-                  {item.landedPart.pr ? (
-                    <a href={item.landedPart.pr.url} target="_blank" rel="noreferrer">
-                      {t.pr.title(item.landedPart.pr.number)} ↗
-                    </a>
-                  ) : (
-                    <code>{landedRef(item.landedPart)}</code>
-                  )}
-                </p>
-              )}
-              {item.finishing && finished(item.state) && <p className="hint">{item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
-              {brief}
-              {((item.body.trim() && item.body.trim() !== item.brief?.trim()) || !!item.images?.length) && (
-                // the task stays in view until there is a result to look at
-                <details className="p-task" open={!item.demo && !item.brief?.trim()}>
-                  <summary>{t.task}</summary>
-                  <Body md={item.body} />
-                  <Shots ids={item.images} />
-                </details>
-              )}
-              {item.state === 'working' && scope}
-              <p className="p-src">
-                {t.branch} <code>{item.branch}</code>
-                {parent?.plan && (
-                  <>
-                    {' · '}
-                    <code>{parent.plan.file}</code>{' '}
-                    {/* an archived project's doc is gone */}
-                    {!parent.archivedAt && (
-                      <button className="link" onClick={() => p.onReadPlan(parent, item.label)}>
-                        {t.plan.readAt}
-                      </button>
-                    )}
-                  </>
+            !talkAlone(item) && (
+              <>
+                {/* the last handover's demo stays while the agent works on the card again; a new handover replaces it */}
+                {item.demo && (
+                  <DemoView item={item} all={all} run={run} summary="" demo={item.demo} autoplay={demoWaits}>
+                    {!demoWaits && <p className="hint">{item.state === 'working' || item.state === 'waiting' ? t.demo.again : t.demo.kept}</p>}
+                    {shareBox}
+                  </DemoView>
                 )}
-              </p>
-            </>
+                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} />}
+                {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
+                {item.landedPart && (
+                  <p className="hint">
+                    {t.landedPart.long}{' '}
+                    {item.landedPart.pr ? (
+                      <a href={item.landedPart.pr.url} target="_blank" rel="noreferrer">
+                        {t.pr.title(item.landedPart.pr.number)} ↗
+                      </a>
+                    ) : (
+                      <code>{landedRef(item.landedPart)}</code>
+                    )}
+                  </p>
+                )}
+                {item.finishing && finished(item.state) && <p className="hint">{item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
+                {brief}
+              </>
+            )
           }
           talk={<TaskTalk item={item} listener={listener} act={act} tell={tell} />}
         />
@@ -802,26 +779,29 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
   // the demo report's question goes with the handover it came with
   // an open one stands at the end instead, where it is answered
   const handover = item.demo?.question && !(item.state === 'waiting' && item.need === 'demo' && item.question) ? turns.shown.findLast((x) => x.e.kind === 'review') : undefined;
+  // where the conversation starts: what was said to an idea, or the task an agent started on, above
+  // the line that it started; a decided idea's task is its brief, and its conversation goes on
+  const task = (isWorked(item) || !!item.prototypeEnd) && item.brief === undefined && (!!item.body.trim() || !!item.images?.length);
+  const seed = task ? (
+    <Seed item={item} by={opening(item)} who={`${t.talk.opening[opening(item)]} · ${t.task}`}>
+      <Scope files={item.scope} />
+    </Seed>
+  ) : (
+    idea && !past && item.body.trim() && !opened(events, item.body) && <Seed item={item} by="owner" who={t.idea.seed} />
+  );
+  const seedAt = task ? Math.max(0, turns.shown.findIndex((x) => started(x.e))) : 0;
   return (
     <>
       <h4 className="p-h">{t.talk.heading}</h4>
       <div className="talk conv" ref={box}>
-        {turns.shown.length === 0 && !working && !turns.asked && <div className="hint">{idea ? t.idea.talkEmpty : proposal ? t.reviseHint : t.talk.empty}</div>}
-        {idea && !past && item.body.trim() && !opened(events, item.body) && (
-          <div className="msg by-owner seed">
-            <div className="who">{t.idea.seed}</div>
-            <Body md={item.body} />
-          </div>
-        )}
-        {turns.shown.map((turn) =>
-          turn.line ? (
-            <div key={turn.e.id} className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
-              {time(turn.e.at)} · {eventText(turn.e)}
-            </div>
-          ) : (
-            <Message key={turn.e.id} turn={turn} demoQuestion={turn === handover ? item.demo : undefined} />
-          ),
-        )}
+        {turns.shown.length === 0 && !working && !turns.asked && !seed && <div className="hint">{idea ? t.idea.talkEmpty : proposal ? t.reviseHint : t.talk.empty}</div>}
+        {turns.shown.slice(0, seedAt).map((turn) => (
+          <Line key={turn.e.id} turn={turn} demoQuestion={turn === handover ? item.demo : undefined} />
+        ))}
+        {seed}
+        {turns.shown.slice(seedAt).map((turn) => (
+          <Line key={turn.e.id} turn={turn} demoQuestion={turn === handover ? item.demo : undefined} />
+        ))}
         {working ? (
           <div className={`msg by-${idea ? 'explorer' : proposal ? 'koordinator' : 'worker'} thinking`}>
             <div className="who">{proposal ? t.revising : `${agent} ${idea ? t.idea.thinking : t.talk.working}`}</div>
@@ -844,6 +824,82 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
         {!working && questions}
       </div>
     </>
+  );
+}
+
+/** Who wrote the task an agent started on: the owner, a plan doc, the Arbeitsrückschau, an agent's proposal, or a prototype's idea. */
+const opening = (item: Item): 'owner' | 'plan' | 'koordinator' | 'proposal' | 'idea' =>
+  item.source === 'plan' ? 'plan' : item.prototypeOf ? 'idea' : item.retro ? 'koordinator' : item.proposed ? 'proposal' : 'owner';
+
+/** Where a conversation starts, as its first message: what was said to an idea, the task an agent started on; long ones folded. */
+function Seed({ item, by, who, children }: { item: Item; by: string; who: string; children?: ReactNode }) {
+  return (
+    <div className={`msg by-${by} seed`}>
+      <div className="who">{who}</div>
+      <Fold>
+        <Body md={item.body} />
+      </Fold>
+      <Shots ids={item.images} />
+      {children}
+    </div>
+  );
+}
+
+/** A text shown to its first eight lines or so, with "more" for the rest. */
+function Fold({ children }: { children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [long, setLong] = useState(false);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el || open) return;
+    const measure = () => setLong(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [open]);
+  return (
+    <>
+      <div ref={box} className={`fold${open ? '' : ' folded'}${long && !open ? ' cut' : ''}`}>
+        {children}
+      </div>
+      {(long || open) && (
+        <button className="link fold-more" onClick={() => setOpen(!open)}>
+          {open ? t.talk.less : t.talk.more}
+        </button>
+      )}
+    </>
+  );
+}
+
+/** The files the Koordinator expects a card to change, folded. */
+function Scope({ files }: { files?: string[] }) {
+  if (!files?.length) return null;
+  return (
+    <details className="p-task">
+      <summary>
+        {t.scope} ({files.length})
+      </summary>
+      <ul className="p-files">
+        {files.map((f) => (
+          <li key={f}>
+            <code>{f}</code>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/** A state change or an error between the messages, or a message. */
+function Line({ turn, demoQuestion }: { turn: Turn; demoQuestion?: Demo }) {
+  return turn.line ? (
+    <div className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
+      {time(turn.e.at)} · {eventText(turn.e)}
+    </div>
+  ) : (
+    <Message turn={turn} demoQuestion={demoQuestion} />
   );
 }
 
@@ -1385,11 +1441,12 @@ function TaskTalk({ item, listener, act, tell }: { item: Item; listener: string;
 /**
  * The layout every card with a conversation shares, idea, proposal or task: what the card is about
  * on the left (brief, text, demo), the conversation on the right; the decisions go below both.
+ * Without anything on the left (a task with no result yet), the conversation stands alone.
  */
 function Split({ main, talk, className }: { main: ReactNode; talk: ReactNode; className?: string }) {
   return (
-    <div className={className ? `split ${className}` : 'split'}>
-      <div className="split-main">{main}</div>
+    <div className={['split', className, !main && 'alone'].filter(Boolean).join(' ')}>
+      {main && <div className="split-main">{main}</div>}
       <div className="split-talk">{talk}</div>
     </div>
   );

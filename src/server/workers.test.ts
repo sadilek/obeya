@@ -666,6 +666,8 @@ describe('workers', () => {
     board.accept(p.id);
     expect(state(p.id)).toBe('planned');
     expect(board.item(p.id)!.proposal).toBeUndefined();
+    // its conversation names the proposal as where the task comes from
+    expect(board.item(p.id)!.proposed).toBe(true);
     expect(board.item(p.id)!.body).toBe('Der Knopf „Export“ heißt in src/ui/strings.ts noch „Exportieren“.\n\nOffene Fragen:\n- Welches Wort? (Export / Exportieren)');
   });
 
