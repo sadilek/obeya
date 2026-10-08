@@ -82,11 +82,13 @@ Read what you need, then call answer_owner exactly once and end your turn. You c
 
 /**
  * A question from an agent's tool call, as the owner gets it: the options the card offers to choose
- * from (the owner can always write something else), several of them when `multiple`.
+ * from (the owner can always write something else), several of them when `multiple`. Its text may be
+ * long (a script to read over, a draft to check): the bound only stops a runaway, like an idea
+ * agent's answer.
  */
 export function toQuestion(text: unknown, options: unknown, multiple?: unknown): Question {
   const opts = [...new Set((Array.isArray(options) ? options : []).map((o) => String(o).trim()).filter(Boolean))];
-  return { text: clip(String(text).trim(), 2000), options: opts, ...(multiple === true && opts.length > 1 ? { multiple: true } : {}) };
+  return { text: clip(String(text).trim(), 12000), options: opts, ...(multiple === true && opts.length > 1 ? { multiple: true } : {}) };
 }
 
 /** A question as an agent asks it through a tool: with its own pick, the options it would choose if it had to decide, and why. */

@@ -259,6 +259,16 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.options).toEqual([long, 'Verwerfen']);
   });
 
+  test('a long question reaches the owner whole', () => {
+    const c = manual();
+    workers.start(c.id);
+    const script = Array.from({ length: 40 }, (_, i) => `${i + 1} Szene: „Ein Satz für den Sprecher, lang genug zum Gegenlesen.“`).join('\n\n');
+    expect(script.length).toBeGreaterThan(2000);
+    runtime.last.call('ask', { question: `Hier das Sprechskript:\n\n${script}`, options: ['Passt'] });
+    expect(board.item(c.id)!.question!.text).toBe(`Hier das Sprechskript:\n\n${script}`);
+    expect(board.events(c.id).at(-1)!.text).toContain('40 Szene');
+  });
+
   test('a question may let the owner choose several options', () => {
     const c = manual();
     workers.start(c.id);
