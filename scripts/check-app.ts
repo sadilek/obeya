@@ -2,7 +2,7 @@
 // (WKWebView, WebView2, WebKitGTK): what the page needs from the webview, and how the shell starts,
 // shares and stops Obeya.
 //
-//   bun scripts/check-app.ts <the app's program> [--fake-mic] [--keep]
+//   bun scripts/check-app.ts <the app's program> [--fake-mic] [--screenshot <png>] [--keep]
 //
 // The program is Obeya.app/Contents/MacOS/obeya, obeya.exe where the installer put it, the AppImage,
 // or /usr/bin/obeya from the .deb. On a scratch repository and a scratch home it checks:
@@ -11,6 +11,7 @@
 //     voice.tsx does (--fake-mic gives WebView2 Chromium's fake device, for a machine without one;
 //     on Linux a PulseAudio source is needed, a null sink's monitor will do);
 //   - a demo video (H.264 and AAC in MP4, as the demo skill renders it) plays;
+//   - the settings offer "Im Browser öffnen" (--screenshot takes the window with them open);
 //   - starting the app a second time brings the first to the front and ends;
 //   - `POST /api/stop` ends the server and then the app, and the home has no entry left;
 //   - with an Obeya already running on the home (started from a terminal), the app opens a window
@@ -26,7 +27,7 @@ import { dirname, join, resolve } from 'node:path';
 const args = process.argv.slice(2);
 const programArg = args.find((a) => !a.startsWith('--'));
 if (!programArg) {
-  console.error('usage: bun scripts/check-app.ts <the app\'s program> [--fake-mic] [--keep]');
+  console.error('usage: bun scripts/check-app.ts <the app\'s program> [--fake-mic] [--screenshot <png>] [--keep]');
   process.exit(2);
 }
 const program = resolve(programArg);
@@ -121,6 +122,11 @@ try {
 } catch (e) {
   out.video = { ...out.video, ok: false, error: String(e) };
 }
+// the settings, opened as the owner would, offer the browser
+const button = [...document.querySelectorAll('#bar button')].find((b) => /^(Konfiguration|Configuration)$/.test(b.textContent));
+button?.click();
+await new Promise((r) => setTimeout(r, 1000));
+out.browserButton = [...document.querySelectorAll('button')].some((b) => /^(Im Browser öffnen|Open in browser)$/.test(b.textContent));
 await report(out);
 `;
 const harness = Bun.serve({
@@ -158,6 +164,31 @@ const entry = () => {
 const startApp = () => Bun.spawn([program], { env, stdout: 'ignore', stderr: 'ignore' });
 const answers = async (url: string) => (await fetch(`${url}/api/canvases`, { signal: AbortSignal.timeout(2000) }).catch(() => null))?.ok === true;
 
+/** The app's window (macOS), else the screen, as a PNG. */
+async function screenshot(pid: number, file: string) {
+  await sleep(1500);
+  let cmd: string[];
+  if (process.platform === 'darwin') {
+    const jxa = `ObjC.import('CoreGraphics');
+      const list = ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0, 0));
+      let id = '';
+      for (let i = 0; i < list.count; i++) {
+        const w = list.objectAtIndex(i);
+        if (w.objectForKey('kCGWindowOwnerPID').js === ${pid} && w.objectForKey('kCGWindowLayer').js === 0) id = String(w.objectForKey('kCGWindowNumber').js);
+      }
+      id`;
+    const id = Bun.spawnSync(['osascript', '-l', 'JavaScript', '-e', jxa]).stdout.toString().trim();
+    expect(id, 'no window of the app');
+    cmd = ['screencapture', '-x', '-o', `-l${id}`, file];
+  } else if (win) {
+    const ps = `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $p = New-Object System.Drawing.Bitmap $b.Width, $b.Height; [System.Drawing.Graphics]::FromImage($p).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size); $p.Save('${file}')`;
+    cmd = ['powershell', '-NoProfile', '-Command', ps];
+  } else cmd = ['import', '-window', 'root', file];
+  const r = Bun.spawnSync(cmd, { stderr: 'pipe' });
+  expect(r.exitCode === 0 && existsSync(file), r.stderr.toString() || 'no file');
+  return file;
+}
+
 let app: Subprocess | undefined;
 let server: Subprocess | undefined;
 try {
@@ -191,6 +222,9 @@ try {
       expect(v.ok, v.error ?? `stood at ${v.currentTime} s`);
       return `canPlayType "${v.canPlay}", ${v.currentTime?.toFixed(1)} s in 1.5 s`;
     });
+    await check('the settings offer "Im Browser öffnen"', () => expect(page.browserButton, 'no such button'));
+    const shot = args[args.indexOf('--screenshot') + 1];
+    if (args.includes('--screenshot') && shot) await check('a screenshot of the window', () => screenshot(app!.pid, resolve(shot)));
   }
   await check('starting the app again leaves the first in front and ends', async () => {
     const pid = entry()?.pid;

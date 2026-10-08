@@ -2,7 +2,7 @@
 // bundled into what installs on this platform. Unsigned (signing is the release's job): a DMG on
 // macOS (the app inside signed ad hoc), an NSIS installer on Windows, an AppImage and a .deb on Linux.
 //
-//   bun scripts/build-app.ts [<target>] [--bundles <dmg,app,nsis,appimage,deb>] [--debug]
+//   bun scripts/build-app.ts [<target>] [--bundles <dmg,app,nsis,appimage,deb>] [--debug] [--verbose]
 //
 // The target is this machine's by default (see scripts/build.ts); another needs Rust's target for it
 // and Tauri's tools for cross-building. Needs Rust (rustup) and, on Linux, WebKitGTK's development
@@ -60,7 +60,7 @@ rmSync(join(APP, 'staged'), { recursive: true, force: true });
 cpSync(join(built, 'resources'), join(APP, 'staged', 'resources'), { recursive: true });
 
 const cross = target !== here;
-const tauri = [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : [])];
+const tauri = [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : [])];
 run(tauri, APP, { CI: 'true' });
 
 const out = join(APP, 'target', ...(cross ? [triple] : []), args.includes('--debug') ? 'debug' : 'release', 'bundle');

@@ -3,7 +3,7 @@
   "productName": "Obeya",
   "mainBinaryName": "obeya",
   "version": "../package.json",
-  "identifier": "si.obeya.app",
+  "identifier": "si.obeya",
   "build": { "frontendDist": "ui" },
   "app": { "windows": [], "security": { "csp": null } },
   "bundle": {
