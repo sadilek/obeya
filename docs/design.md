@@ -409,6 +409,11 @@ the owner's language (`src/core/locale.ts`).
   `obeya` starts the canvases `~/.obeya/canvases.json` lists, `obeya --config <file>` those of
   another file. Without that file (the first start) it serves no canvas, and the page is the
   setup assistant (see Setup assistant).
+  One Obeya per home (`src/server/instance.ts`): a running one writes its port, its
+  pid (the supervisor's) and whether the app started it into `server.json` in its home, and a
+  second start on that home says where the first runs and ends, instead of serving the same
+  database beside it. An entry whose process is gone, or alive but silent for 5 s (another
+  program that got the pid), counts as stale.
 - **Setup assistant** (`src/server/machine.ts`, `src/ui/setup.tsx`) — one list of what Obeya
   needs on this machine, in four parts: *Agenten* (needed: Claude Code, its login, git, and git's
   name and e-mail, without which an agent's commit fails), *Pull Requests* (gh and its login:
@@ -467,6 +472,31 @@ the owner's language (`src/core/locale.ts`).
   shared, once on the machine's Claude Code and once on the SDK's. All of it passed on macOS
   arm64 and on GitHub's Windows x64, Ubuntu x64 and Ubuntu arm64 runners (2026-10-07). The
   installable app around it is planned in `docs/plan/app.md`.
+- **App** — a Tauri 2 shell (`app/`, Rust) around the compiled server, which is its sidecar
+  (`obeya-server` beside the shell's program; on Linux among the resources). `bun run build:app`
+  (`scripts/build-app.ts`) builds it for this machine: a DMG on macOS (signed ad hoc, with the
+  hardened runtime and the entitlements Bun's JIT needs: without them the server fails at start
+  for lack of `SharedArrayBuffer`), an NSIS installer on Windows (per user, no admin rights), an
+  AppImage and a .deb on Linux (`app/linux.Dockerfile` builds and checks them in a container on a
+  Mac). The shell opens a window on the Obeya that runs on the home, or starts the server (on
+  4417, else a free port) and shows "Obeya startet …" until it answers; one it started (or an
+  earlier run of the app did) it stops when the app quits, through `POST /api/stop` like Ctrl-C,
+  and the window shows what the stop waits for; quitting again goes ahead at once. The app ends
+  when its server does; a server that ends unasked shows its log's last lines in a dialog. One
+  started from a terminal it leaves running. A second start of the app brings the window to the
+  front. On a Mac closing the window keeps the app in the Dock, and the window has no title bar:
+  the canvas's bar takes the traffic lights and moves the window (`data-tauri-drag-region`; the
+  page may call only that and the zoom, `app/capabilities/window.json`). Links to anything but
+  the canvas and new windows open in the default browser, which is also how "Im Browser öffnen"
+  in the settings (and the Mac's File menu) works; the page finds `window.obeyaApp`. The page
+  gets the microphone without a prompt of the webview's (the system asks once for the app;
+  WebKitGTK has media streams turned on by the shell). Downloads go into the Downloads folder.
+  The server's output goes to `app.log` in the home. linuxdeploy sets the library path of every
+  program in an AppDir, which breaks Bun's binary (its code sits after the ELF's end), so the
+  AppImage gets the server after linuxdeploy and is packed again. `bun scripts/check-app.ts
+  <program>` checks an installed app in its webview: the canvas in the window, a microphone
+  recording with `MediaRecorder`, an H.264/AAC video playing, the browser button, a second start,
+  the stop over HTTP, and the app beside an Obeya started from a terminal.
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
@@ -761,7 +791,8 @@ the owner's language (`src/core/locale.ts`).
   the drafts in their text fields and where the demo video stood; the new page opens them again
   without flights or unfold and puts positions and drafts back while their content loads
   (`src/ui/keep.ts`). The camera is kept anyway.
-- **Stopping** — Ctrl-C or SIGTERM (with or without `--dev`) stops Obeya the way a restart goes,
+- **Stopping** — Ctrl-C, SIGTERM or `POST /api/stop` (the app; Windows has no SIGTERM), with or
+  without `--dev`, stops Obeya the way a restart goes,
   only nothing starts again: the workers in the middle of a turn are told Obeya is about to stop
   and pause at a safe point, and Obeya ends once none is (at most 15 minutes). The bar shows it
   ("Beenden wartet auf N Agenten", "Jetzt beenden"), and a second Ctrl-C ends it at once (the

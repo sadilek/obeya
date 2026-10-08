@@ -12,7 +12,7 @@
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl wget file git unzip ca-certificates rsync xz-utils \
+    build-essential curl wget file git unzip ca-certificates rsync xz-utils patchelf \
     libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
     gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pulseaudio \
     xvfb xauth pulseaudio dbus-x11 ffmpeg x11-apps imagemagick \

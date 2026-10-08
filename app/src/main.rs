@@ -203,7 +203,7 @@ fn serve(app: AppHandle, obeya: Arc<Obeya>) {
   };
   if let Some((port, owned)) = running(&home) {
     attach(port, owned);
-    return watch(&app, &obeya);
+    return watch(&app, &obeya, &home);
   }
   let Some(log) = log_file(&home) else {
     return fail(
@@ -231,7 +231,7 @@ fn serve(app: AppHandle, obeya: Arc<Obeya>) {
       // another start on this home got there first: the server said so and ended
       if let Some((port, owned)) = running(&home) {
         attach(port, owned);
-        return watch(&app, &obeya);
+        return watch(&app, &obeya, &home);
       }
       return fail(&app, ended(status, &log.1));
     }
@@ -262,7 +262,7 @@ fn ended(status: std::process::ExitStatus, log: &Path) -> String {
 }
 
 /// An Obeya the shell did not start in this run: when it is the app's, the app ends with it.
-fn watch(app: &AppHandle, obeya: &Obeya) {
+fn watch(app: &AppHandle, obeya: &Obeya, home: &Path) {
   if !obeya.owned.load(Ordering::SeqCst) {
     return;
   }
@@ -271,8 +271,9 @@ fn watch(app: &AppHandle, obeya: &Obeya) {
   loop {
     thread::sleep(Duration::from_secs(1));
     silent = if answers(port) { 0 } else { silent + 1 };
-    // a restart takes seconds; a stop the owner asked for ends it for good
-    if silent > 0 && obeya.stopping.load(Ordering::SeqCst) || silent > 30 {
+    // a restart takes seconds and keeps the home's entry; a stop ends it for good and gives the entry up
+    let stopped = obeya.stopping.load(Ordering::SeqCst) || !home.join("server.json").exists();
+    if silent > 0 && stopped || silent > 30 {
       return app.exit(0);
     }
   }
@@ -406,9 +407,17 @@ fn window(app: &AppHandle, obeya: Arc<Obeya>) -> tauri::Result<WebviewWindow> {
 fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
   let menu = Menu::default(app)?;
   let browser = MenuItem::with_id(app, "browser", say("Im Browser öffnen", "Open in Browser"), true, Some("CmdOrCtrl+Shift+B"))?;
+  let items = menu.items()?;
   // the default menu's File menu, after the app's own
-  if let Some(MenuItemKind::Submenu(file)) = menu.items()?.get(1) {
+  if let Some(MenuItemKind::Submenu(file)) = items.get(1) {
     file.insert(&browser, 0)?;
+  }
+  // the default Quit (the app menu's last item) ends the app at once, which a Mac does not let an app
+  // put off: this one stops Obeya first, as closing the window does elsewhere
+  if let Some(MenuItemKind::Submenu(own)) = items.first() {
+    let n = own.items()?.len();
+    own.remove_at(n - 1)?;
+    own.append(&MenuItem::with_id(app, "quit", say("Obeya beenden", "Quit Obeya"), true, Some("CmdOrCtrl+Q"))?)?;
   }
   Ok(menu)
 }
@@ -425,11 +434,14 @@ fn main() {
       if cfg!(target_os = "macos") {
         app.set_menu(menu(&handle)?)?;
       }
-      app.on_menu_event(|app, event| {
+      let for_menu = for_setup.clone();
+      app.on_menu_event(move |app, event| {
         if event.id() == "browser" {
           if let Some(url) = main_window(app).and_then(|w| w.url().ok()) {
             open_in_browser(url.as_str());
           }
+        } else if event.id() == "quit" && !quit(app, &for_menu) {
+          app.exit(0);
         }
       });
       window(&handle, for_setup.clone())?;
@@ -462,6 +474,11 @@ fn main() {
     }
     #[cfg(target_os = "macos")]
     RunEvent::Reopen { .. } => show(app),
+    // ended without asking (the Dock's Quit, logging out): the server is told on the way out and
+    // stops on its own once its workers paused
+    RunEvent::Exit if obeya.owned.load(Ordering::SeqCst) && !obeya.stopping.load(Ordering::SeqCst) => {
+      http(obeya.port.load(Ordering::SeqCst), "POST", "/api/stop");
+    }
     _ => {}
   });
 }
