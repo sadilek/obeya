@@ -1670,7 +1670,11 @@ the repository; the copy on the project is only for the archive).
   doc, and the directory's own watch then reports nothing (M5 stayed on the canvas until a
   restart). Bun before 1.3.14 on Linux delivers nothing to a watch on a directory that was
   watched before, then removed and created again (oven-sh/bun#42570): such a directory is polled
-  every half second instead. Reading old content
+  every half second instead. On macOS Bun has one FSEvents stream for all watches of the process
+  and starts it afresh, "since now", for each new watch: until it is live (up to 200 ms on a busy
+  machine, more when many open at once) the events of every watch are lost. A watch there follows
+  its path, so it stays open while it is wanted instead of being opened again with each change,
+  which lost a second change right after the first (2026-10-08). Reading old content
   from the git history instead was rejected as fragile (PRs and clones, renames); it served
   only once, to backfill Obeya's own projects from before
   (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a renamed doc makes a new

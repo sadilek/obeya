@@ -33,7 +33,8 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): PlanDoc[] 
  */
 export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => void): () => void {
   const dir = join(repoPath, adapter.planDocs.dir);
-  let stops: (() => void)[] = [];
+  /** The open watches, by directory and what of it they report. */
+  const open = new Map<string, () => void>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const fire = () => {
     clearTimeout(timer);
@@ -43,11 +44,10 @@ export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => 
     }, 150);
   };
   const arm = () => {
-    stops.forEach((stop) => stop());
-    stops = [];
     for (let d = dir; d.length > repoPath.length; d = dirname(d)) if (!existsSync(d) && watchedInodes.has(d)) recreated.add(d);
+    const wanted = new Map<string, () => () => void>();
     if (existsSync(dir))
-      stops.push(
+      wanted.set(`${dir}/*.md`, () =>
         watchDir(dir, (file) => {
           if (file && !file.endsWith('.md')) return;
           fire();
@@ -58,19 +58,34 @@ export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => 
     let above = dirname(dir);
     while (!existsSync(above) && above.length > repoPath.length) [below, above] = [above, dirname(above)];
     const name = basename(below);
-    stops.push(
+    wanted.set(below, () =>
       watchDir(above, (file) => {
         if (file && file !== name) return;
         fire();
       }),
     );
+    for (const [key, stop] of open)
+      if (!watchKeepsPath || !wanted.has(key)) {
+        stop();
+        open.delete(key);
+      }
+    for (const [key, start] of wanted) if (!open.has(key)) open.set(key, start());
   };
   arm();
   return () => {
     clearTimeout(timer);
-    stops.forEach((stop) => stop());
+    open.forEach((stop) => stop());
   };
 }
+
+/**
+ * On macOS a watch follows its path, so it stays good when its directory is removed and created
+ * again, and is kept open while it is wanted: Bun has one FSEvents stream for all watches of the
+ * process and starts it afresh for each new one, which drops the events of every watch until the
+ * new stream is live (up to 200 ms on a busy machine, more when many open at once). Elsewhere a
+ * watch belongs to the directory itself and is live at once, so it is opened afresh.
+ */
+const watchKeepsPath = process.platform === 'darwin';
 
 /**
  * Bun before 1.3.14 on Linux delivers no events for a directory at a path that was watched before
