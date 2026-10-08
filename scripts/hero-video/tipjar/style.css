@@ -1,0 +1,10 @@
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4efe6; font: 24px/1.4 system-ui, sans-serif; color: #2b2620; }
+.calc { background: #fff; border-radius: 20px; padding: 40px 52px; width: 460px; box-shadow: 0 12px 36px rgba(60, 40, 10, 0.12); }
+h1 { margin: 0 0 24px; font-size: 38px; }
+label { display: block; margin: 12px 0; }
+input[type='text'] { width: 100%; box-sizing: border-box; font: inherit; padding: 10px 14px; margin-top: 6px; border: 1px solid #d8cfc0; border-radius: 10px; }
+.tips { border: 0; padding: 0; margin: 20px 0; display: flex; gap: 20px; }
+.tips legend { padding: 0; margin-bottom: 6px; }
+.tips label { margin: 0; }
+.result { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 24px 0 0; padding-top: 20px; border-top: 1px solid #eee4d4; }
+.result dd { margin: 0; font-weight: 600; text-align: right; }

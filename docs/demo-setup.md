@@ -44,7 +44,8 @@ The voice is chosen in Obeya's settings ("Demos"); "Anhören" plays a sentence i
 - **macOS `say`**: on a Mac only, nothing to install, clearly more synthetic.
 - **A hosted service**: Gemini, OpenAI, ElevenLabs or Azure, with the API key in its environment
   variable (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `AZURE_SPEECH_KEY`) or in a
-  key file named in the settings.
+  key file named in the settings. ElevenLabs uses `eleven_multilingual_v2`;
+  `DEMO_ELEVENLABS_MODEL` names another (`eleven_v4` reads audio tags such as `[short pause]`).
 - **Your own**: a command (the text on stdin, the WAV written to `$DEMO_WAV`) or an HTTP endpoint
   (POST `{"text", "language"}` as JSON, audio back). Tick "Das ist meine eigene Stimme" when it
   speaks in your voice; the narration is then in the first person.

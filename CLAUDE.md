@@ -42,7 +42,7 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
   voice clone (voice ID `IErGHDQU4vPqicCi8dwR`), not the voice of the demo settings. Its API key is in
   `.voice/elevenlabs.key` of the main checkout (`/Users/sadilek/dev/obeya`, gitignored); render with
   an `OBEYA_HOME` whose `demo.json` names both (`voice: elevenlabs`, `voiceName`, `keyFile`), as
-  `~/demos/obeya-hero/home-eleven/` does. Credits are limited: only for public videos, never as
-  Obeya's own demo voice.
+  `scripts/hero-video/render.ts` sets up for the hero video (its README says how to change and
+  re-render it). Credits are limited: only for public videos, never as Obeya's own demo voice.
 - Commit directly to `main`; this repo uses no feature branches or pull requests. An Obeya worker
   is the exception: it commits on its card's branch, and Obeya lands that branch on `main`.

@@ -55,8 +55,9 @@ services are off the table for now (see Background).
 - *Hero video* (W9): a real run, recorded with Obeya's demo pipeline on a scratch canvas with a
   small tip calculator (Tipjar): an idea by voice, a real worker building it and recording its
   demo, the approval landing it on main; narrated in English in the owner's ElevenLabs voice clone (see CLAUDE.md),
-  about a minute and a half. Its script, stage and the Tipjar app live in
-  `~/demos/obeya-hero/` on the owner's machine, not in git. The video and its captions are assets
+  about two minutes. Its narration, scenes, stage and the Tipjar app are in
+  `scripts/hero-video/`, whose README says how to change, re-render and publish it; the video
+  itself is not in git. The video and its captions are assets
   `hero.mp4` and `hero.vtt` of the GitHub release `site-media`; the Pages workflow fetches them into
   `site/media/` before it publishes, so obeya.si serves them itself (no third party, no tracking)
   and git holds no video. Opened from the file, the site shows the poster without the video.
@@ -94,8 +95,8 @@ services are off the table for now (see Background).
 
 4. **Upload the hero video** as a release that holds only it (the workflow fails without it):
    `gh release create site-media hero.mp4 hero.vtt --title "Site media" --notes "Video for obeya.si, fetched by the Pages workflow." --latest=false`,
-   from `~/demos/obeya-hero/site-media/`, which holds the rendered video and captions under
-   these names. A new render replaces them with
+   from the render's directory (`scripts/hero-video/README.md`), with the video and captions
+   under these names. A new render replaces them with
    `gh release upload site-media hero.mp4 hero.vtt --clobber`, then `gh workflow run pages.yml`.
 5. **Push `main`** to GitHub. The workflow runs and publishes to sadilek.github.io/obeya until the
    domain is set (the site uses relative paths, so it works there too).

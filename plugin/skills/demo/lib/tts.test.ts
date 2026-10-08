@@ -72,6 +72,14 @@ describe('a voice that stays loaded', () => {
     expect(existsSync(join(dir, 'log'))).toBe(false);
   });
 
+  test('gets the script without its audio tags, which only ElevenLabs v3 and v4 read', () => {
+    writeFileSync(join(dir, 'jobs.json'), JSON.stringify([{ id: 's0', text: 'Eins. [short pause] Zwei.' }]));
+    expect(narrate().status).toBe(0);
+    expect(log()).toEqual(['start', 'de:Eins. Zwei.', 'end']);
+    const r = python(['-c', `import sys; sys.path.insert(0, ${JSON.stringify(LIB)}); from tts import spoken_letters; print(spoken_letters("Then [long pause] it starts.", "en"))`]);
+    expect(r.stdout.trim()).toBe('thenitstarts');
+  });
+
   test('a sample starts it once and ends it', () => {
     const r = python([join(LIB, 'tts.py'), '--sample', join(dir, 'spec.json'), 'en', 'Hello.', join(dir, 'sample.wav')], { FAKE_LOG: join(dir, 'log') });
     expect(r.status).toBe(0);

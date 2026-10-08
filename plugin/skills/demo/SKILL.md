@@ -138,6 +138,9 @@ is presented without "I" or "we".
   jump ("Etwas später …"). A wait under five seconds stays in the video, without a flash.
 - Write large numbers as words ("about fifteen thousand two hundred euros"); small ones as digits
   are fine. Avoid abbreviations the voice would spell out.
+- Audio tags in square brackets (`[short pause]`, `[long pause]`) go to ElevenLabs v3 and v4
+  (`DEMO_ELEVENLABS_MODEL=eleven_v4`), which read them; every other voice gets the text without
+  them, and captions and listening back leave them out.
 
 Director helpers (`d`): `goto`, `click`, `type` (clears, then types at reading pace; `''`
 clears), `drag(from, to, ms?)` (onto an element or a point, the pointer moving along),

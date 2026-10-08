@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tipjar</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="calc">
+    <h1>Tipjar</h1>
+    <label>Bill <input id="bill" type="text" inputmode="decimal" value="84.50"></label>
+    <fieldset class="tips">
+      <legend>Tip</legend>
+      <label><input type="radio" name="tip" value="10"> 10 %</label>
+      <label><input type="radio" name="tip" value="15" checked> 15 %</label>
+      <label><input type="radio" name="tip" value="20"> 20 %</label>
+    </fieldset>
+    <dl class="result">
+      <dt>Tip</dt><dd id="tip"></dd>
+      <dt>Total</dt><dd id="total"></dd>
+    </dl>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

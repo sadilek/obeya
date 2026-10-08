@@ -11,7 +11,7 @@ import path from 'node:path';
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { type NarrationLanguage, readDemoSettings, withVoice } from './settings.ts';
 import { checkSetup, describeSetup, whisperKit } from './setup.ts';
-import { CLOCK, type Cut, type Frame, frameDurations, laterLabel, onPaintTime, readClock, videoTime } from './timeline.ts';
+import { CLOCK, type Cut, type Frame, frameDurations, laterLabel, onPaintTime, readClock, untagged, videoTime } from './timeline.ts';
 import { TTS_LOCK, voiceSpec } from './voices.ts';
 
 export interface Scene {
@@ -629,7 +629,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   ]);
 
   const vtt = ['WEBVTT', ''];
-  marks.forEach((m, i) => vtt.push(`${vttTime(m.speechStart)} --> ${vttTime(m.speechEnd)}`, spec.scenes[i]!.say, ''));
+  marks.forEach((m, i) => vtt.push(`${vttTime(m.speechStart)} --> ${vttTime(m.speechEnd)}`, untagged(spec.scenes[i]!.say), ''));
   fs.writeFileSync(path.join(outDir, 'captions.vtt'), vtt.join('\n'));
 
   // One still per scene, taken just before it ends: what the agent checks against the narration.
@@ -649,7 +649,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   fs.writeFileSync(path.join(outDir, 'index.html'), reportPage(spec, marks, narrated));
   fs.writeFileSync(
     path.join(work, 'narration-check.json'),
-    JSON.stringify(clips.map((c, i) => ({ scene: i + 1, said: spec.scenes[i]!.say, heard: c.heard, match: c.match })), null, 2),
+    JSON.stringify(clips.map((c, i) => ({ scene: i + 1, said: untagged(spec.scenes[i]!.say), heard: c.heard, match: c.match })), null, 2),
   );
   console.log(`\n${Math.round(total)} s video → ${path.join(outDir, 'index.html')}`);
   console.log('\nreview (narration said vs. heard: .work/narration-check.json):');

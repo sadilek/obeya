@@ -23,6 +23,11 @@ export interface Frame {
   height: number;
 }
 
+/** A narration as it is shown (captions) and checked: without audio tags ("[short pause]"), which only some voices read. */
+export function untagged(say: string) {
+  return say.replace(/\[[^\]]*\]/g, ' ').replace(/\s{2,}/g, ' ').trim();
+}
+
 /** The clock strip `overlay.js` paints: its cells, their size and where it sits. */
 export const CLOCK = { bits: 24, cell: 3, left: 2, bottom: 3 };
 

@@ -164,14 +164,26 @@ def english_number(n: int) -> str:
     return str(n)
 
 
+#: An audio tag in the script ("[short pause]"): read by ElevenLabs v3 and v4, not said.
+AUDIO_TAG = re.compile(r"\[[^\]]*\]")
+#: Models that read audio tags; other voices get the script without them.
+TAG_MODELS = ("eleven_v3", "eleven_v4")
+
+
+def untagged(text: str) -> str:
+    """The script without its audio tags, for a voice that would say them and for comparing."""
+    return re.sub(r"\s{2,}", " ", AUDIO_TAG.sub(" ", text)).strip()
+
+
 def spoken_letters(text: str, language: str = "de") -> str:
     """The letters a listener hears, for comparing a script with its transcript.
 
     Whisper writes numbers as digits ("15.200") where the script spells them out, and splits
     compounds ("oder Berg"); neither is a defect of the clip. So digits become words, and spaces
     and punctuation are dropped before comparing. "and" inside English numbers is said by some
-    and not by others, so it is dropped as well.
+    and not by others, so it is dropped as well. Audio tags are not said.
     """
+    text = untagged(text)
     if language == "de":
         text = re.sub(r"(?<=\d)\.(?=\d{3}\b)", "", text)
         text = re.sub(r"\d+", lambda m: german_number(int(m.group())), text)
@@ -372,6 +384,7 @@ class HttpVoice:
             sys.exit(f"no {'endpoint' if service == 'http' else 'region'} for the {service} voice in the demo settings")
         self._key = key
         model = {"gemini": GEMINI_MODEL, "openai": OPENAI_MODEL, "elevenlabs": ELEVENLABS_MODEL}.get(service, "")
+        self.reads_tags = service == "elevenlabs" and model in TAG_MODELS
         self.tag = f"{service}|{self._url}|{model}|{self._voice}|{self._style if service in ('gemini', 'openai') else ''}"
 
     def _post(self, url: str, body: bytes, headers: dict) -> bytes:
@@ -577,6 +590,9 @@ def close(voice) -> None:
 def narrate(voice, language: str, jobs: list[dict], out: Path, ear: Ear) -> None:
     voice_tag = voice.tag
 
+    def script(text: str) -> str:
+        return text if getattr(voice, "reads_tags", False) else untagged(text)
+
     def score(text: str, heard: str) -> float:
         a, b = spoken_letters(text, language), spoken_letters(heard, language)
         return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
@@ -592,7 +608,7 @@ def narrate(voice, language: str, jobs: list[dict], out: Path, ear: Ear) -> None
         if (out / f"{key}.wav").exists() or key in first_takes:
             continue
         try:
-            voice.synthesize(job["text"], out / f"{key}.take1.wav")
+            voice.synthesize(script(job["text"]), out / f"{key}.take1.wav")
         except QuotaExhausted as exhausted:
             sys.exit(f"{exhausted}; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
         first_takes.add(key)
@@ -610,7 +626,7 @@ def narrate(voice, language: str, jobs: list[dict], out: Path, ear: Ear) -> None
                 candidate = out / f"{key}.take{take}.wav"
                 if take > 1:
                     try:
-                        voice.synthesize(job["text"], candidate)
+                        voice.synthesize(script(job["text"]), candidate)
                     except QuotaExhausted as exhausted:
                         print(f"{job['id']}: {exhausted}, keeping take {take - 1}", file=sys.stderr)
                         break
