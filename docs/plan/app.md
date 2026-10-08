@@ -23,7 +23,7 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   (design: Self-update). Or from one file (W1, design: One file): `bun run build` compiles the
   server for the five targets, with `resources/` beside it; the binary needs no Bun and no
   checkout and never restarts for new code. `package.json` has the version (0.1.0), which the
-  settings show. There is no CI workflow in the repository yet.
+  settings show.
 - *Checking the machine*: the settings sheet already checks voice (`src/server/voice-setup.ts`:
   Whisper, ffmpeg, uv, the voice) and demos (`plugin/skills/demo/lib/setup.ts`: Node, Playwright
   and a browser, ffmpeg, uv, the voice, Whisper), each missing piece with how to install it on
@@ -105,6 +105,18 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   "Get started" has a download per platform beside the source. Both link the newest release's
   assets by fixed names (see Builds in CI) and say that the first release is on its way, a line
   that goes with the first release.
+- *Builds in CI* (W3, 2026-10-08, design: Builds): `.github/workflows/build.yml` on GitHub's
+  runners for the five targets, then the tests and the type check on Linux; on a tag a draft
+  release. Checked on a temporary branch (`w3-ci-check`, runs 37820744710, 37822095146,
+  37823578049) with a throwaway updater key: all five built and their servers passed the smoke
+  test, the whole run in about ten minutes, and the draft got 16 files (DMG and update archive for both Macs,
+  the NSIS installer, AppImage and .deb for both Linux, a `.sig` for each update, `SHA256SUMS`,
+  `latest.json` naming the five platforms); the arm64 DMG matched its checksum and held the app
+  signed ad hoc with its server. Not tried: a real tag (the release job's tag check and
+  `--verify-tag`), and the update archives against the updater, which W5 brings. `bun test` on
+  Linux has one test failing that the Mac passes: `watchPlanDocs` sees no change in a plan
+  directory that was removed and made again (Bun 1.3.12 on Linux gives a new watch on such a
+  path no events), so the test job stays red until that is fixed.
 
 ## Design
 
@@ -183,13 +195,23 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
 
 ### Builds in CI
 
-- GitHub Actions with `tauri-action`, a matrix of macOS arm64 and x64, Windows x64, Linux x64 and
-  arm64 (GitHub's ARM runners), each compiling the server for its own platform (no cross
-  compilation, so signing and a smoke test run where it was built). A tag `v*` builds, signs and
-  uploads everything into a draft GitHub Release with `latest.json` for the updater; the owner
-  publishes it. A push to `main` that changes code builds unsigned and runs a smoke test (the
-  binary starts a scratch canvas and answers `/api/canvases`), so a broken build shows before a
-  tag. `bun test` and `bun run typecheck` run in the same workflow on Linux.
+- GitHub Actions (`.github/workflows/build.yml`), a matrix of macOS arm64 and x64, Windows x64,
+  Linux x64 and arm64 (GitHub's ARM runners), each building with `scripts/build-app.ts` for its
+  own platform (no cross compilation, so signing and a smoke test run where it was built). Not
+  `tauri-action`: the AppImage needs the server put in after linuxdeploy (see The app), which
+  `build-app.ts` already does. A push to `main` that changes code builds unsigned and runs
+  `scripts/check-binary.ts` on the compiled server (a scratch canvas answers, with the version,
+  a repository's own adapter, Playwright and the adapter kit from the resources), so a broken
+  build shows before a tag; the installers stay a week as the run's artifacts. `bun test` and
+  `bun run typecheck` run in the same workflow on Linux. A tag `v<version>` (it must match
+  `package.json`) does the same and then uploads everything into a draft GitHub Release with
+  `SHA256SUMS` and `latest.json` (`scripts/release.ts`); the owner publishes it.
+- The updater's artifacts and their signatures are made by `build-app.ts` itself when the
+  updater's private key is in the environment (`TAURI_SIGNING_PRIVATE_KEY`, a repository secret
+  that W5 creates, read on tags only): `Obeya.app.tar.gz` on macOS (renamed per architecture in
+  the release), the NSIS installer, the AppImage. Tauri's own `createUpdaterArtifacts` would need
+  the updater plugin's configuration, and would sign the AppImage before the server is in it.
+  Without the key, `latest.json` names no platform.
 - The release's installers carry fixed names, which the README and the site link through
   `releases/latest/download/`: `Obeya-macOS-arm64.dmg`, `Obeya-macOS-x64.dmg`,
   `Obeya-Windows-x64-setup.exe`, `Obeya-Linux-x86_64.AppImage`, `Obeya-Linux-aarch64.AppImage`,
@@ -276,7 +298,7 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
   per home (port and pid in the home), stop through HTTP like Ctrl-C, single instance, "Im Browser
   öffnen". Microphone and demo video checked in WKWebView, WebView2 and WebKitGTK. Unsigned DMG,
   NSIS installer, AppImage and .deb built locally.
-- [ ] **W3:** Builds in CI: a GitHub Actions workflow with the platform matrix. On a push to `main`
+- [x] **W3:** Builds in CI: a GitHub Actions workflow with the platform matrix. On a push to `main`
   that changes code, unsigned builds with a smoke test plus `bun test` and `bun run typecheck`; on
   a tag `v*`, a draft release with all installers, checksums and `latest.json`.
 - [ ] **W4:** Signing and notarisation. macOS: Developer ID, hardened runtime with the Bun

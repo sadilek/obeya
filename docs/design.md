@@ -570,6 +570,20 @@ the owner's language (`src/core/locale.ts`).
   report, a tap, a shortcut, and a command that reaches Obeya and comes back to the panel. A
   restart is not held off while the shell records or reads a command (the page holds it for its
   own); a command cut off by one shows „Das hat nicht geklappt“ in the panel.
+- **Builds** — `.github/workflows/build.yml` builds the app on GitHub's runners, each platform on
+  its own (macOS arm64 and x64, Windows x64, Linux x64 and arm64, the AppImage on Ubuntu 22.04
+  for its glibc), with `scripts/build-app.ts`, and checks the compiled server there with
+  `scripts/check-binary.ts`; `bun run typecheck` and `bun test` run beside it on Linux (with uv
+  and ffmpeg, which the demo voice's tests use). It runs on a push to `main` that changes code
+  (the paths of `INERT` in the self-update left out), the installers kept a week as the run's
+  artifacts, and on a tag `v<version>`, which must be `package.json`'s: then a draft GitHub
+  Release gets every installer, the updater's archives with their signatures, `SHA256SUMS` and
+  `latest.json` (`scripts/release.ts`), and the owner publishes it. The updater's archives are
+  signed by `build-app.ts` itself when `TAURI_SIGNING_PRIVATE_KEY` is set (a repository secret,
+  read on tags only): `Obeya.app.tar.gz` packed from the app on macOS, the NSIS installer, the
+  AppImage after the server is in it. Tauri's own `createUpdaterArtifacts` needs the updater
+  plugin's configuration and would sign the AppImage without the server. A run takes about ten
+  minutes (2026-10-08).
 - **Configuration** — the canvases with their repositories (path, adapter, clones), seen and edited
   in the "Konfiguration" sheet: each canvas shows its id and whether it runs, each repository its id,
   adapter, whether workers use clones or worktrees, and the command that shares its demos (empty:
