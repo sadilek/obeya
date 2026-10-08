@@ -8,10 +8,12 @@
     "start": "bun src/server/main.ts",
     "dev": "bun --hot src/server/main.ts --dev",
     "build": "bun scripts/build.ts",
+    "build:app": "bun scripts/build-app.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
     "@types/bun": "latest",
     "@types/d3-contour": "^3.0.6",
     "@types/react": "^19.3.0",

@@ -9,6 +9,13 @@ import { api, ApiError, reload } from './api';
 import { demoState, megabytes, PLATFORMS, SetupList, voiceState } from './setup';
 import { errorText, t } from './strings';
 
+declare global {
+  interface Window {
+    /** Set by the app (app/src/main.rs) in its window; absent in a browser. */
+    obeyaApp?: { version: string };
+  }
+}
+
 type Checked = Pick<ConfigView, 'resolved' | 'problems'>;
 
 export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void }) {
@@ -160,6 +167,12 @@ export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void 
         <dt>{t.config.restarts}</dt>
         <dd>{!view.server.restarts ? t.config.no : view.server.commit ? t.config.yes : t.config.noCheckout}</dd>
       </dl>
+      {/* in the app's window (app/src/main.rs), which opens a new window in the default browser */}
+      {window.obeyaApp && (
+        <button className="btn small" title={t.config.openInBrowserHint} onClick={() => window.open(location.href, '_blank')}>
+          {t.config.openInBrowser}
+        </button>
+      )}
 
       <button className="btn small" onClick={() => setJson(!json)}>
         {t.config.json}

@@ -1,0 +1,5 @@
+/target/
+/gen/
+# put there by scripts/build-app.ts: the compiled server and its resources
+/binaries/
+/staged/
