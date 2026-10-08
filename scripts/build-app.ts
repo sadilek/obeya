@@ -9,7 +9,8 @@
 // files (libwebkit2gtk-4.1-dev and the rest Tauri lists). The bundles end up in
 // app/target/[<triple>/]release/bundle/.
 
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import pkg from '../package.json';
 
@@ -58,16 +59,37 @@ mkdirSync(join(APP, 'binaries'), { recursive: true });
 cpSync(join(built, `obeya${exe}`), join(APP, 'binaries', `obeya-server-${triple}${exe}`));
 rmSync(join(APP, 'staged'), { recursive: true, force: true });
 cpSync(join(built, 'resources'), join(APP, 'staged', 'resources'), { recursive: true });
-// on Linux the server goes among the resources (app/tauri.linux.conf.json): the AppImage's linuxdeploy
-// runs ldd on every program in usr/bin, and ldd fails on Bun's compiled binary
+// on Linux the server goes among the resources (app/tauri.linux.conf.json), not into usr/bin
 if (os === 'linux') cpSync(join(built, 'obeya'), join(APP, 'staged', 'obeya-server'));
 
 const cross = target !== here;
 const out = join(APP, 'target', ...(cross ? [triple] : []), args.includes('--debug') ? 'debug' : 'release', 'bundle');
 // a bundle of an earlier build is no part of this one (the AppImage's AppDir would be reused)
 rmSync(out, { recursive: true, force: true });
-const tauri = [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : [])];
-run(tauri, APP, { CI: 'true' });
+const tauri = (bundles: string, ...more: string[]) =>
+  run(
+    [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : []), ...more],
+    APP,
+    { CI: 'true' },
+  );
+const wanted = bundles.split(',');
+if (wanted.includes('appimage')) {
+  if (wanted.length > 1) tauri(wanted.filter((b) => b !== 'appimage').join(','));
+  // linuxdeploy sets the library path of every program in the AppDir, which breaks Bun's compiled
+  // binary (its code sits after the ELF's end): the AppImage is built without the server, which goes
+  // into the AppDir afterwards, and packed again
+  tauri('appimage', '--config', JSON.stringify({ bundle: { resources: { 'staged/obeya-server': null } } }));
+  const appdir = join(out, 'appimage', `Obeya.AppDir`);
+  const server = join(appdir, 'usr', 'lib', 'Obeya', 'obeya-server');
+  cpSync(join(APP, 'staged', 'obeya-server'), server);
+  chmodSync(server, 0o755);
+  const cache = join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'tauri');
+  const packer = readdirSync(cache).find((f) => f.startsWith('linuxdeploy-plugin-appimage') && f.endsWith('.AppImage'));
+  if (!packer) fail(`no linuxdeploy-plugin-appimage in ${cache}`);
+  const image = readdirSync(join(out, 'appimage')).find((f) => f.endsWith('.AppImage'));
+  if (!image) fail('Tauri wrote no AppImage');
+  run([join(cache, packer), '--appdir', appdir], join(out, 'appimage'), { OUTPUT: image, ARCH: target.endsWith('arm64') ? 'aarch64' : 'x86_64', APPIMAGE_EXTRACT_AND_RUN: '1' });
+} else tauri(bundles);
 
 if (!existsSync(out)) fail(`${out} was not written`);
 console.log(`\n${out}\nbuilt in ${((Date.now() - started) / 1000).toFixed(0)} s`);

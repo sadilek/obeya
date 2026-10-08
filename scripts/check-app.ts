@@ -106,7 +106,8 @@ try {
   recorder.stop();
   await stopped;
   stream.getTracks().forEach((t) => t.stop());
-  out.mic = { ok: true, mimeType: recorder.mimeType, bytes: chunks.reduce((n, c) => n + c.size, 0), device: stream.getAudioTracks()[0]?.label ?? '' };
+  const types = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/wav'].filter((t) => MediaRecorder.isTypeSupported(t));
+  out.mic = { ok: true, mimeType: recorder.mimeType, bytes: chunks.reduce((n, c) => n + c.size, 0), device: stream.getAudioTracks()[0]?.label ?? '', types };
 } catch (e) {
   out.mic = { ok: false, error: String(e) };
 }
@@ -212,9 +213,9 @@ try {
       return String(page.userAgent);
     });
     await check('the microphone records', () => {
-      const mic = page.mic as { ok: boolean; error?: string; mimeType?: string; bytes?: number; device?: string };
+      const mic = page.mic as { ok: boolean; error?: string; mimeType?: string; bytes?: number; device?: string; types?: string[] };
       expect(mic.ok, mic.error ?? 'no stream');
-      expect(mic.bytes! > 0, 'MediaRecorder recorded nothing');
+      expect(mic.bytes! > 0, `MediaRecorder recorded nothing (it records ${mic.types?.join(', ') || 'no type'})`);
       return `${mic.bytes} bytes of ${mic.mimeType || 'audio'} from ${mic.device || 'the default device'}`;
     });
     await check('a demo video plays', () => {
