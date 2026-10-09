@@ -169,7 +169,7 @@ function notarise() {
     if (dmg) {
       assess('--type', 'open', '--context', 'context:primary-signature', submitted);
       const mounted = join(tmp, 'dmg');
-      run(['hdiutil', 'attach', '-nobrowse', '-readonly', '-mountpoint', mounted, submitted]);
+      output(['hdiutil', 'attach', '-nobrowse', '-readonly', '-mountpoint', mounted, submitted]);
       try {
         assess('--type', 'execute', join(mounted, 'Obeya.app'));
       } finally {

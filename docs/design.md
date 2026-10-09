@@ -515,9 +515,9 @@ the owner's language (`src/core/locale.ts`).
   installable app around it is planned in `docs/plan/app.md`.
 - **App** — a Tauri 2 shell (`app/`, Rust) around the compiled server, which is its sidecar
   (`obeya-server` beside the shell's program; on Linux among the resources). `bun run build:app`
-  (`scripts/build-app.ts`) builds it for this machine: a DMG on macOS (signed ad hoc, with the
-  hardened runtime and the entitlements Bun's JIT needs: without them the server fails at start
-  for lack of `SharedArrayBuffer`), an NSIS installer on Windows (per user, no admin rights), an
+  (`scripts/build-app.ts`) builds it for this machine: a DMG on macOS (signed ad hoc, or with a
+  Developer ID and notarised, see Builds; with the hardened runtime and the entitlements Bun's JIT
+  needs: without them the server fails at start for lack of `SharedArrayBuffer`), an NSIS installer on Windows (per user, no admin rights), an
   AppImage and a .deb on Linux (`app/linux.Dockerfile` builds and checks them in a container on a
   Mac). The shell opens a window on the Obeya that runs on the home, or starts the server (on
   4417, else a free port) and shows "Obeya startet …" until it answers; one it started (or an
@@ -597,6 +597,21 @@ the owner's language (`src/core/locale.ts`).
   AppImage after the server is in it. Tauri's own `createUpdaterArtifacts` needs the updater
   plugin's configuration and would sign the AppImage without the server. A run takes about ten
   minutes (2026-10-08).
+  On a tag (or run by hand with "sign") the Macs' app is signed with the Developer ID and
+  notarised: `build-app.ts` has Tauri sign shell, server and DMG with the certificate (from the
+  repository secret `APPLE_CERTIFICATE`, which Tauri imports into a keychain of its own; on a Mac
+  the keychain's, named by `APPLE_SIGNING_IDENTITY`), then submits the DMG to Apple's notary
+  service with an App Store Connect API key (`APPLE_NOTARY_KEY`, `APPLE_NOTARY_KEY_ID`, and
+  `APPLE_NOTARY_ISSUER` for a team key), staples the ticket to the DMG and to the app beside it
+  (the updater's archive packs that one) and fails unless Gatekeeper calls both "Notarized
+  Developer ID". One submission covers the app and the server inside the DMG; Tauri's own
+  notarisation is not used, since it notarises the app but not the DMG and takes no individual
+  key. A tag without the Apple secrets fails rather than releasing an app macOS would not open.
+  Windows and Linux are not signed: the release notes say how to check a download against
+  `SHA256SUMS`, and the site and the README what SmartScreen shows. The maintainer's steps
+  (agreement, certificate, API key, the updater's key, a release) are in `docs/release.md`.
+  Notarised on the owner's Mac first (2026-10-09): Apple accepted Bun's binary with the JIT
+  entitlements, the build took about two minutes with notarisation.
 - **Site** (`site/`) — the page on obeya.si, in English whatever the interface speaks: plain HTML
   and CSS, no JavaScript, no framework and no build, so it opens straight from the file too. From
   the top: one sentence and the hero video; three pillars with screenshots (the canvas, voice, the
@@ -1583,6 +1598,11 @@ the repository; the copy on the project is only for the archive).
   a way in, and the checkout (`bun start`, updating itself) stays how Obeya is developed. At first
   the decision was a shell only if global push-to-talk needed one; a download for people who do
   not develop Obeya made it needed anyway.
+- Signing (2026-10-06): the Mac app signed with a Developer ID and notarised from the first
+  release, since macOS will not open an unnotarised download without a detour through the system
+  settings; Windows and Linux unsigned, with checksums. SmartScreen warns about a new installer
+  signed or not until it has a reputation, so a Windows certificate comes after the first release
+  (SignPath Foundation, free for open-source projects).
 - Persistent local store, not ephemeral.
 - A canvas may span several repositories, and one Obeya serves several canvases (at first it was
   one canvas per repository).

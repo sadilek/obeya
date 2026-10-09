@@ -29,7 +29,9 @@ now and then, and a release fails the same way until it is accepted again.
    request from Keychain Access (Certificate Assistant → Request a Certificate from a Certificate
    Authority, saved to disk).
 2. Export it with its private key: Keychain Access → login → My Certificates → the
-   "Developer ID Application: …" entry → Export → `.p12`, with a password.
+   "Developer ID Application: …" entry → Export → `.p12`, with a password. The `.p12` format is
+   offered only for the certificate with its private key (the entry under My Certificates, the
+   key folded under it); under Certificates it is greyed out.
 3. Secrets:
    - `APPLE_CERTIFICATE`: the `.p12` in base64, `base64 -i obeya.p12 | gh secret set APPLE_CERTIFICATE --repo <owner>/<repo>`
    - `APPLE_CERTIFICATE_PASSWORD`: the export's password.

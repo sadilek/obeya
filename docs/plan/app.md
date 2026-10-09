@@ -116,6 +116,15 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   `watchPlanDocs` heard nothing from a plan directory that came back on Linux (fixed since by
   polling it). Not tried: a real tag (the release job's tag check, `--verify-tag`, `--latest`),
   and the update archives against the updater, which W5 brings.
+- *Signing* (W4, 2026-10-09, design: Builds, `docs/release.md`): `build-app.ts` signs the Mac
+  app with a Developer ID when it has a certificate (`APPLE_CERTIFICATE` in CI, the keychain's
+  `APPLE_SIGNING_IDENTITY` on a Mac), has the DMG notarised with an App Store Connect API key
+  (`APPLE_NOTARY_*`), staples it and checks Gatekeeper's verdict; the workflow does that on a tag
+  and when run by hand with "sign". On the owner's Mac with their Developer ID and individual API
+  key: notarisation accepted (Bun's binary with the JIT entitlements included), DMG and app
+  stapled, Gatekeeper "Notarized Developer ID" for both, and `check-app.ts` passed in full on the
+  signed app. Apple refused notarisation until the owner accepted the newest Program License
+  Agreement. The owner's Developer ID certificate runs out on 2027-02-01.
 
 ## Design
 
@@ -326,8 +335,8 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
 ## Risks
 
 - **Bun's compiled binary on macOS** was killed at start as built (measured, Bun 1.3.12) and
-  signs only after its signature is removed. Whether notarisation accepts it with the JIT
-  entitlements is not known until W4; a Bun update can change it either way.
+  signs only after its signature is removed. Notarisation accepted it with the JIT entitlements
+  (W4, Bun 1.3.12); a Bun update can change that, which the release's notarisation would show.
 - **Webviews**: WKWebView asks the app for the microphone, WebKitGTK has media streams off unless
   the app turns them on and plays H.264 only with GStreamer's plugins installed. Where the window
   cannot record or play a demo, the app opens the canvas in the browser instead.
