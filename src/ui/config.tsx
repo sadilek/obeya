@@ -20,7 +20,10 @@ declare global {
 
 type Checked = Pick<ConfigView, 'resolved' | 'problems'>;
 
-export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void }) {
+/** Hands the Koordinator a request; to the one of `canvas` where given, else to this page's. */
+type Ask = (text: string, canvas?: string) => void;
+
+export function ConfigSheet({ on, onSetup, onAsk, onProblems }: { on: boolean; onSetup: () => void; onAsk: Ask; onProblems: (n: number) => void }) {
   const [view, setView] = useState<ConfigView | null>(null);
   const [draft, setDraft] = useState<CanvasConfig[]>([]);
   const [checked, setChecked] = useState<Checked | null>(null);
@@ -41,6 +44,7 @@ export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void 
       setView(v);
       load(v);
       setChecked(v);
+      onProblems(v.problems.length);
       setStatus(v.restarting ? t.config.saved : '');
     }, console.error);
   }, [on]);
@@ -112,6 +116,7 @@ export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void 
           saved={!changed}
           adapters={view.adapters}
           problems={problems.filter((p) => p.canvas === i)}
+          ask={changed ? undefined : onAsk}
           onChange={(x) => setCanvas(i, x)}
         />
       ))}
@@ -127,9 +132,7 @@ export function ConfigSheet({ on, onSetup }: { on: boolean; onSetup: () => void 
       {problems
         .filter((p) => p.canvas === undefined)
         .map((p, k) => (
-          <p key={k} className="p-error">
-            {t.config.problem[p.code]}
-          </p>
+          <Problem key={k} problem={p} where="" ask={changed ? undefined : onAsk} />
         ))}
       {changed && gone.length > 0 && <p className="hint warn">{t.config.gone(gone.join(', '))}</p>}
 
@@ -710,11 +713,16 @@ interface CanvasProps {
   saved: boolean;
   adapters: string[];
   problems: ConfigProblem[];
+  /** Asks the Koordinator to fix a problem; only for the configuration as saved, which is what it reads. */
+  ask?: Ask;
   onChange: (c: CanvasConfig | null) => void;
 }
 
-function CanvasBlock({ n, canvas, resolved, running, pin, saved, adapters, problems, onChange }: CanvasProps) {
+function CanvasBlock({ n, canvas, resolved, running, pin, saved, adapters, problems, ask, onChange }: CanvasProps) {
   const fresh = resolved && !running.includes(resolved.id);
+  // the Koordinator of the canvas with the problem, where it runs: a card for it goes there
+  const askHere = ask && ((text: string) => ask(text, resolved && running.includes(resolved.id) ? resolved.id : undefined));
+  const here = t.config.canvas(n + 1);
   const setRepo = (i: number, r: RepoConfig | null) =>
     onChange({ ...canvas, repos: r ? canvas.repos.map((x, j) => (j === i ? r : x)) : canvas.repos.filter((_, j) => j !== i) });
   return (
@@ -752,15 +760,15 @@ function CanvasBlock({ n, canvas, resolved, running, pin, saved, adapters, probl
           canvasId={saved && resolved && running.includes(resolved.id) ? resolved.id : undefined}
           adapters={adapters}
           problems={problems.filter((p) => p.repo === i)}
+          where={`${here}, ${t.config.repoAt(r.path)}`}
+          ask={askHere}
           onChange={(x) => setRepo(i, x)}
         />
       ))}
       {problems
         .filter((p) => p.repo === undefined)
         .map((p, k) => (
-          <p key={k} className="p-error">
-            {t.config.problem[p.code]}
-          </p>
+          <Problem key={k} problem={p} where={here} ask={askHere} />
         ))}
       <button className="btn small" onClick={() => onChange({ ...canvas, repos: [...canvas.repos, { path: '' }] })}>
         {t.config.addRepo}
@@ -777,10 +785,13 @@ interface RepoProps {
   canvasId?: string;
   adapters: string[];
   problems: ConfigProblem[];
+  /** Where it is, for a request to the Koordinator. */
+  where: string;
+  ask?: (text: string) => void;
   onChange: (r: RepoConfig | null) => void;
 }
 
-function RepoRow({ repo, home, resolved, canvasId, adapters, problems, onChange }: RepoProps) {
+function RepoRow({ repo, home, resolved, canvasId, adapters, problems, where, ask, onChange }: RepoProps) {
   const clones = resolved?.workspaces === 'clones' || !!repo.clones || !!repo.workspaces?.length;
   const without = <K extends keyof RepoConfig>(k: K, v: RepoConfig[K] | undefined): RepoConfig => {
     const next = { ...repo };
@@ -841,15 +852,7 @@ function RepoRow({ repo, home, resolved, canvasId, adapters, problems, onChange 
         />
       </label>
       {problems.map((p, k) => (
-        <p key={k} className="p-error">
-          {t.config.problem[p.code]}
-          {DETAILED.includes(p.code) && (
-            <>
-              {' '}
-              <code>{p.detail}</code>
-            </>
-          )}
-        </p>
+        <Problem key={k} problem={p} where={where} ask={ask} />
       ))}
       {/* a repository without an adapter of its own (not one whose own does not load): a card on its canvas writes one */}
       {canvasId && resolved?.adapter === 'generic' && !repo.adapter && !problems.some((p) => p.code === 'adapterLoad') && <AdapterSetup canvas={canvasId} repo={resolved.id} />}
@@ -859,6 +862,38 @@ function RepoRow({ repo, home, resolved, canvasId, adapters, problems, onChange 
 
 // problems whose detail says what to fix, in the repository's adapter rather than here
 const DETAILED: ConfigProblem['code'][] = ['adapterField', 'adapterLoad', 'unknownAdapter'];
+
+/**
+ * A problem of the configuration: what is wrong, the technical detail folded away where it says
+ * what to fix, and a button that asks the Koordinator to fix it (with the detail, which it reads).
+ */
+function Problem({ problem, where, ask }: { problem: ConfigProblem; where: string; ask?: (text: string) => void }) {
+  const [asked, setAsked] = useState(false);
+  const text = t.config.problem[problem.code];
+  return (
+    <div className="p-error c-problem">
+      {text}
+      {DETAILED.includes(problem.code) && (
+        <details>
+          <summary>{t.config.details}</summary>
+          <code>{problem.detail}</code>
+        </details>
+      )}
+      {ask && (
+        <button
+          className="btn small"
+          disabled={asked}
+          onClick={() => {
+            setAsked(true);
+            ask(t.config.fixRequest(where, text, problem.detail));
+          }}
+        >
+          {t.config.askFix}
+        </button>
+      )}
+    </div>
+  );
+}
 
 /** Creates the card that writes the repository's adapter, and opens it on its canvas. */
 function AdapterSetup({ canvas, repo }: { canvas: string; repo: string }) {

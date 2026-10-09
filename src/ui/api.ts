@@ -161,6 +161,8 @@ export const api = {
   /** The same, typed; `field`: the field of the open card it was typed into. */
   command: (text: string, where: Where, images?: string[], field?: Field) =>
     call<HeardReply>('POST', at(`/command${query(where)}`), { text, ...(images?.length ? { images } : {}), ...(field ? { field } : {}) }),
+  /** A typed request to the Koordinator of another canvas, about nothing in view there. */
+  commandOn: (canvas: string, text: string) => call<HeardReply>('POST', `/api/c/${encodeURIComponent(canvas)}/command`, { text }),
   undo: (token: string) => call<{ undone: boolean }>('POST', at('/command/undo'), { token }),
   /** A rule of the owner's, active at once, or with `target` one for that repository's CLAUDE.md. */
   addPreference: (text: string, target?: string) => call<void>('POST', at('/preferences'), { text, ...(target ? { target } : {}) }),

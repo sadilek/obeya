@@ -200,7 +200,9 @@ of the adapter works. Each one shows as a problem at the repository in "Konfigur
 field and, for a misspelt one, what it probably meant:
 
 > Ein Feld im Adapter des Repositorys gilt nicht, an seiner Stelle steht das des allgemeinen
-> Adapters: `check: no such field (did you mean checks?)`
+> Adapters:
+
+with `check: no such field (did you mean checks?)` under "Details".
 
 A share command whose program is not there shows the same way. These problems keep nothing from
 being saved, since they are fixed in the repository. Obeya's log names them when it starts. An
@@ -210,9 +212,10 @@ until a fixed one reaches the default branch (its canvas keeps its id and name).
 repository as
 
 > Der Adapter des Repositorys lädt nicht; bis er repariert ist, läuft das Repository mit dem
-> allgemeinen Adapter: `adapter module … does not load: …`
+> allgemeinen Adapter:
 
-and Obeya's log names it at start. Run the check below before merging.
+with the error (`adapter module … does not load: …`) under "Details", and Obeya's log names it at
+start. "Den Koordinator bitten, das zu beheben" beside a problem hands it to the Koordinator. Run the check below before merging.
 
 ## Testing an adapter
 

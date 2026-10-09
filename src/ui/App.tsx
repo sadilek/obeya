@@ -214,6 +214,10 @@ function Canvas({
   const [helpOn, setHelpOn] = useState(false);
   const [cOn, setCOn] = useState(false);
   const [setupOn, setSetupOn] = useState(false);
+  // what is wrong in the configuration as saved, marked on its button; it changes only with a save
+  // or a repository's adapter, and Obeya starts again for either, so the page reads it once
+  const [configProblems, setConfigProblems] = useState(0);
+  useEffect(() => void api.config().then((v) => setConfigProblems(v.problems.length), console.error), []);
   const toggleConfig = () => {
     if (!cOn && focusRef.current?.type === 'project') closeProject();
     setCOn(!cOn);
@@ -1060,6 +1064,11 @@ function Canvas({
           {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} items={items} />}
           <button className={cOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleConfig}>
             {t.config.button}
+            {configProblems > 0 && (
+              <span className="n err" title={t.config.problemCount(configProblems)}>
+                {configProblems}
+              </span>
+            )}
           </button>
           <button className={aOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleArchive}>
             {t.archive.button}
@@ -1120,7 +1129,12 @@ function Canvas({
         </div>
       </div>
       <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
-      <ConfigSheet on={cOn} onSetup={() => setSetupOn(true)} />
+      <ConfigSheet
+        on={cOn}
+        onSetup={() => setSetupOn(true)}
+        onProblems={setConfigProblems}
+        onAsk={(text, canvas) => void tellAbout(null, null, () => (canvas ? api.commandOn(canvas, text) : api.command(text, null)))}
+      />
       {setupOn && <Setup onClose={() => setSetupOn(false)} />}
       <KoordinatorSheet on={kOn} canvas={snapshot.canvas.id} items={items} preferences={snapshot.preferences} repos={snapshot.canvas.repos} talk={snapshot.talk} reshare={snapshot.reshare} onOpen={open} onTell={(text, images) => tellTyped(text, images, null)} />
       <PushToTalk phase={ptt.phase} level={ptt.level} flat={ptt.flat} target={target} shots={voiceShots} onDown={ptt.start} />

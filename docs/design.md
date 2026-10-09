@@ -683,7 +683,13 @@ the owner's language (`src/core/locale.ts`).
   a field unknown, of the wrong type or incomplete, a share program not there; `adapterLoad`: it
   does not load, and the repository runs on the generic adapter; see Repo adapter)
   show at the repository with what is wrong, and keep nothing from being saved, since they are
-  fixed in the repository. A repository that runs on the generic adapter (none named, none of its
+  fixed in the repository. A problem's technical detail (the adapter's error, the field) is
+  folded under "Details"; for the configuration as saved each problem offers "Den Koordinator
+  bitten, das zu beheben", which hands the Koordinator of the canvas with the problem (else of
+  the page's) the problem with its detail as a typed request, answered above the microphone. The
+  "Konfiguration" button in the bar counts the problems of the saved configuration in red; the
+  page reads them once, since only a save or a changed adapter changes them and Obeya starts
+  again for either. A repository that runs on the generic adapter (none named, none of its
   own) offers "Adapter einrichten lassen" while its canvas runs as saved: it puts the card "Obeya
   für <repo> einrichten" at the top right of that canvas (or finds the one still open) and opens
   it there; its worker writes the adapter with the `obeya:adapter` skill. Saving writes the file and restarts Obeya once no worker is

@@ -193,6 +193,7 @@ button.pill:hover { box-shadow: var(--lift); }
 .proposals li:hover { background: color-mix(in srgb, var(--proposal) 9%, var(--chip)); }
 .proposals .pref-text { cursor: default; font-weight: 600; }
 .kpill .n.prop { background: var(--proposal); }
+.kpill .n.err { background: #dc2626; }
 .reshare { margin-top: 16px; }
 .reshare .bar { flex-basis: 100%; height: 4px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--proposal) 18%, transparent); }
 .reshare .bar > span { display: block; height: 100%; background: var(--proposal); transition: width 0.3s; }
@@ -586,6 +587,10 @@ label.c-row > .hint { display: inline; }
 label.c-row input { width: 64px; }
 .c-path { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace !important; font-size: 12px !important; }
 .c-canvas .p-error { margin: 4px 0 0; font-size: 12.5px; }
+.c-problem details { margin-top: 4px; }
+.c-problem summary { cursor: pointer; color: var(--muted); }
+.c-problem code { display: block; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.c-problem .btn { display: block; margin-top: 6px; color: var(--ink); }
 .c-actions { display: flex; gap: 8px; margin-top: 16px; }
 .c-demo .c-actions { margin-top: 10px; }
 .c-demo label.c-row > .hint { display: inline-block; min-width: 130px; }
