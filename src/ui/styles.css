@@ -395,6 +395,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .steps .step-state { color: var(--idea); }
 .talk .note { font-size: 12px; color: var(--muted); font-style: italic; align-self: center; text-align: center; }
 .talk .note.ev-error { color: #dc2626; font-style: normal; }
+.talk .note.ev-denied { color: #b45309; font-style: normal; }
 /* a task's conversation: under the card's demo and pull request, scrolled to its end */
 .talk.conv { max-height: min(520px, 60vh); max-width: 100ch; }
 .talk .msg.by-worker .who { color: var(--ink); }

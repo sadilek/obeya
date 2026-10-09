@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { BOUNDED_WAITS, backgroundWork, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure, usageLimit } from './runtime';
+import { askOwner, BOUNDED_WAITS, backgroundWork, deniedBy, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resultFailure, usageLimit } from './runtime';
 import { MESSAGES } from '../core/messages';
 
 test('background work counts renders, test runs and watchers, not housekeeping', () => {
@@ -118,4 +118,25 @@ test("agents run the Agent SDK's Claude Code from the checkout, the machine's ow
 test("an agent's environment keeps a machine's Claude login but not another session's marks", () => {
   const env = cleanEnv({ PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 't', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDECODE: '1', OBEYA_SUPERVISED: '1', BUN_BE_BUN: '1' });
   expect(env).toEqual({ PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 't' });
+});
+
+test("a denial's reason type is sorted into who refused the call", () => {
+  // a Bash command whose parts the rules decided one by one, as a deny rule reports it
+  expect(deniedBy('subcommandResults')).toBe('rule');
+  expect(deniedBy('rule')).toBe('rule');
+  expect(deniedBy('classifier')).toBe('classifier');
+  expect(deniedBy('asyncAgent')).toBe('mode');
+  expect(deniedBy(undefined)).toBe('other');
+});
+
+test("a call that needs permission goes to the owner with Claude Code's reason; its own question tool is refused", async () => {
+  const signal = new AbortController().signal;
+  const asked: unknown[] = [];
+  const ask = async (r: unknown) => (asked.push(r), { allow: true as const });
+  expect(await askOwner(ask, 'Bash', { command: 'ls' }, { signal, decisionReason: ' write access ' })).toEqual({ behavior: 'allow', updatedInput: { command: 'ls' } });
+  expect(asked).toEqual([{ name: 'Bash', input: { command: 'ls' }, reason: 'write access' }]);
+  expect(await askOwner(async () => ({ allow: false, message: 'no' }), 'Bash', { command: 'ls' }, { signal })).toEqual({ behavior: 'deny', message: 'no' });
+  const q = await askOwner(ask, 'AskUserQuestion', {}, { signal });
+  expect(q.behavior === 'deny' && q.message).toContain('mcp__obeya__ask');
+  expect(asked).toHaveLength(1);
 });

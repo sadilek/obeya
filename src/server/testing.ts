@@ -4,7 +4,7 @@ import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Forge } from './forge';
-import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec } from './runtime';
+import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { git } from './workspaces';
 
 /** A forge for tests that never reach a pull request. */
@@ -32,7 +32,13 @@ export class FakeSession implements AgentSession {
   }
   close() {
     this.closed = true;
+    this.abort.abort();
     this.finish();
+  }
+  private abort = new AbortController();
+  /** A tool call that needs a person's permission: settles with the answer the session got. */
+  permission(name: string, input: Record<string, unknown>, reason?: string): Promise<PermissionAnswer> {
+    return this.spec.askOwner!({ name, input, ...(reason ? { reason } : {}) }, this.abort.signal);
   }
   call(name: string, args: Record<string, unknown>) {
     return this.spec.tools.find((t) => t.name === name)!.run(args);

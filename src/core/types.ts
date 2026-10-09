@@ -391,9 +391,10 @@ export interface CardEvent {
   /**
    * `talk` is the discussion of an idea: the owner's messages and the exploration agent's replies.
    * `closing`: a worker's closing words after its reply or handover, which mostly repeat it: they
-   * fold under that message.
+   * fold under that message. `denied`: a tool call of the worker's refused without asking anyone,
+   * with who refused it and why.
    */
-  kind: 'report' | 'activity' | 'say' | 'closing' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error' | 'talk';
+  kind: 'report' | 'activity' | 'say' | 'closing' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error' | 'talk' | 'denied';
   author: 'worker' | 'owner' | 'project' | 'koordinator' | 'obeya' | 'explorer';
   text: string;
   /** Set on an error the UI words itself; `text` then holds the server's technical detail. */

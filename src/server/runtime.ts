@@ -33,6 +33,12 @@ export type AgentEvent =
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: Record<string, unknown> }
   /**
+   * A tool call was refused without anyone being asked: by a rule of the settings, auto mode's
+   * classifier, the permission mode, a hook (`obeya`: Obeya's own, `refuseForegroundWait`).
+   * `reason`: the deciding component's own words, when it gave any.
+   */
+  | { type: 'denied'; name: string; input: Record<string, unknown>; by: DeniedBy; reason?: string }
+  /**
    * The turn ended; the session waits for the next message. `background` counts the agent's
    * background tasks still running: when one ends, the session wakes itself for a new turn.
    */
@@ -42,6 +48,19 @@ export type AgentEvent =
    * limit, say): it lifts again at `resetsAt` (milliseconds) when the API said when.
    */
   | { type: 'error'; message: string; limit?: { resetsAt?: number } };
+
+/** Who refused a tool call (`SDKPermissionDeniedMessage.decision_reason_type`, sorted). */
+export type DeniedBy = 'rule' | 'classifier' | 'mode' | 'hook' | 'obeya' | 'other';
+
+/** A tool call the settings want a person to confirm (an `ask` rule, a safety check). */
+export interface PermissionRequest {
+  name: string;
+  input: Record<string, unknown>;
+  /** Why it is asked, when Claude Code says. */
+  reason?: string;
+}
+
+export type PermissionAnswer = { allow: true } | { allow: false; message: string };
 
 export interface AgentSpec {
   cwd: string;
@@ -69,6 +88,11 @@ export interface AgentSpec {
    * agent to read with that step's result without being stopped; nothing when nothing did.
    */
   contextUpdate?: () => string | undefined;
+  /**
+   * Asked when a tool call needs a person's permission; settles with their answer. Without it such a
+   * call is refused, as in any session without someone to ask.
+   */
+  askOwner?: (request: PermissionRequest, signal: AbortSignal) => Promise<PermissionAnswer>;
   onEvent: (e: AgentEvent) => void;
 }
 
@@ -151,14 +175,29 @@ export const sdkRuntime: AgentRuntime = {
         ...(spec.effort ? { effort: spec.effort } : {}),
         ...(spec.model ? { model: spec.model } : {}),
         env: { ...cleanEnv(), ...spec.env },
+        ...(spec.askOwner ? { canUseTool: (name: string, input: Record<string, unknown>, o: { signal: AbortSignal; decisionReason?: string }) => askOwner(spec.askOwner!, name, input, o) } : {}),
         hooks: {
-          PreToolUse: [{ matcher: 'Bash', hooks: [async (input) => refuseForegroundWait(input)] }],
+          PreToolUse: [
+            {
+              matcher: 'Bash',
+              hooks: [
+                async (input) => {
+                  const out = refuseForegroundWait(input);
+                  if (input.hook_event_name === 'PreToolUse' && 'hookSpecificOutput' in out)
+                    spec.onEvent({ type: 'denied', name: input.tool_name, input: (input.tool_input ?? {}) as Record<string, unknown>, by: 'obeya' });
+                  return out;
+                },
+              ],
+            },
+          ],
           PostToolUse: [{ hooks: [async () => withContext('PostToolUse', spec.contextUpdate?.())] }],
           PostToolUseFailure: [{ hooks: [async () => withContext('PostToolUseFailure', spec.contextUpdate?.())] }],
         },
       },
     });
     let background = 0;
+    // what the agent's tool calls were called with, by id: a denial names only the call
+    const inputs = new Map<string, Record<string, unknown>>();
     // the account's usage limits as last reported, and whether the turn's request was refused for one
     let limits: SDKRateLimitInfo | undefined;
     let limited = false;
@@ -168,12 +207,15 @@ export const sdkRuntime: AgentRuntime = {
           if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id });
           else if (m.type === 'system' && m.subtype === 'background_tasks_changed') background = backgroundWork(m.tasks);
           else if (m.type === 'rate_limit_event') limits = m.rate_limit_info;
+          else if (m.type === 'system' && m.subtype === 'permission_denied') {
+            if (!m.agent_id) spec.onEvent({ type: 'denied', name: m.tool_name, input: inputs.get(m.tool_use_id) ?? {}, by: deniedBy(m.decision_reason_type), ...(m.decision_reason?.trim() ? { reason: m.decision_reason.trim() } : {}) });
+          }
           // an API error the CLI words as the agent's reply; the turn's result reports it
           else if (m.type === 'assistant' && m.error) limited ||= m.error === 'rate_limit';
           else if (m.type === 'assistant' && !m.parent_tool_use_id) {
             for (const block of m.message.content) {
               if (block.type === 'text' && block.text.trim()) spec.onEvent({ type: 'text', text: block.text });
-              else if (block.type === 'tool_use') spec.onEvent({ type: 'tool', name: block.name, input: (block.input ?? {}) as Record<string, unknown> });
+              else if (block.type === 'tool_use') inputs.set(block.id, (block.input ?? {}) as Record<string, unknown>), spec.onEvent({ type: 'tool', name: block.name, input: (block.input ?? {}) as Record<string, unknown> });
             }
           } else if (m.type === 'result') {
             const failed = resultFailure(m);
@@ -217,6 +259,41 @@ export function usageLimit(failure: string, refused: boolean, limits: SDKRateLim
   if (!refused && !rejected && !/\bhit your .*limit\b/i.test(failure)) return undefined;
   // the API gives seconds
   return rejected && limits.resetsAt ? { resetsAt: limits.resetsAt * 1000 } : {};
+}
+
+/** Sorts the SDK's `decision_reason_type` of a denial. */
+export function deniedBy(type: string | undefined): DeniedBy {
+  switch (type) {
+    case 'rule':
+    // a Bash command whose parts the rules decided one by one
+    case 'subcommandResults':
+      return 'rule';
+    case 'classifier':
+      return 'classifier';
+    case 'mode':
+    // a session with nobody to ask
+    case 'asyncAgent':
+      return 'mode';
+    case 'hook':
+      return 'hook';
+    default:
+      return 'other';
+  }
+}
+
+/**
+ * Passes a tool call that needs a person's permission to the owner. Claude Code's own question tool
+ * has nobody to answer it in Obeya; the agent's tools of Obeya do.
+ */
+export async function askOwner(
+  ask: NonNullable<AgentSpec['askOwner']>,
+  name: string,
+  input: Record<string, unknown>,
+  o: { signal: AbortSignal; decisionReason?: string },
+): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> } | { behavior: 'deny'; message: string }> {
+  if (name === 'AskUserQuestion') return { behavior: 'deny', message: 'Nobody answers this tool here. Ask the owner with the ask tool of Obeya (mcp__obeya__ask) instead.' };
+  const answer = await ask({ name, input, ...(o.decisionReason?.trim() ? { reason: o.decisionReason.trim() } : {}) }, o.signal);
+  return answer.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: answer.message };
 }
 
 /** A session's failure in the owner's words. */

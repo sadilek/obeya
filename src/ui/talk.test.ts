@@ -229,3 +229,13 @@ test("a worker taking in the owner's words on its handover is at work in the con
   expect(agentWorks({ state: 'live', finishing: true })).toBe(true);
   expect(agentWorks({ state: 'live' })).toBe(false);
 });
+
+test('a refused tool call stands as a line between the messages, not folded with the steps', () => {
+  const tried = ev('activity', 'worker', '$ rm -rf build');
+  const denied = ev('denied', 'worker', 'Nicht erlaubt (Regel in den Einstellungen): $ rm -rf build');
+  const reply = ev('talk', 'worker', 'Lösche nichts, baue neu.');
+  expect(talkTurns([tried, denied, reply]).shown).toEqual([
+    { e: denied, steps: [], line: true },
+    { e: reply, steps: [tried] },
+  ]);
+});

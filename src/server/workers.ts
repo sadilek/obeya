@@ -13,7 +13,7 @@ import { checkArtifact, DEMO_SKILL, OBEYA_PLUGIN, readChapters } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import type { InputContext } from './koordinator';
-import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, failureReason } from './runtime';
+import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, failureReason, type PermissionAnswer, type PermissionRequest } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { runStackCommand } from './stack';
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
@@ -108,6 +108,16 @@ interface Live {
   preferences: string;
   /** The project the card is a workstream of, and the last of its decisions the worker has heard of. */
   project?: { id: string; decision: number };
+  /** A tool call waits for the owner's permission, the question the card waits on: settles it with their answer. */
+  permission?: (answer: PermissionAnswer) => void;
+  /** The permission asked last, which the next one waits for: the card holds one question at a time. */
+  asking?: Promise<unknown>;
+}
+
+/** What a tool call that needs the owner's permission was (`detail.permission`): a call allowed after its session was gone runs once it comes again. */
+interface AskedPermission {
+  name: string;
+  input: Record<string, unknown>;
 }
 
 /** A restart that waits for workers to finish their turns: why, and when it goes ahead at the latest. */
@@ -168,6 +178,8 @@ export class Workers {
   private parking = new Map<string, ReturnType<typeof setTimeout>>();
   /** Cards whose stack is being stopped: a message to their worker waits until it is. */
   private stopping = new Map<string, Promise<void>>();
+  /** Tool calls the owner allowed after the session that asked was gone (a restart), by card: each runs once, without asking again. */
+  private granted = new Map<string, Set<string>>();
 
   constructor(private o: WorkerOptions) {}
 
@@ -224,6 +236,16 @@ export class Workers {
     } else if (card.state === 'waiting' && card.need === 'question') {
       // a note instead of an answer takes the question back: it may have settled it, else the worker asks anew
       const row = this.o.board.row(cardId);
+      const waiting = this.live.get(cardId)?.permission;
+      if (waiting) {
+        // the tool call waits for the owner, so the worker reads nothing else meanwhile: the note refuses it
+        this.o.board.work(cardId, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
+        this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
+        if (text) this.o.onOwnerInput?.(card, 'note', text);
+        waiting({ allow: false, message: `Not run: the owner wrote a note instead of allowing it${spoken ? ` (${SPOKEN})` : ''}. If the note settles it, go on; if not, ask again.\n\n${text}${imageNote(images)}` });
+        if (images.length) this.live.get(cardId)!.session.send('The screenshots of the owner’s note.', images);
+        return;
+      }
       this.o.board.work(cardId, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
       this.o.board.log(cardId, 'hint', 'owner', text, undefined, images.map((f) => basename(f)));
       if (text) this.o.onOwnerInput?.(card, 'note', text);
@@ -274,7 +296,9 @@ export class Workers {
     if (card.state === 'waiting' && card.need === 'demo' && card.question) return this.answerDemo(card, text, images, spoken);
     if (!(card.state === 'waiting' && card.need === 'question')) throw new BadRequest('noQuestion', 'the card has no open question');
     const row = this.o.board.row(cardId);
-    const question = row.detail ? (JSON.parse(row.detail).question as Question | undefined) : undefined;
+    const detail = row.detail ? (JSON.parse(row.detail) as { question?: Question; permission?: AskedPermission }) : {};
+    if (detail.permission) return this.answerPermission(card, detail.permission, text, images, spoken);
+    const question = detail.question;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
     this.o.board.work(cardId, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
     this.o.board.log(cardId, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
@@ -282,6 +306,41 @@ export class Workers {
     if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)');
     this.deliver(cardId, `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${text}${imageNote(images)}`, images);
+  }
+
+  /**
+   * The owner answered whether a tool call may run: the call waiting for it runs or is refused, with
+   * their words. Allowed after the session that asked was gone (a restart), it runs once the worker
+   * makes it again. No decision for the log: it is about one call, not the work.
+   */
+  private answerPermission(card: Item, asked: AskedPermission, text: string, images: string[], spoken: boolean) {
+    const row = this.o.board.row(card.id);
+    const [first = '', ...rest] = text.split('\n\n');
+    const is = (option: (t: Messages) => string) => LANGUAGES.some((l) => option(MESSAGES[l]).toLowerCase() === first.trim().toLowerCase());
+    const allowed = is((t) => t.worker.allow);
+    const words = (allowed || is((t) => t.worker.deny) ? rest.join('\n\n') : text).trim();
+    this.o.board.work(card.id, { state: row.landed ? landedState(row.landed) : row.pr ? 'inPr' : 'working', need: null, detail: null });
+    this.o.board.log(card.id, 'answer', 'owner', text, undefined, images.map((f) => basename(f)));
+    if (words) this.o.onOwnerInput?.(card, 'answer', words, { question: card.question?.text ?? '' });
+    const said = words ? `${spoken ? ` (${SPOKEN})` : ''}:\n\n${words}${imageNote(images)}` : images.length ? `, with screenshots:${imageNote(images)}` : '.';
+    const live = this.live.get(card.id);
+    if (live?.permission) {
+      live.permission(allowed ? { allow: true } : { allow: false, message: `Not run: the owner did not allow it${said}` });
+      // the call's result can carry no words, the next message can
+      if (allowed && (words || images.length)) live.session.send(`The owner allowed it${said}`, images);
+      else if (images.length) live.session.send('The screenshots of the owner’s answer.', images);
+      return;
+    }
+    // the session that asked is gone: the worker hears the answer when it goes on, and the call runs once it makes it again
+    if (allowed) this.granted.set(card.id, (this.granted.get(card.id) ?? new Set()).add(permissionKey(asked)));
+    const call = describeTool(asked.name, asked.input, this.o.board.t);
+    this.deliver(
+      card.id,
+      allowed
+        ? `Before Obeya restarted, a tool call of yours (${call}) waited for the owner's permission. The owner allowed it${said}\n\nMake the call again if you still need it; it runs without asking again.`
+        : `Before Obeya restarted, a tool call of yours (${call}) waited for the owner's permission. The owner did not allow it${said}`,
+      images,
+    );
   }
 
   /**
@@ -647,6 +706,7 @@ export class Workers {
         plugins: [OBEYA_PLUGIN],
         ...(this.o.env ? { env: this.o.env } : {}),
         contextUpdate: () => [this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
+        askOwner: (request, signal) => this.askOwner(cardId, live, request, signal),
         ...(resume ? { resume } : {}),
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         onEvent: (e) => this.onEvent(cardId, live, e),
@@ -776,6 +836,11 @@ export class Workers {
         live.held = undefined;
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input, this.o.board.t));
         break;
+      case 'denied': {
+        const t = this.o.board.t;
+        this.o.board.log(cardId, 'denied', 'worker', t.worker.denied(describeTool(e.name, e.input, t), t.worker.deniedBy[e.by], e.reason && clip(e.reason, 600)));
+        break;
+      }
       case 'error':
         if (e.limit) {
           const now = Date.now();
@@ -1267,6 +1332,37 @@ export class Workers {
     ]);
   }
 
+  /**
+   * A tool call that needs a person's permission becomes the question the card waits on; the call
+   * runs or is refused with the owner's answer. Meanwhile the worker waits for the owner as after
+   * `ask`: a restart need not wait for it.
+   */
+  private askOwner(cardId: string, live: Live, request: PermissionRequest, signal: AbortSignal): Promise<PermissionAnswer> {
+    const asked = (live.asking ?? Promise.resolve()).then(() => this.askNow(cardId, live, request, signal));
+    live.asking = asked.catch(() => {});
+    return asked;
+  }
+
+  private askNow(cardId: string, live: Live, request: PermissionRequest, signal: AbortSignal): Promise<PermissionAnswer> {
+    const asked: AskedPermission = { name: request.name, input: request.input };
+    if (this.granted.get(cardId)?.delete(permissionKey(asked))) return Promise.resolve({ allow: true });
+    if (this.live.get(cardId) !== live || signal.aborted) return Promise.resolve({ allow: false, message: 'This session has ended. Stop working and end your turn.' });
+    const t = this.o.board.t;
+    const q: Question = { text: t.worker.permission(permissionWhat(request.name, request.input, t), request.reason && clip(request.reason, 600)), options: [t.worker.allow, t.worker.deny] };
+    this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
+    this.o.board.work(cardId, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: q, permission: asked }) });
+    live.busy = false;
+    return new Promise((resolve) => {
+      live.permission = (answer) => {
+        live.permission = undefined;
+        live.busy = true;
+        resolve(answer);
+      };
+      // the session ended (stopped, Obeya restarting): the question stays on the card for the next one
+      signal.addEventListener('abort', () => (live.permission = undefined), { once: true });
+    });
+  }
+
   private toOwner(cardId: string, q: Question) {
     this.o.board.work(cardId, { state: 'waiting', need: 'question', detail: JSON.stringify({ question: q }) });
   }
@@ -1438,6 +1534,21 @@ export function describeTool(name: string, input: Record<string, unknown>, t: Me
       return name;
   }
 }
+
+/** What a tool call that needs the owner's permission does, as the question shows it: a command whole, else its log line or its input. */
+export function permissionWhat(name: string, input: Record<string, unknown>, t: Messages): string {
+  if (name === 'Bash' && typeof input.command === 'string') return fenced(clip(input.command, 4000));
+  const line = describeTool(name, input, t);
+  return line === name ? `${name}\n\n${fenced(clip(JSON.stringify(input, null, 2), 2000))}` : line;
+}
+
+/** A code block around `text`, its fence longer than any run of backticks in it. */
+const fenced = (text: string) => {
+  const fence = '`'.repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+  return `${fence}\n${text}\n${fence}`;
+};
+
+const permissionKey = (p: AskedPermission) => JSON.stringify([p.name, p.input]);
 
 /** The state a finished card goes back to after a question: `done` when nothing landed, else `live`. */
 const landedState = (landed: string) => ((JSON.parse(landed) as LandedState).unchanged ? 'done' : 'live');

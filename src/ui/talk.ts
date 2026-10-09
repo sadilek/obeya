@@ -51,6 +51,7 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
       if (e.author === 'owner') return 'owner';
       return (e.author === 'koordinator' || e.author === 'project') && !(prev?.kind === 'say' && prev.author === 'owner') ? 'aside' : 'step';
     case 'error':
+    case 'denied':
       return 'line';
     case 'state':
       return e.author === 'explorer' || (e.author === 'obeya' && !MILESTONE.test(e.text)) ? 'step' : 'line';

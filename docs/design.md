@@ -358,7 +358,25 @@ with that reason. `timeout N` (or `gtimeout`) bounds the command it starts, wher
 in the line (`cd app && timeout 28 bash -c 'until …; do sleep 2; done'`). The text of a heredoc
 is data (a script written with `cat > f <<'EOF'`, a commit message) and counts only when a shell
 runs it (`bash <<EOF`, `cat <<EOF | sh`, `ssh host <<EOF`). The refusal names two
-bounded waits that pass it, one without `timeout`, which macOS lacks. A worker answers a note or
+bounded waits that pass it, one without `timeout`, which macOS lacks.
+
+A tool call refused without anyone being asked (a deny rule of the settings, auto mode's
+classifier, the permission mode, a hook, Obeya's own refusal of a foreground wait) stands in the
+card's conversation as a line, not folded under a message: „Nicht erlaubt (Regel in den
+Einstellungen): $ …“, with the deciding component's words when the SDK gives any (its
+`permission_denied` message; a deny rule names no rule, only that one decided). A tool call the
+settings want a person to confirm (an `ask` rule, say for write access to a database) reaches the
+owner instead of being refused: the SDK's `canUseTool` makes it the question the card waits on,
+with the command whole and Claude Code's reason, and the options „Erlauben“ and „Ablehnen“. The
+call waits for the answer within the worker's turn; meanwhile the worker counts as waiting for the
+owner, so a restart need not wait for it. „Erlauben“ runs the call (the owner's words with it reach
+the worker as the next message); „Ablehnen“, words alone or a note refuse it, with the owner's
+words in the call's result. Two such calls at once are asked one after the other. A restart while
+the question is open leaves it on the card; answered then, the resumed worker hears the answer, and
+a call the owner allowed runs once without asking again when the worker makes it anew. It is no
+decision for the project's log. Claude Code's own question tool (`AskUserQuestion`) is refused
+with a pointer to `ask`. Before (until 2026-10-09), Obeya dropped the SDK's denials, and an `ask`
+rule refused the call silently, as there was nobody to ask. A worker answers a note or
 feedback with `reply`, saying what it changes or why nothing, and asks when the note is unclear.
 Its words after a reply are its words when a step of its work follows them; the closing words of
 a turn in which it replied or handed over mostly repeat that message (often in English on a German

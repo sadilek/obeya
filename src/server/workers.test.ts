@@ -1955,3 +1955,115 @@ describe('a workstream merged as a pull request, its box still empty', () => {
     expect(w1().landedPart).toEqual({ commit: git(main, 'rev-parse', 'HEAD'), pr: { url: 'https://github.com/acme/app/pull/821', number: 821 } });
   });
 });
+
+describe('tool calls the settings refuse or want confirmed', () => {
+  test('a refused tool call stands in the conversation with who refused it and why', () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'rm -rf build' } });
+    runtime.last.emit({ type: 'denied', name: 'Bash', input: { command: 'rm -rf build' }, by: 'classifier', reason: 'Löscht Dateien außerhalb der Aufgabe' });
+    runtime.last.emit({ type: 'denied', name: 'Bash', input: { command: 'psql -c "delete from t"' }, by: 'rule' });
+    const denied = board.events(c.id).filter((e) => e.kind === 'denied');
+    expect(denied.map((e) => e.text)).toEqual([
+      'Nicht erlaubt (Prüfmodell des Auto-Modus): $ rm -rf build — Löscht Dateien außerhalb der Aufgabe',
+      'Nicht erlaubt (Regel in den Einstellungen): $ psql -c "delete from t"',
+    ]);
+    expect(denied.every((e) => e.author === 'worker')).toBe(true);
+  });
+
+  test('a tool call that needs confirmation becomes the question the card waits on, and runs once the owner allows it', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const answer = runtime.last.permission('Bash', { command: 'bun scripts/remote-psql.ts -c "update meters set …"' }, 'Schreibzugriff');
+    await flush();
+    expect(state(c.id)).toBe('waiting:question');
+    const q = board.item(c.id)!.question!;
+    expect(q.options).toEqual(['Erlauben', 'Ablehnen']);
+    expect(q.text).toContain('```\nbun scripts/remote-psql.ts -c "update meters set …"\n```');
+    expect(q.text).toContain('Grund der Rückfrage: Schreibzugriff');
+    expect(board.events(c.id).at(-1)!.kind).toBe('question');
+    // the worker waits for the owner, as after a question: a restart need not wait for it
+    expect(workers.busy()).toBe(false);
+    workers.answer(c.id, 'Erlauben');
+    expect(await answer).toEqual({ allow: true });
+    expect(state(c.id)).toBe('working');
+    expect(workers.busy()).toBe(true);
+    // one call, not a decision of the project's
+    expect(board.decisionsOn(c.id)).toEqual([]);
+  });
+
+  test("refused, the call's result carries the owner's words; allowed with words, the next message does", async () => {
+    const c = manual();
+    workers.start(c.id);
+    const first = runtime.last.permission('Bash', { command: 'git push --force' });
+    await flush();
+    workers.answer(c.id, 'Ablehnen\n\nKein Force-Push, mach einen neuen Commit.');
+    expect(await first).toEqual({ allow: false, message: 'Not run: the owner did not allow it:\n\nKein Force-Push, mach einen neuen Commit.' });
+    const second = runtime.last.permission('Bash', { command: 'git push' });
+    await flush();
+    const before = runtime.last.inbox.length;
+    workers.answer(c.id, 'Allow\n\nAber nur diesmal.');
+    expect(await second).toEqual({ allow: true });
+    expect(runtime.last.inbox.slice(before)).toEqual(['The owner allowed it:\n\nAber nur diesmal.']);
+  });
+
+  test('words without a pick refuse the call, with the words', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const answer = runtime.last.permission('Write', { file_path: '/repo/.env' });
+    await flush();
+    expect(board.item(c.id)!.question!.text).toContain('Schreibt repo/.env');
+    workers.answer(c.id, 'Schreib das lieber in .env.example');
+    expect(await answer).toEqual({ allow: false, message: 'Not run: the owner did not allow it:\n\nSchreib das lieber in .env.example' });
+  });
+
+  test('a note instead of an answer refuses the call, and the worker reads the note with it', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const answer = runtime.last.permission('Bash', { command: 'bun run migrate' });
+    await flush();
+    workers.message(c.id, 'Erst nach dem Backup.');
+    const got = await answer;
+    expect(got.allow).toBe(false);
+    expect(!got.allow && got.message).toContain('Erst nach dem Backup.');
+    expect(state(c.id)).toBe('working');
+  });
+
+  test('two calls that need confirmation at once are asked one after the other', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const a = runtime.last.permission('Bash', { command: 'one' });
+    const b = runtime.last.permission('Bash', { command: 'two' });
+    await flush();
+    expect(board.item(c.id)!.question!.text).toContain('one');
+    workers.answer(c.id, 'Erlauben');
+    expect(await a).toEqual({ allow: true });
+    await flush();
+    expect(board.item(c.id)!.question!.text).toContain('two');
+    workers.answer(c.id, 'Ablehnen');
+    expect((await b).allow).toBe(false);
+  });
+
+  test('allowed after a restart, the worker hears it when it goes on, and the call runs without asking again', async () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'session', id: 's1' });
+    void runtime.last.permission('Bash', { command: 'bun run migrate' });
+    await flush();
+    workers.shutdown();
+    workers.resumeAll();
+    expect(state(c.id)).toBe('waiting:question');
+    const n = runtime.sessions.length;
+    workers.answer(c.id, 'Erlauben');
+    expect(runtime.sessions.length).toBe(n + 1);
+    expect(runtime.last.spec.resume).toBe('s1');
+    expect(runtime.last.inbox.at(-1)).toContain('The owner allowed it');
+    expect(runtime.last.inbox.at(-1)).toContain('$ bun run migrate');
+    expect(await runtime.last.permission('Bash', { command: 'bun run migrate' })).toEqual({ allow: true });
+    expect(state(c.id)).toBe('working');
+    // once: the same call later is asked again
+    void runtime.last.permission('Bash', { command: 'bun run migrate' });
+    await flush();
+    expect(state(c.id)).toBe('waiting:question');
+  });
+});
