@@ -1674,7 +1674,12 @@ the repository; the copy on the project is only for the archive).
   and starts it afresh, "since now", for each new watch: until it is live (up to 200 ms on a busy
   machine, more when many open at once) the events of every watch are lost. A watch there follows
   its path, so it stays open while it is wanted instead of being opened again with each change,
-  which lost a second change right after the first (2026-10-08). Reading old content
+  which lost a second change right after the first (2026-10-08). A saturated fseventsd (load
+  40–80) delivers events seconds late or not at all, even to a live watch: it coalesces what it
+  dropped into an event for a directory above, and Bun passes on only events under the watched
+  path. So on macOS the plan directory is also polled every 2 s (names, mtimes, sizes of its docs)
+  and compared with its state at the last read, as a safety net behind the watches, which stay the
+  primary way (2026-10-09). Reading old content
   from the git history instead was rejected as fragile (PRs and clones, renames); it served
   only once, to backfill Obeya's own projects from before
   (`scripts/backfill-archived-projects.ts`, run 2026-10-01 for M2, M3, M4, M6 and M7). Known edges: a renamed doc makes a new

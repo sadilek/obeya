@@ -29,21 +29,37 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): PlanDoc[] 
 /**
  * Calls `fn` (debounced) whenever a plan doc changes. Git removes the plan directory with its last
  * doc, and the directory's own watch reports nothing then, so the nearest directory above it that
- * exists is watched too: the plan directory going or coming re-arms the watches.
+ * exists is watched too: the plan directory going or coming re-arms the watches. Every `poll` ms
+ * (0: never) the plan directory is also compared with what it was at the last call, which catches
+ * the changes the watches miss; `watches: false` leaves only that.
  */
-export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => void): () => void {
+export function watchPlanDocs(
+  repoPath: string,
+  adapter: RepoAdapter,
+  fn: () => void,
+  { watches = true, poll = safetyNetPoll }: { watches?: boolean; poll?: number } = {},
+): () => void {
   const dir = join(repoPath, adapter.planDocs.dir);
   /** The open watches, by directory and what of it they report. */
   const open = new Map<string, () => void>();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let seen = poll ? planDirState(dir) : null;
   const fire = () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
+      timer = undefined;
+      if (poll) seen = planDirState(dir);
       arm();
       fn();
     }, 150);
   };
+  const interval = poll
+    ? setInterval(() => {
+        if (!timer && planDirState(dir) !== seen) fire();
+      }, poll)
+    : undefined;
   const arm = () => {
+    if (!watches) return;
     for (let d = dir; d.length > repoPath.length; d = dirname(d)) if (!existsSync(d) && watchedInodes.has(d)) recreated.add(d);
     const wanted = new Map<string, () => () => void>();
     if (existsSync(dir))
@@ -74,8 +90,33 @@ export function watchPlanDocs(repoPath: string, adapter: RepoAdapter, fn: () => 
   arm();
   return () => {
     clearTimeout(timer);
+    clearInterval(interval);
     open.forEach((stop) => stop());
   };
+}
+
+/**
+ * On macOS a saturated fseventsd delivers events seconds late or not at all, even to a watch that
+ * is live: it coalesces what it dropped into one event for a directory above, and Bun passes on
+ * only events under the watched path. The plan directory is polled every few seconds there as a
+ * safety net behind the watches.
+ */
+const safetyNetPoll = process.platform === 'darwin' ? 2000 : 0;
+
+/** The plan docs' names, mtimes and sizes; null without the plan directory. */
+function planDirState(dir: string): string | null {
+  try {
+    return readdirSync(dir)
+      .filter((f) => f.endsWith('.md'))
+      .sort()
+      .map((f) => {
+        const s = statSync(join(dir, f), { throwIfNoEntry: false });
+        return `${f}:${s?.mtimeMs}:${s?.size}`;
+      })
+      .join('\n');
+  } catch {
+    return null;
+  }
 }
 
 /**

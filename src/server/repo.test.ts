@@ -11,20 +11,24 @@ describe('watchPlanDocs', () => {
   const cleanup: (() => void)[] = [];
   afterEach(() => cleanup.splice(0).forEach((f) => f()));
 
-  /** A repository directory with these files, watched from here on. */
-  function watched(files: string[]) {
+  /** A repository directory with these files, watched from here on (by the watches alone, or as `options` say). */
+  function watched(files: string[], options: Parameters<typeof watchPlanDocs>[3] = { poll: 0 }) {
     const repo = mkdtempSync(join(tmpdir(), 'obeya-watch-'));
     for (const f of files) {
       mkdirSync(join(repo, f, '..'), { recursive: true });
       writeFileSync(join(repo, f), DOC);
     }
     let resolve = () => {};
-    const stop = watchPlanDocs(repo, generic, () => resolve());
+    let calls = 0;
+    const stop = watchPlanDocs(repo, generic, () => {
+      calls++;
+      resolve();
+    }, options);
     cleanup.push(stop, () => rmSync(repo, { recursive: true, force: true }));
     /** Whether the watch fires within a while from now (seconds when fseventsd is swamped). */
     const next = () =>
       Promise.race([new Promise<boolean>((r) => (resolve = () => r(true))), new Promise<boolean>((r) => setTimeout(() => r(false), 5000))]);
-    return { repo, next };
+    return { repo, next, calls: () => calls };
   }
 
   /**
@@ -80,5 +84,27 @@ describe('watchPlanDocs', () => {
     mkdirSync(join(repo, 'docs/plan'), { recursive: true });
     writeFileSync(join(repo, 'docs/plan/a.md'), DOC);
     expect(await seen).toBe(true);
+  }, 20_000);
+
+  test('the safety-net poll alone sees docs change, come and go, and stays quiet otherwise', async () => {
+    const { repo, next, calls } = watched(['README.md'], { watches: false, poll: 50 });
+    const first = next();
+    mkdirSync(join(repo, 'docs/plan'), { recursive: true });
+    writeFileSync(join(repo, 'docs/plan/a.md'), DOC);
+    expect(await first).toBe(true);
+
+    const changed = next();
+    writeFileSync(join(repo, 'docs/plan/a.md'), `${DOC}- [ ] **W2:** Two.\n`);
+    expect(await changed).toBe(true);
+
+    // what it has reported once, it does not report again; nor anything that is not a plan doc
+    const before = calls();
+    writeFileSync(join(repo, 'docs/plan/notes.txt'), 'x');
+    await Bun.sleep(400);
+    expect(calls()).toBe(before);
+
+    const gone = next();
+    rmSync(join(repo, 'docs/plan'), { recursive: true });
+    expect(await gone).toBe(true);
   }, 20_000);
 });
