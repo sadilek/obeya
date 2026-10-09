@@ -713,7 +713,7 @@ interface CanvasProps {
   saved: boolean;
   adapters: string[];
   problems: ConfigProblem[];
-  /** Asks the Koordinator to fix a problem; only for the configuration as saved, which is what it reads. */
+  /** Has the Koordinator create a task that fixes a problem; only for the configuration as saved, which is what it reads. */
   ask?: Ask;
   onChange: (c: CanvasConfig | null) => void;
 }
@@ -865,7 +865,7 @@ const DETAILED: ConfigProblem['code'][] = ['adapterField', 'adapterLoad', 'unkno
 
 /**
  * A problem of the configuration: what is wrong, the technical detail folded away where it says
- * what to fix, and a button that asks the Koordinator to fix it (with the detail, which it reads).
+ * what to fix, and a button that has the Koordinator create a task that fixes it (with the detail, which it reads).
  */
 function Problem({ problem, where, ask }: { problem: ConfigProblem; where: string; ask?: (text: string) => void }) {
   const [asked, setAsked] = useState(false);

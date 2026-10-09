@@ -215,7 +215,7 @@ repository as
 > allgemeinen Adapter:
 
 with the error (`adapter module … does not load: …`) under "Details", and Obeya's log names it at
-start. "Den Koordinator bitten, das zu beheben" beside a problem hands it to the Koordinator. Run the check below before merging.
+start. "Aufgabe zum Beheben anlegen" beside a problem has the Koordinator create a task that fixes it. Run the check below before merging.
 
 ## Testing an adapter
 
