@@ -1,18 +1,51 @@
 # Releasing Obeya
 
-A tag `v<version>` on `main` builds the installers on GitHub's runners and makes a draft release
-(`.github/workflows/build.yml`, design: Builds). The Mac apps are signed with a Developer ID and
-notarised; the Windows installer and the Linux packages are not signed, and the release lists the
-SHA-256 of every file in `SHA256SUMS`. What follows is what the maintainer sets up once, and the
-steps of a release.
+How a version of the app goes out, and the owner's steps it depends on. The builds are described
+in `docs/design.md` (Builds, App updates).
 
-## Once: the secrets
+The Mac apps are signed with a Developer ID and notarised; the Windows installer and the Linux
+packages are not signed, and the release lists the SHA-256 of every file in `SHA256SUMS`.
 
-All of them are repository secrets (Settings → Secrets and variables → Actions → New repository
-secret, or `gh secret set <NAME> --repo <owner>/<repo>`, which reads the value from standard
-input). A tag fails on the Macs while the Apple secrets are missing.
+## A release
 
-### Apple: membership and agreement
+1. Set the version in `package.json` (the app, its settings and the release take it from there),
+   commit it on `main`.
+2. Tag the commit `v<version>` and push the tag. The tag must be the version of `package.json`,
+   else the run fails at once. The build workflow builds every platform, checks them, signs and
+   notarises the Mac apps (a few minutes more per Mac) and makes a draft release with the
+   installers, the updates and their signatures, `SHA256SUMS`, `latest.json` and notes from the
+   commits since the tag before.
+3. Read the draft and publish it. The README's and the site's download links go to the newest
+   published release; installed apps find it at their next start or within six hours, and offer
+   it in their bar. The notes in `latest.json` (what the bar shows on hover) are the generated
+   ones, whatever the release's text says after an edit.
+4. The first release: remove the line saying that the first release is on its way from
+   `README.md` and `site/index.html`.
+
+## The updater's key
+
+Installed apps install only what is signed with Obeya's own key pair (Tauri's updater, made with
+`tauri signer generate` on 2026-10-08, without a password).
+
+- The public key is in `app/tauri.conf.json` (`plugins.updater.pubkey`); every app carries it.
+- The private key is `~/.tauri/obeya.key` on the owner's Mac. Keep a copy in a password manager:
+  without it no update reaches the apps that are installed, which would then have to install the
+  next version by hand.
+- The build workflow signs with the repository secret `TAURI_SIGNING_PRIVATE_KEY`, the file's
+  content (`gh secret set TAURI_SIGNING_PRIVATE_KEY --repo sadilek/obeya < ~/.tauri/obeya.key`),
+  read on tags only. Without it a release has no updates and `latest.json` names no platform.
+
+A key that is lost or got out is replaced by a new pair whose public key goes into
+`app/tauri.conf.json`; apps installed before still trust the old one, so the release with the
+new key has to be installed by hand once (say so in its notes).
+
+## Signing the Mac apps
+
+The build signs and notarises them with four repository secrets (five with a team key) (Settings → Secrets and variables
+→ Actions, or `gh secret set <NAME> --repo sadilek/obeya`, which reads the value from standard
+input). A tag fails on the Macs while one is missing.
+
+### Membership and agreement
 
 The Developer ID needs a membership in the Apple Developer Program (99 USD a year). Apple's API
 refuses notarisation ("A required agreement is missing or has expired", HTTP 403) until the
@@ -33,7 +66,7 @@ now and then, and a release fails the same way until it is accepted again.
    offered only for the certificate with its private key (the entry under My Certificates, the
    key folded under it); under Certificates it is greyed out.
 3. Secrets:
-   - `APPLE_CERTIFICATE`: the `.p12` in base64, `base64 -i obeya.p12 | gh secret set APPLE_CERTIFICATE --repo <owner>/<repo>`
+   - `APPLE_CERTIFICATE`: the `.p12` in base64, `base64 -i obeya.p12 | gh secret set APPLE_CERTIFICATE --repo sadilek/obeya`
    - `APPLE_CERTIFICATE_PASSWORD`: the export's password.
 4. Delete the `.p12` file. The certificate is valid for five years; apps signed and notarised
    before it expires keep opening (the signature carries a timestamp). A new one goes into the
@@ -47,25 +80,17 @@ now and then, and a release fails the same way until it is accepted again.
    Download the `.p8` (Apple offers it once) and note its key ID; for a team key also the Issuer
    ID above the list.
 2. Secrets:
-   - `APPLE_NOTARY_KEY`: the `.p8`'s contents, `gh secret set APPLE_NOTARY_KEY --repo <owner>/<repo> < AuthKey_XXXXXXXXXX.p8`
+   - `APPLE_NOTARY_KEY`: the `.p8`'s contents, `gh secret set APPLE_NOTARY_KEY --repo sadilek/obeya < AuthKey_XXXXXXXXXX.p8`
    - `APPLE_NOTARY_KEY_ID`: the key ID.
    - `APPLE_NOTARY_ISSUER`: the Issuer ID, for a team key only.
 3. Keep the `.p8` somewhere safe (`~/.appstoreconnect/private_keys/` is where Apple's tools look)
    or delete it; Apple does not offer it again, a lost one is revoked and replaced.
 
-### The updater's key
+### Trying it before a release
 
-Tauri's updater checks every update against a key pair of the app's own (free, no certificate):
-
-1. `bun x tauri signer generate -w ~/.tauri/obeya.key`, with a password.
-2. Secrets: `TAURI_SIGNING_PRIVATE_KEY` with the contents of `~/.tauri/obeya.key`,
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` with its password.
-3. Keep the key: an installed app accepts updates only signed with it.
-
-### Trying the secrets before a release
-
-Actions → Build → Run workflow, with "Sign and notarise the macOS app" ticked: the Macs build as
-on a tag (without a release), and the step "The compiled server and the app around it" ends
+Actions → Build → Run workflow, with "Sign and notarise the macOS app" ticked (or `gh workflow run
+build.yml --repo sadilek/obeya --ref main -f sign=true`): the Macs build as on a tag (without a
+release), and the step "The compiled server and the app around it" ends
 with Gatekeeper's verdict, `source=Notarized Developer ID`. Notarisation takes a few minutes per
 Mac. On a Mac, `bun run build:app` does the same with the certificate in the keychain:
 
@@ -76,23 +101,9 @@ APPLE_NOTARY_KEY_ID=XXXXXXXXXX APPLE_NOTARY_ISSUER=<issuer, team key only> \
 bun run build:app
 ```
 
-## A release
-
-1. Set the version in `package.json` (the app, the settings and `latest.json` take it from
-   there), commit it on `main`.
-2. Tag and push: `git tag v0.2.0 && git push origin main v0.2.0`. The tag must be the version
-   of `package.json`, else the run fails at once.
-3. The run (about a quarter of an hour with notarisation) ends with a draft release holding the
-   installers under fixed names, the update archives with their `.sig`, `SHA256SUMS` and
-   `latest.json`. Try a download, then publish the draft on GitHub (Releases → the draft → Edit
-   → Publish release). Only then do the site's and the README's download links and the
-   installed apps' updater see it.
-4. The first release: remove the line saying that the first release is on its way from
-   `README.md` and `site/index.html`.
-
 ## Windows and Linux
 
 Not signed. SmartScreen warns about the Windows installer until it has a reputation ("More
-info", then "Run anyway"), which the site and the README say; a certificate comes later (SignPath Foundation, free for
-open-source projects, once a release with some reputation is out). The release notes
-say how to check a download against `SHA256SUMS`.
+info", then "Run anyway"), which the site and the README say; a certificate comes later
+(SignPath Foundation, free for open-source projects, once a release with some reputation is
+out). The release notes say how to check a download against `SHA256SUMS`.
