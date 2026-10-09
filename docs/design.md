@@ -1275,8 +1275,10 @@ the owner's language (`src/core/locale.ts`).
   which, the plan doc and the repository's instructions they derive the worker's steps. The answer
   comes 10–30 s later: written above the mic wherever the owner is (its start), in full in the log of the card that
   was open, else in the Koordinator's sheet; what the agent reads shows on the open card meanwhile.
-  The Koordinator hears the answer with the next command, and it is part of its stored memory. A
-  question still open at a restart is looked up again.
+  The Koordinator hears the answer with the next command, in full as the owner saw it (a card it
+  offers at the end is one "ja" away), and it is part of its stored memory. Until 2026-10-09 it
+  heard only the first 1500 characters, and asked back when the owner said yes to a card offered
+  further on. A question still open at a restart is looked up again.
 - **Commands on their way** — after letting go of Space the microphone is free at once, and the
   owner may navigate or speak again: the target is fixed when the key goes down. Each recording,
   and each command typed to the Koordinator while it reads it, has its own small line above the
@@ -1307,7 +1309,8 @@ result, which the SDK also reports as a `success` with `is_error`) is replaced b
 the same command; should that fail too, the owner hears the reason („Ich konnte das nicht lesen.
 Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden“. A session is not resumed: after a restart, and after 30
   commands so the context stays short, a fresh one starts from memory: the last 20 exchanges and
-  the canvas's last 14 days (at most 60 steps), with times.
+  the canvas's last 14 days (at most 60 steps), with times. Of the answers it looked up, the
+  newest five come in full, older ones clipped to 400 characters.
 - **No voice out** — Obeya does not speak. Confirmations and answers are written: in the card's
   conversation, in the Koordinator's sheet, and in the line above the mic. Until 2026-10-08 a
   voice on the server spoke the confirmations, the short form of looked-up answers and a summary

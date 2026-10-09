@@ -240,7 +240,7 @@ export class CanvasRuntime {
       pathFor: (card) => (card ? this.repoOf(card) : this.repos[0]!).read.path,
       startBrief: (card) => this.repoOf(card).workers.startBrief(card),
       projectAgent: (project) => this.repoOf(project).projectAgents,
-      onAnswer: (question, answer) => this.commander.tell(`The answer you looked up for the owner's question „${question}“ came in and was shown to them: ${answer.slice(0, 1500)}`),
+      onAnswer: (question, answer) => this.commander.tell(`The answer you looked up for the owner's question „${question}“ came in and was shown to them: ${answer}`),
     });
     this.commander = new Commander({
       board,

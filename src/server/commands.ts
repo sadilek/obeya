@@ -170,6 +170,8 @@ const MAX_ACTIONS = 20;
 
 /** How far back a fresh session's memory reaches. */
 const REMEMBERED_EXCHANGES = 20;
+/** Looked-up answers a fresh session gets in full, the newest; older ones are clipped. */
+const FULL_ANSWERS = 5;
 const HISTORY_DAYS = 14;
 const HISTORY_STEPS = 60;
 /** What happened between two commands, at most. */
@@ -757,13 +759,14 @@ export class Commander {
     let history: string[];
     if (first) {
       const talk = this.o.board.talk(REMEMBERED_EXCHANGES);
+      const full = new Set(talk.filter((t) => t.answer !== undefined).slice(-FULL_ANSWERS));
       const steps = this.o.board.timeline(new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString(), HISTORY_STEPS);
       history = [
         talk.length
           ? `Your conversation with the owner before this session (oldest first; card tags did not exist then):\n${talk
               .map((t) => {
                 const open = t.cardId ? items.find((i) => i.id === t.cardId) : undefined;
-                const later = t.answer !== undefined ? ` → the answer you looked up: "${clip(t.answer, 400)}"` : t.question ? ' (you were looking it up; no answer came)' : '';
+                const later = t.answer !== undefined ? ` → the answer you looked up: "${full.has(t) ? t.answer : clip(t.answer, 400)}"` : t.question ? ' (you were looking it up; no answer came)' : '';
                 return `- ${when(t.at)}${open ? ` (with "${open.title}" open)` : ''} the owner: "${t.said}" → you: "${t.reply}"${t.undone ? ' (the owner took it back)' : ''}${later}`;
               })
               .join('\n')}`

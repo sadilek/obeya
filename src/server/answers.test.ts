@@ -120,6 +120,29 @@ describe('a question the Koordinator looks up', () => {
     expect((await heard).confirm).toBe('Welche Karte meinst du?');
   });
 
+  test('the Koordinator hears a long answer to its end, in its running session and in a fresh one', async () => {
+    const asked = (said: string, answer: string) => board().answerTalk(board().addTalk(said, 'Moment.', null, { question: `${said}?`, about: null }), answer, 'koordinator');
+    asked('alte frage', `${'Alt. '.repeat(200)}ENDE-ALT`);
+    const answer = `${'Die Datenbankregel gilt für jeden Zugriff. '.repeat(80)}Soll ich eine Karte für Tool-Verwendungen anlegen?`;
+    await say('wie ist die datenbankregel?', {}, 'look_up', { question: 'What is the database rule?', confirm: 'Ich lese nach.' });
+    const a = answerer();
+    a.call('answer_owner', { text: answer });
+    a.emit({ type: 'idle' });
+    await settle();
+    const running = await say('ja, leg eine an', {}, 'reply', { confirm: 'Mache ich.' });
+    expect(running.brief).toContain(answer);
+
+    // a fresh session gets the newest five answers in full, older ones clipped
+    for (let n = 1; n <= 4; n++) asked(`frage ${n}`, `Antwort ${n}.`);
+    canvas.shutdown();
+    canvas = open();
+    const fresh = await say('und?', {}, 'reply', { confirm: 'Ja.' });
+    expect(fresh.brief).toContain(answer);
+    expect(fresh.brief).toContain('Antwort 4.');
+    expect(fresh.brief).toContain('Alt. Alt.');
+    expect(fresh.brief).not.toContain('ENDE-ALT');
+  });
+
   test('a question still being looked up when Obeya restarts is looked up again', async () => {
     const w4 = workstream();
     await say('was würde der agent tun?', { card: w4.id }, 'look_up', { question: 'What would the worker do?', confirm: 'Ich schaue nach.' });
