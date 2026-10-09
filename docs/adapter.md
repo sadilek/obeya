@@ -172,9 +172,13 @@ have another one, or none. So **an adapter committed on a branch does nothing ye
 once it is merged. Its files are copied per version into the repository's git directory
 (`.git/obeya/adapter-<tree>/`), out of reach of checkouts and `git clean`.
 
-**A change takes effect when Obeya next sets up the canvas:** when it starts, or after a
-configuration is saved in "Konfiguration" (Obeya then restarts by itself). A merged adapter, or a
-change to it, does not reach a running Obeya before that: quit and start it again.
+**A change takes effect once it is on the default branch:** when a merged pull request or a card's
+landing brings a new adapter, or a change to it, to the default branch Obeya reads, Obeya restarts
+by itself, as for a configuration saved in "Konfiguration": once no agent is in the middle of a
+step, and the page reloads. Commits that leave `.obeya/adapter/` as it is restart nothing. Where
+the configuration names an adapter, the repository's own is not read, and a change to it restarts
+nothing either. Obeya started by hand without its supervisor (`--dev`) cannot restart itself: its
+log says so, and the change takes effect at the next start.
 
 ## Mistakes
 

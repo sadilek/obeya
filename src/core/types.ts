@@ -944,8 +944,8 @@ export interface FirstCanvas {
   restarting: boolean;
 }
 
-/** Why Obeya starts again: new code on the checkout it runs from, or a configuration the owner saved; or why it stops for good (Ctrl-C, SIGTERM). */
-export type RestartReason = 'code' | 'config' | 'stop';
+/** Why Obeya starts again: new code on the checkout it runs from, a configuration the owner saved, or a repository's own adapter changed on its default branch; or why it stops for good (Ctrl-C, SIGTERM). */
+export type RestartReason = 'code' | 'config' | 'adapter' | 'stop';
 
 /** What the owner does in an open page that a restart would cut off: watching a demo video, dictating. */
 export type OwnerHold = 'video' | 'voice';

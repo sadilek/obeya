@@ -69,6 +69,24 @@ export function loadAdapter(file: string): RepoAdapter {
   return adapter;
 }
 
+const gitIn =
+  (repoPath: string) =>
+  (...args: string[]) => {
+    const r = Bun.spawnSync([GIT, '-C', repoPath, ...args], { stderr: 'ignore' });
+    return r.exitCode === 0 ? r.stdout.toString() : null;
+  };
+
+/**
+ * The git tree of the repository's own adapter (`.obeya/adapter/`) on its default branch: which
+ * version of it `repoAdapterFile` loads. Null when the default branch has no `.obeya/adapter/index.ts`.
+ */
+export function repoAdapterTree(repoPath: string): string | null {
+  const git = gitIn(repoPath);
+  const { commit } = defaultBranchCommit(repoPath);
+  const tree = git('rev-parse', '--verify', '--quiet', `${commit}:${REPO_ADAPTER_DIR}`)?.trim();
+  return tree && git('cat-file', '-e', `${tree}:index.ts`) !== null ? tree : null;
+}
+
 /**
  * The repository's own adapter as its default branch has it, not as the checkout has it: a clone
  * is on a card's branch most of the time, and a branch from before the adapter came would take it
@@ -77,13 +95,9 @@ export function loadAdapter(file: string): RepoAdapter {
  * checkouts and `git clean` do not reach, and an earlier version's files go. Null when the default branch has no `.obeya/adapter/index.ts`.
  */
 export function repoAdapterFile(repoPath: string): string | null {
-  const git = (...args: string[]) => {
-    const r = Bun.spawnSync([GIT, '-C', repoPath, ...args], { stderr: 'ignore' });
-    return r.exitCode === 0 ? r.stdout.toString() : null;
-  };
-  const { commit } = defaultBranchCommit(repoPath);
-  const tree = git('rev-parse', '--verify', '--quiet', `${commit}:${REPO_ADAPTER_DIR}`)?.trim();
-  if (!tree || git('cat-file', '-e', `${tree}:index.ts`) === null) return null;
+  const git = gitIn(repoPath);
+  const tree = repoAdapterTree(repoPath);
+  if (!tree) return null;
   const common = git('rev-parse', '--path-format=absolute', '--git-common-dir')?.trim();
   if (!common) return null;
   const versions = join(common, 'obeya');

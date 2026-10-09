@@ -1514,8 +1514,14 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   have another one or none. The default branch is the local one where it has all of `origin`'s,
   else `origin`'s as last fetched. Its files are written once per version (the git tree's id)
   into the repository's git directory, `.git/obeya/adapter-<tree>/`, out of reach of checkouts and
-  `git clean`, and an earlier version's go; a change to the adapter takes effect when Obeya next
-  resolves the canvas (a start, a saved configuration). The module's default export is the adapter
+  `git clean`, and an earlier version's go. The canvas keeps the tree it was set up with (none for
+  a repository without its own adapter; not looked at where the configuration names one); when the
+  Lesestand moves (a fetch after a merged pull request, a landing on the local main) to a default
+  branch whose `.obeya/adapter/` tree is another, Obeya restarts (reason `adapter`) the way a saved
+  configuration does, once no worker is in the middle of a turn, and the page reloads; a landing
+  that brings it tells its worker so, as for Obeya's own code. Commits that leave the adapter as it
+  is restart nothing. Until 2026-10-09 a merged adapter, or a change to it, took effect only when
+  the owner quit and started Obeya again. The module's default export is the adapter
   or a function that makes it from Obeya's helpers (`kit`: the generic adapter, the demo page
   templates, `esc`, `day`), so it imports nothing of Obeya's; Obeya loads it with `require` and
   fills what it leaves out from the generic adapter. An adapter that does not load is a

@@ -76,4 +76,4 @@ there), and exits with 1 while there is one. Go on once it says "No problems."
 
 Commit `.obeya/adapter/` alone. In the summary say what the adapter sets and why where it was a
 judgement call (the checks you left out, clones or worktrees), what the owner answered, and that
-it counts once it is on the default branch and Obeya was started again.
+it counts once it is on the default branch (Obeya then restarts with it by itself).

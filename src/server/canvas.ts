@@ -3,7 +3,7 @@
 
 import { realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { adapterProblems, pickAdapter } from '../adapters';
+import { adapterProblems, pickAdapter, repoAdapterTree } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
@@ -56,6 +56,8 @@ export interface CanvasDeps {
   language?: () => Language;
   /** The model and effort of a group of agents (`agentSetting`), asked whenever one starts; the defaults when left out. */
   agents?: (role: AgentRole) => AgentSetting;
+  /** A repository's own adapter (`.obeya/adapter/`) changed on its default branch: Obeya starts again for it, where something restarts it. */
+  adapterChanged?: (repoPath: string) => void;
 }
 
 export interface RepoRuntime {
@@ -97,12 +99,20 @@ export class CanvasRuntime {
     deps = { ...deps, runtime: withAgentSetting(deps.runtime, agents), ...(deps.workerRuntime ? { workerRuntime: withAgentSetting(deps.workerRuntime, agents) } : {}) };
     this.deps = deps;
     const resolved = resolveCanvas(config, deps.store);
-    const { id, name, infos, adapters, refs, stored } = resolved;
+    const { id, name, infos, adapters, adapterTrees, refs, stored } = resolved;
     config = resolved.config;
     adapters.forEach((a, i) => {
       for (const p of adapterProblems(a)) console.warn(`Obeya: adapter of ${infos[i]!.path}, ${p} (ignored)`);
     });
     const home = refs[0]!.id;
+    // whether the default branch now has another version of the repository's own adapter than the
+    // one this canvas was set up with; then Obeya starts again for it
+    const adapterMoved = (i: number): boolean => {
+      const was = adapterTrees[i];
+      if (was === undefined || !deps.adapterChanged || repoAdapterTree(infos[i]!.path) === was) return false;
+      deps.adapterChanged(infos[i]!.path);
+      return true;
+    };
     const images = (this.images = new Images(join(deps.home, 'images', id)));
     // where work lands on the local main, the checkout is the Lesestand; otherwise it is a pool clone on a card's branch
     const reads = infos.map(
@@ -111,7 +121,10 @@ export class CanvasRuntime {
           repoPath: info.path,
           dir: adapters[i]!.land === 'main' ? null : join(deps.home, 'read', id, refs[i]!.id),
           remote: !!info.remote,
-          onChange: () => this.board.lesestandMoved(refs[i]!.id, reads[i]!.head()),
+          onChange: () => {
+            this.board.lesestandMoved(refs[i]!.id, reads[i]!.head());
+            adapterMoved(i);
+          },
         }),
     );
     this.stops.push(() => reads.forEach((r) => r.stop()));
@@ -169,7 +182,8 @@ export class CanvasRuntime {
         onMerged: () => void read.refresh(),
         onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
         onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
-        ...(deps.ownCheckout && sameDir(deps.ownCheckout, info.path) ? { restartsFor: (l: Landed) => changesCode(info.path, l.from, l.to) } : {}),
+        // where work lands on the local main, the Lesestand is the checkout and moves with the landing
+        restartsFor: (l: Landed) => (!!deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && changesCode(info.path, l.from, l.to)) || adapterMoved(i),
         imageFiles,
         onWorkEnded: (cardId, workspace) => workRetro.ended(cardId, workspace),
         toObeya: (cardId, request) => this.forward(cardId, request),
@@ -861,6 +875,8 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
       throw new ConfigError('notRepo', `${r.path} is not a git repository`, i);
     }
   });
+  // the version of the repository's own adapter on its default branch; undefined where the configuration names one
+  let adapterTrees = config.repos.map((r, i) => (r.adapter ? undefined : repoAdapterTree(infos[i]!.path)));
   let adapters = config.repos.map((r, i) => {
     try {
       return pickAdapter(infos[i]!, r.adapter);
@@ -880,10 +896,11 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
     config = { ...config, repos: order.map((i) => config.repos[i]!) };
     infos = order.map((i) => infos[i]!);
     adapters = order.map((i) => adapters[i]!);
+    adapterTrees = order.map((i) => adapterTrees[i]);
     refs = uniqueRefs(config.repos, infos, adapters);
   }
   const name = config.name ?? adapters[0]!.canvasName(infos[0]!);
-  return { config, id, name, infos, adapters, refs, stored };
+  return { config, id, name, infos, adapters, adapterTrees, refs, stored };
 }
 
 /** Repository ids unique on the canvas: the repository's name, with a number when two share one. */

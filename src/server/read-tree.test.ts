@@ -181,3 +181,74 @@ describe('the Lesestand', () => {
     expect([changes, existsSync(join(read, 'docs/plan/import.md'))]).toEqual([1, true]);
   });
 });
+
+describe("a repository's own adapter", () => {
+  const adapter = (name: string, extra = '') => `export default { name: '${name}'${extra} };\n`;
+  /** The repositories whose adapter changed, as Obeya heard of it. */
+  let changed: string[];
+  const openWatched = (repo: string, adapterName?: string, runtime = new FakeRuntime()) => {
+    changed = [];
+    canvas = new CanvasRuntime(
+      { name: 'Shop', repos: [{ path: repo, ...(adapterName ? { adapter: adapterName } : {}) }] },
+      { store: new Store(':memory:'), home: join(dir, 'home'), runtime, forge: noForge, adapterChanged: (path) => void changed.push(path) },
+    );
+    return canvas;
+  };
+
+  test('that lands or changes on the default branch asks for a restart; other commits do not', async () => {
+    const c = openWatched(checkout);
+    expect(c.repos[0]!.adapter.name).toBe('generic');
+    push({ 'docs/plan/import.md': doc('Import') });
+    await c.repos[0]!.read.refresh();
+    expect(changed).toEqual([]);
+    push({ '.obeya/adapter/index.ts': adapter('shop') });
+    await c.repos[0]!.read.refresh();
+    expect(changed).toEqual([checkout]);
+
+    // started again with it, a change to it asks again, and a commit beside it does not
+    c.shutdown();
+    const again = openWatched(checkout);
+    expect(again.repos[0]!.adapter.name).toBe('shop');
+    push({ 'README.md': 'Shop\n' });
+    await again.repos[0]!.read.refresh();
+    expect(changed).toEqual([]);
+    push({ '.obeya/adapter/index.ts': adapter('shop', ", checks: ['bun test']") });
+    await again.repos[0]!.read.refresh();
+    expect(changed).toEqual([checkout]);
+  });
+
+  test('is not watched where the configuration names the adapter', async () => {
+    const c = openWatched(checkout, 'generic');
+    push({ '.obeya/adapter/index.ts': adapter('shop') });
+    await c.repos[0]!.read.refresh();
+    expect(changed).toEqual([]);
+  });
+
+  test('changed by work that lands on the local main asks for a restart, and its worker hears so', async () => {
+    // a repository without a remote whose adapter lands work on its main
+    const repo = gitRepo(join(dir, 'local'), { '.obeya/adapter/index.ts': adapter('local', ", land: 'main', workspaces: 'worktrees'") });
+    const runtime = new FakeRuntime();
+    const c = openWatched(repo, undefined, runtime);
+    const workers = c.repos[0]!.workers;
+    const land = async (title: string, files: Record<string, string>) => {
+      const card = c.board.create({ title, x: 0, y: 0 });
+      workers.start(card.id);
+      const ws = c.board.row(card.id).workspace!;
+      for (const [f, text] of Object.entries(files)) {
+        mkdirSync(join(ws, f, '..'), { recursive: true });
+        writeFileSync(join(ws, f), text);
+      }
+      git(ws, 'add', '-A');
+      git(ws, 'commit', '--quiet', '-m', title);
+      runtime.last.call('ready_for_review', { summary: title });
+      runtime.last.emit({ type: 'idle' });
+      await workers.approve(card.id);
+      expect(c.board.item(card.id)!.state).toBe('live');
+      return runtime.last.inbox.at(-1)!;
+    };
+    expect(await land('Readme', { 'README.md': 'Local\n' })).not.toContain('starts again');
+    expect(changed).toEqual([]);
+    expect(await land('Checks', { '.obeya/adapter/index.ts': adapter('local', ", land: 'main', workspaces: 'worktrees', checks: ['bun test']") })).toContain('starts again');
+    expect(changed).toEqual([repo]);
+  });
+});

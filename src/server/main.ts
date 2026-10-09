@@ -220,6 +220,11 @@ canvases = configs.map(
       workerEnv: { OBEYA_URL: url },
       language: () => ownerLanguage(home),
       agents: (role) => agentSetting(home, role),
+      // after the landing is recorded: a restart with no worker to wait for stops this server at once
+      adapterChanged: (path) =>
+        process.env.OBEYA_SUPERVISED
+          ? setTimeout(() => restart('adapter', `the adapter of ${path} changed on its default branch`), 100)
+          : console.log(`Obeya: the adapter of ${path} changed on its default branch; start Obeya again to use it`),
     }),
 );
 const ids = canvases.map((c) => c.id);

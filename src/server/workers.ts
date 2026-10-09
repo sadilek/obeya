@@ -130,6 +130,7 @@ const RESTARTED =
 const DUE_WHY: Record<RestartReason, string> = {
   code: 'restart (new code landed on main)',
   config: 'restart (the owner saved a new configuration)',
+  adapter: "restart (a repository's adapter changed on its default branch)",
   stop: 'stop (the owner is shutting it down)',
 };
 

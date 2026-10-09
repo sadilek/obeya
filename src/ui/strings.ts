@@ -712,6 +712,7 @@ const de = {
     reason: {
       code: 'Auf main liegt neuer Code, mit dem Obeya neu startet.',
       config: 'Die Konfiguration wurde gespeichert; Obeya startet mit ihr neu.',
+      adapter: 'Der Adapter eines Repositorys hat sich auf main geändert; Obeya startet mit ihm neu.',
       stop: 'Obeya wird beendet (Strg-C oder SIGTERM). Ein zweites Strg-C im Terminal beendet es sofort.',
     } satisfies Record<RestartReason, string>,
     waits: 'Die Agenten wissen Bescheid und pausieren beim nächsten sicheren Punkt. Obeya wartet noch auf:',
@@ -1566,6 +1567,7 @@ const en: Strings = {
     reason: {
       code: 'There is new code on main that Obeya restarts with.',
       config: 'The configuration was saved; Obeya restarts with it.',
+      adapter: "A repository's adapter changed on its default branch; Obeya restarts with it.",
       stop: 'Obeya is shutting down (Ctrl-C or SIGTERM). A second Ctrl-C in the terminal ends it at once.',
     },
     waits: 'The agents know and pause at the next safe point. Obeya is still waiting for:',
