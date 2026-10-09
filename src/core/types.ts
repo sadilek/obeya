@@ -416,8 +416,10 @@ export interface RepoRef {
   name: string;
   path: string;
   branch: string;
-  /** It has a share target: demos go to a page outside Obeya (the configuration's command, or the adapter's `demo.share`); without one they are exported as a file. */
+  /** It has a share target: demos go to a page outside Obeya (the configuration's command, the adapter's `demo.site` or `demo.share`); without one they are exported as a file. */
   share?: boolean;
+  /** Its adapter's site needs an env file this machine lacks (as the adapter names it, relative to Obeya's home): demos are exported meanwhile. */
+  shareNeeds?: { site: string; file: string };
   /** Its workers work in a pool of clones (else a worktree per card, as many as there are cards). */
   clones?: boolean;
   /** Its approved work goes out as a pull request (else it lands on the default branch of the Obeya checkout). */
@@ -729,7 +731,15 @@ export interface CanvasConfig {
 export interface ResolvedCanvas {
   id: string;
   name: string;
-  repos: { id: string; adapter: string; workspaces: 'clones' | 'worktrees'; /** The adapter names a share command of its own. */ adapterShares?: boolean }[];
+  repos: {
+    id: string;
+    adapter: string;
+    workspaces: 'clones' | 'worktrees';
+    /** The adapter names a share command of its own. */
+    adapterShares?: boolean;
+    /** The URL of the site the adapter names (`demo.site`), which goes before its command. */
+    adapterSite?: string;
+  }[];
 }
 
 /** Something in a configuration that keeps Obeya from starting with it; `canvas` and `repo` count from 0. */

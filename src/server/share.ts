@@ -1,5 +1,6 @@
-// Sharing a card's demo with colleagues, a video or an HTML artifact: a page outside Obeya, published
-// by the command the repository's adapter names (`demo.share`). Obeya writes the page's text when
+// Sharing a card's demo with colleagues, a video or an HTML artifact: a page outside Obeya, on a
+// static site Obeya keeps itself (`demo.site` of the repository's adapter, site.ts), or published
+// by a command the repository names (`demo.share`). Obeya writes the page's text when
 // the worker did not, and runs the command in a directory under Obeya's home (not in the checkout,
 // often a workspace of the pool too), with the checkout in `OBEYA_REPO`:
 // `publish` with the page as JSON on stdin, which prints the page's URL; `withdraw <slug>`; and,
@@ -8,10 +9,10 @@
 // another one is offered to share again ("Erneut teilen"), on its card, or many at once from the
 // Koordinator's sheet.
 // Once the card has a pull request, its description links the page and the page links it. The
-// command comes from the repository's configuration, else from its adapter. A repository with
-// neither exports the demo instead: the same page as a ZIP with its files, or as one HTML file.
-// A card's pages go to its share target (for now always its repository's command): pages of one
-// target are on one site, so they share its version and each publish names the others.
+// target is the repository's configuration's command, else its adapter's site, else its adapter's
+// command. A repository with none (or a site whose credentials are not on this machine) exports
+// the demo instead: the same page as a ZIP with its files, or as one HTML file.
+// Pages of one target are on one site, so they share its version and each publish names the others.
 
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -22,8 +23,10 @@ import { LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
+import type { DemoSite } from '../adapters/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { BUN_ENV } from './resources';
+import { siteMissing, siteTarget } from './site';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoPageHtml, PAGE_WORDS, type PageLanguage, withHeightReport } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
@@ -58,6 +61,9 @@ export interface ShareCommand {
   command: string[];
   repo: string;
 }
+
+/** Where a repository's demos go: its share command, or the site its adapter names; with its checkout. */
+export type ShareSource = ShareCommand | { site: DemoSite; repo: string };
 
 /**
  * Where a card's pages go. Pages whose targets have the same key are on one site: the target's
@@ -110,8 +116,8 @@ export const SHARE_CWD = 'share';
 export interface SharingOptions {
   board: Board;
   runtime: AgentRuntime;
-  /** The share command of the card's repository; null when it shares none. */
-  commandFor: (card: Item) => ShareCommand | null;
+  /** Where the card's repository shares demos; null when it shares none. */
+  sourceFor: (card: Item) => ShareSource | null;
   /**
    * Obeya's data directory, passed to the command as `OBEYA_HOME` (with `OBEYA_KIT`, the helpers an
    * adapter's command imports); the command runs in a directory of it (`SHARE_CWD`).
@@ -121,8 +127,8 @@ export interface SharingOptions {
   forge: Forge;
 }
 
-/** A share command that has not finished by then is stopped (an upload of a few files takes seconds). */
-const COMMAND_TIMEOUT = 15 * 60_000;
+/** A share command (or a site's deploy) that has not finished by then is stopped (an upload of a few files takes seconds). */
+export const COMMAND_TIMEOUT = 15 * 60_000;
 
 /** The pages of all canvases go through one command at a time: a site directory takes one change at a time. */
 let chain: Promise<unknown> = Promise.resolve();
@@ -553,10 +559,12 @@ export class Sharing {
       .sort();
   }
 
-  /** Where the card's pages go; null when its repository shares none. */
+  /** Where the card's pages go; null when its repository shares none, or its site's credentials are not on this machine. */
   private target(card: Item): ShareTarget | null {
-    const cmd = this.o.commandFor(card);
-    return cmd ? commandTarget(cmd, this.o.home, this.o.board.t.share) : null;
+    const src = this.o.sourceFor(card);
+    if (!src) return null;
+    if ('site' in src) return siteMissing(this.o.home, src.site) ? null : siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share);
+    return commandTarget(src, this.o.home, this.o.board.t.share);
   }
 
   private card(cardId: string): Item {
@@ -672,7 +680,14 @@ const slugOf = (card: Item) => branchName(card.title, card.id).slice('obeya/'.le
  * directory); a script (`.ts`, `.js`) runs with Obeya's own Bun, on every platform.
  */
 export function shareArgv(line: string, repoPath: string): string[] {
-  const words = [...line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]!);
+  return scriptArgv(
+    [...line.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]!),
+    repoPath,
+  );
+}
+
+/** Argv whose program, given as a path, is found in the repository, and a script runs with Obeya's own Bun. */
+export function scriptArgv(words: string[], repoPath: string): string[] {
   if (!words.length) return [];
   let [program, ...rest] = words as [string, ...string[]];
   program = program.replace(/^~(?=$|[\\/])/, homedir());
@@ -704,7 +719,7 @@ async function run(argv: string[], stdin: string, repo: string, home: string): P
 }
 
 /** The last lines of a command's output, for the card's log. */
-function tail(s: string, lines = 20): string {
+export function tail(s: string, lines = 20): string {
   const all = s.trim().split('\n');
   return (all.length > lines ? ['…', ...all.slice(-lines)] : all).join('\n').slice(-3000);
 }

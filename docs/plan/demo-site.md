@@ -126,7 +126,7 @@ machine publishes to the site.
   Stored shares and their version marks carry over unchanged, so nothing shows as outdated after
   the update. No behaviour change; the existing share tests pass as they are, plus one that a
   restart with stored shares and a running reshare leaves marks and the run as they were.
-- [ ] **W2:** `demo.site` on one machine. `demo.site` in the adapter type
+- [x] **W2:** `demo.site` on one machine. `demo.site` in the adapter type
   (`src/adapters/types.ts`) and its precedence (configuration `share`, then `site`, then `share`;
   both in one adapter is a configuration problem). `src/server/site.ts` as a second kind of
   target: the site directory under `sites/<key>/`, one directory per slug with the demo's files

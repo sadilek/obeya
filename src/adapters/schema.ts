@@ -10,7 +10,18 @@ const fn = z.custom<(...args: never[]) => unknown>((v) => typeof v === 'function
 const strings = z.array(z.string());
 
 const planDocs = z.object({ dir: z.string(), exclude: strings }).strict();
-const demo = z.object({ required: z.boolean(), howToRun: z.string(), share: strings.min(1).optional() }).strict();
+const site = z
+  .object({
+    title: z.string().min(1),
+    url: z.string().regex(/^https?:\/\/[^\s/]+[^\s]*$/, 'expected an http(s) URL'),
+    deploy: strings.min(1),
+    env: z.string().min(1).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    maxFile: z.number().int().positive().optional(),
+    language: z.enum(['de', 'en']).optional(),
+  })
+  .strict();
+const demo = z.object({ required: z.boolean(), howToRun: z.string(), share: strings.min(1).optional(), site: site.optional() }).strict();
 const stack = z
   .object({
     start: z.string(),
@@ -46,6 +57,7 @@ const KNOWN: Record<string, string[]> = {
   '': Object.keys(adapterShape.shape),
   planDocs: Object.keys(planDocs.shape),
   demo: Object.keys(demo.shape),
+  'demo.site': Object.keys(site.shape),
   stack: Object.keys(stack.shape),
   'stack.urls': ['file', 'frontendKey'],
 };

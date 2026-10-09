@@ -780,7 +780,7 @@ function CanvasBlock({ n, canvas, resolved, running, pin, saved, adapters, probl
 interface RepoProps {
   repo: RepoConfig;
   home: boolean;
-  resolved?: { id: string; adapter: string; workspaces: 'clones' | 'worktrees'; adapterShares?: boolean };
+  resolved?: { id: string; adapter: string; workspaces: 'clones' | 'worktrees'; adapterShares?: boolean; adapterSite?: string };
   /** The running canvas the repository is on, as saved; where a card for it can go. */
   canvasId?: string;
   adapters: string[];
@@ -846,7 +846,7 @@ function RepoRow({ repo, home, resolved, canvasId, adapters, problems, where, as
         <input
           className="c-path"
           value={repo.share ?? ''}
-          placeholder={resolved?.adapterShares ? t.config.shareAdapter(resolved.adapter) : t.config.shareNone}
+          placeholder={resolved?.adapterSite ? t.config.shareSite(resolved.adapterSite) : resolved?.adapterShares ? t.config.shareAdapter(resolved.adapter) : t.config.shareNone}
           spellCheck={false}
           onChange={(e) => onChange(without('share', e.target.value || undefined))}
         />

@@ -1,6 +1,6 @@
 // The page a demo is shared on, for people who have never seen Obeya, in the demo's language: title, text, the video with
 // its chapters and captions (or an HTML artifact in a frame), the pull request. A repository's share
-// command builds its site from it (through the adapter kit), and a repository without a share target exports it (share.ts): as a ZIP
+// command builds its site from it (through the adapter kit), so does a site Obeya keeps (site.ts), and a repository without a share target exports it (share.ts): as a ZIP
 // with the video or the artifact beside the page, or as one HTML file with everything inside.
 
 import { type Dirent, existsSync, readdirSync } from 'node:fs';
@@ -15,7 +15,19 @@ export type PageLanguage = 'de' | 'en';
 /** The page's own words, in the demo's language. */
 export const PAGE_WORDS: Record<
   PageLanguage,
-  { locale: string; captions: string; play: string; pr: string; ownWindow: string; demoOf: (day: string) => string }
+  {
+    locale: string;
+    captions: string;
+    play: string;
+    pr: string;
+    ownWindow: string;
+    demoOf: (day: string) => string;
+    /** A page on a site (`site.ts`): when it was shared, the link to the overview; the overview's own words. */
+    sharedOn: (day: string) => string;
+    allDemos: string;
+    overview: string;
+    noDemos: string;
+  }
 > = {
   de: {
     locale: 'de-DE',
@@ -24,6 +36,10 @@ export const PAGE_WORDS: Record<
     pr: 'Pull Request ansehen',
     ownWindow: 'In eigenem Fenster öffnen',
     demoOf: (day) => `Demo vom ${day}`,
+    sharedOn: (day) => `Geteilt am ${day}`,
+    allDemos: 'Alle Demos',
+    overview: 'Videos und Auswertungen zu Änderungen, die neuesten zuerst.',
+    noDemos: 'Noch keine Demos geteilt.',
   },
   en: {
     locale: 'en-US',
@@ -32,6 +48,10 @@ export const PAGE_WORDS: Record<
     pr: 'View pull request',
     ownWindow: 'Open in its own window',
     demoOf: (day) => `Demo from ${day}`,
+    sharedOn: (day) => `Shared on ${day}`,
+    allDemos: 'All demos',
+    overview: 'Videos and analyses of changes, the newest first.',
+    noDemos: 'No demos shared yet.',
   },
 };
 

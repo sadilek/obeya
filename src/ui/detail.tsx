@@ -139,8 +139,8 @@ export function Detail(p: Props) {
     );
   const worked = isWorked(item);
   // a demo, video or HTML artifact, goes to a page where the repository has a share target, else it is exported as a file; prototypes stay here
-  const target = !!p.repos.find((r) => r.id === item.repo)?.share;
-  const shareBox = !!item.demo && !item.prototypeOf ? target || item.share ? <ShareBox item={item} act={act} /> : <ExportBox item={item} run={run} /> : null;
+  const shares = p.repos.find((r) => r.id === item.repo);
+  const shareBox = !!item.demo && !item.prototypeOf ? shares?.share || item.share ? <ShareBox item={item} act={act} /> : <ExportBox item={item} run={run} needs={shares?.shareNeeds} /> : null;
   // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
   const ideaTitle = plain(item.ideaTitle ?? p.from?.title ?? '');
   // once the idea has become a project, one of its workstreams is built on the prototype instead
@@ -1221,9 +1221,10 @@ function ShareBox({ item, act }: { item: Item; act: (a: CardAction, done: ActDon
 /**
  * "Teilen" where the repository has no share target: the demo as a file to pass on, a ZIP of its
  * page with the video or the HTML artifact beside it, or one HTML file that holds everything
- * (short videos, artifacts that are their index.html alone).
+ * (short videos, artifacts that are their index.html alone). Where its site lacks its credentials
+ * on this machine, a line under the buttons names the file.
  */
-function ExportBox({ item, run }: { item: Item; run: Run }) {
+function ExportBox({ item, run, needs }: { item: Item; run: Run; needs?: { site: string; file: string } | undefined }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<'zip' | 'html' | null>(null);
   const [size, setSize] = useState<number | null>(null);
@@ -1245,7 +1246,7 @@ function ExportBox({ item, run }: { item: Item; run: Run }) {
         </button>
       ) : (
         <>
-          <p className="hint">{t.share.exportIntro}</p>
+          {!needs && <p className="hint">{t.share.exportIntro}</p>}
           <div className="share-row">
             <button className="btn" title={artifact ? t.share.zipHintHtml : t.share.zipHint} disabled={!!busy} onClick={() => go('zip')}>
               {busy === 'zip' ? t.share.preparing : t.share.zip}
@@ -1264,6 +1265,7 @@ function ExportBox({ item, run }: { item: Item; run: Run }) {
           {busy && !item.demo?.page && <p className="hint">{t.share.writingPage}</p>}
         </>
       )}
+      {needs && <p className="hint">{t.share.needsEnv(needs.site, needs.file)}</p>}
     </div>
   );
 }

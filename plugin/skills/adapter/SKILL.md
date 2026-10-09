@@ -35,7 +35,7 @@ Find out, from the files rather than by guessing:
 
 Some things only the owner knows: the login for a demo when no seed makes one, which test data
 shows the app well, whether every handover needs a demo, whether approved work may go straight
-onto the default branch, a share command for colleagues. Collect them and ask in one question
+onto the default branch, where demos are shared with colleagues (a static site: `demo.site`). Collect them and ask in one question
 (the `ask` tool under Obeya), with the options you found, while you go on with the rest. A secret
 (a real password, an API key) goes into `howToRun` only as where to find it (a file outside git,
 an environment variable), never itself.

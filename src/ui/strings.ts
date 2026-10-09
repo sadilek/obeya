@@ -345,6 +345,7 @@ const de = {
     shareHintHtml: 'Veröffentlicht die Seite mit Text und Artefakt für die Kollegen, mit dem Befehl zum Teilen dieses Repositorys',
     exportHint: 'Die Demo als Datei zum Weitergeben herunterladen',
     exportIntro: 'Für dieses Repository ist kein Ziel zum Teilen eingerichtet (Konfiguration). Die Demo lässt sich als Seite herunterladen und weitergeben.',
+    needsEnv: (site: string, file: string) => `Zum Veröffentlichen auf ${site} braucht dieser Rechner ${file}.`,
     zip: 'Als ZIP',
     zipHint: 'Ein Ordner mit der Seite (index.html) und dem Video daneben',
     zipHintHtml: 'Ein Ordner mit der Seite (index.html) und dem Artefakt daneben',
@@ -470,6 +471,7 @@ const de = {
     workspaces: 'Vorhandene Klone, einer pro Zeile',
     share: 'Befehl zum Teilen von Demos',
     shareAdapter: (adapter: string) => `leer: der des Adapters ${adapter}`,
+    shareSite: (url: string) => `leer: Site: ${url}`,
     shareNone: 'leer: Teilen exportiert eine Datei',
     shareHint:
       'Wird im Repository ausgeführt: mit „publish“ und der Seite als JSON auf stdin, gibt die URL der Seite aus; „withdraw <slug>“ nimmt sie herunter. Ein Skript (.ts, .js) läuft mit Obeyas Bun.',
@@ -1223,6 +1225,7 @@ const en: Strings = {
     shareHintHtml: 'Publishes the page with text and artifact for colleagues, with this repository’s share command',
     exportHint: 'Download the demo as a file to pass on',
     exportIntro: 'This repository has no target for sharing set up (configuration). The demo can be downloaded as a page and passed on.',
+    needsEnv: (site: string, file: string) => `Publishing to ${site} needs ${file} on this machine.`,
     zip: 'As ZIP',
     zipHint: 'A folder with the page (index.html) and the video beside it',
     zipHintHtml: 'A folder with the page (index.html) and the artifact beside it',
@@ -1347,6 +1350,7 @@ const en: Strings = {
     workspaces: 'Existing clones, one per line',
     share: 'Command to share demos',
     shareAdapter: (adapter: string) => `empty: the one of the adapter ${adapter}`,
+    shareSite: (url: string) => `empty: Site: ${url}`,
     shareNone: 'empty: sharing exports a file',
     shareHint:
       'Runs in the repository: with “publish” and the page as JSON on stdin, it prints the page’s URL; “withdraw <slug>” takes it down. A script (.ts, .js) runs with Obeya’s Bun.',

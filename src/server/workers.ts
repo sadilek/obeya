@@ -25,7 +25,7 @@ export interface WorkerOptions {
   runtime: AgentRuntime;
   workspaces: Workspaces;
   adapter: RepoAdapter;
-  /** The repository shares video demos on a page (the configuration's command or the adapter's); the adapter's alone when left out. */
+  /** The repository shares demos on a page (the configuration's command, the adapter's site or command); the adapter's alone when left out. */
   shares?: boolean;
   permissionMode?: 'auto' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk' | 'default';
   /** The owner's preferences, added to every worker's instructions. */
@@ -173,7 +173,7 @@ export class Workers {
 
   /** Whether a video demo here may go to a page for colleagues, which the worker then writes. */
   private get shares(): boolean {
-    return this.o.shares ?? !!this.o.adapter.demo?.share;
+    return this.o.shares ?? !!(this.o.adapter.demo?.site || this.o.adapter.demo?.share);
   }
 
   // ---------------------------------------------------------------- owner actions

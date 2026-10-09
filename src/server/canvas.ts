@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { adapterProblems, builtInAdapter, pickAdapter, repoAdapterTree } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
-import type { RepoAdapter, RepoInfo } from '../adapters/types';
+import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
 import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, type RepoConfig, type RepoRef } from '../core/types';
 import { BadRequest, Board, type StoredIdea } from './board';
@@ -26,6 +26,7 @@ import { readPlanDocs, repoInfo, watchPlanDocs } from './repo';
 import { type AgentRuntime, withAgentSetting } from './runtime';
 import { changesCode } from './self-update';
 import { Sharing, shareArgv } from './share';
+import { siteMissing, siteName } from './site';
 import { type DueRestart, Workers } from './workers';
 import { type Landed, Workspaces } from './workspaces';
 
@@ -66,8 +67,8 @@ export interface RepoRuntime {
   ref: RepoRef;
   info: RepoInfo;
   adapter: RepoAdapter;
-  /** The command that shares its demos (the configuration's, else the adapter's); null where they are exported. */
-  share: string[] | null;
+  /** Where its demos are shared (the configuration's command, else the adapter's site, else its command); null where they are exported. */
+  share: Shares | null;
   /** Its Lesestand: the default branch, where plan docs are read and the agents that only read work. */
   read: ReadTree;
   workspaces: Workspaces;
@@ -106,7 +107,10 @@ export class CanvasRuntime {
     adapters.forEach((a, i) => {
       if (broken[i]) console.error(`Obeya: ${broken[i]}; ${infos[i]!.path} runs on the ${a.name} adapter until it is fixed on its default branch`);
       for (const p of adapterProblems(a)) console.warn(`Obeya: adapter of ${infos[i]!.path}, ${p} (ignored)`);
+      if (a.demo?.site && a.demo.share) console.warn(`Obeya: adapter of ${infos[i]!.path} names both demo.site and demo.share; the site is used`);
     });
+    // whether each repository shares here, which the UI shows
+    refs.forEach((r, i) => Object.assign(r, shareRef(sharesOf(config.repos[i]!, infos[i]!, adapters[i]!), deps.home)));
     const home = refs[0]!.id;
     // whether the default branch now has another version of the repository's own adapter than the
     // one this canvas was set up with; then Obeya starts again for it
@@ -161,7 +165,7 @@ export class CanvasRuntime {
       const ref = refs[i]!;
       const read = reads[i]!;
       const isHome = ref.id === home;
-      const share = shareCommandOf(rc, info, adapter);
+      const share = sharesOf(rc, info, adapter);
       const workspaces = new Workspaces(deps.store, id, {
         mode: adapter.workspaces,
         repoPath: info.path,
@@ -258,9 +262,9 @@ export class CanvasRuntime {
       runtime: deps.runtime,
       home: deps.home,
       forge: deps.forge,
-      commandFor: (card) => {
+      sourceFor: (card) => {
         const r = this.repoOf(card);
-        return r.share ? { command: r.share, repo: r.info.path } : null;
+        return r.share ? { ...r.share, repo: r.info.path } : null;
       },
     });
     this.sharing.resume();
@@ -830,6 +834,22 @@ export class CanvasRuntime {
   ownerBack() {
     for (const w of this.prWatchers) w.soon();
     this.sharing.soon();
+    this.siteCredentials();
+  }
+
+  /** A site's env file placed or removed on this machine since: its repository's cards share again, or export. */
+  private siteCredentials() {
+    let changed = false;
+    for (const r of this.repos) {
+      const next = shareRef(r.share, this.deps.home);
+      if (r.ref.share !== next.share || r.ref.shareNeeds?.file !== next.shareNeeds?.file) {
+        delete r.ref.share;
+        delete r.ref.shareNeeds;
+        Object.assign(r.ref, next);
+        changed = true;
+      }
+    }
+    if (changed) this.board.changed();
   }
 
   /** Obeya is about to restart, or no longer is: the workers hear so and pause for it. */
@@ -916,7 +936,7 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
       return builtInAdapter(infos[i]!);
     }
   });
-  let refs = uniqueRefs(config.repos, infos, adapters);
+  let refs = uniqueRefs(infos, adapters);
   // the canvas the repository's own adapter named stays the one while that adapter does not load,
   // with its address, name and cards
   const named = !config.id && !config.name;
@@ -935,7 +955,7 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
     adapters = order.map((i) => adapters[i]!);
     adapterTrees = order.map((i) => adapterTrees[i]);
     broken = order.map((i) => broken[i]);
-    refs = uniqueRefs(config.repos, infos, adapters);
+    refs = uniqueRefs(infos, adapters);
   }
   const name = config.name ?? kept?.name ?? adapters[0]!.canvasName(infos[0]!);
   const keep = () => {
@@ -945,7 +965,7 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
 }
 
 /** Repository ids unique on the canvas: the repository's name, with a number when two share one. */
-function uniqueRefs(configs: RepoConfig[], infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
+function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
   const seen = new Map<string, number>();
   return infos.map((info, i) => {
     const base = slug(repoName(info)) || `repo${i + 1}`;
@@ -956,17 +976,27 @@ function uniqueRefs(configs: RepoConfig[], infos: RepoInfo[], adapters: RepoAdap
       name: i === 0 ? adapters[0]!.canvasName(info) : repoName(info),
       path: info.path,
       branch: info.branch,
-      ...(shareCommandOf(configs[i]!, info, adapters[i]!) ? { share: true } : {}),
       ...(adapters[i]!.workspaces === 'clones' ? { clones: true } : {}),
       ...(adapters[i]!.land === 'pr' ? { pullRequests: true, ...(adapters[i]!.direct ? { direct: true } : {}) } : {}),
     };
   });
 }
 
-/** A repository's share command: the configuration's, else the adapter's; null without either. */
-function shareCommandOf(config: RepoConfig, info: RepoInfo, adapter: RepoAdapter): string[] | null {
-  if (config.share?.trim()) return shareArgv(config.share, info.path);
-  return adapter.demo?.share ?? null;
+/** Where a repository shares demos, without its checkout. */
+type Shares = { command: string[] } | { site: DemoSite };
+
+/** Where a repository shares demos: the configuration's command, else the adapter's site, else its command; null without any. */
+function sharesOf(config: RepoConfig, info: RepoInfo, adapter: RepoAdapter): Shares | null {
+  if (config.share?.trim()) return { command: shareArgv(config.share, info.path) };
+  if (adapter.demo?.site) return { site: adapter.demo.site };
+  return adapter.demo?.share ? { command: adapter.demo.share } : null;
+}
+
+/** What the canvas tells the UI about it: a target here, or the env file a site lacks on this machine. */
+function shareRef(share: Shares | null, home: string): Pick<RepoRef, 'share' | 'shareNeeds'> {
+  if (!share) return {};
+  const missing = 'site' in share ? siteMissing(home, share.site) : null;
+  return missing && 'site' in share ? { shareNeeds: { site: siteName(share.site), file: missing } } : { share: true };
 }
 
 function sameDir(a: string, b: string): boolean {

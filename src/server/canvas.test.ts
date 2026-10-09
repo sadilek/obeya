@@ -64,7 +64,7 @@ describe('a canvas with several repositories', () => {
       { store: new Store(':memory:'), home: dir, runtime, forge: noForge },
     );
     expect(canvas.board.canvas.repos.map((r) => r.share)).toEqual([true, undefined]);
-    expect(canvas.repos[0]!.share).toEqual([process.execPath, join(web, 'share.ts')]);
+    expect(canvas.repos[0]!.share).toEqual({ command: [process.execPath, join(web, 'share.ts')] });
     const c = canvas.board.create({ title: 'Home', x: 0, y: 0 });
     canvas.board.work(c.id, { state: 'live', demo: JSON.stringify({ kind: 'video', dir, chapters: [], page: { title: 'T', text: 'X.' } }) });
     canvas.act(c.id, { action: 'share' });

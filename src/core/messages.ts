@@ -210,6 +210,15 @@ const de = {
     notWithdrawnNoShare: 'Nicht zurückgezogen: Das Repository der Aufgabe teilt keine Demos mehr.',
     notWithdrawnFailed: (code: number) => `Nicht zurückgezogen: Der Befehl zum Teilen ist gescheitert (Exit-Code ${code}).`,
     withdrawn: 'Die Seite ist zurückgezogen.',
+    // a site Obeya keeps (`demo.site`): why a page did not go out, or did not come down
+    pageIncomplete: 'Der Seite fehlen Titel, Text oder das Verzeichnis der Demo.',
+    fileMissing: (file: string, dir: string) => `${file} fehlt in ${dir}.`,
+    fileTooLarge: (file: string, mib: string, max: string) => `${file} ist ${mib} MiB groß; die Site nimmt höchstens ${max} MiB pro Datei.`,
+    siteLacks: (dir: string, slugs: string[]) =>
+      `Nicht deployt: ${dir} fehlen ${slugs.length === 1 ? 'eine Seite' : `${slugs.length} Seiten`}, die Obeya als geteilt kennt (${slugs.join(', ')}); ein Deploy nähme ${slugs.length === 1 ? 'sie' : 'sie alle'} offline. Erst das Verzeichnis wiederherstellen.`,
+    envMissing: (file: string) => `${file} fehlt auf diesem Rechner.`,
+    deployFailed: (code: number) => `Der Deploy der Site ist gescheitert (Exit-Code ${code}).`,
+    notWithdrawn: (why: string) => `Nicht zurückgezogen: ${why}`,
     exported: (zip: boolean, name: string) => `Exportiert als ${zip ? 'ZIP' : 'HTML-Datei'}: ${name}`,
     /** The line in a pull request's description that links its demo. */
     prLine: (html: boolean): string => (html ? 'Demo-Seite' : 'Demo-Video'),
@@ -425,6 +434,14 @@ const en: Messages = {
     notWithdrawnNoShare: 'Not withdrawn: the task’s repository no longer shares demos.',
     notWithdrawnFailed: (code: number) => `Not withdrawn: the share command failed (exit code ${code}).`,
     withdrawn: 'The page is withdrawn.',
+    pageIncomplete: 'The page lacks a title, a text or the demo’s directory.',
+    fileMissing: (file: string, dir: string) => `${file} is missing in ${dir}.`,
+    fileTooLarge: (file: string, mib: string, max: string) => `${file} is ${mib} MiB; the site takes at most ${max} MiB per file.`,
+    siteLacks: (dir: string, slugs: string[]) =>
+      `Not deployed: ${dir} lacks ${slugs.length === 1 ? 'a page' : `${slugs.length} pages`} Obeya has as shared (${slugs.join(', ')}); a deploy would take ${slugs.length === 1 ? 'it' : 'them'} offline. Restore the directory first.`,
+    envMissing: (file: string) => `${file} is missing on this machine.`,
+    deployFailed: (code: number) => `The site’s deploy failed (exit code ${code}).`,
+    notWithdrawn: (why: string) => `Not withdrawn: ${why}`,
     exported: (zip: boolean, name: string) => `Exported as ${zip ? 'ZIP' : 'HTML file'}: ${name}`,
     prLine: (html: boolean) => (html ? 'Demo page' : 'Demo video'),
   },

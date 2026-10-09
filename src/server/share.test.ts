@@ -69,7 +69,7 @@ function make(repo = dir) {
     runtime,
     home: join(dir, 'home'),
     forge,
-    commandFor: (card) => (card.title.startsWith('Ohne') ? null : { command: [process.execPath, join(dir, 'fake-share.ts'), dir], repo }),
+    sourceFor: (card) => (card.title.startsWith('Ohne') ? null : { command: [process.execPath, join(dir, 'fake-share.ts'), dir], repo }),
   });
 }
 

@@ -7,6 +7,30 @@ export interface RepoInfo {
   branch: string;
 }
 
+/**
+ * A static site the demos are shared on: Obeya keeps its directory (one subdirectory per page, and
+ * the overview), writes the pages with its own templates and runs the deploy line after each change.
+ */
+export interface DemoSite {
+  /** The overview's heading, and the pages' tab titles. */
+  title: string;
+  /** Where the site is served; a page's URL is `url/<slug>/`. */
+  url: string;
+  /** The command (argv) that deploys the site; `{dir}` stands for its directory. */
+  deploy: string[];
+  /**
+   * A file of `KEY=value` lines, relative to Obeya's home, added to the deploy's environment
+   * (credentials, never in git). A machine without it exports demos instead of sharing them.
+   */
+  env?: string;
+  /** Headers for reading the live site (behind a login), values `${KEY}` from `env`; read once several machines publish to one site. */
+  headers?: Record<string, string>;
+  /** The largest file the host takes, in bytes; 25 MiB without it. */
+  maxFile?: number;
+  /** The overview's words; without it the narration language of the demo settings. */
+  language?: 'de' | 'en';
+}
+
 export interface RepoAdapter {
   name: string;
   /** Whether this adapter is meant for the repository (checked when none is named explicitly). */
@@ -54,8 +78,11 @@ export interface RepoAdapter {
      * repository's checkout in `OBEYA_REPO`: `publish` with the page as JSON on stdin
      * (`SharePage` in `src/server/share.ts`), printing the page's URL; `withdraw <slug>` takes it
      * down; `version`, where it knows it, prints the version of the pages it writes. Without it, demos are not shared.
+     * For a host that takes a directory, `site` does it all instead.
      */
     share?: string[];
+    /** A static site Obeya keeps and deploys itself (`src/server/site.ts`); it goes before `share`. */
+    site?: DemoSite;
   };
 
   /** Accounts whose pull request comments are not review feedback (deploy bots and the like). */

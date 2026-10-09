@@ -5,5 +5,5 @@
 // from the path in `OBEYA_KIT`.
 
 export { generic, repoName } from './generic';
-export type { RepoAdapter, RepoInfo } from './types';
+export type { DemoSite, RepoAdapter, RepoInfo } from './types';
 export { ARTIFACT_DIR, artifactFiles, artifactPageHtml, day, demoPageHtml, esc, PAGE_STYLE, PAGE_WORDS, type PageLanguage, withHeightReport } from '../server/demo-page';

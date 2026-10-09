@@ -141,7 +141,7 @@ holds the frontend's URL under `frontendKey`. Every worker's brief says so. Gene
   database, say), and Obeya leaves it running and says so on the card. The owner who wants it
   stopped anyway tells the worker.
 
-### `demo` — `{ required, howToRun, share? }`
+### `demo` — `{ required, howToRun, site?, share? }`
 
 Demos: with `demo`, a worker shows its result as a narrated video (or an HTML page for something
 to look at), recorded with Obeya's demo skill. Without it, a written summary is enough.
@@ -152,13 +152,35 @@ to look at), recorded with Obeya's demo skill. Without it, a written summary is 
   and as whom, which URL, and what to stop afterwards. Everything a newcomer to the project would
   have to ask about. The worker gets it in its brief word for word; `bun lib/recipe.ts` of the demo
   skill prints it.
+- `site`: a static site Obeya keeps and deploys itself, for a host that takes a directory
+  (Cloudflare Pages, Netlify, an S3 bucket, a directory a web server serves):
+
+  ```ts
+  site: {
+    title: 'Team demos',                    // the overview's heading, the pages' tab titles
+    url: 'https://demos.example.dev',       // a page is at url/<slug>/
+    deploy: ['bunx', 'wrangler@4', 'pages', 'deploy', '{dir}', '--project-name', 'demos', '--branch', 'main', '--commit-dirty=true'],
+    env: 'sites/demos/deploy.env',          // optional: KEY=value lines, relative to Obeya's home
+    maxFile: 25 * 1024 * 1024,              // optional: the largest file the host takes (25 MiB without it)
+    language: 'en',                         // optional: the overview's words (else the demo settings' language)
+  },
+  ```
+
+  Obeya keeps the site in `sites/<host and path of url>/site/` under its home, writes each page
+  (in its demo's language) and the overview with its own templates, and after each share or
+  withdrawal runs `deploy` with `{dir}` replaced by that directory and the `env` file's values in
+  its environment. Credentials go into the `env` file on each publishing machine, never into git;
+  a machine without it exports demos instead, and "Teilen" names the file it lacks. Without
+  `env`, the deploy uses the machine's own login. `site` goes before `share`; an adapter naming
+  both is a problem at the repository.
 - `share`: the command (argv) that publishes a demo for colleagues on a page outside Obeya. Obeya
   runs it in a directory under its home with `OBEYA_HOME`, `OBEYA_REPO` (the repository's
   checkout) and `OBEYA_KIT` (the module with Obeya's page templates) set: `publish` with the page as
   JSON on stdin (`SharePage` in `src/server/share.ts`) prints the page's URL; `withdraw <slug>`
   takes it down; `version` may print the version of the pages it writes. Its program must exist
-  (an absolute path, or one on the PATH). A share command in "Konfiguration" takes its place.
-  Without either, "Teilen" exports a demo as a file.
+  (an absolute path, or one on the PATH). For hosts that need more than deploying a directory;
+  where they do not, `site` does it all. A share command in "Konfiguration" takes the place of
+  both. Without any, "Teilen" exports a demo as a file.
 
 Generic: none.
 

@@ -112,6 +112,21 @@ describe("Obeya's configuration", () => {
     expect(c.save([{ repos: [{ path: web }, { path: own }] }])).toEqual({ restarting: true });
   });
 
+  test("an adapter naming both a site and a share command: the site is used, and the command is a problem", () => {
+    const site = { title: 'Demos', url: 'https://demos.example.dev', deploy: ['no-such-deploy-anywhere', '{dir}'] };
+    const own = gitRepo(join(dir, 'shop'), {
+      '.obeya/adapter/index.ts': `export default { name: 'shop', demo: { required: false, howToRun: 'bun dev', share: ['git'], site: ${JSON.stringify(site)} } };\n`,
+    });
+    const c = config('args', [{ repos: [{ path: web }] }]);
+    const checked = c.check([{ repos: [{ path: own }] }]);
+    expect(checked.problems.map((p) => p.detail)).toEqual([
+      'demo: names both site and share; the site is used, so share goes',
+      "demo.site.deploy: the share command's program no-such-deploy-anywhere is not on the PATH",
+    ]);
+    expect(checked.resolved[0]!.repos[0]).toMatchObject({ adapterSite: 'https://demos.example.dev' });
+    expect(checked.resolved[0]!.repos[0]!.adapterShares).toBeUndefined();
+  });
+
   test("a repository's own adapter that does not load is a problem at the repository, which keeps nothing from being saved", () => {
     const own = gitRepo(join(dir, 'shop'), { '.obeya/adapter/index.ts': "export default () => { throw new Error('kaputt'); };\n" });
     const c = config('args', [{ repos: [{ path: web }] }]);

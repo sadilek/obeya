@@ -28,7 +28,7 @@ import type { Store } from './db';
 import { repoInfo } from './repo';
 import { VERSION } from './resources';
 import { agentsView, languageView, pushKeyChoice, saveAgents, saveLanguage, savePushKey } from './settings';
-import { shareArgv, shareProblem } from './share';
+import { scriptArgv, shareArgv, shareProblem } from './share';
 
 export const CONFIG_FILE = 'canvases.json';
 
@@ -214,8 +214,12 @@ export class Config {
           const adapter = adapters[config.repos.indexOf(r)]!;
           const error = broken[config.repos.indexOf(r)];
           if (error) problems.push({ code: 'adapterLoad', canvas, repo, detail: error });
-          const share = !r.share && adapter.demo?.share && shareProblem(adapter.demo.share);
-          for (const detail of [...adapterProblems(adapter), ...(share ? [`demo.share: ${share}`] : [])]) problems.push({ code: 'adapterField', canvas, repo, detail });
+          const site = adapter.demo?.site;
+          const share = !r.share && !site && adapter.demo?.share && shareProblem(adapter.demo.share);
+          const deploy = !r.share && site && shareProblem(scriptArgv(site.deploy, resolve(r.path)));
+          const both = site && adapter.demo?.share ? ['demo: names both site and share; the site is used, so share goes'] : [];
+          for (const detail of [...adapterProblems(adapter), ...both, ...(share ? [`demo.share: ${share}`] : []), ...(deploy ? [`demo.site.deploy: ${deploy}`] : [])])
+            problems.push({ code: 'adapterField', canvas, repo, detail });
         });
         // the repositories in the order given, though the home one runs first
         return {
@@ -223,7 +227,13 @@ export class Config {
           name,
           repos: c.repos.map((r) => {
             const i = config.repos.indexOf(r);
-            return { id: refs[i]!.id, adapter: adapters[i]!.name, workspaces: adapters[i]!.workspaces, ...(adapters[i]!.demo?.share ? { adapterShares: true } : {}) };
+            const demo = adapters[i]!.demo;
+            return {
+              id: refs[i]!.id,
+              adapter: adapters[i]!.name,
+              workspaces: adapters[i]!.workspaces,
+              ...(demo?.site ? { adapterSite: demo.site.url } : demo?.share ? { adapterShares: true } : {}),
+            };
           }),
         };
       } catch (e) {
