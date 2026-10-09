@@ -10,6 +10,8 @@
 // Once the card has a pull request, its description links the page and the page links it. The
 // command comes from the repository's configuration, else from its adapter. A repository with
 // neither exports the demo instead: the same page as a ZIP with its files, or as one HTML file.
+// A card's pages go to its share target (for now always its repository's command): pages of one
+// target are on one site, so they share its version and each publish names the others.
 
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -55,6 +57,47 @@ export interface SharePage {
 export interface ShareCommand {
   command: string[];
   repo: string;
+}
+
+/**
+ * Where a card's pages go. Pages whose targets have the same key are on one site: the target's
+ * version applies to all of them, and a publish or withdrawal names the others as shared. Keys
+ * are not stored (a stored share keeps the version only), so they only need to stay the same
+ * across a restart.
+ */
+export interface ShareTarget {
+  key: string;
+  /** The card's repository checkout. */
+  repo: string;
+  /** The page's URL, or why it did not go out; what the target said on the way goes into the card's log. */
+  publish(page: SharePage): Promise<{ url: string; said: string } | { why: string; said: string }>;
+  withdraw(slug: string, shared: string[]): Promise<{ why?: string; said: string }>;
+  /** The version of the pages the target writes, which changes whenever its pages would come out different; null when it says none. */
+  version(): Promise<Versions | null>;
+}
+
+/** A share command as a target, keyed by its argv as pages were before targets. */
+export function commandTarget({ command, repo }: ShareCommand, home: string, t: Messages['share']): ShareTarget {
+  return {
+    key: `command:${JSON.stringify(command)}`,
+    repo,
+    async publish(page) {
+      const r = await run([...command, 'publish'], JSON.stringify(page), repo, home);
+      const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
+      if (r.code !== 0 || !url) return { why: r.code !== 0 ? t.commandFailed(r.code) : t.noUrl, said: tail(r.err || r.out) };
+      // stdout carries the URL, logged with the share; what the command says on the way is on stderr
+      return { url, said: r.err.trim() ? tail(r.err) : '' };
+    },
+    async withdraw(slug, shared) {
+      const r = await run([...command, 'withdraw', slug], JSON.stringify({ slug, shared }), repo, home);
+      if (r.code !== 0) return { why: t.notWithdrawnFailed(r.code), said: tail(r.err || r.out) };
+      return { said: r.err.trim() || r.out.trim() ? tail(`${r.out}\n${r.err}`) : '' };
+    },
+    async version() {
+      const r = await run([...command, 'version'], '', repo, home);
+      return r.code === 0 ? parseVersions(r.out) : null;
+    },
+  };
 }
 
 /**
@@ -104,7 +147,7 @@ export class Sharing {
   share(cardId: string) {
     const card = this.card(cardId);
     const demo = this.demo(cardId);
-    if (card.prototypeOf || !demo || !this.o.commandFor(card)) throw new BadRequest('noShare', 'the card has no demo, or its repository shares none');
+    if (card.prototypeOf || !demo || !this.target(card)) throw new BadRequest('noShare', 'the card has no demo, or its repository shares none');
     const s = this.stored(cardId);
     if (s?.state) throw new BadRequest('shareBusy', 'the page is being shared or withdrawn');
     this.set(cardId, { ...(s ? atRest(s) : { slug: slugOf(card) }), state: 'publishing' });
@@ -158,7 +201,7 @@ export class Sharing {
   reshareMany(count: number | null) {
     const run = this.o.board.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again already');
-    const rows = this.o.board.sharedRows().filter((r) => reshareable(r) && this.find(r.id) && this.o.commandFor(this.find(r.id)!));
+    const rows = this.o.board.sharedRows().filter((r) => reshareable(r) && this.find(r.id) && this.target(this.find(r.id)!));
     if (!rows.length) throw new BadRequest('nothingOutdated', 'no shared page is outdated');
     const made = (r: (typeof rows)[number]) => {
       const dir = (JSON.parse(r.share!) as StoredShare).dir;
@@ -232,36 +275,26 @@ export class Sharing {
   }
 
   /**
-   * Asks each share command with pages out for the version of the pages it writes, and marks the
+   * Asks each share target with pages out for the version of the pages it writes, and marks the
    * pages published with another one (or before commands said theirs): sharing them again would
    * make a difference.
    */
   async checkVersions() {
-    const commands = new Map<string, ShareCommand>();
+    const targets = new Map<string, ShareTarget>();
     for (const r of this.o.board.sharedRows()) {
       const card = this.find(r.id);
-      const cmd = card && (JSON.parse(r.share!) as StoredShare).url ? this.o.commandFor(card) : null;
-      if (cmd) commands.set(JSON.stringify(cmd.command), cmd);
+      const target = card && (JSON.parse(r.share!) as StoredShare).url ? this.target(card) : null;
+      if (target) targets.set(target.key, target);
     }
-    for (const cmd of commands.values()) this.mark(cmd.command, await this.version(cmd));
+    for (const target of targets.values()) this.mark(target.key, await target.version());
   }
 
-  /**
-   * The version of the pages the command writes, which changes whenever its pages would come out
-   * different; null when it says none.
-   */
-  private async version(cmd: ShareCommand): Promise<Versions | null> {
-    const r = await run([...cmd.command, 'version'], '', cmd.repo, this.o.home);
-    return r.code === 0 ? parseVersions(r.out) : null;
-  }
-
-  /** Marks each page at rest shared through the command as published with another version than its current one, or not. */
-  private mark(command: string[], versions: Versions | null) {
-    const key = JSON.stringify(command);
+  /** Marks each page at rest shared through the target as published with another version than its current one, or not. */
+  private mark(key: string, versions: Versions | null) {
     for (const r of this.o.board.sharedRows()) {
       const s = JSON.parse(r.share!) as StoredShare;
       const card = this.find(r.id);
-      if (!s.url || s.state || !card || JSON.stringify(this.o.commandFor(card)?.command) !== key) continue;
+      if (!s.url || s.state || !card || this.target(card)?.key !== key) continue;
       const current = versionOf(versions, s.shown?.kind);
       const outdated = !!current && s.version !== current;
       if (outdated !== !!s.outdated) {
@@ -292,13 +325,13 @@ export class Sharing {
       return false;
     };
     const demo = this.demo(cardId);
-    const cmd = this.o.commandFor(card);
+    const target = this.target(card);
     let shown: NonNullable<StoredShare['shown']>;
     let dir: string;
     if (s.refresh) {
       // the page as it is: a newer demo on the card waits for "Neu teilen"
       const now = s.shown ?? (demo?.page && demo.dir === s.dir ? { ...demo.page, chapters: demo.chapters, kind: demo.kind ?? 'video' } : null);
-      if (!now || !s.dir || !cmd) {
+      if (!now || !s.dir || !target) {
         if (s.again) return back(t.demoGone);
         this.set(cardId, atRest(s));
         this.o.board.log(cardId, 'activity', 'obeya', t.linkLater);
@@ -307,24 +340,23 @@ export class Sharing {
       shown = now;
       dir = s.dir;
     } else {
-      if (!demo || !cmd) return back(t.noDemo);
+      if (!demo || !target) return back(t.noDemo);
       const page = await this.page(card, demo);
       shown = { title: page.title, text: page.text, chapters: demo.chapters, kind: demo.kind ?? 'video' };
       dir = demo.dir;
     }
     const pr = this.prOf(cardId);
-    const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, language: this.languageOf(dir), dir, shared: this.others(cardId, cmd.command) };
-    const r = await run([...cmd.command, 'publish'], JSON.stringify(input), cmd.repo, this.o.home);
-    const url = r.out.split('\n').map((l) => l.trim()).filter((l) => /^https?:\/\/\S+$/.test(l)).at(-1);
-    if (r.code !== 0 || !url) return back(r.code !== 0 ? t.commandFailed(r.code) : t.noUrl, tail(r.err || r.out));
-    const versions = await this.version(cmd);
+    const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, language: this.languageOf(dir), dir, shared: this.others(cardId, target.key) };
+    const r = await target.publish(input);
+    if ('why' in r) return back(r.why, r.said);
+    const { url } = r;
+    const versions = await target.version();
     const current = versionOf(versions, shown.kind);
     this.set(cardId, { slug: s.slug, url, dir, shown, ...(pr ? { pr } : {}), ...(current ? { version: current } : {}) });
-    this.mark(cmd.command, versions);
-    // stdout carries the URL, logged below; what the command says on the way is on stderr
-    if (r.err.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(r.err));
+    this.mark(target.key, versions);
+    if (r.said) this.o.board.log(cardId, 'activity', 'obeya', r.said);
     this.o.board.log(cardId, 'state', 'obeya', s.again ? t.sharedAgain(url) : s.refresh ? t.linksPr(url) : t.shared(url));
-    if (pr) this.linkPr(cardId, pr, url, cmd.repo, shown.kind);
+    if (pr) this.linkPr(cardId, pr, url, target.repo, shown.kind);
     // the pull request was opened while the page went out: once more, with its link
     const now = this.prOf(cardId);
     if (now && now !== pr) this.refresh(cardId);
@@ -355,15 +387,15 @@ export class Sharing {
       this.set(cardId, atRest(s));
       this.o.board.log(cardId, 'error', 'obeya', [why, out].filter(Boolean).join('\n\n'));
     };
-    const cmd = this.o.commandFor(card);
+    const target = this.target(card);
     const t = this.o.board.t.share;
-    if (!cmd) return back(t.notWithdrawnNoShare);
-    const r = await run([...cmd.command, 'withdraw', s.slug], JSON.stringify({ slug: s.slug, shared: this.others(cardId, cmd.command) }), cmd.repo, this.o.home);
-    if (r.code !== 0) return back(t.notWithdrawnFailed(r.code), tail(r.err || r.out));
-    const versions = await this.version(cmd);
+    if (!target) return back(t.notWithdrawnNoShare);
+    const r = await target.withdraw(s.slug, this.others(cardId, target.key));
+    if (r.why) return back(r.why, r.said);
+    const versions = await target.version();
     this.set(cardId, { slug: s.slug });
-    this.mark(cmd.command, versions);
-    if (r.err.trim() || r.out.trim()) this.o.board.log(cardId, 'activity', 'obeya', tail(`${r.out}\n${r.err}`));
+    this.mark(target.key, versions);
+    if (r.said) this.o.board.log(cardId, 'activity', 'obeya', r.said);
     this.o.board.log(cardId, 'state', 'obeya', t.withdrawn);
   }
 
@@ -464,12 +496,12 @@ export class Sharing {
     // a card's summary goes with its approval; the log keeps every handover
     const summary = this.o.board.summary(card.id) ?? this.o.board.events(card.id).filter((e) => e.kind === 'review' && e.author === 'worker').at(-1)?.text ?? '';
     const fallback: DemoPage = { title: plainText(card.title), text: plainText(summary).split(/(?<=[.!?])\s+/).slice(0, 4).join(' ') || plainText(card.title) };
-    const cmd = this.o.commandFor(card);
+    const repo = this.target(card)?.repo;
     return new Promise((resolve) => {
       let page: DemoPage | null = null;
       const session = this.o.runtime.start(
         {
-          cwd: cmd?.repo ?? this.o.home,
+          cwd: repo ?? this.o.home,
           readOnly: true,
           role: 'chores',
           system: pageSystem(LANGUAGE_NAMES[this.o.board.language()]),
@@ -508,18 +540,23 @@ export class Sharing {
     });
   }
 
-  /** The slugs of the other pages shared through the same command. */
-  private others(cardId: string, command: string[]): string[] {
-    const key = JSON.stringify(command);
+  /** The slugs of the other pages shared through the target. */
+  private others(cardId: string, key: string): string[] {
     return this.o.board
       .sharedRows()
       .filter((r) => r.id !== cardId)
       .flatMap((r) => {
         const s = JSON.parse(r.share!) as StoredShare;
         const card = this.find(r.id);
-        return s.url && s.state !== 'withdrawing' && card && JSON.stringify(this.o.commandFor(card)?.command) === key ? [s.slug] : [];
+        return s.url && s.state !== 'withdrawing' && card && this.target(card)?.key === key ? [s.slug] : [];
       })
       .sort();
+  }
+
+  /** Where the card's pages go; null when its repository shares none. */
+  private target(card: Item): ShareTarget | null {
+    const cmd = this.o.commandFor(card);
+    return cmd ? commandTarget(cmd, this.o.home, this.o.board.t.share) : null;
   }
 
   private card(cardId: string): Item {

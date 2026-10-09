@@ -32,7 +32,8 @@ const calls = () =>
     : [];
 
 // prints the page's URL, or fails with some output while the file `fail` exists; `version` is not logged in `calls`.
-// Like `wrangler pages deploy`, it leaves its cache in its working directory.
+// While the file `hold` exists, a call waits after it is logged. Like `wrangler pages deploy`, it
+// leaves its cache in its working directory.
 const FAKE = `
 const { appendFileSync, existsSync, mkdirSync, writeFileSync } = require('node:fs');
 const dir = ${'process.argv[2]'};
@@ -43,6 +44,7 @@ const input = JSON.parse(await Bun.stdin.text());
 mkdirSync('.wrangler/cache', { recursive: true });
 writeFileSync('.wrangler/cache/pages.json', '{}');
 appendFileSync(dir + '/calls', JSON.stringify({ args, input, home: process.env.OBEYA_HOME, kit: process.env.OBEYA_KIT, cwd: process.cwd(), repo: process.env.OBEYA_REPO }) + '\\n');
+while (existsSync(dir + '/hold')) await Bun.sleep(10);
 if (existsSync(dir + '/fail')) { console.error('upload refused: token expired'); process.exit(2); }
 console.error('Uploading 3 files');
 if (args[0] === 'publish') console.log('https://demos.example/' + input.slug + '/');
@@ -477,6 +479,30 @@ describe('sharing many outdated pages again at once', () => {
     expect(reshare()!.run).toMatchObject({ total: 2, done: 2 });
     expect(share(a!.id)!.outdated).toBeUndefined();
     expect(share(b!.id)!.outdated).toBeUndefined();
+  });
+
+  test('a restart keeps the marks of stored shares and the run under way as they were', async () => {
+    const [a, b, c, d] = await outdated(4, 3, 2, 1);
+    // d is up to date again on its own; the restart came while b went out, a still to go, c left out
+    sharing.share(d!.id);
+    await until(() => share(d!.id)?.state === 'shared' && !share(d!.id)!.outdated);
+    board.work(b!.id, { share: JSON.stringify({ ...JSON.parse(board.row(b!.id).share!), state: 'publishing', refresh: true, again: true }) });
+    board.setReshareRun({ queue: [b!.id, a!.id], total: 2, done: 0, failed: [] });
+    const stored = (id: string) => board.row(id).share;
+    const before = [a, c, d].map((x) => stored(x!.id));
+    writeFileSync(join(dir, 'hold'), '');
+    const n = calls().length;
+    sharing = make();
+    sharing.resume();
+    // b goes out again once the versions were asked for
+    await until(() => calls().length === n + 1);
+    expect(calls().at(-1)!.input.slug).toBe(JSON.parse(stored(b!.id)!).slug);
+    expect([a, c, d].map((x) => stored(x!.id))).toEqual(before);
+    expect(reshare()).toEqual({ outdated: 1, run: { total: 2, done: 0, failed: [], left: 2, current: b!.title } });
+    rmSync(join(dir, 'hold'));
+    await until(() => reshare()?.run?.left === 0);
+    expect(reshare()).toEqual({ outdated: 1, run: { total: 2, done: 2, failed: [], left: 0 } });
+    expect([a, b, c, d].map((x) => !!share(x!.id)!.outdated)).toEqual([false, false, true, false]);
   });
 });
 

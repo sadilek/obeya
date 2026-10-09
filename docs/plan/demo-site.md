@@ -19,8 +19,9 @@ site with Obeya itself, instead of a follow-up change in each repository.
   the page as JSON on stdin (it carries `language` since 2026-10-07), then `withdraw <slug>` and
   `version`. Calls run one at a time across all canvases (`serial`), in `~/.obeya/share/`, with
   `OBEYA_HOME`, `OBEYA_KIT` and `OBEYA_REPO` set. Without a target, "Teilen" exports a ZIP or an
-  HTML file. Outdated marks and the run that shares many again find a page's target through
-  `commandFor` and compare commands by their argv (`JSON.stringify(command)`).
+  HTML file. Since W1 `Sharing` resolves a card's `ShareTarget` (for now only a command, keyed by
+  its argv); outdated marks, `checkVersions` and the run that shares many again compare targets by
+  that key.
 - *The one static-host command* lives in another repository's adapter (`share.ts`, about 375
   lines plus a test). It keeps the site in `$OBEYA_HOME/<name>-share/site/`, one directory per
   slug with the demo's files and a `meta.json` (`kind`, `title`, `text`, `chapters`, `pr`,
@@ -119,7 +120,7 @@ machine publishes to the site.
 
 ## Workstreams
 
-- [ ] **W1:** Share targets instead of share commands. `Sharing` resolves a card's target (for
+- [x] **W1:** Share targets instead of share commands. `Sharing` resolves a card's target (for
   now only a command) where it calls `commandFor` today, and outdated marks, `checkVersions` and
   the run that shares many again key pages by the target's key instead of the command's argv.
   Stored shares and their version marks carry over unchanged, so nothing shows as outdated after

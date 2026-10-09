@@ -1425,6 +1425,10 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   stays, so a link keeps working across publishing again. The command's stderr goes into the
   card's log, a failure with its output as an error, and the card stays as it was. A share held,
   publishing or withdrawing at a restart goes on after it.
+  Inside Obeya a card's pages go to its share target (`ShareTarget` in `src/server/share.ts`; for
+  now always the repository's command): pages whose targets have the same key (a command's is its
+  argv) are on one site, so versions are asked once per target and a publish names the others.
+  Keys are not stored, so a share keeps only the version it was published with.
   Obeya keeps with each share the version the command said right after publishing it, and asks
   each command with pages out for its version at startup (Obeya restarts when its own code changes),
   after each of its calls, and when the owner comes back to a page of
