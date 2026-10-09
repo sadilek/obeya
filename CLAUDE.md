@@ -44,5 +44,7 @@ shows them as projects); when one is done, what lasts moves into `docs/design.md
   an `OBEYA_HOME` whose `demo.json` names both (`voice: elevenlabs`, `voiceName`, `keyFile`), as
   `scripts/hero-video/render.ts` sets up for the hero video (its README says how to change and
   re-render it). Credits are limited: only for public videos, never as Obeya's own demo voice.
+- A recurring step that needs a longer CLI call (an upload, say) goes into a script in the repo,
+  not into the docs as a command to copy.
 - Commit directly to `main`; this repo uses no feature branches or pull requests. An Obeya worker
   is the exception: it commits on its card's branch, and Obeya lands that branch on `main`.
