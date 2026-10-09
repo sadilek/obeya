@@ -14,9 +14,11 @@
 // Several machines may publish to one site, so each change pulls before it pushes: the site's
 // manifest (`obeya-site.json`: every page with its files, a revision and the machine; tombstones
 // for withdrawn pages) is read first, pages missing here or newer there are downloaded, pages
-// withdrawn there removed; after the deploy the manifest is read again, and a change another
-// machine's deployment took offline is made once more. A manifest that cannot be read refuses
-// the deploy (a site with nothing at its URL is the first one).
+// withdrawn there removed; it is read again right before the deploy and after it, and a change
+// another machine's deployment came in between with is made once more. A deployment that lands
+// later still takes pages offline: `audit` finds the pages shared from here that the live site
+// lacks, and `repair` deploys them again. A manifest that cannot be read refuses the deploy (a site
+// with nothing at its URL is the first one).
 //
 // The pages come from Obeya's own templates (`demo-page.ts`), each in its demo's language, the
 // overview in the site's. A call writes only its own page and the overview: a page shared earlier
@@ -316,11 +318,11 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   };
 
   /**
-   * After a deploy: whether the live site shows the change (the page at the revision, or its
+   * After a deploy: whether the live site shows the change (each page at its revision, or its
    * withdrawal), waiting while it still serves the deployment from before. False when another
    * machine's deployment came in between without it; null when the site never showed the new one.
    */
-  const check = async (slug: string, rev: number, mine: string, before: string | null, env: Record<string, string>): Promise<boolean | null> => {
+  const check = async (expect: [string, number][], mine: string, before: string | null, env: Record<string, string>): Promise<boolean | null> => {
     for (const wait of opts.checkWaits ?? CHECK_WAITS) {
       await Bun.sleep(wait);
       let live: Live;
@@ -329,7 +331,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       } catch {
         continue;
       }
-      if (live.deploy === mine || (live.pages[slug]?.rev ?? 0) >= rev) return true;
+      if (live.deploy === mine || expect.every(([slug, rev]) => (live.pages[slug]?.rev ?? 0) >= rev)) return true;
       if (live.deploy !== before) return false;
     }
     return null;
@@ -373,16 +375,18 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   };
 
   /**
-   * One change of a page, made safe for several machines: pull, change the page (`apply` writes its
-   * directory, or removes it, and returns its entry), deploy the whole directory, check the live
-   * site shows it. A change the site does not show (another machine's deployment came in between)
-   * is undone here and made once more; a failed deploy is undone too. The page's directory is set
-   * aside meanwhile in `backup/`.
+   * One change of the site, made safe for several machines: pull, change the page (`apply` writes
+   * its directory, or removes it, and returns its entry), deploy the whole directory, check the
+   * live site shows it. Without a page (`slug` null) the round deploys the directory as it is, for
+   * the pages this machine has as shared that the live site lacks, and checks those. A change
+   * another machine's deployment came in between with (seen before the deploy, or after it without
+   * the change) is undone here and made once more; a failed deploy is undone too. The page's
+   * directory is set aside meanwhile in `backup/`.
    */
   const change = async (
-    slug: string,
+    slug: string | null,
     shared: string[],
-    apply: (rev: number, before: Entry | undefined) => Entry,
+    apply: ((rev: number, before: Entry | undefined) => Entry) | null,
     log: (text: string) => void,
     gone: Gone[],
   ): Promise<string> => {
@@ -393,15 +397,13 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       const lost = await pull(local, live, env, log);
       gone.push(...lost.filter((g) => g.slug !== slug));
       const away = new Set(gone.map((g) => g.slug));
-      checkSite(
-        shared.filter((s) => !away.has(s)),
-        slug,
-        live,
-      );
-      const before = local.pages[slug];
-      const rev = Math.max(before?.rev ?? 0, live.pages[slug]?.rev ?? 0) + 1;
-      const backup = setAside(slug);
+      const kept = shared.filter((s) => !away.has(s));
+      checkSite(kept, slug ?? '', live);
+      const before = slug ? local.pages[slug] : undefined;
+      const rev = slug ? Math.max(before?.rev ?? 0, live.pages[slug]?.rev ?? 0) + 1 : 0;
+      const backup = slug ? setAside(slug) : null;
       const undo = () => {
+        if (!slug) return;
         rmSync(join(dir, slug), { recursive: true, force: true });
         if (backup) renameSync(backup, join(dir, slug));
         if (before) local.pages[slug] = before;
@@ -409,14 +411,22 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         writeLocal(local);
         writeOverview();
       };
-      let said: string;
+      let said = '';
       let seen: boolean | null;
       try {
-        local.pages[slug] = apply(rev, before);
+        if (slug && apply) local.pages[slug] = apply(rev, before);
+        const expect: [string, number][] = slug
+          ? [[slug, rev]]
+          : kept.flatMap((s) => (local.pages[s] && !local.pages[s]!.withdrawn ? [[s, local.pages[s]!.rev] as [string, number]] : []));
         const id = writeLocal(local);
         writeOverview();
-        said = await deploy(env);
-        seen = await check(slug, rev, id, live.deploy, env);
+        // another machine deployed since the pull: its deployment would be lost, so pull again
+        const now = await readLive(env);
+        if (now.deploy !== live.deploy) seen = false;
+        else {
+          said = await deploy(env);
+          seen = await check(expect, id, live.deploy, env);
+        }
       } catch (e) {
         undo();
         throw e;
@@ -512,18 +522,25 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       return 'why' in r ? { ...r, why: t.notWithdrawn(r.why) } : r;
     },
     version: async () => siteVersions(site),
-    gone: async () => {
+    audit: async (shared) => {
       try {
         const live = await readLive(deployEnv());
         const local = readLocal();
-        return Object.entries(live.pages).flatMap(([slug, e]) => {
+        const gone = Object.entries(live.pages).flatMap(([slug, e]) => {
           const mine = local.pages[slug];
           return e.withdrawn && mine && !mine.withdrawn && mine.rev < e.rev ? [{ slug, machine: e.machine }] : [];
         });
+        // shared from here, and not on the live site as written here: another machine's deployment took it offline
+        const missing = shared.filter((slug) => {
+          const mine = local.pages[slug];
+          return mine && !mine.withdrawn && (live.pages[slug]?.rev ?? 0) < mine.rev;
+        });
+        return { gone, missing };
       } catch {
-        return [];
+        return { gone: [], missing: [] };
       }
     },
+    repair: async (shared, log = () => {}) => attempt(async (gone) => ({ said: await change(null, shared, null, log, gone) })),
   };
 }
 

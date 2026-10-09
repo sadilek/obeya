@@ -235,6 +235,8 @@ const de = {
     lostTwice: 'Zweimal kam der Deploy eines anderen Rechners dazwischen; die Site zeigt die Änderung nicht. Bitte noch einmal.',
     notSeenYet: 'Die Site zeigt den neuen Stand noch nicht; der nächste Deploy prüft wieder.',
     withdrawnElsewhere: (machine: string) => `Die Seite wurde auf einem anderen Rechner (${machine}) zurückgezogen; der Link ist weg.`,
+    restored: 'Die Seite fehlte auf der Site: Der Deploy eines anderen Rechners hatte sie offline genommen. Obeya hat sie wieder deployt.',
+    notRestored: (why: string) => `Die Seite fehlt auf der Site (der Deploy eines anderen Rechners hat sie offline genommen) und ist nicht wieder deployt: ${why}`,
     exported: (zip: boolean, name: string) => `Exportiert als ${zip ? 'ZIP' : 'HTML-Datei'}: ${name}`,
     /** The line in a pull request's description that links its demo. */
     prLine: (html: boolean): string => (html ? 'Demo-Seite' : 'Demo-Video'),
@@ -473,6 +475,8 @@ const en: Messages = {
     lostTwice: 'Another machine’s deploy came in between twice; the site does not show the change. Please try again.',
     notSeenYet: 'The site does not show the new state yet; the next deploy checks again.',
     withdrawnElsewhere: (machine: string) => `The page was withdrawn on another machine (${machine}); the link is gone.`,
+    restored: 'The page was missing on the site: another machine’s deploy had taken it offline. Obeya deployed it again.',
+    notRestored: (why: string) => `The page is missing on the site (another machine’s deploy took it offline) and was not deployed again: ${why}`,
     exported: (zip: boolean, name: string) => `Exported as ${zip ? 'ZIP' : 'HTML file'}: ${name}`,
     prLine: (html: boolean) => (html ? 'Demo page' : 'Demo video'),
   },

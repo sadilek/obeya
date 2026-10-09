@@ -1637,11 +1637,18 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   site, with a line in the card's log every 25 pages), removes the pages withdrawn there, keeps
   the pages the live site lacks (its own, not deployed yet or lost to a deploy in between), then
   writes its page, the overview and the manifest, and deploys. Each manifest names its
-  deployment; after the deploy Obeya reads the manifest again, for about 30 s while the site still
-  serves the deployment before (the deploy counts, with a line saying the site does not show it
-  yet, if it never does). Another machine's deployment that came in between without the change
-  undoes it here and makes it once more; a second one fails the share with a line in the card's
-  log and leaves the card as it was. A manifest that cannot be read (network, a login, not a
+  deployment. Right before the deploy Obeya reads the manifest once more: another machine's
+  deployment since the pull would be lost, so the round starts over. After the deploy it reads the
+  manifest again, for about 30 s while the site still serves the deployment before (the deploy
+  counts, with a line saying the site does not show it yet, if it never does). Another machine's
+  deployment that came in between without the change undoes it here and makes it once more; a
+  second one fails the share with a line in the card's log and leaves the card as it was. A
+  deployment that lands after this machine's check, from a machine that pulled before it, still
+  takes its page offline (a static host has no compare-and-swap): the once-a-minute check when the
+  owner comes back also looks for the pages shared from here that the live site lacks or has
+  older, and deploys again (pull, then push), with a line on each of their cards; the next share
+  from this machine brings them back as well. Until then, or while this machine is off, the page
+  is offline. A manifest that cannot be read (network, a login, not a
   manifest) refuses the deploy, since deploying blind could take pages offline; a site with
   nothing at its URL (404 there too) is the first deploy, and a site deployed before it had a
   manifest (its overview answers) deploys only from a machine that has every page the overview

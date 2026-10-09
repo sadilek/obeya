@@ -82,8 +82,14 @@ export interface ShareTarget {
    */
   publish(page: SharePage, log?: (text: string) => void): Promise<({ url: string; said: string } | { why: string; said: string }) & { gone?: Gone[] }>;
   withdraw(slug: string, shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
-  /** The pages on the target that another machine withdrew (only a site knows); their cards here lose their link. */
-  gone?(): Promise<Gone[]>;
+  /**
+   * Of a site: the pages another machine withdrew (their cards here lose their link), and the pages
+   * shared from here (`shared`) that the live site lacks or has older, taken offline by another
+   * machine's deployment that came in between.
+   */
+  audit?(shared: string[]): Promise<{ gone: Gone[]; missing: string[] }>;
+  /** Of a site: deploys again what this machine has, for the pages `audit` found missing. */
+  repair?(shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
   /** The version of the pages the target writes, which changes whenever its pages would come out different; null when it says none. */
   version(): Promise<Versions | null>;
 }
@@ -303,8 +309,28 @@ export class Sharing {
     }
     for (const target of targets.values()) {
       this.mark(target.key, await target.version());
-      if (target.gone) this.lost(target.key, await target.gone());
+      if (target.audit) {
+        const shared = this.others('', target.key);
+        const { gone, missing } = await target.audit(shared);
+        this.lost(target.key, gone);
+        if (missing.length) await this.repair(target, shared, missing);
+      }
     }
+  }
+
+  /** Pages shared from here that another machine's deployment took offline: deployed again, a line on each card. */
+  private async repair(target: ShareTarget, shared: string[], missing: string[]) {
+    const ids = this.o.board
+      .sharedRows()
+      .filter((r) => missing.includes((JSON.parse(r.share!) as StoredShare).slug))
+      .map((r) => r.id);
+    const log = (kind: 'activity' | 'state' | 'error', text: string) => ids.forEach((id) => this.o.board.log(id, kind, 'obeya', text));
+    const t = this.o.board.t.share;
+    const r = await target.repair!(shared, (text) => log('activity', text));
+    this.lost(target.key, r.gone);
+    if (r.why) return log('error', [t.notRestored(r.why), r.said].filter(Boolean).join('\n\n'));
+    if (r.said) log('activity', r.said);
+    log('state', t.restored);
   }
 
   /** Pages withdrawn on another machine: their cards here lose their link. */

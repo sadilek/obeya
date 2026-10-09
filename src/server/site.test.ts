@@ -40,14 +40,16 @@ if (existsSync(out + '/race')) {
 }
 `;
 
-// the host: serves what was deployed last; `down` answers 503, `token` sends a request without it to a login
-const host: { down?: boolean; token?: string } = {};
+// the host: serves what was deployed last; `down` answers 503, `token` sends a request without it to a login;
+// `onManifest` runs before a read of the manifest is answered
+const host: { down?: boolean; token?: string; onManifest?: () => void } = {};
 const server = Bun.serve({
   port: 0,
   fetch(req) {
     if (host.down) return new Response('down', { status: 503 });
     if (host.token && req.headers.get('X-Token') !== host.token) return Response.redirect('https://login.example.dev/', 302);
     let path = decodeURIComponent(new URL(req.url).pathname);
+    if (path === `/${MANIFEST}`) host.onManifest?.();
     if (path.endsWith('/')) path += 'index.html';
     const file = join(dir, 'deployed', path);
     return !path.includes('..') && existsSync(file) && statSync(file).isFile() ? new Response(Bun.file(file)) : new Response('not found', { status: 404 });
@@ -91,6 +93,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
   delete host.down;
   delete host.token;
+  delete host.onManifest;
 });
 
 const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({
@@ -302,6 +305,17 @@ describe('several machines publishing to one site', () => {
     b = make(SITE(), other, 'b');
   });
   const live = () => manifest(deployed());
+  // a snapshot of what the site shows now, as another machine's deployment that lacks what comes next
+  const snapshot = (name: string) => {
+    const to = join(dir, name);
+    cpSync(deployed(), to, { recursive: true });
+    writeFileSync(join(to, MANIFEST), JSON.stringify({ ...manifest(to), deploy: name }));
+    return to;
+  };
+  const lands = (from: string) => {
+    rmSync(deployed(), { recursive: true, force: true });
+    cpSync(from, deployed(), { recursive: true });
+  };
 
   test('each pulls the pages the other published before it deploys, so neither takes the other’s offline', async () => {
     await target.publish(page('a-111111'));
@@ -332,12 +346,12 @@ describe('several machines publishing to one site', () => {
     expect(live().pages['a-111111']).toMatchObject({ withdrawn: true, rev: 2, machine: 'a' });
     // the other machine still has its files: they do not come back, and its card would lose its link
     expect(existsSync(join(siteDir(other), 'a-111111'))).toBe(true);
-    expect(await b.gone!()).toEqual([{ slug: 'a-111111', machine: 'a' }]);
+    expect(await b.audit!(['a-111111'])).toEqual({ gone: [{ slug: 'a-111111', machine: 'a' }], missing: [] });
     expect(await b.publish(page('b-222222', { shared: ['a-111111'] }))).toMatchObject({ url: `${URL_}b-222222/`, gone: [{ slug: 'a-111111', machine: 'a' }] });
     expect(existsSync(join(siteDir(other), 'a-111111'))).toBe(false);
     expect(readdirSync(deployed()).sort()).toEqual(['b-222222', 'index.html', MANIFEST]);
     expect(live().pages['a-111111']).toMatchObject({ withdrawn: true });
-    expect(await b.gone!()).toEqual([]);
+    expect(await b.audit!([])).toEqual({ gone: [], missing: [] });
     // shared again, it is back for both
     await target.publish(page('a-111111', { shared: [] }));
     expect(live().pages['a-111111']).toMatchObject({ rev: 3, machine: 'a' });
@@ -378,13 +392,6 @@ describe('several machines publishing to one site', () => {
   test('another machine’s deploy coming in between: one more round, and a failure after the second', async () => {
     await target.publish(page('a-111111'));
     await b.publish(page('b-222222'));
-    // snapshots of the other machine's deployments, which lack the page this one is about to publish
-    const snapshot = (name: string) => {
-      const to = join(dir, name);
-      cpSync(deployed(), to, { recursive: true });
-      writeFileSync(join(to, MANIFEST), JSON.stringify({ ...manifest(to), deploy: name }));
-      return to;
-    };
     writeFileSync(join(dir, 'race'), snapshot('other-1'));
     const said: string[] = [];
     const r = await target.publish(page('c-333333', { shared: ['a-111111'] }), (l) => said.push(l));
@@ -400,6 +407,36 @@ describe('several machines publishing to one site', () => {
     expect(existsSync(join(siteDir(), 'd-444444'))).toBe(false);
     expect(manifest().pages['d-444444']).toBeUndefined();
     expect(overview()).not.toContain('Titel d-444444');
+  });
+
+  test('another machine’s deploy landing between the pull and the deploy: pulled again before deploying', async () => {
+    await target.publish(page('a-111111'));
+    await b.publish(page('b-222222'));
+    const before = snapshot('before');
+    await b.publish(page('b2-222222'));
+    const theirs = snapshot('theirs');
+    lands(before);
+    // this machine pulls the site without b2; the other machine's deployment with it lands right after
+    let reads = 0;
+    host.onManifest = () => {
+      if (++reads === 1) lands(theirs);
+    };
+    const deploysBefore = deploys().length;
+    expect(await target.publish(page('c-333333'))).toMatchObject({ url: `${URL_}c-333333/` });
+    expect(deploys().length).toBe(deploysBefore + 1);
+    expect(readdirSync(deployed()).sort()).toEqual(['a-111111', 'b-222222', 'b2-222222', 'c-333333', 'index.html', MANIFEST]);
+  });
+
+  test('a page another machine’s late deploy took offline is found missing and deployed again', async () => {
+    await target.publish(page('a-111111'));
+    const pulled = snapshot('pulled');
+    await target.publish(page('c-333333', { shared: ['a-111111'] }));
+    // the other machine pulled before c and deployed after this machine had checked
+    lands(pulled);
+    expect(await target.audit!(['a-111111', 'c-333333'])).toEqual({ gone: [], missing: ['c-333333'] });
+    expect(await target.repair!(['a-111111', 'c-333333'])).toMatchObject({ said: 'Uploaded 4 entries', gone: [] });
+    expect(readdirSync(deployed()).sort()).toEqual(['a-111111', 'c-333333', 'index.html', MANIFEST]);
+    expect(await target.audit!(['a-111111', 'c-333333'])).toEqual({ gone: [], missing: [] });
   });
 
   test('a deployment the site does not show yet counts, with a line saying so', async () => {
@@ -471,6 +508,25 @@ describe('sharing to a site', () => {
     expect(board.item(two)!.share).toBeUndefined();
     expect(board.events(two).map((e) => e.text)).toContain('Die Seite wurde auf einem anderen Rechner (laptop) zurückgezogen; der Link ist weg.');
     expect(readdirSync(deployed()).sort()).toEqual([slugOf(three), 'index.html', MANIFEST]);
+  });
+
+  test('a page another machine’s deploy took offline: deployed again when the owner comes back, with a line on its card', async () => {
+    const [one, two] = [card(), card()];
+    for (const id of [one, two]) {
+      sharing.share(id);
+      await settled(id, 'shared');
+    }
+    const slug = board.item(two)!.share!.url!.split('/').at(-2)!;
+    // another machine's deployment that pulled before the second page went out
+    const m = manifest(deployed());
+    delete m.pages[slug];
+    rmSync(join(deployed(), slug), { recursive: true });
+    writeFileSync(join(deployed(), MANIFEST), JSON.stringify({ ...m, deploy: 'theirs' }));
+    await sharing.checkVersions();
+    expect(board.events(two).map((e) => e.text)).toContain('Die Seite fehlte auf der Site: Der Deploy eines anderen Rechners hatte sie offline genommen. Obeya hat sie wieder deployt.');
+    expect(board.events(one).map((e) => e.text)).not.toContain('Die Seite fehlte auf der Site: Der Deploy eines anderen Rechners hatte sie offline genommen. Obeya hat sie wieder deployt.');
+    expect(existsSync(join(deployed(), slug, 'demo.mp4'))).toBe(true);
+    expect(board.item(two)!.share).toMatchObject({ state: 'shared' });
   });
 
   test('without the env file on this machine the card exports instead', async () => {
