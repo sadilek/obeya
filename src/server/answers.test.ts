@@ -97,7 +97,7 @@ describe('a question the Koordinator looks up', () => {
     const tag = /(K\d+) \[planned\] "Login"/.exec(first.brief)![1];
     await say('was würde der agent bei login machen?', {}, 'look_up', { question: 'What would the worker do on Login?', card: tag, confirm: 'Moment, ich lese nach.' });
     const a = answerer();
-    expect(a.spec.system).toContain('You are the Koordinator of Obeya');
+    expect(a.spec.system).toContain('You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.');
     expect(a.spec.role).toBe('koordinator');
     expect(a.inbox[0]).toContain('Your card: “Login”.');
     expect(board().snapshot().talk.at(-1)).toMatchObject({ said: 'was würde der agent bei login machen?', reply: 'Moment, ich lese nach.', question: 'What would the worker do on Login?' });

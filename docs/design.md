@@ -63,11 +63,15 @@ visibly on the walls and decisions are made in front of the wall.
     workstream.
   - *Exploration agent*, one per idea, long-lived and read-only: discusses the idea with the owner
     and keeps its brief.
-  - *Chief of Staff* (in the UI: *Koordinator*), one per canvas: takes voice input on the open
-    canvas, creates and assigns cards, runs the workspace pool, and keeps the preference memory.
-    It also schedules the work: it cuts work packages so they can run in parallel, detects cards
-    whose changes are likely to conflict on merge, and does not run those at the same time but
-    queues them.
+  - *Chief of Staff* (in the code and these docs: *Koordinator*), one per canvas: takes voice
+    input on the open canvas, creates and assigns cards, runs the workspace pool, and keeps the
+    preference memory. It also schedules the work: it cuts work packages so they can run in
+    parallel, detects cards whose changes are likely to conflict on merge, and does not run those
+    at the same time but queues them. The UI calls it simply *Obeya* in both languages
+    (2026-10-09): the owner has one counterpart, not a product plus a component in it. Its
+    replies, its sheet, the line under the microphone and its log lines on cards say Obeya; the
+    top-right button is a speech-bubble icon with its counts, tooltip „Obeya (K)“. Prompts tell
+    the agents the owner knows it as Obeya.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
   ("questions to me with at most three options", "solve rebase conflicts yourself"), or said
   outright ("Merk dir: …"). Shared by all agents, maintained by the Chief of Staff. A learned rule,
@@ -394,7 +398,7 @@ point does (`Seed` in `src/ui/detail.tsx`), so the conversation reads from the s
 asked, what the agent did, what the owner added. Its label says where the text comes from: „Du“
 on the owner's own card (typed or spoken), „Plan-Doc“ for a workstream, „Idee“ for a prototype,
 „Vorschlag“ for an agent's proposal the owner accepted (the card keeps that it was one,
-`proposed`), „Koordinator“ for one from the Arbeitsrückschau. A long text shows its first eight
+`proposed`), „Obeya“ for one from the Arbeitsrückschau. A long text shows its first eight
 lines or so, with „mehr“ for the rest (an idea's starting point too), and „Voraussichtlich
 betroffen“ folds under it. A card that was an idea has no such message: its brief stands on the
 left, and its conversation goes on from the idea's. Before (2026-10-08) the task stood on the left
@@ -739,7 +743,7 @@ the owner's language (`src/core/locale.ts`).
   in `plugin/skills/demo/lib/language.ts`, which the demo skill shares), which the server reads
   whenever it needs the language (`ownerLanguage`) and the UI asks for before its first render
   (`/api/language`). The UI strings are two tables of one shape in `src/ui/strings.ts`, so a
-  missing English text is a type error; the English one calls the Koordinator the Coordinator; dates and numbers follow the language, in the browser's
+  missing English text is a type error; both call the Koordinator „Obeya“; dates and numbers follow the language, in the browser's
   own variant of it (`en-GB` writes the day first; a variant `Intl` refuses, such as
   `en-US@posix` from a Linux browser with the POSIX locale, gives the usual one: until
   2026-10-07 the page stayed blank on it). Choosing another language takes effect at
@@ -1306,7 +1310,9 @@ the owner's language (`src/core/locale.ts`).
 - **Koordinator memory** — the owner's commands go to one ongoing Koordinator session per canvas,
   one after the other, so it understands "die andere auch" or "nein, die von vorhin". It sees a
   card's open question, also one in a demo report, so "ja" to it is an answer, not an
-  approval. Card tags
+  approval. Under the mic, and under a card's text field, the UI names who listens: the agent when
+  one works on the open card ("Agent · Aufgabe: …", "Agent · Idee: …"), else the Koordinator, as
+  Obeya, and the card or project in focus ("Obeya · Aufgabe: …"). Card tags
   (`K1`, …) stay fixed for the session. Each command brings the cards as they are now and what
   happened since the previous one (state changes, questions, answers, hand-overs, the owner's
   notes, errors, new cards; not the workers' steps); a command the owner took back is told with the

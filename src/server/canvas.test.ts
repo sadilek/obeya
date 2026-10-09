@@ -363,7 +363,7 @@ test('what the owner writes in a card, or says to the Koordinator without one, r
   expect(learners()).toHaveLength(3);
   // it reads the home repository's Lesestand, the default branch, not the checkout a card may have leased
   expect(learners()[2]!.spec.cwd).toBe(join(dir, 'read', 'web', 'web'));
-  expect(learners()[2]!.inbox[0]).toContain('The Koordinator replied: Weil die Karten offen lassen');
+  expect(learners()[2]!.inbox[0]).toContain('You replied: Weil die Karten offen lassen');
 });
 
 test('clicks in a card count towards the Rückschau, and words the learner reads count once', async () => {

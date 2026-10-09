@@ -49,7 +49,7 @@ describe("the owner's language", () => {
     const second = await say(k, 'starte Export', 'reply', { confirm: 'Schon gestartet.' });
     expect(second.session).not.toBe(first.session);
     expect(second.session.spec.system).toContain('one short German sentence');
-    expect(k.vocabulary()).toStartWith('Obeya, Koordinator, Aufgabe');
+    expect(k.vocabulary()).toStartWith('Obeya, Aufgabe');
   });
 });
 
@@ -306,9 +306,9 @@ describe('the Koordinator remembers', () => {
     await settle();
     const s = runtime.last;
     expect(s.inbox[0]).toContain('K2 [queued behind "Export"] "Archiv"');
-    expect(s.inbox[0]).toContain('K3 [queued: the Koordinator checks it for merge conflicts] "Login"');
+    expect(s.inbox[0]).toContain('K3 [queued: Obeya checks it for merge conflicts] "Login"');
     const refused = await s.call('act', { actions: [{ do: 'start', card: 'K2' }, { do: 'start', card: 'K3' }], confirm: 'Beide starten.' });
-    expect(refused).toContain('action 2 (start on K3): the Koordinator is still checking the card');
+    expect(refused).toContain('action 2 (start on K3): Obeya is still checking the card');
     s.call('act', { actions: [{ do: 'start', card: 'K2' }], confirm: '„Archiv“ startet trotz Überschneidung.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
@@ -348,7 +348,7 @@ describe('the Koordinator remembers', () => {
     expect(s.inbox[0]).toContain('The owner is looking at the project K1 "Export".');
     expect(s.inbox[0]).toContain('Projects with workstreams to start:\nK1 [project] "Export" — planned workstreams not yet started: W2, W3');
     expect(s.inbox[0]).not.toContain('"Fertig"');
-    s.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: 'Der Koordinator plant alle Workstreams von „Export“ ein.' });
+    s.call('act', { actions: [{ do: 'start', card: 'K1' }], confirm: 'Obeya plant alle Workstreams von „Export“ ein.' });
     s.emit({ type: 'idle' });
     k.arm((await heard).token!);
     await new Promise((r) => setTimeout(r, 40));

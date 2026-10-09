@@ -54,7 +54,7 @@ export class Answers {
         : inform({
             runtime: this.o.runtime,
             cwd: this.o.pathFor(about),
-            system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents.\n\n${INFORM_RULES}`,
+            system: `You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya.\n\n${INFORM_RULES}`,
             message: [message, this.o.preferences?.() ?? ''].filter(Boolean).join('\n\n'),
             onTool,
             language: this.o.board.language(),
@@ -83,7 +83,7 @@ export class Answers {
   }
 
   private message(said: string, question: string, about: Item | undefined, project: Item | undefined): string {
-    const parts = [`The owner said: "${said}"`, `The question, as the Koordinator understood it: ${question}`];
+    const parts = [`The owner said: "${said}"`, `The question, as you understood it then: ${question}`];
     if (about && about.kind !== 'project') {
       const state = about.queue ? 'planned, queued' : about.need ? `${about.state}: ${about.need}` : about.state;
       parts.push(

@@ -18,10 +18,10 @@ visibly on the walls. More on [obeya.si](https://obeya.si).
 Each card gets its own agent (Claude Code) in its own clone or worktree of your repository. The
 agent asks on the card when it needs a decision and hands over with a narrated demo video of the
 change; you approve it or say what to change, and approved work lands on `main` or goes out as a
-pull request that Obeya carries to the merge. A Koordinator takes spoken or typed instructions,
-queues cards whose changes would collide, cuts large ones into parallel packages and learns your
-preferences. Larger work is planned in plan docs in the repository, which show as projects with a
-card per workstream.
+pull request that Obeya carries to the merge. You talk to Obeya itself, spoken or typed: it
+takes your instructions, queues cards whose changes would collide, cuts large ones into parallel
+packages and learns your preferences. Larger work is planned in plan docs in the repository, which
+show as projects with a card per workstream.
 
 **Status:** early, and in daily use: Obeya is built with Obeya. The interface is German for now;
 English is next. How it works and why is in [`docs/design.md`](docs/design.md).
@@ -93,7 +93,7 @@ while a checkout's Obeya runs opens a window on it, and `bun start` while the ap
 it runs. An Obeya older than the one that last ran on the home (an app not yet updated after a
 newer checkout) leaves the database alone and says to update. Workers run on the Claude Code login of the machine.
 The canvases and their repositories can be seen and changed in the app ("Konfiguration") or by
-telling the Koordinator; saving writes `canvases.json` and restarts Obeya with it.
+telling Obeya; saving writes `canvases.json` and restarts Obeya with it.
 
 Voice runs Whisper in a sidecar through `uv run` (mlx-whisper on Apple Silicon, faster-whisper
 elsewhere), or in a Python of your own with that package (`OBEYA_WHISPER_PYTHON=/path/to/python`).

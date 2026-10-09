@@ -691,13 +691,13 @@ describe("the app's push-to-talk key in another app", () => {
       return ws;
     };
     const [a, b] = [await open(), await open()];
-    a.send(JSON.stringify({ type: 'focus', card: c.id, target: 'Koordinator · Aufgabe: A', title: 'A' } satisfies ClientMessage));
+    a.send(JSON.stringify({ type: 'focus', card: c.id, target: 'Obeya · Aufgabe: A', title: 'A' } satisfies ClientMessage));
     await until(async () => (await focus()).card === c.id);
-    expect(await focus()).toEqual({ canvas: 'main', card: c.id, target: 'Koordinator · Aufgabe: A', title: 'A' });
+    expect(await focus()).toEqual({ canvas: 'main', card: c.id, target: 'Obeya · Aufgabe: A', title: 'A' });
     await sleep(5);
-    b.send(JSON.stringify({ type: 'focus', target: 'Koordinator' } satisfies ClientMessage));
+    b.send(JSON.stringify({ type: 'focus', target: 'Obeya' } satisfies ClientMessage));
     await until(async () => !(await focus()).card);
-    expect(await focus()).toEqual({ canvas: 'main', target: 'Koordinator' });
+    expect(await focus()).toEqual({ canvas: 'main', target: 'Obeya' });
     // the page that reported last closed: the other one's focus stands
     b.close();
     await until(async () => (await focus()).card === c.id);

@@ -524,7 +524,7 @@ describe('Koordinator starts all workstreams of a project', () => {
     expect(item(w4.id)).toMatchObject({ state: 'working', scope: ['src/w4.ts'] });
     expect(item(w2.id)).toMatchObject({ state: 'planned', scope: ['src/w2.ts'], queue: { behind: [w4.id], reason: 'W2 baut auf der API aus W4 auf.' } });
     expect(item(w3.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id] } });
-    expect(board.events(w2.id).at(-1)!.text).toBe('Koordinator: wartet auf W4 „Titel W4“. W2 baut auf der API aus W4 auf.');
+    expect(board.events(w2.id).at(-1)!.text).toBe('Obeya: wartet auf W4 „Titel W4“. W2 baut auf der API aus W4 auf.');
     // the Koordinator's order is the queue's
     expect(k.ahead(item(w3.id)).map((i) => i.id)).toEqual([w2.id]);
     expect(board.events(p.id).at(-1)!.text).toContain('1 von 3 Workstreams starten jetzt');
@@ -740,8 +740,8 @@ describe('preference memory', () => {
     const brief = learnSession().inbox[0]!;
     expect(learnSession().spec.cwd).toBe(board.canvas.repos[0]!.path);
     expect(brief).not.toContain('Card');
-    expect(brief).toContain("The owner's question or remark to the Koordinator: Warum fragt der Agent immer nach Kleinkram?");
-    expect(brief).toContain('The Koordinator replied: Weil die Karte offen lässt');
+    expect(brief).toContain("The owner's question or remark to you: Warum fragt der Agent immer nach Kleinkram?");
+    expect(brief).toContain('You replied: Weil die Karte offen lässt');
     await learn('propose', { rule: 'Kleinkram selbst entscheiden.' });
     expect(board.preferences()).toEqual([{ id: 1, text: 'Kleinkram selbst entscheiden.', state: 'proposed', quote: 'Warum fragt der Agent immer nach Kleinkram?' }]);
   });
@@ -812,7 +812,7 @@ describe('preference memory', () => {
     expect(brief).toContain("The agent's last message on the card before it:\nSoll die Datei rechnungen.csv oder export.csv heißen?");
     const recent = brief.slice(brief.indexOf('What the owner said in the last'), brief.indexOf("The agent's last message"));
     expect(recent).toContain('to the agent on "Import": Frag nicht nach jedem Dateinamen.');
-    expect(recent).toContain('to the Koordinator: Wie weit ist der Export?');
+    expect(recent).toContain('to you: Wie weit ist der Export?');
     // neither what was taken back nor the input itself
     expect(recent).not.toContain('Starte alles.');
     expect(recent).not.toContain('Schon wieder');
@@ -909,7 +909,7 @@ describe('Rückschau', () => {
       '"Export": the owner wrote to the agent: Bitte ohne Emojis.',
       '"Export": the owner: Trotz Überschneidung gestartet.',
       'the owner dismissed the card an agent proposed: "Emoji-Picker"',
-      'the owner to the Koordinator (with "Export" open): Lösch die Karte Export. → Mache ich. (the owner took it back)',
+      'the owner to you (with "Export" open): Lösch die Karte Export. → Mache ich. (the owner took it back)',
       'the owner rejected the proposed rule "Commits auf Englisch." (its occasion: Englisch bitte.)',
       '"Export": the owner wrote to the agent: Wieder Emojis. Lass das.',
       'Proposals the owner rejected (do not propose them again):\n- Commits auf Englisch.',

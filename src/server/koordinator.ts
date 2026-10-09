@@ -120,7 +120,7 @@ export class Koordinator {
     const card = this.card(cardId);
     if (card.kind === 'project') return this.requestAll(card);
     if (card.state !== 'planned') throw new BadRequest('notPlanned', 'only a planned card can be started');
-    if (card.queue) throw new BadRequest('queued', 'the card is already with the Koordinator');
+    if (card.queue) throw new BadRequest('queued', 'the card is already with Obeya');
     this.setQueue(cardId, { checking: true });
     this.serial(() => this.decide(cardId));
   }
@@ -377,7 +377,7 @@ export class Koordinator {
           const open = title(t.cardId);
           return {
             at: t.at,
-            text: `the owner to the Koordinator${open ? ` (with "${open}" open)` : ''}: ${clip(t.said, 300)} → ${clip(t.reply, 200)}${t.undone ? ' (the owner took it back)' : ''}`,
+            text: `the owner to you${open ? ` (with "${open}" open)` : ''}: ${clip(t.said, 300)} → ${clip(t.reply, 200)}${t.undone ? ' (the owner took it back)' : ''}`,
           };
         }),
       ...b.removed(since).map((r) => ({
@@ -488,7 +488,7 @@ export class Koordinator {
           question ? `The worker asked: ${question}` : '',
           before ? `Before the owner wrote in it, the card's text read:\n${before}` : '',
           `The owner's ${INPUTS[kind]}: ${text}`,
-          reply ? `The Koordinator replied: ${reply}` : '',
+          reply ? `You replied: ${reply}` : '',
           ...this.rules(card),
         ]
           .filter(Boolean)
@@ -865,7 +865,7 @@ export class Koordinator {
               return [
                 `- ${tagOf(a.id)}: "${a.title}"${a.body ? ` — ${a.body.split('\n')[0]!.slice(0, 200)}` : ''}`,
                 `  expected to change: ${(a.scope ?? []).filter(hard).join(', ') || '(no estimate)'}`,
-                `  waits for: ${waitsFor || 'the Koordinator\'s decision'}`,
+                `  waits for: ${waitsFor || 'your decision'}`,
               ].join('\n');
             })
             .join('\n')}`
@@ -894,7 +894,7 @@ export class Koordinator {
 }
 
 const SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to conflict with one of them waits behind it rather than overtaking it.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. Your job here: before a card starts, estimate which files it will change, and judge whether running it next to the cards in progress is likely to end in merge conflicts. Only those keep it waiting; everything else should run in parallel. Cards queued ahead of it count too: they came first and start before it, so a card likely to conflict with one of them waits behind it rather than overtaking it.
 
 Sharing a file is not a conflict. Git merges changes to different places of the same file cleanly: new strings, types, routes, tests or functions added next to others; edits in different functions. A conflict is likely when both cards change the same lines or the same function or block, when one rewrites, moves, renames or reformats code the other one edits, or when both change the same small, tightly packed section (one config entry, one signature that both extend). For a card in progress you see what it is expected to change and the places it has changed so far (line ranges in its branch, with the enclosing function); read the code there when you need to.
 
@@ -906,7 +906,7 @@ Keep it quick: this runs every time a card starts.
 `.trim();
 
 const SCHEDULE_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. The owner started all open workstreams of a project at once; you decide how they go. Read the plan doc and what you need in the repository (you cannot change files).
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. The owner started all open workstreams of a project at once; you decide how they go. Read the plan doc and what you need in the repository (you cannot change files).
 
 A workstream waits for another when:
 - it depends on it: it builds on code, an API, data or a decision that the other one introduces, or the plan says it comes after it. It then waits until that one has landed.
@@ -934,9 +934,9 @@ const REPOS_PARAM =
   "repos: the ids of the repositories whose CLAUDE.md the rule belongs in (one proposal each); leave it out for a rule on how agents work with the owner through Obeya.";
 
 const LEARN_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's rules, so the owner never has to say the same thing twice.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
 
-You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you, the Koordinator, in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the canvas's repositories, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting rule that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
+You get one thing the owner just said: to the agent on a card, in the text of a card they wrote, or to you in conversation. With it you see the card, what the owner said in the last days, the agent's last message before it, the canvas's repositories, the rules recorded so far, and the proposals waiting for the owner or rejected by them. Decide whether it holds a lasting rule that should guide future work on other cards too: how to work, what to ask and what not, style, wording, testing, tools.
 
 ${WHERE_RULES_GO}
 
@@ -958,7 +958,7 @@ const REVIEW_COUNT = 'review_inputs';
 const REVIEW_SINCE = 'review_since';
 
 const REVIEW_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. You keep the owner's rules, so the owner never has to say the same thing twice.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. You keep the owner's rules, so the owner never has to say the same thing twice.
 
 ${WHERE_RULES_GO}
 
@@ -979,7 +979,7 @@ const WHO: Record<CardEvent['author'], string> = {
   worker: 'the agent',
   explorer: 'the idea agent',
   project: 'the project agent',
-  koordinator: 'the Koordinator',
+  koordinator: 'you',
   obeya: 'Obeya',
 };
 const STEPS: Partial<Record<CardEvent['kind'], string>> = {
@@ -1004,7 +1004,7 @@ const UTTERED: Record<Utterance['kind'], string> = {
   hint: 'to the agent',
   answer: "answering the agent's question",
   talk: "in an idea's discussion",
-  say: 'to the Koordinator',
+  say: 'to you',
 };
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
@@ -1015,13 +1015,13 @@ const INPUTS: Record<OwnerInput, string> = {
   note: 'note to the worker',
   feedback: 'feedback on the finished work',
   idea: 'words in the discussion of an idea',
-  command: 'words to the Koordinator, which it carried out',
-  talk: 'question or remark to the Koordinator',
+  command: 'words to you, which you carried out',
+  talk: 'question or remark to you',
   card: 'text of a card they wrote, the task for an agent',
 };
 
 const CUT_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents. Several workers run at the same time, each on one card in its own workspace; cards whose changes would conflict on merge (the same code in the same files) have to wait for each other. The owner asks you to cut a card into work packages that can run in parallel.
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers run at the same time, each on one card in its own workspace; cards whose changes would conflict on merge (the same code in the same files) have to wait for each other. The owner asks you to cut a card into work packages that can run in parallel.
 
 Read what you need in the repository (you cannot change files). Then either call packages or keep:
 - packages: 2 to 6 cards that together do exactly what the card asks, each shippable and testable on its own, touching different files wherever possible. Each body says what to do and how to verify it, so a worker needs no other context. files: the repository-relative paths each will change ("dir/" for a directory). reason: one sentence in ${language} on how you cut.
