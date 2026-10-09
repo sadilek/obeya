@@ -68,5 +68,12 @@ export interface RepoAdapter {
     refresh: string;
     /** `KEY=value` file the running stack writes, and the key holding the frontend URL. */
     urls: { file: string; frontendKey: string };
+    /**
+     * Stops the stack in a workspace. Obeya runs it there when the card waits for the owner and its
+     * worker has nothing running (Parking), and tells the worker with its next message.
+     */
+    stop?: string;
+    /** Exits 0 when the workspace's stack holds what must not be lost (a restored database, say): Obeya then leaves it running. */
+    keep?: string;
   };
 }

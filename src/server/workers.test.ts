@@ -722,6 +722,138 @@ describe('workers', () => {
   });
 });
 
+describe('parking: the stack of a card that waits for the owner', () => {
+  const stack = { start: 'bun run stack', refresh: 'bun run api:restart', urls: { file: '.stack.env', frontendKey: 'WEB_URL' } };
+  /** Workers whose adapter stops the stack by writing `parked.log` in the workspace, after a grace of `grace` ms. */
+  const parking = (more: Partial<NonNullable<RepoAdapter['stack']>> = {}, grace = 10) => {
+    workers = new Workers({
+      board,
+      runtime,
+      workspaces: spaces,
+      adapter: { ...generic, land: 'main', workspaces: 'clones', stack: { ...stack, stop: 'echo stopped >> parked.log', ...more } },
+      parkGrace: grace,
+    });
+  };
+  const stopped = (id: string) => existsSync(join(board.row(id).workspace!, 'parked.log'));
+  const handOver = () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ready_for_review', { summary: 'Fertig.', no_demo: 'nichts zu zeigen' });
+    runtime.last.emit({ type: 'idle' });
+    return c;
+  };
+
+  test('a card that waits has its stack stopped after the grace, and its worker hears so with the next message', async () => {
+    parking();
+    const c = handOver();
+    expect(state(c.id)).toBe('waiting:review');
+    expect(runtime.last.inbox[0]).toContain('While the card waits for the owner, Obeya stops the stack');
+    await until(() => board.row(c.id).parked);
+    expect(stopped(c.id)).toBe(true);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: board.t.worker.parked });
+    workers.message(c.id, 'Bitte noch die Spalte umbenennen.');
+    expect(runtime.last.inbox.at(-1)).toContain('Bitte noch die Spalte umbenennen.');
+    expect(runtime.last.inbox.at(-1)).toContain('Obeya stopped the app stack in your workspace (`echo stopped >> parked.log`)');
+    expect(runtime.last.inbox.at(-1)).toContain('start it (`bun run stack`)');
+    expect(board.row(c.id).parked).toBeNull();
+    // only once: the message after that says nothing of it
+    runtime.last.emit({ type: 'idle' });
+    workers.message(c.id, 'Danke.');
+    expect(runtime.last.inbox.at(-1)).not.toContain('app stack');
+  });
+
+  test('an answer within the grace keeps the stack running', async () => {
+    parking({}, 60);
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ask', { question: 'Welche Spalten?' });
+    runtime.last.emit({ type: 'idle' });
+    workers.answer(c.id, 'Datum und Stand.');
+    await Bun.sleep(100);
+    expect(stopped(c.id)).toBe(false);
+    expect(runtime.last.inbox.at(-1)).not.toContain('app stack');
+  });
+
+  test('a worker whose background work still runs keeps its stack', async () => {
+    parking();
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ready_for_review', { summary: 'Fertig.', no_demo: 'nichts zu zeigen' });
+    runtime.last.emit({ type: 'idle', background: 1 });
+    await Bun.sleep(60);
+    expect(stopped(c.id)).toBe(false);
+  });
+
+  test('a card still at work keeps its stack', async () => {
+    parking();
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'text', text: 'Weiter.' });
+    runtime.last.emit({ type: 'idle' });
+    await Bun.sleep(60);
+    expect(stopped(c.id)).toBe(false);
+  });
+
+  test('a stack that holds what must stay keeps running, and the owner hears why', async () => {
+    parking({ keep: 'exit 0' });
+    const c = handOver();
+    await until(() => board.events(c.id).at(-1)!.text === board.t.worker.parkKept);
+    expect(stopped(c.id)).toBe(false);
+    expect(board.row(c.id).parked).toBeNull();
+  });
+
+  test('a stack that does not need keeping is stopped', async () => {
+    parking({ keep: 'exit 1' });
+    const c = handOver();
+    await until(() => board.row(c.id).parked);
+    expect(stopped(c.id)).toBe(true);
+  });
+
+  test('a stop that fails is an error on the card, and the worker is not told of a stopped stack', async () => {
+    parking({ stop: 'echo "no pid file" >&2; exit 3' });
+    const c = handOver();
+    await until(() => board.events(c.id).at(-1)!.kind === 'error');
+    expect(board.events(c.id).at(-1)!.text).toBe(board.t.worker.parkFailed('no pid file'));
+    expect(board.row(c.id).parked).toBeNull();
+    workers.message(c.id, 'Noch etwas.');
+    expect(runtime.last.inbox.at(-1)).not.toContain('app stack');
+  });
+
+  test('a message while the stop runs reaches the worker once the stack is stopped', async () => {
+    parking({ stop: 'sleep 0.3; echo stopped >> parked.log' });
+    const c = handOver();
+    await Bun.sleep(80);
+    const before = runtime.last.inbox.length;
+    workers.message(c.id, 'Noch etwas.');
+    expect(runtime.last.inbox.length).toBe(before);
+    await until(() => runtime.last.inbox.length > before);
+    expect(stopped(c.id)).toBe(true);
+    expect(runtime.last.inbox.at(-1)).toContain('Noch etwas.');
+    expect(runtime.last.inbox.at(-1)).toContain('Obeya stopped the app stack');
+  });
+
+  test('after a restart, a card that waits is parked; its worker hears so when the session resumes', async () => {
+    parking();
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.emit({ type: 'session', id: 'sess-1' });
+    runtime.last.call('ask', { question: 'Welche Spalten?' });
+    workers.shutdown();
+    parking();
+    workers.resumeAll();
+    await until(() => board.row(c.id).parked);
+    workers.answer(c.id, 'Datum.');
+    expect(runtime.last.spec.resume).toBe('sess-1');
+    expect(runtime.last.inbox[0]).toContain('Obeya stopped the app stack');
+  });
+
+  test('without a stop in the adapter nothing is stopped', async () => {
+    const c = handOver();
+    await Bun.sleep(30);
+    expect(board.row(c.id).parked).toBeNull();
+  });
+});
+
 describe('handing over with a demo', () => {
   const demoDir = () => {
     const d = join(dir, 'demo');

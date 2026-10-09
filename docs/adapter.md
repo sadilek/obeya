@@ -38,6 +38,7 @@ export default (kit) => ({
     start: 'docker compose up -d db && pnpm dev',
     refresh: 'pnpm --filter api restart',
     urls: { file: '.dev-urls', frontendKey: 'WEB_URL' },
+    stop: 'docker compose down && pkill -F .dev.pid',
   },
 
   demo: {
@@ -124,11 +125,21 @@ cards. Generic: `clones`.
 Accounts whose pull request comments are not review feedback (deploy previews, coverage bots):
 their comments do not go to the worker. Generic: none.
 
-### `stack` — `{ start, refresh, urls: { file, frontendKey } }`
+### `stack` — `{ start, refresh, urls: { file, frontendKey }, stop?, keep? }`
 
 How a worker brings the app up in its workspace: `start` starts it all, `refresh` picks up a
 backend change without starting everything again, and once it runs, the `KEY=value` file `file`
 holds the frontend's URL under `frontendKey`. Every worker's brief says so. Generic: none.
+
+- `stop`: stops the stack in a workspace, and does nothing where none runs. With it, Obeya parks a
+  card that waits for the owner (handed over, asked, its pull request open) once its worker has
+  nothing running and five minutes have passed: it runs `stop` in the workspace (through `sh -c`,
+  `cmd /c` on Windows), so a waiting card costs disk, not memory. The worker's next message tells
+  it the stack was stopped; it starts it again with `start` when it needs it. A stop that fails is
+  an error on the card.
+- `keep`: run before `stop`; exiting 0 means the stack holds what must not be lost (a restored
+  database, say), and Obeya leaves it running and says so on the card. The owner who wants it
+  stopped anyway tells the worker.
 
 ### `demo` — `{ required, howToRun, share? }`
 

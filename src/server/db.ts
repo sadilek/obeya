@@ -78,6 +78,8 @@ export interface CardRow {
    * planned again once the Lesestand holds that commit.
    */
   shipped: string | null;
+  /** When Obeya stopped the app stack in the card's workspace while the card waited (Parking); gone once its worker heard so. */
+  parked: string | null;
 }
 
 export interface GroupRow {
@@ -276,6 +278,8 @@ export const MIGRATIONS = [
   `ALTER TABLE events ADD COLUMN mocks TEXT;`,
   // what a card's work landed with, kept after its worker is done
   `ALTER TABLE cards ADD COLUMN shipped TEXT;`,
+  // the app stack of a waiting card's workspace, stopped until its worker needs it again
+  `ALTER TABLE cards ADD COLUMN parked TEXT;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -315,6 +319,7 @@ export type RowUpdate = Partial<
     | 'proposal'
     | 'group_id'
     | 'shipped'
+    | 'parked'
   >
 >;
 

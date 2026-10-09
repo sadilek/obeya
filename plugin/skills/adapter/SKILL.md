@@ -24,7 +24,8 @@ Find out, from the files rather than by guessing:
 - **The app and its stack**: README, CONTRIBUTING, CLAUDE.md or AGENTS.md, `docker-compose.yml` /
   `compose.yaml`, `.env.example`, `Procfile`, dev scripts. What starts in which order, which ports
   it takes (fixed ones mean one stack per clone: `workspaces: 'clones'`), migrations, seed data,
-  where the frontend's URL comes from.
+  where the frontend's URL comes from, and how to stop the stack of one workspace (`stack.stop`;
+  `stack.keep` where some stacks hold data that must stay).
 - **Logging in and test data**: seed scripts, fixtures, test users in the docs or the seed.
 - **Landing**: the `origin` remote (GitHub: `land: 'pr'`; no remote: `land: 'main'`), whether the
   default branch is protected, which bots comment on pull requests (`prNoise`).

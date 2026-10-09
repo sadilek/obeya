@@ -52,6 +52,8 @@ export interface CanvasDeps {
   writingPauseMs?: number;
   /** Added to every worker's environment (`OBEYA_URL`). */
   workerEnv?: Record<string, string>;
+  /** How long a waiting card's stack runs on before it is stopped (Parking); five minutes when left out. */
+  parkGrace?: number;
   /** The language Obeya speaks to the owner now (`ownerLanguage`); German when left out (the tests). */
   language?: () => Language;
   /** The model and effort of a group of agents (`agentSetting`), asked whenever one starts; the defaults when left out. */
@@ -189,6 +191,7 @@ export class CanvasRuntime {
         toObeya: (cardId, request) => this.forward(cardId, request),
         ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
         ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
+        ...(deps.parkGrace !== undefined ? { parkGrace: deps.parkGrace } : {}),
       });
       this.repos.push({ ref, info, adapter, share, read, workspaces, workers, projectAgents });
       if (deps.watch) {

@@ -24,6 +24,8 @@
 // start waits for it.
 //
 // --idle-workers: no agent works on a started card (a scratch Obeya for a demo, scripts/scratch-obeya.ts).
+// OBEYA_PARK_GRACE=<seconds>: how long a waiting card's app stack runs on before Obeya stops it
+// (Parking; 300 by default), shorter for a demo or a live check.
 
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -218,6 +220,7 @@ canvases = configs.map(
       ownCheckout: own,
       config,
       workerEnv: { OBEYA_URL: url },
+      ...(process.env.OBEYA_PARK_GRACE ? { parkGrace: Number(process.env.OBEYA_PARK_GRACE) * 1000 } : {}),
       language: () => ownerLanguage(home),
       agents: (role) => agentSetting(home, role),
       // after the landing is recorded: a restart with no worker to wait for stops this server at once

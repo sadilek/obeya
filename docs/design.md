@@ -819,6 +819,19 @@ the owner's language (`src/core/locale.ts`).
   filled while a card holds it, and "2 frei" or "alle belegt"); over it, the cards that hold one and
   how many wait for one. The snapshot carries the pools (`workspaces`): leases change only with a
   card, so they ride on its updates. Worktrees are never short, so a canvas of only those shows none.
+- **Parking** — a card that waits for the owner (handed over, asked, its pull request open), its
+  worker without a turn or background work, has the app stack in its workspace stopped after a
+  grace of five minutes (`OBEYA_PARK_GRACE` in seconds for a demo or a live check; a quick reply
+  should not pay for a restart): Obeya runs the
+  adapter's `stack.stop` there through the platform's shell (`src/server/stack.ts`), unless
+  `stack.keep` exits 0 (the stack holds data that must stay; the card says it keeps running, and
+  the owner who wants it stopped anyway tells the worker). The card's log says the stack was
+  stopped (`parked` on the card's row); the next message to the worker carries a line that it was,
+  with `stack.start`, and clears it. A message that arrives while the stop runs waits for it, so
+  the worker cannot start the stack only to have it stopped. A stop that fails is an error on the
+  card, and the worker hears nothing. After a restart, waiting cards are parked the same way. The
+  workspace stays the card's; only its processes go. Until 2026-10-09 a waiting card's stack ran
+  until someone stopped it by hand.
 - **Landing** — per adapter. `pr`: approval leaves the branch for the PR loop. `main`
   (Obeya): approval rebases the branch onto `main` and fast-forwards the Obeya checkout; the card
   is `live`. Commits that conflict one by one but not as a whole land squashed into one commit.
@@ -1554,7 +1567,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   and the rest works; each is a problem at the repository (`adapterProblems`), as is a share
   command whose program is not there, and Obeya's log names them at start. Until 2026-10-08 a
   misspelt field was ignored without a word. `stack` is in every worker's brief (until
-  2026-10-08 nothing read it). Until 2026-10-05 every adapter lived in this repository, a
+  2026-10-08 nothing read it); its `stop` and `keep` park a waiting card (see Parking). Until 2026-10-05 every adapter lived in this repository, a
   project's included. The reference for writing one is `docs/adapter.md`, linked from the README;
   the plugin's skill `adapter` (`plugin/skills/adapter/`) is how a worker writes one: read the
   repository (scripts, CI, README, compose files), ask the owner what it does not tell (login,

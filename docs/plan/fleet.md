@@ -19,8 +19,8 @@ stops its app stack, so waiting costs disk, not memory.
   worktrees, design: Workspaces). A pool of clones is sized by the number of clones, and every
   leased clone counts the same whether its worker is busy or waits.
 - A repository with its own app stack per clone (OKE) starts it through the adapter's
-  `stack.start` and keeps it running until someone stops it. Nothing stops it when the card
-  waits.
+  `stack.start`. Since W1 Obeya stops it while the card waits, where the adapter names
+  `stack.stop` (design: Parking); OKE's adapter does not name it yet.
 - Measured on the owner's Mac (M4 Pro, 48 GB) on 8 Oct 2026, OKE canvas, 1–8 Oct: workers were
   busy in a turn for 74 worker-hours but held a workspace for 963 (busy 8 % of the time). At most
   8 were busy at once, and busy work beyond 3 at once came to 17.6 worker-hours in 5 working
@@ -51,7 +51,8 @@ a short grace (a quick reply should not pay for a restart). The next message tel
 that its stack was stopped; the worker starts it again when it needs it, through the repository's
 own way (for OKE: `stack-status.ts` reports none, then `app-host.sh`). A workspace whose stack
 holds data the owner would not want to lose (OKE: `POSTGRES_PERSISTENT=true` in `.apphost.urls`,
-a restored prod dump) is not parked unless the owner says so.
+a restored prod dump) is not parked unless the owner says so: the adapter's `stack.keep` exits 0
+for it, and the owner who wants it stopped anyway tells the worker.
 
 ### Hosts
 
@@ -88,7 +89,7 @@ nearly nothing with a second machine, $190–290 a month on-demand at 36 agents.
 
 ## Workstreams
 
-- [ ] **W1:** Parking. An optional `stack.stop` in the adapter type, run when a card waits (see
+- [x] **W1:** Parking. An optional `stack.stop` in the adapter type, run when a card waits (see
   Parking); the worker hears that its stack was stopped. OKE's adapter (in the OKE repository,
   `.obeya/adapter/index.ts`) sets it to `./scripts/kill-app-host.sh` in a card on the OKE canvas
   once this lands. Done when an OKE card that hands over has no running stack a few minutes later

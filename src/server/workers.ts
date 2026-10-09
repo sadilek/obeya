@@ -15,6 +15,7 @@ import { imageNote } from './images';
 import type { InputContext } from './koordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, failureReason } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
+import { runStackCommand } from './stack';
 import { branchName, type Landed, WorkspaceError, type Workspaces } from './workspaces';
 import type { PrState, Shipped } from './board';
 import { parsePrUrl } from './forge';
@@ -43,6 +44,8 @@ export interface WorkerOptions {
   onPrototypeAnswer?: (prototype: Item, question: string, answer: string) => void;
   /** How long a turn that ended while the worker's background work runs waits for it to wake the worker. */
   backgroundGrace?: number;
+  /** How long a card waits for the owner, its worker idle, before Obeya stops its workspace's app stack (`stack.stop`). */
+  parkGrace?: number;
   /** How long after a usage limit lifts the worker goes on, so that clocks a little apart do not matter. */
   limitMargin?: number;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
@@ -111,6 +114,8 @@ export interface DueRestart {
 
 /** A render or a test suite finishes well within this; a turn that waits longer counts as ended. */
 const BACKGROUND_GRACE = 10 * 60_000;
+/** A quick reply from the owner should not pay for starting the stack again. */
+const PARK_GRACE = 5 * 60_000;
 /** A usage limit that does not say when it lifts is tried again after this. */
 const LIMIT_RETRY = 15 * 60_000;
 /** A usage limit that should have lifted already is tried again after this. */
@@ -154,6 +159,10 @@ export class Workers {
   private generation = new Map<string, number>();
   /** The restart that waits for workers, if one does. */
   private restart: DueRestart | null = null;
+  /** Cards that wait for the owner, until their grace runs out and Obeya stops their stack. */
+  private parking = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Cards whose stack is being stopped: a message to their worker waits until it is. */
+  private stopping = new Map<string, Promise<void>>();
 
   constructor(private o: WorkerOptions) {}
 
@@ -183,7 +192,8 @@ export class Workers {
     this.bump(card.id);
     // the run before is not resumed, but the Arbeitsrückschau still reads it
     if (row.session_id) this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.worker.restarted(this.o.board.t.worker.earlierRun(row.session_id)));
-    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr: null, approved_at: null });
+    // a fresh session knows of no stack that was stopped
+    this.o.board.work(card.id, { state: 'working', need: null, detail: null, status_line: null, workspace: path, branch, session_id: null, pr: null, approved_at: null, parked: null });
     this.o.board.log(card.id, 'state', 'obeya', this.o.board.t.worker.started(branch));
     this.launch(card.id, this.briefing(card, branch, !!row.branch), undefined, this.taskImages(card));
   }
@@ -428,7 +438,7 @@ export class Workers {
       // the card is done either way; a leftover worktree does no harm
       console.error('freeing a landed workspace:', e);
     }
-    this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, ...(row.state === 'waiting' ? { state: row.landed ? landedState(row.landed) : 'live', need: null, detail: null } : {}) });
+    this.o.board.work(cardId, { landed: null, workspace: null, status_line: null, parked: null, ...(row.state === 'waiting' ? { state: row.landed ? landedState(row.landed) : 'live', need: null, detail: null } : {}) });
     this.o.board.workDone(cardId);
     // the Arbeitsrückschau read the card's runs when its work ended
     if (!(row.landed && (JSON.parse(row.landed) as LandedState).followUp)) this.o.onWorkEnded?.(cardId, row.workspace);
@@ -564,6 +574,10 @@ export class Workers {
         else this.answerTaken(i.id);
         continue;
       }
+      if (this.waitsForOwner(i.id)) {
+        this.parkLater(i.id);
+        continue;
+      }
       if (i.state !== 'working' && i.state !== 'inPr') continue;
       if (!row.workspace) continue;
       if (row.session_id) this.launch(i.id, RESTARTED, row.session_id);
@@ -578,7 +592,7 @@ export class Workers {
     if (!session) return this.finish(card.id);
     this.o.board.work(card.id, { landed: JSON.stringify({ ...(l.commit ? { commit: l.commit } : {}), ...(l.unchanged ? { unchanged: true } : {}), ...(l.followUp ? { followUp: true } : {}) } satisfies LandedState) });
     // an open question waits for its answer, which resumes the session
-    if (card.state === 'waiting') return;
+    if (card.state === 'waiting') return this.parkLater(card.id);
     this.launch(card.id, l.restarts ? `Obeya has started again and runs main with your change now. ${RESTARTED}` : RESTARTED, session);
   }
 
@@ -609,6 +623,8 @@ export class Workers {
 
   shutdown() {
     for (const id of [...this.live.keys()]) this.end(id);
+    for (const timer of this.parking.values()) clearTimeout(timer);
+    this.parking.clear();
   }
 
   // ---------------------------------------------------------------- sessions
@@ -647,6 +663,21 @@ export class Workers {
   }
 
   private deliver(cardId: string, text: string, images: string[] = []) {
+    this.unpark(cardId);
+    const stopping = this.stopping.get(cardId);
+    if (stopping) {
+      // the worker might start the stack again while the stop still runs, and lose it
+      const generation = this.generation.get(cardId);
+      void stopping.then(() => {
+        if (this.generation.get(cardId) === generation) this.deliver(cardId, text, images);
+      });
+      return;
+    }
+    const parked = this.o.board.row(cardId).parked;
+    if (parked) {
+      this.o.board.work(cardId, { parked: null });
+      text = `${text}\n\n${this.parkedNote()}`;
+    }
     const live = this.live.get(cardId);
     if (live) {
       // the turn this starts reports the background work that is still running
@@ -690,6 +721,7 @@ export class Workers {
 
   private bump(cardId: string) {
     this.generation.set(cardId, (this.generation.get(cardId) ?? 0) + 1);
+    this.unpark(cardId);
   }
 
   private end(cardId: string) {
@@ -741,6 +773,7 @@ export class Workers {
         break;
       case 'idle':
         this.turnEnded(cardId, live, e.background ?? 0);
+        this.parkLater(cardId);
         break;
     }
   }
@@ -882,8 +915,70 @@ export class Workers {
     live.waiting = setTimeout(() => {
       live.waiting = undefined;
       live.busy = false;
-      if (this.live.get(cardId) === live) this.turnEnded(cardId, live, 0, true);
+      if (this.live.get(cardId) !== live) return;
+      this.turnEnded(cardId, live, 0, true);
+      this.parkLater(cardId);
     }, this.o.backgroundGrace ?? BACKGROUND_GRACE);
+  }
+
+  // ---------------------------------------------------------------- parking
+
+  /**
+   * Whether the card waits for the owner with its workspace and nothing of its worker's running:
+   * handed over, asked, or its pull request open, and the worker's turn over, background work included.
+   */
+  private waitsForOwner(cardId: string): boolean {
+    const card = this.o.board.item(cardId);
+    if (!card || !(card.state === 'waiting' || (card.state === 'inPr' && card.pr))) return false;
+    if (answering(card) || this.live.get(cardId)?.busy) return false;
+    const row = this.o.board.row(cardId);
+    return !!row.workspace && !row.parked;
+  }
+
+  /** A card that waits for the owner has its stack stopped once a quick reply has not come (`stack.stop`). */
+  private parkLater(cardId: string) {
+    if (!this.o.adapter.stack?.stop || !this.waitsForOwner(cardId)) return;
+    clearTimeout(this.parking.get(cardId));
+    this.parking.set(
+      cardId,
+      setTimeout(() => {
+        this.parking.delete(cardId);
+        if (!this.waitsForOwner(cardId) || this.stopping.has(cardId)) return;
+        const stopping = this.park(cardId).finally(() => this.stopping.delete(cardId));
+        this.stopping.set(cardId, stopping);
+      }, this.o.parkGrace ?? PARK_GRACE),
+    );
+  }
+
+  /** A card that is no longer left waiting keeps its stack. */
+  private unpark(cardId: string) {
+    clearTimeout(this.parking.get(cardId));
+    this.parking.delete(cardId);
+  }
+
+  /** Stops the stack in the card's workspace, unless it holds what must stay (`stack.keep`). */
+  private async park(cardId: string) {
+    const { stop, keep } = this.o.adapter.stack!;
+    const workspace = this.o.board.row(cardId).workspace!;
+    const generation = this.generation.get(cardId);
+    if (keep && (await runStackCommand(workspace, keep)).ok) {
+      if (this.generation.get(cardId) === generation) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parkKept);
+      return;
+    }
+    const result = await runStackCommand(workspace, stop!);
+    // the card's work ended or started afresh meanwhile: its row is no longer this workspace's
+    if (this.generation.get(cardId) !== generation) return;
+    if (!result.ok) {
+      this.o.board.log(cardId, 'error', 'obeya', this.o.board.t.worker.parkFailed(clip(result.output, 600)));
+      return;
+    }
+    this.o.board.work(cardId, { parked: new Date().toISOString() });
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.parked);
+  }
+
+  private parkedNote(): string {
+    const { stop, start } = this.o.adapter.stack!;
+    return `While the card waited, Obeya stopped the app stack in your workspace (\`${stop}\`) to free the machine. When you need it again, start it (\`${start}\`).`;
   }
 
   /**
@@ -1259,7 +1354,7 @@ ${idea.idea.brief}` : '',
     const stack = this.o.adapter.stack;
     if (stack)
       parts.push(
-        `To run the app in your workspace: \`${stack.start}\`; after a backend change, \`${stack.refresh}\` rather than starting it all again. Once it runs, the frontend's URL is in \`${stack.urls.file}\` under ${stack.urls.frontendKey}.`,
+        `To run the app in your workspace: \`${stack.start}\`; after a backend change, \`${stack.refresh}\` rather than starting it all again. Once it runs, the frontend's URL is in \`${stack.urls.file}\` under ${stack.urls.frontendKey}.${stack.stop ? ' While the card waits for the owner, Obeya stops the stack; your next message then says so.' : ''}`,
       );
     if (this.o.adapter.checks?.length && !card.prototypeOf) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
     if (this.o.adapter.demo)

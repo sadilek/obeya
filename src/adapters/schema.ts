@@ -12,7 +12,13 @@ const strings = z.array(z.string());
 const planDocs = z.object({ dir: z.string(), exclude: strings }).strict();
 const demo = z.object({ required: z.boolean(), howToRun: z.string(), share: strings.min(1).optional() }).strict();
 const stack = z
-  .object({ start: z.string(), refresh: z.string(), urls: z.object({ file: z.string(), frontendKey: z.string() }).strict() })
+  .object({
+    start: z.string(),
+    refresh: z.string(),
+    urls: z.object({ file: z.string(), frontendKey: z.string() }).strict(),
+    stop: z.string().optional(),
+    keep: z.string().optional(),
+  })
   .strict();
 
 /** `RepoAdapter`, every field but the name optional: what is left out comes from the generic adapter. */
