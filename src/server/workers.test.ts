@@ -338,6 +338,38 @@ describe('workers', () => {
     expect(runtime.last.inbox.length).toBe(before + 1);
   });
 
+  const words = (id: string) => board.events(id).filter((e) => e.author === 'worker' && (e.kind === 'say' || e.kind === 'talk')).map((e) => e.text);
+
+  test("after a reply on a card waiting for review, the worker's closing words stay off the conversation", () => {
+    const c = manual();
+    workers.start(c.id);
+    runtime.last.call('ready_for_review', { summary: 'Export gebaut.' });
+    runtime.last.emit({ type: 'idle' });
+    workers.message(c.id, 'Die App läuft nicht mehr.');
+    runtime.last.emit({ type: 'text', text: 'I will restart the app.' });
+    runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'bun start' } });
+    runtime.last.call('reply', { text: 'Die App läuft jetzt unter http://127.0.0.1:62582.' });
+    runtime.last.emit({ type: 'text', text: "I restarted the app; it's at http://127.0.0.1:62582." });
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:review');
+    expect(words(c.id)).toEqual(['I will restart the app.', 'Die App läuft jetzt unter http://127.0.0.1:62582.']);
+  });
+
+  test("after a reply on a card at work, the worker's words before its next step stand, its closing words not", () => {
+    const d = manual();
+    workers.start(d.id);
+    workers.message(d.id, 'Bitte auch Excel.');
+    runtime.last.call('reply', { text: 'Mache ich.' });
+    runtime.last.emit({ type: 'text', text: 'Now the Excel export.' });
+    runtime.last.emit({ type: 'tool', name: 'Edit', input: {} });
+    runtime.last.emit({ type: 'text', text: 'Excel is in, as I said.' });
+    runtime.last.emit({ type: 'idle' });
+    expect(words(d.id)).toEqual(['Mache ich.', 'Now the Excel export.']);
+    // the next turn's words show again
+    runtime.last.emit({ type: 'text', text: 'Weiter mit den Tests.' });
+    expect(words(d.id).at(-1)).toBe('Weiter mit den Tests.');
+  });
+
   test("a workstream's question goes straight to the owner, too", () => {
     const w = board.snapshot().items.find((i) => i.label === 'W1')!;
     workers.start(w.id);
