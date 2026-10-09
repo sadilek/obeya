@@ -145,7 +145,7 @@ machine publishes to the site.
   for the whole site counts as the first deploy), and a card losing its link when another machine
   withdrew its page. Tests against a local HTTP server standing in for the host, with two site
   directories as two machines. `docs/design.md` updated.
-- [ ] **W4:** Switch the first site over. Done in the repository whose adapter has the static-host
+- [x] **W4:** Switch the first site over. Done in the repository whose adapter has the static-host
   command, on its own canvas: its `share.ts` and test give way to the `demo.site` lines, its site
   directory moves to `sites/<key>/` with the one `mv` its change names, and the read token for the
   site's login (an Access service token, say) goes into the env file of each publishing machine.
