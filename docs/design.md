@@ -1673,7 +1673,10 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   manifest) refuses the deploy, since deploying blind could take pages offline; a site with
   nothing at its URL (404 there too) is the first deploy, and a site deployed before it had a
   manifest (its overview answers) deploys only from a machine that has every page the overview
-  links, so the machine that moved its directory over goes first. A page another machine withdrew
+  links, so the machine that moved its directory over goes first. A host may answer every missing
+  file with a page of its own and HTTP 200 (Cloudflare Pages serves the overview for a site without
+  a `404.html`): a manifest answered with the same page as a file that cannot be there counts as
+  missing, not as unreadable. A page another machine withdrew
   costs its card here the link, with a line naming the machine: noticed with the next share to
   that site or the once-a-minute check when the owner comes back. The guard against a directory
   lacking pages Obeya has as shared stays as the last check after the pull. Two other guards were

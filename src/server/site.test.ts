@@ -41,8 +41,9 @@ if (existsSync(out + '/race')) {
 `;
 
 // the host: serves what was deployed last; `down` answers 503, `token` sends a request without it to a login;
-// `onManifest` runs before a read of the manifest is answered
-const host: { down?: boolean; token?: string; onManifest?: () => void } = {};
+// `onManifest` runs before a read of the manifest is answered; `fallback` answers a missing file with the
+// root's index.html (as Cloudflare Pages does for a site without a 404.html), `garbled` the manifest with it
+const host: { down?: boolean; token?: string; onManifest?: () => void; fallback?: boolean; garbled?: boolean } = {};
 const server = Bun.serve({
   port: 0,
   fetch(req) {
@@ -52,7 +53,10 @@ const server = Bun.serve({
     if (path === `/${MANIFEST}`) host.onManifest?.();
     if (path.endsWith('/')) path += 'index.html';
     const file = join(dir, 'deployed', path);
-    return !path.includes('..') && existsSync(file) && statSync(file).isFile() ? new Response(Bun.file(file)) : new Response('not found', { status: 404 });
+    const root = join(dir, 'deployed', 'index.html');
+    if (host.garbled && path === `/${MANIFEST}`) return new Response(Bun.file(root));
+    if (!path.includes('..') && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
+    return host.fallback && existsSync(root) ? new Response(Bun.file(root)) : new Response('not found', { status: 404 });
   },
 });
 afterAll(() => server.stop(true));
@@ -94,6 +98,8 @@ afterEach(() => {
   delete host.down;
   delete host.token;
   delete host.onManifest;
+  delete host.fallback;
+  delete host.garbled;
 });
 
 const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({
@@ -387,6 +393,21 @@ describe('several machines publishing to one site', () => {
     expect(live().pages['alt-999999']).toMatchObject({ rev: 1, machine: 'a', files: { 'demo.mp4': { size: 9 } } });
     expect(await b.publish(page('b-222222'))).toMatchObject({ url: `${URL_}b-222222/` });
     expect(readFileSync(join(siteDir(other), 'alt-999999/demo.mp4'), 'utf8')).toBe('old video');
+  });
+
+  test('a host that answers a missing file with its overview: a site without a manifest yet, not an unreadable one', async () => {
+    host.fallback = true;
+    mkdirSync(deployed(), { recursive: true });
+    writeFileSync(join(deployed(), 'index.html'), '<ul><li><a href="alt-999999/">Alte Demo</a></li></ul>');
+    expect(await target.publish(page('a-111111'))).toMatchObject({ why: expect.stringContaining('the site shows a page this machine lacks (alt-999999) and has no manifest yet') });
+    writeFileSync(join(deployed(), 'index.html'), '<ul></ul>');
+    expect(await target.publish(page('a-111111'))).toMatchObject({ url: `${URL_}a-111111/` });
+    expect(live().pages['a-111111']).toMatchObject({ rev: 1, machine: 'a' });
+    expect(await b.publish(page('b-222222'))).toMatchObject({ url: `${URL_}b-222222/` });
+    // a manifest answered with something else than the missing files get is still refused
+    host.fallback = false;
+    host.garbled = true;
+    expect(await target.publish(page('c-333333'))).toMatchObject({ why: `The site’s manifest could not be read (${URL_}${MANIFEST}: not a manifest). Without it a deploy might take pages other machines shared offline.` });
   });
 
   test('another machine’s deploy coming in between: one more round, and a failure after the second', async () => {

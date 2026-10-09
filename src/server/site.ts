@@ -18,7 +18,8 @@
 // another machine's deployment came in between with is made once more. A deployment that lands
 // later still takes pages offline: `audit` finds the pages shared from here that the live site
 // lacks, and `repair` deploys them again. A manifest that cannot be read refuses the deploy (a site
-// with nothing at its URL is the first one).
+// with nothing at its URL is the first one). A host may answer every missing file with a page of its
+// own (Cloudflare Pages serves the overview): a manifest answered that way is missing, not unreadable.
 //
 // The pages come from Obeya's own templates (`demo-page.ts`), each in its demo's language, the
 // overview in the site's. A call writes only its own page and the overview: a page shared earlier
@@ -210,17 +211,31 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     const status = (r: Response) => (r.status >= 300 && r.status < 400 ? t.loginWall(r.status) : `HTTP ${r.status}`);
     const r = await answer(`${MANIFEST}?at=${Date.now()}`);
     if (r.ok) {
-      const m = (await r.json().catch(() => null)) as Manifest | null;
-      if (!m || typeof m.pages !== 'object' || !m.pages) throw unreadable(t.notManifest);
-      return { deploy: m.deploy ?? null, pages: m.pages, linked: [] };
-    }
-    if (r.status !== 404) throw unreadable(status(r));
+      const body = await r.text();
+      const m = manifestOf(body);
+      if (m) return { deploy: m.deploy ?? null, pages: m.pages, linked: [] };
+      // a host may answer a missing file with a page of its own (Cloudflare Pages serves the
+      // overview for a site without a 404.html): the manifest is missing when a file that cannot
+      // be there gets the same answer
+      const missing = await answer(`${MANIFEST}.${randomUUID()}`);
+      if (!missing.ok || (await missing.text()) !== body) throw unreadable(t.notManifest);
+    } else if (r.status !== 404) throw unreadable(status(r));
     // no manifest: a site not deployed yet (nothing there at all), or one deployed before sites had one
     const page = await answer('');
     if (page.status === 404) return { deploy: null, pages: {}, linked: [] };
     if (!page.ok) throw unreadable(status(page));
     const linked = [...new Set([...(await page.text()).matchAll(/href="([a-z0-9][a-z0-9-]{0,80})\/"/g)].map((m) => m[1]!))];
     return { deploy: null, pages: {}, linked };
+  };
+
+  /** The manifest in a file the live site served; null when it is none. */
+  const manifestOf = (text: string): Manifest | null => {
+    try {
+      const m = JSON.parse(text) as Manifest | null;
+      return m && typeof m.pages === 'object' && m.pages ? m : null;
+    } catch {
+      return null;
+    }
   };
 
   /** The manifest of this directory: as written with the last change, plus pages kept before it (by the command sites were kept with before). */
