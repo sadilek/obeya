@@ -123,8 +123,15 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   and when run by hand with "sign". On the owner's Mac with their Developer ID and individual API
   key: notarisation accepted (Bun's binary with the JIT entitlements included), DMG and app
   stapled, Gatekeeper "Notarized Developer ID" for both, and `check-app.ts` passed in full on the
-  signed app. Apple refused notarisation until the owner accepted the newest Program License
-  Agreement. The owner's Developer ID certificate runs out on 2027-02-01.
+  signed app. Then on GitHub's runners with the repository secrets (temporary branch
+  `w4-sign-check`, run 37897127515, run by hand with "sign"): both Macs signed, notarised and
+  stapled (about four and five and a half minutes for the build with notarisation), the other
+  platforms as before; the arm64 DMG from that run, quarantined as a browser leaves it, passed
+  Gatekeeper with the app in it, and `check-app.ts` passed on that app. Found on the way: Apple
+  refused notarisation until the owner accepted the newest Program License Agreement, and a
+  `.p12` exported from the key's row holds no certificate ("failed to resolve signing
+  identity"); `docs/release.md` says both. The owner's Developer ID certificate runs out on
+  2027-02-01. Not tried: a real tag, which W3 left open too.
 
 ## Design
 
@@ -309,7 +316,7 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
 - [x] **W3:** Builds in CI: a GitHub Actions workflow with the platform matrix. On a push to `main`
   that changes code, unsigned builds with a smoke test plus `bun test` and `bun run typecheck`; on
   a tag `v*`, a draft release with all installers, checksums and `latest.json`.
-- [ ] **W4:** Signing and notarisation. macOS: Developer ID, hardened runtime with the Bun
+- [x] **W4:** Signing and notarisation. macOS: Developer ID, hardened runtime with the Bun
   entitlements, notarised and stapled in CI. Windows and Linux unsigned, with checksums. The
   owner's steps (certificate, API key, secrets) in `docs/release.md`.
 - [ ] **W5:** Auto-update through GitHub Releases. Tauri's updater with its own key pair; the bar
