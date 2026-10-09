@@ -388,8 +388,12 @@ export interface CardEvent {
   id: number;
   cardId: string;
   at: string;
-  /** `talk` is the discussion of an idea: the owner's messages and the exploration agent's replies. */
-  kind: 'report' | 'activity' | 'say' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error' | 'talk';
+  /**
+   * `talk` is the discussion of an idea: the owner's messages and the exploration agent's replies.
+   * `closing`: a worker's closing words after its reply or handover, which mostly repeat it: they
+   * fold under that message.
+   */
+  kind: 'report' | 'activity' | 'say' | 'closing' | 'question' | 'answer' | 'hint' | 'review' | 'state' | 'error' | 'talk';
   author: 'worker' | 'owner' | 'project' | 'koordinator' | 'obeya' | 'explorer';
   text: string;
   /** Set on an error the UI words itself; `text` then holds the server's technical detail. */

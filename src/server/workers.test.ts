@@ -338,12 +338,14 @@ describe('workers', () => {
     expect(runtime.last.inbox.length).toBe(before + 1);
   });
 
-  const words = (id: string) => board.events(id).filter((e) => e.author === 'worker' && (e.kind === 'say' || e.kind === 'talk')).map((e) => e.text);
+  const words = (id: string) => board.events(id).filter((e) => e.author === 'worker' && ['say', 'talk', 'closing'].includes(e.kind)).map((e) => `${e.kind}: ${e.text}`);
 
-  test("after a reply on a card waiting for review, the worker's closing words stay off the conversation", () => {
+  test("after a reply on a card waiting for review, the worker's closing words are logged as such, to fold under the reply", () => {
     const c = manual();
     workers.start(c.id);
     runtime.last.call('ready_for_review', { summary: 'Export gebaut.' });
+    // so are those after a handover
+    runtime.last.emit({ type: 'text', text: 'Übergeben.' });
     runtime.last.emit({ type: 'idle' });
     workers.message(c.id, 'Die App läuft nicht mehr.');
     runtime.last.emit({ type: 'text', text: 'I will restart the app.' });
@@ -352,10 +354,15 @@ describe('workers', () => {
     runtime.last.emit({ type: 'text', text: "I restarted the app; it's at http://127.0.0.1:62582." });
     runtime.last.emit({ type: 'idle' });
     expect(state(c.id)).toBe('waiting:review');
-    expect(words(c.id)).toEqual(['I will restart the app.', 'Die App läuft jetzt unter http://127.0.0.1:62582.']);
+    expect(words(c.id)).toEqual([
+      'closing: Übergeben.',
+      'say: I will restart the app.',
+      'talk: Die App läuft jetzt unter http://127.0.0.1:62582.',
+      "closing: I restarted the app; it's at http://127.0.0.1:62582.",
+    ]);
   });
 
-  test("after a reply on a card at work, the worker's words before its next step stand, its closing words not", () => {
+  test("after a reply on a card at work, the worker's words before its next step are its words, its turn's last its closing words", () => {
     const d = manual();
     workers.start(d.id);
     workers.message(d.id, 'Bitte auch Excel.');
@@ -364,10 +371,10 @@ describe('workers', () => {
     runtime.last.emit({ type: 'tool', name: 'Edit', input: {} });
     runtime.last.emit({ type: 'text', text: 'Excel is in, as I said.' });
     runtime.last.emit({ type: 'idle' });
-    expect(words(d.id)).toEqual(['Mache ich.', 'Now the Excel export.']);
-    // the next turn's words show again
+    expect(words(d.id)).toEqual(['talk: Mache ich.', 'say: Now the Excel export.', 'closing: Excel is in, as I said.']);
+    // the next turn's words are words again
     runtime.last.emit({ type: 'text', text: 'Weiter mit den Tests.' });
-    expect(words(d.id).at(-1)).toBe('Weiter mit den Tests.');
+    expect(words(d.id).at(-1)).toBe('say: Weiter mit den Tests.');
   });
 
   test("a workstream's question goes straight to the owner, too", () => {
@@ -1595,10 +1602,13 @@ describe('a worktree per card', () => {
     expect(runtime.last).toBe(f);
     expect(f.inbox.at(-1)).toContain('Und die Untertitel?');
     expect(f.call('reply', { text: 'Mit gh release upload.' })).toContain('Shown');
-    // its closing words repeat the reply
+    // its closing words repeat the reply: they fold under it
     f.emit({ type: 'text', text: 'Mit gh release upload, wie gesagt.' });
-    expect(board.events(c.id).filter((e) => e.author === 'worker').at(-1)).toMatchObject({ kind: 'talk', text: 'Mit gh release upload.' });
     f.emit({ type: 'idle' });
+    expect(board.events(c.id).filter((e) => e.author === 'worker').slice(-2)).toMatchObject([
+      { kind: 'talk', text: 'Mit gh release upload.' },
+      { kind: 'closing', text: 'Mit gh release upload, wie gesagt.' },
+    ]);
     expect(f.closed).toBe(true);
     expect(state(c.id)).toBe('live');
     expect(board.item(c.id)!.finishing).toBeUndefined();

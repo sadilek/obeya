@@ -999,7 +999,7 @@ function Steps({ steps }: { steps: CardEvent[] }) {
         {steps.map((s) => (
           <li key={s.id} className={`step-${s.kind}`}>
             {s.author !== 'worker' && s.author !== 'explorer' && <b>{t.author[s.author]}: </b>}
-            {s.kind === 'say' ? <Body md={s.text} /> : s.text}
+            {s.kind === 'say' || s.kind === 'closing' ? <Body md={s.text} /> : s.text}
           </li>
         ))}
       </ol>

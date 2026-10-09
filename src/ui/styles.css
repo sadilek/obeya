@@ -375,8 +375,8 @@ textarea.p-body:focus { border-color: var(--muted); }
   display: flex; flex-direction: column; gap: 3px; }
 .talk .steps li { overflow-wrap: anywhere; }
 .talk .steps .step-activity { font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.talk .steps .step-say { color: var(--ink); }
-.talk .steps .step-say .p-lead, .talk .steps .step-say .p-list { margin: 0; font-size: 12.5px; }
+.talk .steps .step-say, .talk .steps .step-closing { color: var(--ink); }
+.talk .steps :is(.step-say, .step-closing) :is(.p-lead, .p-list) { margin: 0; font-size: 12.5px; }
 .talk .steps .step-state { color: var(--idea); }
 .talk .note { font-size: 12px; color: var(--muted); font-style: italic; align-self: center; text-align: center; }
 .talk .note.ev-error { color: #dc2626; font-style: normal; }

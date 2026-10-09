@@ -79,7 +79,7 @@ interface Live {
   handedOver: boolean;
   /** Whether the worker answered the owner with `reply` in the current turn. */
   answered?: boolean;
-  /** The worker's words since its reply: logged once a step follows them, dropped as closing words at the turn's end. */
+  /** The worker's words since its reply: its words once a step follows them, its closing words at the turn's end. */
   held?: string;
   /**
    * Whether the worker said or did anything in the current turn. A resumed session may first end a
@@ -764,13 +764,15 @@ export class Workers {
       }
       case 'text':
         live.lastText = e.text;
-        // after handing over the worker's closing words repeat what the card already shows; after a
-        // reply its words wait to see whether work follows them or they close the turn, repeating the reply
-        if (live.answered) live.held = clip(e.text, 12000);
-        else if (!live.handedOver) this.o.board.log(cardId, 'say', 'worker', clip(e.text, 12000));
+        // after handing over the worker's closing words repeat what the card already shows: they fold
+        // under the handover; after a reply its words wait to see whether work follows them or they
+        // close the turn, repeating the reply
+        if (live.handedOver) this.o.board.log(cardId, 'closing', 'worker', clip(e.text, 12000));
+        else if (live.answered) live.held = clip(e.text, 12000);
+        else this.o.board.log(cardId, 'say', 'worker', clip(e.text, 12000));
         break;
       case 'tool':
-        if (live.held !== undefined && !live.handedOver) this.o.board.log(cardId, 'say', 'worker', live.held);
+        if (live.held !== undefined) this.o.board.log(cardId, 'say', 'worker', live.held);
         live.held = undefined;
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input, this.o.board.t));
         break;
@@ -813,12 +815,14 @@ export class Workers {
   private turnEnded(cardId: string, live: Live, background: number, waited = false) {
     const handedOver = live.handedOver;
     const acted = live.acted || waited;
+    const closing = live.held;
     live.handedOver = false;
     live.answered = false;
     live.held = undefined;
     live.acted = false;
     const card = this.o.board.item(cardId);
     if (!card) return;
+    if (closing !== undefined) this.o.board.log(cardId, 'closing', 'worker', closing);
     const row = this.o.board.row(cardId);
     if (background > 0) {
       // the background work still belongs to the turn, whatever the card's state (a worker may ask

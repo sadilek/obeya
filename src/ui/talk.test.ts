@@ -69,6 +69,24 @@ test('a note the worker did not reply to is answered by the first words it says 
   expect(talkTurns([ev('say', 'worker', 'Ich lese mich ein.'), read]).shown).toEqual([]);
 });
 
+test("a worker's closing words after its reply or handover fold under it, also once nobody works on the card", () => {
+  const review = ev('review', 'worker', 'CSV exportierbar.');
+  const after = ev('closing', 'worker', 'Übergeben; die Karte wartet auf die Freigabe.');
+  const note = ev('hint', 'owner', 'Welche Spalten?');
+  const read = ev('activity', 'worker', 'Liest src/export.ts');
+  const reply = ev('talk', 'worker', 'Sorte, Menge, Mindestbestand.');
+  const closing = ev('closing', 'worker', 'Ich habe die Frage beantwortet: Sorte, Menge, Mindestbestand.');
+  for (const over of [false, true])
+    expect(talkTurns([review, after, note, read, reply, closing], { over })).toEqual({
+      shown: [
+        { e: review, steps: [after] },
+        { e: note, steps: [] },
+        { e: reply, steps: [read, closing] },
+      ],
+      pending: [],
+    });
+});
+
 test('a spoken note stands once; the Koordinator confirms in the steps and answers what it looked up in the conversation', () => {
   const said = ev('say', 'owner', 'Sag ihm, er soll auch Excel können.');
   const confirm = ev('say', 'koordinator', 'Geht an den Agenten.');

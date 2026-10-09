@@ -356,10 +356,11 @@ is data (a script written with `cat > f <<'EOF'`, a commit message) and counts o
 runs it (`bash <<EOF`, `cat <<EOF | sh`, `ssh host <<EOF`). The refusal names two
 bounded waits that pass it, one without `timeout`, which macOS lacks. A worker answers a note or
 feedback with `reply`, saying what it changes or why nothing, and asks when the note is unclear.
-Its words after a reply stand in the conversation only when a step of its work follows them; the
-closing words of a turn in which it replied repeat the reply (often in English on a German canvas)
-and stay off the card, whatever the card's state (until 2026-10-09 only on a finished card's
-follow-up, so after feedback on a handover they showed as a second message).
+Its words after a reply are its words when a step of its work follows them; the closing words of
+a turn in which it replied or handed over mostly repeat that message (often in English on a German
+canvas), so they fold under it in the conversation, the last of its steps, whatever the card's
+state (event kind `closing`). Until 2026-10-09 they were dropped after a handover or a finished
+card's follow-up and showed as a second message after any other reply.
 A note while the card waits on the worker's question takes that question back: the card goes back
 to work (in its pull request, or finishing after the landing, where it was), and the worker hears
 that its question („…“) is withdrawn, goes on if the note settled it and asks anew if not. The
@@ -372,7 +373,8 @@ with screenshots, standing once as the agent got them), the worker's
 questions with their options and the pick, its replies, its handovers (the last one with its demo
 report's question), and what the Koordinator looked up for the owner; small lines between them are
 the state changes (started, pull request opened, approved, landed, stopped, errors). Everything
-else folds away under the agent's next message as „Verlauf“: tool calls, thoughts, status lines,
+else folds away under the agent's next message as „Verlauf“ (a worker's closing words after a reply
+or handover under that message, as its last step): tool calls, thoughts, status lines,
 the Koordinator's confirmations, Obeya's notes (restarts, sessions, what happens on the pull
 request). A note the worker answered without `reply` (a card from before it, a worker that forgot)
 is answered by the first words the worker said after it. Once no agent works on the card and no
@@ -980,8 +982,8 @@ the owner's language (`src/core/locale.ts`).
   the card (typed in its field, or spoken with it open: straight to that agent, as on a card at
   work) resumes the worker's session in a fresh workspace on the card's branch, where main may have
   moved on since (resuming finds the session from any directory). The card stays `live` or `done`,
-  "Agent antwortet"; the worker answers with `reply` (its closing words after that stay off
-  the card, as after any reply), and its turn's end frees the workspace again.
+  "Agent antwortet"; the worker answers with `reply` (its closing words after that fold under
+  it, as after any reply), and its turn's end frees the workspace again.
   Commits there do not land: a change the follow-up calls for becomes a card of its own
   (`propose_card`). The Arbeitsrückschau read the card's runs when its work ended and does not count
   it again. A card no agent worked on (no branch), a prototype or an archived card has no field.

@@ -37,9 +37,11 @@ const agentAuthor = (e: CardEvent) => e.author === 'worker' || e.author === 'exp
 /** What the owner says to the card's agent. */
 const toAgent = (e: CardEvent) => (e.kind === 'hint' || e.kind === 'answer' || e.kind === 'talk') && (e.author === 'owner' || e.kind === 'answer');
 
-const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | 'aside' | 'line' | 'step' => {
+const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | 'aside' | 'line' | 'step' | 'after' => {
   if (toAgent(e)) return 'owner';
   switch (e.kind) {
+    case 'closing':
+      return 'after';
     case 'talk':
     case 'question':
     case 'review':
@@ -59,7 +61,8 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
 
 /**
  * A card's events as its conversation: what the owner says, the agents' replies, questions and
- * handovers, each with the steps that led to it, and the state changes between them. What the
+ * handovers, each with the steps that led to it (and a worker's closing words after it, which
+ * mostly repeat it), and the state changes between them. What the
  * owner says to a worker that does not `reply` is answered by the first words it says after it.
  * `asking`: the question the card waits on. `over`: no agent works on the card, so no message will
  * come for the steps without one (`settle`).
@@ -76,6 +79,12 @@ export function talkTurns(events: CardEvent[], opts: { asking?: Question; over?:
       steps = [];
       open = false;
     } else if (where === 'step') steps.push(e);
+    else if (where === 'after') {
+      // closing words after a reply or handover fold under it, the last of its steps
+      const last = shown.findLast((x) => !x.line && agentAuthor(x.e));
+      if (last) last.steps.push(e);
+      else steps.push(e);
+    }
     else if (where === 'line' || where === 'aside') shown.push({ e, steps: [], ...(where === 'line' ? { line: true as const } : {}) });
     else if (where === 'agent') {
       // a turn that ended without a reply took its last words as the reply
