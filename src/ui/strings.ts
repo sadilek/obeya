@@ -664,7 +664,7 @@ const de = {
     sections: {
       needed: { title: 'Agenten', hint: 'Ohne Claude Code und git arbeitet kein Agent. Claude Code läuft auf deinem Claude-Abo; die Agenten committen unter deinem Namen.' },
       pr: { title: 'Pull Requests', hint: 'Freigegebene Arbeit geht als Pull Request auf GitHub, außer der eigene Obeya-Adapter eines Repositories sagt etwas anderes. Nötig erst bei der ersten Freigabe.' },
-      voice: { title: 'Sprachbefehle', hint: 'Leertaste halten und sagen, was zu tun ist; Obeya bestätigt hörbar.' },
+      voice: { title: 'Sprachbefehle', hint: 'Leertaste halten und sagen, was zu tun ist; in der App auch, während ein anderes Programm vorne ist, mit der rechten Wahltaste (Mac) oder rechten Strg-Taste, in den Einstellungen änderbar. Obeya bestätigt schriftlich: auf der Karte oder in Obeyas Fenster (Knopf oben rechts, Taste K).' },
       demos: { title: 'Demos', hint: 'Agenten zeigen ihre Arbeit als vertontes Video. Ohne das schicken sie eine Zusammenfassung.' },
     } satisfies Record<MachineSectionId, { title: string; hint: string }>,
     names: {
@@ -1543,7 +1543,7 @@ const en: Strings = {
     sections: {
       needed: { title: 'Agents', hint: 'Without Claude Code and git no agent works. Claude Code runs on your Claude subscription; the agents commit under your name.' },
       pr: { title: 'Pull requests', hint: 'Approved work goes out as a pull request on GitHub, unless a repository’s own Obeya adapter says otherwise. Needed only at the first approval.' },
-      voice: { title: 'Voice commands', hint: 'Hold Space and say what to do; Obeya confirms out loud.' },
+      voice: { title: 'Voice commands', hint: 'Hold Space and say what to do; in the app also while another app is in front, with the right Option key (Mac) or right Ctrl key, changeable in the settings. Obeya confirms in writing: on the card or in Obeya’s panel (button at the top right, key K).' },
       demos: { title: 'Demos', hint: 'Agents show their work as a narrated video. Without it they send a summary.' },
     },
     names: {
