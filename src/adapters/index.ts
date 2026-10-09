@@ -39,8 +39,11 @@ export function pickAdapter(repo: RepoInfo, name?: string): RepoAdapter {
   }
   const own = repoAdapterFile(repo.path);
   if (own) return loadAdapter(own);
-  return ADAPTERS.find((a) => a.matches(repo))!;
+  return builtInAdapter(repo);
 }
+
+/** The first built-in adapter that matches the repository: what it runs on without an adapter of its own. */
+export const builtInAdapter = (repo: RepoInfo): RepoAdapter => ADAPTERS.find((a) => a.matches(repo))!;
 
 // what was wrong with a loaded adapter's fields (`schema.ts`), by the adapter made of it
 const problems = new WeakMap<RepoAdapter, string[]>();

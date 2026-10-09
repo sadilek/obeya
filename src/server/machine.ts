@@ -15,7 +15,7 @@ import { homedir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 // by its path: the package exports no package.json, which Bun imports all the same but TypeScript does not
 import sdk from '../../node_modules/@anthropic-ai/claude-agent-sdk/package.json';
-import type { FirstCanvas, MachineItem, MachineJob, MachineSection, MachineSectionId, MachineView } from '../core/types';
+import { blocksSaving, type FirstCanvas, type MachineItem, type MachineJob, type MachineSection, type MachineSectionId, type MachineView } from '../core/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { checkSetup, installHint, type LinuxFamily, linuxFamily, output } from '../../plugin/skills/demo/lib/setup.ts';
 import { installVoice } from '../../plugin/skills/demo/lib/voices.ts';
@@ -472,7 +472,7 @@ export class MachineSetup {
       next = [...next.slice(0, -1), { repos: [{ path, clones: CLONES }] }];
       ({ problems, resolved } = this.o.config.check(next));
     }
-    const problem = problems[0];
+    const problem = problems.find(blocksSaving);
     if (problem) throw new BadRequest(problem.code === 'notRepo' ? 'notRepo' : 'config', problem.detail);
     const canvas = resolved.at(-1)!.id;
     writeFileSync(join(this.o.home, WELCOME_FILE), canvas);

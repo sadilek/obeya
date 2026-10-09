@@ -738,7 +738,7 @@ export interface ConfigProblem {
 }
 
 /** Whether a problem keeps the configuration from being saved: not one in a repository's own adapter, which is fixed there. */
-export const blocksSaving = (p: ConfigProblem) => p.code !== 'adapterField';
+export const blocksSaving = (p: ConfigProblem) => p.code !== 'adapterField' && p.code !== 'adapterLoad';
 
 export type ConfigProblemCode =
   /** No canvas at all. */
@@ -746,7 +746,10 @@ export type ConfigProblemCode =
   | 'noRepo'
   /** A path that is no git repository. */
   | 'notRepo'
+  /** An adapter the configuration names that does not exist or does not load. */
   | 'unknownAdapter'
+  /** The repository's own adapter does not load; the repository runs on the built-in one meanwhile. */
+  | 'adapterLoad'
   /** Two canvases with the same id. */
   | 'sameId'
   /** The repository the canvas was first served with is missing. */

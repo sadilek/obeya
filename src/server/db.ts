@@ -802,6 +802,13 @@ export class Store {
     return (this.db.query('SELECT value FROM settings WHERE canvas_id = $c AND key = $key').get({ c: canvasId, key }) as { value: string } | null)?.value ?? null;
   }
 
+  /** The canvas whose setting `key` has the value. */
+  canvasWith(key: string, value: string): { id: string; name: string } | null {
+    return this.db
+      .query('SELECT c.id, c.name FROM settings s JOIN canvases c ON c.id = s.canvas_id WHERE s.key = $key AND s.value = $value')
+      .get({ key, value }) as { id: string; name: string } | null;
+  }
+
   setSetting(canvasId: string, key: string, value: string) {
     this.db
       .query('INSERT INTO settings (canvas_id, key, value) VALUES ($c, $key, $value) ON CONFLICT(canvas_id, key) DO UPDATE SET value = $value')

@@ -499,6 +499,7 @@ const de = {
       notClone: 'Ein Klon in der Liste ist kein git-Repository.',
       shareCommand: 'Das Programm des Befehls zum Teilen gibt es nicht.',
       adapterField: 'Ein Feld im Adapter des Repositorys gilt nicht, an seiner Stelle steht das des allgemeinen Adapters:',
+      adapterLoad: 'Der Adapter des Repositorys lädt nicht; bis er repariert ist, läuft das Repository mit dem allgemeinen Adapter:',
       invalid: 'Die Konfiguration ist fehlerhaft.',
     } satisfies Record<ConfigProblemCode, string>,
     voice: {
@@ -1368,6 +1369,7 @@ const en: Strings = {
       notClone: 'A clone in the list is not a git repository.',
       shareCommand: 'The share command’s program does not exist.',
       adapterField: 'A field of the repository’s adapter does not count; the generic adapter’s stands in its place:',
+      adapterLoad: 'The repository’s adapter does not load; until it is fixed, the repository runs on the generic adapter:',
       invalid: 'The configuration is invalid.',
     },
     voice: {

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf } from '../core/layout';
-import { CanvasRuntime } from './canvas';
+import { CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { FakeRuntime, noForge, gitRepo } from './testing';
 import { git } from './workspaces';
@@ -234,6 +234,40 @@ test('the home repository stays home when the configuration lists the repositori
   again.shutdown();
   expect(() => new CanvasRuntime({ name: 'P', repos: [{ path: api }] }, deps)).toThrow('home repository "web" is not configured');
   canvas = new CanvasRuntime({ name: 'Q', repos: [{ path: web }] }, deps);
+});
+
+test("a repository whose own adapter does not load runs on the generic one, under the id its adapter gave; a canvas that does not start leaves the others running", () => {
+  canvas.shutdown();
+  const store = new Store(':memory:');
+  const deps = { store, home: dir, runtime: new FakeRuntime(), forge: noForge };
+  const shop = gitRepo(join(dir, 'shop'), {
+    'docs/plan/plan.md': '# Laden\n\n## Goal\n\nG.\n',
+    '.obeya/adapter/index.ts': "export default { name: 'shop', canvasId: () => 'laden', canvasName: () => 'Laden' };\n",
+  });
+  const first = new CanvasRuntime({ repos: [{ path: shop }] }, deps);
+  const card = first.board.create({ title: 'Im Laden', x: 0, y: 0 });
+  first.shutdown();
+  writeFileSync(join(shop, '.obeya/adapter/index.ts'), "export default () => { throw new Error('kaputt'); };\n");
+  git(shop, 'commit', '--quiet', '-am', 'break the adapter');
+  const errors: string[] = [];
+  const error = console.error;
+  console.error = (line: string) => errors.push(line);
+  try {
+    const started = startCanvases([{ repos: [{ path: shop }] }, { name: 'Weg', repos: [{ path: join(dir, 'nowhere') }] }, { name: 'Web', repos: [{ path: join(dir, 'web') }] }], deps);
+    expect(started.map((c) => c.id)).toEqual(['laden', 'web']);
+    const [laden] = started;
+    expect(laden!.board.canvas.name).toBe('Laden');
+    expect(laden!.repos[0]!.adapter.name).toBe('generic');
+    expect(laden!.board.item(card.id)!.title).toBe('Im Laden');
+    for (const c of started) c.shutdown();
+  } finally {
+    console.error = error;
+  }
+  expect(errors).toEqual([
+    expect.stringMatching(/does not load: kaputt; .*shop runs on the generic adapter until it is fixed on its default branch$/),
+    expect.stringMatching(/^Obeya: the canvas Weg does not start, left out: .*nowhere is not a git repository$/),
+  ]);
+  canvas = new CanvasRuntime({ name: 'Q', repos: [{ path: join(dir, 'web') }] }, deps);
 });
 
 test("the cards' workers run on their own runtime when one is given (a scratch Obeya's idle workers)", async () => {

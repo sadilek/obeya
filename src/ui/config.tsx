@@ -851,14 +851,14 @@ function RepoRow({ repo, home, resolved, canvasId, adapters, problems, onChange 
           )}
         </p>
       ))}
-      {/* a repository without an adapter of its own: a card on its canvas writes one */}
-      {canvasId && resolved?.adapter === 'generic' && !repo.adapter && <AdapterSetup canvas={canvasId} repo={resolved.id} />}
+      {/* a repository without an adapter of its own (not one whose own does not load): a card on its canvas writes one */}
+      {canvasId && resolved?.adapter === 'generic' && !repo.adapter && !problems.some((p) => p.code === 'adapterLoad') && <AdapterSetup canvas={canvasId} repo={resolved.id} />}
     </div>
   );
 }
 
 // problems whose detail says what to fix, in the repository's adapter rather than here
-const DETAILED: ConfigProblem['code'][] = ['adapterField', 'unknownAdapter'];
+const DETAILED: ConfigProblem['code'][] = ['adapterField', 'adapterLoad', 'unknownAdapter'];
 
 /** Creates the card that writes the repository's adapter, and opens it on its canvas. */
 function AdapterSetup({ canvas, repo }: { canvas: string; repo: string }) {

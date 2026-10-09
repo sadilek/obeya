@@ -680,7 +680,8 @@ the owner's language (`src/core/locale.ts`).
   the adapter's, or an export; see Sharing a demo); problems (no git repository, an unknown
   adapter, two canvases with one id, a canvas's home repository left out, a share command whose program is not there) show at the field while
   editing and keep it from being saved. Problems in a repository's own adapter (`adapterField`:
-  a field unknown, of the wrong type or incomplete, a share program not there; see Repo adapter)
+  a field unknown, of the wrong type or incomplete, a share program not there; `adapterLoad`: it
+  does not load, and the repository runs on the generic adapter; see Repo adapter)
   show at the repository with what is wrong, and keep nothing from being saved, since they are
   fixed in the repository. A repository that runs on the generic adapter (none named, none of its
   own) offers "Adapter einrichten lassen" while its canvas runs as saved: it puts the card "Obeya
@@ -1586,9 +1587,19 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   the owner quit and started Obeya again. The module's default export is the adapter
   or a function that makes it from Obeya's helpers (`kit`: the generic adapter, the demo page
   templates, `esc`, `day`), so it imports nothing of Obeya's; Obeya loads it with `require` and
-  fills what it leaves out from the generic adapter. An adapter that does not load is a
-  configuration problem at the repository ("Diesen Adapter gibt es nicht, oder sein Modul lädt
-  nicht.", with the error). What it exports is checked against a schema (`src/adapters/schema.ts`,
+  fills what it leaves out from the generic adapter. An adapter the configuration names that does
+  not exist or does not load is a configuration problem at the repository ("Diesen Adapter gibt es
+  nicht, oder sein Modul lädt nicht.", with the error) that keeps it from being saved. A
+  repository's own adapter that does not load (a syntax error, a failing import, no default export
+  with a `name`) is fixed in the repository: meanwhile the repository runs on the built-in adapter
+  that matches it (`generic`, for any repository but Obeya's own), with the problem `adapterLoad`
+  at the repository in "Konfiguration" (with the error, keeping nothing from being saved) and in
+  Obeya's log; "Adapter einrichten lassen" is not offered there. The canvas keeps the id and name
+  that adapter gave it (the setting `own_adapter_of` notes which canvas it named), so its address
+  and cards stay, and once a fixed adapter reaches the default branch Obeya restarts with it. A
+  canvas that does not start at all (a repository gone, its home repository left out) is left out
+  with the reason in the log and its problem in "Konfiguration"; the other canvases run
+  (`startCanvases`). Until 2026-10-09 either took all of Obeya down at its next start. What it exports is checked against a schema (`src/adapters/schema.ts`,
   zod): a field that is unknown (with the known one it probably meant: `check` → `checks`), of
   the wrong type or incomplete does not count, the generic adapter's value stands in its place,
   and the rest works; each is a problem at the repository (`adapterProblems`), as is a share

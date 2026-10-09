@@ -3,7 +3,7 @@
 
 import { realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { adapterProblems, pickAdapter, repoAdapterTree } from '../adapters';
+import { adapterProblems, builtInAdapter, pickAdapter, repoAdapterTree } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
@@ -101,9 +101,10 @@ export class CanvasRuntime {
     deps = { ...deps, runtime: withAgentSetting(deps.runtime, agents), ...(deps.workerRuntime ? { workerRuntime: withAgentSetting(deps.workerRuntime, agents) } : {}) };
     this.deps = deps;
     const resolved = resolveCanvas(config, deps.store);
-    const { id, name, infos, adapters, adapterTrees, refs, stored } = resolved;
+    const { id, name, infos, adapters, adapterTrees, broken, refs, stored } = resolved;
     config = resolved.config;
     adapters.forEach((a, i) => {
+      if (broken[i]) console.error(`Obeya: ${broken[i]}; ${infos[i]!.path} runs on the ${a.name} adapter until it is fixed on its default branch`);
       for (const p of adapterProblems(a)) console.warn(`Obeya: adapter of ${infos[i]!.path}, ${p} (ignored)`);
     });
     const home = refs[0]!.id;
@@ -144,6 +145,7 @@ export class CanvasRuntime {
     const board = this.board;
     const imageFiles = (ids: string[] = []) => ids.flatMap((i) => images.path(i) ?? []);
     if (!stored) deps.store.setSetting(id, 'home_repo', home);
+    resolved.keep();
     const preferences = () => board.preferencesText();
 
     // the Koordinator needs the workers, and the workers ask it: it is set right after them
@@ -854,6 +856,25 @@ export function approachOf(what: string, max = 40): string {
   return `${(word > max / 2 ? cut.slice(0, word) : cut).replace(/[\s,;:–—-]+$/, '')}…`;
 }
 
+/**
+ * Starts the canvases; one that does not start is left out, with why in Obeya's log (and in
+ * "Konfiguration", which checks the configuration again), and the others run.
+ */
+export function startCanvases(configs: CanvasConfig[], deps: CanvasDeps): CanvasRuntime[] {
+  return configs.flatMap((c) => {
+    try {
+      return new CanvasRuntime(c, deps);
+    } catch (e) {
+      const why = e instanceof ConfigError ? e.message : e instanceof Error ? (e.stack ?? e.message) : String(e);
+      console.error(`Obeya: the canvas ${c.name ?? c.id ?? c.repos[0]?.path} does not start, left out: ${why}`);
+      return [];
+    }
+  });
+}
+
+// the setting that names the repository whose own adapter named the canvas
+const OWN_ADAPTER_OF = 'own_adapter_of';
+
 /** Why a canvas's configuration does not work; `repo` is the index of the repository in question. */
 export class ConfigError extends Error {
   constructor(
@@ -867,7 +888,9 @@ export class ConfigError extends Error {
 
 /**
  * What a canvas's configuration amounts to, without touching anything: its repositories (home
- * first), their adapters and ids, and the canvas's id and name. Throws a ConfigError.
+ * first), their adapters and ids (`broken`: why a repository's own adapter does not load, where
+ * it runs on the built-in one instead), and the canvas's id and name; `keep` notes which canvas
+ * the repository's own adapter named, once the canvas is in the store. Throws a ConfigError.
  */
 export function resolveCanvas(config: CanvasConfig, store: Store) {
   if (!config.repos.length) throw new ConfigError('noRepo', 'a canvas needs at least one repository');
@@ -880,15 +903,26 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
   });
   // the version of the repository's own adapter on its default branch; undefined where the configuration names one
   let adapterTrees = config.repos.map((r, i) => (r.adapter ? undefined : repoAdapterTree(infos[i]!.path)));
+  // a repository's own adapter that does not load is fixed in the repository: meanwhile the
+  // repository runs on the built-in adapter that matches it, with the error beside it
+  let broken: (string | undefined)[] = [];
   let adapters = config.repos.map((r, i) => {
     try {
       return pickAdapter(infos[i]!, r.adapter);
     } catch (e) {
-      throw new ConfigError('unknownAdapter', e instanceof Error ? e.message : String(e), i);
+      const message = e instanceof Error ? e.message : String(e);
+      if (r.adapter) throw new ConfigError('unknownAdapter', message, i);
+      broken[i] = message;
+      return builtInAdapter(infos[i]!);
     }
   });
   let refs = uniqueRefs(config.repos, infos, adapters);
-  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : adapters[0]!.canvasId(infos[0]!);
+  // the canvas the repository's own adapter named stays the one while that adapter does not load,
+  // with its address, name and cards
+  const named = !config.id && !config.name;
+  const ownPath = named && adapterTrees[0] ? infos[0]!.path : null;
+  const kept = ownPath && broken[0] !== undefined ? store.canvasWith(OWN_ADAPTER_OF, ownPath) : null;
+  const id = config.id ? slug(config.id) : config.name ? slug(config.name) : (kept?.id ?? adapters[0]!.canvasId(infos[0]!));
   // the home repository is fixed when the canvas is first served: bare plan references, cards
   // without a repository and the home workspace directory are its, whatever the order later
   const stored = store.setting(id, 'home_repo');
@@ -900,10 +934,14 @@ export function resolveCanvas(config: CanvasConfig, store: Store) {
     infos = order.map((i) => infos[i]!);
     adapters = order.map((i) => adapters[i]!);
     adapterTrees = order.map((i) => adapterTrees[i]);
+    broken = order.map((i) => broken[i]);
     refs = uniqueRefs(config.repos, infos, adapters);
   }
-  const name = config.name ?? adapters[0]!.canvasName(infos[0]!);
-  return { config, id, name, infos, adapters, adapterTrees, refs, stored };
+  const name = config.name ?? kept?.name ?? adapters[0]!.canvasName(infos[0]!);
+  const keep = () => {
+    if (ownPath && !kept) store.setSetting(id, OWN_ADAPTER_OF, ownPath);
+  };
+  return { config, id, name, infos, adapters, adapterTrees, broken, refs, stored, keep };
 }
 
 /** Repository ids unique on the canvas: the repository's name, with a number when two share one. */

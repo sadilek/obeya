@@ -204,9 +204,15 @@ field and, for a misspelt one, what it probably meant:
 
 A share command whose program is not there shows the same way. These problems keep nothing from
 being saved, since they are fixed in the repository. Obeya's log names them when it starts. An
-adapter that does not load at all (a syntax error, no default export with a `name`) is worse: it
-shows as "Diesen Adapter gibt es nicht, oder sein Modul lädt nicht." with the error, keeps the
-configuration from being saved, and keeps Obeya from starting. Run the check below before merging.
+adapter that does not load at all (a syntax error, a failing import, no default export with a
+`name`) is worse: the whole adapter does not count, and the repository runs on the generic adapter
+until a fixed one reaches the default branch (its canvas keeps its id and name). It shows at the
+repository as
+
+> Der Adapter des Repositorys lädt nicht; bis er repariert ist, läuft das Repository mit dem
+> allgemeinen Adapter: `adapter module … does not load: …`
+
+and Obeya's log names it at start. Run the check below before merging.
 
 ## Testing an adapter
 

@@ -34,7 +34,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { RestartReason } from '../core/types';
-import { type CanvasConfig, CanvasRuntime } from './canvas';
+import { type CanvasConfig, type CanvasRuntime, startCanvases } from './canvas';
 import { Config, CONFIG_FILE, expand, expandConfig, readConfigFile } from './config';
 import { NewerDatabase, Store } from './db';
 import { ghForge } from './forge';
@@ -211,29 +211,26 @@ const config = new Config({
       }
     : {}),
 });
-canvases = configs.map(
-  (c) =>
-    new CanvasRuntime(c, {
-      store,
-      home,
-      runtime: sdkRuntime,
-      ...(values['idle-workers'] ? { workerRuntime: idleRuntime } : {}),
-      forge: ghForge,
-      permissionMode: values['permission-mode'] as 'auto',
-      watch: true,
-      ownCheckout: own,
-      config,
-      workerEnv: { OBEYA_URL: url },
-      ...(process.env.OBEYA_PARK_GRACE ? { parkGrace: Number(process.env.OBEYA_PARK_GRACE) * 1000 } : {}),
-      language: () => ownerLanguage(home),
-      agents: (role) => agentSetting(home, role),
-      // after the landing is recorded: a restart with no worker to wait for stops this server at once
-      adapterChanged: (path) =>
-        process.env.OBEYA_SUPERVISED
-          ? setTimeout(() => restart('adapter', `the adapter of ${path} changed on its default branch`), 100)
-          : console.log(`Obeya: the adapter of ${path} changed on its default branch; start Obeya again to use it`),
-    }),
-);
+canvases = startCanvases(configs, {
+  store,
+  home,
+  runtime: sdkRuntime,
+  ...(values['idle-workers'] ? { workerRuntime: idleRuntime } : {}),
+  forge: ghForge,
+  permissionMode: values['permission-mode'] as 'auto',
+  watch: true,
+  ownCheckout: own,
+  config,
+  workerEnv: { OBEYA_URL: url },
+  ...(process.env.OBEYA_PARK_GRACE ? { parkGrace: Number(process.env.OBEYA_PARK_GRACE) * 1000 } : {}),
+  language: () => ownerLanguage(home),
+  agents: (role) => agentSetting(home, role),
+  // after the landing is recorded: a restart with no worker to wait for stops this server at once
+  adapterChanged: (path) =>
+    process.env.OBEYA_SUPERVISED
+      ? setTimeout(() => restart('adapter', `the adapter of ${path} changed on its default branch`), 100)
+      : console.log(`Obeya: the adapter of ${path} changed on its default branch; start Obeya again to use it`),
+});
 const ids = canvases.map((c) => c.id);
 if (new Set(ids).size !== ids.length) {
   console.error(`two canvases share an id: ${ids.join(', ')}; give them different names`);

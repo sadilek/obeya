@@ -112,6 +112,15 @@ describe("Obeya's configuration", () => {
     expect(c.save([{ repos: [{ path: web }, { path: own }] }])).toEqual({ restarting: true });
   });
 
+  test("a repository's own adapter that does not load is a problem at the repository, which keeps nothing from being saved", () => {
+    const own = gitRepo(join(dir, 'shop'), { '.obeya/adapter/index.ts': "export default () => { throw new Error('kaputt'); };\n" });
+    const c = config('args', [{ repos: [{ path: web }] }]);
+    const checked = c.check([{ repos: [{ path: web }, { path: own }] }]);
+    expect(checked.problems).toEqual([{ code: 'adapterLoad', canvas: 0, repo: 1, detail: expect.stringMatching(/does not load: kaputt$/) }]);
+    expect(checked.resolved[0]!.repos[1]).toMatchObject({ id: 'shop', adapter: 'generic' });
+    expect(c.save([{ repos: [{ path: web }, { path: own }] }])).toEqual({ restarting: true });
+  });
+
   test("keeps a canvas's home repository: leaving it out is a problem, moving it is not", () => {
     store.ensureCanvas('produkt', 'Produkt');
     store.setSetting('produkt', 'home_repo', 'web');

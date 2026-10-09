@@ -208,10 +208,12 @@ export class Config {
         if (wrong) problems.push({ code: 'shareCommand', canvas, repo, detail: wrong });
       });
       try {
-        const { id, name, adapters, refs, config } = resolveCanvas(c, this.o.store);
+        const { id, name, adapters, broken, refs, config } = resolveCanvas(c, this.o.store);
         // what is wrong in a repository's own adapter is fixed there, not here: it keeps nothing from being saved
         c.repos.forEach((r, repo) => {
           const adapter = adapters[config.repos.indexOf(r)]!;
+          const error = broken[config.repos.indexOf(r)];
+          if (error) problems.push({ code: 'adapterLoad', canvas, repo, detail: error });
           const share = !r.share && adapter.demo?.share && shareProblem(adapter.demo.share);
           for (const detail of [...adapterProblems(adapter), ...(share ? [`demo.share: ${share}`] : [])]) problems.push({ code: 'adapterField', canvas, repo, detail });
         });
