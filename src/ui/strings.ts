@@ -22,6 +22,7 @@ const de = {
   demoWithQuestion: 'Demo bereit, mit Frage',
   answering: 'Agent arbeitet an deiner Nachricht',
   finishing: 'Live · Agent erledigt den Rest',
+  openingPr: 'Freigegeben · Agent öffnet den PR',
   finishingLong: 'Auf main. Der Agent erledigt noch, was nach dem Landen ansteht; danach endet seine Sitzung.',
   finishingDone: 'Erledigt · Agent räumt auf',
   finishingDoneLong: 'Ohne Änderung am Code gibt es nichts zu landen. Der Agent erledigt noch, was ansteht; danach endet seine Sitzung.',
@@ -914,6 +915,7 @@ const en: Strings = {
   demoWithQuestion: 'Demo ready, with a question',
   answering: 'Agent works on your message',
   finishing: 'Live · agent finishing up',
+  openingPr: 'Approved · agent opening the PR',
   finishingLong: 'On main. The agent still does what was waiting for the landing; then its session ends.',
   finishingDone: 'Done · agent tidying up',
   finishingDoneLong: 'Nothing changed in the code, so there is nothing to land. The agent still does what is left; then its session ends.',
@@ -1807,7 +1809,7 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; finishing?: boolean; followUp?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
+export const stateLabel = (i: { state: CardState; need?: Need; pr?: unknown; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; finishing?: boolean; followUp?: boolean; prototypeEnd?: 'discarded' | 'built' }) =>
   i.prototypeEnd
     ? t.idea.ended[i.prototypeEnd]
     : i.finishing && (i.state === 'live' || i.state === 'done')
@@ -1832,7 +1834,9 @@ export const stateLabel = (i: { state: CardState; need?: Need; queue?: Queue; id
         : i.need === 'demo' && i.question
           ? t.demoWithQuestion
           : t.need[i.need]
-      : t.state[i.state];
+      : i.state === 'inPr' && !i.pr
+        ? t.openingPr
+        : t.state[i.state];
 
 /** The owner's text for a refused request or a logged error code; the generic one for anything unknown. */
 export const errorText = (code: string | undefined) => (code && Object.hasOwn(t.error, code) ? t.error[code as ErrorCode] : t.error.invalid);

@@ -100,6 +100,8 @@ interface Live {
   stalled: boolean;
   /** Whether the worker has heard of the restart that is due, so that it pauses for it. */
   toldRestart?: boolean;
+  /** The card's status line from when the worker heard of the restart, back once it paused: a line about pausing is stale once it goes on. */
+  statusBeforeRestart?: string | null;
   /** The owner's preferences as the worker last heard them: in its instructions, or since then. */
   preferences: string;
   /** The project the card is a workstream of, and the last of its decisions the worker has heard of. */
@@ -316,7 +318,8 @@ export class Workers {
     if (this.o.adapter.land === 'main' || direct) return this.land(cardId, 'owner');
     // the worker opens the PR the way the repository does it, then Obeya watches it
     const pr: PrState = { url: null, seen: [], reported: [] };
-    this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, pr: JSON.stringify(pr) });
+    // the line the worker reported before handing over is about work that is done
+    this.o.board.work(cardId, { state: 'inPr', need: null, detail: null, status_line: null, pr: JSON.stringify(pr) });
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.approvedPr);
     // a demo shared later gets its line from Obeya once the pull request is open
     const shared = card.share?.url;
@@ -616,7 +619,7 @@ export class Workers {
     if (!due) return;
     for (const [cardId, live] of this.live) {
       if (!live.busy || live.toldRestart) continue;
-      live.toldRestart = true;
+      this.tellRestart(cardId, live);
       live.session.send(restartNotice(due));
       this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.restartDue(due.reason === 'stop'));
     }
@@ -638,7 +641,7 @@ export class Workers {
     const project = this.o.board.item(cardId)?.parent;
     if (project) live.project = { id: project, decision: this.o.board.decisions(project).at(-1)?.id ?? 0 };
     this.live.set(cardId, live);
-    message = this.withRestart(live, message);
+    message = this.withRestart(cardId, live, message);
     live.session = this.o.runtime.start(
       {
         cwd: row.workspace,
@@ -685,7 +688,7 @@ export class Workers {
       clearTimeout(live.waiting);
       live.waiting = undefined;
       live.busy = true;
-      live.session.send(this.withRestart(live, text), images);
+      live.session.send(this.withRestart(cardId, live, text), images);
       return;
     }
     const row = this.o.board.row(cardId);
@@ -714,10 +717,21 @@ export class Workers {
   }
 
   /** A message that starts a turn while a restart is due tells the worker of it, once. */
-  private withRestart(live: Live, text: string): string {
+  private withRestart(cardId: string, live: Live, text: string): string {
     if (!this.restart || live.toldRestart) return text;
-    live.toldRestart = true;
+    this.tellRestart(cardId, live);
     return `${text}\n\n${restartNotice(this.restart)}`;
+  }
+
+  private tellRestart(cardId: string, live: Live) {
+    live.toldRestart = true;
+    live.statusBeforeRestart = this.o.board.row(cardId).status_line;
+  }
+
+  /** The worker ended its turn for the restart: the card says so, and its status line is again the one from before it heard of it. */
+  private pausedForRestart(cardId: string, live: Live) {
+    if (live.statusBeforeRestart !== undefined) this.o.board.work(cardId, { status_line: live.statusBeforeRestart });
+    this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.paused(this.restart!.reason === 'stop'));
   }
 
   private bump(cardId: string) {
@@ -815,10 +829,7 @@ export class Workers {
       // a resumed session may first end a turn of its own before it takes in the owner's words
       if (!acted && !handedOver) return this.waitForWorker(cardId, live);
       // it paused for the restart, which resumes it, still taking in the answer
-      if (this.restart && live.toldRestart && !handedOver) {
-        this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.paused(this.restart.reason === 'stop'));
-        return;
-      }
+      if (this.restart && live.toldRestart && !handedOver) return this.pausedForRestart(cardId, live);
       this.answerTaken(cardId);
     }
     if (handedOver) {
@@ -838,11 +849,8 @@ export class Workers {
       this.finish(cardId);
       return;
     }
-    if (this.restart && live.toldRestart) {
-      // it paused for the restart, which resumes it
-      this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.paused(this.restart.reason === 'stop'));
-      return;
-    }
+    // it paused for the restart, which resumes it
+    if (this.restart && live.toldRestart) return this.pausedForRestart(cardId, live);
     if (live.limited) return this.waitForLimit(cardId, live, live.limited);
     if (!acted && !live.nudged) {
       // the worker's own turn is still to come; should it not, it counts as ended after a while
@@ -1206,7 +1214,8 @@ export class Workers {
           handOver();
           // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
           this.o.board.work(cardId, {
-            ...(approved ? { status_line: this.o.board.t.worker.landing } : { state: 'waiting', need: d || kept ? 'demo' : 'review' }),
+            // the worker's last status line is about the work it hands over: it would show again once the card is at work
+            ...(approved ? { status_line: this.o.board.t.worker.landing } : { state: 'waiting', need: d || kept ? 'demo' : 'review', status_line: null }),
             // approving work that changes nothing makes the card done, which the owner sees before approving
             detail: JSON.stringify({ summary: s, ...(none ? { noDemo: none } : {}), ...(this.o.workspaces.hasWork(cardId) ? {} : { noChange: true }) }),
             ...(demoJson ? { demo: demoJson } : {}),

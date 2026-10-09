@@ -260,7 +260,8 @@ An idea is thought through on its card before anything is planned; no worker run
    under such a demo it takes the answer and feedback together. The words go to the worker as the
    answer (in the decision log as such), and a change they also ask for comes as a new handover.
 4. Where work lands through pull requests, approval puts the card `in PR`: its worker opens
-   the PR and Obeya carries it through the merge, which it does itself. Review comments, failed checks and conflicts go to the
+   the PR (until it reports one, the card reads „Freigegeben · Agent öffnet den PR“ with the
+   worker's status line, not "in PR" without a link) and Obeya carries it through the merge, which it does itself. Review comments, failed checks and conflicts go to the
    worker; only what needs judgement — a review comment that questions a decision, a conflict with
    product meaning — comes back to the owner as a question on the card, and the answer returns it
    to the PR. A PR closed without a merge asks the owner whether to open it again or drop the work.
@@ -312,7 +313,10 @@ An idea is thought through on its card before anything is planned; no worker run
 
 Agents never talk to each other directly; the Obeya server is the mailbox, so every exchange is
 visible on a card. A worker has its tools served in-process: `report(status)`, a status line
-on the card; `reply(text)`, its answer to a note or feedback in the card's conversation, which
+on the card, which belongs to the stretch of work it reports on: a handover and an approval clear
+it, and a line reported while pausing for a restart gives way to the one from before once the worker
+paused (before 2026-10-09, a card the owner approved for a PR read „In PR · Paused for restart; next: …“,
+a line from before the handover, while its worker was rebasing for the PR); `reply(text)`, its answer to a note or feedback in the card's conversation, which
 does not end its turn; `ask(question, options, multiple, pick, pick_why)`, which returns at once — the worker ends its turn
 and the answer arrives as its next message (the owner picks one option, several when `multiple`,
 or writes their own answer; `pick` and `pick_why` are the options the worker would choose if it

@@ -61,9 +61,9 @@ export const CardView = memo(
       (item.parent ? t.kind.workstream : item.idea || item.proposal?.idea ? t.kind.idea : item.becomesProject ? t.kind.becomesProject : item.prototypeOf ? t.kind.prototype : item.kind === 'project' ? t.kind.project : '');
     // a plain task says nothing of its kind: that it is one shows
     const label = [item.state === 'proposal' && t.proposalMark, showRepo && item.repo, kind].filter(Boolean).join(' · ');
-    // a card whose agent finishes after the landing shows its line like one at work: the usage limit it waits on, its reports
+    // a card whose agent finishes after the landing, or opens its PR, shows its line like one at work: the usage limit it waits on, its reports
     const status =
-      item.state === 'working' || item.finishing
+      item.state === 'working' || item.finishing || (item.state === 'inPr' && !item.pr)
         ? item.statusLine
         : item.state === 'inPr' && item.pr
           ? t.pr.short(item.pr.number, item.pr.checks.filter((c) => c.state === 'failure').length, item.pr.conflict, item.pr.ready, item.pr.held?.score)

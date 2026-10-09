@@ -186,6 +186,17 @@ describe('workers', () => {
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
   });
 
+  test('a status line the worker reports as it pauses for the restart gives way to the one from before: it goes on after the restart', () => {
+    const c = manual();
+    workers.start(c.id);
+    const busy = runtime.last;
+    busy.call('report', { status: 'Backend steht, jetzt die UI' });
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 15 * 60_000 });
+    busy.call('report', { status: 'Pausiert für den Neustart; danach: UI' });
+    busy.emit({ type: 'idle' });
+    expect(board.item(c.id)!.statusLine).toBe('Backend steht, jetzt die UI');
+  });
+
   test('stopping Obeya is announced like a restart, and the worker pauses until Obeya runs again', () => {
     const c = manual();
     workers.start(c.id);
@@ -1078,8 +1089,11 @@ describe('landing through a pull request', () => {
     writeFileSync(join(clone, 'x.ts'), '');
     git(clone, 'add', '.');
     git(clone, 'commit', '--quiet', '-m', 'X');
+    runtime.last.call('report', { status: 'Demo fertig, übergebe' });
     runtime.last.call('ready_for_review', { summary: 'S' });
     expect(board.item(c.id)!.noChange).toBeUndefined();
+    // the line was about the work handed over: it would show again once the card is at work
+    expect(board.item(c.id)!.statusLine).toBeUndefined();
     await workers.approve(c.id);
     expect(state(c.id)).toBe('inPr');
     expect(git(main, 'log', '--format=%s', '-1')).toBe('init');
