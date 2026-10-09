@@ -1822,8 +1822,10 @@ the repository; the copy on the project is only for the archive).
   moves the view left by half the sheet's width, so the middle of the view stays its middle;
   closing it or dragging its edge moves it back by as much (`besideSheet`). A card opened beside
   a sheet goes back to its view beside whatever sheet is open when it closes; a project's sheet
-  stays while one of its cards is open, under the dim. A ✕ in the sidebar's top corner, where the
-  button that opened it was, closes it. Beside a wide sheet the bar's buttons drop their labels
+  stays while one of its cards is open, under the dim. Obeya's button, a speech bubble with its
+  counts, is the bar's rightmost; while its sidebar is open the button stays where it was and
+  becomes the sidebar's top corner, closing it again (2026-10-09, the owner's wish). The other
+  sheets have a ✕ there. Beside a wide sheet the bar's buttons drop their labels
   for icons, and on the narrowest only the sheets' buttons stay (a container query on the bar). A
   window up to 760 px wide lays the sheet over the canvas instead. Before, the sheets were
   rounded panels with a shadow floating 14 px from the window's edge over a full-window canvas:

@@ -1004,6 +1004,24 @@ function Canvas({
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   const edgeTargets = placed.filter(({ item }) => needsYou(item) && (focus?.type !== 'project' || item.parent === focus.id));
 
+  // the button for the conversation with Obeya: the rightmost in the bar; while its sidebar is open it
+  // stays where it was and belongs to the sidebar, at its top corner, and closes it
+  const talkButton = (
+    <button className={kOn ? 'pill kpill talk-pill on' : 'pill kpill talk-pill'} title={t.koordinator.buttonTitle} aria-label={t.koordinator.button} onClick={toggleKoordinator}>
+      <TalkIcon />
+      {queuedCount > 0 && (
+        <span className="n" title={t.koordinator.queuedCount(queuedCount)}>
+          {queuedCount}
+        </span>
+      )}
+      {proposalCount > 0 && (
+        <span className="n prop" title={t.koordinator.proposalsCount(proposalCount)}>
+          {proposalCount}
+        </span>
+      )}
+    </button>
+  );
+
   return (
     <div
       className={[cam.s < FAR && 'z-far', resizing && 'resizing'].filter(Boolean).join(' ') || undefined}
@@ -1100,24 +1118,12 @@ function Canvas({
             <BarIcon d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />
             <span className="lbl">{t.archive.button}</span>
           </button>
-          <button className={kOn ? 'pill kpill talk-pill on' : 'pill kpill talk-pill'} title={t.koordinator.buttonTitle} aria-label={t.koordinator.button} onClick={toggleKoordinator}>
-            <TalkIcon />
-            {queuedCount > 0 && (
-              <span className="n" title={t.koordinator.queuedCount(queuedCount)}>
-                {queuedCount}
-              </span>
-            )}
-            {proposalCount > 0 && (
-              <span className="n prop" title={t.koordinator.proposalsCount(proposalCount)}>
-                {proposalCount}
-              </span>
-            )}
-          </button>
           {attention.length > 0 && (
             <button className="pill" id="attention" onClick={nextAttention}>
               <span className="n">{attention.length}</span> <span className="lbl">{t.needsYou}</span>
             </button>
           )}
+          {!kOn && talkButton}
         </div>
       </header>
       <Minimap
@@ -1178,7 +1184,8 @@ function Canvas({
         els={sheetEls}
         version={snapshot}
       />
-      {gripOn && (
+      {kOn && <div id="talk-docked">{talkButton}</div>}
+      {gripOn && !kOn && (
         <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : (setKOn(false), setAOn(false), setCOn(false)))}>
           ✕
         </button>
