@@ -72,7 +72,7 @@ visibly on the walls and decisions are made in front of the wall.
     at the same time but queues them. The UI calls it simply *Obeya* in both languages
     (2026-10-09): the owner has one counterpart, not a product plus a component in it. Its
     replies, its sheet, the line under the microphone and its log lines on cards say Obeya; the
-    top-right button is a speech-bubble icon with its counts, tooltip „Obeya (K)“. Prompts tell
+    top-right button is a speech-bubble icon with its counts, tooltip „Obeya (C)“. Prompts tell
     the agents the owner knows it as Obeya.
 - **Preference memory** — rules distilled from every answer and correction the owner gives
   ("questions to me with at most three options", "solve rebase conflicts yourself"), or said
@@ -1143,7 +1143,7 @@ the owner's language (`src/core/locale.ts`).
   each with a sentence on what it rests on and, like the learner, for the preferences or a
   repository's CLAUDE.md; the sheet shows that as their occasion („Aus der
   Rückschau: …“). Its
-  sheet (button or `K`) gives the conversation with the Koordinator the height it has, with the
+  sheet (button or `C`) gives the conversation with the Koordinator the height it has, with the
   field to write in under it (the same as a card's, `src/ui/composer.tsx`: one frame as wide as the
   conversation, the text growing with what is written up to 30 % of the window, the screenshot
   button and Send in its bottom corner beside the text's scrollbar; until 2026-10-09 Send stood

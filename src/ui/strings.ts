@@ -61,7 +61,7 @@ const de = {
       {
         title: 'Seitenleisten und Stimme',
         rows: [
-          { keys: [['K']], text: 'Obeya ein und aus' },
+          { keys: [['C']], text: 'Obeya ein und aus' },
           { keys: [['A']], text: 'Archiv ein und aus' },
           { keys: [['Leertaste halten']], text: 'Sprechen' },
           { keys: [['?']], text: 'Diese Übersicht' },
@@ -377,7 +377,7 @@ const de = {
   koordinator: {
     button: 'Obeya',
     /** The top-right button is an icon; this is its tooltip. */
-    buttonTitle: 'Obeya (K)',
+    buttonTitle: 'Obeya (C)',
     kind: 'Obeya',
     title: 'Planung und Präferenzen',
     proposalsHead: (n: number) => `Vorschläge (${n})`,
@@ -956,7 +956,7 @@ const en: Strings = {
       {
         title: 'Side sheets and voice',
         rows: [
-          { keys: [['K']], text: 'Obeya on and off' },
+          { keys: [['C']], text: 'Obeya on and off' },
           { keys: [['A']], text: 'Archive on and off' },
           { keys: [['Hold space']], text: 'Speak' },
           { keys: [['?']], text: 'This overview' },
@@ -1257,7 +1257,7 @@ const en: Strings = {
   },
   koordinator: {
     button: 'Obeya',
-    buttonTitle: 'Obeya (K)',
+    buttonTitle: 'Obeya (C)',
     kind: 'Obeya',
     title: 'Planning and preferences',
     proposalsHead: (n: number) => `Proposals (${n})`,

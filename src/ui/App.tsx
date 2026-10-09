@@ -996,7 +996,7 @@ function Canvas({
       e.preventDefault();
       nextAttention();
     } else if (e.key === 'n') createAtCentre();
-    else if (e.key === 'k') toggleKoordinator();
+    else if (e.key === 'c') toggleKoordinator();
     else if (e.key === 'a') toggleArchive();
   };
   useEffect(() => {
