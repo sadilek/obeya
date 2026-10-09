@@ -64,7 +64,10 @@ now and then, and a release fails the same way until it is accepted again.
 2. Export it with its private key: Keychain Access → login → My Certificates → the
    "Developer ID Application: …" entry → Export → `.p12`, with a password. The `.p12` format is
    offered only for the certificate with its private key (the entry under My Certificates, the
-   key folded under it); under Certificates it is greyed out.
+   key folded under it); under Certificates it is greyed out. Exported from the key's row instead,
+   the file holds the key without the certificate, and the build fails with "failed to resolve
+   signing identity". `openssl pkcs12 -info -noout -in obeya.p12` lists what the file holds: a
+   "Certificate bag" and a "Shrouded Keybag".
 3. Secrets:
    - `APPLE_CERTIFICATE`: the `.p12` in base64, `base64 -i obeya.p12 | gh secret set APPLE_CERTIFICATE --repo sadilek/obeya`
    - `APPLE_CERTIFICATE_PASSWORD`: the export's password.
