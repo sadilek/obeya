@@ -23,7 +23,7 @@ export interface DemoSite {
    * (credentials, never in git). A machine without it exports demos instead of sharing them.
    */
   env?: string;
-  /** Headers for reading the live site (behind a login), values `${KEY}` from `env`; read once several machines publish to one site. */
+  /** Headers for reading the live site's manifest and pages (behind a login), values `${KEY}` from `env`. */
   headers?: Record<string, string>;
   /** The largest file the host takes, in bytes; 25 MiB without it. */
   maxFile?: number;

@@ -1623,10 +1623,32 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   demos.example.dev braucht dieser Rechner sites/demos/deploy.env.“); placed later, it counts
   when the owner next comes back to the page. A site without `env` deploys with the machine's own
   login. `demo.share` stays for hosts that need more than deploying a directory; an adapter naming
-  both uses the site, and the command is a problem at the repository. Several machines publishing
-  to one site (each deploy is a full snapshot of one machine's directory, so a second machine
-  would take the first one's pages offline) is planned in
-  [`docs/plan/demo-site.md`](plan/demo-site.md).
+  both uses the site, and the command is a problem at the repository.
+  Several machines may publish to one site: each deploy is a full snapshot of one machine's
+  directory, so a machine deploying only its own pages would take the others' offline. Obeya
+  therefore pulls before it pushes. The site carries a manifest at its root, `obeya-site.json`:
+  every page with its `meta.json`, its files with size and hash, a revision and the machine (host
+  name) that wrote it; a withdrawn page stays listed as a tombstone with its date, so a machine
+  that still has its files does not bring it back. Only the machine whose card a page is changes
+  it (slugs carry the card's id), so its revision just counts up. Before every publish or
+  withdrawal Obeya reads the live manifest (with the site's `headers`, their `${KEY}` values from
+  the env file, since a site may sit behind a login), downloads the pages missing here or newer
+  there (checked against size and hash; the first share of a new machine downloads the whole
+  site, with a line in the card's log every 25 pages), removes the pages withdrawn there, keeps
+  the pages the live site lacks (its own, not deployed yet or lost to a deploy in between), then
+  writes its page, the overview and the manifest, and deploys. Each manifest names its
+  deployment; after the deploy Obeya reads the manifest again, for about 30 s while the site still
+  serves the deployment before (the deploy counts, with a line saying the site does not show it
+  yet, if it never does). Another machine's deployment that came in between without the change
+  undoes it here and makes it once more; a second one fails the share with a line in the card's
+  log and leaves the card as it was. A manifest that cannot be read (network, a login, not a
+  manifest) refuses the deploy, since deploying blind could take pages offline; a site with
+  nothing at its URL (404 there too) is the first deploy, and a site deployed before it had a
+  manifest (its overview answers) deploys only from a machine that has every page the overview
+  links, so the machine that moved its directory over goes first. A page another machine withdrew
+  costs its card here the link, with a line naming the machine: noticed with the next share to
+  that site or the once-a-minute check when the owner comes back. The guard against a directory
+  lacking pages Obeya has as shared stays as the last check after the pull.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   recipe for running the app in a demo (login, test data, migrations: `demo.howToRun`), where plan
   docs live, which reviews run, the site or the command that shares demos (the
@@ -2107,6 +2129,5 @@ the repository; the copy on the project is only for the archive).
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
 - A plan doc without a `## Workstreams` checklist is not shown (its tasks under other headings,
   say). Fix such docs, or show them as projects without cards?
-- Shared demos on a static site that Obeya keeps and deploys itself, declared in the adapter
-  (`demo.site`), safe for several machines publishing to one site: planned in
+- Switching the first site over to `demo.site`: planned in
   [`docs/plan/demo-site.md`](plan/demo-site.md).

@@ -26,7 +26,7 @@ import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, 
 import type { DemoSite } from '../adapters/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { BUN_ENV } from './resources';
-import { siteMissing, siteTarget } from './site';
+import { type Gone, siteMissing, siteTarget } from './site';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoPageHtml, PAGE_WORDS, type PageLanguage, withHeightReport } from './demo-page';
 import { type Forge, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
@@ -75,9 +75,15 @@ export interface ShareTarget {
   key: string;
   /** The card's repository checkout. */
   repo: string;
-  /** The page's URL, or why it did not go out; what the target said on the way goes into the card's log. */
-  publish(page: SharePage): Promise<{ url: string; said: string } | { why: string; said: string }>;
-  withdraw(slug: string, shared: string[]): Promise<{ why?: string; said: string }>;
+  /**
+   * The page's URL, or why it did not go out; what the target said on the way goes into the card's
+   * log, and what it says while it goes on (`log`). `gone`: pages another machine withdrew, found
+   * on the way.
+   */
+  publish(page: SharePage, log?: (text: string) => void): Promise<({ url: string; said: string } | { why: string; said: string }) & { gone?: Gone[] }>;
+  withdraw(slug: string, shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
+  /** The pages on the target that another machine withdrew (only a site knows); their cards here lose their link. */
+  gone?(): Promise<Gone[]>;
   /** The version of the pages the target writes, which changes whenever its pages would come out different; null when it says none. */
   version(): Promise<Versions | null>;
 }
@@ -125,6 +131,8 @@ export interface SharingOptions {
   home: string;
   /** Where the card's pull request is, for the page's link in its description. */
   forge: Forge;
+  /** This machine's name on a site several machines publish to; the host name without it. */
+  machine?: string;
 }
 
 /** A share command (or a site's deploy) that has not finished by then is stopped (an upload of a few files takes seconds). */
@@ -272,7 +280,8 @@ export class Sharing {
 
   /**
    * The owner came back to Obeya: the versions are asked again (at most once a minute), since a
-   * share command from another repository changes without Obeya restarting.
+   * share command from another repository changes without Obeya restarting, and a site is asked
+   * which pages another machine withdrew.
    */
   soon() {
     if (Date.now() - this.checked < 60_000) return;
@@ -283,7 +292,7 @@ export class Sharing {
   /**
    * Asks each share target with pages out for the version of the pages it writes, and marks the
    * pages published with another one (or before commands said theirs): sharing them again would
-   * make a difference.
+   * make a difference. A card whose page another machine withdrew loses its link.
    */
   async checkVersions() {
     const targets = new Map<string, ShareTarget>();
@@ -292,7 +301,22 @@ export class Sharing {
       const target = card && (JSON.parse(r.share!) as StoredShare).url ? this.target(card) : null;
       if (target) targets.set(target.key, target);
     }
-    for (const target of targets.values()) this.mark(target.key, await target.version());
+    for (const target of targets.values()) {
+      this.mark(target.key, await target.version());
+      if (target.gone) this.lost(target.key, await target.gone());
+    }
+  }
+
+  /** Pages withdrawn on another machine: their cards here lose their link. */
+  private lost(key: string, gone: Gone[] = []) {
+    for (const g of gone) {
+      const r = this.o.board.sharedRows().find((r) => (JSON.parse(r.share!) as StoredShare).slug === g.slug);
+      const s = r && (JSON.parse(r.share!) as StoredShare);
+      const card = r && this.find(r.id);
+      if (!r || !s?.url || s.state || !card || this.target(card)?.key !== key) continue;
+      this.set(r.id, { slug: s.slug });
+      this.o.board.log(r.id, 'state', 'obeya', this.o.board.t.share.withdrawnElsewhere(g.machine));
+    }
   }
 
   /** Marks each page at rest shared through the target as published with another version than its current one, or not. */
@@ -353,7 +377,8 @@ export class Sharing {
     }
     const pr = this.prOf(cardId);
     const input: SharePage = { slug: s.slug, ...shown, kind: shown.kind ?? 'video', pr, language: this.languageOf(dir), dir, shared: this.others(cardId, target.key) };
-    const r = await target.publish(input);
+    const r = await target.publish(input, (text) => this.o.board.log(cardId, 'activity', 'obeya', text));
+    this.lost(target.key, r.gone);
     if ('why' in r) return back(r.why, r.said);
     const { url } = r;
     const versions = await target.version();
@@ -396,7 +421,8 @@ export class Sharing {
     const target = this.target(card);
     const t = this.o.board.t.share;
     if (!target) return back(t.notWithdrawnNoShare);
-    const r = await target.withdraw(s.slug, this.others(cardId, target.key));
+    const r = await target.withdraw(s.slug, this.others(cardId, target.key), (text) => this.o.board.log(cardId, 'activity', 'obeya', text));
+    this.lost(target.key, r.gone);
     if (r.why) return back(r.why, r.said);
     const versions = await target.version();
     this.set(cardId, { slug: s.slug });
@@ -563,7 +589,7 @@ export class Sharing {
   private target(card: Item): ShareTarget | null {
     const src = this.o.sourceFor(card);
     if (!src) return null;
-    if ('site' in src) return siteMissing(this.o.home, src.site) ? null : siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share);
+    if ('site' in src) return siteMissing(this.o.home, src.site) ? null : siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share, { machine: this.o.machine });
     return commandTarget(src, this.o.home, this.o.board.t.share);
   }
 

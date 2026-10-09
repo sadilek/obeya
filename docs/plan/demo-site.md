@@ -33,6 +33,9 @@ site with Obeya itself, instead of a follow-up change in each repository.
   hard-coded German.
 - *Several machines*: its guard knows only the pages its own Obeya shared. A second machine
   deploying its own directory (a full snapshot) would take the first machine's pages offline.
+  Since W3 a `demo.site` pulls before it pushes (manifest `obeya-site.json`, `docs/design.md`); a
+  site the command deployed has no manifest, so after the switch the machine that moved the
+  directory over shares first (a machine lacking a page the live overview links is refused).
 
 ## Design
 
@@ -138,7 +141,7 @@ machine publishes to the site.
   `src/ui/strings.ts`). The configuration sheet shows "Site: <url>". Tests ported from the
   existing command's test, against a deploy line that copies the directory. `docs/design.md`
   describes `demo.site` beside share commands.
-- [ ] **W3:** Pull before push. The manifest `obeya-site.json` (pages with files, sizes, hashes,
+- [x] **W3:** Pull before push. The manifest `obeya-site.json` (pages with files, sizes, hashes,
   revision, machine; tombstones for withdrawn pages), fetched with `headers` before every publish
   or withdraw, the merge (download what is missing or newer, remove what was withdrawn), the
   check after the deploy with one more round, the refusal when the manifest cannot be read (a 404
