@@ -251,4 +251,39 @@ describe("a repository's own adapter", () => {
     expect(await land('Checks', { '.obeya/adapter/index.ts': adapter('local', ", land: 'main', workspaces: 'worktrees', checks: ['bun test']") })).toContain('starts again');
     expect(changed).toEqual([repo]);
   });
+
+  test('changed by work pushed straight onto the remote main, its worker hears that Obeya starts again', async () => {
+    push({ '.obeya/adapter/index.ts': adapter('shop', ", land: 'pr', direct: true, workspaces: 'clones'") });
+    git(checkout, 'pull', '--quiet');
+    const runtime = new FakeRuntime();
+    changed = [];
+    canvas = new CanvasRuntime(
+      { name: 'Shop', repos: [{ path: checkout, clones: 1 }] },
+      { store: new Store(':memory:'), home: join(dir, 'home'), runtime, forge: noForge, adapterChanged: (path) => void changed.push(path) },
+    );
+    const c = canvas;
+    for (const w of c.repos[0]!.workspaces.list()) identify(w.path);
+    const workers = c.repos[0]!.workers;
+    const pushed = async (title: string, file: string, text: string) => {
+      const card = c.board.create({ title, x: 0, y: 0 });
+      workers.start(card.id);
+      const ws = c.board.row(card.id).workspace!;
+      mkdirSync(join(ws, file, '..'), { recursive: true });
+      writeFileSync(join(ws, file), text);
+      git(ws, 'add', '-A');
+      git(ws, 'commit', '--quiet', '-m', title);
+      runtime.last.call('ready_for_review', { summary: title });
+      runtime.last.emit({ type: 'idle' });
+      await workers.approve(card.id, { direct: true });
+      expect(c.board.item(card.id)!.state).toBe('live');
+      const told = runtime.last.inbox.at(-1)!;
+      runtime.last.emit({ type: 'idle' });
+      return told;
+    };
+    expect(await pushed('Readme', 'README.md', 'Shop\n')).not.toContain('starts again');
+    expect(await pushed('Checks', '.obeya/adapter/index.ts', adapter('shop', ", land: 'pr', direct: true, workspaces: 'clones', checks: ['bun test']"))).toContain('call after_restart');
+    // Obeya reads the pushed adapter once it fetches, and starts again for it
+    await c.repos[0]!.read.refresh();
+    expect(changed).toEqual([checkout]);
+  });
 });

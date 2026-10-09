@@ -50,8 +50,12 @@ export interface WorkerOptions {
   limitMargin?: number;
   /** The files of the owner's screenshots, by id; unknown ones are left out. */
   imageFiles?: (ids?: string[]) => string[];
-  /** Whether Obeya starts again for work that landed: it runs from this repository's checkout and the work changed code. */
-  restartsFor?: (landed: Landed) => boolean;
+  /**
+   * Whether Obeya starts again for work that landed: it runs from this repository's checkout and the
+   * work changed code, or the work changed the repository's own adapter. `pushedFrom` is the
+   * workspace work was pushed from straight to the remote's main, which leaves the checkout as it is.
+   */
+  restartsFor?: (landed: Landed, pushedFrom?: string) => boolean;
   /** Added to every worker's environment: where Obeya is (`OBEYA_URL`), for a demo's narration. */
   env?: Record<string, string>;
   /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
@@ -438,8 +442,7 @@ export class Workers {
     }
     this.o.board.planDocsLanded(cardId, added);
     this.bump(cardId);
-    // a push leaves the Obeya checkout as it is
-    const restarts = !direct && (this.o.restartsFor?.(result) ?? false);
+    const restarts = this.o.restartsFor?.(result, direct ? (row.workspace ?? undefined) : undefined) ?? false;
     this.o.board.work(cardId, {
       state: 'live',
       need: null,
@@ -914,6 +917,8 @@ export class Workers {
     if (landed) {
       // what remained after the landing is done, unless the worker waits for its question, the restart or the usage limit
       if (card.state === 'waiting' || landed.waits) return;
+      // it paused for the restart, which resumes it with its workspace
+      if (this.restart && live.toldRestart && !live.failed) return this.pausedForRestart(cardId, live);
       if (live.limited) return this.waitForLimit(cardId, live, live.limited);
       if (live.failed) return this.failedAfterLanding(cardId, live);
       this.finish(cardId);

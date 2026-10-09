@@ -84,8 +84,12 @@ const gitIn =
  * version of it `repoAdapterFile` loads. Null when the default branch has no `.obeya/adapter/index.ts`.
  */
 export function repoAdapterTree(repoPath: string): string | null {
+  return adapterTreeAt(repoPath, defaultBranchCommit(repoPath).commit);
+}
+
+/** The git tree of the repository's own adapter at `commit`; null when it has no `.obeya/adapter/index.ts` there. */
+export function adapterTreeAt(repoPath: string, commit: string): string | null {
   const git = gitIn(repoPath);
-  const { commit } = defaultBranchCommit(repoPath);
   const tree = git('rev-parse', '--verify', '--quiet', `${commit}:${REPO_ADAPTER_DIR}`)?.trim();
   return tree && git('cat-file', '-e', `${tree}:index.ts`) !== null ? tree : null;
 }

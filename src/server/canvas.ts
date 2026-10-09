@@ -3,7 +3,7 @@
 
 import { realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { adapterProblems, builtInAdapter, pickAdapter, repoAdapterTree } from '../adapters';
+import { adapterProblems, adapterTreeAt, builtInAdapter, pickAdapter, repoAdapterTree } from '../adapters';
 import { Answers } from './answers';
 import { repoName } from '../adapters/generic';
 import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
@@ -191,7 +191,11 @@ export class CanvasRuntime {
         onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
         onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
         // where work lands on the local main, the Lesestand is the checkout and moves with the landing
-        restartsFor: (l: Landed) => (!!deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && changesCode(info.path, l.from, l.to)) || adapterMoved(i),
+        // a push leaves the checkout as it is: Obeya starts again only for an adapter it reads once it fetches the push
+        restartsFor: (l: Landed, pushedFrom?: string) =>
+          pushedFrom
+            ? adapterTrees[i] !== undefined && !!deps.adapterChanged && adapterTreeAt(pushedFrom, l.to) !== adapterTrees[i]
+            : (!!deps.ownCheckout && sameDir(deps.ownCheckout, info.path) && changesCode(info.path, l.from, l.to)) || adapterMoved(i),
         imageFiles,
         onWorkEnded: (cardId, workspace) => workRetro.ended(cardId, workspace),
         toObeya: (cardId, request) => this.forward(cardId, request),

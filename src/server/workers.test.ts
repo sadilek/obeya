@@ -1756,6 +1756,40 @@ describe('a worktree per card', () => {
     expect(state(c.id)).toBe('live');
   });
 
+  test('a worker that pauses after the landing for a restart it was told of keeps its workspace, and goes on after the restart', async () => {
+    const c = manual();
+    workers.start(c.id);
+    const wc = board.row(c.id).workspace!;
+    commitIn(wc, 'c.ts', 'C');
+    const s = runtime.last;
+    s.emit({ type: 'session', id: 'sess-1' });
+    s.call('ready_for_review', { summary: 'S' });
+    s.emit({ type: 'idle' });
+    await workers.approve(c.id);
+    // a restart Obeya does not start for this landing (another repository's adapter, say) comes while it finishes
+    workers.restartDue({ reason: 'adapter', deadline: Date.now() + 60_000 });
+    expect(s.inbox.at(-1)).toContain('Pause at the next safe point');
+    s.emit({ type: 'text', text: 'Pausing for the restart.' });
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(false);
+    expect(workers.busy()).toBe(false);
+    expect(board.item(c.id)!.finishing).toBe(true);
+    expect(board.row(c.id).workspace).toBe(wc);
+    expect(board.events(c.id).at(-1)).toMatchObject({ author: 'obeya', kind: 'state' });
+
+    workers.shutdown();
+    const after = new Workers({ board: new Board(store, board.canvas, () => [doc]), runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'worktrees' } });
+    after.resumeAll();
+    const resumed = runtime.last;
+    expect(resumed).not.toBe(s);
+    expect(resumed.spec.resume).toBe('sess-1');
+    expect(resumed.spec.cwd).toBe(wc);
+    expect(resumed.inbox[0]).toContain('If you had paused for the restart, go on from there.');
+    resumed.emit({ type: 'idle' });
+    expect(resumed.closed).toBe(true);
+    expect(board.row(c.id).workspace).toBeNull();
+  });
+
   test('a turn after the landing that an error cut off while a restart is due waits for the restart, which resumes it', async () => {
     const c = manual();
     workers.start(c.id);

@@ -988,9 +988,14 @@ the owner's language (`src/core/locale.ts`).
   finish what remains, in its workspace, which stays at what landed until then (the card is `live`,
   "Agent erledigt den Rest"; notes reach it, "Anhalten" ends it). Ending a turn with nothing to wait
   for ends its session and removes worktree and branch (a clone is free again). When the landing
-  changed Obeya's own running code, the worker is told Obeya restarts with it; what needs the new
-  code waits through `after_restart`: the worker ends its turn, the restart goes ahead, and the
-  resumed worker hears that Obeya now runs its change. A turn there that an error cut off (the API
+  changed Obeya's own running code, or the repository's own adapter (also when Obeya pushed the
+  work straight onto the remote's main: the adapter it pushed differs from the one Obeya runs), the
+  worker is told Obeya restarts with it; what needs the new code waits through `after_restart`: the
+  worker ends its turn, the restart goes ahead, and the resumed worker hears that Obeya now runs its
+  change. A worker there that was told of a due restart in its turn and ends it pauses for it, as
+  while it works: session and workspace stay, and the restart resumes it. Before (until 2026-10-09),
+  a direct push never counted as restarting, and a turn ended for the restart ended the card, so
+  what the worker had left for after the restart was never done. A turn there that an error cut off (the API
   overloaded, say) does not count as done: like a turn that ends without a handover while the
   worker works, it is tried once more, and if that fails too the owner gets the reason as a question
   ("Nochmal versuchen", or "Anhalten" to end the card without the rest); the card's conversation
