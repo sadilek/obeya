@@ -6,7 +6,7 @@ import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBound
 import { agentListens, answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS, type AppUpdate } from '../core/types';
 import { api, ApiError, beforeReload, onNotice, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
-import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
+import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail, type Pending } from './detail';
 import type { Field } from './api';
@@ -21,7 +21,7 @@ import { Help, HelpButton } from './help';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, ToldList, usePushToTalk, useTold, type Where } from './voice';
 import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, UpdatePill, WorkspacesPill } from './parts';
-import { clampWidth, loadWidths, saveWidths, SHEET_GAP, sheetBottom, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
+import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
 import { split, talkAlone } from './talk';
 
@@ -57,7 +57,8 @@ function Live({ canvases }: { canvases: CanvasInfo[] }) {
   return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} canvases={canvases} waiting={waiting} />;
 }
 
-type Focus = { type: 'project'; id: string; prevCam: Cam } | { type: 'card'; id: string; prevCam: Cam; project: Focus | null };
+/** What is open, and the view to go back to: `prevCam` laid out beside a sheet `prevSide` wide. */
+type Focus = { type: 'project'; id: string; prevCam: Cam; prevSide: number } | { type: 'card'; id: string; prevCam: Cam; prevSide: number; project: Focus | null };
 type Pos = { x: number; y: number };
 
 // opening a card takes FLY_MS + UNFOLD_MS (300 ms) and closing the same: fast, yet still a visible move
@@ -146,6 +147,7 @@ function Canvas({
   const [cam, setCamState] = useState<Cam>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(camKey(snapshot.canvas.id)) ?? 'null');
+      // saved as it would be without a sheet, which none is before the page opens one
       if (saved && [saved.x, saved.y, saved.s].every(Number.isFinite)) return keepInView(saved, content, { left: 0, top: TOP, right: innerWidth, bottom: innerHeight - BOTTOM });
     } catch {}
     return centreOn(all, 1);
@@ -155,14 +157,23 @@ function Canvas({
     camRef.current = c;
     setCamState(c);
   }, []);
-  const fly = (to: Cam, ms?: number) => flyTo(camRef.current, to, setCam, ms);
-  const flyOrJump = async (to: Cam, ms: number, jump: boolean) => (jump ? setCam(to) : fly(to, ms));
+  // the width of the sheet docked on the right that the camera is laid out for: a sheet that opens,
+  // closes or is dragged wider moves the view by half the difference, so its middle stays the middle
+  const camSide = useRef(0);
+  /** Flies to `to`, laid out for the sheets as they are now. */
+  const fly = (to: Cam, ms?: number) => {
+    camSide.current = sideNow();
+    return flyTo(camRef.current, to, setCam, ms);
+  };
+  const flyOrJump = async (to: Cam, ms: number, jump: boolean) => (jump ? ((camSide.current = sideNow()), setCam(to)) : fly(to, ms));
+  /** The view `f` was opened from, beside the sheets as they are now. */
+  const back = (f: Focus) => besideSheet(f.prevCam, f.prevSide, sideNow());
   useEffect(() => {
     document.documentElement.style.setProperty('--s', String(cam.s));
     if (focusRef.current) return;
     const h = setTimeout(() => {
       try {
-        localStorage.setItem(camKey(snapshot.canvas.id), JSON.stringify(cam));
+        localStorage.setItem(camKey(snapshot.canvas.id), JSON.stringify(besideSheet(cam, camSide.current, 0)));
       } catch {}
     }, 300);
     return () => clearTimeout(h);
@@ -184,7 +195,7 @@ function Canvas({
   const [openId, setOpenId] = useState<string | null>(null);
   const [dim, setDim] = useState(false);
   const [sheetId, setSheetId] = useState<string | null>(null);
-  const [sheetOn, setSheetOn] = useState(false);
+  const [sheetOn, setSheetOn, sheetOnRef] = useLive(false);
   // the open project's plan doc, read in the widened sheet
   const [reading, setReadingState] = useState<{ mark?: string } | null>(null);
   const readingRef = useRef(reading);
@@ -197,33 +208,36 @@ function Canvas({
   const sheetW = widthsIn(widths, innerWidth);
   const sheetWRef = useRef(sheetW);
   sheetWRef.current = sheetW;
-  const [kOn, setKOn] = useState(false);
-  const toggleKoordinator = () => {
-    if (!kOn && focusRef.current?.type === 'project') closeProject();
-    setKOn(!kOn);
-    setAOn(false);
-    setCOn(false);
+  const [kOn, setKOn, kOnRef] = useLive(false);
+  const [aOn, setAOn, aOnRef] = useLive(false);
+  const [cOn, setCOn, cOnRef] = useLive(false);
+  /**
+   * How wide the sheet docked on the right is, as just set: the canvas is what remains to its left.
+   * A narrow window lays the sheet over the canvas instead (styles.css).
+   */
+  const sideNow = () =>
+    matchMedia(NARROW).matches || !(kOnRef.current || aOnRef.current || cOnRef.current || sheetOnRef.current)
+      ? 0
+      : sheetOnRef.current && readingRef.current
+        ? sheetWRef.current.read
+        : sheetWRef.current.sheet;
+  /** Opens the side sheet `which` or closes it; another one closes, an open project too. */
+  const toggleSheet = (which: 'k' | 'a' | 'c') => {
+    const on = !{ k: kOn, a: aOn, c: cOn }[which];
+    setKOn(on && which === 'k');
+    setAOn(on && which === 'a');
+    setCOn(on && which === 'c');
+    if (on && focusRef.current?.type === 'project') closeProject(false);
   };
-  const [aOn, setAOn] = useState(false);
-  const toggleArchive = () => {
-    if (!aOn && focusRef.current?.type === 'project') closeProject();
-    setAOn(!aOn);
-    setKOn(false);
-    setCOn(false);
-  };
+  const toggleKoordinator = () => toggleSheet('k');
+  const toggleArchive = () => toggleSheet('a');
+  const toggleConfig = () => toggleSheet('c');
   const [helpOn, setHelpOn] = useState(false);
-  const [cOn, setCOn] = useState(false);
   const [setupOn, setSetupOn] = useState(false);
   // what is wrong in the configuration as saved, marked on its button; it changes only with a save
   // or a repository's adapter, and Obeya starts again for either, so the page reads it once
   const [configProblems, setConfigProblems] = useState(0);
   useEffect(() => void api.config().then((v) => setConfigProblems(v.problems.length), console.error), []);
-  const toggleConfig = () => {
-    if (!cOn && focusRef.current?.type === 'project') closeProject();
-    setCOn(!cOn);
-    setKOn(false);
-    setAOn(false);
-  };
   // the archive, read while its sheet is open; archived cards unfold from their row there
   const [archived, setArchived] = useState<Item[]>([]);
   const archivedRef = useRef(archived);
@@ -251,7 +265,7 @@ function Canvas({
   const fitPanel = (i: Item) => {
     const panel = panelRef.current;
     const inner = innerRef.current;
-    if (panel && inner) Object.assign(panel.style, panelRect(i, inner));
+    if (panel && inner) Object.assign(panel.style, panelRect(i, inner, sideNow()));
   };
 
   // edits of the open card, saved shortly after typing stops
@@ -282,12 +296,12 @@ function Canvas({
     const f = focusRef.current;
     if (f?.type === 'card') return;
     if (i.kind === 'project') return openProject(i);
-    setFocus({ type: 'card', id: i.id, prevCam: camRef.current, project: f });
+    setFocus({ type: 'card', id: i.id, prevCam: camRef.current, prevSide: camSide.current, project: f });
     openTitle.current = i.title;
     setOpened(i.archivedAt ? i : null);
     // bring the card to the middle at a readable scale first, so the unfold starts where the eye is;
     // an archived card is not on the canvas and unfolds from its row in the archive
-    if (!i.archivedAt) await flyOrJump(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85)), FLY_MS, quick);
+    if (!i.archivedAt) await flyOrJump(centreOnPoint(bounds(i), Math.max(camRef.current.s, 0.85), sideNow()), FLY_MS, quick);
     const el = fromEl(i.id, !!f);
     const panel = panelRef.current;
     // nothing to unfold from: the canvas stays as it was, open for the next card
@@ -304,7 +318,6 @@ function Canvas({
     fitPanel(i);
     unfolded.current = true;
     setDim(true);
-    setSheetOn(false);
     if (!quick) await sleep(UNFOLD_MS);
     panel.classList.add('ready');
     const title = panel.querySelector<HTMLTextAreaElement>('textarea.p-title');
@@ -389,17 +402,16 @@ function Canvas({
     panel.className = '';
     setOpenId(null);
     setFocus(f.project);
-    if (f.project) setSheetOn(true);
     // a new card left without a title was not wanted
     if (!keepUntitled && i?.source === 'manual' && !openTitle.current.trim()) api.remove(i.id).catch(console.error);
-    await fly(f.prevCam, FLY_MS);
+    await fly(back(f), FLY_MS);
     // the card may have gone (archived, deleted) and taken the last content in view with it
     recover();
   }
 
   async function openProject(p: Item, quick = false) {
     const f = focusRef.current;
-    setFocus({ type: 'project', id: p.id, prevCam: f?.type === 'project' ? f.prevCam : camRef.current });
+    setFocus(f?.type === 'project' ? { ...f, id: p.id } : { type: 'project', id: p.id, prevCam: camRef.current, prevSide: camSide.current });
     setSheetId(p.id);
     setReading(null);
     setSheetOn(true);
@@ -407,14 +419,14 @@ function Canvas({
     setAOn(false);
     setCOn(false);
     // an archived project is not on the canvas: its sheet takes the archive's place
-    if (!p.archivedAt) await flyOrJump(camFor(bounds(p), 40, sheetWRef.current.sheet + 30, 60), 700, quick);
+    if (!p.archivedAt) await flyOrJump(camFor(bounds(p), 40, sideNow(), 60), 700, quick);
   }
 
   /** Reads the project's plan doc in the sheet, at the workstream `mark`; `null` goes back to the workstreams. */
   async function readPlan(p: Item, r: { mark?: string } | null, quick = false) {
     if (focusRef.current?.type === 'card') await closeCard();
     const f = focusRef.current;
-    setFocus({ type: 'project', id: p.id, prevCam: f?.type === 'project' ? f.prevCam : camRef.current });
+    setFocus(f?.type === 'project' ? { ...f, id: p.id } : { type: 'project', id: p.id, prevCam: camRef.current, prevSide: camSide.current });
     setSheetId(p.id);
     setReading(r);
     setSheetOn(true);
@@ -422,17 +434,17 @@ function Canvas({
     setAOn(false);
     setCOn(false);
     // the project stays in view beside the wider sheet
-    await flyOrJump(camFor(bounds(p), 40, (r ? sheetWRef.current.read : sheetWRef.current.sheet) + 30, 60), 700, quick);
+    await flyOrJump(camFor(bounds(p), 40, sideNow(), 60), 700, quick);
   }
 
-  async function closeProject() {
+  /** Closes the open project; `toArchive`: back to the archive an archived one was opened from. */
+  async function closeProject(toArchive = true) {
     const f = focusRef.current;
     if (f?.type !== 'project') return;
     setFocus(null);
     setSheetOn(false);
-    // back to the archive it was opened from
-    if (archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
-    await fly(f.prevCam, 600);
+    if (toArchive && archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
+    await fly(back(f), 600);
     recover();
   }
 
@@ -459,7 +471,7 @@ function Canvas({
     });
     await open(card);
   }
-  const createAtCentre = () => createAt(toWorld(camRef.current, innerWidth / 2, innerHeight / 2));
+  const createAtCentre = () => createAt(toWorld(camRef.current, (innerWidth - sideNow()) / 2, innerHeight / 2));
 
   // ---------------------------------------------------------------- kept across a restart
   // a restart reloads the page: what was open comes back as it was, without the flights
@@ -483,6 +495,8 @@ function Canvas({
     if (k) reopen(k).catch(console.error);
   }, []);
   async function reopen(k: Kept) {
+    // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
+    quickSide.current = Date.now() + 2000;
     if (k.sheet === 'koordinator') setKOn(true);
     else if (k.sheet === 'archive') setAOn(true);
     else if (k.sheet === 'config') setCOn(true);
@@ -625,8 +639,7 @@ function Canvas({
     if (made.state === 'idea') {
       setKOn(false);
       open(made);
-    }
-    else fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8)), 700);
+    } else fly(centreOnPoint(boundsOf(made, itemsRef.current), Math.max(camRef.current.s, 0.8), sideNow()), 700);
   }, [snapshot]);
   // what Obeya tells the owner without a command to answer: an answer looked up, what a request a
   // card's agent passed on came to (with "Rückgängig" while its actions wait)
@@ -727,15 +740,25 @@ function Canvas({
     e.preventDefault();
     setRing({ at: { x: e.clientX, y: e.clientY }, ids: [i.id] });
   }
-  // the strip on the right a sheet covers, which neither edge indicators nor dragging count as view
-  const readingNow = !!reading && focus?.type === 'project';
-  const reserve = focus || kOn || aOn || cOn ? (readingNow ? sheetW.read : sheetW.sheet) + 30 : 0;
-  const reserveRef = useRef(reserve);
-  reserveRef.current = reserve;
+  // the sheet docked on the right; the canvas, its edge indicators, the bar and the microphone keep to its left
+  const side = sideNow();
+  const quickSide = useRef(0);
+  useEffect(() => {
+    const from = camSide.current;
+    if (side === from) return;
+    camSide.current = side;
+    // the open card's view goes back to where it was opened from, beside whatever sheet is open then
+    if (focusRef.current?.type === 'card') return;
+    const to = kept(besideSheet(camRef.current, from, side));
+    if (resizing || Date.now() < quickSide.current) {
+      stopFlight();
+      setCam(to);
+    } else fly(to, 450);
+  }, [side]);
 
   // the grip at the open sheet's left edge widens or narrows it; reading a plan doc has its own width
   const gripOn = kOn || aOn || cOn || sheetOn;
-  const gripKind = readingNow && sheetOn ? 'read' : 'sheet';
+  const gripKind = !!reading && sheetOn ? 'read' : 'sheet';
   const gripRef = useRef<{ x: number; w: number; kind: 'sheet' | 'read' } | null>(null);
   const [resizing, setResizing] = useState(false);
   useEffect(() => {
@@ -759,9 +782,9 @@ function Canvas({
     setResizing(false);
   }
   /** `c`, moved just far enough that the view outside the sheet shows some content. */
-  const kept = (c: Cam) => keepInView(c, contentRef.current, { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight - BOTTOM });
+  const kept = (c: Cam) => keepInView(c, contentRef.current, { left: 0, top: TOP, right: innerWidth - sideNow(), bottom: innerHeight - BOTTOM });
   /** The view at the current zoom with a world point in the middle, as far as content stays in sight. */
-  const viewOn = (wx: number, wy: number) => kept({ s: camRef.current.s, x: innerWidth / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s });
+  const viewOn = (wx: number, wy: number) => kept({ s: camRef.current.s, x: (innerWidth - sideNow()) / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s });
   /** When no content is in view any more (cards went, the window shrank), flies to the nearest. */
   const recover = () => {
     if (focusRef.current?.type === 'card' || dragRef.current || panRef.current || flying()) return;
@@ -811,7 +834,7 @@ function Canvas({
     const ms = d.last ? Math.min(50, now - d.last) : 0;
     d.last = now;
     const c = camRef.current;
-    const view = { left: 0, top: TOP, right: innerWidth - reserveRef.current, bottom: innerHeight };
+    const view = { left: 0, top: TOP, right: innerWidth - sideNow(), bottom: innerHeight };
     const next = edgeScroll(c, { x: d.px, y: d.py }, { x: d.x, y: d.y }, view, d.limit, ms);
     if (next.x !== c.x || next.y !== c.y) {
       setCam(next);
@@ -960,7 +983,7 @@ function Canvas({
     if (e.key === '0') {
       setFocus(null);
       setSheetOn(false);
-      fly(kept(overviewCam(all)), 700);
+      fly(kept(overviewCam(all, sideNow())), 700);
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
@@ -988,8 +1011,7 @@ function Canvas({
         {
           '--sheet-w': `${sheetW.sheet}px`,
           '--read-w': `${sheetW.read}px`,
-          '--sheet-b': `${sheetBottom(sheetW.sheet, innerWidth)}px`,
-          '--read-b': `${sheetBottom(sheetW.read, innerWidth)}px`,
+          '--side': `${side}px`,
         } as React.CSSProperties
       }
     >
@@ -1048,13 +1070,16 @@ function Canvas({
           onClose={() => (setRing(null), setLasso([]))}
         />
       )}
-      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={reserve} onOpen={open} />}
+      {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={side} onOpen={open} />}
       {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs) */}
       <header id="bar" {...(window.obeyaApp?.platform === 'macos' ? { className: 'titlebar', 'data-tauri-drag-region': '' } : {})}>
         <Wordmark height={22} />
+        <span className="bar-sign">
+          <Sign size={24} />
+        </span>
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
-        <button className="pill" onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>
-          + {t.newCard}
+        <button className="pill new-card" title={t.newCard} onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>
+          + <span className="lbl">{t.newCard}</span>
         </button>
         <HelpButton on={helpOn} onClick={() => setHelpOn(!helpOn)} />
         <div className="right">
@@ -1062,19 +1087,21 @@ function Canvas({
           {online && restart && <RestartPill restart={restart} items={items} />}
           {online && update && restart?.reason !== 'update' && <UpdatePill update={update} />}
           {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} items={items} />}
-          <button className={cOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleConfig}>
-            {t.config.button}
+          <button className={cOn ? 'pill kpill on' : 'pill kpill'} title={t.config.button} onClick={toggleConfig}>
+            <BarIcon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            <span className="lbl">{t.config.button}</span>
             {configProblems > 0 && (
               <span className="n err" title={t.config.problemCount(configProblems)}>
                 {configProblems}
               </span>
             )}
           </button>
-          <button className={aOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleArchive}>
-            {t.archive.button}
+          <button className={aOn ? 'pill kpill on' : 'pill kpill'} title={t.archive.button} onClick={toggleArchive}>
+            <BarIcon d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />
+            <span className="lbl">{t.archive.button}</span>
           </button>
-          <button className={kOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleKoordinator}>
-            {t.koordinator.button}
+          <button className={kOn ? 'pill kpill talk-pill on' : 'pill kpill talk-pill'} title={t.koordinator.buttonTitle} aria-label={t.koordinator.button} onClick={toggleKoordinator}>
+            <TalkIcon />
             {queuedCount > 0 && (
               <span className="n" title={t.koordinator.queuedCount(queuedCount)}>
                 {queuedCount}
@@ -1088,13 +1115,14 @@ function Canvas({
           </button>
           {attention.length > 0 && (
             <button className="pill" id="attention" onClick={nextAttention}>
-              <span className="n">{attention.length}</span> {t.needsYou}
+              <span className="n">{attention.length}</span> <span className="lbl">{t.needsYou}</span>
             </button>
           )}
         </div>
       </header>
       <Minimap
         cam={cam}
+        viewW={innerWidth - side}
         all={all}
         placed={placed}
         territories={territories.shapes}
@@ -1150,10 +1178,15 @@ function Canvas({
         els={sheetEls}
         version={snapshot}
       />
+      {gripOn && (
+        <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : (setKOn(false), setAOn(false), setCOn(false)))}>
+          ✕
+        </button>
+      )}
       <div
         id="sheet-grip"
         className={gripOn ? 'on' : undefined}
-        style={{ right: SHEET_GAP + sheetW[gripKind] - 6, bottom: sheetBottom(sheetW[gripKind], innerWidth) }}
+        style={{ right: sheetW[gripKind] - 6 }}
         title={t.sheetGrip}
         onPointerDown={onGripDown}
         onPointerMove={onGripMove}
@@ -1183,15 +1216,18 @@ function Canvas({
 }
 
 /**
- * Where the unfolded card sits: centred, as tall as its content needs up to a limit, beyond which it
- * scrolls. Lays the content out at the final width to measure it, so call it with the content rendered.
+ * Where the unfolded card sits: in the middle of the canvas left of a sheet `side` wide, as tall as
+ * its content needs up to a limit, beyond which it scrolls. Lays the content out at the final width
+ * to measure it, so call it with the content rendered.
  */
-function panelRect(i: Item, inner: HTMLElement) {
+function panelRect(i: Item, inner: HTMLElement, side: number) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
   // a card with a conversation beside what it is about (an idea, a proposal, a task an agent worked on) gets the room of the mock's demo panel
   const wide = split(i);
   // a task an agent works on without a result yet is its conversation alone, and only as wide
-  const W = Math.min(wide ? 1600 : talkAlone(i) ? TALK_W : tall ? 980 : 900, innerWidth - 80);
+  const want = wide ? 1600 : talkAlone(i) ? TALK_W : tall ? 980 : 900;
+  // beside a sheet dragged wide a card keeps at least the width of a conversation and reaches over the sheet
+  const W = Math.min(want, Math.max(innerWidth - side - 80, Math.min(TALK_W, innerWidth - 80)));
   inner.style.width = `${W}px`;
   inner.style.paddingBottom = '';
   inner.style.overflowY = '';
@@ -1227,7 +1263,7 @@ function panelRect(i: Item, inner: HTMLElement) {
   H = Math.min(Math.ceil(need + under(H)), max);
   const extra = under(H);
   if (extra) inner.style.paddingBottom = `${base + extra}px`;
-  return { left: `${(innerWidth - W) / 2}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
+  return { left: `${Math.max(40, (innerWidth - side - W) / 2)}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
 }
 
 /** A panel holding a conversation alone: its column at its widest (560 px, styles.css) and the panel's padding. */
@@ -1245,5 +1281,34 @@ const MIC_GAP = 12;
 
 const rect = (r: DOMRect) => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
 
-/** Camera centred on the middle of `b` at scale `s`, ignoring the top bar (the unfold is centred on the screen). */
-const centreOnPoint = (b: Bounds, s: number): Cam => ({ s, x: innerWidth / 2 - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s });
+/** Camera centred on the middle of `b` at scale `s` left of a sheet `side` wide, ignoring the top bar (the unfold is centred there too). */
+const centreOnPoint = (b: Bounds, s: number, side: number): Cam => ({ s, x: (innerWidth - side) / 2 - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s });
+
+/** State with a ref that holds the value set last, for what reads it before the next render. */
+function useLive<T>(init: T): [T, (v: T) => void, { readonly current: T }] {
+  const [v, setV] = useState(init);
+  const ref = useRef(v);
+  const set = useCallback((n: T) => {
+    ref.current = n;
+    setV(n);
+  }, []);
+  return [v, set, ref];
+}
+
+/** A button's icon in the top bar, shown in place of its label where the bar is narrow (beside a wide sheet). */
+function BarIcon({ d }: { d: string }) {
+  return (
+    <svg className="bar-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d={d} />
+    </svg>
+  );
+}
+
+/** The top bar's button for the conversation with Obeya: a speech bubble. */
+function TalkIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
+      <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4h0A2.5 2.5 0 0 1 4 13.5z" />
+    </svg>
+  );
+}

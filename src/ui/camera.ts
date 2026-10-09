@@ -26,16 +26,20 @@ export function camFor(b: Bounds, pad = 60, reserveRight = 0, reserveBottom = 60
   return { s, x: (vw - b.w * s) / 2 - b.x * s, y: TOP + (vh - b.h * s) / 2 - b.y * s };
 }
 
-/** Everything if it fits at a readable size; otherwise the middle of it at that size. */
-export function overviewCam(all: Bounds): Cam {
-  const fit = camFor(all, 40, 0, 60);
+/** Everything if it fits at a readable size; otherwise the middle of it at that size; beside a sheet `side` wide. */
+export function overviewCam(all: Bounds, side = 0): Cam {
+  const fit = camFor(all, 40, side, 60);
   const s = Math.min(1.6, Math.max(MIN_ZOOM, fit.s));
-  return centreOn(all, s);
+  return centreOn(all, s, side);
 }
 
-export function centreOn(b: Bounds, s: number): Cam {
-  return { s, x: innerWidth / 2 - (b.x + b.w / 2) * s, y: TOP + (innerHeight - TOP) / 2 - (b.y + b.h / 2) * s };
+/** `b` in the middle of the canvas left of a sheet `side` wide, at scale `s`. */
+export function centreOn(b: Bounds, s: number, side = 0): Cam {
+  return { s, x: (innerWidth - side) / 2 - (b.x + b.w / 2) * s, y: TOP + (innerHeight - TOP) / 2 - (b.y + b.h / 2) * s };
 }
+
+/** `c` laid out for a sheet `to` wide instead of `from`: the middle of the canvas stays its middle. */
+export const besideSheet = (c: Cam, from: number, to: number): Cam => (from === to ? c : { ...c, x: c.x - (to - from) / 2 });
 
 /** How near an edge of the view, in screen pixels, a dragged card starts it scrolling. */
 export const EDGE_ZONE = 60;

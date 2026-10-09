@@ -1806,14 +1806,27 @@ the repository; the copy on the project is only for the archive).
   widens it and shows the doc as written, rendered, kept current with the file; a workstream's
   card opens it at the workstream's item. Esc goes back to the workstreams. The server hands out
   only docs it shows as projects, by project card, never a path.
-- The sheets on the right (Koordinator, archive, configuration, a project's) are as wide as the
-  owner drags their left edge: one width for all of them, and one for reading a plan doc, which
-  follows the window until dragged. The browser remembers both; the canvas keeps 240 px beside the
-  sheet, and the camera keeps a project beside it; a double-click on the edge goes back to the
-  default (2026-10-02).
-- The minimap sits in the bottom left corner, as in tldraw, so the sheets coming in from the right
-  reach down to the window's edge; a sheet wide enough to reach the microphone in the middle ends
-  above it (2026-10-06).
+- The sheets on the right (Koordinator, archive, configuration, a project's, a plan doc being read)
+  are a sidebar docked to the window's right edge, from top to bottom: a straight edge with a
+  divider line, no shadow, no gap (2026-10-09). The canvas is what remains to its left: the top
+  bar ends at the sidebar, the microphone with its lines and the confirmations above it, the edge
+  indicators, the minimap's frame and an unfolding card all keep to that rest. Opening a sheet
+  moves the view left by half the sheet's width, so the middle of the view stays its middle;
+  closing it or dragging its edge moves it back by as much (`besideSheet`). A card opened beside
+  a sheet goes back to its view beside whatever sheet is open when it closes; a project's sheet
+  stays while one of its cards is open, under the dim. A ✕ in the sidebar's top corner, where the
+  button that opened it was, closes it. Beside a wide sheet the bar's buttons drop their labels
+  for icons, and on the narrowest only the sheets' buttons stay (a container query on the bar). A
+  window up to 760 px wide lays the sheet over the canvas instead. Before, the sheets were
+  rounded panels with a shadow floating 14 px from the window's edge over a full-window canvas:
+  cards were cut off at their edge, and the microphone and its lines stayed in the window's
+  middle, partly under them, so a sheet wide enough to reach the microphone ended above it and
+  its height jumped as it was widened (2026-10-06).
+- The sheets are as wide as the owner drags their left edge: one width for all of them, and one
+  for reading a plan doc, which follows the window until dragged. The browser remembers both; the
+  canvas keeps 240 px beside the sheet, and the camera keeps a project beside it; a double-click on
+  the edge goes back to the default (2026-10-02).
+- The minimap sits in the bottom left corner, as in tldraw, clear of the sheets on the right.
 - A plan card gets a stored row the first time it is seen, so the owner's placement persists; its
   title, text and state always come from the doc. Each read also keeps the doc's last state on the
   project (title, goal, workstreams with key, label, title, text and state).
@@ -1890,7 +1903,8 @@ the repository; the copy on the project is only for the archive).
   conversation beside what it is about (an idea, a task an agent worked on with a result) is up to
   1600 px wide instead, the conversation a third of the width
   (400–560 px), and as tall as its taller column, at least 320 px, up to the room from the top bar
-  down to the microphone; it stands in the middle of the window, above the microphone. Beyond that
+  down to the microphone; it stands in the middle of the canvas (left of a docked sheet), above the
+  microphone, and keeps at least a conversation's 640 px beside a sheet dragged wide. Beyond that
   room what the card is about and the conversation scroll inside their columns, the panel not at
   all. Before (2026-10-08) it always filled that room, with empty space below a short conversation
   and a short brief on a large screen. The panel shows no scrollbar of its

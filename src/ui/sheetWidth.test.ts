@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { clampWidth, loadWidths, readingDefault, saveWidths, SHEET_W, sheetBottom, widthsIn } from './sheetWidth';
+import { clampWidth, loadWidths, readingDefault, saveWidths, SHEET_W, widthsIn } from './sheetWidth';
 
 const store = () => {
   const m = new Map<string, string>();
@@ -8,7 +8,7 @@ const store = () => {
 
 test('a sheet is as wide as dragged, but leaves the canvas room and keeps its minimum', () => {
   expect(clampWidth(900, 2560, 'sheet')).toBe(900);
-  expect(clampWidth(2400, 2560, 'sheet')).toBe(2560 - 14 - 240);
+  expect(clampWidth(2400, 2560, 'sheet')).toBe(2560 - 240);
   expect(clampWidth(100, 2560, 'sheet')).toBe(320);
   expect(clampWidth(100, 2560, 'read')).toBe(380);
   // a window too narrow for both: the sheet keeps its minimum
@@ -28,18 +28,11 @@ test('the chosen widths are remembered, and held to the window they are shown in
   saveWidths(s, { sheet: 720, read: 1100 });
   expect(loadWidths(s)).toEqual({ sheet: 720, read: 1100 });
   expect(widthsIn(loadWidths(s), 2560)).toEqual({ sheet: 720, read: 1100 });
-  expect(widthsIn(loadWidths(s), 1000)).toEqual({ sheet: 720, read: 1000 - 14 - 240 });
+  expect(widthsIn(loadWidths(s), 1000)).toEqual({ sheet: 720, read: 1000 - 240 });
 });
 
 test('a broken entry falls back to the defaults', () => {
   const s = store();
   s.setItem('obeya-sheet-width', '{nope');
   expect(loadWidths(s)).toEqual({ sheet: SHEET_W, read: null });
-});
-
-test('a sheet reaches down to the window edge unless it would run into the microphone', () => {
-  expect(sheetBottom(SHEET_W, 1440)).toBe(14);
-  // reading at its default width reaches the middle of a laptop window
-  expect(sheetBottom(readingDefault(1440), 1440)).toBe(158);
-  expect(sheetBottom(readingDefault(2560), 2560)).toBe(14);
 });

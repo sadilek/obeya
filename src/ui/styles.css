@@ -117,8 +117,8 @@ a { color: inherit; }
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
-/* a frosted strip the canvas slides under, so cards never run into the pills */
-#bar { position: fixed; top: 0; left: 0; right: 0; height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
+/* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the sheet docked on the right */
+#bar { position: fixed; top: 0; left: 0; right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
 .pill { background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 13px; border: 0; white-space: nowrap; }
@@ -173,6 +173,21 @@ button.pill:hover { box-shadow: var(--lift); }
 #bar.titlebar { padding-left: 92px; }
 .kpill .n { background: var(--planned); color: #fff; border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
+/* beside a wide sheet the bar is narrow: its buttons drop their labels for icons, and on the narrowest the left side goes */
+#bar { container: bar / inline-size; }
+#bar > *, #bar .right > * { flex: none; }
+.bar-sign, .bar-icon { display: none; }
+@container bar (max-width: 1000px) {
+  #bar > svg, #bar .lbl, .pill.restart .hint { display: none; }
+  .bar-sign { display: block; line-height: 0; }
+  .bar-icon { display: block; }
+  #bar .kpill, #bar .new-card { padding: 7px 10px; }
+}
+@container bar (max-width: 560px) {
+  #bar .canvas-pill, #bar .new-card, #bar .help, #bar #workspaces { display: none; }
+}
+.talk-pill { padding: 6px 12px; }
+.talk-pill svg { display: block; flex: none; }
 .prefs { list-style: none; padding: 0; margin: 10px 0 0; }
 .prefs li { display: flex; gap: 8px; align-items: flex-start; padding: 7px 8px 7px 10px; border-radius: 9px; background: var(--chip); margin: 6px 0;
   font-size: 13px; cursor: default; flex-wrap: wrap; }
@@ -221,7 +236,7 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 #help .keys { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; }
 #help kbd { font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; padding: 2px 7px; border-radius: 6px; background: var(--chip); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line); }
 #help .or, #help .plus { color: var(--muted); font-size: 12px; }
-.empty { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; }
+.empty { position: fixed; left: calc(50% - var(--side, 0px) / 2); top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; }
 #splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); animation: fade .3s ease-out; }
 
 #edges { position: fixed; inset: 0; pointer-events: none; z-index: 15; }
@@ -513,21 +528,26 @@ textarea.p-body:focus { border-color: var(--muted); }
 #links { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
 #links path { fill: none; stroke: var(--proposal); stroke-width: 2; stroke-dasharray: 5 6; opacity: .7; }
 
-/* --sheet-b and --read-b are set by App.tsx (sheetBottom): down to the window's edge unless the sheet reaches the microphone */
-.sheet { position: fixed; top: 64px; right: 14px; bottom: var(--sheet-b, 158px); width: var(--sheet-w, 380px); background: var(--panel); border-radius: 16px; box-shadow: var(--lift);
-  z-index: 25; transform: translateX(calc(100% + 30px));
-  transition: transform .45s cubic-bezier(.3,.9,.3,1), width .45s cubic-bezier(.3,.9,.3,1), bottom .45s cubic-bezier(.3,.9,.3,1);
-  overflow: auto; padding: 22px 22px 30px; }
-.sheet.on { transform: none; }
+/* the sheets on the right are a column docked to the window's edge, from top to bottom; the canvas is
+   what remains to their left (--side, set by App.tsx) */
+.sheet { position: fixed; top: 0; right: 0; bottom: 0; width: var(--sheet-w, 380px); background: var(--panel); border-left: 1px solid var(--line);
+  z-index: 25; transform: translateX(calc(100% + 1px)); visibility: hidden;
+  transition: transform .45s cubic-bezier(.3,.9,.3,1), width .45s cubic-bezier(.3,.9,.3,1), visibility 0s .45s;
+  overflow: auto; padding: 20px 22px 30px; }
+.sheet.on { transform: none; visibility: visible; transition-delay: 0s; }
+/* closes the open sheet, where the button that opened it was */
+#sheet-close { position: fixed; top: 14px; right: 14px; z-index: 27; width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--chip);
+  color: var(--muted); cursor: pointer; animation: fade .3s ease-out .2s backwards; }
+#sheet-close:hover { color: var(--ink); }
 /* the grip on the open sheet's left edge: drag to widen or narrow it, double-click for the default */
-#sheet-grip { position: fixed; top: 64px; width: 12px; z-index: 26; cursor: ew-resize; touch-action: none;
-  opacity: 0; pointer-events: none; transition: opacity .2s, right .45s cubic-bezier(.3,.9,.3,1), bottom .45s cubic-bezier(.3,.9,.3,1); }
+#sheet-grip { position: fixed; top: 0; bottom: 0; width: 12px; z-index: 26; cursor: ew-resize; touch-action: none;
+  opacity: 0; pointer-events: none; transition: opacity .2s, right .45s cubic-bezier(.3,.9,.3,1); }
 #sheet-grip.on { opacity: 1; pointer-events: auto; transition-delay: .3s, 0s; }
 #sheet-grip::after { content: ""; position: absolute; left: 4px; top: 50%; width: 4px; height: 44px; margin-top: -22px; border-radius: 2px;
   background: var(--planned); opacity: .55; transition: background .15s, opacity .15s, height .15s, margin-top .15s; }
 #sheet-grip:hover::after, .resizing #sheet-grip::after { background: var(--muted); opacity: 1; height: 64px; margin-top: -32px; }
 .resizing, .resizing * { cursor: ew-resize !important; user-select: none; }
-.resizing .sheet, .resizing #sheet-grip { transition: none; }
+.resizing .sheet, .resizing #sheet-grip, .resizing #bar, .resizing #ptt, .resizing #acks, .resizing .empty { transition: none; }
 .sheet h2 { margin: 2px 0 8px; font-size: 20px; letter-spacing: -.01em; }
 .sheet .goal { font-size: 13.5px; opacity: .9; }
 .sheet .src { font: 12px ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 8px; }
@@ -621,8 +641,8 @@ label.c-row input { width: 64px; }
 .c-json { font: 11.5px/1.4 ui-monospace, Menlo, monospace; background: var(--chip); border-radius: 9px; padding: 10px; overflow: auto; }
 
 /* the plan doc, read in the widened sheet */
-.sheet.reading { width: var(--read-w); bottom: var(--read-b, 158px); padding: 0 30px 40px; }
-.read-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; margin: 0 -30px; padding: 14px 30px 12px;
+.sheet.reading { width: var(--read-w); padding: 0 30px 40px; }
+.read-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 12px; margin: 0 -30px; padding: 14px 58px 12px 30px;
   background: var(--panel); border-bottom: 1px solid var(--line); }
 .read-head .back { border: 0; background: var(--chip); border-radius: 8px; padding: 4px 12px; cursor: pointer; font-weight: 600; font-size: 13px; }
 .read-head .src { margin: 0 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -661,14 +681,15 @@ button.link:hover { text-decoration: underline; }
 .sheet ul.decisions .hint { font-size: 11px; }
 
 /* ---------- push to talk (from the mock) ---------- */
-#ptt { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+/* in the middle of the canvas, left of a sheet docked on the right */
+#ptt { position: fixed; left: calc(50% - var(--side, 0px) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #mic { width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--card); box-shadow: var(--lift); cursor: pointer; display: grid; place-items: center; position: relative; touch-action: none; }
 #mic svg { width: 24px; height: 24px; }
 #mic .ring { position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--waiting); opacity: 0; transform: scale(var(--lvl, 1)); transition: transform .08s linear, opacity .2s; }
 #ptt.listening #mic { background: var(--waiting); color: #fff; }
 #ptt.listening #mic .ring { opacity: .8; }
 @keyframes spin { to { transform: rotate(360deg); } }
-#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 4px 12px; white-space: nowrap; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
+#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 999px; padding: 4px 12px; white-space: nowrap; max-width: calc((100vw - var(--side, 0px)) * .6); overflow: hidden; text-overflow: ellipsis; }
 #target b { color: var(--ink); font-weight: 600; }
 #target.flat { color: #fff; background: #dc2626; font-weight: 600; }
 /* screenshots for the next recording: a small button and thumbnails to the right of the mic, which stays centred */
@@ -680,7 +701,7 @@ button.link:hover { text-decoration: underline; }
 #ptt .c-shot { height: 46px; min-width: 46px; box-shadow: var(--shadow); }
 #ptt .c-shot img { max-width: 82px; }
 #ptt.dropping #mic { outline: 2px dashed var(--working); outline-offset: 5px; }
-.ptt-error { font-size: 12px; color: #dc2626; background: var(--card); box-shadow: var(--shadow); border-radius: 8px; padding: 4px 10px; max-width: 60vw; }
+.ptt-error { font-size: 12px; color: #dc2626; background: var(--card); box-shadow: var(--shadow); border-radius: 8px; padding: 4px 10px; max-width: calc((100vw - var(--side, 0px)) * .6); }
 .tell { margin: 4px 0 6px; }
 /* the Koordinator's sheet is a column: the conversation takes the height the sheet has, the field to
    write in under it, then the sections that open and close; an open section takes from the
@@ -707,8 +728,8 @@ button.link:hover { text-decoration: underline; }
 .fold-body > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 
 /* confirmations, and each command while the Koordinator reads it, stacked above the microphone, newest last */
-#acks { position: fixed; left: 50%; bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
-.ack { background: var(--ink); color: var(--bg); border-radius: 14px; padding: 12px 16px; max-width: min(560px, calc(100vw - 32px)); font-size: 14px;
+#acks { position: fixed; left: calc(50% - var(--side, 0px) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.ack { background: var(--ink); color: var(--bg); border-radius: 14px; padding: 12px 16px; max-width: min(560px, calc(100vw - var(--side, 0px) - 32px)); font-size: 14px;
   display: flex; gap: 14px; align-items: center; pointer-events: auto; animation: ack-in .25s; }
 @keyframes ack-in { from { opacity: 0; transform: translateY(12px); } }
 .ack b { font-weight: 600; }
@@ -718,7 +739,7 @@ button.link:hover { text-decoration: underline; }
 .ack.reading { background: var(--card); color: var(--muted); box-shadow: var(--shadow); padding: 7px 14px; font-size: 13px; }
 .ack.reading::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--working); animation: spin .8s linear infinite; }
 .c-listener { flex-basis: 100%; margin-top: -4px; font-size: 11.5px; color: var(--muted); }
-@media (max-width: 760px) { #minimap, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; bottom: 158px; } .split { grid-template-columns: 1fr; grid-template-rows: none; max-height: none; } .split .split-talk .talk { min-height: 240px; max-height: min(520px, 60vh); } }
+@media (max-width: 760px) { #minimap, #sheet-grip { display: none; } .sheet, .sheet.reading { width: auto; left: 14px; right: 14px; top: 64px; bottom: 158px; border-radius: 16px; border: 0; box-shadow: var(--lift); } #sheet-close { top: 72px; right: 22px; } .split { grid-template-columns: 1fr; grid-template-rows: none; max-height: none; } .split .split-talk .talk { min-height: 240px; max-height: min(520px, 60vh); } }
 
 /* the play button on a startable card, shown while the pointer is on the card */
 .card .play { position: absolute; right: 10px; bottom: 8px; width: 26px; height: 26px; border-radius: 13px; border: 0; padding: 0 0 0 2px;

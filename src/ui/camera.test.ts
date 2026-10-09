@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { type Cam, CHASE_MS, chaseStep, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView } from './camera';
+import { besideSheet, type Cam, CHASE_MS, chaseStep, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView } from './camera';
 
 const view = { left: 0, top: 70, right: 1000, bottom: 800 };
 const cam: Cam = { x: 0, y: 0, s: 1 };
@@ -111,4 +111,14 @@ test('a chased camera closes most of the way each frame and arrives without over
   let c = cam;
   for (let i = 0; i < 100 && c !== to; i++) c = chaseStep(c, to, 16);
   expect(c).toBe(to);
+});
+
+test('a sheet docked on the right moves the view by half its width, so the middle stays the middle', () => {
+  const c: Cam = { x: 100, y: 50, s: 1.5 };
+  // opening a sheet 380 wide: the content moves left by 190
+  expect(besideSheet(c, 0, 380)).toEqual({ x: -90, y: 50, s: 1.5 });
+  // closing it, or dragging it wider, moves it back by as much
+  expect(besideSheet(besideSheet(c, 0, 380), 380, 0)).toEqual(c);
+  expect(besideSheet(c, 380, 500)).toEqual({ x: 40, y: 50, s: 1.5 });
+  expect(besideSheet(c, 380, 380)).toBe(c);
 });

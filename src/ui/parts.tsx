@@ -177,7 +177,7 @@ export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; 
           <path d="M6 8.5v7M18 10.5c0 4-6 3-10 6" />
         </svg>
         <b>{canvas.name}</b>
-        <span className="hint">{canvas.repos.length > 1 ? t.repos(canvas.repos.length) : home?.branch}</span>
+        <span className="hint lbl">{canvas.repos.length > 1 ? t.repos(canvas.repos.length) : home?.branch}</span>
         {many && <span className="hint">▾</span>}
         {!open && elsewhere > 0 && <span className="waits pulse">{elsewhere}</span>}
       </button>
@@ -297,7 +297,7 @@ export function WorkspacesPill({ pools, canvas, items }: { pools: ClonePool[]; c
   const full = pools.every((p) => p.cards.length >= p.total);
   return (
     <div className={full ? 'pill workspaces full' : 'pill workspaces'} id="workspaces">
-      <span>{t.workspaces.label}</span>
+      <span className="lbl">{t.workspaces.label}</span>
       {pools.map((p) => (
         <span key={p.repo} className="pool">
           {several && <span className="hint">{name(p.repo)}</span>}
@@ -594,7 +594,7 @@ export function Sheet({
 
 // ------------------------------------------------------------------ overlays
 
-/** Chips at the screen edge pointing at off-screen cards that need the owner. */
+/** Chips at the edge of the canvas pointing at off-screen cards that need the owner; `rightReserve`: the sheet docked on the right. */
 export function Edges({ cam, targets, rightReserve, onOpen }: { cam: Cam; targets: { item: Item; b: Bounds }[]; rightReserve: number; onOpen: (i: Item) => void }) {
   const m = 30;
   const top = 64;
@@ -627,6 +627,7 @@ export function Edges({ cam, targets, rightReserve, onOpen }: { cam: Cam; target
 
 export function Minimap({
   cam,
+  viewW,
   all,
   placed,
   territories,
@@ -634,6 +635,8 @@ export function Minimap({
   onFollow,
 }: {
   cam: Cam;
+  /** How wide the canvas shows, left of the sheet docked on the right. */
+  viewW: number;
   all: Bounds;
   placed: { item: Item; b: Bounds }[];
   territories: Shape[];
@@ -695,7 +698,7 @@ export function Minimap({
         <rect
           x={ox + (-cam.x / cam.s) * k}
           y={oy + (-cam.y / cam.s) * k}
-          width={(innerWidth / cam.s) * k}
+          width={(viewW / cam.s) * k}
           height={(innerHeight / cam.s) * k}
           fill="none"
           style={{ stroke: 'var(--ink)' }}
