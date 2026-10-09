@@ -18,12 +18,12 @@ import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { KIT_PATH } from '../adapters';
+import { adapterProblems, KIT_PATH } from '../adapters';
 import { LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item } from '../core/types';
 import { BadRequest, type Board, type PrState, reshareable, type StoredReshare, type StoredShare } from './board';
-import type { DemoSite } from '../adapters/types';
+import type { DemoSite, RepoAdapter } from '../adapters/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { BUN_ENV } from './resources';
 import { type Gone, siteMissing, siteTarget } from './site';
@@ -754,6 +754,24 @@ export function shareProblem(argv: string[]): string | null {
   if (!program) return 'the share command is empty';
   if (isAbsolute(program)) return existsSync(program) ? null : `the share command's program ${program} does not exist`;
   return Bun.which(program) ? null : `the share command's program ${program} is not on the PATH`;
+}
+
+/**
+ * What is wrong with a repository's adapter, one line each, as the configuration and the adapter
+ * skill's check report it: its fields (`adapterProblems`), a demo that names both a site and a share
+ * command, and a share or deploy program that is not there. With `ownShare` the configuration names
+ * a share command of its own, so the adapter's are not run and not checked.
+ */
+export function adapterRepoProblems(adapter: RepoAdapter, repoPath: string, ownShare = false): string[] {
+  const { site, share } = adapter.demo ?? {};
+  const shareWrong = !ownShare && !site && share && shareProblem(share);
+  const deployWrong = !ownShare && site && shareProblem(scriptArgv(site.deploy, repoPath));
+  return [
+    ...adapterProblems(adapter),
+    ...(site && share ? ['demo: names both site and share; the site is used, so share goes'] : []),
+    ...(shareWrong ? [`demo.share: ${shareWrong}`] : []),
+    ...(deployWrong ? [`demo.site.deploy: ${deployWrong}`] : []),
+  ];
 }
 
 /** Runs the share command in `SHARE_CWD` under Obeya's home; never throws. */

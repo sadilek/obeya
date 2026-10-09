@@ -257,7 +257,9 @@ start. "Aufgabe zum Beheben anlegen" beside a problem has Obeya create a task th
    ```
 
    It prints what Obeya makes of the adapter (canvas, setup, checks, landing, workspaces, the demo
-   recipe) and every problem, and exits with 1 when there is one. A worker runs it as
+   recipe, the site demos are shared on) and every problem "Konfiguration" would report for it (a
+   field that is unknown or of the wrong type, a share or deploy program that is not there, both
+   `demo.site` and `demo.share`), and exits with 1 when there is one. A worker runs it as
    `bun ${CLAUDE_SKILL_DIR}/lib/check.ts`.
 2. **The commands work.** Run `setup` and each of `checks` in a fresh clone; start the stack as
    `stack` and `howToRun` say, and open the frontend.

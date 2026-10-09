@@ -1748,7 +1748,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   the plugin's skill `adapter` (`plugin/skills/adapter/`) is how a worker writes one: read the
   repository (scripts, CI, README, compose files), ask the owner what it does not tell (login,
   test data), write the module, check it with `lib/check.ts` (it loads the checkout's module as
-  Obeya would and lists the problems), run setup and checks, and prove `demo.howToRun` by
+  Obeya would and lists the problems: the same ones the configuration sheet reports, from one
+  function, `adapterRepoProblems`; until 2026-10-09 it missed those of `demo.site`), run setup and checks, and prove `demo.howToRun` by
   recording a demo with it. The compiled binary's resources carry `docs/adapter.md` where the
   skill finds it up the tree, and `check.ts` bundled like `recipe.ts`.
 

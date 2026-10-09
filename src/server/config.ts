@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { adapterNames, adapterProblems } from '../adapters';
+import { adapterNames } from '../adapters';
 import { type AgentsView, blocksSaving, type CanvasConfig, type ConfigProblem, type ConfigView, type DemoSettingsProblem, type DemoSettingsView, type DemoVoiceCheck, type LanguageView, type ResolvedCanvas, type VoiceInstallJob } from '../core/types';
 import {
   DEMO_SETTINGS_FILE,
@@ -28,7 +28,7 @@ import type { Store } from './db';
 import { repoInfo } from './repo';
 import { VERSION } from './resources';
 import { agentsView, languageView, pushKeyChoice, saveAgents, saveLanguage, savePushKey } from './settings';
-import { scriptArgv, shareArgv, shareProblem } from './share';
+import { adapterRepoProblems, shareArgv, shareProblem } from './share';
 
 export const CONFIG_FILE = 'canvases.json';
 
@@ -214,11 +214,7 @@ export class Config {
           const adapter = adapters[config.repos.indexOf(r)]!;
           const error = broken[config.repos.indexOf(r)];
           if (error) problems.push({ code: 'adapterLoad', canvas, repo, detail: error });
-          const site = adapter.demo?.site;
-          const share = !r.share && !site && adapter.demo?.share && shareProblem(adapter.demo.share);
-          const deploy = !r.share && site && shareProblem(scriptArgv(site.deploy, resolve(r.path)));
-          const both = site && adapter.demo?.share ? ['demo: names both site and share; the site is used, so share goes'] : [];
-          for (const detail of [...adapterProblems(adapter), ...both, ...(share ? [`demo.share: ${share}`] : []), ...(deploy ? [`demo.site.deploy: ${deploy}`] : [])])
+          for (const detail of adapterRepoProblems(adapter, resolve(r.path), !!r.share))
             problems.push({ code: 'adapterField', canvas, repo, detail });
         });
         // the repositories in the order given, though the home one runs first
