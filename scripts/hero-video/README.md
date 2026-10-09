@@ -43,7 +43,8 @@ node scripts/hero-video/publish.ts --poster   # also takes the poster again from
 ```
 
 It reads the render from `~/demos/obeya-hero/` (or `HERO_OUT`), creates the release the first
-time and replaces its assets after that, and acts as the GitHub account `sadilek` (with the
+time (a pre-release, so that it never becomes the latest release, whose installers the README
+links) and replaces its assets after that, and acts as the GitHub account `sadilek` (with the
 token of its gh login) without switching the account gh has active.
 
 The poster (`site/img/hero-poster.jpg`) is the video's first frame, slightly dimmed, without a

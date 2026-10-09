@@ -6,8 +6,8 @@
 //       app/target/release/bundle/ (scripts/build-app.ts) into <dir> under the release's fixed
 //       names, with the update artifact and its signature when there is one.
 //   bun scripts/release.ts notes <tag> <file>
-//       writes the release's notes: the subjects of the commits since the tag before, those that
-//       change what runs (not only docs or the site).
+//       writes the release's notes: the subjects of the commits since the version tag before, those
+//       that change what runs (not only docs or the site); the first release says that it is one.
 //   bun scripts/release.ts manifest <dir> <tag> <owner/repo> [<notes>]
 //       writes latest.json (the version, what changed for the bar's hover, and per platform the
 //       update's URL in the tag's release and its signature) and SHA256SUMS over everything in <dir>.
@@ -95,12 +95,16 @@ const git = (cwd: string, ...args: string[]) => {
   return r.exitCode === 0 ? r.stdout.toString().trim() : null;
 };
 
-/** The release's notes: one line per commit since the tag before `tag` (all of them for the first) that changes what runs. */
+/**
+ * The release's notes: one line per commit since the version tag before `tag` that changes what
+ * runs. Other tags (`site-media`, which holds the site's video) do not count; the first release
+ * would list the whole history, so it says that it is the first instead.
+ */
 export function notes(cwd: string, tag: string): string {
-  const before = git(cwd, 'describe', '--tags', '--abbrev=0', `${tag}^`);
-  const range = before ? `${before}..${tag}` : tag;
+  const before = git(cwd, 'describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*', `${tag}^`);
+  if (!before) return '- The first release.\n';
   // as INERT in src/server/self-update.ts: docs, the site and the workflows change nothing that runs
-  const subjects = git(cwd, 'log', '--no-merges', '--format=%s', range, '--', '.', ':!docs', ':!design', ':!site', ':!.github', ':!*.md') ?? '';
+  const subjects = git(cwd, 'log', '--no-merges', '--format=%s', `${before}..${tag}`, '--', '.', ':!docs', ':!design', ':!site', ':!.github', ':!*.md') ?? '';
   const lines = subjects.split('\n').filter(Boolean);
   return lines.length ? lines.map((l) => `- ${l}`).join('\n') + '\n' : '- Small fixes.\n';
 }

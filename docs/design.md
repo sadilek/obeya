@@ -524,8 +524,7 @@ the owner's language (`src/core/locale.ts`).
   and share command, then the voice installed and a spoken command heard, a demo rendered with the
   director from the resources, and a real worker that commits and hands over an artifact, which is
   shared, once on the machine's Claude Code and once on the SDK's. All of it passed on macOS
-  arm64 and on GitHub's Windows x64, Ubuntu x64 and Ubuntu arm64 runners (2026-10-07). The
-  installable app around it is planned in `docs/plan/app.md`.
+  arm64 and on GitHub's Windows x64, Ubuntu x64 and Ubuntu arm64 runners (2026-10-07).
 - **App** — a Tauri 2 shell (`app/`, Rust) around the compiled server, which is its sidecar
   (`obeya-server` beside the shell's program; on Linux among the resources). `bun run build:app`
   (`scripts/build-app.ts`) builds it for this machine: a DMG on macOS (signed ad hoc, or with a
@@ -601,12 +600,14 @@ the owner's language (`src/core/locale.ts`).
   (the paths of `INERT` in the self-update left out), the installers kept a week as the run's
   artifacts, and on a tag `v<version>`, which must be `package.json`'s: then a draft GitHub
   Release gets every installer, the updater's archives with their signatures, `SHA256SUMS` and
-  `latest.json` (`scripts/release.ts`), its notes the subjects of the commits since the tag before
-  that change what runs (the first twelve lines also in `latest.json`, for the bar), and the owner
-  publishes it. The installers carry fixed
+  `latest.json` (`scripts/release.ts`), its notes the subjects of the commits since the version
+  tag before that change what runs (the first twelve lines also in `latest.json`, for the bar;
+  other tags such as `site-media` do not count, and the first release says that it is one rather
+  than listing the whole history), and the owner publishes it. The installers carry fixed
   names without the version (`Obeya-macOS-arm64.dmg`, `Obeya-Windows-x64-setup.exe`,
   `obeya_amd64.deb` …), which the README and the site link through `releases/latest/download/`,
-  so the release is made the latest. The updater's archives are
+  so the release is made the latest (`site-media`, the site's video, is a pre-release and never
+  is). The updater's archives are
   signed by `build-app.ts` itself when `TAURI_SIGNING_PRIVATE_KEY` is set (a repository secret,
   read on tags only): `Obeya.app.tar.gz` packed from the app on macOS, the NSIS installer, the
   AppImage after the server is in it. Tauri's own `createUpdaterArtifacts` needs the updater
@@ -676,7 +677,8 @@ the owner's language (`src/core/locale.ts`).
   ElevenLabs voice clone (see CLAUDE.md). The directory holds the narration, the scenes, the stage
   and the render; its README says how to change, re-render and publish it. The video is not in
   git: it and its captions are the assets `hero.mp4` and `hero.vtt` of the GitHub release
-  `site-media`, which the Pages workflow fetches into `site/media/` before it publishes, so
+  `site-media` (a pre-release, so that it never becomes the latest release, whose installers the
+  README and the site link), which the Pages workflow fetches into `site/media/` before it publishes, so
   obeya.si serves them itself (no third party, no tracking). `publish.ts` replaces them and runs
   the workflow again. On the page it is a `<video>` with English captions and a poster
   (`site/img/hero-poster.jpg`, the first frame without a play button, in git), loading nothing
@@ -1708,6 +1710,18 @@ the repository; the copy on the project is only for the archive).
   a way in, and the checkout (`bun start`, updating itself) stays how Obeya is developed. At first
   the decision was a shell only if global push-to-talk needed one; a download for people who do
   not develop Obeya made it needed anyway.
+- The app's formats (2026-10-06): DMG, NSIS installer, AppImage and .deb, no Flatpak or Snap,
+  whose sandboxes are in the way of git, agents and the repositories. Windows on ARM once there
+  is a machine to try it on.
+- The installed app runs the machine's own Claude Code, not the binary the Agent SDK brings
+  (2026-10-07): that one would add 224 MB to every download, put Anthropic's proprietary binary
+  into an MIT app and keep its version until the next release of Obeya. The two may drift apart
+  in their protocol; it held with every version tried, and the setup assistant names the version
+  Obeya was checked with.
+- Voice and demos fetch their Python sidecars through uv on first use, in the app as in the
+  checkout (2026-10-06): bundling Python with Whisper would add hundreds of MB per platform for
+  everyone, differ by GPU (MLX, CUDA, CPU) and need every native library signed and notarised,
+  and the models, the large part, are downloaded on first use anyway.
 - Signing (2026-10-06): the Mac app signed with a Developer ID and notarised from the first
   release, since macOS will not open an unnotarised download without a detour through the system
   settings; Windows and Linux unsigned, with checksums. SmartScreen warns about a new installer

@@ -15,12 +15,14 @@ packages are not signed, and the release lists the SHA-256 of every file in `SHA
    notarises the Mac apps (Apple answers within a minute or so) and makes a draft release with the
    installers, the updates and their signatures, `SHA256SUMS`, `latest.json` and notes from the
    commits since the tag before.
-3. Read the draft and publish it. The README's and the site's download links go to the newest
-   published release; installed apps find it at their next start or within six hours, and offer
-   it in their bar. The notes in `latest.json` (what the bar shows on hover) are the generated
-   ones, whatever the release's text says after an edit.
-4. The first release: remove the line saying that the first release is on its way from
-   `README.md` and `site/index.html`.
+3. Read the draft and publish it as the latest release ("Set as the latest release" stays
+   ticked). The README's and the site's download links go to the latest release; installed apps
+   find it at their next start or within six hours, and offer it in their bar. The notes in
+   `latest.json` (what the bar shows on hover) are the generated ones, whatever the release's text
+   says after an edit.
+
+The release `site-media` holds the site's video (`scripts/hero-video/`), not a version: it is a
+pre-release, so it never becomes the latest release, and its tag does not count as the tag before.
 
 ## The updater's key
 

@@ -34,8 +34,6 @@ English is next. How it works and why is in [`docs/design.md`](docs/design.md).
 | Windows | [Installer](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Windows-x64-setup.exe) (x64) |
 | Linux | AppImage for [x64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage), .deb for [x64](https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb) |
 
-The first release is being prepared; until it is out, run Obeya [from source](#from-source).
-
 The app needs neither Bun nor a checkout. On its first start it checks the machine: what Obeya
 needs ([Claude Code](https://claude.com/claude-code) with your login, git), what can wait (the
 [GitHub CLI](https://cli.github.com) for pull requests, voice, demos). It installs what it can

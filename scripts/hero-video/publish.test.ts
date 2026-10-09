@@ -46,6 +46,7 @@ test.skipIf(process.platform === 'win32')('replaces the assets of the release, t
 test.skipIf(process.platform === 'win32')('creates the release when it is missing', () => {
   const calls = publish(true);
   expect(calls[2]).toStartWith('[token-of-sadilek] release create site-media hero.mp4 hero.vtt --repo sadilek/obeya --title Site media');
-  expect(calls[2]).toEndWith('--latest=false');
+  // a pre-release, so that it never becomes the latest release, whose installers the README links
+  expect(calls[2]).toEndWith('--prerelease --latest=false');
   expect(calls.at(-1)).toBe('[token-of-sadilek] workflow run pages.yml --repo sadilek/obeya');
 });

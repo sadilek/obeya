@@ -59,7 +59,7 @@ try {
   } else {
     console.log(`Creating the release ${RELEASE} with hero.mp4 and hero.vtt`);
     run('gh', ['release', 'create', RELEASE, ...files, '--repo', REPO, '--title', 'Site media',
-      '--notes', 'Video for obeya.si, fetched by the Pages workflow.', '--latest=false'], env);
+      '--notes', 'Video for obeya.si, fetched by the Pages workflow.', '--prerelease', '--latest=false'], env);
   }
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

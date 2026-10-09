@@ -72,7 +72,7 @@ test('the checksums read as sha256sum writes them', () => {
   );
 });
 
-test('the notes list the commits since the tag before that change what runs; the bar gets their start', () => {
+test('the notes list the commits since the version tag before that change what runs; the bar gets their start', () => {
   const repo = join(tmp, 'repo');
   mkdirSync(repo);
   const git = (...a: string[]) => Bun.spawnSync(['git', '-C', repo, '-c', 'user.name=T', '-c', 'user.email=t@example.com', ...a], { stderr: 'pipe' });
@@ -85,12 +85,13 @@ test('the notes list the commits since the tag before that change what runs; the
   commit('src/a.ts', 'First');
   git('tag', 'v0.1.0');
   commit('src/b.ts', 'Faster canvas');
+  git('tag', 'site-media');
   commit('docs/design.md', 'Record the plan');
   commit('README.md', 'Reword the README');
   commit('app/src/main.rs', 'Quit cleanly');
   git('tag', 'v0.2.0');
   expect(notes(repo, 'v0.2.0')).toBe('- Quit cleanly\n- Faster canvas\n');
-  expect(notes(repo, 'v0.1.0')).toBe('- First\n');
+  expect(notes(repo, 'v0.1.0')).toBe('- The first release.\n');
 
   const many = Array.from({ length: 20 }, (_, i) => `- Change ${i + 1}`).join('\n');
   const dir = join(tmp, 'empty-release');
