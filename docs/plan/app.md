@@ -125,7 +125,7 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   stapled, Gatekeeper "Notarized Developer ID" for both, and `check-app.ts` passed in full on the
   signed app. Then on GitHub's runners with the repository secrets (temporary branch
   `w4-sign-check`, run 37897127515, run by hand with "sign"): both Macs signed, notarised and
-  stapled (about four and five and a half minutes for the build with notarisation), the other
+  stapled (Apple answered within 35–40 s), the other
   platforms as before; the arm64 DMG from that run, quarantined as a browser leaves it, passed
   Gatekeeper with the app in it, and `check-app.ts` passed on that app. Found on the way: Apple
   refused notarisation until the owner accepted the newest Program License Agreement, and a

@@ -611,8 +611,7 @@ the owner's language (`src/core/locale.ts`).
   `SHA256SUMS`, and the site and the README what SmartScreen shows. The maintainer's steps
   (agreement, certificate, API key, the updater's key, a release) are in `docs/release.md`.
   Notarised on the owner's Mac and on GitHub's runners for both Macs (2026-10-09): Apple
-  accepted Bun's binary with the JIT entitlements; notarisation adds one to three minutes per
-  Mac.
+  accepted Bun's binary with the JIT entitlements; Apple answered within 35–40 s.
 - **Site** (`site/`) — the page on obeya.si, in English whatever the interface speaks: plain HTML
   and CSS, no JavaScript, no framework and no build, so it opens straight from the file too. From
   the top: one sentence and the hero video; three pillars with screenshots (the canvas, voice, the
