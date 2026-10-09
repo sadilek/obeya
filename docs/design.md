@@ -1238,7 +1238,9 @@ the owner's language (`src/core/locale.ts`).
   need be), unless the owner says it should wait („nur notieren“, „für später“, „noch nicht
   starten“): then it stays planned. Left to its own judgement, the Koordinator kept about one in
   five plainly asked-for tasks planned („Tipjar should split the bill …“), so the `start` field of
-  `new_card` says this outright, and left out it counts as starting. Start on a card queued behind
+  `new_card` says this outright, and left out it counts as starting. Asking for an opinion or a
+  way forward, with no agent on the open card to take it, is a new idea with the owner's words
+  (see the decisions). Start on a card queued behind
   others starts it now despite the likely conflict, like "Trotzdem starten"; it sees which cards a queued
   one waits for, so "starte alle wartenden Aufgaben" works; "nimm sie aus der Warteschlange" takes a
   queued card back to planned, like "Aus der Warteschlange nehmen". A reply answers questions too
@@ -2013,9 +2015,14 @@ the repository; the copy on the project is only for the archive).
   spoken answer takes the same path.
 - A discussion lives on a card, not in the conversation with the Koordinator: an exploration
   parked on the canvas is found there again with its brief, and the Koordinator only passes the
-  owner's words on. A big idea becomes a project through a worker writing its plan doc, not
-  through the exploration agent, which stays read-only. That worker runs on the idea's own card and
-  starts with the decision, and the project replaces the idea on the canvas (2026-10-02): a
+  owner's words on. A question to Obeya that asks for an opinion or a way forward („Was meinst du,
+  was wir da jetzt machen sollen?“, „Wie sollten wir … angehen?“) becomes an idea card at once,
+  with the owner's words and screenshots, and its exploration agent opens the discussion, when no
+  agent on the open card takes it (2026-10-09): a wrong guess costs one card, taken back with
+  „Rückgängig“. Questions of fact and look-ups stay in the conversation. A big idea becomes a
+  project through a worker writing its plan doc, not through the exploration agent, which stays
+  read-only. That worker runs on the idea's own card and starts with the decision, and the
+  project replaces the idea on the canvas (2026-10-02): a
   separate planned "Plan-Doc" card in between had to be started by hand and left the idea standing
   next to its project.
 - The Koordinator's memory lives in the store, not in the agent session: a session is never

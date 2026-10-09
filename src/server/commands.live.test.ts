@@ -1,7 +1,8 @@
 // The Koordinator's prompt against the real model: requests the agent of an open card passes on from
 // the owner's words, in each state an agent is on; sentences said or typed with a card open that no
-// agent works on; and new tasks that start or wait. Runs only with OBEYA_LIVE=1 (it uses the
-// machine's Claude login and takes about a minute): `OBEYA_LIVE=1 bun test src/server/commands.live.test.ts`.
+// agent works on; new tasks that start or wait; and questions with no card open (an opinion becomes
+// an idea, a fact stays in the conversation). Runs only with OBEYA_LIVE=1 (it uses the machine's
+// Claude login and takes about a minute): `OBEYA_LIVE=1 bun test src/server/commands.live.test.ts`.
 
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
@@ -127,6 +128,42 @@ test.skipIf(!process.env.OBEYA_LIVE)(
     const results = await Promise.all(runs.map(async ([text, language, want]) => ({ text, want, got: await newTask(text, language) })));
     const wrong = results.filter((r) => r.got.start !== r.want);
     for (const r of results) console.log(`${wrong.includes(r) ? '✗' : '✓'} „${r.text}“ → ${r.got.start === undefined ? 'no new card' : r.got.start ? 'starts' : 'planned'} · ${r.got.confirm}`);
+    expect(wrong.map((r) => r.text)).toEqual([]);
+  },
+  300_000,
+);
+
+/** What the owner says with no card open, whether typed, and the actions expected (none: a reply or a look-up). */
+const NO_CARD: [string, boolean, Command['do'][]][] = [
+  ['Nochmal zu den nicht erlaubten Datenbankabfragen: das Skript steht in der eingecheckten Datei, reicht aber nicht. Was meinst du, was wir da jetzt machen sollen?', false, ['newIdea']],
+  ['Wie sollten wir das Onboarding angehen?', true, ['newIdea']],
+  ['Was hältst du davon, die Exporte nachts laufen zu lassen?', false, ['newIdea']],
+  ['Was steht im Plan zu den Exporten?', true, []],
+  ['Was ist seit gestern passiert?', false, []],
+];
+
+/** What the Koordinator makes of one sentence with no card open. */
+async function noCard(text: string, typed: boolean) {
+  const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => []);
+  board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'live' });
+  board.work(board.create({ title: 'Login', x: 0, y: 0 }).id, { state: 'working' });
+  board.create({ title: 'Zählerstände nachtragen', x: 0, y: 0 });
+  const executed: Command[] = [];
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const k = new Commander({ board, runtime, cwd: mkdtempSync(join(tmpdir(), 'obeya-live-')), execute: (c) => void executed.push(c), delayMs: 1 });
+  const heard = await k.hear(text, {}, [], typed ? { typed: true } : {});
+  if (heard.token) k.arm(heard.token);
+  await new Promise((r) => setTimeout(r, 20));
+  return { did: executed.map((c) => c.do), executed, confirm: heard.confirm };
+}
+
+test.skipIf(!process.env.OBEYA_LIVE)(
+  'with no card open, a question for an opinion becomes an idea and a question of fact stays in the conversation',
+  async () => {
+    const results = await Promise.all(NO_CARD.map(async ([text, typed, want]) => ({ text, want, got: await noCard(text, typed) })));
+    const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(r.want));
+    for (const r of results)
+      console.log(`${wrong.includes(r) ? '✗' : '✓'} „${r.text}“ → ${r.got.did.join(', ') || 'reply or look-up'} · ${JSON.stringify(r.got.executed.map((c) => ('title' in c ? `${c.title}: ${'body' in c ? c.body : ''}` : '')))} · ${r.got.confirm}`);
     expect(wrong.map((r) => r.text)).toEqual([]);
   },
   300_000,
