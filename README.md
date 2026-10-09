@@ -23,8 +23,9 @@ takes your instructions, queues cards whose changes would collide, cuts large on
 packages and learns your preferences. Larger work is planned in plan docs in the repository, which
 show as projects with a card per workstream.
 
-**Status:** early, and in daily use: Obeya is built with Obeya. The interface is German for now;
-English is next. How it works and why is in [`docs/design.md`](docs/design.md).
+**Status:** early, and in daily use: Obeya is built with Obeya. It speaks English and German
+(the system's language, or the one chosen in its settings). How it works and why is in
+[`docs/design.md`](docs/design.md).
 
 ## Download
 
@@ -44,9 +45,9 @@ The app keeps itself up to date: a new release shows in its bar, and installing 
 the agents have paused, then the app restarts with it (a .deb is updated by installing the next
 one).
 
-On the canvas, double-click to write a task, then start its agent ("Agent starten"). The card
-shows what the agent is doing; when it waits for you ("brauchen dich" in the top bar), open it to
-answer a question or watch the demo and approve it ("Freigeben").
+On the canvas, double-click to write a task, then start its agent ("Start agent"). The card
+shows what the agent is doing; when it waits for you ("need you" in the top bar), open it to
+answer a question or watch the demo and approve it ("Approve").
 
 ## From source
 
@@ -84,15 +85,16 @@ bun run dev ~/dev/shop          # same, with hot reload
 bun test && bun run typecheck
 ```
 
-Options: `--port <n>` (or `OBEYA_PORT`), `--adapter <name>` to override the one picked from the
-`origin` URL, `--workspace <path>` (repeatable) or `--clones <n>` for adapters whose workers use
-clones, `--permission-mode <mode>` for workers (default `auto`). Data and worktrees live in
-`~/.obeya/` (`OBEYA_HOME` to move it), the same for the app and a checkout, so canvases,
-settings, voices and models carry over between them. One Obeya runs per home: starting the app
-while a checkout's Obeya runs opens a window on it, and `bun start` while the app runs says where
-it runs. An Obeya older than the one that last ran on the home (an app not yet updated after a
-newer checkout) leaves the database alone and says to update. Workers run on the Claude Code login of the machine.
-The canvases and their repositories can be seen and changed in the app ("Konfiguration") or by
+Options: `--port <n>` (or `OBEYA_PORT`), `--adapter <name or module>` to override the
+repository's own adapter (see below) or the built-in one that matches it, `--workspace <path>`
+(repeatable) or `--clones <n>` for adapters whose workers use clones, `--permission-mode <mode>`
+for workers (default `auto`). Data and worktrees live in `~/.obeya/` (`OBEYA_HOME` to move it),
+the same for the app and a checkout, so canvases, settings, voices and models carry over between
+them. One Obeya runs per home: starting the app while a checkout's Obeya runs opens a window on
+it, and `bun start` while the app runs says where it runs. An Obeya older than the one that last
+ran on the home (an app not yet updated after a newer checkout) leaves the database alone and
+says to update. Workers run on the Claude Code login of the machine.
+The canvases and their repositories can be seen and changed in the app ("Configuration") or by
 telling Obeya; saving writes `canvases.json` and restarts Obeya with it.
 
 Voice runs Whisper in a sidecar through `uv run` (mlx-whisper on Apple Silicon, faster-whisper
@@ -101,8 +103,8 @@ elsewhere), or in a Python of your own with that package (`OBEYA_WHISPER_PYTHON=
 `plugin/`, which Obeya gives its workers; what a machine needs for them (Node, a browser, ffmpeg,
 uv, a voice) is in [`docs/demo-setup.md`](docs/demo-setup.md), checked in the app's settings.
 
-`bun run app` starts Obeya in its app window from the checkout (it needs Rust; the first build
-takes a few minutes). The app adds push-to-talk from anywhere: hold the right Option key on a Mac,
+`bun run app` starts Obeya in its app window from the checkout (it needs Rust, on Linux also
+WebKitGTK's development files; the first build takes a few minutes). The app adds push-to-talk from anywhere: hold the right Option key on a Mac,
 the right Ctrl key elsewhere, while another app is in front (another key in the settings). On a
 Mac this needs the "Input Monitoring" permission, which macOS asks for.
 
@@ -110,7 +112,7 @@ Mac this needs the "Input Monitoring" permission, which macOS asks for.
 
 Obeya works on any git repository. How a project's app starts, which checks a change must pass,
 how approved work lands and how a demo is recorded, the repository says in its adapter,
-`.obeya/adapter/index.ts`; [`docs/adapter.md`](docs/adapter.md) describes it. "Konfiguration"
+`.obeya/adapter/index.ts`; [`docs/adapter.md`](docs/adapter.md) describes it. "Configuration"
 offers a card whose agent writes it for a repository that has none.
 
 ## Contributing

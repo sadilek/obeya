@@ -1,8 +1,9 @@
 # Recording demos: what a machine needs
 
-Every change an Obeya worker hands over comes with a narrated video, recorded by the demo skill
-(`plugin/skills/demo/`, `obeya:demo` in a worker). The skill records on macOS, Linux and Windows.
-This guide lists what it needs on the machine and how to install each piece.
+When a repository's adapter asks for demos, a change an Obeya worker hands over comes with a
+narrated video, recorded by the demo skill (`plugin/skills/demo/`, `obeya:demo` in a worker). The
+skill records on macOS, Linux and Windows. This guide lists what it needs on the machine and how
+to install each piece.
 
 ## Check first
 

@@ -44,7 +44,9 @@ visibly on the walls and decisions are made in front of the wall.
   cards. Tasks have no further kind: whether one fixes a bug or adds something makes no difference
   to how it is worked on, so the owner does not pick one. A task's card names no kind either (that
   it is one shows); the others say what they are (idea, prototype, workstream number, project).
-  The UI and the Koordinator say *Aufgabe* and *Folgeaufgabe*, never *Karte*.
+  A task is an *Aufgabe* and a follow-up a *Folgeaufgabe* in the UI and the Koordinator's words,
+  never a *Karte*; *Karte* stays only for a card on the canvas as such (moving, grouping, „Karte
+  oder Projekt schließen“).
 - **Groups** — besides by place, the owner sorts the canvas by group: a group has a name and a
   colour, and a card belongs to none or one. A project belongs to one as a whole, with its
   workstreams. A proposal, a follow-up, a package cut from a card and a prototype come into the group
@@ -293,7 +295,7 @@ An idea is thought through on its card before anything is planned; no worker run
    (a demo card on 2026-10-02).
    A finished card (`live` or `done`) an agent worked on keeps its field for the owner's words
    once that agent's session has ended: a question there („Nachfrage an den Agenten“) resumes the
-   agent that did the work (After landing, under Communication), which answers on the card and ends
+   agent that did the work (After landing, under Architecture), which answers on the card and ends
    again. Before (until 2026-10-08), a live card had no field, and asking its agent was no longer
    possible.
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card or
@@ -307,8 +309,8 @@ An idea is thought through on its card before anything is planned; no worker run
    archive with its workstreams, which are not listed on their own. Its sheet then shows, read-only,
    the goal and the workstreams as the doc last stood; each workstream unfolds with its conversation and demo.
    When the same file comes back, the project returns to its place. Every project's sheet, live or
-   archived, lists its decisions and links the idea its plan doc was written from: when an idea's
-   "Plan-Doc" card lands and its diff adds a doc in the plan directory, the project from that doc
+   archived, lists its decisions and links the idea its plan doc was written from: when an idea decided
+   as a project („Idee → Projekt“) lands and its diff adds a doc in the plan directory, the project from that doc
    remembers the idea, whose card keeps its brief and conversation, and the idea's decisions join
    the project's. The project takes the idea's place, and the idea, once its worker is done, goes to
    the archive.
@@ -404,7 +406,7 @@ question is open, no message is coming for the steps after the last one: they go
 happened, before the lines that came later. The agent's last words among them stand as its message
 (the closing words after a landing, say), a turn it ended without words as its steps, and what only
 Obeya or the Koordinator noted there goes. The agent's words are kept whole up to 12 000 characters, as
-its replies are (until 2026-10-09 a worker's were cut at 600, so a last message ended in „…“). While the worker
+an idea agent's replies are (a worker's `reply` is cut at 2000; until 2026-10-09 a worker's were cut at 600, so a last message ended in „…“). While the worker
 works, also while it takes in the owner's words on its handover, the conversation ends with it at work and its
 latest step (until 2026-10-09 only the card's state said so then); the question the card waits on (its own, or the one in its demo report) stands at the end with its options,
 and the card's one field under it; a question a note took back stays, without options, „Durch deinen Hinweis erledigt“.
@@ -519,8 +521,9 @@ the owner's language (`src/core/locale.ts`).
   ("Einrichtung prüfen"), without the first canvas. A scratch Obeya with `"setup": true` in its
   stage file starts like a first start.
 - **One file** — `bun run build` (`scripts/build.ts`) compiles the server with Bun
-  (`bun build --compile`) into one binary per platform (macOS arm64 and x64, Linux x64 and arm64,
-  Windows x64; Bun cross-compiles, about 15 s for all five), 66–120 MB with the UI and SQLite in
+  (`bun build --compile`) into one binary for this machine, or with `--all` (or named targets) one
+  per platform (macOS arm64 and x64, Linux x64 and arm64, Windows x64; Bun cross-compiles, about
+  15 s for all five), 66–120 MB with the UI and SQLite in
   it, that needs neither Bun nor a checkout. Its modules live in Bun's embedded file system, which
   no other process can read, so what other processes run or import goes beside it as real files,
   in `resources/` (13 MB): the plugin with its skills and the `playwright-core` the demo skill
@@ -575,7 +578,7 @@ the owner's language (`src/core/locale.ts`).
   program in an AppDir, which breaks Bun's binary (its code sits after the ELF's end), so the
   AppImage gets the server after linuxdeploy and is packed again. `bun scripts/check-app.ts
   <program>` checks an installed app in its webview: the canvas in the window, a microphone
-  recording with `MediaRecorder`, an H.264/AAC video playing, the browser button, a second start,
+  recording as `src/ui/recorder.ts` makes it (`MediaRecorder`; Web Audio's samples on Linux), an H.264/AAC video playing, the browser button, a second start,
   the stop over HTTP, and the app beside an Obeya started from a terminal.
 - **Push-to-talk anywhere** — in the app, a key held while another app is in front records a
   command (`app/src/keys.rs`, `mic.rs`, `ptt.rs`). Space cannot be that key (it would be taken from
@@ -619,7 +622,8 @@ the owner's language (`src/core/locale.ts`).
   for its glibc), with `scripts/build-app.ts`, and checks the compiled server there with
   `scripts/check-binary.ts`; `bun run typecheck` and `bun test` run beside it on Linux (with uv
   and ffmpeg, which the demo voice's tests use). It runs on a push to `main` that changes code
-  (the paths of `INERT` in the self-update left out), the installers kept a week as the run's
+  (docs, design, the site, Markdown files and the Pages workflow left out, as in `INERT` of the
+  self-update, except that a change to the build workflow itself builds), the installers kept a week as the run's
   artifacts, and on a tag `v<version>`, which must be `package.json`'s: then a draft GitHub
   Release gets every installer, the updater's archives with their signatures, `SHA256SUMS` and
   `latest.json` (`scripts/release.ts`), its notes the subjects of the commits since the version
@@ -676,7 +680,8 @@ the owner's language (`src/core/locale.ts`).
   first, and has it find, download and install the second and start again. It passed on macOS
   arm64 and on GitHub's Windows x64 and Ubuntu x64 runners (2026-10-09).
 - **Site** (`site/`) — the page on obeya.si, in English whatever the interface speaks: plain HTML
-  and CSS, no JavaScript, no framework and no build, so it opens straight from the file too. From
+  and CSS, no framework and no build, and JavaScript only for the video's play button, so it opens
+  straight from the file too. From
   the top: one sentence and the hero video; three pillars with screenshots (the canvas, voice, the
   demo the owner approves instead of the code); the four steps from idea to main as one card
   moving along a wall; the six principles as cards on a wall; "The big room", where the name comes
@@ -731,8 +736,8 @@ the owner's language (`src/core/locale.ts`).
   in the middle of a turn (as for new code), a tenth of a second after the answer went out; the page reloads. Started with repositories on the
   command line, Obeya shows those, and saving makes the file the configuration it restarts with.
   Renaming a running canvas keeps its id (`id` in the file), so its cards stay. The server's own
-  settings (port, data directory, the agents' permission mode) come from the command line and show
-  read-only. The Koordinator reads the configuration (`config` tool) to answer questions about it
+  settings (port, data directory, the agents' permission mode) come from the command line and the
+  environment (`OBEYA_PORT`, `OBEYA_HOME`) and show read-only. The Koordinator reads the configuration (`config` tool) to answer questions about it
   and changes it on the owner's word (`configure`, the whole new list, checked like the sheet's),
   with the usual confirmation and undo window. Below the canvases the sheet has the demo settings
   (see Demos), saved on their own into `demo.json` in Obeya's home and read by the next render, so
@@ -867,7 +872,8 @@ the owner's language (`src/core/locale.ts`).
   Windows and Linux on 2026-10-07 (the SDK 0.3.285 with its Claude Code 2.1.285, and the
   installed 2.1.292). Agents get
   Obeya's environment without the marks of a Claude Code session that may have started it
-  (`CLAUDE_CODE_*`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain.
+  (`CLAUDE_CODE_*`, `CLAUDECODE`, `CLAUDE_PID`) and of Obeya's own supervisor (`OBEYA_SUPERVISED`,
+  `BUN_BE_BUN`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain.
   A worker is one SDK session per card with streaming input, the repo's own settings and
   CLAUDE.md, and permission mode `auto` (`--permission-mode`); after a restart it resumes by
   session id. A project agent is one read-only session per project (Read, Grep, Glob on the
@@ -879,11 +885,14 @@ the owner's language (`src/core/locale.ts`).
   agent with that call's result. Workers and idea agents use it for the owner's preferences: a
   preference learned or changed while one runs reaches it once, at its next tool call, without a
   message or a new turn. A workstream's worker hears its project's new decisions the same way
-  (those on its own card it heard as answers).
+  (those on its own card it heard as answers). A worker's session also has `canUseTool`: a call
+  the settings want confirmed becomes the question its card waits on (see Communication).
 - **Workspaces** — per adapter. A pool of full clones leased by a card while it is worked on
   (for a repository whose tools break inside a worktree, or that runs its own app stack per clone),
   or a worktree per card (Obeya itself: any number in parallel), kept across stop and restart
-  until the card's work has landed. Clones come from `--workspace <path>` or `--clones <n>`.
+  until the card's work has landed. Clones come from the repository's `clones` or
+  `workspaces` in the configuration, or on the command line from `--workspace <path>` or
+  `--clones <n>`.
   For each repository that uses clones, the top bar shows the pool ("Workspaces", a dot per clone,
   filled while a card holds it, and "2 frei" or "alle belegt"); over it, the cards that hold one and
   how many wait for one. The snapshot carries the pools (`workspaces`): leases change only with a
@@ -1019,7 +1028,8 @@ the owner's language (`src/core/locale.ts`).
 - **Self-update** — Obeya runs from a checkout that work lands on, so `live` must mean running
   (the compiled binary has no checkout and never restarts for new code).
   Without `--dev` the `obeya` process supervises the server: when the checkout its code comes from
-  moves to commits that change code (not only docs, or the site for obeya.si in `site/` and its workflow in `.github/`), the server stops and starts again; when the
+  moves to commits that change code (not only docs: `docs/`, any `.md`, the site for obeya.si in `site/`, or the workflows in
+  `.github/`), the server stops and starts again; when the
   commits since it started change `package.json` or `bun.lock`, it runs `bun install
   --frozen-lockfile` in the checkout first (a failure goes to the log and the restart goes ahead,
   the new code then fails where it imports what is missing); workers resume, and an open page reloads when it reconnects to a new server process. The restart waits
@@ -1223,7 +1233,7 @@ the owner's language (`src/core/locale.ts`).
   after them) the first recording after a load failed no more often than later ones, and opening it
   early would keep the browser's microphone indicator on all the time.
   Who hears it depends on what is open, and the line under the mic and under a card's text field
-  says so ("Agent · Aufgabe: …", "Agent · Idee: …", "Koordinator · Aufgabe: …", "Koordinator ·
+  says so ("Agent · Aufgabe: …", "Agent · Idee: …", "Obeya · Aufgabe: …", "Obeya ·
   Projekt: …"); the words go exactly where it says (`agentListens` in `src/core/types.ts`, the same
   for the label and the route). On a card an agent listens on (its worker at work, waiting, in a
   pull request or finishing after the landing, the one a question resumes on a finished card, a
@@ -1253,7 +1263,7 @@ the owner's language (`src/core/locale.ts`).
   A Koordinator turn reads
   the transcript as speech that may be misheard (typed words as written) and either acts or replies. Acting takes one or
   more actions from one sentence, up to 20 (new card, new idea, start, taking a card out of the queue, note, answer, feedback,
-  approve, accept, dismiss, revise, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group; on ideas: discuss, build, plan doc, prototype,
+  approve, accept, dismiss, revise, cut, stop, remember, Arbeitsrückschau, putting cards into a group or out of it, renaming a group, changing the configuration (`configure`, see Configuration); on ideas: discuss, build, plan doc, prototype,
   park, drop; on prototypes: build on it, discard),
   checked against the cards' states in the turn, so an action that does not fit (a note to a card no agent
   works on) goes back to the Koordinator, which may reply instead. A new card, a follow-up too,
@@ -1285,8 +1295,10 @@ the owner's language (`src/core/locale.ts`).
   Koordinator passes to a card's agent (said in its sheet: „sag dem Export, …“) waits for undo like
   every command to Obeya, and spoken words reach the agent with the remark that speech recognition
   may have misheard them. `commands.live.test.ts` checks against the real model (`OBEYA_LIVE=1`)
-  that requests passed on from each state an agent is on become Obeya's actions, and that commands
-  on cards without an agent are read right. The Koordinator learns whether the words were typed,
+  that requests passed on from each state an agent is on become Obeya's actions, that commands
+  on cards without an agent are read right, that a new task starts unless the owner says it should
+  wait, and that with no card open a question for an opinion becomes an idea and one of fact stays
+  a reply. The Koordinator learns whether the words were typed,
   and in which field (a proposal's). Clicks on answer options go straight to the agent, as do
   typed and spoken words. What the owner said to the Koordinator and its confirmation go into
   the conversation of the card that was open (the confirmation folded away), and
@@ -1357,7 +1369,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   what voice in needs on this machine (`src/server/voice-setup.ts`): Whisper (the package
   in uv's cache or the given Python, the model in the Hugging Face cache), ffmpeg and uv,
   each missing piece with how to install it here, as for demos. "Installieren" loads Whisper,
-  which fetches it the first time (about 1.9 GB), so the first command
+  which fetches it the first time (about 1.8 GB: the model and its package), so the first command
   does not wait for the download. The server lets a request run 120 s idle instead of Bun's 10 s:
   a command answers once it is transcribed and read, which on a busy CPU took longer.
 - **Demos** — the demo skill's pipeline (scripted walkthrough, narrated video, report) is part of
@@ -1450,7 +1462,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   written. What a render needs on the machine is checked by `lib/setup.ts`: Node 22.18 or newer
   (TypeScript without flags), Playwright and a browser (found where Playwright looks), ffmpeg
   with libx264, uv (which brings Python), the voice, and Whisper (in uv's cache and the Hugging
-  Face cache, else fetched by the first render, about 1.6 GB: not missing, only later). Each
+  Face cache, else fetched by the first render, about 1.8 GB: not missing, only later). Each
   missing piece comes with how to install it on this platform (Homebrew, winget, the Linux
   family's package manager from `/etc/os-release`, else a page). The settings sheet shows the
   check below the demo settings ("Was Demos auf diesem Rechner brauchen", the voice left out
@@ -1466,8 +1478,8 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   Obeya: the scratch instance); without Obeya, `bun lib/recipe.ts` in a repository prints it. The
   worker records once the change is committed and checked, as the adapter says how to run the
   app (Obeya: a scratch instance from the worktree, staged by `scripts/scratch-obeya.ts` from a
-  stage file before every take, its workers idle (`--idle-workers`) unless the change is about
-  agents; elsewhere, say, the clone's own app stack), and hands over the directory and chapter titles with `ready_for_review`.
+  stage file before every take, its workers idle unless the change is about agents
+  (`--real-workers`); elsewhere, say, the clone's own app stack), and hands over the directory and chapter titles with `ready_for_review`.
   Before the first render it runs `node demo.ts --dry`: `login`, `open` and the scenes against the
   app, without narration, setup check, screencast or ffmpeg (`untilSpoken` does not wait), under
   the same per-demo lock as a render. Twice a scene waited for a state that never came and showed
@@ -1535,7 +1547,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   leased after every share ("jeder freie hat nicht committete Änderungen"). The calls are
   `publish` with the page as JSON on stdin (slug, kind
   `video` or `html`, title, text, chapters, PR URL, the demo's language, demo directory, and the
-  slugs of the other pages it has shared), which prints the page's URL; `withdraw <slug>`; and `version`, which prints
+  slugs of the other pages it has shared), which prints the page's URL; `withdraw <slug>` (with `{slug, shared}` on stdin); and `version`, which prints
   the version of the pages the command writes (a command that does not know it fails or prints
   nothing): the video pages' first, then `html:<version>` for artifact pages, so a change to one
   kind of page marks only those (a command that says one version marks both). The slug comes from the card's title and id once and
@@ -1576,7 +1588,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   out (in either order: `pr_opened` after sharing, or sharing a card whose PR is open or merged),
   Obeya reads the description through the forge (`gh pr view --json body`) and, unless it
   contains the page's URL already, adds a line `Demo-Video: <url> <!-- obeya:demo -->`
-  (`Demo-Seite:` for an artifact)
+  (`Demo-Seite:` for an artifact; „Demo video:“ and „Demo page:“ in English)
   (`gh pr edit --body-file`); a later line of its own is found by the marker and replaced, not
   added again. A page shared before the PR existed is published again with the PR's link: what
   it showed then (title, text, chapters and demo directory, kept with the share), not a newer
@@ -1690,7 +1702,7 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   bucket) as the site's source, which pushes the problem onto every user's setup.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   recipe for running the app in a demo (login, test data, migrations: `demo.howToRun`), where plan
-  docs live, which reviews run, the site or the command that shares demos (the
+  docs live, which checks run and how approved work lands, the site or the command that shares demos (the
   configuration's command takes their place). A repository carries its own adapter in `.obeya/adapter/`
   (`index.ts` and what it needs beside it), like `.vscode/` or `.claude/`: whoever runs Obeya on a
   clone gets it, and it is versioned and reviewed with the code it describes. Obeya picks a
@@ -1747,22 +1759,24 @@ branch, status line, open question or review summary (with the reason when there
 source, a follow-up's card), estimated scope, queue,
 when archived, the pull request (link, checks, the comments, failed checks and conflict already
 passed on), an idea's status, brief and open questions with its agent's picks and suggested next step, a prototype's idea, how it ended and its worker's proposal to build on it, the prototype an idea is built on, landed work whose worker still
-finishes; a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
-work added; the shared demo page: slug, link, the demo directory it shows, the version of the
-share command it was published with and whether that is behind, and whether it is publishing or
+finishes; an approval held until the work can land; what landed work shipped with; a waiting
+card's stopped app stack; a worker's proposal waiting for the owner (why, its open questions); a project's plan doc as last read and the idea it came from; the plan docs an idea's landed
+work added; the shared demo page: slug, link, the demo directory it shows, what the page shows (title,
+text, chapters, kind) and the pull request it links, the version of the share command it was
+published with and whether that is behind, and whether it is publishing or
 withdrawing; sharing many outdated pages again: the cards still to go, how many are out and which failed),
-card events (the log, with an error code where the UI words it and the owner's screenshots), a card's own
+card events (the log, with an error code where the UI words it, the owner's screenshots and an idea agent's mocks), a card's own
 screenshots, workspaces and their leases,
 decision log, preferences, the Koordinator's conversation with the owner (what was said, its
 reply, the screenshots that came with it, the open card, whether it was taken back; a looked-up
-question, the card it is about, its answer and who gave it), groups (name, colour) and the group of each card, per-canvas settings (the home repository; the Rückschau's count and when its history begins; per repository the Arbeitsrückschau's count and when it last ran), the friction noted on each card's runs (per repository), and on a card the Arbeitsrückschau proposed what it rests on.
+question, the card it is about, its answer and who gave it), groups (name, colour) and the group of each card, per-canvas settings (the home repository; which canvas a repository's own adapter named; per repository the card collecting its CLAUDE.md rules; the Rückschau's count and when its history begins; per repository the Arbeitsrückschau's count and when it last ran), the friction noted on each card's runs (per repository), and on a card the Arbeitsrückschau proposed what it rests on.
 
 Files under `~/.obeya/` (the same for the app and a checkout): the database (`obeya.db`), the
 owner's screenshots (`images/<canvas>/`), the configuration (`canvases.json`), the settings
 (`settings.json`, `demo.json`), where the running Obeya answers (`server.json`), the app's server
 log (`app.log`), voices and models (`voices/`), the workers' clones and worktrees
-(`workspaces/`), the static sites Obeya keeps (`sites/<key>/`, with the env files their adapters
-name), what a repository's share command keeps there, and `share/`, the directory share commands
+(`workspaces/`), the static sites Obeya keeps (`sites/<key>/`), the env files their adapters
+name (relative to the home, `sites/demos/deploy.env`, say), what a repository's share command keeps there, and `share/`, the directory share commands
 and deploys run in.
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
@@ -1825,7 +1839,7 @@ the repository; the copy on the project is only for the archive).
   demo or summary is the result.
 - Learned rules are proposals the owner accepts first, rather than stored silently as at first
   (2026-10-02): the owner wants to see every learned rule before it applies. Open proposals count
-  on the Koordinator button only, not among the cards that need the owner nor on the cards. The
+  on Obeya's button only, not among the cards that need the owner nor on the cards. The
   Rückschau runs after about 20 inputs, neither daily nor only on request.
 - The Arbeitsrückschau learns from the workers' transcripts, in two stages (2026-10-05): an excerpt
   drawn without a model when a card's work ends, made into a few friction notes, and a
@@ -1875,7 +1889,7 @@ the repository; the copy on the project is only for the archive).
   widens it and shows the doc as written, rendered, kept current with the file; a workstream's
   card opens it at the workstream's item. Esc goes back to the workstreams. The server hands out
   only docs it shows as projects, by project card, never a path.
-- The sheets on the right (Koordinator, archive, configuration, a project's, a plan doc being read)
+- The sheets on the right (Obeya's, archive, configuration, a project's, a plan doc being read)
   are a sidebar docked to the window's right edge, from top to bottom: a straight edge with a
   divider line, no shadow, no gap (2026-10-09). The canvas is what remains to its left: the top
   bar ends at the sidebar, the microphone with its lines and the confirmations above it, the edge
@@ -1936,7 +1950,8 @@ the repository; the copy on the project is only for the archive).
 - A canvas belongs to a repository, not a checkout: the adapter names it, so the clones share
   one. A project's adapter lives in its own repository (`.obeya/adapter/`, read from the default
   branch; see Repo adapter), not in Obeya's, which is open source: until 2026-10-05 adapters lived
-  here and were picked by the `origin` URL. The generic one covers any repo with `docs/plan/`.
+  here and were picked by the `origin` URL; only Obeya's own (`src/adapters/obeya.ts`) still is.
+  The generic one covers any repo with `docs/plan/`.
 - A card has one fixed size; a delivered workstream shrinks to a chip, a project wraps its
   children, and a workstream cannot be dragged out of its project. New projects are placed in a
   grid below the existing ones. A proposal or follow-up goes below the card it came from, or, when
@@ -2013,9 +2028,11 @@ the repository; the copy on the project is only for the archive).
   that sees all of them and the plan doc can choose the order. The workstreams that wait then go
   the usual way: they start once what they wait for has landed, judged again against what runs.
 - Landing problems are classified: uncommitted work, rebase conflicts and branches emptied by the
-  rebase (their commits are on main already) go back to the worker; a blocked Obeya checkout stays with the owner, and the card stays in review.
+  rebase (their commits are on main already) go back to the worker; a blocked Obeya checkout or a push the remote turns away stays with the owner, and the card
+  stays in review.
 - An approval holds through what the worker fixes to land it: main moving on is no reason to ask
-  the owner again. Feedback, a stop or a blocked Obeya checkout take it back.
+  the owner again. A stop, a blocked Obeya checkout or a push the remote turns away take it back;
+  what the owner writes meanwhile is a note to the worker.
 - Refusals carry an error code; the UI words them (`src/ui/strings.ts`), the English detail is
   for developers.
 - The owner archives only their own cards, and only once `live` or `done`, or an idea once dropped (a parked

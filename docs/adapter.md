@@ -161,6 +161,8 @@ to look at), recorded with Obeya's demo skill. Without it, a written summary is 
     url: 'https://demos.example.dev',       // a page is at url/<slug>/
     deploy: ['bunx', 'wrangler@4', 'pages', 'deploy', '{dir}', '--project-name', 'demos', '--branch', 'main', '--commit-dirty=true'],
     env: 'sites/demos/deploy.env',          // optional: KEY=value lines, relative to Obeya's home
+    headers: { 'CF-Access-Client-Id': '${CF_ID}', 'CF-Access-Client-Secret': '${CF_SECRET}' },
+                                            // optional: for reading the live site behind a login, ${KEY} from env
     maxFile: 25 * 1024 * 1024,              // optional: the largest file the host takes (25 MiB without it)
     language: 'en',                         // optional: the overview's words (else the demo settings' language)
   },
@@ -171,7 +173,13 @@ to look at), recorded with Obeya's demo skill. Without it, a written summary is 
   withdrawal runs `deploy` with `{dir}` replaced by that directory and the `env` file's values in
   its environment. Credentials go into the `env` file on each publishing machine, never into git;
   a machine without it exports demos instead, and "Teilen" names the file it lacks. Without
-  `env`, the deploy uses the machine's own login. `site` goes before `share`; an adapter naming
+  `env`, the deploy uses the machine's own login.
+
+  Several machines may publish to one site. Before each change Obeya reads the live site's
+  manifest (`obeya-site.json`), takes over the pages other machines published or withdrew, and
+  only then deploys; a manifest it cannot read (a login without `headers`, the host down) refuses
+  the deploy, since deploying blind could take other machines' pages offline. Pages shared from
+  here that a later deploy from elsewhere took offline are deployed again. `site` goes before `share`; an adapter naming
   both is a problem at the repository.
 - `share`: the command (argv) that publishes a demo for colleagues on a page outside Obeya. Obeya
   runs it in a directory under its home with `OBEYA_HOME`, `OBEYA_REPO` (the repository's
@@ -237,7 +245,7 @@ repository as
 > allgemeinen Adapter:
 
 with the error (`adapter module … does not load: …`) under "Details", and Obeya's log names it at
-start. "Aufgabe zum Beheben anlegen" beside a problem has the Koordinator create a task that fixes it. Run the check below before merging.
+start. "Aufgabe zum Beheben anlegen" beside a problem has Obeya create a task that fixes it. Run the check below before merging.
 
 ## Testing an adapter
 
@@ -257,6 +265,6 @@ start. "Aufgabe zum Beheben anlegen" beside a problem has the Koordinator create
    nothing else. This is what the setup skill does before it hands over.
 4. **Before it is merged, on a canvas.** Name the module in the checkout as the repository's
    adapter: `"adapter": ".obeya/adapter/index.ts"` (relative to the repository) in
-   `canvases.json`, or tell the Koordinator. Once Obeya restarts with it, a card started gets its
+   `canvases.json`, or tell Obeya. Once Obeya restarts with it, a card started gets its
    brief from it. Remove the entry again once the adapter is merged, so the default branch's
    version counts.

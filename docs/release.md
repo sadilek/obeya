@@ -11,7 +11,7 @@ packages are not signed, and the release lists the SHA-256 of every file in `SHA
 1. Set the version in `package.json` (the app, its settings and the release take it from there),
    commit it on `main`.
 2. Tag the commit `v<version>` and push the tag. The tag must be the version of `package.json`,
-   else the run fails at once. The build workflow builds every platform, checks them, signs and
+   else the run makes no release (its first check fails at once). The build workflow builds every platform, checks them, signs and
    notarises the Mac apps (Apple answers within a minute or so) and makes a draft release with the
    installers, the updates and their signatures, `SHA256SUMS`, `latest.json` and notes from the
    commits since the tag before.

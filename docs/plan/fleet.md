@@ -18,10 +18,11 @@ stops its app stack, so waiting costs disk, not memory.
   (`sdkRuntime` in `src/server/runtime.ts`), in a workspace from the repository's pool (clones or
   worktrees, design: Workspaces). A pool of clones is sized by the number of clones, and every
   leased clone counts the same whether its worker is busy or waits.
-- A repository with its own app stack per clone (OKE) starts it through the adapter's
-  `stack.start`. Since W1 Obeya stops it while the card waits, where the adapter names
-  `stack.stop` (design: Parking); OKE's adapter does not name it yet.
-- Measured on the owner's Mac (M4 Pro, 48 GB) on 8 Oct 2026, OKE canvas, 1–8 Oct: workers were
+- A repository with its own app stack per clone (the owner's work repository) starts it through
+  the adapter's `stack.start`. Since W1 Obeya stops it while the card waits, where the adapter
+  names `stack.stop` (design: Parking); the work repository's adapter names it, with `stack.keep`
+  for a workspace whose database is to persist.
+- Measured on the owner's Mac (M4 Pro, 48 GB) on 8 Oct 2026, the work repository's canvas, 1–8 Oct: workers were
   busy in a turn for 74 worker-hours but held a workspace for 963 (busy 8 % of the time). At most
   8 were busy at once, and busy work beyond 3 at once came to 17.6 worker-hours in 5 working
   days. The 5–9 held clones each kept their stack running (AppHost, API, simulators, Vite,
@@ -49,9 +50,8 @@ When a card waits for the owner (handed over, asked, its PR waiting) and its wor
 and no background command running, Obeya runs the adapter's `stack.stop` in its workspace after
 a short grace (a quick reply should not pay for a restart). The next message tells the worker
 that its stack was stopped; the worker starts it again when it needs it, through the repository's
-own way (for OKE: `stack-status.ts` reports none, then `app-host.sh`). A workspace whose stack
-holds data the owner would not want to lose (OKE: `POSTGRES_PERSISTENT=true` in `.apphost.urls`,
-a restored prod dump) is not parked unless the owner says so: the adapter's `stack.keep` exits 0
+own way (its status script reports none, then its start script). A workspace whose stack
+holds data the owner would not want to lose (a persistent database, a restored prod dump) is not parked unless the owner says so: the adapter's `stack.keep` exits 0
 for it, and the owner who wants it stopped anyway tells the worker.
 
 ### Hosts
@@ -79,31 +79,29 @@ On an SSH host:
 ### Cloud hosts (optional)
 
 Only if parking and the SSH hosts are not enough: a host type whose slots are cloud instances,
-one per card (EC2 `m8g.xlarge` in the OKE AWS Shared account for OKE). Obeya launches one from a
+one per card (an EC2 `m8g.xlarge`, say, in the using repository's cloud account). Obeya launches one from a
 prepared image when a card needs a slot and the other hosts are full, stops it some minutes after
 the card's last turn (only the disk is kept), starts it again on the owner's next message and
 terminates it once the work has landed. A cap on concurrent instances in the configuration. The
-image, network and IAM are the using repository's infrastructure (for OKE: a Pulumi stack under
-`infra/`). Estimate from the numbers above: about $25 a month with the Mac alone at today's load,
+image, network and IAM are the using repository's infrastructure (a Pulumi stack in it, say). Estimate from the numbers above: about $25 a month with the Mac alone at today's load,
 nearly nothing with a second machine, $190–290 a month on-demand at 36 agents.
 
 ## Workstreams
 
 - [x] **W1:** Parking. An optional `stack.stop` in the adapter type, run when a card waits (see
-  Parking); the worker hears that its stack was stopped. OKE's adapter (in the OKE repository,
-  `.obeya/adapter/index.ts`) sets it to `./scripts/kill-app-host.sh` in a card on the OKE canvas
-  once this lands. Done when an OKE card that hands over has no running stack a few minutes later
+  Parking); the worker hears that its stack was stopped. The work repository's adapter names its stop
+  script. Done when a card of the work repository that hands over has no running stack a few minutes later
   and gets it back without manual steps when the owner answers.
 - [ ] **W2:** Workers on SSH hosts. Hosts in the configuration and the sheet, spawning over SSH,
   git and file crossings over SSH, resuming after a dropped connection (see Hosts). Check first
-  that Obeya's tools and hooks work through `spawnClaudeCodeProcess` over SSH. Done when an OKE
-  card runs on the owner's second MacBook (macOS x86_64) end to end: work, checks, demo,
+  that Obeya's tools and hooks work through `spawnClaudeCodeProcess` over SSH. Done when a card of
+  the work repository runs on the owner's second MacBook (macOS x86_64) end to end: work, checks, demo,
   handover, landing.
 - [ ] **W3:** Slots and placement. Hosts capped by busy workers instead of clones, a new card on
   the first host with a free slot, the host per workspace in the Workspaces pill. Done when the
-  fourth busy OKE card goes to the second MacBook by itself while the Mac's three slots are busy.
+  fourth busy card goes to the second MacBook by itself while the Mac's three slots are busy.
 - [ ] **W4:** Cloud hosts, optional. Instances that start per card (see Cloud hosts), with the
-  OKE repository's `infra/` stack and worker image. Only if W1–W3 leave the owner short of slots.
+  work repository's infrastructure stack and worker image. Only if W1–W3 leave the owner short of slots.
 
 ## Open questions
 
