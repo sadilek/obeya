@@ -12,7 +12,7 @@ packages are not signed, and the release lists the SHA-256 of every file in `SHA
    commit it on `main`.
 2. Tag the commit `v<version>` and push the tag. The tag must be the version of `package.json`,
    else the run fails at once. The build workflow builds every platform, checks them, signs and
-   notarises the Mac apps (a few minutes more per Mac) and makes a draft release with the
+   notarises the Mac apps (Apple answers within a minute or so) and makes a draft release with the
    installers, the updates and their signatures, `SHA256SUMS`, `latest.json` and notes from the
    commits since the tag before.
 3. Read the draft and publish it. The README's and the site's download links go to the newest
@@ -94,8 +94,7 @@ now and then, and a release fails the same way until it is accepted again.
 Actions → Build → Run workflow, with "Sign and notarise the macOS app" ticked (or `gh workflow run
 build.yml --repo sadilek/obeya --ref main -f sign=true`): the Macs build as on a tag (without a
 release), and the step "The compiled server and the app around it" ends
-with Gatekeeper's verdict, `source=Notarized Developer ID`. Notarisation takes a few minutes per
-Mac. On a Mac, `bun run build:app` does the same with the certificate in the keychain:
+with Gatekeeper's verdict, `source=Notarized Developer ID`. On a Mac, `bun run build:app` does the same with the certificate in the keychain:
 
 ```sh
 APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" \
