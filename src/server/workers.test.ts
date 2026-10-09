@@ -1979,7 +1979,7 @@ describe('tool calls the settings refuse or want confirmed', () => {
     expect(state(c.id)).toBe('waiting:question');
     const q = board.item(c.id)!.question!;
     expect(q.options).toEqual(['Erlauben', 'Ablehnen']);
-    expect(q.text).toContain('```\nbun scripts/remote-psql.ts -c "update meters set …"\n```');
+    expect(q.text).toContain('`bun scripts/remote-psql.ts -c "update meters set …"`');
     expect(q.text).toContain('Grund der Rückfrage: Schreibzugriff');
     expect(board.events(c.id).at(-1)!.kind).toBe('question');
     // the worker waits for the owner, as after a question: a restart need not wait for it

@@ -1535,18 +1535,20 @@ export function describeTool(name: string, input: Record<string, unknown>, t: Me
   }
 }
 
-/** What a tool call that needs the owner's permission does, as the question shows it: a command whole, else its log line or its input. */
+/** What a tool call that needs the owner's permission does, as the question shows it: a command whole, line by line as code, else its log line or its input. */
 export function permissionWhat(name: string, input: Record<string, unknown>, t: Messages): string {
-  if (name === 'Bash' && typeof input.command === 'string') return fenced(clip(input.command, 4000));
+  if (name === 'Bash' && typeof input.command === 'string') return code(clip(input.command, 4000));
   const line = describeTool(name, input, t);
-  return line === name ? `${name}\n\n${fenced(clip(JSON.stringify(input, null, 2), 2000))}` : line;
+  return line === name ? `${name}: ${code(clip(JSON.stringify(input), 2000))}` : line;
 }
 
-/** A code block around `text`, its fence longer than any run of backticks in it. */
-const fenced = (text: string) => {
-  const fence = '`'.repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
-  return `${fence}\n${text}\n${fence}`;
-};
+/** Each line as inline code (a line that holds a backtick as it is): the card renders no code blocks. */
+const code = (text: string) =>
+  text
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => (l.includes('`') ? l : `\`${l}\``))
+    .join('\n');
 
 const permissionKey = (p: AskedPermission) => JSON.stringify([p.name, p.input]);
 

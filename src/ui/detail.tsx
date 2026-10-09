@@ -1512,7 +1512,9 @@ function Questions(p: { questions: Question[]; heading: string; picks: string[][
       <h4>{p.heading}</h4>
       {p.questions.map((q, i) => (
         <div key={i} className="ask-q">
-          <div className="q-text">{q.text}</div>
+          <div className="q-text">
+            <Body md={q.text} />
+          </div>
           {q.options.length > 0 && (
             <div className={`choices ${q.multiple ? 'multiple' : 'single'}`} role={q.multiple ? 'group' : 'radiogroup'}>
               {q.multiple && <div className="hint">{t.ask.several}</div>}
