@@ -1641,7 +1641,10 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   demos.example.dev braucht dieser Rechner sites/demos/deploy.env.“); placed later, it counts
   when the owner next comes back to the page. A site without `env` deploys with the machine's own
   login. `demo.share` stays for hosts that need more than deploying a directory; an adapter naming
-  both uses the site, and the command is a problem at the repository.
+  both uses the site, and the command is a problem at the repository. Two other ways were
+  considered and dropped (2026-10-08): a kit library each repository's own share script calls,
+  which still leaves a script to maintain in every repository, and hosting providers built into
+  Obeya, which puts provider code in the core where one deploy line covers them all.
   Several machines may publish to one site: each deploy is a full snapshot of one machine's
   directory, so a machine deploying only its own pages would take the others' offline. Obeya
   therefore pulls before it pushes. The site carries a manifest at its root, `obeya-site.json`:
@@ -1673,7 +1676,10 @@ Claude ist auf diesem Rechner nicht angemeldet: …“), not „nicht verstanden
   links, so the machine that moved its directory over goes first. A page another machine withdrew
   costs its card here the link, with a line naming the machine: noticed with the next share to
   that site or the once-a-minute check when the owner comes back. The guard against a directory
-  lacking pages Obeya has as shared stays as the last check after the pull.
+  lacking pages Obeya has as shared stays as the last check after the pull. Two other guards were
+  dropped: only refusing a deploy while the live manifest lists pages missing here, which left the
+  owner nothing to do but copy files by hand, and a shared storage directory (a synced folder or a
+  bucket) as the site's source, which pushes the problem onto every user's setup.
 - **Repo adapter** — how to start and refresh the stack, where the frontend URL comes from, the
   recipe for running the app in a demo (login, test data, migrations: `demo.howToRun`), where plan
   docs live, which reviews run, the site or the command that shares demos (the
@@ -2154,5 +2160,3 @@ the repository; the copy on the project is only for the archive).
   in the doc as part of their change. Should the project agent keep the doc's progress instead?
 - A plan doc without a `## Workstreams` checklist is not shown (its tasks under other headings,
   say). Fix such docs, or show them as projects without cards?
-- Switching the first site over to `demo.site`: planned in
-  [`docs/plan/demo-site.md`](plan/demo-site.md).
