@@ -722,7 +722,7 @@ export class Workers {
       case 'text':
         live.lastText = e.text;
         // after handing over, or answering a follow-up, the worker's closing words repeat what the card already shows
-        if (!live.handedOver && !live.answered) this.o.board.log(cardId, 'say', 'worker', clip(e.text, 600));
+        if (!live.handedOver && !live.answered) this.o.board.log(cardId, 'say', 'worker', clip(e.text, 12000));
         break;
       case 'tool':
         if (!e.name.startsWith('mcp__obeya__')) this.o.board.log(cardId, 'activity', 'worker', describeTool(e.name, e.input, this.o.board.t));

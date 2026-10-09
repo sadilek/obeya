@@ -1,7 +1,7 @@
 // A card's conversation, from its events.
 
 import { LANGUAGES } from '../core/locale';
-import { askable, type CardEvent, finished, formatQuestion, type Item, type Question } from '../core/types';
+import { answering, askable, type CardEvent, finished, formatQuestion, type Item, type Question } from '../core/types';
 import type { Field } from './api';
 
 /** One entry of the conversation: a message, with how the agent got to it folded under it, or a small line. */
@@ -176,6 +176,18 @@ export function ownerField(item: Pick<Item, 'state' | 'need' | 'question' | 'fin
   // a finished card's agent is resumed for what the owner asks about it
   return item.state === 'working' || item.state === 'inPr' || item.finishing || askable(item) ? 'note' : null;
 }
+
+/**
+ * Whether the card's agent is at work on it, so its conversation ends with the agent at work: an
+ * idea's agent thinking, a proposal reworked, a worker at work, taking in the owner's words on its
+ * handover, or finishing after the landing (unless it waits for the owner's answer).
+ */
+export const agentWorks = (i: Pick<Item, 'state' | 'need' | 'idea' | 'proposal' | 'answering' | 'finishing'>) =>
+  i.state === 'idea' && !!i.idea
+    ? !!i.idea.thinking
+    : i.state === 'proposal'
+      ? !!i.proposal?.revising
+      : i.state === 'working' || answering(i) || (!!i.finishing && finished(i.state));
 
 /** A task an agent has worked on: what came of it stands beside its conversation. */
 export const worked = (i: Pick<Item, 'state' | 'branch'>) => ['working', 'waiting', 'approved', 'inPr', 'live', 'done'].includes(i.state) && !!i.branch;

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { type CardEvent, formatQuestion } from '../core/types';
-import { ownerField, parseQuestion, split, talkAlone, talkTurns } from './talk';
+import { agentWorks, ownerField, parseQuestion, split, talkAlone, talkTurns } from './talk';
 
 let id = 0;
 const ev = (kind: CardEvent['kind'], author: CardEvent['author'], text: string): CardEvent => ({ id: ++id, cardId: 'c', at: '2026-10-01T10:00:00Z', kind, author, text });
@@ -200,4 +200,14 @@ test('a task an agent works on shows its conversation alone until there is a res
   expect(talkAlone({ state: 'working', branch: 'obeya/x', brief: '' })).toBe(true);
   expect(talkAlone({ state: 'planned' })).toBe(false);
   expect(talkAlone({ state: 'idea' })).toBe(false);
+});
+
+test("a worker taking in the owner's words on its handover is at work in the conversation, as one at work or finishing after the landing is", () => {
+  expect(agentWorks({ state: 'waiting', need: 'demo', answering: true })).toBe(true);
+  expect(agentWorks({ state: 'waiting', need: 'review', answering: true })).toBe(true);
+  expect(agentWorks({ state: 'waiting', need: 'demo' })).toBe(false);
+  expect(agentWorks({ state: 'waiting', need: 'question' })).toBe(false);
+  expect(agentWorks({ state: 'working' })).toBe(true);
+  expect(agentWorks({ state: 'live', finishing: true })).toBe(true);
+  expect(agentWorks({ state: 'live' })).toBe(false);
 });

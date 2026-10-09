@@ -67,7 +67,7 @@ export const formatQuestion = (q: Question, language: Language): string =>
 
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /** Its worker takes in the owner's words on its handover: meanwhile the card is at work, and still waits for approval. */
-export const answering = (i: Item) => i.state === 'waiting' && (i.need === 'demo' || i.need === 'review') && !!i.answering;
+export const answering = (i: Pick<Item, 'state' | 'need' | 'answering'>) => i.state === 'waiting' && (i.need === 'demo' || i.need === 'review') && !!i.answering;
 
 /**
  * Whether an agent hears what the owner says or types on the card when it is open: its worker (at

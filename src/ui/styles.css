@@ -242,8 +242,10 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
   width var(--unfold) var(--ease), height var(--unfold) var(--ease), border-radius var(--unfold); }
 /* the inner box keeps the final width while the panel unfolds, so the content can be measured before it shows */
 #panel .inner { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; overflow: auto; scrollbar-gutter: stable;
-  padding: 26px 30px 40px; opacity: 0; transition: opacity .12s; }
+  padding: 26px 30px; opacity: 0; transition: opacity .12s; }
+/* as much room below the last line as above the title */
 #panel .content { display: flow-root; }
+#panel .content > :last-child { margin-bottom: 0; }
 #panel.ready .inner { opacity: 1; }
 #panel .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); width: 32px; height: 32px; border-radius: 50%; cursor: pointer; z-index: 2; }
 #panel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); z-index: 1; }

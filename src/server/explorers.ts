@@ -199,7 +199,7 @@ export class Explorers {
       case 'text':
         live.lastText = e.text;
         // what it thinks on the way to its reply; words after the reply only close the turn
-        if (!live.replied && e.text.trim()) this.o.board.log(cardId, 'say', 'explorer', clip(e.text.trim(), 4000));
+        if (!live.replied && e.text.trim()) this.o.board.log(cardId, 'say', 'explorer', clip(e.text.trim(), 12000));
         break;
       case 'tool':
         // its own tools show in the conversation and the brief, not as reading

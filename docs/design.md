@@ -371,7 +371,10 @@ is answered by the first words the worker said after it. Once no agent works on 
 question is open, no message is coming for the steps after the last one: they go where they
 happened, before the lines that came later. The agent's last words among them stand as its message
 (the closing words after a landing, say), a turn it ended without words as its steps, and what only
-Obeya or the Koordinator noted there goes. While the worker works, its latest step shows; the question the card waits on (its own, or the one in its demo report) stands at the end with its options,
+Obeya or the Koordinator noted there goes. The agent's words are kept whole up to 12 000 characters, as
+its replies are (until 2026-10-09 a worker's were cut at 600, so a last message ended in „…“). While the worker
+works, also while it takes in the owner's words on its handover, the conversation ends with it at work and its
+latest step (until 2026-10-09 only the card's state said so then); the question the card waits on (its own, or the one in its demo report) stands at the end with its options,
 and the card's one field under it; a question a note took back stays, without options, „Durch deinen Hinweis erledigt“.
 A card that was an idea continues the idea's conversation in the same list.
 

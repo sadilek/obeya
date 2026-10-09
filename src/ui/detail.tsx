@@ -11,7 +11,7 @@ import { useQueueMove } from './queue';
 import { Inline, plain } from './markdown';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
-import { ownerField, parseQuestion, started, talkAlone, talkTurns, type Turn, worked as isWorked } from './talk';
+import { agentWorks, ownerField, parseQuestion, started, talkAlone, talkTurns, type Turn, worked as isWorked } from './talk';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -759,8 +759,7 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
   const idea = item.state === 'idea' && !!item.idea;
   const proposal = item.state === 'proposal';
   const asking = item.state === 'waiting' && item.need === 'question' ? item.question : undefined;
-  // a worker finishing after the landing works unless it waits for the owner's answer
-  const working = !past && (idea ? !!item.idea?.thinking : proposal ? !!item.proposal?.revising : item.state === 'working' || (!!item.finishing && finished(item.state)));
+  const working = !past && agentWorks(item);
   const asked = JSON.stringify(item.idea?.questions ?? asking ?? []);
   useEffect(() => {
     const el = box.current;

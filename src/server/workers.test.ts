@@ -158,6 +158,14 @@ describe('workers', () => {
     expect(workers.busy()).toBe(true);
   });
 
+  test("the worker's words stand whole in the log: the last of a turn may be its answer to the owner", () => {
+    const c = manual();
+    workers.start(c.id);
+    const long = `Nach dem Plan bleibt wenig zu tun. ${'Ein Satz, der weitergeht. '.repeat(60)}Das ist alles.`;
+    runtime.last.emit({ type: 'text', text: long });
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'say', author: 'worker', text: long });
+  });
+
   test('a due restart is announced to busy workers, who pause for it instead of being nudged', () => {
     const c = manual();
     workers.start(c.id);
