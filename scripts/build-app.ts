@@ -3,7 +3,10 @@
 // a Developer ID and notarised, see below), an NSIS installer on Windows, an AppImage and a .deb on
 // Linux (both unsigned).
 //
-//   bun scripts/build-app.ts [<target>] [--bundles <dmg,app,nsis,appimage,deb>] [--debug] [--verbose]
+//   bun scripts/build-app.ts [<target>] [--bundles <dmg,app,nsis,appimage,deb>] [--config <json>] [--debug] [--verbose]
+//
+// --config merges into app/tauri.conf.json for this build (scripts/check-update.ts gives the app
+// another version and another updater that way).
 //
 // The target is this machine's by default (see scripts/build.ts); another needs Rust's target for it
 // and Tauri's tools for cross-building. Needs Rust (rustup) and, on Linux, WebKitGTK's development
@@ -50,7 +53,7 @@ const opt = (name: string) => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const here = `${process.platform === 'win32' ? 'windows' : process.platform}-${process.arch}` as Target;
-const target = (args.find((a, i) => !a.startsWith('--') && !args[i - 1]?.startsWith('--bundles')) ?? here) as Target;
+const target = (args.find((a, i) => !a.startsWith('--') && !['--bundles', '--config'].includes(args[i - 1] ?? '')) ?? here) as Target;
 if (!(target in TRIPLES)) fail(`unknown target ${target} (known: ${Object.keys(TRIPLES).join(', ')})`);
 const triple = TRIPLES[target];
 const os = target.split('-')[0];
@@ -102,7 +105,7 @@ const developerId = os === 'darwin' && !!(process.env.APPLE_SIGNING_IDENTITY || 
 const signing = developerId ? ['--config', JSON.stringify({ bundle: { macOS: { signingIdentity: process.env.APPLE_SIGNING_IDENTITY ?? null } } })] : [];
 const tauri = (bundles: string, ...more: string[]) =>
   run(
-    [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : []), ...signing, ...more],
+    [process.execPath, 'x', 'tauri', 'build', '--bundles', bundles, ...(cross ? ['--target', triple] : []), ...(args.includes('--debug') ? ['--debug'] : []), ...(args.includes('--verbose') ? ['--verbose'] : []), ...(opt('config') ? ['--config', opt('config')!] : []), ...signing, ...more],
     APP,
     { CI: 'true' },
   );

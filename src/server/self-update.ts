@@ -1,7 +1,8 @@
 // Obeya on its own checkout: work that lands there changes the code this very process runs. The
 // supervisor in main.ts starts the server again when it exits with RESTART; this module tells
 // when that is due, and installs what the new code depends on before it goes. Stopping Obeya
-// (Ctrl-C, SIGTERM) waits for the workers the same way, and then nothing starts again.
+// (Ctrl-C, SIGTERM) waits for the workers the same way, and then nothing starts again; so does
+// installing a new version of the app, after which the app's shell starts it again (UPDATE).
 
 import { dirname } from 'node:path';
 import type { OwnerHold, RestartReason } from '../core/types';
@@ -12,6 +13,8 @@ import { GIT } from './workspaces';
 export const RESTART = 75;
 /** The same, and from now on with the configuration file rather than the command line's repositories. */
 export const RESTART_FROM_FILE = 76;
+/** The server ended for the app's shell to install a new version of the app and start it again (app/src/update.rs). */
+export const UPDATE = 77;
 
 /** How long a restart waits for workers to finish their turns before it cuts them off. */
 export const RESTART_PATIENCE_MS = 15 * 60_000;
@@ -52,7 +55,7 @@ export interface Due {
 export interface RestarterOptions {
   /** The workers in the middle of a turn. */
   busy: () => Busy[];
-  /** Stops the server so that it starts again, or for good when the reason is `stop`. */
+  /** Stops the server so that it starts again, or for good when the reason is `stop`, or for the app to be updated. */
   go: (reason: RestartReason) => void;
   patienceMs?: number;
   intervalMs?: number;
@@ -67,6 +70,7 @@ export interface RestarterOptions {
 export class Restarter {
   private current: Due | null = null;
   private stopping = false;
+  private updating = false;
   private gone = false;
   private stopWaiting = () => {};
   private listeners = new Set<() => void>();
@@ -96,13 +100,20 @@ export class Restarter {
     }
   }
 
-  /** Asks for a restart; one that is due already covers the next reason too, and turns into a stop when asked for one. */
+  /**
+   * Asks for a restart; one that is due already covers the next reason too, and turns into an
+   * update when asked for one (the update restarts too), or into a stop (nothing starts again).
+   */
   request(reason: RestartReason) {
     if (this.gone) return;
     if (reason === 'stop') this.stopping = true;
+    if (reason === 'update' && !this.stopping) this.updating = true;
     if (this.current) {
       if (reason === 'stop' && this.current.reason !== 'stop') {
         this.current = { ...this.current, reason, owner: [] };
+        this.emit();
+      } else if (reason === 'update' && this.current.reason !== 'stop' && this.current.reason !== 'update') {
+        this.current = { ...this.current, reason };
         this.emit();
       }
       return;
@@ -149,7 +160,7 @@ export class Restarter {
     this.gone = true;
     this.stopWaiting();
     this.current = null;
-    this.o.go(this.stopping ? 'stop' : reason);
+    this.o.go(this.stopping ? 'stop' : this.updating ? 'update' : reason);
   }
 
   private emit() {

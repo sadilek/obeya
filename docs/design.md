@@ -591,7 +591,9 @@ the owner's language (`src/core/locale.ts`).
   (the paths of `INERT` in the self-update left out), the installers kept a week as the run's
   artifacts, and on a tag `v<version>`, which must be `package.json`'s: then a draft GitHub
   Release gets every installer, the updater's archives with their signatures, `SHA256SUMS` and
-  `latest.json` (`scripts/release.ts`), and the owner publishes it. The installers carry fixed
+  `latest.json` (`scripts/release.ts`), its notes the subjects of the commits since the tag before
+  that change what runs (the first twelve lines also in `latest.json`, for the bar), and the owner
+  publishes it. The installers carry fixed
   names without the version (`Obeya-macOS-arm64.dmg`, `Obeya-Windows-x64-setup.exe`,
   `obeya_amd64.deb` …), which the README and the site link through `releases/latest/download/`,
   so the release is made the latest. The updater's archives are
@@ -615,6 +617,31 @@ the owner's language (`src/core/locale.ts`).
   (agreement, certificate, API key, the updater's key, a release) are in `docs/release.md`.
   Notarised on the owner's Mac and on GitHub's runners for both Macs (2026-10-09): Apple
   accepted Bun's binary with the JIT entitlements; Apple answered within 35–40 s.
+- **App updates** — the app updates itself from GitHub Releases through Tauri's updater
+  (`app/src/update.rs`), with Obeya's own key pair: the public key and the endpoint
+  (`releases/latest/download/latest.json`, so only a published release counts) are in
+  `app/tauri.conf.json`, the private key signs in CI (Builds). At start and every six hours the
+  shell asks; a newer version is downloaded and its signature checked at once, so installing takes
+  seconds. Every three seconds the shell reports it to the server it started in this run
+  (`POST /api/app-update`, gone 10 s after the shell stops reporting), and the bar shows
+  "Update 0.4.0" with the release's notes on hover and "Installieren". The app never installs by
+  itself: the owner's click (`POST /api/app-update/install`) asks the restarter for an `update`,
+  which waits as a restart for new code does (workers told and paused at a safe point, at most 15
+  minutes; the owner's video or dictation holds it; "Jetzt aktualisieren" goes ahead), covers a
+  restart already waiting, and gives way to a stop. Then the server ends with exit code 77
+  (`UPDATE`), which its supervisor passes on, and the shell, seeing its server end so, shows
+  "Obeya wird aktualisiert …", installs the update (the app bundle swapped on macOS, asking for
+  an administrator only where the app's folder is not writable; the NSIS installer in its passive
+  mode on Windows, which starts the app again itself, as the desktop's user and so without an
+  environment set for the app's process alone; the AppImage file replaced) and starts the
+  app again, whose server resumes the workers. An update that fails to install says why in a
+  dialog, and the app starts again in its old version. A .deb is not replaced by the app (dpkg
+  needs root): its bar offers the release to download instead. No update is offered for an
+  Obeya the app did not start in this run (it would not see it end), nor from a checkout, which
+  follows its git. `bun scripts/check-update.ts` checks it on the machine it runs on: it builds
+  the app as 0.0.1 and 0.0.2 with a key pair and a local release made for the check, installs the
+  first, and has it find, download and install the second and start again. It passed on macOS
+  arm64 and on GitHub's Windows x64 and Ubuntu x64 runners (2026-10-09).
 - **Site** (`site/`) — the page on obeya.si, in English whatever the interface speaks: plain HTML
   and CSS, no JavaScript, no framework and no build, so it opens straight from the file too. From
   the top: one sentence and the hero video; three pillars with screenshots (the canvas, voice, the

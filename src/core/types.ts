@@ -944,8 +944,23 @@ export interface FirstCanvas {
   restarting: boolean;
 }
 
-/** Why Obeya starts again: new code on the checkout it runs from, a configuration the owner saved, or a repository's own adapter changed on its default branch; or why it stops for good (Ctrl-C, SIGTERM). */
-export type RestartReason = 'code' | 'config' | 'adapter' | 'stop';
+/**
+ * Why Obeya starts again: new code on the checkout it runs from, a configuration the owner saved,
+ * a repository's own adapter changed on its default branch, or a new version of the app the owner
+ * installs; or why it stops for good (Ctrl-C, SIGTERM).
+ */
+export type RestartReason = 'code' | 'config' | 'adapter' | 'update' | 'stop';
+
+/** A newer version of the app that its shell has downloaded (app/src/update.rs), shown in the bar. */
+export interface AppUpdate {
+  version: string;
+  /** What changed, from the release. */
+  notes?: string;
+  /** When it was released (ms since the epoch). */
+  date?: number;
+  /** Where to get it, when the app cannot install it itself (a .deb). */
+  download?: string;
+}
 
 /** What the owner does in an open page that a restart would cut off: watching a demo video, dictating. */
 export type OwnerHold = 'video' | 'voice';
@@ -985,6 +1000,8 @@ export type ServerMessage =
   | { type: 'hello'; server: string }
   /** On connect and whenever it changes: the restart Obeya waits with, if any. */
   | { type: 'restart'; restart: PendingRestart | null }
+  /** On connect and whenever it changes: the newer version of the app there is to install, if any. */
+  | { type: 'update'; update: AppUpdate | null }
   /** On connect and whenever it changes: how many cards on each canvas need the owner, by canvas id. */
   | { type: 'waiting'; waiting: Record<string, number> }
   /** A line for the owner above the microphone, wherever they are. */

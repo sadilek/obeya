@@ -703,16 +703,17 @@ const de = {
     },
   },
   restart: {
-    pill: (n: number, owner: OwnerHold[], stop: boolean) => {
+    pill: (n: number, owner: OwnerHold[], reason: RestartReason) => {
       const agents = n === 1 ? '1 Agenten' : `${n} Agenten`;
       const you = owner.length === 2 ? 'dein Video und Diktat' : owner[0] === 'video' ? 'dein Video' : 'dein Diktat';
-      return `${stop ? 'Beenden' : 'Neustart'} wartet auf ${!owner.length ? agents : n ? `${agents} und ${you}` : you}`;
+      return `${reason === 'stop' ? 'Beenden' : reason === 'update' ? 'Update' : 'Neustart'} wartet auf ${!owner.length ? agents : n ? `${agents} und ${you}` : you}`;
     },
     until: (time: string) => `spätestens ${time}`,
     reason: {
       code: 'Auf main liegt neuer Code, mit dem Obeya neu startet.',
       config: 'Die Konfiguration wurde gespeichert; Obeya startet mit ihr neu.',
       adapter: 'Der Adapter eines Repositorys hat sich auf main geändert; Obeya startet mit ihm neu.',
+      update: 'Die neue Version der App wird installiert; danach startet Obeya neu.',
       stop: 'Obeya wird beendet (Strg-C oder SIGTERM). Ein zweites Strg-C im Terminal beendet es sofort.',
     } satisfies Record<RestartReason, string>,
     waits: 'Die Agenten wissen Bescheid und pausieren beim nächsten sicheren Punkt. Obeya wartet noch auf:',
@@ -723,11 +724,14 @@ const de = {
     } satisfies Record<OwnerHold, string>,
     kept: 'Was du offen hast, ist nach dem Neustart wieder offen, an derselben Stelle.',
     keptStop: 'Was du offen hast, ist beim nächsten Start wieder offen, an derselben Stelle. Die Agenten machen dann weiter.',
+    keptUpdate: 'Nach dem Update machen die Agenten in ihrer Sitzung weiter.',
     deadline: (time: string) => `Um ${time} startet Obeya auf jeden Fall neu.`,
     deadlineStop: (time: string) => `Um ${time} wird Obeya auf jeden Fall beendet.`,
+    deadlineUpdate: (time: string) => `Um ${time} wird Obeya auf jeden Fall aktualisiert.`,
     deadlineOwner: (time: string) => `Um ${time} startet Obeya neu, auch wenn Agenten noch arbeiten, aber nicht mitten in deinem Video oder Diktat.`,
     now: 'Jetzt neu starten',
     nowStop: 'Jetzt beenden',
+    nowUpdate: 'Jetzt aktualisieren',
     nowRisk:
       'Ohne zu warten: Die Agenten werden mitten im Schritt unterbrochen. Was sie gerade laufen lassen (Tests, Builds, gestartete Server, eine Demo-Aufnahme), wird gestoppt. Nach dem Neustart machen sie in ihrer Sitzung weiter und erfahren davon, müssen Abgebrochenes aber neu anstoßen; eine halb fertige Änderung liegt bis dahin unfertig im Workspace.',
     nowOwner: 'Ohne zu warten: Dein Video oder Diktat wird unterbrochen. Was offen war, ist danach wieder offen, das Video an derselben Stelle.',
@@ -735,6 +739,15 @@ const de = {
       'Ohne zu warten: Die Agenten werden mitten im Schritt unterbrochen. Was sie gerade laufen lassen (Tests, Builds, gestartete Server, eine Demo-Aufnahme), wird gestoppt. Beim nächsten Start machen sie in ihrer Sitzung weiter und erfahren davon, müssen Abgebrochenes aber neu anstoßen; eine halb fertige Änderung liegt bis dahin unfertig im Workspace.',
     going: 'Obeya startet neu …',
     goingStop: 'Obeya wird beendet …',
+    goingUpdate: 'Obeya wird aktualisiert …',
+  },
+  update: {
+    pill: (version: string) => `Update ${version}`,
+    install: 'Installieren',
+    download: 'Herunterladen',
+    title: (version: string, day: string | null) => `Obeya ${version} ist da${day ? ` (vom ${day})` : ''}.`,
+    how: 'Installieren wartet wie ein Neustart, bis die Agenten an einem sicheren Punkt pausieren (höchstens 15 Minuten), und nicht mitten in deinem Video oder Diktat. Dann ersetzt sich die App und startet neu, und die Agenten machen weiter.',
+    howDownload: 'Als .deb-Paket installiert, kann sich Obeya nicht selbst ersetzen: Lade das neue Paket herunter und installiere es wie das erste.',
   },
   workspaces: {
     label: 'Workspaces',
@@ -1558,16 +1571,17 @@ const en: Strings = {
     },
   },
   restart: {
-    pill: (n: number, owner: OwnerHold[], stop: boolean) => {
+    pill: (n: number, owner: OwnerHold[], reason: RestartReason) => {
       const agents = n === 1 ? '1 agent' : `${n} agents`;
       const you = owner.length === 2 ? 'your video and dictation' : owner[0] === 'video' ? 'your video' : 'your dictation';
-      return `${stop ? 'Shutdown' : 'Restart'} waits for ${!owner.length ? agents : n ? `${agents} and ${you}` : you}`;
+      return `${reason === 'stop' ? 'Shutdown' : reason === 'update' ? 'Update' : 'Restart'} waits for ${!owner.length ? agents : n ? `${agents} and ${you}` : you}`;
     },
     until: (time: string) => `at the latest ${time}`,
     reason: {
       code: 'There is new code on main that Obeya restarts with.',
       config: 'The configuration was saved; Obeya restarts with it.',
       adapter: "A repository's adapter changed on its default branch; Obeya restarts with it.",
+      update: 'The new version of the app is being installed; Obeya then restarts.',
       stop: 'Obeya is shutting down (Ctrl-C or SIGTERM). A second Ctrl-C in the terminal ends it at once.',
     },
     waits: 'The agents know and pause at the next safe point. Obeya is still waiting for:',
@@ -1578,11 +1592,14 @@ const en: Strings = {
     },
     kept: 'What you have open is open again after the restart, in the same place.',
     keptStop: 'What you have open is open again at the next start, in the same place. The agents then carry on.',
+    keptUpdate: 'After the update the agents carry on in their session.',
     deadline: (time: string) => `At ${time} Obeya restarts in any case.`,
     deadlineStop: (time: string) => `At ${time} Obeya shuts down in any case.`,
+    deadlineUpdate: (time: string) => `At ${time} Obeya updates in any case.`,
     deadlineOwner: (time: string) => `At ${time} Obeya restarts even if agents are still working, but not in the middle of your video or dictation.`,
     now: 'Restart now',
     nowStop: 'Shut down now',
+    nowUpdate: 'Update now',
     nowRisk:
       'Without waiting: the agents are cut off mid-step. What they are running (tests, builds, servers they started, a demo recording) is stopped. After the restart they carry on in their session and learn of it, but have to start again what was cut off; a half-finished change lies unfinished in the workspace until then.',
     nowOwner: 'Without waiting: your video or dictation is cut off. What was open is open again afterwards, the video at the same place.',
@@ -1590,6 +1607,15 @@ const en: Strings = {
       'Without waiting: the agents are cut off mid-step. What they are running (tests, builds, servers they started, a demo recording) is stopped. At the next start they carry on in their session and learn of it, but have to start again what was cut off; a half-finished change lies unfinished in the workspace until then.',
     going: 'Obeya is restarting …',
     goingStop: 'Obeya is shutting down …',
+    goingUpdate: 'Obeya is updating …',
+  },
+  update: {
+    pill: (version: string) => `Update ${version}`,
+    install: 'Install',
+    download: 'Download',
+    title: (version: string, day: string | null) => `Obeya ${version} is out${day ? ` (${day})` : ''}.`,
+    how: 'Installing waits like a restart until the agents pause at a safe point (at most 15 minutes), and not in the middle of your video or dictation. Then the app replaces itself and restarts, and the agents carry on.',
+    howDownload: 'Installed as a .deb package, Obeya cannot replace itself: download the new package and install it like the first one.',
   },
   workspaces: {
     label: 'Workspaces',

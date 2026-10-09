@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { agentListens, answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS } from '../core/types';
+import { agentListens, answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS, type AppUpdate } from '../core/types';
 import { api, ApiError, beforeReload, onNotice, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
@@ -20,7 +20,7 @@ import { Sign, Wordmark } from './logo';
 import { Help, HelpButton } from './help';
 import { imageFiles, useShotInput } from './shots';
 import { type Heard, PushToTalk, ToldList, usePushToTalk, useTold, type Where } from './voice';
-import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, WorkspacesPill } from './parts';
+import { CanvasPill, CardView, DepLinks, Edges, Links, Minimap, ProjectView, RestartPill, Sheet, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_GAP, sheetBottom, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { errorText, t } from './strings';
 import { split, talkAlone } from './talk';
@@ -52,9 +52,9 @@ function Splash({ offline }: { offline: boolean }) {
 }
 
 function Live({ canvases }: { canvases: CanvasInfo[] }) {
-  const { snapshot, online, restart, waiting } = useCanvas();
+  const { snapshot, online, restart, update, waiting } = useCanvas();
   if (!snapshot) return <Splash offline={!online} />;
-  return <Canvas snapshot={snapshot} online={online} restart={restart} canvases={canvases} waiting={waiting} />;
+  return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} canvases={canvases} waiting={waiting} />;
 }
 
 type Focus = { type: 'project'; id: string; prevCam: Cam } | { type: 'card'; id: string; prevCam: Cam; project: Focus | null };
@@ -81,12 +81,14 @@ function Canvas({
   snapshot,
   online,
   restart,
+  update,
   canvases,
   waiting,
 }: {
   snapshot: CanvasSnapshot;
   online: boolean;
   restart: PendingRestart | null;
+  update: AppUpdate | null;
   canvases: CanvasInfo[];
   waiting: Record<string, number>;
 }) {
@@ -1054,6 +1056,7 @@ function Canvas({
         <div className="right">
           {!online && <div className="pill offline">{t.offline}</div>}
           {online && restart && <RestartPill restart={restart} items={items} />}
+          {online && update && restart?.reason !== 'update' && <UpdatePill update={update} />}
           {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} items={items} />}
           <button className={cOn ? 'pill kpill on' : 'pill kpill'} onClick={toggleConfig}>
             {t.config.button}

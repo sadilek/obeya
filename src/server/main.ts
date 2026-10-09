@@ -17,7 +17,9 @@
 // Ctrl-C, SIGTERM or `POST /api/stop` (the app, app/, and Windows, which has no SIGTERM) stops
 // Obeya the way a restart goes: workers in the middle of a turn hear of it and pause, and Obeya
 // ends once none is (at most 15 minutes); a second Ctrl-C ends it at once. Workers it stopped are
-// resumed when Obeya starts again.
+// resumed when Obeya starts again. Installing a newer version of the app (`POST
+// /api/app-update/install`) goes the same way, and then Obeya ends with UPDATE for the app's shell,
+// which installs it and starts the app again.
 //
 // One Obeya per home (instance.ts): a start on a home where one runs says where and ends. The
 // running one has its port and pid in $OBEYA_HOME/server.json; while its server starts again, a
@@ -41,7 +43,8 @@ import { claudeExecutable, idleRuntime, sdkRuntime } from './runtime';
 import { claim, release, restarting, running } from './instance';
 import { extendPath, MachineSetup, welcome } from './machine';
 import { ShellReports } from './push-key';
-import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, watchOwnCode } from './self-update';
+import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, UPDATE, watchOwnCode } from './self-update';
+import { AppUpdates } from './app-update';
 import { COMPILED, resource, SELF, VERSION } from './resources';
 import { serve } from './server';
 import { voiceBackends, WhisperSidecar } from './voice';
@@ -163,6 +166,7 @@ const restarter = new Restarter({
   go: (reason) => {
     server?.stop(true);
     if (reason === 'stop') return shutdown(0);
+    if (reason === 'update') return shutdown(UPDATE);
     if (own && ranFrom) {
       const done = installDependencies(own, ranFrom);
       if (done.ran && done.ok) console.log(`Obeya: installed the new dependencies in ${own}`);
@@ -239,6 +243,7 @@ const backends = voiceBackends();
 const transcriber = new WhisperSidecar(backends.listen);
 const voiceSetup = new VoiceSetup({ home, backends, prepare: () => transcriber.prepare() });
 const shells = new ShellReports();
+const updates = new AppUpdates();
 const machine = new MachineSetup({ home, config, voice: voiceSetup, restarts: !!process.env.OBEYA_SUPERVISED, shells });
 // the canvas the assistant created gets a first card that says what to try
 welcome(home, canvases);
@@ -268,7 +273,7 @@ const stop = () => {
 };
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, stop);
 
-server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, shells);
+server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, shells, updates);
 claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, app: !!process.env.OBEYA_APP });
 console.log(`Obeya ${own ? `from ${own}` : VERSION} on ${server.url} (${source === 'file' ? configFile : 'canvases from the command line'}), agents on ${claudeExecutable() ?? 'the Claude Code the Agent SDK brings'}`);
 if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));

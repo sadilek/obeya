@@ -2,7 +2,7 @@ import { afterAll, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { collect, latest, sums } from './release';
+import { collect, latest, notes, sums } from './release';
 
 const tmp = mkdtempSync(join(tmpdir(), 'obeya-release-'));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -70,4 +70,33 @@ test('the checksums read as sha256sum writes them', () => {
     'ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  a.dmg\n' +
       '3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d  b.deb\n',
   );
+});
+
+test('the notes list the commits since the tag before that change what runs; the bar gets their start', () => {
+  const repo = join(tmp, 'repo');
+  mkdirSync(repo);
+  const git = (...a: string[]) => Bun.spawnSync(['git', '-C', repo, '-c', 'user.name=T', '-c', 'user.email=t@example.com', ...a], { stderr: 'pipe' });
+  const commit = (file: string, subject: string) => {
+    files(repo, { [file]: subject });
+    git('add', '.');
+    git('commit', '-qm', subject);
+  };
+  git('init', '-q', '-b', 'main');
+  commit('src/a.ts', 'First');
+  git('tag', 'v0.1.0');
+  commit('src/b.ts', 'Faster canvas');
+  commit('docs/design.md', 'Record the plan');
+  commit('README.md', 'Reword the README');
+  commit('app/src/main.rs', 'Quit cleanly');
+  git('tag', 'v0.2.0');
+  expect(notes(repo, 'v0.2.0')).toBe('- Quit cleanly\n- Faster canvas\n');
+  expect(notes(repo, 'v0.1.0')).toBe('- First\n');
+
+  const many = Array.from({ length: 20 }, (_, i) => `- Change ${i + 1}`).join('\n');
+  const dir = join(tmp, 'empty-release');
+  mkdirSync(dir);
+  const shown = latest(dir, 'v0.2.0', 'someone/obeya', new Date(), many).notes!.split('\n');
+  expect(shown).toHaveLength(12);
+  expect(shown.at(-1)).toBe('- … and 9 more');
+  expect(latest(dir, 'v0.2.0', 'someone/obeya', new Date())).not.toHaveProperty('notes');
 });

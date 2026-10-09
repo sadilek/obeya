@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { PushKeyView } from '../core/push-key';
-import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, FirstCanvas, MachineItem, MachineSectionId, MachineView, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, ServerMessage } from '../core/types';
+import type { AgentRole, AgentSetting, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigView, CardAction, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, FirstCanvas, MachineItem, MachineSectionId, MachineView, SetupCheck, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, ServerMessage, AppUpdate } from '../core/types';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -106,6 +106,8 @@ export const api = {
   },
   /** Has a restart that waits for workers go ahead now; false when none waits. */
   restartNow: () => call<{ restarting: boolean }>('POST', '/api/restart'),
+  /** Installs the newer version of the app once the workers paused, as a restart waits for them. */
+  installUpdate: () => call<{ updating: boolean }>('POST', '/api/app-update/install'),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   /** The card that writes a repository's own adapter, on the canvas it belongs to (not necessarily the shown one). */
   adapterSetup: (canvas: string, repo: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/adapter-setup`, { repo }),
@@ -234,12 +236,13 @@ export function reload() {
 
 /**
  * The live canvas: the server pushes a snapshot on connect and after every change, the restart that
- * waits, and how many cards on each canvas need the owner.
+ * waits, the newer version of the app there is, and how many cards on each canvas need the owner.
  */
-export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean; restart: PendingRestart | null; waiting: Record<string, number> } {
+export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean; restart: PendingRestart | null; update: AppUpdate | null; waiting: Record<string, number> } {
   const [snapshot, setSnapshot] = useState<CanvasSnapshot | null>(null);
   const [online, setOnline] = useState(true);
   const [restart, setRestart] = useState<PendingRestart | null>(null);
+  const [update, setUpdate] = useState<AppUpdate | null>(null);
   const [waiting, setWaiting] = useState<Record<string, number>>({});
   useEffect(() => {
     let ws: WebSocket;
@@ -263,6 +266,7 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
           server = msg.server;
         } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
         else if (msg.type === 'restart') setRestart(msg.restart);
+        else if (msg.type === 'update') setUpdate(msg.update);
         else if (msg.type === 'waiting') setWaiting(msg.waiting);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
         else if (msg.type === 'notice') for (const fn of noticeListeners) fn(msg);
@@ -292,5 +296,5 @@ export function useCanvas(): { snapshot: CanvasSnapshot | null; online: boolean;
       ws.close();
     };
   }, []);
-  return { snapshot, online, restart, waiting };
+  return { snapshot, online, restart, update, waiting };
 }

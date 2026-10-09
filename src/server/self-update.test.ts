@@ -216,3 +216,33 @@ test('a stop with no worker busy goes at once, even while the owner watches a vi
   expect(gone).toEqual(['stop']);
   expect(r.due()).toBeNull();
 });
+
+test('installing an update turns a restart that waits into an update, which waits for the owner too', async () => {
+  const gone: string[] = [];
+  let busy: Busy[] = [{ canvas: 'c', card: 'a' }];
+  const r = new Restarter({ busy: () => busy, go: (reason) => gone.push(reason), patienceMs: 10_000, intervalMs: 10 });
+  r.request('code');
+  r.request('update');
+  r.hold('page', ['video']);
+  expect(r.due()).toMatchObject({ reason: 'update', owner: ['video'] });
+  // new code meanwhile is covered by the update, which restarts too
+  r.request('code');
+  expect(r.due()?.reason).toBe('update');
+  busy = [];
+  await wait(50);
+  expect(gone).toEqual([]);
+  r.hold('page');
+  await wait(50);
+  expect(gone).toEqual(['update']);
+});
+
+test('a stop wins over an update that waits', () => {
+  const gone: string[] = [];
+  const r = new Restarter({ busy: () => [{ canvas: 'c', card: 'a' }], go: (reason) => gone.push(reason), patienceMs: 10_000, intervalMs: 10 });
+  r.request('update');
+  r.request('stop');
+  expect(r.due()?.reason).toBe('stop');
+  r.request('update');
+  expect(r.now()).toBe(true);
+  expect(gone).toEqual(['stop']);
+});

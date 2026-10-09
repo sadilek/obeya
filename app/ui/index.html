@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- What the window shows until Obeya answers; then the shell (src/main.rs) loads the canvas. -->
+<!-- What the window shows until Obeya answers; then the shell (src/main.rs) loads the canvas. And while an update goes in. -->
 <html>
   <head>
     <meta charset="utf-8" />
@@ -16,7 +16,9 @@
     <img src="logo.svg" alt="" />
     <div id="what"></div>
     <script>
-      document.getElementById('what').textContent = navigator.language.startsWith('de') ? 'Obeya startet …' : 'Obeya is starting …';
+      const de = navigator.language.startsWith('de');
+      // ?updating: the shell installs an update (src/update.rs) and then starts the app again
+      document.getElementById('what').textContent = location.search === '?updating' ? (de ? 'Obeya wird aktualisiert …' : 'Obeya is updating …') : de ? 'Obeya startet …' : 'Obeya is starting …';
     </script>
   </body>
 </html>

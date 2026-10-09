@@ -16,6 +16,8 @@
 //   held); the system asks once for the app. WebKitGTK has media streams off until turned on here.
 // - Downloads go into the Downloads folder and are shown there.
 // - A key held anywhere on the machine records a command while another app is in front (ptt.rs).
+// - A newer release is downloaded in the background, shown in the bar and installed when the owner
+//   says so, once the workers paused (update.rs).
 // - OBEYA_APP_CHECK=<url of a module>: the page imports it once the canvas has loaded
 //   (scripts/check-app.ts checks the microphone and video in the webview that way).
 // - OBEYA_CHECKOUT=<checkout>: started from a checkout (`bun run app`, scripts/app.ts), the shell
@@ -27,6 +29,7 @@
 mod keys;
 mod mic;
 mod ptt;
+mod update;
 
 use std::{
   collections::HashMap,
@@ -62,6 +65,8 @@ pub(crate) struct Obeya {
   pub(crate) port: AtomicU16,
   /// Started by the app (now or by an earlier run of it): quitting stops it.
   owned: AtomicBool,
+  /// Started in this run: the shell sees it end, and how (an update is installed then).
+  pub(crate) child: AtomicBool,
   /// The owner quit; the server is told once it answers.
   stopping: AtomicBool,
 }
@@ -209,7 +214,7 @@ fn start_server(app: &AppHandle, home: &Path, port: u16, log: &(fs::File, PathBu
 
 /// Brings up the Obeya of this home (the running one, else a new server) and shows its canvas;
 /// ends the app when the server it owns has ended.
-fn serve(app: AppHandle, obeya: Arc<Obeya>) {
+fn serve(app: AppHandle, obeya: Arc<Obeya>, updates: Arc<update::Updates>) {
   let home = home(&app);
   let attach = |port: u16, owned: bool| {
     obeya.port.store(port, Ordering::SeqCst);
@@ -262,7 +267,9 @@ fn serve(app: AppHandle, obeya: Arc<Obeya>) {
     thread::sleep(Duration::from_millis(150));
   }
   attach(port, true);
+  obeya.child.store(true, Ordering::SeqCst);
   match child.wait() {
+    Ok(status) if status.code() == Some(update::EXIT) => update::install(&app, &updates),
     Ok(status) if status.success() || obeya.stopping.load(Ordering::SeqCst) => app.exit(0),
     Ok(status) => fail(&app, ended(status, &log.1)),
     Err(e) => fail(&app, e.to_string()),
@@ -445,6 +452,7 @@ fn main() {
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .invoke_handler(tauri::generate_handler![ptt::panel_fit])
     .setup(move |app| {
       let handle = app.handle().clone();
@@ -463,8 +471,9 @@ fn main() {
       });
       window(&handle, for_setup.clone())?;
       ptt::start(&handle, for_setup.clone());
+      let updates = update::start(&handle, for_setup.clone());
       let obeya = for_setup.clone();
-      thread::spawn(move || serve(handle, obeya));
+      thread::spawn(move || serve(handle, obeya, updates));
       Ok(())
     })
     .build(tauri::generate_context!())

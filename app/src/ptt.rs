@@ -76,7 +76,7 @@ fn get(port: u16, path: &str) -> Option<Value> {
   serde_json::from_str(&res.into_string().ok()?).ok()
 }
 
-fn post(port: u16, path: &str, body: &Value) -> Option<Value> {
+pub(crate) fn post(port: u16, path: &str, body: &Value) -> Option<Value> {
   let res = ureq::post(&format!("{}{path}", base(port)))
     .timeout(Duration::from_secs(2))
     .set("content-type", "application/json")

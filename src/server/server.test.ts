@@ -7,6 +7,7 @@ import type { Board } from './board';
 import { CanvasRuntime } from './canvas';
 import type { Command } from './commands';
 import { Store } from './db';
+import { AppUpdates } from './app-update';
 import { Restarter } from './self-update';
 import { serve } from './server';
 import { FakeRuntime, gitRepo, identify, noForge, until } from './testing';
@@ -481,6 +482,54 @@ describe('„Merk dir“', () => {
     canvas.rejectRule(waiting);
     expect(board.item(collect.id)!.queue).toBeTruthy();
     expect(board.collecting(repo)).toBeUndefined();
+  });
+});
+
+describe('a newer version of the app', () => {
+  test('shows on the canvas while the shell reports it, and installing it waits like a restart', async () => {
+    const gone: string[] = [];
+    let busy = [{ canvas: 'main', card: 'k1' }];
+    const restarter = new Restarter({ busy: () => busy, go: (reason) => gone.push(reason), patienceMs: 60_000, intervalMs: 10 });
+    const updates = new AppUpdates();
+    server.stop(true);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, undefined, updates);
+    const messages: ServerMessage[] = [];
+    const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
+    ws.onmessage = (e) => messages.push(JSON.parse(e.data));
+    const shown = () => messages.filter((m): m is Extract<ServerMessage, { type: 'update' }> => m.type === 'update');
+    await until(() => shown().length === 1);
+    expect(shown()[0]!.update).toBeNull();
+    // nothing to install yet
+    expect(await codeOf(post('/api/app-update/install', ''))).toBe('invalid');
+
+    expect(await codeOf(post('/api/app-update', JSON.stringify({ notes: 'x' })))).toBe('invalid');
+    const report = { version: '0.2.0', notes: '- Faster.\n- Smaller.', date: Date.UTC(2026, 9, 12), download: null };
+    expect(await (await post('/api/app-update', JSON.stringify(report))).json()).toEqual({ version: '0.2.0', notes: '- Faster.\n- Smaller.', date: Date.UTC(2026, 9, 12) });
+    await until(() => shown().length === 2);
+    expect(shown()[1]!.update).toMatchObject({ version: '0.2.0' });
+    // the same again every few seconds tells the page nothing new
+    await post('/api/app-update', JSON.stringify(report));
+    await sleep(50);
+    expect(shown()).toHaveLength(2);
+
+    expect(await (await post('/api/app-update/install', '')).json()).toEqual({ updating: true });
+    await until(() => restarter.due()?.reason === 'update');
+    expect(gone).toEqual([]);
+    busy = [];
+    await until(() => gone.length === 1);
+    expect(gone).toEqual(['update']);
+    ws.close();
+  });
+
+  test('one the app cannot install (a .deb) is only shown, with where to get it', async () => {
+    const restarter = new Restarter({ busy: () => [], go: () => {} });
+    const updates = new AppUpdates();
+    server.stop(true);
+    server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, restarter, undefined, undefined, undefined, undefined, updates);
+    await post('/api/app-update', JSON.stringify({ version: '0.2.0', download: 'https://github.com/sadilek/obeya/releases/tag/v0.2.0' }));
+    expect(updates.current()).toEqual({ version: '0.2.0', download: 'https://github.com/sadilek/obeya/releases/tag/v0.2.0' });
+    expect(await codeOf(post('/api/app-update/install', ''))).toBe('invalid');
+    expect(restarter.due()).toBeNull();
   });
 });
 

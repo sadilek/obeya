@@ -24,5 +24,12 @@
       "deb": { "depends": ["git", "gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad", "gstreamer1.0-libav"] },
       "appimage": { "bundleMediaFramework": true }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzRENGQ0FCOUI2NjU5NkEKUldScVdXYWJxL3pjMHplMVl3RkQxRjVjOUd2eitPellST1o2N2dWczM5Mk1HNXB0ZWUvRzVqTEUK",
+      "endpoints": ["https://github.com/sadilek/obeya/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
   }
 }

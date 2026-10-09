@@ -137,6 +137,7 @@ const DUE_WHY: Record<RestartReason, string> = {
   config: 'restart (the owner saved a new configuration)',
   adapter: "restart (a repository's adapter changed on its default branch)",
   stop: 'stop (the owner is shutting it down)',
+  update: 'restart (the owner installs a new version of the app)',
 };
 
 /** Tells a worker that Obeya is about to restart or stop, so that it pauses at a safe point instead of being cut off. */

@@ -19,6 +19,7 @@ import { looping, silence, type Transcriber } from './voice';
 import type { MachineSetup } from './machine';
 import type { VoiceSetup } from './voice-setup';
 import { ShellReports } from './push-key';
+import { AppUpdates } from './app-update';
 
 type Req = Request & { params: Record<string, string> };
 
@@ -41,6 +42,8 @@ export function serve(
   stop?: () => void,
   /** What the app's shell reports about the push-to-talk key, shared with the setup assistant. */
   shells = new ShellReports(),
+  /** The newer version of the app its shell has ready. */
+  updates = new AppUpdates(),
 ) {
   const byId = new Map(canvases.map((c) => [c.id, c]));
   const started = crypto.randomUUID();
@@ -62,6 +65,7 @@ export function serve(
       for (const ws of sockets.get(c.id)!) ws.send(text);
     };
     restarter?.onChange(() => send({ type: 'restart', restart: pending(c.id) }));
+    updates.onChange(() => send({ type: 'update', update: updates.current() }));
     c.board.onChange(() => {
       send({ type: 'snapshot', snapshot: c.board.snapshot() });
       const n = counted(c);
@@ -333,6 +337,29 @@ export function serve(
             return pushKeyView();
           }),
       },
+      // the app's shell, every few seconds while it has a newer version of the app ready
+      '/api/app-update': {
+        GET: () => Response.json(updates.current()),
+        POST: async (req) =>
+          handle(async () => {
+            try {
+              return updates.report(await req.json());
+            } catch (e) {
+              throw e instanceof TypeError ? new BadRequest('invalid', e.message) : e;
+            }
+          }),
+      },
+      // the owner installs it: once the workers paused, Obeya ends for the shell to install it and start again
+      '/api/app-update/install': {
+        POST: () =>
+          handle(() => {
+            const update = updates.current();
+            if (!restarter || !update || update.download) throw new BadRequest('invalid', 'no update the app can install');
+            // after the answer is out: with no worker to wait for, the update ends this server at once
+            setTimeout(() => restarter.request('update'), 100);
+            return { updating: true };
+          }),
+      },
       // where the owner was last in a page: the shell's command goes there
       '/api/focus': { GET: () => Response.json(lastFocus()) },
       '/api/c/:canvas/cards/:id/export': {
@@ -425,6 +452,7 @@ export function serve(
         ws.send(JSON.stringify({ type: 'hello', server: started } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'restart', restart: pending(c.id) } satisfies ServerMessage));
+        ws.send(JSON.stringify({ type: 'update', update: updates.current() } satisfies ServerMessage));
         ws.send(waitingMessage());
       },
       close: (ws) => {

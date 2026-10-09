@@ -114,8 +114,7 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   its checksum and held the app signed ad hoc with its server. The last run passed in full, the
   tests on Linux too. The first runs found that the tests need uv and ffmpeg, and that
   `watchPlanDocs` heard nothing from a plan directory that came back on Linux (fixed since by
-  polling it). Not tried: a real tag (the release job's tag check, `--verify-tag`, `--latest`),
-  and the update archives against the updater, which W5 brings.
+  polling it). Not tried: a real tag (the release job's tag check, `--verify-tag`, `--latest`).
 - *Signing* (W4, 2026-10-09, design: Builds, `docs/release.md`): `build-app.ts` signs the Mac
   app with a Developer ID when it has a certificate (`APPLE_CERTIFICATE` in CI, the keychain's
   `APPLE_SIGNING_IDENTITY` on a Mac), has the DMG notarised with an App Store Connect API key
@@ -132,6 +131,22 @@ stays as it is: Obeya is developed that way and keeps updating itself from its c
   `.p12` exported from the key's row holds no certificate ("failed to resolve signing
   identity"); `docs/release.md` says both. The owner's Developer ID certificate runs out on
   2027-02-01. Not tried: a real tag, which W3 left open too.
+- *Updates* (W5, 2026-10-08, design: App updates): Tauri's updater (plugin 2.13) with Obeya's own
+  key pair (public key in `app/tauri.conf.json`, private key `~/.tauri/obeya.key` on the owner's
+  Mac, the secret and how to release in `docs/release.md`). The shell downloads a newer version
+  in the background and reports it; the bar shows "Update 0.4.0" with the notes (the release's
+  commit subjects, from `scripts/release.ts`) and "Installieren", which waits as a restart does and
+  then ends the server with exit code 77; the shell installs and starts the app again. `bun
+  scripts/check-update.ts` passed on macOS arm64 and on GitHub's Windows x64 and Ubuntu 22.04 x64
+  runners (temporary branch `w5-update-check`, runs 37896598068 and 37898233911, deleted): an app
+  built as 0.0.1 (installed by its NSIS installer on Windows, an AppImage on Linux), found 0.0.2 at
+  a local release, downloaded it, replaced itself after the install click and ran as 0.0.2, which
+  found nothing newer. On Windows the installer starts the new version as the desktop's user,
+  without the old app's environment: an `OBEYA_HOME` set only for the app's process is lost
+  there, so the check follows it to `~/.obeya`. A .deb only offers the download; the arm64
+  AppImage and the Intel Mac were not tried. The app must not run from a path with a symlink in it
+  (Tauri refuses; macOS's `/tmp` is one), which an installed app never does. The check builds
+  unsigned (ad hoc on macOS); an update of the Developer ID app was not tried.
 
 ## Design
 
@@ -319,7 +334,7 @@ after W3. W7 beside W2. W8 (global push-to-talk) after W2, beside W3.
 - [x] **W4:** Signing and notarisation. macOS: Developer ID, hardened runtime with the Bun
   entitlements, notarised and stapled in CI. Windows and Linux unsigned, with checksums. The
   owner's steps (certificate, API key, secrets) in `docs/release.md`.
-- [ ] **W5:** Auto-update through GitHub Releases. Tauri's updater with its own key pair; the bar
+- [x] **W5:** Auto-update through GitHub Releases. Tauri's updater with its own key pair; the bar
   shows a newer version; installing waits for the workers like a restart, then replaces and
   restarts the app.
 - [x] **W6:** Setup assistant on first start. One list of what Obeya needs (Claude Code and its

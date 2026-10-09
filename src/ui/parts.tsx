@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { type Bounds, shapeOf } from '../core/layout';
-import { answering, type CanvasInfo, type ClonePool, finished, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
+import { answering, type AppUpdate, type CanvasInfo, type ClonePool, finished, type Item, needsYou, type PendingRestart, type ProjectHistory } from '../core/types';
 import { api } from './api';
 import type { Cam } from './camera';
 import type { Shape } from './groups';
@@ -219,17 +219,17 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
   if (going)
     return (
       <div className="pill restart going" id="restart">
-        <span className="spin">↻</span> {stop ? t.restart.goingStop : t.restart.going}
+        <span className="spin">↻</span> {stop ? t.restart.goingStop : restart.reason === 'update' ? t.restart.goingUpdate : t.restart.going}
       </div>
     );
   return (
     <div className="pill restart" id="restart">
       <span className="spin">↻</span>
-      <span>{t.restart.pill(n, owner, stop)}</span>
+      <span>{t.restart.pill(n, owner, restart.reason)}</span>
       {/* the deadline does not cut the owner off */}
       {!owner.length && <span className="hint">{t.restart.until(until)}</span>}
       <button onClick={now}>
-        {stop ? t.restart.nowStop : t.restart.now}
+        {stop ? t.restart.nowStop : restart.reason === 'update' ? t.restart.nowUpdate : t.restart.now}
         <span className="tip risk" role="tooltip">
           {stop ? t.restart.nowRiskStop : n ? t.restart.nowRisk : t.restart.nowOwner}
         </span>
@@ -250,8 +250,40 @@ export function RestartPill({ restart, items }: { restart: PendingRestart; items
             </ul>
           </>
         )}
-        <p className="hint">{stop ? t.restart.keptStop : t.restart.kept}</p>
-        {n > 0 && <p className="hint">{stop ? t.restart.deadlineStop(until) : owner.length ? t.restart.deadlineOwner(until) : t.restart.deadline(until)}</p>}
+        <p className="hint">{stop ? t.restart.keptStop : restart.reason === 'update' ? t.restart.keptUpdate : t.restart.kept}</p>
+        {n > 0 && <p className="hint">{stop ? t.restart.deadlineStop(until) : owner.length ? t.restart.deadlineOwner(until) : restart.reason === 'update' ? t.restart.deadlineUpdate(until) : t.restart.deadline(until)}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A newer version of the app, downloaded by its shell: what changed (on hover), and a button that
+ * installs it once the workers paused, as a restart waits for them (then RestartPill shows the wait).
+ * A .deb cannot be replaced by the app: the button opens the release to download it.
+ */
+export function UpdatePill({ update }: { update: AppUpdate }) {
+  const [asked, setAsked] = useState(false);
+  const install = () => {
+    setAsked(true);
+    api.installUpdate().catch(() => setAsked(false));
+  };
+  return (
+    <div className="pill restart update" id="update">
+      <span>{t.update.pill(update.version)}</span>
+      {update.download ? (
+        <button onClick={() => window.open(update.download, '_blank')}>{t.update.download}</button>
+      ) : (
+        <button onClick={install} disabled={asked}>
+          {t.update.install}
+        </button>
+      )}
+      <div className="tip why" role="tooltip">
+        <p>
+          <b>{t.update.title(update.version, update.date ? shortDay(update.date) : null)}</b>
+        </p>
+        {update.notes && <Doc md={update.notes} />}
+        <p className="hint">{update.download ? t.update.howDownload : t.update.how}</p>
       </div>
     </div>
   );
