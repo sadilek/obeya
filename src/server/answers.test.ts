@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { waitingOn } from '../core/types';
 import { CanvasRuntime } from './canvas';
 import type { Focus } from './commands';
 import { Store } from './db';
@@ -85,6 +86,8 @@ describe('a question the Koordinator looks up', () => {
     // the project agent keeps its session: it knows the plan and the history
     expect(board().row(w4.parent!).session_id).toBe('project-1');
     expect(board().talk().at(-1)).toMatchObject({ question: 'What would the worker do on W4 if the owner started it now?', answer: '1. Liest das Plan-Doc.\n2. Fragt nach dem Go.', answerBy: 'project' });
+    // it is read on the card, so the sheet does not wait with it
+    expect(board().talk().at(-1)!.unread).toBeUndefined();
 
     // the Koordinator hears the answer with the next command
     const next = await say('und dann?', { card: w4.id }, 'reply', { confirm: 'Dann wartet er.' });
@@ -106,8 +109,13 @@ describe('a question the Koordinator looks up', () => {
     a.call('answer_owner', { text: 'Er sucht den Hänger.' });
     a.emit({ type: 'idle' });
     await settle();
-    expect(board().snapshot().talk.at(-1)).toMatchObject({ answer: 'Er sucht den Hänger.', answerBy: 'koordinator' });
+    expect(board().snapshot().talk.at(-1)).toMatchObject({ answer: 'Er sucht den Hänger.', answerBy: 'koordinator', unread: true });
     expect(notices).toEqual([[undefined, 'Er sucht den Hänger.']]);
+    // Obeya waits for the owner with it, like a card that needs them, until they see the sheet
+    expect(waitingOn(board().snapshot())).toBe(1);
+    board().readTalk();
+    expect(board().snapshot().talk.at(-1)!.unread).toBeUndefined();
+    expect(waitingOn(board().snapshot())).toBe(0);
   });
 
   test('an unknown card tag goes back to the Koordinator', async () => {

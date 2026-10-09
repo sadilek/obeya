@@ -4,7 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, needsYou, type NewCard, type PendingRestart, type ServerMessage } from '../core/types';
+import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type NewCard, type PendingRestart, type ServerMessage, waitingOn } from '../core/types';
 import index from '../ui/index.html';
 import panel from '../ui/panel.html';
 import { BadRequest } from './board';
@@ -55,8 +55,8 @@ export function serve(
     const here = due.waiting.filter((w) => w.canvas === id);
     return { reason: due.reason, since: due.since, deadline: due.deadline, cards: here.map((w) => w.card), elsewhere: due.waiting.length - here.length, owner: due.owner };
   };
-  /** How many cards on each canvas need the owner: each canvas's switcher points to the others. */
-  const counted = (c: CanvasRuntime) => c.board.snapshot().items.filter(needsYou).length;
+  /** How many things on each canvas need the owner: each canvas's switcher points to the others. */
+  const counted = (c: CanvasRuntime) => waitingOn(c.board.snapshot());
   const waiting = Object.fromEntries(canvases.map((c) => [c.id, counted(c)]));
   const waitingMessage = () => JSON.stringify({ type: 'waiting', waiting } satisfies ServerMessage);
   for (const c of canvases) {
@@ -437,6 +437,8 @@ export function serve(
         DELETE: on((c) => c.sharing.dismissResharing()),
       },
       '/api/c/:canvas/reshare/stop': { POST: on((c) => c.sharing.stopResharing()) },
+      // the owner has the Koordinator's sheet in view: the answers waiting there are read
+      '/api/c/:canvas/talk/read': { POST: on((c) => c.board.readTalk()) },
       '/api/c/:canvas/ws': (req, server) =>
         byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID() } })
           ? undefined

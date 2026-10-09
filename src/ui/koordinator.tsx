@@ -1,15 +1,13 @@
 // The Koordinator's sheet: the conversation, with the height the sheet has, and below it sections
-// that open and close: the rules it learned and proposes, what waits, and the owner's preferences;
-// and shared demos to bring up to date at once.
+// that open and close: the rules it learned and proposes, and the owner's preferences; and shared
+// demos to bring up to date at once.
 
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
-import { queueOrder } from '../core/queue';
 import type { Item, Preference, RepoRef, Reshare, Talk } from '../core/types';
 import { api, ApiError } from './api';
 import { plain } from './markdown';
 import { Body, Msg } from './message';
-import { errorText, stateLabel, t } from './strings';
-import { useQueueMove } from './queue';
+import { errorText, t } from './strings';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 
 interface Props {
@@ -28,19 +26,17 @@ interface Props {
 }
 
 export function KoordinatorSheet({ on, canvas, items, preferences, repos, talk, reshare, onOpen, onTell }: Props) {
-  // in turn, with the cards being cut after them
-  const order = queueOrder(items);
-  const queued = [...order, ...items.filter((i) => i.state === 'planned' && i.queue && !order.includes(i))];
   const proposals = preferences.filter((p) => p.state === 'proposed');
   const rules = preferences.filter((p) => p.state === 'active');
   const [folds, setFolds] = useFolds(canvas);
+  const fresh = useRead(on, talk);
   // the proposals stay closed only as long as no proposal came after the owner closed them
   const proposalsOpen = !folds.proposalsClosed || proposals.some((p) => !folds.proposalsClosed!.includes(p.id));
   return (
     <aside id="ksheet" className={on ? 'sheet on' : 'sheet'}>
       <div className="p-kind">{t.koordinator.kind}</div>
       <h2>{t.koordinator.title}</h2>
-      <Conversation talk={talk} />
+      <Conversation talk={talk} fresh={fresh} />
       <TellKoordinator onTell={onTell} />
 
       <div className="k-rest">
@@ -62,16 +58,6 @@ export function KoordinatorSheet({ on, canvas, items, preferences, repos, talk, 
 
         {reshare && <ReshareBox r={reshare} items={items} onOpen={onOpen} />}
 
-        {queued.length > 0 && (
-          <Fold head={t.koordinator.queueHead(queued.length)} open={!!folds.queue} onToggle={() => setFolds({ ...folds, queue: !folds.queue })}>
-            <ol>
-              {queued.map((i) => (
-                <QueueRow key={i.id} item={i} items={items} onOpen={onOpen} />
-              ))}
-            </ol>
-          </Fold>
-        )}
-
         <Fold head={t.koordinator.preferencesHead(rules.length)} open={!!folds.preferences} onToggle={() => setFolds({ ...folds, preferences: !folds.preferences })}>
           <p className="hint">{t.koordinator.preferencesHint}</p>
           <ul className="prefs">
@@ -86,27 +72,30 @@ export function KoordinatorSheet({ on, canvas, items, preferences, repos, talk, 
   );
 }
 
-/** A card in the queue, with what it waits for and the buttons that move it. */
-function QueueRow({ item, items, onOpen }: { item: Item; items: Item[]; onOpen: (i: Item) => void }) {
-  const m = useQueueMove(item, items);
-  const title = (id: string) => plain(items.find((i) => i.id === id)?.title ?? '');
-  return (
-    <li className="s-planned" onClick={() => onOpen(item)}>
-      <span className="dot" />
-      <span className="q-what">
-        {plain(item.title)}
-        <br />
-        <span className="hint">{item.queue && 'behind' in item.queue ? t.queue.behind(item.queue.behind.map(title)) : stateLabel(item)}</span>
-        {m?.why && <span className="hint why">{m.why}</span>}
-      </span>
-      {m?.buttons}
-    </li>
-  );
+/**
+ * Answers that came while the owner was elsewhere are read once the sheet is in view (open, and the
+ * page not hidden); those that were waiting stay marked until it closes, so the owner sees which.
+ */
+function useRead(on: boolean, talk: Talk[]): number[] {
+  const [fresh, setFresh] = useState<number[]>([]);
+  const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
+  useEffect(() => {
+    const seen = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', seen);
+    return () => document.removeEventListener('visibilitychange', seen);
+  }, []);
+  const unread = talk.filter((x) => x.unread).map((x) => x.id);
+  useEffect(() => {
+    if (!on) return setFresh([]);
+    if (!visible || !unread.length) return;
+    setFresh((f) => [...f, ...unread.filter((id) => !f.includes(id))]);
+    api.readTalk().catch(() => {});
+  }, [on, visible, unread.join()]);
+  return fresh;
 }
 
 /** Which of the sheet's sections the owner opened; the proposals are open unless closed, with the ones open then. */
 interface Folds {
-  queue?: boolean;
   preferences?: boolean;
   proposalsClosed?: number[];
 }
@@ -148,7 +137,7 @@ function Fold({ kind, head, open, onToggle, children }: { kind?: string; head: s
 }
 
 /** What the owner said to the Koordinator with no card open, and its replies; newest last. */
-function Conversation({ talk }: { talk: Talk[] }) {
+function Conversation({ talk, fresh }: { talk: Talk[]; fresh: number[] }) {
   const box = useRef<HTMLDivElement>(null);
   const atEnd = useRef(true);
   const newest = useRef<number | undefined>(undefined);
@@ -201,7 +190,7 @@ function Conversation({ talk }: { talk: Talk[] }) {
             </Msg>
           )}
           {x.answer !== undefined && (
-            <Msg by={x.answerBy ?? 'koordinator'} who={t.author[x.answerBy ?? 'koordinator']}>
+            <Msg by={x.answerBy ?? 'koordinator'} className={fresh.includes(x.id) ? 'fresh' : undefined} who={t.author[x.answerBy ?? 'koordinator']}>
               <Body md={x.answer} />
             </Msg>
           )}

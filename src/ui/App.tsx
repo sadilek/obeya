@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { agentListens, answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS, type AppUpdate } from '../core/types';
+import { agentListens, answering, type CanvasInfo, type CanvasSnapshot, type CardPatch, finished, type Group, type Item, needsYou, openPerGroup, type PendingRestart, START_ALL_HOLD_MS, type AppUpdate, unreadAnswers } from '../core/types';
 import { api, ApiError, beforeReload, onNotice, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, Ring, TerritoryLayer, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, stopFlight, TOP, toWorld } from './camera';
@@ -14,6 +14,7 @@ import { ArchiveSheet } from './archive';
 import { ConfigSheet } from './config';
 import { Setup } from './setup';
 import { KoordinatorSheet } from './koordinator';
+import { QueuePill } from './queue';
 import { depsOf } from './deps';
 import { collect, keep, type Kept, restore, type SideSheet, takeKept } from './keep';
 import { Sign, Wordmark } from './logo';
@@ -927,7 +928,9 @@ function Canvas({
 
   // ---------------------------------------------------------------- keys
   const attention = items.filter(needsYou);
-  const queuedCount = items.filter((i) => i.state === 'planned' && i.queue).length;
+  // answers in Obeya's sheet the owner has not seen: Obeya waits for them like a card
+  const unread = kOn ? 0 : unreadAnswers(snapshot.talk);
+  const attentionCount = attention.length + (unread ? 1 : 0);
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length;
   const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
   async function archiveDone() {
@@ -935,11 +938,15 @@ function Canvas({
     if (ids.length) showAck(t.archive.archivedMany(ids.length), () => Promise.all(ids.map((id) => api.unarchive(id))));
   }
   const attnIdx = useRef(-1);
+  /** The next card that needs the owner, in turn, and Obeya's sheet among them while an answer waits there. */
   function nextAttention() {
-    const list = itemsRef.current.filter(needsYou);
+    const koordinator = !kOnRef.current && unreadAnswers(snapshotRef.current.talk) > 0;
+    const list: (Item | 'k')[] = [...itemsRef.current.filter(needsYou), ...(koordinator ? ['k' as const] : [])];
     if (!list.length || focusRef.current?.type === 'card') return;
     attnIdx.current = (attnIdx.current + 1) % list.length;
-    open(list[attnIdx.current]!);
+    const next = list[attnIdx.current]!;
+    if (next === 'k') toggleKoordinator();
+    else open(next);
   }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
@@ -971,8 +978,8 @@ function Canvas({
       return;
     }
     if (e.key === 'Escape') {
-      // a screenshot shown large closes first; the card stays open
-      if (document.querySelector('.lightbox')) return;
+      // a screenshot shown large closes first, and the queue's list; the card stays open
+      if (document.querySelector('.lightbox, .queue-menu')) return;
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();
       else if (f?.type === 'project' && readingRef.current && sheetProject) readPlan(sheetProject, null);
@@ -1009,9 +1016,9 @@ function Canvas({
   const talkButton = (
     <button className={kOn ? 'pill kpill talk-pill on' : 'pill kpill talk-pill'} title={t.koordinator.buttonTitle} aria-label={t.koordinator.button} onClick={toggleKoordinator}>
       <TalkIcon />
-      {queuedCount > 0 && (
-        <span className="n" title={t.koordinator.queuedCount(queuedCount)}>
-          {queuedCount}
+      {unread > 0 && (
+        <span className="n unread" title={t.koordinator.unreadCount(unread)}>
+          {unread}
         </span>
       )}
       {proposalCount > 0 && (
@@ -1096,6 +1103,11 @@ function Canvas({
           <Sign size={24} />
         </span>
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
+        <button className={aOn ? 'pill kpill on' : 'pill kpill'} title={t.archive.button} onClick={toggleArchive}>
+          <BarIcon d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />
+          <span className="lbl">{t.archive.button}</span>
+        </button>
+        <QueuePill items={items} onOpen={open} />
         <button className="pill new-card" title={t.newCard} onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>
           + <span className="lbl">{t.newCard}</span>
         </button>
@@ -1114,13 +1126,9 @@ function Canvas({
               </span>
             )}
           </button>
-          <button className={aOn ? 'pill kpill on' : 'pill kpill'} title={t.archive.button} onClick={toggleArchive}>
-            <BarIcon d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />
-            <span className="lbl">{t.archive.button}</span>
-          </button>
-          {attention.length > 0 && (
+          {attentionCount > 0 && (
             <button className="pill" id="attention" onClick={nextAttention}>
-              <span className="n">{attention.length}</span> <span className="lbl">{t.needsYou}</span>
+              <span className="n">{attentionCount}</span> <span className="lbl">{t.needsYou}</span>
             </button>
           )}
           {!kOn && talkButton}

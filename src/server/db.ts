@@ -280,6 +280,8 @@ export const MIGRATIONS = [
   `ALTER TABLE cards ADD COLUMN shipped TEXT;`,
   // the app stack of a waiting card's workspace, stopped until its worker needs it again
   `ALTER TABLE cards ADD COLUMN parked TEXT;`,
+  // an answer looked up for the Koordinator's sheet that the owner has not seen there yet
+  `ALTER TABLE talk ADD COLUMN unread INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -683,8 +685,14 @@ export class Store {
     this.db.query('UPDATE talk SET undone = 1 WHERE id = $id').run({ id });
   }
 
+  /** The answer to a looked-up question; one for the sheet (no card was open) waits there unread. */
   answerTalk(id: number, answer: string, by: 'koordinator' | 'project') {
-    this.db.query('UPDATE talk SET answer = $answer, answer_by = $by WHERE id = $id').run({ id, answer, by });
+    this.db.query('UPDATE talk SET answer = $answer, answer_by = $by, unread = card_id IS NULL WHERE id = $id').run({ id, answer, by });
+  }
+
+  /** The owner saw the sheet's answers; whether any was unread. */
+  readTalk(canvasId: string): boolean {
+    return this.db.query('UPDATE talk SET unread = 0 WHERE canvas_id = $c AND unread = 1').run({ c: canvasId }).changes > 0;
   }
 
   /** The latest exchanges, oldest first; with `withoutCard`, only those without an open card. */
@@ -843,6 +851,7 @@ interface TalkRow {
   answer: string | null;
   answer_by: 'koordinator' | 'project' | null;
   images: string | null;
+  unread: number;
 }
 
 const toTalk = (r: TalkRow): Talk => ({
@@ -855,5 +864,6 @@ const toTalk = (r: TalkRow): Talk => ({
   ...(r.question ? { question: r.question } : {}),
   ...(r.answer !== null ? { answer: r.answer } : {}),
   ...(r.answer_by ? { answerBy: r.answer_by } : {}),
+  ...(r.unread ? { unread: true } : {}),
   ...(r.images ? { images: JSON.parse(r.images) as string[] } : {}),
 });

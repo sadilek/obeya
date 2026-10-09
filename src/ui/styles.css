@@ -208,6 +208,8 @@ button.pill:hover { box-shadow: var(--lift); }
 .proposals li:hover { background: color-mix(in srgb, var(--proposal) 9%, var(--chip)); }
 .proposals .pref-text { cursor: default; font-weight: 600; }
 .kpill .n.prop { background: var(--proposal); }
+/* an answer waits in Obeya's sheet: orange, like everything that waits for the owner */
+.kpill .n.unread { background: var(--waiting); }
 .kpill .n.err { background: #dc2626; }
 .reshare { margin-top: 16px; }
 .reshare .bar { flex-basis: 100%; height: 4px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--proposal) 18%, transparent); }
@@ -378,6 +380,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 .talk .msg .who .t { color: var(--muted); font-weight: 400; margin-left: 4px; }
 .talk .msg.by-owner { align-self: flex-end; background: color-mix(in srgb, var(--working) 9%, var(--card)); }
 .talk .msg.by-owner .who { color: var(--working); }
+/* an answer that waited for the owner, marked while the sheet stays open */
+.talk .msg.fresh { box-shadow: inset 3px 0 0 var(--waiting), var(--shadow); }
 .talk .msg.thinking .who::after { content: ""; display: inline-block; vertical-align: middle; margin-left: 8px; width: 34px; height: 3px; border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--idea), transparent); background-size: 200% 100%; animation: flow 1.4s linear infinite; }
 .mocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 8px 0 4px; }
@@ -454,10 +458,19 @@ textarea.p-body:focus { border-color: var(--muted); }
 .qmoves { display: inline-flex; gap: 4px; flex: none; }
 .btn.qmove { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
 .btn.qmove.stuck { color: var(--muted); border-style: dashed; cursor: help; }
-.fold-body > ol > li .q-what { flex: 1; min-width: 0; }
-.fold-body > ol > li .why { display: block; margin-top: 2px; }
-.fold-body > ol > li .btn.qmove { padding: 2px 8px; background: var(--card); border: 1px solid var(--line); }
-.fold-body > ol > li .btn.qmove.stuck { border-style: dashed; }
+/* the queue under its button in the bar: the waiting cards in turn, each opening on a click */
+.queue-pill { position: relative; }
+.queue-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto;
+  padding: 6px; background: var(--panel); border-radius: 12px; box-shadow: var(--lift); z-index: 30; white-space: normal; }
+.queue-menu > .hint { margin: 6px 8px; font-size: 13px; line-height: 1.45; }
+.queue-menu ol { list-style: none; padding: 0; margin: 0; }
+.queue-menu li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.queue-menu li:hover { background: var(--chip); }
+.queue-menu li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
+.queue-menu li .q-what { flex: 1; min-width: 0; }
+.queue-menu li .why { display: block; margin-top: 2px; }
+.queue-menu li .btn.qmove { padding: 2px 8px; background: var(--card); border: 1px solid var(--line); }
+.queue-menu li .btn.qmove.stuck { border-style: dashed; }
 .p-files { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
 .card.queued .state { font-style: italic; }
 .card.queued::before { background: repeating-linear-gradient(180deg, var(--c) 0 6px, transparent 6px 10px) 0 0 / 5px 100% no-repeat; }
@@ -725,10 +738,6 @@ button.link:hover { text-decoration: underline; }
 .fold.proposals .fold-head { color: var(--proposal); }
 .fold-body { padding: 0 0 10px 18px; }
 .fold-body > .hint:first-child { margin-top: 0; }
-.fold-body > ol { list-style: none; padding: 0; margin: 0; }
-.fold-body > ol > li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 8px; border-radius: 9px; cursor: pointer; font-size: 13px; }
-.fold-body > ol > li:hover { background: var(--chip); }
-.fold-body > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 
 /* confirmations, and each command while the Koordinator reads it, stacked above the microphone, newest last */
 #acks { position: fixed; left: calc(50% - var(--side, 0px) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }

@@ -86,6 +86,12 @@ export const agentListens = (i: Pick<Item, 'state' | 'branch' | 'prototypeOf' | 
 export const needsYou = (i: Item) =>
   (i.state === 'waiting' && !answering(i)) || (i.state === 'proposal' && !i.proposal?.revising) || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking);
 
+/** Answers in the Koordinator's sheet the owner has not seen yet. */
+export const unreadAnswers = (talk: Talk[]) => talk.filter((x) => x.unread).length;
+
+/** What on a canvas waits for the owner: the cards that need them, and the Koordinator while an answer waits unread. */
+export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
+
 export interface Item {
   id: string;
   kind: CardKind;
@@ -490,6 +496,8 @@ export interface Talk {
   answer?: string;
   /** Who answered: the Koordinator, or the project agent of the workstream asked about. */
   answerBy?: 'koordinator' | 'project';
+  /** The answer came for the sheet, and the owner has not had the sheet in view since. */
+  unread?: true;
 }
 
 /**

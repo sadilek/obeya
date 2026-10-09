@@ -54,7 +54,7 @@ const de = {
         rows: [
           { keys: [['Doppelklick']], text: 'Neue Aufgabe an dieser Stelle' },
           { keys: [['N']], text: 'Neue Aufgabe in der Mitte' },
-          { keys: [['Tab']], text: 'Zur nächsten Karte, die dich braucht' },
+          { keys: [['Tab']], text: 'Zur nächsten Karte, die dich braucht, oder zu Obeyas Antwort' },
           { keys: [['Esc']], text: 'Karte oder Projekt schließen' },
         ],
       },
@@ -193,6 +193,9 @@ const de = {
   dismissed: 'Vorschlag verworfen.',
   stopped: 'Agent angehalten.',
   queue: {
+    button: 'Warteschlange',
+    count: (n: number) => (n === 0 ? 'Keine Aufgabe in der Warteschlange' : n === 1 ? 'Eine Aufgabe in der Warteschlange' : `${n} Aufgaben in der Warteschlange`),
+    empty: 'Keine Aufgabe wartet. Eine Aufgabe, die mit laufender Arbeit in Konflikt käme oder keinen freien Workspace findet, reiht sich hier ein.',
     checking: 'Obeya prüft',
     cutting: 'Obeya teilt auf',
     cuttingLong: 'Obeya schneidet die Aufgabe in Pakete, die parallel laufen können. Sie ersetzen die Aufgabe.',
@@ -377,8 +380,6 @@ const de = {
     buttonTitle: 'Obeya (K)',
     kind: 'Obeya',
     title: 'Planung und Präferenzen',
-    queue: 'Warteschlange',
-    queueHead: (n: number) => `Warteschlange (${n})`,
     proposalsHead: (n: number) => `Vorschläge (${n})`,
     proposalsHint:
       'Obeya hat sie aus deinen Worten gelernt. Sie gelten erst, wenn du sie übernimmst. Regeln für eine CLAUDE.md sammelt die Aufgabe „CLAUDE.md ergänzen“; sie startet, sobald kein Vorschlag mehr offen ist.',
@@ -386,7 +387,7 @@ const de = {
     target: 'Gehört in',
     targetPreferences: 'Deine Präferenzen',
     targetClaudeMd: (repo: string) => `CLAUDE.md von ${repo}`,
-    queuedCount: (n: number) => (n === 1 ? 'Eine Aufgabe in der Warteschlange' : `${n} Aufgaben in der Warteschlange`),
+    unreadCount: (n: number) => (n === 1 ? 'Eine Antwort wartet auf dich' : `${n} Antworten warten auf dich`),
     fromReview: 'Aus der Rückschau',
     changes: (rule: string) => `Ändert „${rule}“`,
     accept: 'Übernehmen',
@@ -950,7 +951,7 @@ const en: Strings = {
         rows: [
           { keys: [['Double-click']], text: 'New task right there' },
           { keys: [['N']], text: 'New task in the middle' },
-          { keys: [['Tab']], text: 'Next card that needs you' },
+          { keys: [['Tab']], text: 'Next card that needs you, or Obeya’s answer' },
           { keys: [['Esc']], text: 'Close the card or project' },
         ],
       },
@@ -1085,6 +1086,9 @@ const en: Strings = {
   dismissed: 'Proposal dismissed.',
   stopped: 'Agent stopped.',
   queue: {
+    button: 'Queue',
+    count: (n: number) => (n === 0 ? 'No task in the queue' : n === 1 ? 'One task in the queue' : `${n} tasks in the queue`),
+    empty: 'No task waits. A task that would conflict with work in progress, or finds no free workspace, lines up here.',
     checking: 'Obeya checking',
     cutting: 'Obeya splitting',
     cuttingLong: 'Obeya cuts the task into packages that can run in parallel. They replace the task.',
@@ -1258,8 +1262,6 @@ const en: Strings = {
     buttonTitle: 'Obeya (K)',
     kind: 'Obeya',
     title: 'Planning and preferences',
-    queue: 'Queue',
-    queueHead: (n: number) => `Queue (${n})`,
     proposalsHead: (n: number) => `Proposals (${n})`,
     proposalsHint:
       'Obeya learned them from your words. They apply only once you accept them. Rules for a CLAUDE.md are collected by the task “Add to CLAUDE.md”; it starts as soon as no proposal is open.',
@@ -1267,7 +1269,7 @@ const en: Strings = {
     target: 'Belongs in',
     targetPreferences: 'Your preferences',
     targetClaudeMd: (repo: string) => `CLAUDE.md of ${repo}`,
-    queuedCount: (n: number) => (n === 1 ? 'One task in the queue' : `${n} tasks in the queue`),
+    unreadCount: (n: number) => (n === 1 ? 'An answer waits for you' : `${n} answers wait for you`),
     fromReview: 'From the retrospective',
     changes: (rule: string) => `Changes “${rule}”`,
     accept: 'Accept',

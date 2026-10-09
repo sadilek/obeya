@@ -818,7 +818,12 @@ the owner's language (`src/core/locale.ts`).
   fly-to, unfold-in-place, semantic zoom, edge indicators, minimap, and a frosted top bar the
   canvas slides under. The bar keeps no hint line: `?` (or the round `?` button beside "Neue
   Aufgabe") shows the legend of mouse and keys as a box over the greyed page (`src/ui/help.tsx`),
-  and Esc, `?` or a click beside it closes it. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
+  and Esc, `?` or a click beside it closes it. Left in the bar, after the canvas switcher: the
+  archive's button, the queue's and "Neue Aufgabe" (2026-10-09). The queue's button counts the
+  waiting cards (grey); a click lists them under it in turn, each with what it waits for and the
+  buttons that move it, and a row opens its card; a click beside the list or Esc closes it. Until
+  then the queue was a section of the Koordinator's sheet, counted on Obeya's button, and the
+  archive's button sat on the right. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
   and approved, "obeya" in Inter Bold as outlines) opens the bar, stands alone in the middle while
   the page loads, above "offline" when the server is gone, and is the favicon; `bun
   scripts/logo.tsx` writes it as the files in `src/ui/logo/`.
@@ -1085,7 +1090,7 @@ the owner's language (`src/core/locale.ts`).
   dirty are looked at again after a minute at the latest. Cards whose turn comes together go in the order they came
   to the Koordinator, the one waiting longest first. The owner sets the order where the waits leave
   it open (`src/core/queue.ts`): a waiting card moves one place earlier or later ("Früher",
-  "Später" on the card, which says its place, and on its row in the Koordinator's queue) and swaps
+  "Später" on the card, which says its place, and on its row in the queue's list) and swaps
   its place (`since`) with the card it passes. It does not pass a card it waits for or one waiting
   for it, nor one the Koordinator is judging, since that one's waits come from the cards ahead of
   it; nor does a card being judged move. Such a button stays grey and says why when clicked; at
@@ -1138,8 +1143,7 @@ the owner's language (`src/core/locale.ts`).
   sheet (button or `K`) gives the conversation with the Koordinator the height it has, with the
   field to write in under it; below that come sections that open and close, each a head with its
   count: the open proposals („Vorschläge (2)“, shown while there are any, open whenever a proposal
-  came after the owner closed them), the queue (shown while a card waits, closed by default) and
-  the preferences (always there, closed by default). Whether a section is open is kept per canvas
+  came after the owner closed them) and the preferences (always there, closed by default). Whether a section is open is kept per canvas
   in the browser, so a reload keeps it. What runs is not listed there: the canvas shows it. Open
   proposals come with their occasion (the card and the owner's words, or the
   Rückschau), for a change the rule it changes, and where it goes („Gehört in“: the preferences or
@@ -1154,7 +1158,7 @@ the owner's language (`src/core/locale.ts`).
   start, once no proposal waits any more, whatever its place: a waiting one might yet be switched
   to theirs, so several rules go in together. The card lands like any other (through a pull
   request where work lands that way); until then the rule applies to no agent, and afterwards through the CLAUDE.md alone. The Koordinator
-  button counts open proposals (violet, beside the grey count of queued cards); they do not
+  button counts open proposals (violet); they do not
   count among the cards that need the owner and do not show on cards.
 - **Arbeitsrückschau** (`src/server/work-retro.ts`, `src/server/transcript.ts`) — Obeya looks back
   at how the workers worked, to make future runs cheaper: where a worker went wrong and corrected
@@ -1322,6 +1326,12 @@ the owner's language (`src/core/locale.ts`).
   which, the plan doc and the repository's instructions they derive the worker's steps. The answer
   comes 10–30 s later: written above the mic wherever the owner is (its start), in full in the log of the card that
   was open, else in the Koordinator's sheet; what the agent reads shows on the open card meanwhile.
+  An answer in the sheet waits there unread (`unread` in `talk`) until the owner has the sheet in
+  view (open, the page not hidden): until then Obeya's button counts the unread answers in orange,
+  the colour of everything that waits for the owner, Obeya counts once in "brauchen dich" and in
+  the canvas's count in the switcher (`waitingOn`), and Tab goes there too, after the cards that
+  need the owner. The answers that waited keep an orange edge until the sheet closes. An answer
+  on a card's log is read there and does not wait in the sheet.
   The Koordinator hears the answer with the next command, in full as the owner saw it (a card it
   offers at the end is one "ja" away), and it is part of its stored memory. Until 2026-10-09 it
   heard only the first 1500 characters, and asked back when the owner said yes to a card offered

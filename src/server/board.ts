@@ -536,6 +536,11 @@ export class Board {
     this.changed();
   }
 
+  /** The owner has the Koordinator's sheet in view: its answers are read. */
+  readTalk() {
+    if (this.store.readTalk(this.canvas.id)) this.changed();
+  }
+
   exchange(id: number) {
     return this.store.exchange(id);
   }

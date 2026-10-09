@@ -178,6 +178,8 @@ export const api = {
   stopReshare: () => call<void>('POST', at('/reshare/stop')),
   /** Puts away what the finished run says. */
   dismissReshare: () => call<void>('DELETE', at('/reshare')),
+  /** The owner has the Koordinator's sheet in view: the answers waiting there are read. */
+  readTalk: () => call<void>('POST', at('/talk/read')),
 };
 
 // Log lines arrive over the canvas's WebSocket; whoever shows a card's log listens here.
