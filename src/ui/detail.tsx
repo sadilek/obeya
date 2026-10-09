@@ -9,6 +9,7 @@ import { firstOpening } from './demoSeen';
 import { landedRef } from './parts';
 import { useQueueMove } from './queue';
 import { Inline, plain } from './markdown';
+import { Body, Msg } from './message';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
 import { agentWorks, ownerField, parseQuestion, started, talkAlone, talkTurns, type Turn, worked as isWorked } from './talk';
@@ -799,11 +800,10 @@ function Conversation({ item, questions, past = false, hideEmpty = false }: { it
           <Line key={turn.e.id} turn={turn} demoQuestion={turn === handover ? item.demo : undefined} />
         ))}
         {working ? (
-          <div className={`msg by-${idea ? 'explorer' : proposal ? 'koordinator' : 'worker'} thinking`}>
-            <div className="who">{proposal ? t.revising : `${agent} ${idea ? t.idea.thinking : t.talk.working}`}</div>
+          <Msg by={idea ? 'explorer' : proposal ? 'koordinator' : 'worker'} className="thinking" who={proposal ? t.revising : `${agent} ${idea ? t.idea.thinking : t.talk.working}`}>
             {pending.at(-1) && <div className="hint">{clipLine(pending.at(-1)!.text)}</div>}
             <Steps steps={pending} />
-          </div>
+          </Msg>
         ) : (
           (turns.pending.length > 0 || (turns.asked?.steps.length ?? 0) > 0) && (
             <div className={`msg by-${idea ? 'explorer' : 'worker'}`}>
@@ -830,14 +830,13 @@ const opening = (item: Item): 'owner' | 'plan' | 'koordinator' | 'proposal' | 'i
 /** Where a conversation starts, as its first message: what was said to an idea, the task an agent started on; long ones folded. */
 function Seed({ item, by, who, children }: { item: Item; by: string; who: string; children?: ReactNode }) {
   return (
-    <div className={`msg by-${by} seed`}>
-      <div className="who">{who}</div>
+    <Msg by={by} className="seed" who={who}>
       <Fold>
         <Body md={item.body} />
       </Fold>
       <Shots ids={item.images} />
       {children}
-    </div>
+    </Msg>
   );
 }
 
@@ -907,13 +906,12 @@ function Message({ turn, demoQuestion }: { turn: Turn; demoQuestion?: Demo }) {
   const { e, steps } = turn;
   const q = e.kind === 'question' ? parseQuestion(e.text) : undefined;
   return (
-    <div className={`msg by-${ownerSide(e) ? 'owner' : e.author}${q ? ' q' : ''}${turn.settled ? ' settled' : ''}`}>
-      <div className="who">
-        {t.author[e.author]}
-        {e.kind === 'question' && ` · ${t.talk.question}`}
-        {e.kind === 'review' && ` · ${t.talk.handover}`}
-        <span className="t">{time(e.at)}</span>
-      </div>
+    <Msg
+      by={ownerSide(e) ? 'owner' : e.author}
+      className={[q && 'q', turn.settled && 'settled'].filter(Boolean).join(' ')}
+      who={`${t.author[e.author]}${e.kind === 'question' ? ` · ${t.talk.question}` : e.kind === 'review' ? ` · ${t.talk.handover}` : ''}`}
+      at={e.at}
+    >
       {!turn.quiet && <Body md={q ? q.text : e.text} />}
       {q && !turn.settled && q.options.length > 0 && (
         <ul className="q-opts">
@@ -933,7 +931,7 @@ function Message({ turn, demoQuestion }: { turn: Turn; demoQuestion?: Demo }) {
       <Mocks mocks={e.mocks} />
       <Shots ids={e.images} />
       <Steps steps={steps} />
-    </div>
+    </Msg>
   );
 }
 
@@ -1740,38 +1738,5 @@ function PrReply({ c }: { c: PrComment }) {
       </div>
       <Body md={c.body} />
     </div>
-  );
-}
-
-/** Text from a plan doc or an agent: paragraphs, and list items as a checklist. */
-export function Body({ md }: { md: string }) {
-  const blocks: ({ list: { text: string; mark: string }[] } | { para: string })[] = [];
-  for (const line of md.split('\n')) {
-    const m = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(.*)$/.exec(line);
-    if (m) {
-      const last = blocks.at(-1);
-      const li = { text: m[2]!, mark: m[1] === undefined ? '' : m[1] === ' ' ? 'open' : 'done' };
-      if (last && 'list' in last) last.list.push(li);
-      else blocks.push({ list: [li] });
-    } else if (line.trim()) blocks.push({ para: line.trim() });
-  }
-  return (
-    <>
-      {blocks.map((bl, i) =>
-        'para' in bl ? (
-          <p key={i} className="p-lead">
-            <Inline md={bl.para} />
-          </p>
-        ) : (
-          <ul key={i} className="p-list">
-            {bl.list.map((li, j) => (
-              <li key={j} className={li.mark}>
-                <Inline md={li.text} />
-              </li>
-            ))}
-          </ul>
-        ),
-      )}
-    </>
   );
 }

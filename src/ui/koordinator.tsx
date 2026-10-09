@@ -2,12 +2,13 @@
 // that open and close: the rules it learned and proposes, what waits, and the owner's preferences;
 // and shared demos to bring up to date at once.
 
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { queueOrder } from '../core/queue';
 import type { Item, Preference, RepoRef, Reshare, Talk } from '../core/types';
 import { api, ApiError } from './api';
-import { Inline, plain } from './markdown';
-import { clock as time, errorText, stateLabel, t } from './strings';
+import { plain } from './markdown';
+import { Body, Msg } from './message';
+import { errorText, stateLabel, t } from './strings';
 import { useQueueMove } from './queue';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 
@@ -176,7 +177,7 @@ function Conversation({ talk }: { talk: Talk[] }) {
   if (!talk.length) return null;
   return (
     <div
-      className="log talk"
+      className="talk conv"
       ref={box}
       onScroll={(e) => {
         const el = e.currentTarget;
@@ -184,40 +185,27 @@ function Conversation({ talk }: { talk: Talk[] }) {
       }}
     >
       {talk.map((x) => (
-        <div key={x.id} className={x.undone ? 'exchange undone' : 'exchange'}>
-          <div className="ev ev-say by-owner">
-            <span className="t">{time(x.at)}</span>
-            <span className="who">{t.author.owner}</span>
-            <span className="x">
-              {x.said}
-              <Shots ids={x.images} />
-            </span>
-          </div>
-          <div className="ev ev-say by-koordinator">
-            <span className="t">{time(x.at)}</span>
-            <span className="who">{t.author.koordinator}</span>
-            <span className="x">
-              {x.reply}
-              {x.undone && <span className="hint"> ({t.koordinator.undone})</span>}
-            </span>
-          </div>
+        <Fragment key={x.id}>
+          <Msg by="owner" who={t.author.owner} at={x.at}>
+            <Body md={x.said} />
+            <Shots ids={x.images} />
+          </Msg>
+          <Msg by="koordinator" className={x.undone ? 'undone' : undefined} who={t.author.koordinator} at={x.at}>
+            <Body md={x.reply} />
+            {x.undone && <div className="hint">{t.koordinator.undone}</div>}
+          </Msg>
           {/* a question it looked up: the answer follows the acknowledgement */}
           {x.question && x.answer === undefined && (
-            <div className="ev ev-say by-koordinator">
-              <span className="t">{time(x.at)}</span>
-              <span className="who">{t.author.koordinator}</span>
-              <span className="x hint">{t.koordinator.lookingUp}</span>
-            </div>
+            <Msg by="koordinator" className="thinking" who={t.author.koordinator}>
+              <div className="hint">{t.koordinator.lookingUp}</div>
+            </Msg>
           )}
           {x.answer !== undefined && (
-            <div className={`ev ev-say answer by-${x.answerBy ?? 'koordinator'}`}>
-              <span className="who">{t.author[x.answerBy ?? 'koordinator']}</span>
-              <span className="x">
-                <Inline md={x.answer} />
-              </span>
-            </div>
+            <Msg by={x.answerBy ?? 'koordinator'} who={t.author[x.answerBy ?? 'koordinator']}>
+              <Body md={x.answer} />
+            </Msg>
           )}
-        </div>
+        </Fragment>
       ))}
     </div>
   );
