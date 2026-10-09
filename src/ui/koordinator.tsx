@@ -8,7 +8,8 @@ import { api, ApiError } from './api';
 import { plain } from './markdown';
 import { Body, Msg } from './message';
 import { errorText, t } from './strings';
-import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
+import { Composer } from './composer';
+import { Shots } from './shots';
 
 interface Props {
   on: boolean;
@@ -202,41 +203,7 @@ function Conversation({ talk, fresh }: { talk: Talk[]; fresh: number[] }) {
 
 /** A command in writing, for when speaking is not possible; its screenshots go to the cards it creates or concerns. */
 function TellKoordinator({ onTell }: { onTell: (text: string, images?: string[]) => void }) {
-  const [text, setText] = useState('');
-  const shots = useShotInput();
-  const ready = !!text.trim() && !shots.uploading;
-  const send = () => {
-    if (!ready) return;
-    onTell(text.trim(), shots.images.length ? shots.images : undefined);
-    setText('');
-    shots.clear();
-  };
-  return (
-    <div className={`composer tell${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
-      <ShotStrip shots={shots} />
-      <div className="c-field">
-        <textarea
-          value={text}
-          rows={2}
-          placeholder={t.voice.typePlaceholder}
-          onFocus={() => api.warmVoice()}
-          onChange={(e) => setText(e.target.value)}
-          onPaste={shots.onPaste}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <AttachButton shots={shots} />
-      </div>
-      <button className="btn primary" disabled={!ready} onClick={send}>
-        {t.send}
-      </button>
-      {shots.error && <p className="p-error c-error">{shots.error}</p>}
-    </div>
-  );
+  return <Composer className="tell" placeholder={t.voice.typePlaceholder} obeya onSend={onTell} />;
 }
 
 /**

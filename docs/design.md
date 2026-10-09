@@ -823,7 +823,7 @@ the owner's language (`src/core/locale.ts`).
   waiting cards (grey); a click lists them under it in turn, each with what it waits for and the
   buttons that move it, and a row opens its card; a click beside the list or Esc closes it. Until
   then the queue was a section of the Koordinator's sheet, counted on Obeya's button, and the
-  archive's button sat on the right. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
+  archive's button sat on the right. The bar's buttons are all one height. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
   and approved, "obeya" in Inter Bold as outlines) opens the bar, stands alone in the middle while
   the page loads, above "offline" when the server is gone, and is the favicon; `bun
   scripts/logo.tsx` writes it as the files in `src/ui/logo/`.
@@ -1141,7 +1141,10 @@ the owner's language (`src/core/locale.ts`).
   repository's CLAUDE.md; the sheet shows that as their occasion („Aus der
   Rückschau: …“). Its
   sheet (button or `K`) gives the conversation with the Koordinator the height it has, with the
-  field to write in under it; below that come sections that open and close, each a head with its
+  field to write in under it (the same as a card's, `src/ui/composer.tsx`: one frame as wide as the
+  conversation, the text growing with what is written up to 30 % of the window, the screenshot
+  button and Send in its bottom corner beside the text's scrollbar; until 2026-10-09 Send stood
+  beside the field, and the icon lay over the scrollbar); below that come sections that open and close, each a head with its
   count: the open proposals („Vorschläge (2)“, shown while there are any, open whenever a proposal
   came after the owner closed them) and the preferences (always there, closed by default). Whether a section is open is kept per canvas
   in the browser, so a reload keeps it. What runs is not listed there: the canvas shows it. Open
@@ -1236,8 +1239,9 @@ the owner's language (`src/core/locale.ts`).
   microphone is not opened on page load: in the log of 1–5 Oct 2026 (22 page loads with a recording
   after them) the first recording after a load failed no more often than later ones, and opening it
   early would keep the browser's microphone indicator on all the time.
-  Who hears it depends on what is open, and the line under the mic and under a card's text field
-  says so ("Agent · Aufgabe: …", "Agent · Idee: …", "Obeya · Aufgabe: …", "Obeya ·
+  Who hears it depends on what is open, and the line under the mic says so; under a card's text
+  field only when Obeya reads it rather than the card's agent, which the open card makes plain
+  enough (until 2026-10-09 always) ("Agent · Aufgabe: …", "Agent · Idee: …", "Obeya · Aufgabe: …", "Obeya ·
   Projekt: …"); the words go exactly where it says (`agentListens` in `src/core/types.ts`, the same
   for the label and the route). On a card an agent listens on (its worker at work, waiting, in a
   pull request or finishing after the landing, the one a question resumes on a finished card, a
@@ -2087,7 +2091,7 @@ the repository; the copy on the project is only for the archive).
   remark into the decision log as a decision.
 - On a card with an agent, what the owner types or says goes straight to that agent, which passes
   on to the Koordinator what asks Obeya for something (`to_obeya`, 2026-10-08). Typed and spoken
-  words still take one way: the label under the field and the mic names who listens, and both
+  words still take one way: the label under the mic names who listens, and both
   follow it. Before (from 2026-10-05), every word went through the Koordinator first, so that "gib
   frei" or "Merk dir" worked typed as well as spoken; but the owner waited for a Koordinator turn
   (about 2 s, longer for long text) before every word reached the agent or showed in the

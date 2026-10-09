@@ -186,7 +186,10 @@ button.pill:hover { box-shadow: var(--lift); }
 @container bar (max-width: 560px) {
   #bar .canvas-pill, #bar .new-card, #bar .help, #bar #workspaces { display: none; }
 }
-.talk-pill { padding: 6px 12px; }
+/* the bar's buttons are one height, whatever they hold: text, an icon, a count */
+#bar .pill, .pill.talk-pill { height: 34px; box-sizing: border-box; padding-block: 0; }
+#bar button.pill.help { width: 34px; height: 34px; }
+.talk-pill { padding: 0 12px; }
 .talk-pill svg { display: block; flex: none; }
 .prefs { list-style: none; padding: 0; margin: 10px 0 0; }
 .prefs li { display: flex; gap: 8px; align-items: flex-start; padding: 7px 8px 7px 10px; border-radius: 9px; background: var(--chip); margin: 6px 0;
@@ -503,15 +506,20 @@ textarea.p-body:focus { border-color: var(--muted); }
 .prototype-end { height: 64px; }
 .prototype-variants .v-show { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
 .talk .question.ask { margin: 0; max-width: 92%; padding: 10px 12px; font-size: 14px; flex: none; background: color-mix(in srgb, var(--waiting) 9%, var(--card)); }
-.composer { display: flex; gap: 10px; align-items: flex-end; margin-top: 16px; max-width: 80ch; }
+.composer { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: flex-end; margin-top: 16px; max-width: 80ch; }
 .composer textarea { flex: 1; resize: vertical; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
   background: var(--card); outline: none; font-size: 14px; }
 .composer textarea:focus { border-color: var(--muted); }
-/* screenshots: thumbnails above the text, a button in its corner; dropping one marks the field */
-.composer { flex-wrap: wrap; }
-.composer .c-field { flex: 1; position: relative; display: flex; min-width: 0; }
-.composer .c-field textarea { padding-right: 38px; }
-.composer.dropping textarea { border-color: var(--working); border-style: dashed; background: color-mix(in srgb, var(--working) 6%, var(--card)); }
+/* the field under a conversation (composer.tsx): one frame, as wide as the conversation, with the text growing as it is
+   written and the screenshot button and Send in its bottom corner, beside the text's scrollbar rather than over it */
+.composer .c-field { flex: 1 1 100%; display: flex; align-items: flex-end; gap: 4px; min-width: 0; padding: 4px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--card); }
+.composer .c-field:focus-within { border-color: var(--muted); }
+.composer .c-field textarea { min-height: 0; max-height: 30vh; padding: 6px 8px; border: 0; border-radius: 0; background: none; resize: none; line-height: 1.45; }
+.composer .c-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+.composer .c-tools .c-attach { position: static; }
+.composer .c-send { padding: 6px 12px; font-size: 13px; border-radius: 7px; }
+.composer.dropping .c-field { border-color: var(--working); border-style: dashed; background: color-mix(in srgb, var(--working) 6%, var(--card)); }
 .c-attach { position: absolute; right: 6px; bottom: 6px; border: 0; background: none; color: var(--muted); padding: 4px; border-radius: 6px; cursor: pointer; line-height: 0; }
 .c-attach:hover { color: var(--ink); background: var(--chip); }
 .c-shots { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }

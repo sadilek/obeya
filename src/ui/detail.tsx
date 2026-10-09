@@ -10,6 +10,7 @@ import { landedRef } from './parts';
 import { useQueueMove } from './queue';
 import { Inline, plain } from './markdown';
 import { Body, Msg } from './message';
+import { Composer } from './composer';
 import { AttachButton, ShotStrip, Shots, useShotInput } from './shots';
 import { clock as time, errorText, stateLabel, t } from './strings';
 import { agentWorks, ownerField, parseQuestion, started, talkAlone, talkTurns, type Turn, worked as isWorked } from './talk';
@@ -79,8 +80,8 @@ export function Detail(p: Props) {
     }
   };
   const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
-  // who reads what is typed here, as under the microphone
-  const listener = (agentListens(item) ? t.voice.agent : t.voice.card)(plain(item.title));
+  // Obeya reads what is typed here when no agent listens on the card: the field says so, as the microphone does
+  const listener = agentListens(item) ? undefined : t.voice.card(plain(item.title));
   const tell = (field: Field) => async (text: string, images?: string[]) => p.onTell(text, images, field);
   const repo = p.repos.length > 1 ? (p.repos.find((r) => r.id === item.repo)?.name ?? item.repo) : '';
   // a plain task says nothing of its kind
@@ -491,7 +492,7 @@ function IdeaView({ item, act, run, onDelete, onTell }: { item: Item; act: (a: C
               picks={answer}
               field={{
                 placeholder: t.idea.compose,
-                listener: t.voice.idea(plain(item.title)),
+                listener: agentListens(item) ? undefined : t.voice.card(plain(item.title)),
                 quote: true,
                 onWords: async (words, images) => onTell(words, images, 'discuss'),
                 onPicked: (text, images) => act({ action: 'discuss', text, images }, { close: false }),
@@ -571,7 +572,7 @@ function ProposalView({
   item: Item;
   from?: Item;
   act: (a: CardAction, done: ActDone) => Promise<void>;
-  listener: string;
+  listener?: string;
   /** What should change in it, typed: an agent reworks the proposal by it. */
   onRevise: (text: string) => Promise<void>;
   children: ReactNode;
@@ -1408,7 +1409,7 @@ function ManualFields({ item, repos, onEdit, grow }: { item: Item; repos: RepoRe
  * A task's conversation, from its idea's discussion on: the question its worker waits on (its own,
  * or the one in its demo report) stands at the end, and under it the card's one field (`ownerField`).
  */
-function TaskTalk({ item, listener, act, tell }: { item: Item; listener: string; act: (a: CardAction, done: ActDone) => Promise<void>; tell: (field: Field) => (text: string, images?: string[]) => Promise<void> }) {
+function TaskTalk({ item, listener, act, tell }: { item: Item; listener?: string; act: (a: CardAction, done: ActDone) => Promise<void>; tell: (field: Field) => (text: string, images?: string[]) => Promise<void> }) {
   const field = ownerField(item);
   const key = JSON.stringify(item.question ?? null);
   const questions = useMemo(() => ((field === 'answer' || field === 'demo') && item.question ? [item.question] : []), [field, key]);
@@ -1451,13 +1452,14 @@ function Split({ main, talk, className }: { main: ReactNode; talk: ReactNode; cl
 /** The owner's one field under a conversation: words, and the options picked, go out with one Send. */
 interface TalkField {
   placeholder: string;
-  listener: string;
+  /** Obeya, when it reads the words rather than the card's agent. */
+  listener?: string;
   /** Starts the field afresh when it changes (another question, another state). */
   key?: string;
   noImages?: boolean;
   /** The picks name their questions also when there is one: the conversation is read later without it beside. */
   quote?: boolean;
-  /** Words alone go to whoever `listener` names: the card's agent, or the Koordinator. */
+  /** Words alone go to the card's agent, or to the Koordinator that `listener` names. */
   onWords: (text: string, images?: string[]) => Promise<void>;
   /** Picked options go to the agent as they are, with the words. */
   onPicked: (text: string, images?: string[]) => Promise<void>;
@@ -1480,7 +1482,7 @@ function Talk({ item, questions = [], heading = t.ask.question, picks, past, fie
           placeholder={options ? t.ask.words : field.placeholder}
           button={options ? t.ask.send : t.send}
           allowEmpty={picked}
-          listener={field.listener}
+          obeya={field.listener}
           noImages={field.noImages}
           onSend={(words, images) => (picked ? field.onPicked(answerText(questions, picks!.picks, words, field.quote), images) : field.onWords(words, images))}
         />
@@ -1542,72 +1544,6 @@ function Questions(p: { questions: Question[]; heading: string; picks: string[][
           {q.pick?.why && <div className="hint pick-why">{t.ask.pickWhy(q.pick.why)}</div>}
         </div>
       ))}
-    </div>
-  );
-}
-
-/** What the owner writes to an agent; screenshots are pasted, dropped or picked, unless `noImages`. */
-function Composer({
-  placeholder,
-  onSend,
-  button = t.send,
-  allowEmpty = false,
-  noImages = false,
-  listener,
-  onText,
-}: {
-  placeholder: string;
-  onSend: (text: string, images?: string[]) => Promise<void>;
-  button?: string;
-  allowEmpty?: boolean;
-  noImages?: boolean;
-  /** Who reads what is typed (the card's agent, or the Koordinator, which then gets ready while the owner types). */
-  listener?: string;
-  /** Hears the text as it is typed. */
-  onText?: (text: string) => void;
-}) {
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const shots = useShotInput({ off: noImages });
-  const images = shots.images;
-  const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !busy && !shots.uploading;
-  const send = async () => {
-    if (!ready) return;
-    setBusy(true);
-    await onSend(text.trim(), images.length ? images : undefined);
-    setBusy(false);
-    setText('');
-    onText?.('');
-    shots.clear();
-  };
-  return (
-    <div className={`composer${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
-      <ShotStrip shots={shots} />
-      <div className="c-field">
-        <textarea
-          value={text}
-          placeholder={placeholder}
-          rows={2}
-          onFocus={listener ? () => api.warmVoice() : undefined}
-          onChange={(e) => {
-            setText(e.target.value);
-            onText?.(e.target.value);
-          }}
-          onPaste={shots.onPaste}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <AttachButton shots={shots} />
-      </div>
-      <button className="btn primary" disabled={!ready} onClick={send}>
-        {button}
-      </button>
-      {shots.error && <p className="p-error c-error">{shots.error}</p>}
-      {listener && <div className="c-listener">→ {listener}</div>}
     </div>
   );
 }
