@@ -2,7 +2,7 @@
 // to, where the demo video stood, and what was typed but not sent. Written down just before the
 // reload (sessionStorage, per tab), and taken once by the page that loads.
 
-/** A sheet on the right that is not a project's. */
+/** A sheet on the right that is not a project's, or the archive's list under its button. */
 export type SideSheet = 'koordinator' | 'archive' | 'config';
 
 export interface Kept {
@@ -20,8 +20,8 @@ export interface Kept {
   video?: { time: number; playing: boolean };
 }
 
-/** Where the open things are: the panel of the open card and the sheets. */
-export const ROOTS = ['panel', 'sheet', 'ksheet', 'asheet', 'csheet'];
+/** Where the open things are: the panel of the open card, the sheets and the archive's list. */
+export const ROOTS = ['panel', 'sheet', 'ksheet', 'amenu', 'csheet'];
 
 /** How old what was kept may be to come back: a restart takes seconds, a page reloaded much later starts afresh. */
 const FRESH_MS = 5 * 60_000;

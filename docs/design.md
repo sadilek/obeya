@@ -301,12 +301,14 @@ An idea is thought through on its card before anything is planned; no worker run
 6. Archived, when the owner takes the finished card off the canvas ("Archivieren" on the card or
    its archive button on the canvas, shown while the pointer is on it, or all finished ones at
    once in the archive), or when a prototype ends (discarded or built; Ideas, 4). The archive
-   (button or `A`) lists archived cards
-   by day, the most recently archived first, as small cards on a timeline with the time they were
-   archived; one unfolds from its card as on the canvas and can go back to the place it had. An
+   (button or `A`) lists archived cards under its button in the bar, as the queue does, by day,
+   the most recently archived first, as small cards on a timeline with the time they were
+   archived; one unfolds from its card as on the canvas and can go back to the place it had. The
+   list stays under the dim while that card is open, so the card folds back into it; a click
+   beside it or Esc closes it. Until 2026-10-09 the archive was a sheet on the right. An
    ended prototype cannot: it shows, read-only, how it ended, its demo and conversation.
 7. A project ends when its plan doc goes (done, deleted): it moves into the
-   archive with its workstreams, which are not listed on their own. Its sheet then shows, read-only,
+   archive with its workstreams, which are not listed on their own. Opened from the archive, its sheet shows, read-only,
    the goal and the workstreams as the doc last stood; each workstream unfolds with its conversation and demo.
    When the same file comes back, the project returns to its place. Every project's sheet, live or
    archived, lists its decisions and links the idea its plan doc was written from: when an idea decided
@@ -821,7 +823,8 @@ the owner's language (`src/core/locale.ts`).
   and Esc, `?` or a click beside it closes it. Left in the bar, after the canvas switcher: the
   archive's button, the queue's and "Neue Aufgabe" (2026-10-09). The queue's button counts the
   waiting cards (grey); a click lists them under it in turn, each with what it waits for and the
-  buttons that move it, and a row opens its card; a click beside the list or Esc closes it. Until
+  buttons that move it, and a row opens its card; a click beside the list or Esc closes it. The
+  archive's button lists the archive under it the same way (`src/ui/archive.tsx`). Until
   then the queue was a section of the Koordinator's sheet, counted on Obeya's button, and the
   archive's button sat on the right. The bar's buttons are all one height. The logo (`src/ui/logo.tsx`: three cards in the colours of working, waiting
   and approved, "obeya" in Inter Bold as outlines) opens the bar, stands alone in the middle while
@@ -1904,7 +1907,7 @@ the repository; the copy on the project is only for the archive).
   widens it and shows the doc as written, rendered, kept current with the file; a workstream's
   card opens it at the workstream's item. Esc goes back to the workstreams. The server hands out
   only docs it shows as projects, by project card, never a path.
-- The sheets on the right (Obeya's, archive, configuration, a project's, a plan doc being read)
+- The sheets on the right (Obeya's, configuration, a project's, a plan doc being read)
   are a sidebar docked to the window's right edge, from top to bottom: a straight edge with a
   divider line, no shadow, no gap (2026-10-09). The canvas is what remains to its left: the top
   bar ends at the sidebar, the microphone with its lines and the confirmations above it, the edge

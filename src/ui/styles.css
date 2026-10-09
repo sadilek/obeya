@@ -461,11 +461,12 @@ textarea.p-body:focus { border-color: var(--muted); }
 .qmoves { display: inline-flex; gap: 4px; flex: none; }
 .btn.qmove { padding: 4px 10px; font-size: 12.5px; font-weight: 500; }
 .btn.qmove.stuck { color: var(--muted); border-style: dashed; cursor: help; }
-/* the queue under its button in the bar: the waiting cards in turn, each opening on a click */
-.queue-pill { position: relative; }
-.queue-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto;
+/* a list under its button in the bar (the queue, the archive), each row opening its card on a click */
+.menu-pill { position: relative; }
+.bar-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto;
   padding: 6px; background: var(--panel); border-radius: 12px; box-shadow: var(--lift); z-index: 30; white-space: normal; }
-.queue-menu > .hint { margin: 6px 8px; font-size: 13px; line-height: 1.45; }
+.bar-menu > .hint { margin: 6px 8px; font-size: 13px; line-height: 1.45; }
+/* the queue: the waiting cards in turn */
 .queue-menu ol { list-style: none; padding: 0; margin: 0; }
 .queue-menu li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
 .queue-menu li:hover { background: var(--chip); }
@@ -581,7 +582,10 @@ textarea.p-body:focus { border-color: var(--muted); }
 .sheet > ol > li .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
 .sheet > ol > li .w { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 30px; }
 /* the archive: per day a timeline, the time on the left, each archived card as a small card */
-.sheet ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
+.archive-menu { width: min(460px, calc(100vw - 28px)); padding: 8px 10px 4px; }
+.archive-menu > .btn { margin: 2px 0 6px; padding: 6px 12px; font-size: 13px; }
+.archive-menu h4 { margin: 6px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .timeline li { position: relative; display: grid; grid-template-columns: 38px 12px 1fr; column-gap: 8px; align-items: start; padding-bottom: 8px; }
 .timeline li::before { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; width: 2px; background: var(--line); }
 .timeline li:first-child::before { top: 15px; }

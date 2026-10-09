@@ -10,7 +10,7 @@ import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edge
 import { plain } from './markdown';
 import { type ActDone, Detail, type Pending } from './detail';
 import type { Field } from './api';
-import { ArchiveSheet } from './archive';
+import { ArchivePill } from './archive';
 import { ConfigSheet } from './config';
 import { Setup } from './setup';
 import { KoordinatorSheet } from './koordinator';
@@ -217,21 +217,20 @@ function Canvas({
    * A narrow window lays the sheet over the canvas instead (styles.css).
    */
   const sideNow = () =>
-    matchMedia(NARROW).matches || !(kOnRef.current || aOnRef.current || cOnRef.current || sheetOnRef.current)
+    matchMedia(NARROW).matches || !(kOnRef.current || cOnRef.current || sheetOnRef.current)
       ? 0
       : sheetOnRef.current && readingRef.current
         ? sheetWRef.current.read
         : sheetWRef.current.sheet;
   /** Opens the side sheet `which` or closes it; another one closes, an open project too. */
-  const toggleSheet = (which: 'k' | 'a' | 'c') => {
-    const on = !{ k: kOn, a: aOn, c: cOn }[which];
+  const toggleSheet = (which: 'k' | 'c') => {
+    const on = !{ k: kOn, c: cOn }[which];
     setKOn(on && which === 'k');
-    setAOn(on && which === 'a');
     setCOn(on && which === 'c');
     if (on && focusRef.current?.type === 'project') closeProject(false);
   };
   const toggleKoordinator = () => toggleSheet('k');
-  const toggleArchive = () => toggleSheet('a');
+  const toggleArchive = () => setAOn(!aOnRef.current);
   const toggleConfig = () => toggleSheet('c');
   const [helpOn, setHelpOn] = useState(false);
   const [setupOn, setSetupOn] = useState(false);
@@ -239,7 +238,7 @@ function Canvas({
   // or a repository's adapter, and Obeya starts again for either, so the page reads it once
   const [configProblems, setConfigProblems] = useState(0);
   useEffect(() => void api.config().then((v) => setConfigProblems(v.problems.length), console.error), []);
-  // the archive, read while its sheet is open; archived cards unfold from their row there
+  // the archive, read while its list is open; archived cards unfold from their row there
   const [archived, setArchived] = useState<Item[]>([]);
   const archivedRef = useRef(archived);
   archivedRef.current = archived;
@@ -419,7 +418,7 @@ function Canvas({
     setKOn(false);
     setAOn(false);
     setCOn(false);
-    // an archived project is not on the canvas: its sheet takes the archive's place
+    // an archived project is not on the canvas: its sheet takes the archive list's place
     if (!p.archivedAt) await flyOrJump(camFor(bounds(p), 40, sideNow(), 60), 700, quick);
   }
 
@@ -758,7 +757,7 @@ function Canvas({
   }, [side]);
 
   // the grip at the open sheet's left edge widens or narrows it; reading a plan doc has its own width
-  const gripOn = kOn || aOn || cOn || sheetOn;
+  const gripOn = kOn || cOn || sheetOn;
   const gripKind = !!reading && sheetOn ? 'read' : 'sheet';
   const gripRef = useRef<{ x: number; w: number; kind: 'sheet' | 'read' } | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -980,6 +979,8 @@ function Canvas({
     if (e.key === 'Escape') {
       // a screenshot shown large closes first, and the queue's list; the card stays open
       if (document.querySelector('.lightbox, .queue-menu')) return;
+      // the archive's list closes after a card unfolded from it
+      if (f?.type !== 'card' && aOnRef.current) return setAOn(false);
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();
       else if (f?.type === 'project' && readingRef.current && sheetProject) readPlan(sheetProject, null);
@@ -1103,10 +1104,18 @@ function Canvas({
           <Sign size={24} />
         </span>
         <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
-        <button className={aOn ? 'pill kpill on' : 'pill kpill'} title={t.archive.button} onClick={toggleArchive}>
-          <BarIcon d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />
-          <span className="lbl">{t.archive.button}</span>
-        </button>
+        <ArchivePill
+          on={aOn}
+          onToggle={toggleArchive}
+          onClose={() => setAOn(false)}
+          held={focus?.type === 'card'}
+          archived={archived}
+          done={doneCount}
+          onOpen={open}
+          onArchiveDone={() => archiveDone().catch(console.error)}
+          els={archiveEls}
+          icon={<BarIcon d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />}
+        />
         <QueuePill items={items} onOpen={open} />
         <button className="pill new-card" title={t.newCard} onClick={() => focusRef.current?.type !== 'card' && createAtCentre()}>
           + <span className="lbl">{t.newCard}</span>
@@ -1170,7 +1179,6 @@ function Canvas({
           </div>
         </div>
       </div>
-      <ArchiveSheet on={aOn} archived={archived} done={doneCount} onOpen={open} onArchiveDone={() => archiveDone().catch(console.error)} els={archiveEls} />
       <ConfigSheet
         on={cOn}
         onSetup={() => setSetupOn(true)}
@@ -1194,7 +1202,7 @@ function Canvas({
       />
       {kOn && <div id="talk-docked">{talkButton}</div>}
       {gripOn && !kOn && (
-        <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : (setKOn(false), setAOn(false), setCOn(false)))}>
+        <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : (setKOn(false), setCOn(false)))}>
           ✕
         </button>
       )}

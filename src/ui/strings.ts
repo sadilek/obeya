@@ -772,9 +772,7 @@ const de = {
   },
   archive: {
     button: 'Archiv',
-    kind: 'Archiv',
     title: 'Erledigte Aufgaben, Projekte, verworfene Ideen und Prototypen',
-    hint: 'Zuletzt archivierte oben. Ein Klick öffnet den Eintrag.',
     empty: 'Noch nichts archiviert.',
     archive: 'Archivieren',
     archiveDone: (n: number) => (n === 1 ? '1 erledigte Aufgabe archivieren' : `${n} erledigte Aufgaben archivieren`),
@@ -1652,9 +1650,7 @@ const en: Strings = {
   },
   archive: {
     button: 'Archive',
-    kind: 'Archive',
     title: 'Finished tasks, projects, dropped ideas and prototypes',
-    hint: 'Most recently archived on top. A click opens the entry.',
     empty: 'Nothing archived yet.',
     archive: 'Archive',
     archiveDone: (n: number) => (n === 1 ? 'Archive 1 finished task' : `Archive ${n} finished tasks`),

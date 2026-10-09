@@ -29,7 +29,7 @@ export function QueuePill({ items, onOpen }: { items: Item[]; onOpen: (i: Item) 
     };
   }, [open]);
   return (
-    <div className="queue-pill" ref={box}>
+    <div className="menu-pill" ref={box}>
       <button className={open ? 'pill kpill on' : 'pill kpill'} title={t.queue.count(queued.length)} aria-expanded={open} onClick={() => setOpen(!open)}>
         <svg className="bar-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
           <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
@@ -38,7 +38,7 @@ export function QueuePill({ items, onOpen }: { items: Item[]; onOpen: (i: Item) 
         {queued.length > 0 && <span className="n">{queued.length}</span>}
       </button>
       {open && (
-        <div className="queue-menu">
+        <div className="bar-menu queue-menu">
           {queued.length ? (
             <ol>
               {queued.map((i) => (
