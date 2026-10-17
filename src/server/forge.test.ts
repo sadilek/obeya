@@ -1,10 +1,33 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { confidence, githubOwner, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, type PrStatus } from './forge';
+import { confidence, type Forge, githubOwner, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, routedForge, type PrStatus } from './forge';
 
-test('parsePrUrl', () => {
-  expect(parsePrUrl('https://github.com/example-org/app/pull/813')).toEqual({ owner: 'example-org', repo: 'app', number: 813 });
+test('parsePrUrl: GitHub, and Forgejo or Gitea on any server', () => {
+  expect(parsePrUrl('https://github.com/example-org/app/pull/813')).toEqual({ forge: 'github', base: 'https://github.com', owner: 'example-org', repo: 'app', number: 813 });
   expect(parsePrUrl('https://github.com/a/b/issues/1')).toBeNull();
+  expect(parsePrUrl('https://codeberg.org/acme/app/pulls/12')).toEqual({ forge: 'forgejo', base: 'https://codeberg.org', owner: 'acme', repo: 'app', number: 12 });
+  expect(parsePrUrl('https://git.example.org/forge/team/app/pulls/3/')).toEqual({ forge: 'forgejo', base: 'https://git.example.org/forge', owner: 'team', repo: 'app', number: 3 });
+  expect(parsePrUrl('https://github.com/a/b/pulls/1')).toBeNull();
+  expect(parsePrUrl('https://codeberg.org/a/b/pulls')).toBeNull();
+});
+
+test('a pull request goes to the forge its URL is on; one is opened on the forge of origin', () => {
+  const seen: string[] = [];
+  const fake = (name: string): Forge => ({
+    status: () => (seen.push(`${name} status`), {}) as never,
+    body: () => (seen.push(`${name} body`), ''),
+    setBody: () => void seen.push(`${name} setBody`),
+    merge: () => void seen.push(`${name} merge`),
+    open: () => (seen.push(`${name} open`), ''),
+  });
+  const origins: Record<string, string> = { '/gh': 'git@github.com:a/b.git', '/cb': 'https://codeberg.org/a/b.git' };
+  const forge = routedForge(fake('github'), fake('forgejo'), (cwd) => origins[cwd] ?? null, (r) => r.includes('github.com'));
+  forge.status('/x', 'https://codeberg.org/a/b/pulls/1');
+  forge.merge('/x', 'https://github.com/a/b/pull/1', 'h');
+  forge.setBody('/x', 'https://codeberg.org/a/b/pulls/1', '');
+  forge.open('/gh', { base: 'main', head: 'x', title: 't', body: '' });
+  forge.open('/cb', { base: 'main', head: 'x', title: 't', body: '' });
+  expect(seen).toEqual(['forgejo status', 'github merge', 'forgejo setBody', 'github open', 'forgejo open']);
 });
 
 test('githubOwner', () => {

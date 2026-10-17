@@ -21,6 +21,8 @@ let watcher: PrWatcher;
 /** Merges the watcher made, by commit; a reason in `refuse` makes GitHub refuse them. */
 let merges: string[];
 let refuse: string | undefined;
+/** A reason in `unreadable` makes reading the PR fail. */
+let unreadable: string | undefined;
 /** Cards whose PR the worker reported, as the canvas passes them to sharing. */
 let opened: string[];
 const URL_ = 'https://github.com/acme/app/pull/42';
@@ -39,9 +41,13 @@ beforeEach(() => {
   status = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [], comments: [] };
   merges = [];
   refuse = undefined;
+  unreadable = undefined;
   const forge: Forge = {
     open: () => '',
-    status: () => status,
+    status: () => {
+      if (unreadable) throw new Error(unreadable);
+      return status;
+    },
     body: () => '',
     setBody: () => {},
     merge: (_cwd, url, head) => {
@@ -85,7 +91,10 @@ describe('the PR phase', () => {
     // without a shared demo, the approval says nothing about one
     expect(runtime.last.inbox.at(-1)).not.toContain('shared with the team');
     expect(runtime.last.closed).toBe(false);
-    expect(runtime.last.call('pr_opened', { url: 'https://example.com/x' })).toContain('not a GitHub pull request');
+    expect(runtime.last.call('pr_opened', { url: 'https://example.com/x' })).toContain('not the URL of a pull request');
+    // one on Codeberg (Forgejo) is recorded like one on GitHub
+    runtime.last.call('pr_opened', { url: 'https://codeberg.org/acme/app/pulls/12' });
+    expect(board.item(id)!.pr).toMatchObject({ url: 'https://codeberg.org/acme/app/pulls/12', number: 12 });
     runtime.last.call('pr_opened', { url: URL_ });
     expect(board.item(id)!.pr).toMatchObject({ url: URL_, number: 42 });
     // with the PR open, ending the turn needs no nudge
@@ -291,7 +300,7 @@ describe('watching', () => {
     runtime.last.call('ask', { question: 'Q?' });
     workers.stop(id);
     expect(board.item(id)!.pr).toBeUndefined();
-    expect(board.events(id).at(-1)!.text).toContain('#42 bleibt auf GitHub offen');
+    expect(board.events(id).at(-1)!.text).toContain('#42 bleibt offen');
     workers.start(id);
     runtime.last.call('ask', { question: 'Neu?' });
     workers.answer(id, 'Ja.');
@@ -321,6 +330,25 @@ describe('watching', () => {
     await Bun.sleep(5);
     expect(asked).toBe(2);
     expect(state(id)).toBe('live');
+  });
+
+  test('a PR that cannot be read for ten minutes says why on its card, once; reading it again clears that', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    const events = board.events(id).length;
+    unreadable = 'git has no login for codeberg.org';
+    watcher.poll();
+    // the network gone for a moment is not worth a line
+    expect(board.events(id).length).toBe(events);
+    const pr = JSON.parse(board.row(id).pr!);
+    board.work(id, { pr: JSON.stringify({ ...pr, readError: { since: pr.readError.since - 10 * 60_000 } }) });
+    watcher.poll();
+    watcher.poll();
+    expect(board.events(id).map((e) => e.text).slice(events)).toEqual(['Obeya kann den Pull Request nicht lesen: git has no login for codeberg.org']);
+    unreadable = undefined;
+    watcher.poll();
+    expect(JSON.parse(board.row(id).pr!).readError).toBeUndefined();
   });
 
   test('a merge makes the card live and frees the clone; a close asks the owner', async () => {

@@ -115,7 +115,7 @@ const de = {
     parkFailed: (output: string) => `Die App im Workspace zu stoppen, ist fehlgeschlagen: ${output}`,
     /** The page the owner's browser gets for a card whose app no longer runs. */
     appGone: 'Die App dieser Karte läuft nicht mehr. Soll der Agent sie wieder starten, sag es ihm auf der Karte.',
-    stoppedPrOpen: (n: number) => `Gestoppt. Pull Request #${n} bleibt auf GitHub offen.`,
+    stoppedPrOpen: (n: number) => `Gestoppt. Pull Request #${n} bleibt offen.`,
     restartDue: (pause: Pause) =>
       `${pause === 'stop' ? 'Beenden von Obeya' : pause === 'repo' ? 'Neustart der Agenten dieses Repositorys' : 'Neustart von Obeya'} angekündigt; der Agent pausiert beim nächsten sicheren Punkt.`,
     restartWaits: (pause: Pause): string =>
@@ -174,6 +174,7 @@ const de = {
     held: (by: string, score: string) => `Bereit zum Mergen, aber ${by} gibt nur ${score}: Unter 4/5 mergt Obeya nicht selbst. Du entscheidest.`,
     ready: 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya mergt.',
     mergeFailed: (reason: string) => `Obeya konnte nicht mergen: ${reason}`,
+    unreadable: (reason: string) => `Obeya kann den Pull Request nicht lesen: ${reason}`,
   },
   idea: {
     buildAfterReply: 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.',
@@ -483,7 +484,7 @@ const en: Messages = {
     parkFailed: (output: string) => `Stopping the app in the workspace failed: ${output}`,
     /** The page the owner's browser gets for a card whose app no longer runs. */
     appGone: 'The app of this card no longer runs. To have the agent start it again, tell it on the card.',
-    stoppedPrOpen: (n: number) => `Stopped. Pull request #${n} stays open on GitHub.`,
+    stoppedPrOpen: (n: number) => `Stopped. Pull request #${n} stays open.`,
     restartDue: (pause: Pause) => `Obeya is about to ${pause === 'stop' ? 'stop' : pause === 'repo' ? "restart this repository's agents" : 'restart'}; the agent pauses at the next safe point.`,
     restartWaits: (pause: Pause) =>
       pause === 'stop'
@@ -537,6 +538,7 @@ const en: Messages = {
     held: (by: string, score: string) => `Ready to merge, but ${by} gives only ${score}: below 4/5 Obeya does not merge by itself. Your call.`,
     ready: 'Ready to merge: checks green, all comments resolved, the review is through. Obeya merges.',
     mergeFailed: (reason: string) => `Obeya could not merge: ${reason}`,
+    unreadable: (reason: string) => `Obeya cannot read the pull request: ${reason}`,
   },
   idea: {
     buildAfterReply: 'Build it once the reply is there; if the agent still asks something, it is not built.',

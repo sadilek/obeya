@@ -2109,7 +2109,9 @@ Where the settings do not say, it is detected (`detectedLand` in `src/adapters/i
 where `origin` is on GitHub, else `main`. On GitHub means github.com (or a subdomain of it) or a host the GitHub CLI is logged into,
 read from its `hosts.yml` (`ghHosts` in `src/server/repo.ts`, where gh keeps it on each system)
 rather than asked of `gh auth status`, which checks each login over the network. A repository on
-another forge (GitLab, a server of its own) lands on its local main and pushes nothing.
+another forge (GitLab, Codeberg, a server of its own) lands on its local main and pushes nothing,
+unless its settings say `pr`: Obeya follows pull requests on Forgejo and Gitea too (see Watching the
+PR), but whether a repository's agents can open one there only its own tooling says.
 
 Commits that conflict one by one but not as a whole land squashed into one commit. The last commit
 that lands for a card with a shared demo names its page in a trailer (`Demo-Video: <url>`, see
@@ -2146,20 +2148,40 @@ canvas, so the card that dropped out does not make it skip the next one.
 
 On approval (unless "Direkt auf main", see How work lands) the worker hears that its work goes out
 as a pull request, opened the way the repository does it (its own skills and conventions, a
-description for readers who have not seen Obeya), and reports it with the tool `pr_opened(url)`.
+description for readers who have not seen Obeya), and reports it with the tool `pr_opened(url)`,
+which takes a pull request on GitHub (`…/pull/<n>`) or on Forgejo and Gitea (`…/pulls/<n>`: Codeberg,
+a server of one's own, also below a path).
 From then on it may push its branch, never merges, and ends its turn after each round instead of
 handing over again.
 
 #### Watching the PR
 
-Per repository a watcher polls every open PR through `gh` every two minutes (state, mergeability,
-checks, conversation and review comments, inline comments), and right away when the owner comes back
-to an Obeya page (it becomes visible or gets the focus; at most once in 15 seconds): the owner
-merges on GitHub and returns. The watcher sits behind a small forge interface
-(`src/server/forge.ts`) so the loop is tested against a fake. gh runs as the account that owns the
-repository (the PR's, or the `origin` a new PR goes to) where gh has a login for it, its token as
-`GH_TOKEN`, whatever account gh has active: another one does not see a private repository of the
-owner, and the watcher would never learn of the merge.
+Per repository a watcher polls every open PR every two minutes (state, mergeability, checks,
+conversation and review comments, inline comments), and right away when the owner comes back to an
+Obeya page (it becomes visible or gets the focus; at most once in 15 seconds): the owner merges on
+GitHub and returns. The watcher sits behind a small forge interface (`src/server/forge.ts`), which
+picks the forge by the PR's URL, so the loop is tested against a fake:
+
+- GitHub through `gh`, as the account that owns the repository (the PR's, or the `origin` a new PR
+  goes to) where gh has a login for it, its token as `GH_TOKEN`, whatever account gh has active:
+  another one does not see a private repository of the owner, and the watcher would never learn of
+  the merge.
+- Forgejo and Gitea (`src/server/forgejo.ts`) through their REST API (`<server>/api/v1`), with
+  curl and the login git has for the repository (`git credential fill` with `origin`'s URL where
+  that is the repository, so a helper keyed by its path finds it: the keychain, Git Credential
+  Manager, libsecret; never asking). Where git has none, an access token stored as git's password
+  for the host serves; a push over https with it stores it. Forgejo keeps no review threads: the
+  inline comments on one line of one file are a thread, the first opens it, and it is resolved when
+  one of them is. It says only whether it can merge now, which it cannot while it still checks a
+  new push (seconds to minutes) either: a head it cannot merge is a conflict only when it still
+  cannot at the next look. Its times come in the server's zone and the committer's; the watcher
+  compares them in UTC. Checks are the head
+  commit's statuses, every page of them (Forgejo Actions report there). A pull request on the settings' share goes to
+  the forge of `origin`.
+
+A PR that cannot be read for ten minutes (a login missing, say, not the network gone for a moment)
+says why on its card, once ("Obeya kann den Pull Request nicht lesen: …"); without it, the card
+waited for a merge it never saw.
 
 New comments, failed checks (once per check and commit) and a conflict (once per commit) go to the
 worker as a message, which says what happened and leaves the how to the repository's ways (say, a
@@ -2177,7 +2199,8 @@ the owner is asked, news waits.
 Once nothing is left for the worker, the card needs the owner: "Bereit zum Mergen" (once in the log,
 on the card and folded) when
 
-- GitHub sees nothing in the way (`mergeStateStatus` clean),
+- the forge sees nothing in the way (GitHub's `mergeStateStatus` clean; on Forgejo mergeable and no
+  draft),
 - every check has passed and every review thread is resolved,
 - the worker is not in a turn,
 - a reviewer who wrote has written since the PR's own changes last changed (the committer date of
@@ -2196,7 +2219,8 @@ A ready PR whose reviewer's latest confidence is below 4/5 ("Confidence Score: 3
 summary) Obeya does not merge: the card needs the owner ("Bereit zum Mergen · Review nur 3/5"), who
 merges on GitHub or tells the worker what is missing; a new review at 4/5 or better lets Obeya merge
 again. Once ready, Obeya merges the PR itself (`gh pr merge` with the method the repository allows,
-squash first, and `--match-head-commit`, so a push since is never merged unchecked) and the card is
+squash first, and `--match-head-commit`, so a push since is never merged unchecked; on Forgejo the
+merge API with the first allowed style and `head_commit_id`) and the card is
 `live` (see After landing) in the same round. When GitHub refuses the merge (branch protection
 wanting a human approval, say), the card says why ("Obeya konnte nicht mergen: …") and needs the
 owner, who merges on GitHub; Obeya tries again each round, so it goes through once the reason is
@@ -2310,6 +2334,11 @@ archived card has no field.
 - **Landing does not block the server, and the click ends the owner's turn** (2026-10-10). Before,
   the whole server stood still until the push was through, and the card went on needing the owner
   for the seconds of the push, so Tab right after approving came back to it.
+- **Obeya follows pull requests on Forgejo and Gitea** (2026-10-17). Until then only GitHub's: a
+  card of a repository on Codeberg whose PR had been merged stood „Agent öffnet den PR“ for good,
+  since `pr_opened` refused the Codeberg URL, and nothing could set it live. The API is called with
+  curl and git's login rather than a CLI (`tea`, `fj`), which hardly any machine has. The default
+  landing stays `main` there: an agent opens a PR on Forgejo only with tooling its repository brings.
 - **The watcher polls when the owner comes back.** Before, the card stood "in PR" for up to two
   minutes after the merge (a PR on 2026-10-02: merged 12:12:40, seen 12:14:12).
 - **A rewritten summary counts as a reviewer's answer, and an old review as no review**

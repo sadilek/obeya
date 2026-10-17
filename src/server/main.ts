@@ -40,7 +40,8 @@ import { type CanvasConfig, Canvases } from './canvas';
 import { Config, CONFIG_FILE, expandConfig, readConfigFile } from './config';
 import { checkPlugin } from './demo';
 import { Store, UnusableDatabase } from './db';
-import { ghForge } from './forge';
+import { ghForge, routedForge } from './forge';
+import { forgejoForge, originOf } from './forgejo';
 import { NarrationHost } from './narration';
 import { claudeExecutable, sdkRuntime } from './runtime';
 import { claim, release, restarting, running } from './instance';
@@ -51,7 +52,7 @@ import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, R
 import { AppUpdates } from './app-update';
 import { SourceUpdates } from './source-update';
 import { COMPILED, resource, SELF, VERSION } from './resources';
-import { oldLinuxBun } from './repo';
+import { oldLinuxBun, onGitHub } from './repo';
 import { Access } from './remote';
 import { Push } from './push';
 import { Awake } from './awake';
@@ -206,6 +207,7 @@ const commitOf = () => {
   const checkout = own ?? ownCheckout();
   return ranFrom ?? (checkout && headOf(checkout));
 };
+const forge = routedForge(ghForge, forgejoForge, originOf, (remote) => onGitHub(remote));
 const narration = new NarrationHost({ argv: (voice, language) => qwen3Serve(voice, language, home), log: (line) => console.log(line) });
 // what a demo's narration reaches of Obeya, for the voice it holds loaded (narration.ts): the
 // narration and nothing else, from a worker here as from one on another machine (design: Hosts)
@@ -219,7 +221,7 @@ const config = new Config({
   running: () => live().map((c) => c.id),
   server: { port: Number(values.port), home, permissionMode: values['permission-mode'], commit: commitOf() },
   narrationUrl,
-  forge: ghForge,
+  forge,
   onSettings: () => {
     for (const c of live()) c.settingsChanged();
   },
@@ -242,7 +244,7 @@ canvases = new Canvases(
     home,
     runtime: sdkRuntime,
     ...(values['idle-workers'] ? { idleWorkers: true } : {}),
-    forge: ghForge,
+    forge,
     permissionMode: values['permission-mode'] as 'auto',
     watch: true,
     ownCheckout: own,

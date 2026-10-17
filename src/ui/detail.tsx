@@ -2573,7 +2573,7 @@ function PrReview({ entries }: { entries: PrReviewEntry[] }) {
               <Body md={e.body} />
               {e.url && (
                 <a href={e.url} target="_blank" rel="noreferrer">
-                  {t.pr.onGithub} ↗
+                  {t.pr.onForge} ↗
                 </a>
               )}
             </div>

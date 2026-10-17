@@ -1,4 +1,5 @@
-// Where pull requests live. GitHub through the `gh` CLI; tests use a fake.
+// Where pull requests live. GitHub through the `gh` CLI, Forgejo and Gitea through their API
+// (`forgejo.ts`); tests use a fake.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -63,11 +64,35 @@ export interface Forge {
   open(cwd: string, pr: { base: string; head: string; title: string; body: string }): string;
 }
 
-/** A GitHub pull request URL: `https://github.com/<owner>/<repo>/pull/<n>`. */
-export function parsePrUrl(url: string): { owner: string; repo: string; number: number } | null {
-  const m = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(url.trim());
-  return m ? { owner: m[1]!, repo: m[2]!, number: Number(m[3]) } : null;
+/**
+ * A pull request URL: on GitHub `https://github.com/<owner>/<repo>/pull/<n>`, on Forgejo or Gitea
+ * (Codeberg, a server of one's own, perhaps below a path) `https://<host>/<owner>/<repo>/pulls/<n>`.
+ * `base`: the server's address.
+ */
+export function parsePrUrl(url: string): { forge: 'github' | 'forgejo'; base: string; owner: string; repo: string; number: number } | null {
+  const gh = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(url.trim());
+  if (gh) return { forge: 'github', base: 'https://github.com', owner: gh[1]!, repo: gh[2]!, number: Number(gh[3]) };
+  const fj = /^(https?:\/\/[^/\s]+(?:\/[^/\s]+)*?)\/([\w.-]+)\/([\w.-]+)\/pulls\/(\d+)\/?$/.exec(url.trim());
+  return fj && new URL(fj[1]!).host !== 'github.com' ? { forge: 'forgejo', base: fj[1]!, owner: fj[2]!, repo: fj[3]!, number: Number(fj[4]) } : null;
 }
+
+/**
+ * The forge a pull request is on, by its URL; one is opened on the forge of the repository's
+ * `origin` (GitHub where `onGitHub` says so, else Forgejo).
+ */
+export const routedForge = (github: Forge, forgejo: Forge, origin: (cwd: string) => string | null, onGitHub: (remote: string) => boolean): Forge => {
+  const of = (url: string) => (parsePrUrl(url)?.forge === 'forgejo' ? forgejo : github);
+  return {
+    status: (cwd, url) => of(url).status(cwd, url),
+    body: (cwd, url) => of(url).body(cwd, url),
+    setBody: (cwd, url, body) => of(url).setBody(cwd, url, body),
+    merge: (cwd, url, head) => of(url).merge(cwd, url, head),
+    open: (cwd, pr) => {
+      const remote = origin(cwd);
+      return (remote && !onGitHub(remote) ? forgejo : github).open(cwd, pr);
+    },
+  };
+};
 
 /** Where gh runs: the directory, and the owner of the repository it works on, where known. */
 export interface GhAt {
@@ -127,12 +152,12 @@ const atPr = (cwd: string, url: string): GhAt => {
 /** The pull request at `url`; throws for a URL that is no GitHub pull request's. */
 function prRef(url: string) {
   const ref = parsePrUrl(url);
-  if (!ref) throw new Error(`not a GitHub pull request URL: ${url}`);
+  if (ref?.forge !== 'github') throw new Error(`not a GitHub pull request URL: ${url}`);
   return ref;
 }
 
 /** Runs `f` with `body` in a file: a long description as an argument would pass Windows' limit on a command line. */
-function withBodyFile<T>(body: string, f: (file: string) => T): T {
+export function withBodyFile<T>(body: string, f: (file: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), 'obeya-pr-body-'));
   try {
     const file = join(dir, 'body.md');

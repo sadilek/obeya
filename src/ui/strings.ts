@@ -556,9 +556,9 @@ const de = {
   pr: {
     title: (n: number) => `Pull Request #${n}`,
     conflict: 'Konflikt mit dem Zielbranch; der Agent bringt den Branch auf Stand.',
-    ready: (reason: string) => `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya konnte nicht mergen (${reason}); bitte auf GitHub mergen.`,
+    ready: (reason: string) => `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya konnte nicht mergen (${reason}); bitte selbst mergen.`,
     held: (score: string, by: string) =>
-      `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. ${by} gibt aber nur ${score}; unter 4/5 mergt Obeya nicht selbst. Du entscheidest: auf GitHub mergen oder dem Agenten sagen, was noch fehlt.`,
+      `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. ${by} gibt aber nur ${score}; unter 4/5 mergt Obeya nicht selbst. Du entscheidest: selbst mergen oder dem Agenten sagen, was noch fehlt.`,
     noChecks: 'Noch keine Checks.',
     opening: 'Der Agent öffnet den Pull Request.',
     review: 'Review',
@@ -569,7 +569,7 @@ const de = {
     resolved: 'Erledigt',
     open: 'Offen',
     agent: 'Agent',
-    onGithub: 'Auf GitHub',
+    onForge: 'Im Pull Request',
     edited: (time: string) => `${time} überarbeitet`,
     short: (n: number, failed: number, conflict: boolean, ready?: boolean, held?: string) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : '', ready ? 'Bereit zum Mergen' : '', held ? `Review nur ${held}` : '']
@@ -2086,9 +2086,9 @@ const en: Strings = {
   pr: {
     title: (n: number) => `Pull request #${n}`,
     conflict: 'Conflict with the target branch; the agent brings the branch up to date.',
-    ready: (reason: string) => `Ready to merge: checks green, all comments settled, the review is through. Obeya could not merge (${reason}); please merge on GitHub.`,
+    ready: (reason: string) => `Ready to merge: checks green, all comments settled, the review is through. Obeya could not merge (${reason}); please merge it yourself.`,
     held: (score: string, by: string) =>
-      `Ready to merge: checks green, all comments settled, the review is through. But ${by} gives only ${score}; below 4/5 Obeya does not merge by itself. You decide: merge on GitHub or tell the agent what is still missing.`,
+      `Ready to merge: checks green, all comments settled, the review is through. But ${by} gives only ${score}; below 4/5 Obeya does not merge by itself. You decide: merge it yourself or tell the agent what is still missing.`,
     noChecks: 'No checks yet.',
     opening: 'The agent is opening the pull request.',
     review: 'Review',
@@ -2099,7 +2099,7 @@ const en: Strings = {
     resolved: 'Settled',
     open: 'Open',
     agent: 'Agent',
-    onGithub: 'On GitHub',
+    onForge: 'In the pull request',
     edited: (time: string) => `revised ${time}`,
     short: (n: number, failed: number, conflict: boolean, ready?: boolean, held?: string) =>
       [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'check red' : 'checks red'}` : '', conflict ? 'Conflict' : '', ready ? 'Ready to merge' : '', held ? `Review only ${held}` : '']

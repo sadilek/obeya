@@ -7,6 +7,8 @@ import { confidence, lastAsked, readyToMerge, reviewOf, reviewStale, type Forge,
 
 /** Below this share of a reviewer's confidence (4 of 5), Obeya leaves the merge to the owner. */
 const MIN_CONFIDENCE = 0.8;
+/** How long reading a PR fails before its card says so. */
+const READ_ERROR_AFTER_MS = 10 * 60_000;
 import type { Workers } from './workers';
 import { messageOf } from '../core/text';
 
@@ -20,7 +22,7 @@ export class PrWatcher {
     private board: Board,
     private workers: Workers,
     private forge: Forge,
-    /** Where `gh` runs for a card (its workspace, else the Obeya checkout). */
+    /** Where the forge's calls run for a card (its workspace, else the Obeya checkout). */
     private cwd: (cardId: string) => string,
     /** Accounts whose comments are not review feedback, asked each round: they may change while the watcher runs. */
     private noiseOf: () => string[] = () => [],
@@ -40,7 +42,7 @@ export class PrWatcher {
 
   /**
    * A round right away, unless one began within `gapMs`: the owner came back to Obeya, perhaps from
-   * merging on GitHub, and should not wait for the next tick to see it.
+   * merging the PR, and should not wait for the next tick to see it.
    */
   soon(gapMs = 15_000) {
     if (this.polling || Date.now() - this.polled < gapMs) return;
@@ -64,9 +66,19 @@ export class PrWatcher {
         try {
           status = this.forge.status(this.cwd(item.id), pr.url);
         } catch (e) {
-          console.error(`PR ${pr.url}:`, e instanceof Error ? e.message : e);
+          // failing for a while (a login missing, say, not the network gone for a moment), the card
+          // says why once: otherwise it would wait for a merge it never sees
+          const reason = messageOf(e);
+          console.error(`PR ${pr.url}:`, reason);
+          const failing = pr.readError ?? { since: Date.now() };
+          if (!failing.shown && Date.now() - failing.since >= READ_ERROR_AFTER_MS) {
+            this.board.log(item.id, 'error', 'obeya', this.board.t.pr.unreadable(reason));
+            failing.shown = true;
+          }
+          this.save(item.id, { ...pr, readError: failing });
           continue;
         }
+        if (pr.readError) delete pr.readError;
         this.react(item.id, item.state, pr, status);
       }
     } finally {
@@ -103,7 +115,7 @@ export class PrWatcher {
         this.workers.prEvent(
           cardId,
           this.board.t.pr.checkFailed(failed.map((c) => c.name).join(', ')),
-          ['Checks failed on your pull request. Find the cause (gh run view --log-failed helps), fix it, push, and end your turn.', ...failed.map((c) => `- ${c.name}${c.url ? `: ${c.url}` : ''}`)].join('\n'),
+          ['Checks failed on your pull request. Find the cause (on GitHub, gh run view --log-failed helps), fix it, push, and end your turn.', ...failed.map((c) => `- ${c.name}${c.url ? `: ${c.url}` : ''}`)].join('\n'),
         );
       }
       if (s.mergeable === 'CONFLICTING' && pr.conflictHead !== s.head) {
@@ -128,7 +140,7 @@ export class PrWatcher {
       const low = confidence(s, noise);
       const ready = idle && readyToMerge(s, noise);
       if (ready && low && low.score / low.of < MIN_CONFIDENCE) {
-        // the reviewer doubts it: the owner decides, and merges on GitHub or tells the worker what is missing
+        // the reviewer doubts it: the owner decides, and merges or tells the worker what is missing
         const held = { score: `${low.score}/${low.of}`, by: low.by };
         if (pr.readyHead !== s.head || pr.held?.score !== held.score)
           this.board.log(cardId, 'state', 'obeya', this.board.t.pr.held(held.by, held.score));
@@ -139,7 +151,7 @@ export class PrWatcher {
         if (pr.readyHead !== s.head || pr.held) this.board.log(cardId, 'state', 'obeya', this.board.t.pr.ready);
         next.readyHead = s.head;
         delete next.held;
-        // the owner's approval covered the merge: Obeya merges, and tries again each round while GitHub refuses
+        // the owner's approval covered the merge: Obeya merges, and tries again each round while the forge refuses
         try {
           const commit = this.forge.merge(this.cwd(cardId), pr.url!, s.head);
           delete next.mergeError;

@@ -79,8 +79,10 @@ export interface PrState {
   staleHead?: string;
   /** The commit the PR was found ready to merge at; gone once something is left to do again. */
   readyHead?: string;
-  /** Why GitHub refused Obeya's merge of the ready PR: then the owner merges. */
+  /** Why the forge refused Obeya's merge of the ready PR: then the owner merges. */
   mergeError?: string;
+  /** Since when reading the PR fails, and whether the card said why; gone once it reads again. */
+  readError?: { since: number; shown?: boolean };
   /** A ready PR's reviewer confidence too low for Obeya to merge it: the owner decides. */
   held?: { score: string; by: string };
   checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
