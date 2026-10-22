@@ -97,7 +97,7 @@ export function remoteRepo(remote: string): { base: string; repo: string } | nul
 }
 
 /** Forgejo or Gitea through an API runner (the real server, or canned answers in tests). */
-export const makeForgejoForge = (api: Api, origin: (cwd: string) => string | null): Forge => {
+export const makeForgejoForge = (api: Api, origin: (cwd: string) => string | null): Omit<Forge, 'status'> & { status(cwd: string, url: string): PrStatus } => {
   /** By PR: the head Forgejo could not merge at the last look. */
   const unmergeable = new Map<string, string>();
   /** Every page of a list (the server's page size may be smaller than asked). */

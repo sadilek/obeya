@@ -50,7 +50,8 @@ export interface PrStatus {
 }
 
 export interface Forge {
-  status(cwd: string, url: string): PrStatus;
+  /** A promise where the forge's calls run in the background (gh), so a round does not block the server. */
+  status(cwd: string, url: string): PrStatus | Promise<PrStatus>;
   /** The PR's description. */
   body(cwd: string, url: string): string;
   /** Replaces the PR's description. */
@@ -137,6 +138,37 @@ function gh({ cwd, owner }: GhAt, ...args: string[]): string {
   return r.stdout.toString();
 }
 
+/** `ghEnv` without blocking the server while gh hands out the token. */
+async function ghEnvAsync(owner: string | undefined): Promise<NodeJS.ProcessEnv | undefined> {
+  if (!owner) return undefined;
+  let known = tokens.get(owner);
+  if (!known || Date.now() - known.at > TOKEN_TTL) {
+    const { GH_TOKEN: _, GITHUB_TOKEN: __, ...plain } = process.env;
+    const p = Bun.spawn(['gh', 'auth', 'token', '--user', owner], { env: plain, stdin: 'ignore', stdout: 'pipe', stderr: 'ignore', timeout: GH_TIMEOUT });
+    const out = await new Response(p.stdout).text();
+    known = { token: ((await p.exited) === 0 && out.trim()) || null, at: Date.now() };
+    tokens.set(owner, known);
+  }
+  if (!known.token) return undefined;
+  const { GITHUB_TOKEN: _, ...env } = process.env;
+  return { ...env, GH_TOKEN: known.token };
+}
+
+/** How long one gh call may take before it counts as failed, so one slow request does not hold up a round. */
+const GH_TIMEOUT = 60_000;
+
+/**
+ * `gh` without blocking the server while it runs: each call is a round trip to GitHub, seconds in
+ * which the server would answer nothing else (the PR watcher makes several per open PR).
+ */
+async function ghAsync({ cwd, owner }: GhAt, ...args: string[]): Promise<string> {
+  const env = await ghEnvAsync(owner);
+  const p = Bun.spawn(['gh', ...args], { cwd, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', timeout: GH_TIMEOUT, ...(env ? { env } : {}) });
+  const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  if ((await p.exited) !== 0) throw new Error(`gh ${args.slice(0, 3).join(' ')}: ${err.trim() || 'timed out'}`);
+  return out;
+}
+
 /** The owner of the GitHub repository a checkout's `origin` is, where it is one. */
 function originOwner(cwd: string): string | undefined {
   const r = Bun.spawnSync(['git', '-C', cwd, 'remote', 'get-url', 'origin'], { stderr: 'ignore' });
@@ -180,27 +212,22 @@ interface GhPr {
   reviews: { id: string; author: { login: string }; body: string; submittedAt?: string }[];
 }
 
-/** GitHub through a `gh` runner (the real CLI, or canned output in tests). */
-export const makeGhForge = (run: (at: GhAt, ...args: string[]) => string, ownerOf: (cwd: string) => string | undefined = originOwner): Forge => ({
+/**
+ * GitHub through a `gh` runner (the real CLI, or canned output in tests). `runStatus` makes the
+ * status's calls: where it returns promises, the three run side by side and `status` gives a promise.
+ */
+export const makeGhForge = (
+  run: (at: GhAt, ...args: string[]) => string,
+  ownerOf: (cwd: string) => string | undefined = originOwner,
+  runStatus: (at: GhAt, ...args: string[]) => string | Promise<string> = run,
+): Forge => ({
   status(cwd, url) {
     const ref = prRef(url);
     const at: GhAt = { cwd, owner: ref.owner };
-    const pr = JSON.parse(run(at, 'pr', 'view', url, '--json', 'state,mergeable,mergeStateStatus,headRefOid,mergeCommit,author,statusCheckRollup,comments,reviews')) as GhPr;
-    const inline = JSON.parse(run(at, 'api', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`, '--paginate')) as {
-      id: number;
-      user: { login: string };
-      body: string;
-      path: string;
-      line: number | null;
-      html_url: string;
-      created_at?: string;
-      pull_request_review_id?: number | null;
-      in_reply_to_id?: number | null;
-    }[];
-    // whether a thread is resolved and when a comment was last changed only GraphQL says; a thread
-    // is known by its first comment
-    const threads = JSON.parse(
-      run(
+    const outs = [
+      runStatus(at, 'pr', 'view', url, '--json', 'state,mergeable,mergeStateStatus,headRefOid,mergeCommit,author,statusCheckRollup,comments,reviews'),
+      runStatus(at, 'api', `repos/${ref.owner}/${ref.repo}/pulls/${ref.number}/comments`, '--paginate'),
+      runStatus(
         at,
         'api',
         'graphql',
@@ -213,73 +240,8 @@ export const makeGhForge = (run: (at: GhAt, ...args: string[]) => string, ownerO
         '-f',
         'query=query($owner: String!, $repo: String!, $number: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { databaseId } } } } comments(last: 100) { nodes { id updatedAt } } commits(last: 30) { nodes { commit { committedDate parents { totalCount } } } } } } }',
       ),
-    ) as {
-      data?: {
-        repository?: {
-          pullRequest?: {
-            reviewThreads?: { nodes: { isResolved: boolean; comments: { nodes: { databaseId: number }[] } }[] };
-            comments?: { nodes: { id: string; updatedAt: string }[] };
-            commits?: { nodes: { commit: { committedDate: string; parents: { totalCount: number } } }[] };
-          };
-        };
-      };
-    };
-    const resolved = new Set(
-      (threads.data?.repository?.pullRequest?.reviewThreads?.nodes ?? []).filter((t) => t.isResolved).map((t) => t.comments.nodes[0]?.databaseId),
-    );
-    const changedAt = (threads.data?.repository?.pullRequest?.commits?.nodes ?? []).findLast((n) => n.commit.parents.totalCount < 2)?.commit.committedDate;
-    const updated = new Map((threads.data?.repository?.pullRequest?.comments?.nodes ?? []).map((c) => [c.id, c.updatedAt]));
-    // an edit within a minute of writing is part of writing it
-    const edited = (id: string, at?: string) => {
-      const u = updated.get(id);
-      return u && at && Date.parse(u) - Date.parse(at) > 60_000 ? { edited: u } : {};
-    };
-    const checks = (pr.statusCheckRollup ?? []).map((c) => {
-      const name = c.name ?? c.context ?? 'check';
-      const verdict = (c.conclusion ?? c.state ?? '').toUpperCase();
-      const done = c.__typename === 'CheckRun' ? c.status === 'COMPLETED' : verdict !== 'PENDING' && verdict !== 'EXPECTED';
-      const state: PrStatus['checks'][number]['state'] = !done
-        ? 'pending'
-        : ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(verdict)
-          ? 'success'
-          : 'failure';
-      return { name, state, ...((c.detailsUrl ?? c.targetUrl) ? { url: c.detailsUrl ?? c.targetUrl } : {}) };
-    });
-    return {
-      state: pr.state,
-      mergeable: pr.mergeable,
-      ...(pr.mergeStateStatus ? { mergeState: pr.mergeStateStatus } : {}),
-      head: pr.headRefOid,
-      ...(changedAt ? { changedAt } : {}),
-      author: pr.author.login,
-      ...(pr.state === 'MERGED' && pr.mergeCommit?.oid ? { mergeCommit: pr.mergeCommit.oid } : {}),
-      checks,
-      comments: [
-        ...pr.comments.map((c) => ({
-          id: `c${c.id}`,
-          author: c.author.login,
-          body: c.body,
-          ...(c.createdAt ? { at: c.createdAt } : {}),
-          ...edited(c.id, c.createdAt),
-          url: c.url,
-        })),
-        ...pr.reviews
-          .filter((r) => r.body.trim())
-          .map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body, ...(r.submittedAt ? { at: r.submittedAt } : {}) })),
-        // the REST API names an app `<name>[bot]`, `gh pr view` plain `<name>`: one name for both
-        ...inline.map((c) => ({
-          id: `i${c.id}`,
-          author: c.user.login.replace(/\[bot\]$/, ''),
-          body: c.body,
-          ...(c.created_at ? { at: c.created_at } : {}),
-          path: c.path,
-          ...(c.line ? { line: c.line } : {}),
-          url: c.html_url,
-          ...(c.pull_request_review_id ? { round: String(c.pull_request_review_id) } : {}),
-          ...(c.in_reply_to_id ? { replyTo: `i${c.in_reply_to_id}` } : { resolved: resolved.has(c.id) }),
-        })),
-      ],
-    };
+    ];
+    return outs.some((o) => o instanceof Promise) ? Promise.all(outs).then((o) => ghStatus(o[0]!, o[1]!, o[2]!)) : ghStatus(...(outs as [string, string, string]));
   },
   body(cwd, url) {
     return (JSON.parse(run(atPr(cwd, url), 'pr', 'view', url, '--json', 'body')) as { body: string }).body;
@@ -308,7 +270,92 @@ export const makeGhForge = (run: (at: GhAt, ...args: string[]) => string, ownerO
   },
 });
 
-export const ghForge = makeGhForge(gh);
+/** A PR's status from gh's three answers: the PR, its inline comments, and GraphQL's threads and commits. */
+function ghStatus(prOut: string, inlineOut: string, threadsOut: string): PrStatus {
+  const pr = JSON.parse(prOut) as GhPr;
+  const inline = JSON.parse(inlineOut) as {
+    id: number;
+    user: { login: string };
+    body: string;
+    path: string;
+    line: number | null;
+    html_url: string;
+    created_at?: string;
+    pull_request_review_id?: number | null;
+    in_reply_to_id?: number | null;
+  }[];
+  // whether a thread is resolved and when a comment was last changed only GraphQL says; a thread
+  // is known by its first comment
+  const threads = JSON.parse(threadsOut) as {
+    data?: {
+      repository?: {
+        pullRequest?: {
+          reviewThreads?: { nodes: { isResolved: boolean; comments: { nodes: { databaseId: number }[] } }[] };
+          comments?: { nodes: { id: string; updatedAt: string }[] };
+          commits?: { nodes: { commit: { committedDate: string; parents: { totalCount: number } } }[] };
+        };
+      };
+    };
+  };
+  const resolved = new Set(
+    (threads.data?.repository?.pullRequest?.reviewThreads?.nodes ?? []).filter((t) => t.isResolved).map((t) => t.comments.nodes[0]?.databaseId),
+  );
+  const changedAt = (threads.data?.repository?.pullRequest?.commits?.nodes ?? []).findLast((n) => n.commit.parents.totalCount < 2)?.commit.committedDate;
+  const updated = new Map((threads.data?.repository?.pullRequest?.comments?.nodes ?? []).map((c) => [c.id, c.updatedAt]));
+  // an edit within a minute of writing is part of writing it
+  const edited = (id: string, at?: string) => {
+    const u = updated.get(id);
+    return u && at && Date.parse(u) - Date.parse(at) > 60_000 ? { edited: u } : {};
+  };
+  const checks = (pr.statusCheckRollup ?? []).map((c) => {
+    const name = c.name ?? c.context ?? 'check';
+    const verdict = (c.conclusion ?? c.state ?? '').toUpperCase();
+    const done = c.__typename === 'CheckRun' ? c.status === 'COMPLETED' : verdict !== 'PENDING' && verdict !== 'EXPECTED';
+    const state: PrStatus['checks'][number]['state'] = !done
+      ? 'pending'
+      : ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(verdict)
+        ? 'success'
+        : 'failure';
+    return { name, state, ...((c.detailsUrl ?? c.targetUrl) ? { url: c.detailsUrl ?? c.targetUrl } : {}) };
+  });
+  return {
+    state: pr.state,
+    mergeable: pr.mergeable,
+    ...(pr.mergeStateStatus ? { mergeState: pr.mergeStateStatus } : {}),
+    head: pr.headRefOid,
+    ...(changedAt ? { changedAt } : {}),
+    author: pr.author.login,
+    ...(pr.state === 'MERGED' && pr.mergeCommit?.oid ? { mergeCommit: pr.mergeCommit.oid } : {}),
+    checks,
+    comments: [
+      ...pr.comments.map((c) => ({
+        id: `c${c.id}`,
+        author: c.author.login,
+        body: c.body,
+        ...(c.createdAt ? { at: c.createdAt } : {}),
+        ...edited(c.id, c.createdAt),
+        url: c.url,
+      })),
+      ...pr.reviews
+        .filter((r) => r.body.trim())
+        .map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body, ...(r.submittedAt ? { at: r.submittedAt } : {}) })),
+      // the REST API names an app `<name>[bot]`, `gh pr view` plain `<name>`: one name for both
+      ...inline.map((c) => ({
+        id: `i${c.id}`,
+        author: c.user.login.replace(/\[bot\]$/, ''),
+        body: c.body,
+        ...(c.created_at ? { at: c.created_at } : {}),
+        path: c.path,
+        ...(c.line ? { line: c.line } : {}),
+        url: c.html_url,
+        ...(c.pull_request_review_id ? { round: String(c.pull_request_review_id) } : {}),
+        ...(c.in_reply_to_id ? { replyTo: `i${c.in_reply_to_id}` } : { resolved: resolved.has(c.id) }),
+      })),
+    ],
+  };
+}
+
+export const ghForge = makeGhForge(gh, originOwner, ghAsync);
 
 /**
  * What the card shows of a pull request's review, oldest first: each round a reviewer left comments

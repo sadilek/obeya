@@ -38,7 +38,7 @@ export class PrWatcher {
   ) {}
 
   start(everyMs = 120_000) {
-    this.timer = setInterval(() => this.poll(), everyMs);
+    this.timer = setInterval(() => this.round(), everyMs);
   }
 
   stop() {
@@ -52,24 +52,43 @@ export class PrWatcher {
   soon(gapMs = 15_000) {
     if (this.polling || Date.now() - this.polled < gapMs) return;
     this.polled = Date.now();
-    setTimeout(() => this.poll());
+    setTimeout(() => this.round());
   }
 
-  /** One round over every card with an open pull request. */
-  poll() {
+  /** A round from a timer: what goes wrong in it is logged, as an exception from the timer was before. */
+  private round() {
+    this.poll().catch((e) => console.error('PR watcher:', messageOf(e)));
+  }
+
+  /**
+   * One round over every card with an open pull request. Where the forge answers in the background
+   * (gh), the round waits for it without blocking the server; with a forge that answers at once (tests)
+   * it runs through before it returns.
+   */
+  async poll() {
     if (this.polling) return;
     this.polling = true;
     this.polled = Date.now();
     try {
-      for (const item of this.board.snapshot().items) {
+      for (let item of this.board.snapshot().items) {
         if (item.state !== 'inPr' && item.state !== 'waiting') continue;
         if (this.repo && item.repo !== this.repo) continue;
         const row = this.board.row(item.id);
-        const pr = row.pr ? (JSON.parse(row.pr) as PrState) : null;
+        let pr = row.pr ? (JSON.parse(row.pr) as PrState) : null;
         if (!pr?.url) continue;
         let status: PrStatus;
         try {
-          status = this.forge.status(this.cwd(item.id), pr.url);
+          const got = this.forge.status(this.cwd(item.id), pr.url);
+          if (got instanceof Promise) {
+            status = await got;
+            // the card may have moved on while gh ran: react to it as it is now
+            const now = this.board.snapshot().items.find((i) => i.id === item.id);
+            const nowRow = now && this.board.row(item.id);
+            const nowPr = nowRow?.pr ? (JSON.parse(nowRow.pr) as PrState) : null;
+            if (!now || (now.state !== 'inPr' && now.state !== 'waiting') || nowPr?.url !== pr.url) continue;
+            item = now;
+            pr = nowPr!;
+          } else status = got;
         } catch (e) {
           // failing for a while (a login missing, say, not the network gone for a moment), the card
           // says why once: otherwise it would wait for a merge it never sees
