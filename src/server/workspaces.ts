@@ -454,11 +454,21 @@ export class Workspaces implements CardWorkspaces {
    * configuration no longer names them (fewer clones to create, an existing one or a host taken out,
    * the repository gone over to worktrees). A free one leaves at once; one a card holds stays with
    * it and leaves once the card gives it back. A clone Obeya made goes from disk as it leaves where
-   * nothing would be lost (`retire`); one the owner listed stays as it is.
+   * nothing would be lost (`retire`); one the owner listed stays as it is. A workspace here whose
+   * folder is gone leaves at once, clone or worktree, held or not (a card's own worktree aside, which
+   * is no pool's): returns the cards that lost theirs that way, which take another at their next start.
    */
-  keepOnly(host: string | null, named: string[]) {
+  keepOnly(host: string | null, named: string[]): { card: string; path: string }[] {
+    const lost: { card: string; path: string }[] = [];
     for (const w of this.list()) {
-      if (hostName(w.path) !== host || named.includes(w.path) || !this.isClone(w.path)) continue;
+      if (hostName(w.path) !== host || named.includes(w.path)) continue;
+      if (this.gone(w.path, w.card_id)) {
+        this.store.removeWorkspace(w.path);
+        this.leaving.delete(w.path);
+        if (w.card_id) lost.push({ card: w.card_id, path: w.path });
+        continue;
+      }
+      if (!this.isClone(w.path)) continue;
       if (w.card_id) this.leaving.add(w.path);
       else {
         this.store.removeWorkspace(w.path);
@@ -466,6 +476,18 @@ export class Workspaces implements CardWorkspaces {
       }
     }
     for (const path of this.leaving) if (named.includes(path)) this.leaving.delete(path);
+    return lost;
+  }
+
+  /**
+   * Whether the folder of a workspace on this machine is gone (moved or deleted by hand), so that no
+   * card can work in it again. A card's worktree where this repository makes them, and one git is
+   * still making ready, are the card's to make.
+   */
+  private gone(path: string, card: string | null): boolean {
+    if (hostName(path) !== null || existsSync(path)) return false;
+    if (card && this.preparing.has(card)) return false;
+    return !(this.o.mode === 'worktrees' && card && path === join(this.o.dir, card.slice(0, 8)));
   }
 
   /**

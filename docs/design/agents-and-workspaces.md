@@ -85,7 +85,11 @@ landed (where work lands on the local main, `origin` is the Obeya checkout). The
 aside first, so a clone named again meanwhile (here or by another canvas) is never removed under a
 card. Otherwise it stays: the log says once what lies in it, the pool's tooltip shows „bleibt: nicht
 gelandete Arbeit in <Pfad>“, and a later start looks again; raising the number takes it back as it
-is. Clones the owner listed, and folders on a host no longer configured, are never touched.
+is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
+workspace on this machine whose folder is gone (moved or deleted by hand) and that the configuration
+no longer names leaves at once, clone or worktree, held or not: its card names no workspace any
+more, one at work is planned again, its log says so, and its next start takes another. Only a
+card's own worktree, where the repository makes them, stays the card's.
 
 A card gives its workspace back once it will not work there again, checked at every board change and
 at start: deleted; a workstream no worker is on once the plan doc on the default branch ticks it off
@@ -289,6 +293,10 @@ a container say, reuses pids). A host needs git, Claude Code and what the reposi
 - **The pool follows the configuration; a clone leaving it is deleted** (2026-10-21), so a lowered
   number gives disk space and app stacks back. Rejected: clones staying once registered; leaving the
   folder; asking when saving (a step more, and a leased clone is freed only later).
+- **A workspace whose folder is gone leaves the pool at once, even from its card** (2026-10-23):
+  waiting for the card to give it back never ends, since nothing (git, `app.stop`) runs in a missing
+  folder, and the canvas showed every moved repository twice. Rejected: keeping it until the folder
+  comes back (a moved home never does).
 - **A lease is given back from the card's state** (2026-10-21), whatever brought it there. Rejected:
   freeing only on a card's normal path, which left stopped, ticked-off workstreams holding clones.
 - **An unreachable host fails fast** (2026-10-12): asking it on every look for a free clone (almost a

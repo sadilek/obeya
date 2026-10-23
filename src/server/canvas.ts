@@ -608,7 +608,8 @@ export class CanvasRuntime {
       }
       // the pool is what the configuration names now (in worktrees, no clone): clones here it no longer names leave it,
       // and those on hosts no longer in use (on a host still in use, once its clones are in place); worktrees are the cards' own
-      git.keepOnly(null, named);
+      // a folder moved or deleted by hand leaves at once, and its card takes another at its next start
+      for (const { card, path } of git.keepOnly(null, named)) board.workspaceGone(card, path);
       const hosts = new Set(remoteHosts.map((h) => h.name));
       for (const host of new Set(git.list().map((w) => hostName(w.path)))) if (host !== null && !hosts.has(host)) git.keepOnly(host, []);
       // the folders of Obeya's clones that left the pool earlier go once nothing in them would be lost

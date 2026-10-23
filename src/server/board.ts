@@ -1236,6 +1236,18 @@ export class Board {
     this.work(cardId, { workspace: null, app: null, parked: null });
   }
 
+  /**
+   * The card's workspace at `path` left the pool, its folder gone: the card names none any more, one
+   * at work is planned again, and its next start takes another workspace.
+   */
+  workspaceGone(cardId: string, path: string) {
+    const row = this.store.card(cardId);
+    if (!row || row.workspace !== path) return this.changed();
+    const working = row.state === 'working';
+    this.work(cardId, { workspace: null, app: null, parked: null, ...(working ? { state: 'planned', paused: null, snoozed: null } : {}) });
+    if (!row.deleted_at) this.log(cardId, 'state', 'obeya', this.t.worker.workspaceGone(path, working));
+  }
+
   /** A card's landed work is done, its worker gone: a card whose plan doc is a project now gives way to it. */
   workDone(cardId: string) {
     // a workstream its doc keeps open is planned again (reopen) once its worker is done

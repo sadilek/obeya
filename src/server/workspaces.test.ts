@@ -390,6 +390,52 @@ describe('clones the configuration no longer names', () => {
     expect(existsSync(join(own, '.git'))).toBe(true);
     expect(stopped()).toEqual([paths[0]!]);
   });
+
+  test('one whose folder is gone leaves at once, held or not, and its card takes another at its next start', async () => {
+    const own = join(dir, 'own');
+    git(dir, 'clone', '--quiet', origin, own);
+    const { spaces, paths } = make(3);
+    const [a, b, c] = ['A', 'B', 'C'].map((title) => board.create({ title, x: 0, y: 0 }).id) as [string, string, string];
+    const held = spaces.lease(a, 'obeya/a');
+    expect(held.path).toBe(paths[0]!);
+    await held.ready;
+    spaces.register(own, [origin]);
+    // a worktree from before the repository went over to clones, under the home Obeya had then
+    const old = join(dir, 'old-home', 'a7d7c689');
+    store.addWorkspace('c', old);
+    store.setLease(old, b);
+    board.work(a, { state: 'working', workspace: held.path, branch: 'obeya/a' });
+    board.work(b, { state: 'planned', workspace: old, branch: 'obeya/b' });
+    // the owner moved the listed clone and the held one away; the old home is gone with its worktree
+    rmSync(own, { recursive: true });
+    rmSync(held.path, { recursive: true });
+    const lost = spaces.keepOnly(null, paths.slice(1));
+    expect(lost).toEqual([
+      { card: b, path: old },
+      { card: a, path: held.path },
+    ]);
+    expect(spaces.list().map((w) => w.path)).toEqual(paths.slice(1));
+    for (const l of lost) board.workspaceGone(l.card, l.path);
+    expect(board.row(a)).toMatchObject({ state: 'planned', workspace: null, branch: 'obeya/a' });
+    expect(board.row(b)).toMatchObject({ state: 'planned', workspace: null });
+    expect(board.events(a).at(-1)!.text).toContain(held.path);
+    // the next start takes a clone that is there
+    const again = spaces.lease(a, 'obeya/a');
+    expect(paths.slice(1)).toContain(again.path);
+    await again.ready;
+    expect(existsSync(again.path)).toBe(true);
+    expect(spaces.lease(c, 'obeya/c').path).not.toBe(again.path);
+  });
+
+  test("a card's own worktree whose folder is gone stays the card's", () => {
+    const spaces = new Workspaces(store, 'c', { mode: 'worktrees', repoPath: join(dir, 'main'), dir: ws });
+    const a = board.create({ title: 'A', x: 0, y: 0 }).id;
+    const path = join(ws, a.slice(0, 8));
+    store.addWorkspace('c', path);
+    store.setLease(path, a);
+    expect(spaces.keepOnly(null, [])).toEqual([]);
+    expect(spaces.leasedBy(a)).toBe(path);
+  });
 });
 
 test('a trailer goes beside the trailers a commit message ends with, else into a paragraph of its own', () => {
