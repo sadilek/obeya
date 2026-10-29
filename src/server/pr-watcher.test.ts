@@ -106,6 +106,9 @@ describe('the PR phase', () => {
     // one on Codeberg (Forgejo) is recorded like one on GitHub
     runtime.last.call('pr_opened', { url: 'https://codeberg.org/acme/app/pulls/12' });
     expect(board.item(id)!.pr).toMatchObject({ url: 'https://codeberg.org/acme/app/pulls/12', number: 12 });
+    // written GitHub's way, it is recorded as Codeberg writes it
+    runtime.last.call('pr_opened', { url: 'https://codeberg.org/acme/app/pull/13' });
+    expect(board.item(id)!.pr).toMatchObject({ url: 'https://codeberg.org/acme/app/pulls/13', number: 13 });
     runtime.last.call('pr_opened', { url: URL_ });
     expect(board.item(id)!.pr).toMatchObject({ url: URL_, number: 42 });
     // with the PR open, ending the turn needs no nudge

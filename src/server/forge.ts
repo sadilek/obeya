@@ -99,19 +99,25 @@ export interface ContributionInfo {
 /**
  * A pull request URL: on GitHub `https://<host>/<owner>/<repo>/pull/<n>` (github.com, or a GitHub
  * Enterprise server, whose PRs have the same path), on Forgejo or Gitea (Codeberg, a server of one's
- * own, perhaps below a path) `https://<host>/<owner>/<repo>/pulls/<n>`. `base`: the server's
- * address; `host`: GitHub's host as gh names it.
+ * own, perhaps below a path) `https://<host>/<owner>/<repo>/pulls/<n>`. `github` says which hosts
+ * are GitHub's; on any other, `/pull/` is a Forgejo PR written GitHub's way (an agent's slip; the
+ * server answers it with 404). `base`: the server's address; `host`: GitHub's host as gh names it;
+ * `url`: the address as given, on Forgejo as the server writes it.
  */
-export function parsePrUrl(url: string): { forge: 'github' | 'forgejo'; base: string; host: string; owner: string; repo: string; number: number } | null {
-  const gh = /^(https?:\/\/([^/\s]+))\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\/?$/.exec(url.trim());
-  if (gh) {
-    const host = gh[2]!.toLowerCase();
-    return { forge: 'github', base: `https://${host}`, host, owner: gh[3]!, repo: gh[4]!, number: Number(gh[5]) };
+export function parsePrUrl(
+  url: string,
+  github: (url: string) => boolean = onGitHub,
+): { forge: 'github' | 'forgejo'; base: string; host: string; owner: string; repo: string; number: number; url: string } | null {
+  const m = /^(https?:\/\/[^/\s]+(?:\/[^/\s]+)*?)\/([\w.-]+)\/([\w.-]+)\/(pulls?)\/(\d+)\/?$/.exec(url.trim());
+  if (!m) return null;
+  const [, base, owner, repo, kind, n] = m as unknown as [string, string, string, string, string, string];
+  const at = new URL(base);
+  const host = at.host.toLowerCase();
+  const number = Number(n);
+  if (github(base)) {
+    return kind === 'pull' && at.pathname === '/' ? { forge: 'github', base: `https://${host}`, host, owner, repo, number, url: url.trim() } : null;
   }
-  const fj = /^(https?:\/\/[^/\s]+(?:\/[^/\s]+)*?)\/([\w.-]+)\/([\w.-]+)\/pulls\/(\d+)\/?$/.exec(url.trim());
-  if (!fj) return null;
-  const host = new URL(fj[1]!).host.toLowerCase();
-  return host !== 'github.com' ? { forge: 'forgejo', base: fj[1]!, host, owner: fj[2]!, repo: fj[3]!, number: Number(fj[4]) } : null;
+  return { forge: 'forgejo', base, host, owner, repo, number, url: `${base}/${owner}/${repo}/pulls/${number}` };
 }
 
 /** Whether a git remote (https, ssh, scp-like, or a path) is the repository `owner/repo`. */
@@ -130,7 +136,7 @@ export const sameRepo = (remote: string, owner: string, repo: string) =>
  * `origin` (GitHub where `onGitHub` says so, else Forgejo).
  */
 export const routedForge = (github: Forge, forgejo: Forge, origin: (cwd: string) => Promise<string | null>, onGitHub: (remote: string) => boolean): Forge => {
-  const of = (url: string) => (parsePrUrl(url)?.forge === 'forgejo' ? forgejo : github);
+  const of = (url: string) => (parsePrUrl(url, onGitHub)?.forge === 'forgejo' ? forgejo : github);
   return {
     status: (cwd, url) => of(url).status(cwd, url),
     body: (cwd, url) => of(url).body(cwd, url),
@@ -248,16 +254,19 @@ async function originRepo(cwd: string): Promise<{ host: string; owner: string } 
   return r.code === 0 ? githubRepo(r.stdout) : undefined;
 }
 
+/** A pull request URL read as GitHub's, whatever its host: `routedForge` sent it to gh. */
+const githubPr = (url: string) => parsePrUrl(url, () => true);
+
 /** Where gh runs for the pull request at `url`. */
 const atPr = (cwd: string, url: string): GhAt => {
-  const ref = parsePrUrl(url);
-  return ref?.forge === 'github' ? { cwd, host: ref.host, owner: ref.owner } : { cwd };
+  const ref = githubPr(url);
+  return ref ? { cwd, host: ref.host, owner: ref.owner } : { cwd };
 };
 
 /** The pull request at `url`; throws for a URL that is no GitHub pull request's. */
 function prRef(url: string) {
-  const ref = parsePrUrl(url);
-  if (ref?.forge !== 'github') throw new Error(`not a GitHub pull request URL: ${url}`);
+  const ref = githubPr(url);
+  if (!ref) throw new Error(`not a GitHub pull request URL: ${url}`);
   return ref;
 }
 

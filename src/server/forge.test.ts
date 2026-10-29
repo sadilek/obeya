@@ -6,14 +6,22 @@ import { confidence, type Forge, ghCli, githubRepo, lastAsked, makeGhForge, pars
 import { fakeGh, noContributions } from './testing';
 
 test('parsePrUrl: GitHub and GitHub Enterprise, and Forgejo or Gitea on any server', () => {
-  expect(parsePrUrl('https://github.com/example-org/app/pull/813')).toEqual({ forge: 'github', base: 'https://github.com', host: 'github.com', owner: 'example-org', repo: 'app', number: 813 });
-  expect(parsePrUrl('https://GitHub.Example.com/team/app/pull/7/')).toEqual({ forge: 'github', base: 'https://github.example.com', host: 'github.example.com', owner: 'team', repo: 'app', number: 7 });
-  expect(parsePrUrl('https://github.com/a/b/issues/1')).toBeNull();
-  expect(parsePrUrl('https://github.example.com/a/b/pull/x')).toBeNull();
-  expect(parsePrUrl('https://codeberg.org/acme/app/pulls/12')).toEqual({ forge: 'forgejo', base: 'https://codeberg.org', host: 'codeberg.org', owner: 'acme', repo: 'app', number: 12 });
-  expect(parsePrUrl('https://git.example.org/forge/team/app/pulls/3/')).toEqual({ forge: 'forgejo', base: 'https://git.example.org/forge', host: 'git.example.org', owner: 'team', repo: 'app', number: 3 });
-  expect(parsePrUrl('https://github.com/a/b/pulls/1')).toBeNull();
-  expect(parsePrUrl('https://codeberg.org/a/b/pulls')).toBeNull();
+  const github = (url: string) => /^https?:\/\/(github\.com|github\.example\.com)(\/|$)/i.test(url);
+  expect(parsePrUrl('https://github.com/example-org/app/pull/813', github)).toEqual({ forge: 'github', base: 'https://github.com', host: 'github.com', owner: 'example-org', repo: 'app', number: 813, url: 'https://github.com/example-org/app/pull/813' });
+  expect(parsePrUrl('https://GitHub.Example.com/team/app/pull/7/', github)).toEqual({ forge: 'github', base: 'https://github.example.com', host: 'github.example.com', owner: 'team', repo: 'app', number: 7, url: 'https://GitHub.Example.com/team/app/pull/7/' });
+  expect(parsePrUrl('https://github.com/a/b/issues/1', github)).toBeNull();
+  expect(parsePrUrl('https://github.example.com/a/b/pull/x', github)).toBeNull();
+  expect(parsePrUrl('https://codeberg.org/acme/app/pulls/12', github)).toEqual({ forge: 'forgejo', base: 'https://codeberg.org', host: 'codeberg.org', owner: 'acme', repo: 'app', number: 12, url: 'https://codeberg.org/acme/app/pulls/12' });
+  expect(parsePrUrl('https://git.example.org/forge/team/app/pulls/3/', github)).toEqual({ forge: 'forgejo', base: 'https://git.example.org/forge', host: 'git.example.org', owner: 'team', repo: 'app', number: 3, url: 'https://git.example.org/forge/team/app/pulls/3' });
+  expect(parsePrUrl('https://github.com/a/b/pulls/1', github)).toBeNull();
+  expect(parsePrUrl('https://github.com/x/a/b/pull/1', github)).toBeNull();
+  expect(parsePrUrl('https://codeberg.org/a/b/pulls', github)).toBeNull();
+  // GitHub's form on a host that is not GitHub's: a Forgejo PR, at the address the server knows
+  expect(parsePrUrl('https://codeberg.org/BuendnisOst/bo-website/pull/62', github)).toEqual({ forge: 'forgejo', base: 'https://codeberg.org', host: 'codeberg.org', owner: 'BuendnisOst', repo: 'bo-website', number: 62, url: 'https://codeberg.org/BuendnisOst/bo-website/pulls/62' });
+  expect(parsePrUrl('https://git.example.org/forge/team/app/pull/3', github)?.url).toBe('https://git.example.org/forge/team/app/pulls/3');
+  // by default, the hosts gh is logged into are GitHub's
+  expect(parsePrUrl('https://github.com/a/b/pull/1')?.forge).toBe('github');
+  expect(parsePrUrl('https://codeberg.org/a/b/pull/1')?.forge).toBe('forgejo');
 });
 
 test('a pull request goes to the forge its URL is on; one is opened on the forge of origin', async () => {
@@ -27,14 +35,15 @@ test('a pull request goes to the forge its URL is on; one is opened on the forge
     open: async () => (seen.push(`${name} open`), ''),
   });
   const origins: Record<string, string> = { '/gh': 'git@github.com:a/b.git', '/cb': 'https://codeberg.org/a/b.git' };
-  const forge = routedForge(fake('github'), fake('forgejo'), async (cwd) => origins[cwd] ?? null, (r) => r.includes('github.com'));
+  const forge = routedForge(fake('github'), fake('forgejo'), async (cwd) => origins[cwd] ?? null, (r) => /github\.(example\.)?com/.test(r));
   await forge.status('/x', 'https://codeberg.org/a/b/pulls/1');
+  await forge.status('/x', 'https://codeberg.org/a/b/pull/1');
   await forge.merge('/x', 'https://github.com/a/b/pull/1', 'h');
   await forge.body('/x', 'https://github.example.com/a/b/pull/1');
   await forge.setBody('/x', 'https://codeberg.org/a/b/pulls/1', '');
   await forge.open('/gh', { base: 'main', head: 'x', title: 't', body: '' });
   await forge.open('/cb', { base: 'main', head: 'x', title: 't', body: '' });
-  expect(seen).toEqual(['forgejo status', 'github merge', 'github body', 'forgejo setBody', 'github open', 'forgejo open']);
+  expect(seen).toEqual(['forgejo status', 'forgejo status', 'github merge', 'github body', 'forgejo setBody', 'github open', 'forgejo open']);
 });
 
 test('githubRepo: host and owner on github.com or an Enterprise server gh is logged into', () => {

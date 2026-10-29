@@ -2277,6 +2277,7 @@ export class CanvasRuntime {
     }
     const ref = parsePrUrl(url);
     if (!ref) return fail(url);
+    url = ref.url;
     // a pull request of another repository would be merged there, from a workspace of this one
     const origin = originUrl(repo.info);
     if (origin && !sameRepo(origin, ref.owner, ref.repo)) return fail(t.review.otherRepo(repo.ref.id));

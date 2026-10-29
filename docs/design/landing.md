@@ -39,7 +39,8 @@ click ends the owner's turn at once (see Approval and landing).
 On approval the worker opens the pull request the repository's way (its skills and conventions, a
 description for readers who have not seen Obeya) and reports it with `pr_opened(url)`: GitHub on
 github.com or an Enterprise server (`https://<host>/<owner>/<repo>/pull/<n>`), or Forgejo and Gitea
-(`…/pulls/<n>`, also below a path). From then on it may push its
+(`…/pulls/<n>`, also below a path). A `/pull/<n>` URL on a host that is not GitHub's is a Forgejo PR
+written GitHub's way (Codeberg answers it with 404): Obeya records it as `…/pulls/<n>`. From then on it may push its
 branch, never merges, and ends its turn after each round instead of handing over.
 
 #### Watching the PR
@@ -256,14 +257,14 @@ A card no agent worked on, a prototype or an archived card has no field.
   the other: each is a round trip to GitHub (a second idle, several under load, ten and more when
   GitHub is slow), so with two open PRs the server answered nothing for up to 40 s every two minutes
   (canvas switches, conversations and demo videos hung).
-- **A PR's forge is told by its URL's path; GitHub Enterprise is GitHub on another host**
-  (2026-10-26, GitHub issue #16). `/pull/<n>` is GitHub's path on github.com and every Enterprise
-  server, Forgejo and Gitea use `/pulls/<n>`, so the URL alone tells them apart, with no project
-  setting and nothing asked over the network. A PR on a host gh is not logged into is watched all
-  the same and fails with gh's reason on the card, which says what to do (`gh auth login
-  --hostname`). Where no URL exists yet (the landing default, opening a PR), the host of `origin`
-  counts as GitHub where gh is logged into it, read from gh's own files. Rejected: a list of
-  Enterprise hosts in the settings (one more setting for what gh already knows); asking `gh auth
+- **A PR's forge is told by its URL's host; GitHub Enterprise is GitHub on another host**
+  (2026-10-26, GitHub issue #16; host 2026-10-29). A host is GitHub's when it is github.com or gh
+  is logged into it, read from gh's own files, for a PR's URL as for `origin` where no URL exists
+  yet (the landing default, opening a PR); every other host is Forgejo or Gitea. The price: a PR
+  on an Enterprise server gh is not logged into fails with the Forgejo API's answer instead of gh's
+  hint to log in, as opening a PR there does. Rejected: the path alone (`/pull/<n>` GitHub's,
+  `/pulls/<n>` Forgejo's), since agents write a Codeberg PR as `…/pull/<n>` and gh then asks
+  Codeberg, which answers HTTP 405; a list of Enterprise hosts in the settings (one more setting for what gh already knows); asking `gh auth
   status` (checks each login over the network) or probing the host's API (a round trip, and a
   server behind a VPN that is down would turn a PR into an unknown one).
 - **Forgejo and Gitea through curl and git's login** (2026-10-17). Rejected: `tea`/`fj`, which
