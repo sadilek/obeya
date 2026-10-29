@@ -100,22 +100,22 @@ export interface ContributionInfo {
  * A pull request URL: on GitHub `https://<host>/<owner>/<repo>/pull/<n>` (github.com, or a GitHub
  * Enterprise server, whose PRs have the same path), on Forgejo or Gitea (Codeberg, a server of one's
  * own, perhaps below a path) `https://<host>/<owner>/<repo>/pulls/<n>`. `github` says which hosts
- * are GitHub's; on any other, `/pull/` is a Forgejo PR written GitHub's way (an agent's slip; the
- * server answers it with 404). `base`: the server's address; `host`: GitHub's host as gh names it;
- * `url`: the address as given, on Forgejo as the server writes it.
+ * are GitHub's; the host decides, since agents write one forge's path on the other (Codeberg
+ * answers `/pull/` with 404). `base`: the server's address; `host`: GitHub's host as gh names it;
+ * `url`: the address as the forge writes it.
  */
 export function parsePrUrl(
   url: string,
   github: (url: string) => boolean = onGitHub,
 ): { forge: 'github' | 'forgejo'; base: string; host: string; owner: string; repo: string; number: number; url: string } | null {
-  const m = /^(https?:\/\/[^/\s]+(?:\/[^/\s]+)*?)\/([\w.-]+)\/([\w.-]+)\/(pulls?)\/(\d+)\/?$/.exec(url.trim());
-  if (!m) return null;
-  const [, base, owner, repo, kind, n] = m as unknown as [string, string, string, string, string, string];
+  const m = /^(https?:\/\/[^/\s]+(?:\/[^/\s]+)*?)\/([\w.-]+)\/([\w.-]+)\/pulls?\/(\d+)\/?$/.exec(url.trim());
+  if (!m || !URL.canParse(m[1]!)) return null;
+  const [, base, owner, repo, n] = m as unknown as [string, string, string, string, string];
   const at = new URL(base);
   const host = at.host.toLowerCase();
   const number = Number(n);
   if (github(base)) {
-    return kind === 'pull' && at.pathname === '/' ? { forge: 'github', base: `https://${host}`, host, owner, repo, number, url: url.trim() } : null;
+    return at.pathname === '/' ? { forge: 'github', base: `https://${host}`, host, owner, repo, number, url: `https://${host}/${owner}/${repo}/pull/${number}` } : null;
   }
   return { forge: 'forgejo', base, host, owner, repo, number, url: `${base}/${owner}/${repo}/pulls/${number}` };
 }

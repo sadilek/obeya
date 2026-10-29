@@ -8,12 +8,14 @@ import { fakeGh, noContributions } from './testing';
 test('parsePrUrl: GitHub and GitHub Enterprise, and Forgejo or Gitea on any server', () => {
   const github = (url: string) => /^https?:\/\/(github\.com|github\.example\.com)(\/|$)/i.test(url);
   expect(parsePrUrl('https://github.com/example-org/app/pull/813', github)).toEqual({ forge: 'github', base: 'https://github.com', host: 'github.com', owner: 'example-org', repo: 'app', number: 813, url: 'https://github.com/example-org/app/pull/813' });
-  expect(parsePrUrl('https://GitHub.Example.com/team/app/pull/7/', github)).toEqual({ forge: 'github', base: 'https://github.example.com', host: 'github.example.com', owner: 'team', repo: 'app', number: 7, url: 'https://GitHub.Example.com/team/app/pull/7/' });
+  expect(parsePrUrl('https://GitHub.Example.com/team/app/pull/7/', github)).toEqual({ forge: 'github', base: 'https://github.example.com', host: 'github.example.com', owner: 'team', repo: 'app', number: 7, url: 'https://github.example.com/team/app/pull/7' });
   expect(parsePrUrl('https://github.com/a/b/issues/1', github)).toBeNull();
   expect(parsePrUrl('https://github.example.com/a/b/pull/x', github)).toBeNull();
   expect(parsePrUrl('https://codeberg.org/acme/app/pulls/12', github)).toEqual({ forge: 'forgejo', base: 'https://codeberg.org', host: 'codeberg.org', owner: 'acme', repo: 'app', number: 12, url: 'https://codeberg.org/acme/app/pulls/12' });
   expect(parsePrUrl('https://git.example.org/forge/team/app/pulls/3/', github)).toEqual({ forge: 'forgejo', base: 'https://git.example.org/forge', host: 'git.example.org', owner: 'team', repo: 'app', number: 3, url: 'https://git.example.org/forge/team/app/pulls/3' });
-  expect(parsePrUrl('https://github.com/a/b/pulls/1', github)).toBeNull();
+  // Forgejo's form on a GitHub host (an Enterprise PR recorded before gh was logged in there): GitHub's PR
+  expect(parsePrUrl('https://github.com/a/b/pulls/1', github)?.url).toBe('https://github.com/a/b/pull/1');
+  expect(parsePrUrl('https://git.example:bad/a/b/pull/1', github)).toBeNull();
   expect(parsePrUrl('https://github.com/x/a/b/pull/1', github)).toBeNull();
   expect(parsePrUrl('https://codeberg.org/a/b/pulls', github)).toBeNull();
   // GitHub's form on a host that is not GitHub's: a Forgejo PR, at the address the server knows

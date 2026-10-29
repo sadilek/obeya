@@ -39,8 +39,9 @@ click ends the owner's turn at once (see Approval and landing).
 On approval the worker opens the pull request the repository's way (its skills and conventions, a
 description for readers who have not seen Obeya) and reports it with `pr_opened(url)`: GitHub on
 github.com or an Enterprise server (`https://<host>/<owner>/<repo>/pull/<n>`), or Forgejo and Gitea
-(`…/pulls/<n>`, also below a path). A `/pull/<n>` URL on a host that is not GitHub's is a Forgejo PR
-written GitHub's way (Codeberg answers it with 404): Obeya records it as `…/pulls/<n>`. From then on it may push its
+(`…/pulls/<n>`, also below a path). The host decides the forge, and Obeya records the URL with
+that forge's path: a Codeberg PR reported as `…/pull/<n>` (which Codeberg answers with 404) as
+`…/pulls/<n>`. From then on it may push its
 branch, never merges, and ends its turn after each round instead of handing over.
 
 #### Watching the PR
