@@ -332,7 +332,10 @@ relabel an element, a scene clears its highlights first.
 ### The demo on the card
 
 The card shows the demo on the left, beside the conversation (see Card layout). Obeya serves video,
-poster and captions (with range requests) and takes the chapter times from the captions. A video
+poster and captions (with range requests) and takes the chapter times from the captions. A range is
+read from disk at once, up to 8 MiB per answer, the player asking for the rest: a range streamed in
+pieces through the server's event loop stalled whenever the loop was busy, on Windows at 1 MB/s,
+and the video stopped with its buffer bar showing more loaded (2026-10-29). A video
 without a poster shows its first frame, sized from its metadata (Chrome sizes an unplayed video by
 its poster).
 
