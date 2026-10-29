@@ -633,8 +633,6 @@ const de = {
     question: (title: string) => `Agent · Frage: ${title}`,
     project: (title: string) => `Obeya · Projekt: ${title}`,
     noMic: 'Kein Mikrofon: der Browser hat den Zugriff nicht erlaubt.',
-    /** In the app's floating panel, while the owner holds the push-to-talk key in another app. */
-    listening: 'Obeya hört zu',
     notReady: 'Das Mikrofon war noch nicht bereit; bitte noch einmal.',
     flat: 'Das Mikrofon liefert keinen Ton.',
     failed: 'Das hat nicht geklappt; bitte noch einmal.',
@@ -646,8 +644,6 @@ const de = {
     reading: (what: string) => `${what} · wird verstanden …`,
     /** A recording for the open card's agent while Whisper writes it down. */
     transcribing: (what: string) => `${what} · wird aufgeschrieben …`,
-    /** In the app's panel: what was heard went to the open card's agent. */
-    toAgent: 'An den Agenten gegangen.',
     /** A confirmation about a card other than the open one starts with it. */
     about: (title: string) => `„${title}“: `,
     attach: 'Screenshot für die nächste Sprachnachricht – oder mit ⌘V einfügen oder auf das Mikrofon ziehen. Eine andere Datei aufs Mikrofon gezogen hängt ihren Pfad an.',
@@ -1301,7 +1297,7 @@ const de = {
     app: 'App',
     appBuiltHint: 'Aus dem Checkout installiert („bun run app install“). Ändert sich die App selbst (app/) auf dem Checkout, baut sie sich neu und startet neu, sobald die Agenten pausieren.',
     asAppHint:
-      'Im Checkout ausgeführt, installiert das Obeya als App „Obeya (checkout)“: auf dem Mac in ~/Applications (Spotlight, Launchpad, Dock), unter Windows im Startmenü, unter Linux im Anwendungsmenü. Sie läuft auf dem Code dieses Checkouts und folgt main wie jetzt; ändert sich die App selbst (app/), baut sie sich neu. Dazu kommt die Sprachtaste überall. Braucht Rust (rustup.rs); der erste Bau dauert ein paar Minuten.',
+      'Im Checkout ausgeführt, installiert das Obeya als App „Obeya (checkout)“: auf dem Mac in ~/Applications (Spotlight, Launchpad, Dock), unter Windows im Startmenü, unter Linux im Anwendungsmenü. Sie läuft auf dem Code dieses Checkouts und folgt main wie jetzt; ändert sich die App selbst (app/), baut sie sich neu. Braucht Rust (rustup.rs); der erste Bau dauert ein paar Minuten.',
     save: 'Speichern und neu starten',
     saveOnly: 'Speichern',
     reset: 'Verwerfen',
@@ -1343,8 +1339,7 @@ const de = {
         recognition: 'Spracherkennung',
         ffmpeg: 'ffmpeg (liest die Aufnahme)',
         uv: 'uv (bringt Python mit)',
-        globalKey: 'Sprachtaste überall (App)',
-      } satisfies Record<VoiceSetupId | 'globalKey', string>,
+      } satisfies Record<VoiceSetupId, string>,
       found: {} as Record<string, string>,
       faster: 'faster-whisper rechnet auf der Grafikkarte, wenn CUDA da ist, sonst auf dem Prozessor (langsamer, ein paar Sekunden je Befehl).',
       later: (size: string) => `wird beim ersten Sprechen geladen (etwa ${size})`,
@@ -1381,30 +1376,6 @@ const de = {
       },
       failed: (why: string) => `Fehlgeschlagen: ${why}. Mehr dazu im Log von Obeya.`,
       ready: 'Alles da: die Spracheingabe geht.',
-    },
-    pushKey: {
-      title: 'Sprachtaste überall',
-      hint: 'Halte die Taste, während ein anderes Programm vorne ist, sprich, und lass los: Obeya nimmt den Befehl auf, als hieltest du im Fenster die Leertaste, für das, was du zuletzt in Obeya offen hattest. Ein Fenster am unteren Bildschirmrand zeigt, was Obeya hört und was es daraus macht, mit „Rückgängig“. Kurz getippt bleibt die Taste, was sie war. Gilt sofort.',
-      appOnly: 'Nur in der App, auch aus dem Checkout („bun run app install“): ein Browser hört keine Tasten außerhalb seines Tabs.',
-      key: 'Taste',
-      change: 'Ändern',
-      press: 'Taste drücken …',
-      pressHint: 'Eine Taste allein (rechte Wahltaste, F13 …) oder eine Kombination wie Strg+Umschalt+Leertaste. Esc bricht ab.',
-      notAKey: 'Diese Taste geht nicht: eine allein muss eine sein, mit der man nicht schreibt (Strg, Alt, F-Tasten …).',
-      reset: (label: string) => `Standard (${label})`,
-      openSettings: 'Systemeinstellungen öffnen',
-      on: (label: string) => `Hört auf ${label}`,
-      bound: (trigger: string) => `Gebunden an ${trigger}; in den Einstellungen der Arbeitsumgebung änderbar.`,
-      states: {
-        permission: 'macOS erlaubt es noch nicht: Systemeinstellungen → Datenschutz & Sicherheit → Eingabeüberwachung, Obeya einschalten.',
-        restart: 'Erlaubt; Obeya muss dafür einmal neu starten.',
-        bind: 'Die Arbeitsumgebung fragt nach dem Kürzel: bestätige es dort.',
-        none: 'Diese Wayland-Arbeitsumgebung gibt Programmen keine Tasten (kein Global-Shortcuts-Portal); es bleibt die Leertaste im Fenster.',
-        unsupported: 'Diese Taste gibt es hier nicht; wähle eine andere.',
-        error: 'Geht nicht',
-      } as Record<string, string>,
-      keys: { Control: 'Strg', Alt: 'Alt', Option: 'Wahltaste', Shift: 'Umschalt', Command: 'Befehl', Windows: 'Windows-Taste', Super: 'Super', Space: 'Leertaste' },
-      side: { Left: (k: string) => `${k} links`, Right: (k: string) => `${k} rechts` },
     },
     demo: {
       title: 'Demos',
@@ -1575,7 +1546,7 @@ const de = {
     sections: {
       needed: { title: 'Agenten', hint: 'Ohne Claude Code und git arbeitet kein Agent. Claude Code läuft auf deinem Claude-Abo; die Agenten committen unter deinem Namen.' },
       pr: { title: 'Pull Requests', hint: 'Freigegebene Arbeit geht als Pull Request auf GitHub, außer die Einstellungen eines Repositorys sagen etwas anderes. Nötig erst bei der ersten Freigabe.' },
-      voice: { title: 'Sprachbefehle', hint: 'Leertaste halten und sagen, was zu tun ist; in der App auch, während ein anderes Programm vorne ist, mit der rechten Wahltaste (Mac) oder rechten Strg-Taste, in den Einstellungen änderbar. Obeya bestätigt schriftlich: auf der Karte oder in Obeyas Fenster (Schaltfläche oben rechts, Taste C).' },
+      voice: { title: 'Sprachbefehle', hint: 'Leertaste halten und sagen, was zu tun ist. Obeya bestätigt schriftlich: auf der Karte oder in Obeyas Fenster (Schaltfläche oben rechts, Taste C).' },
       demos: { title: 'Demos', hint: 'Agenten zeigen ihre Arbeit als vertontes Video. Ohne das schicken sie eine Zusammenfassung.' },
     } satisfies Record<MachineSectionId, { title: string; hint: string }>,
     names: {
@@ -2519,7 +2490,6 @@ const en: Strings = {
     question: (title: string) => `Agent · Question: ${title}`,
     project: (title: string) => `Obeya · Project: ${title}`,
     noMic: 'No microphone: the browser did not allow access.',
-    listening: 'Obeya is listening',
     notReady: 'The microphone was not ready yet; please try again.',
     flat: 'The microphone gives no sound.',
     failed: 'That did not work; please try again.',
@@ -2529,7 +2499,6 @@ const en: Strings = {
     tooLate: 'Too late: that has happened already.',
     reading: (what: string) => `${what} · being understood …`,
     transcribing: (what: string) => `${what} · being written down …`,
-    toAgent: 'Sent to the agent.',
     about: (title: string) => `“${title}”: `,
     attach: 'Screenshot for the next voice message – or paste it with ⌘V or drop it on the microphone. Any other file dropped on it adds its path.',
     dictate: 'Hold to dictate into the field (or hold Space in the field)',
@@ -3153,7 +3122,7 @@ const en: Strings = {
     app: 'App',
     appBuiltHint: 'Installed from the checkout ("bun run app install"). When the app itself (app/) changes on the checkout, it builds itself anew and restarts once the agents pause.',
     asAppHint:
-      'Run in the checkout, this installs Obeya as an app, "Obeya (checkout)": in ~/Applications on a Mac (Spotlight, Launchpad, the Dock), in the Start menu on Windows, in the applications menu on Linux. It runs on this checkout\'s code and follows main as now; when the app itself changes (app/), it builds itself anew. It adds the push-to-talk key anywhere. Needs Rust (rustup.rs); the first build takes a few minutes.',
+      'Run in the checkout, this installs Obeya as an app, "Obeya (checkout)": in ~/Applications on a Mac (Spotlight, Launchpad, the Dock), in the Start menu on Windows, in the applications menu on Linux. It runs on this checkout\'s code and follows main as now; when the app itself changes (app/), it builds itself anew. Needs Rust (rustup.rs); the first build takes a few minutes.',
     save: 'Save and restart',
     saveOnly: 'Save',
     reset: 'Discard',
@@ -3195,7 +3164,6 @@ const en: Strings = {
         recognition: 'Speech recognition',
         ffmpeg: 'ffmpeg (reads the recording)',
         uv: 'uv (brings Python)',
-        globalKey: 'Push-to-talk anywhere (app)',
       },
       found: {} as Record<string, string>,
       faster: 'faster-whisper runs on the graphics card when CUDA is there, else on the processor (slower, a few seconds per command).',
@@ -3233,30 +3201,6 @@ const en: Strings = {
       },
       failed: (why: string) => `Failed: ${why}. More in Obeya’s log.`,
       ready: 'All there: voice input works.',
-    },
-    pushKey: {
-      title: 'Push-to-talk anywhere',
-      hint: 'Hold the key while another app is in front, speak, and let go: Obeya takes the command as if you held Space in its window, for what you last had open in Obeya. A panel at the bottom of the screen shows what Obeya heard and what it does, with “Undo”. A short tap leaves the key as it was. Applies at once.',
-      appOnly: 'Only in the app, also from the checkout (“bun run app install”): a browser hears no keys outside its tab.',
-      key: 'Key',
-      change: 'Change',
-      press: 'Press a key …',
-      pressHint: 'A key alone (right Option, F13 …) or a combination such as Ctrl+Shift+Space. Esc cancels.',
-      notAKey: 'This key does not work: one alone must be a key nobody types with (Ctrl, Alt, F keys …).',
-      reset: (label: string) => `Default (${label})`,
-      openSettings: 'Open System Settings',
-      on: (label: string) => `Listens for ${label}`,
-      bound: (trigger: string) => `Bound to ${trigger}; change it in the desktop’s settings.`,
-      states: {
-        permission: 'macOS does not allow it yet: System Settings → Privacy & Security → Input Monitoring, turn Obeya on.',
-        restart: 'Allowed; Obeya has to start again once for it.',
-        bind: 'The desktop asks for the shortcut: confirm it there.',
-        none: 'This Wayland desktop gives apps no keys (no Global Shortcuts portal); Space in the window remains.',
-        unsupported: 'This key does not exist here; choose another.',
-        error: 'Does not work',
-      } as Record<string, string>,
-      keys: { Control: 'Ctrl', Alt: 'Alt', Option: 'Option', Shift: 'Shift', Command: 'Command', Windows: 'Windows key', Super: 'Super', Space: 'Space' },
-      side: { Left: (k: string) => `left ${k}`, Right: (k: string) => `right ${k}` },
     },
     demo: {
       title: 'Demos',
@@ -3426,7 +3370,7 @@ const en: Strings = {
     sections: {
       needed: { title: 'Agents', hint: 'Without Claude Code and git no agent works. Claude Code runs on your Claude subscription; the agents commit under your name.' },
       pr: { title: 'Pull requests', hint: 'Approved work goes out as a pull request on GitHub, unless a repository’s settings say otherwise. Needed only at the first approval.' },
-      voice: { title: 'Voice commands', hint: 'Hold Space and say what to do; in the app also while another app is in front, with the right Option key (Mac) or right Ctrl key, changeable in the settings. Obeya confirms in writing: on the card or in Obeya’s panel (button at the top right, key C).' },
+      voice: { title: 'Voice commands', hint: 'Hold Space and say what to do. Obeya confirms in writing: on the card or in Obeya’s panel (button at the top right, key C).' },
       demos: { title: 'Demos', hint: 'Agents show their work as a narrated video. Without it they send a summary.' },
     },
     names: {
@@ -3793,22 +3737,6 @@ function validTag(tag: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** The push-to-talk key as the owner reads it ("rechte Wahltaste" is "Wahltaste rechts", "Strg+Umschalt+Leertaste"). */
-export function pushKeyLabel(key: string, mac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform)) {
-  const k = t.config.pushKey.keys;
-  const win = typeof navigator !== 'undefined' && /Win/.test(navigator.platform);
-  const names: Record<string, string> = { Control: k.Control, Alt: mac ? k.Option : k.Alt, Shift: k.Shift, Meta: mac ? k.Command : win ? k.Windows : k.Super, Space: k.Space };
-  return key
-    .split('+')
-    .map((part) => {
-      const side = /(Left|Right)$/.exec(part)?.[1] as 'Left' | 'Right' | undefined;
-      const name = side ? part.slice(0, -side.length) : part;
-      const shown = names[name] ?? name.replace(/^Key|^Digit/, '');
-      return side ? t.config.pushKey.side[side](shown) : shown;
-    })
-    .join('+');
 }
 
 /** The keys that paste, and that take a screenshot onto the clipboard where the system has one for it. */

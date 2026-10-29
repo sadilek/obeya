@@ -207,15 +207,16 @@ async function rebaseOnto(ws: string, upstream: string, base: string): Promise<L
 }
 
 /**
- * Brings the workspace's committed branch onto `upstream` (`base`, or `origin`'s copy of it, fetched
- * first) as `rebaseOnto` does: what stands in the way of landing it, or null once it is ready.
+ * Brings the workspace's committed branch onto `upstream` (`base` itself, or the commit it stands at
+ * where the workspace has it from elsewhere) as `rebaseOnto` does: what stands in the way of landing
+ * it, or null once it is ready. `upstream` names it once the workspace has it (fetched, say).
  */
-async function rebased(ws: string, base: string, upstream: string): Promise<LandProblem | null> {
+async function rebased(ws: string, base: string, upstream: () => Promise<string>): Promise<LandProblem | null> {
   if (await gitAsync(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace' };
-  if (upstream !== base) await gitAsync(ws, 'fetch', '--quiet', 'origin');
-  const conflict = await rebaseOnto(ws, upstream, base);
+  const onto = await upstream();
+  const conflict = await rebaseOnto(ws, onto, base);
   if (conflict) return conflict;
-  if ((await gitAsync(ws, 'rev-list', '--count', `${upstream}..HEAD`)) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
+  if ((await gitAsync(ws, 'rev-list', '--count', `${onto}..HEAD`)) === '0') return { code: 'landEmpty', worker: true, detail: 'the branch has no commits' };
   return null;
 }
 
@@ -1050,26 +1051,35 @@ export class Workspaces implements CardWorkspaces {
   private async land(cardId: string, branch: string, trailer?: string): Promise<LandProblem | Landed> {
     const ws = this.leasedBy(cardId);
     if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
-    try {
-      const base = await this.mainAsync(ws);
-      const problem = await rebased(ws, base, this.cloned(ws) ? `origin/${base}` : base);
-      if (problem) return problem;
-      await withTrailer(ws, trailer);
-      if ((await gitAsync(this.o.repoPath, 'branch', '--show-current')) !== base) return { code: 'landCheckout', worker: false, detail: `the Obeya checkout is not on ${base}` };
-    } catch (e) {
-      return { code: 'land', worker: false, detail: messageOf(e) };
-    }
-    try {
-      const from = await gitAsync(this.o.repoPath, 'rev-parse', 'HEAD');
-      if (!this.cloned(ws)) await gitAsync(this.o.repoPath, 'merge', '--ff-only', '--quiet', branch);
-      else {
-        await gitAsync(this.o.repoPath, 'fetch', '--quiet', ws, branch);
-        await gitAsync(this.o.repoPath, 'merge', '--ff-only', '--quiet', 'FETCH_HEAD');
+    const repo = this.o.repoPath;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const base = await this.mainAsync(ws);
+        // a clone goes onto main as the checkout has it: its origin may be the remote, which lacks what landed here since
+        const onto = this.cloned(ws) ? () => gitAsync(ws, 'fetch', '--quiet', repo, `refs/heads/${base}`).then(() => gitAsync(ws, 'rev-parse', 'FETCH_HEAD')) : async () => base;
+        const problem = await rebased(ws, base, onto);
+        if (problem) return problem;
+        await withTrailer(ws, trailer);
+        if ((await gitAsync(repo, 'branch', '--show-current')) !== base) return { code: 'landCheckout', worker: false, detail: `the Obeya checkout is not on ${base}` };
+      } catch (e) {
+        return { code: 'land', worker: false, detail: messageOf(e) };
       }
-      return { from, to: await gitAsync(this.o.repoPath, 'rev-parse', 'HEAD') };
-    } catch (e) {
-      // typically local changes in the Obeya checkout that the fast-forward would overwrite
-      return { code: 'landMerge', worker: false, detail: messageOf(e) };
+      let tip = branch;
+      try {
+        if (this.cloned(ws)) {
+          await gitAsync(repo, 'fetch', '--quiet', ws, branch);
+          tip = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
+        }
+        const from = await gitAsync(repo, 'rev-parse', 'HEAD');
+        await gitAsync(repo, 'merge', '--ff-only', '--quiet', tip);
+        return { from, to: await gitAsync(repo, 'rev-parse', 'HEAD') };
+      } catch (e) {
+        // main moved while the branch was rebased (a commit made in the checkout by hand): once more onto it
+        const moved = (await gitRun(repo, ['merge-base', '--is-ancestor', 'HEAD', tip])).code === 1;
+        if (moved && attempt === 0) continue;
+        // else typically local changes in the Obeya checkout that the fast-forward would overwrite
+        return { code: moved ? 'land' : 'landMerge', worker: false, detail: messageOf(e) };
+      }
     }
   }
 
@@ -1123,7 +1133,7 @@ export class Workspaces implements CardWorkspaces {
       try {
         base = await this.mainAsync(ws);
         const upstream = `origin/${base}`;
-        const problem = await rebased(ws, base, upstream);
+        const problem = await rebased(ws, base, () => gitAsync(ws, 'fetch', '--quiet', 'origin').then(() => upstream));
         if (problem) return problem;
         await withTrailer(ws, trailer);
         from = await gitAsync(ws, 'rev-parse', upstream);

@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const entry = (pid: number, port: number) => ({ pid, port, url: `http://127.0.0.1:${port}`, version: '0.1.0', app: false });
+const entry = (pid: number, port: number) => ({ pid, port, url: `http://127.0.0.1:${port}`, version: '0.1.0' });
 
 test('an entry is given up only by the process that wrote it', () => {
   claim(dir, entry(4242, 4417));

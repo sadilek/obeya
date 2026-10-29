@@ -6,13 +6,11 @@ import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, waitingOn } from '../core/types';
 import index from '../ui/index.html';
-import panel from '../ui/panel.html';
 import { guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
 import { type Dropped, findDropped, localImage } from './files';
 import type { CanvasRuntime } from './canvas';
 import { SiteSetup } from './site-setup';
-import { defaultPushKey, type PageFocus, type PushKeyView } from '../core/push-key';
 import { parsePlace } from '../core/layout';
 import { type Focus, type Heard, type Input, isField } from './commands';
 import { inQueue } from '../core/queue';
@@ -24,8 +22,7 @@ import { looping, silence, type Transcriber } from './voice';
 import { CloudError } from './voice-cloud';
 import type { MachineSetup } from './machine';
 import type { VoiceSetup } from './voice-setup';
-import { ShellReports } from './push-key';
-import { AppUpdates } from './app-update';
+import { AppUpdates, HandOver } from './app-update';
 import type { SourceUpdates } from './source-update';
 import { oldLinuxBun } from './repo';
 import { Store } from './db';
@@ -36,9 +33,8 @@ import icon180 from '../ui/logo/apple-touch-icon.png' with { type: 'file' };
 import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
 import { servePdfjs } from './pdfjs';
 import { Tailscale } from './tailscale';
-import { agentsView, languageView, pushKeyChoice, saveAgents, saveLanguage, savePushKey, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentsView, languageView, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
 import type { UsageMeter } from './usage';
-import { nonEmpty } from '../core/text';
 import { VERSION } from './resources';
 import { footerOf } from './wish';
 import { serving } from './owner';
@@ -122,8 +118,6 @@ export function serve(
   machine?: MachineSetup,
   /** Stops Obeya as Ctrl-C does: once the workers paused, a second time at once. */
   stop?: () => void,
-  /** What the app's shell reports about the push-to-talk key, shared with the setup assistant. */
-  shells = new ShellReports(),
   /** The newer version of the app its shell has ready. */
   updates = new AppUpdates(),
   /** Who reaches Obeya from other devices; by default no one. */
@@ -153,6 +147,7 @@ export function serve(
       })
     : undefined;
   const byId = new Map<string, CanvasRuntime>();
+  const handOver = new HandOver();
   const started = crypto.randomUUID();
   const sockets = new Map<string, Set<ServerWebSocket<Socket>>>();
   // a device removed loses its open pages at once
@@ -278,21 +273,6 @@ export function serve(
     relist();
   });
 
-  // The app's shell records a command when the owner holds the push-to-talk key in another app
-  // (app/src/ptt.rs): it reports what it hears every few seconds, and asks where the owner was last.
-  /** What each open page last reported as its focus, and when; the newest is where the owner was. */
-  const focused = new Map<string, PageFocus & { at: number }>();
-  const pushKeyView = (): PushKeyView => ({
-    ...(config ? pushKeyChoice(config.home) : { key: defaultPushKey(process.platform), chosen: null, default: defaultPushKey(process.platform) }),
-    shell: shells.current(),
-  });
-  const lastFocus = (): PageFocus | null => {
-    const last = [...focused.values()].sort((a, b) => b.at - a.at)[0];
-    if (last && byId.has(last.canvas)) return (({ at: _, ...f }) => f)(last);
-    const first = canvases.all()[0];
-    return first ? { canvas: first.id } : null;
-  };
-
   /** A click the Rückschau counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
   const click = <T>(c: CanvasRuntime, out: T): T => {
     c.koordinator.noticed();
@@ -400,14 +380,13 @@ export function serve(
     const card = focus.card ? c.board.item(focus.card) : undefined;
     if (card && listens(card, input)) {
       c.tell(card.id, text, images, !input.typed, typeof input.replyTo === 'number' ? input.replyTo : undefined, input.spot);
-      // the card's conversation shows the words; the app's panel shows what was heard
-      return { confirm: '', quiet: true, text } satisfies Heard & { text: string };
+      // the card's conversation shows the words
+      return { confirm: '', quiet: true } satisfies Heard;
     }
     const h = await c.commander.hear(text, focus, images, input);
     // the written confirmation goes out now, so the undo window starts now
     if (h.token) c.commander.arm(h.token);
-    // what was heard, for the app's panel, which shows it while the owner is in another app
-    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}), text };
+    return { ...h, ...(h.token ? { undoMs: c.commander.delayMs } : {}) };
   };
 
   const options = {
@@ -460,8 +439,6 @@ export function serve(
           return device ? handle(() => push.unsubscribe(device)) : onlyDevices();
         },
       },
-      // the app's floating panel for the push-to-talk key in another app
-      '/panel': panel,
       '/api/canvases': { GET: () => Response.json(canvases.all().map((c) => c.board.canvas) satisfies CanvasInfo[]) },
       // Obeya's configuration: read, checked while the owner edits it, and saved (Obeya then starts again)
       '/api/config': {
@@ -764,13 +741,6 @@ export function serve(
               })(req)
             : onlyHere(),
       },
-      // the push-to-talk key anywhere on the machine, chosen in the settings, and the shell that hears it
-      '/api/push-to-talk': {
-        GET: () => Response.json(pushKeyView()),
-        PUT: needs(config, async (c, req) => (savePushKey(c.home, await req.json()), pushKeyView())),
-      },
-      // the app's shell, every few seconds: what it hears; it gets the key that applies
-      '/api/push-to-talk/shell': { POST: async (req) => handle(async () => (shells.report(await req.json()), pushKeyView())) },
       // the app's shell, every few seconds while it has a newer version of the app ready
       '/api/app-update': {
         GET: () => Response.json(updates.current()),
@@ -781,6 +751,21 @@ export function serve(
             if (body?.rebuilt === true) return (restarter?.request('update'), { updating: !!restarter });
             return updates.report(body);
           }),
+      },
+      // a shell installed from a checkout has built itself anew while this Obeya runs on without it (started
+      // from a terminal), every few seconds until it starts again: it waits while the owner dictates or
+      // watches a video, as a restart does; `kept`: whether the page handed over when the shell asked
+      '/api/app-rebuilt': {
+        POST: (req) =>
+          handle(async () => {
+            const { kept } = ((await req.json().catch(() => null)) ?? {}) as { kept?: unknown };
+            return { now: !restarter?.owner().length, kept: handOver.has(kept) };
+          }),
+      },
+      // what a reload keeps, from the page before the shell started again to the page after
+      '/api/app-rebuilt/handover': {
+        GET: () => Response.json(handOver.take()),
+        POST: (req) => handle(async () => (handOver.give(await req.json()), { ok: true })),
       },
       // the owner installs it: once the workers paused, Obeya ends for the shell to install it and start again
       '/api/app-update/install': {
@@ -797,8 +782,6 @@ export function serve(
       '/api/source-update': { GET: () => Response.json(sources?.current() ?? null) },
       // the owner pulls them: a fast-forward of the checkout, after which the self-update restarts Obeya once the workers paused
       '/api/source-update/pull': { POST: needs(sources, async (s) => (await s.pull(), { source: s.current() })) },
-      // where the owner was last in a page: the shell's command goes there
-      '/api/focus': { GET: () => Response.json(lastFocus()) },
       // a demo as a file to pass on, where the repository has no share target (`?as=zip|html`)
       '/api/c/:canvas/cards/:id/export': {
         GET: on(async (c, req) => {
@@ -957,12 +940,13 @@ export function serve(
         if (!c) return ws.close();
         sockets.get(c.id)!.add(ws);
         ws.send(JSON.stringify({ type: 'hello', server: started, ...(oldLinuxBun() ? { oldBun: Bun.version } : {}) } satisfies ServerMessage));
-        ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
+        // what the bar shows comes before the snapshot, which draws the bar: it is there from the first frame
         ws.send(JSON.stringify({ type: 'restart', restart: pending(c.id) } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'update', update: updates.current() } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'source', source: sources?.current() ?? null } satisfies ServerMessage));
         ws.send(JSON.stringify({ type: 'usage', usage: usage?.current() ?? null } satisfies ServerMessage));
         if (usage) unwatch.set(ws.data.page, usage.watch());
+        ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
         ws.send(waitingMessage());
         // a page that reloads within a command's undo window offers "Rückgängig" again
         for (const n of c.commander.undoable()) ws.send(JSON.stringify({ type: 'notice', ...n } satisfies ServerMessage));
@@ -972,7 +956,6 @@ export function serve(
         unwatch.get(ws.data.page)?.();
         unwatch.delete(ws.data.page);
         restarter?.hold(ws.data.page);
-        focused.delete(ws.data.page);
         // a phone's last page closed: it no longer holds pushes off
         const { device } = ws.data;
         if (device && ![...sockets.values()].some((set) => [...set].some((w) => w.data.device === device))) push.away(device);
@@ -996,8 +979,6 @@ export function serve(
             if (stall) stalls?.page(stall, where);
           }
           if (msg.type === 'focus') {
-            const f = { card: nonEmpty(msg.card), project: nonEmpty(msg.project), target: nonEmpty(msg.target), title: nonEmpty(msg.title) };
-            focused.set(ws.data.page, { canvas: ws.data.canvas, ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)), at: Date.now() });
             const seen = parsePlace(typeof msg.place === 'string' ? msg.place : undefined);
             const c = byId.get(ws.data.canvas);
             if (seen && c) c.inView = seen;

@@ -680,7 +680,7 @@ export class Config {
 
   /**
    * Obeya's home, whose `settings.json` holds the owner's own settings (settings.ts): the language,
-   * light or dark, the agents' models, the push-to-talk key.
+   * light or dark, the agents' models.
    */
   get home(): string {
     return this.o.server.home;

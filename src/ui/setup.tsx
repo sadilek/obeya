@@ -10,7 +10,7 @@ import { LANGUAGES } from '../core/locale';
 import { api, reload } from './api';
 import { useCopy } from './copy';
 import { Sign } from './logo';
-import { failText, fileSize, pushKeyLabel, t } from './strings';
+import { failText, fileSize, t } from './strings';
 
 const PLATFORMS: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 /** The machine's system and processor, as the owner knows them: "macOS (arm64)". */
@@ -51,7 +51,7 @@ export function SetupList<I extends SetupItem | VoiceSetupItem | MachineItem>({
         return (
           <li key={i.id} className={slow ? `${i.state} slow` : i.state}>
             <span className="c-mark" aria-hidden>
-              {slow ? '!' : { ok: '✓', missing: '✗', later: '…', off: '–' }[i.state]}
+              {slow ? '!' : { ok: '✓', missing: '✗', later: '…' }[i.state]}
             </span>
             <span className="c-name">{name(i)}</span>
             <span className="hint" title={i.found}>
@@ -82,8 +82,6 @@ export function SetupList<I extends SetupItem | VoiceSetupItem | MachineItem>({
 export function voiceState(i: VoiceSetupItem | MachineItem) {
   const v = t.config.voice;
   const s = t.config.setup;
-  // the app's key in another app: the key, or what is in the way (src/server/push-key.ts)
-  if (i.id === 'globalKey') return i.state === 'ok' ? t.config.pushKey.on(pushKeyLabel(i.found ?? '')) : (t.config.pushKey.states[i.found ?? ''] ?? t.config.pushKey.states.error!);
   if (i.state === 'later') return (i.waits ? v.waits : v.later)(fileSize((i.mb ?? 0) * 1e6));
   if (i.state === 'missing') return i.found && i.need ? s.needs(i.found, i.need) : s.missing;
   if (i.id === 'recognition') {
@@ -300,7 +298,7 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
     );
   };
   const name = (section: MachineSection) => (i: MachineItem) =>
-    section.id === 'voice' ? t.config.voice.names[i.id as VoiceSetupItem['id'] | 'globalKey'] : section.id === 'demos' ? t.config.setup.names[i.id as SetupItem['id']] : s.names[i.id as keyof typeof s.names];
+    section.id === 'voice' ? t.config.voice.names[i.id as VoiceSetupItem['id']] : section.id === 'demos' ? t.config.setup.names[i.id as SetupItem['id']] : s.names[i.id as keyof typeof s.names];
   const state = (section: MachineSection) => (i: MachineItem) => {
     if (section.id === 'voice') return voiceState(i);
     if (section.id === 'demos') return demoState(i);

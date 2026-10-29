@@ -2398,8 +2398,7 @@ export type PrId = 'gh' | 'ghLogin';
 
 /** A piece of the list, as a setup check gives it, and what Obeya does about it at a click. */
 export type MachineItem = Omit<SetupItem, 'id'> & {
-  /** `globalKey`: the app's push-to-talk key in another app, while the app runs (src/server/push-key.ts). */
-  id: NeededId | PrId | VoiceSetupId | SetupId | 'globalKey';
+  id: NeededId | PrId | VoiceSetupId | SetupId;
   /**
    * `install`: Obeya installs it (no admin rights, or Homebrew or winget). `login`: Obeya opens a
    * terminal that logs in. `identity`: the owner gives git's name and e-mail, which Obeya sets.
@@ -2553,12 +2552,11 @@ export type ClientMessage =
   /** This page went out of view (on a phone: locked, or another app in front). */
   | { type: 'away' }
   /**
-   * What the owner has in view (sent on every change and when the page gets the focus back): a
-   * command from the app's push-to-talk key in another app goes there. `target` and `title` as the
-   * microphone shows them; `place`: the middle of the canvas in view and its bounds (`placeParam`),
-   * where a new card goes that a command without a place of its own makes.
+   * What the owner has in view (sent on every change and when the page gets the focus back):
+   * `place`, the middle of the canvas in view and its bounds (`placeParam`), where a new card goes
+   * that a command without a place of its own makes.
    */
-  | { type: 'focus'; card?: string; project?: string; target: string; title?: string; place?: string }
+  | { type: 'focus'; place?: string }
   /** This page froze: the server logs it beside its own stalls. */
   | ({ type: 'stall' } & PageStall);
 

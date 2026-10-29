@@ -142,7 +142,8 @@
 // exchange whose answer it continues, in that one's thread; `files`: the answer's files, each with
 // its name, caption and either `content` or a file to copy (`from`), written to the thread's output
 // directory; needs code that has them; `unread`: its answer waits unread; `wish`: what a draft for
-// Obeya's makers starts from, `{ said, answer? }`, for the link under the reply). `friction` is what the Arbeitsrückschau noted on a card's
+// Obeya's makers starts from, `{ said, answer? }`, for the link under the reply; `askedIn`: the key of
+// the project whose sheet the words were written in, straight to its project agent, with an empty `reply`). `friction` is what the Arbeitsrückschau noted on a card's
 // runs (`card` a key), read by its next retrospective; `settingProposals` are values for a
 // repository's settings it proposed (`field`: checks, setup, softPaths or run; `cards` keys;
 // `repo` defaults to the canvas's home repository); both need code that has them.
@@ -265,6 +266,7 @@ interface Stage {
     files?: { name: string; caption: string; content?: string; from?: string }[];
     unread?: boolean;
     wish?: { said: string; answer?: string };
+    askedIn?: string;
   }[];
 }
 
@@ -730,6 +732,7 @@ for (const [i, x] of (stage.talk ?? []).entries()) {
   };
   if (x.unread) row.unread = 1;
   if (x.wish) row.wish = JSON.stringify(x.wish);
+  if (x.askedIn) row.asked_in = row.about = ids[x.askedIn] ?? fail(`talk ${i}: project ${x.askedIn} does not exist`);
   if (x.follows !== undefined) {
     const followed = talkIds[x.follows] ?? fail(`talk ${i}: follows ${x.follows}, which comes later or does not exist`);
     row.follows = followed;

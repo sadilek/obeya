@@ -1,7 +1,6 @@
 // Obeya's own settings, in `settings.json` under its home beside `canvases.json` and `demo.json`:
 // the language of Obeya's interface and the one its agents talk to the owner in, light or dark, the model and effort of each group of
-// agents, the key that records a command from anywhere on the machine (heard by the app's shell),
-// how other devices reach Obeya (remote.ts), and whether the bar shows the plan's usage limits (usage.ts). The owner chooses them in the settings sheet;
+// agents, how other devices reach Obeya (remote.ts), and whether the bar shows the plan's usage limits (usage.ts). The owner chooses them in the settings sheet;
 // until then the system's language and look apply, the agents run as `AGENT_DEFAULTS` says, and
 // no other device reaches Obeya. Saving restarts nothing: the page loads again in the new
 // language, takes the new look at once, and the server reads the file whenever it needs the
@@ -12,7 +11,6 @@ import { join } from 'node:path';
 import { chosenConversationLanguage, chosenLanguage, conversationLanguageIn, OWNER_SETTINGS_FILE as SETTINGS_FILE, ownerLanguageIn, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { type Language, LANGUAGES } from '../core/locale';
 import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentRole, type AgentSetting, type AgentsView, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView } from '../core/types';
-import { defaultPushKey, parsePushKey } from '../core/push-key';
 import { BadRequest } from './board';
 
 interface Settings {
@@ -24,8 +22,6 @@ interface Settings {
   theme?: Theme;
   /** Only what differs from `AGENT_DEFAULTS`, so a changed default reaches what the owner left. */
   agents?: Partial<Record<AgentRole, Partial<AgentSetting>>>;
-  /** The push-to-talk key anywhere on the machine, when not the default. */
-  pushKey?: string;
   /** How other devices reach Obeya; absent, they do not. */
   remote?: RemoteSetting;
   /** `false`: the bar does not show the plan's usage limits; absent, it does. */
@@ -38,8 +34,7 @@ function read(home: string): Settings {
     const language = LANGUAGES.find((l) => l === o.language);
     const conversationLanguage = LANGUAGES.find((l) => l === o.conversationLanguage);
     const theme = THEMES.find((x) => x === o.theme);
-    const pushKey = parsePushKey(o.pushKey) ?? undefined;
-    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), pushKey, remote: remoteOf(o.remote) ?? undefined, usageMeter: o.usageMeter === false ? false : undefined };
+    return { ...o, language, conversationLanguage, theme, agents: agentsOf(o.agents), remote: remoteOf(o.remote) ?? undefined, usageMeter: o.usageMeter === false ? false : undefined };
   } catch {
     return {};
   }
@@ -95,7 +90,7 @@ export function saveUsageMeter(home: string, input: unknown): UsageMeterView {
 }
 
 /** Saves one of the owner's choices, or with `null` takes it out; the other settings in the file stay. */
-function save<K extends 'language' | 'conversationLanguage' | 'theme' | 'pushKey' | 'remote' | 'usageMeter'>(home: string, key: K, value: Settings[K] | null, what: string) {
+function save<K extends 'language' | 'conversationLanguage' | 'theme' | 'remote' | 'usageMeter'>(home: string, key: K, value: Settings[K] | null, what: string) {
   write(home, { ...read(home), [key]: value ?? undefined });
   console.log(`Obeya: ${what} saved to ${join(home, SETTINGS_FILE)}`);
 }
@@ -141,21 +136,6 @@ export function saveAgents(home: string, input: unknown): AgentsView {
   write(home, { ...settings, agents: agentsOf(agents) });
   console.log(`Obeya: models and effort of the agents saved to ${join(home, SETTINGS_FILE)}`);
   return agentsView(home);
-}
-
-/** The push-to-talk key anywhere on the machine: the owner's, else the platform's default. */
-export function pushKeyChoice(home: string, platform: string = process.platform) {
-  const chosen = read(home).pushKey ?? null;
-  return { key: chosen ?? defaultPushKey(platform), chosen, default: defaultPushKey(platform) };
-}
-
-/** Saves the owner's key (`{ key }`); `null` takes the default again. Other settings in the file stay. */
-export function savePushKey(home: string, input: unknown, platform: string = process.platform) {
-  const given = (input as { key?: unknown } | null)?.key;
-  const key = given === null ? null : parsePushKey(given);
-  if (given !== null && !key) throw new BadRequest('invalid', 'key must be a key held alone (a modifier, an F key …) or modifiers and a key, such as Control+Shift+Space');
-  save(home, 'pushKey', key !== defaultPushKey(platform) ? key : null, `push-to-talk key ${key ?? 'by default'}`);
-  return pushKeyChoice(home, platform);
 }
 
 /** A setting for other devices as the file or the page gives it; `null` for none or one Obeya cannot use. */

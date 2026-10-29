@@ -749,6 +749,10 @@ test("Obeya's conversation shows it at work while it reads the owner's words or 
   expect(obeyaWorks([{ ...asked, answer: 'In src/export.ts.' }])).toBe(false);
   expect(obeyaWorks([{ ...asked, limitedUntil: '2026-10-17T12:00:00Z' }])).toBe(false);
   expect(obeyaWorks([{ ...asked, movedTo: 'q1' }])).toBe(false);
+  // asked in a project's sheet: no reply of Obeya's ever comes, only the project agent's answer
+  const inSheet = { id: 3, at: '2026-10-17T10:02:00Z', said: 'Plan beenden?', question: 'Plan beenden?', askedIn: 'p1' };
+  expect(obeyaWorks([inSheet])).toBe(true);
+  expect(obeyaWorks([{ ...inSheet, answer: 'Erledigt.' }])).toBe(false);
 });
 
 test('the line that the agent stopped without answering stands, not as a step of an agent at work', () => {

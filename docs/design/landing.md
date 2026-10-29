@@ -16,10 +16,17 @@ override it; the handover records how, so the approve button says so before the 
 a branch sends the work out as a PR from a repository that lands on main, the watcher follows it
 once the worker reports it.
 
-Commits that conflict one by one but not as a whole land squashed. The last commit landed for a card
+The branch goes onto `main` as the local checkout has it, also from a clone whose `origin` is the
+remote (one listed in the settings, or made while work went out as pull requests): what other cards
+landed there and nobody pushed yet is under it, so the fast-forward cannot fail for a diverged
+`main`. Where `main` moved meanwhile (a commit made in the checkout by hand), the branch is rebased
+once more. Commits that conflict one by one but not as a whole land squashed. The last commit landed for a card
 with a shared demo carries the trailer `Demo-Video: <url>` (see Publishing on approval). Uncommitted
 work or a real conflict sends the card back to its worker with the approval kept: its next handover
-lands by itself, without a new demo.
+lands by itself, without a new demo. What blocks the landing outside the work (the local checkout
+not on `main`, local changes there the fast-forward would overwrite, a push the remote turns away)
+goes to the owner, the card back in review; its worker hears so with its next message, unless the
+work has landed by then, so it does not answer the owner as if the approval had not happened.
 
 Where a `pr` repository's settings allow `direct`, the owner may approve „Direkt auf main“: in the
 card's clone or worktree Obeya fetches, rebases onto `origin/<default>` and runs `git push origin
@@ -306,6 +313,11 @@ A card no agent worked on, a prototype or an archived card has no field.
   `branch.<name>.rebase`) still decides. Rejected: rebasing whatever is set (overrides the owner's
   choice); rebasing also where nothing diverged (git then refuses beside uncommitted changes, which a
   fast-forward keeps); merging (a merge commit on `main` where Obeya otherwise keeps it linear).
+- **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
+  GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
+  unpushed landings of other cards, and the fast-forward failed with a raw git error at every
+  approval. Rejected: pushing the checkout's `main` first (publishes what the owner has not pushed);
+  merging instead of fast-forwarding (a merge commit on `main`).
 - **The review reads the diff before anything of it runs; its findings go to the owner** (2026-10-27),
   to the contributor only when the owner sends them.
 - **The worker keeps workspace and session until done**, so the agent that knows the change does

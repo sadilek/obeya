@@ -37,15 +37,18 @@ on Windows (no admin rights), an AppImage and a .deb on Linux (`app/linux.Docker
 checks them in a container on a Mac).
 
 The shell opens a window on the Obeya already running on the home, or starts the server (on 4417,
-else a free port) and shows „Obeya startet …“ until it answers. A server the app started (in this
-run or an earlier one) it stops when the app quits, as Ctrl-C would (`POST /api/stop`), and the
-window shows what the stop waits for; quitting again goes ahead at once. A server started from a
-terminal it leaves running. The app ends when its server does; a server that ends unasked shows the
-last lines of its log in a dialog. The server's output goes to `app.log` in the home. A second start
+else a free port) and shows „Obeya startet …“ until it answers. Quitting the app (Cmd+Q, the menu,
+the Dock) stops that server as Ctrl-C would (`POST /api/stop`), whoever started it (the app, in this
+run or an earlier one, or `bun start` in a terminal, which then ends too), and the window shows what
+the stop waits for; quitting again goes ahead at once. The app ends when its server does; a server
+it started in this run that ends unasked shows the last lines of its log in a dialog. The server's output goes to `app.log` in the home. A second start
 brings the window to the front. On a Mac, closing the window keeps the app in the Dock, and the
 window has no title bar: the canvas's bar holds the traffic lights and drags the window. Links
 leaving the canvas and new windows open in the default browser, as does „Im Browser öffnen“ in the
-settings (and the Mac's File menu). Downloads go to the Downloads folder.
+settings (and the Mac's File menu). The shell itself opens them, a plain click on a link with
+`target=_blank` included; Tauri's opener plugin stays unregistered, since its link script takes such
+a click and hands it to the plugin over IPC, which the page may not call, so the click did nothing
+(2026-10-29). Downloads go to the Downloads folder.
 
 The page gets the microphone without a webview prompt (the system asks once for the app).
 
@@ -76,11 +79,26 @@ Obeya in a browser shows `bun run app install` in its settings.
 Landed code reaches it as it reaches `bun start` (see Self-update); the shell itself offers no
 release updates. Once `app/` on the checkout's HEAD is another than it was built from (looked at
 every minute), the shell runs `bun run app install` itself in the background, which puts the new
-build in its place, and reports it to the server, which installs it without asking, as it restarts
-for landed code: once the workers paused, the server ends for the update, and the shell starts again,
-now the new build, whose server resumes the workers. A build that fails is logged to `app-build.log`
-in the home and tried again with the next change of `app/`. On a Mac a new build has a new ad-hoc
-signature, so macOS asks for Input Monitoring again.
+build in its place. A server the shell started itself is told, and installs the new build without
+asking, as it restarts for landed code: once the workers paused, the server ends for the update, and
+the shell starts again, now the new build, whose server resumes the workers. A server the shell did
+not start (`bun start` in a terminal) runs on, workers and all, and only the shell starts again. It
+asks the server every few seconds (`POST /api/app-rebuilt`) and goes once the owner neither
+dictates nor watches a demo video (what a restart waits for) and its window is either out of sight
+(closed on a Mac, where the app stays in the Dock) or in front with the owner in it; minimized or
+behind another app's window it waits, as the new window would come up over what the owner works
+in. The new window opens where the old one stood, as large, on the page it showed, without coming
+to the front if the old one was out of sight. What a reload keeps (the open card, drafts, scroll
+positions, see Keeping the page) lives in the tab's session storage, which a new shell's webview starts
+without: the shell first has the page hand it to the server, waits a few seconds at most for it to
+arrive, and the page in the new window takes it back, once. On a Mac the new shell is started
+through the system (`open`) once the old one has ended, as the Dock starts it: started by the old
+process, it would count as that process's for the system's permissions, the microphone among them.
+The bundle of the shell that still runs is moved aside on a Mac (`Obeya (checkout).app.old-…`
+beside it), not removed: macOS decides on the microphone by the file the running program was
+started from and denies it once that file is gone. A later install removes the asides nothing has
+open any more. A build that fails is logged to `app-build.log` in the home and tried again with the next change
+of `app/`.
 
 linuxdeploy rewrites the library path of every program in an AppDir, which breaks Bun's binary (its
 code sits after the ELF's end), so the server goes into the AppImage after linuxdeploy and the image
@@ -253,18 +271,34 @@ which Chrome leaves stale after a seek. Without JavaScript or the chapters file 
 
 - **Installed, Obeya is an app: a Tauri shell around the server compiled into one file; the UI is
   served locally to the browser too.** Someone without Bun or a checkout can download and start
-  it, and the shell can hear a key held anywhere on the machine (global push-to-talk). Tauri
-  brings installers, updater and global keys, and its window is the system's webview, so the shell
+  it. Tauri brings installers and updater, and its window is the system's webview, so the shell
   adds a few MB and the UI stays what the browser shows. The browser stays a way in; the checkout
   (`bun start`, updating itself) stays how Obeya is developed.
 - **From a checkout, Obeya can be an installed app that follows the checkout** (2026-10-26): whoever
-  develops Obeya on its checkout gets what only the app does (push-to-talk anywhere) without
-  installing again after each landing. The server already follows the checkout; the shell changes
-  rarely and rebuilds itself when `app/` does. It installs a rebuilt shell without asking, unlike a
+  develops Obeya on its checkout gets the app (a window of its own, in the Dock or the Start menu)
+  without installing again after each landing. The server already follows the checkout; the shell
+  changes rarely and rebuilds itself when `app/` does. It installs a rebuilt shell without asking, unlike a
   release (see App updates), since what lands on the checkout's `main` is already installed that way
   for the server. Rejected: an app of a release build from the checkout, whose compiled server never
   follows the checkout; a launcher that rebuilds the shell at every start, which would make every
   start wait for cargo.
+- **A rebuilt shell leaves the running one's bundle on disk until it ends** (2026-10-29): the
+  install removed it at once, and from then until the app started again (with an Obeya started
+  from a terminal: until the owner quit it) the window got no sound from the microphone. The
+  system's check failed on the missing file; tried with a bundle of its own, moved aside it
+  passes, removed it denies. Rejected: installing the new build only once the shell ends, which
+  leaves a hand-run `bun run app install` with the same fault and the Dock's copy old after a
+  crash.
+- **A rebuilt checkout shell starts again by itself also beside a server started from a terminal,
+  keeping the server** (2026-10-29): otherwise the old shell ran on until the owner quit it, with a
+  bundle the new build had replaced under it. It goes at the moments a restart for landed code
+  would, or quieter, and the window comes back as it was, so it costs the owner no more than that
+  restart's reload. Rejected: restarting the server along with it, which would pause every worker
+  for a change to the window alone; asking the owner, for a change they cannot judge.
+- **Quitting the app stops the Obeya it shows, also one started from a terminal** (owner,
+  2026-10-29): to the owner, quitting the app means quitting Obeya, as Ctrl-C does in the terminal.
+  Rejected: leaving a server started from a terminal running, which made Cmd+Q close only the window
+  while the workers went on, with nothing to say so.
 - **DMG, NSIS installer, AppImage and .deb** (2026-10-06). Rejected: Flatpak and Snap, whose
   sandboxes get in the way of git, agents and the repositories. Windows on ARM once there is a
   machine to try it on.

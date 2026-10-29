@@ -254,10 +254,24 @@ describe('a worktree per card', () => {
     await workers.start(c.id);
     commitIn(board.row(c.id).workspace!, 'mine.ts', 'C');
     writeFileSync(join(main, 'mine.ts'), 'local edit');
-    await runtime.sessions.find((s) => s.spec.cwd === board.row(c.id).workspace)!.call('ready_for_review', { summary: 'S', demo: artifact() });
+    const sc = runtime.sessions.find((s) => s.spec.cwd === board.row(c.id).workspace)!;
+    await sc.call('ready_for_review', { summary: 'S', demo: artifact() });
+    sc.emit({ type: 'idle' });
     const err = await workers.approve(c.id).catch((e) => e);
     expect(err).toMatchObject({ code: 'landMerge' });
     expect(state(c.id)).toBe('waiting:demo');
+    // the worker hears it with the owner's next words, rather than telling them the card still waits as if nothing had happened
+    workers.message(c.id, 'Warum ist das nicht gelandet?');
+    expect(sc.inbox.at(-1)).toContain('the owner approved your work, but Obeya could not land it on main');
+    expect(sc.inbox.at(-1)).toContain('Warum ist das nicht gelandet?');
+    // approved again in vain, then once the owner cleared the checkout: the worker hears it landed, not an earlier failure
+    sc.emit({ type: 'idle' });
+    await workers.approve(c.id).catch(() => {});
+    rmSync(join(main, 'mine.ts'));
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(sc.inbox.at(-1)).toContain('is on main now');
+    expect(sc.inbox.at(-1)).not.toContain('could not land');
   });
 
   test('an approval while a restart is due that cannot land: the worker leaves the conflict until Obeya resumes it', async () => {

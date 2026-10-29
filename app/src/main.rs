@@ -2,8 +2,8 @@
 // this program, built by scripts/build-app.ts), which the shell starts and stops.
 //
 // - One Obeya per home: when one runs on the home already ($OBEYA_HOME/server.json, written by the
-//   server), the window opens on it instead of starting a second. One the app started stops when
-//   the app quits; one started from a terminal keeps running.
+//   server), the window opens on it instead of starting a second. Whoever started it (the app, or
+//   `bun start` in a terminal), it stops when the app quits, and the app ends when it does.
 // - The server picks no port of its own: 4417 ($OBEYA_PORT) when free, else one the system hands out.
 // - Quitting stops the server through `POST /api/stop`, the way Ctrl-C does: workers in the middle
 //   of a turn pause first (at most 15 minutes), and the window shows that until the server is gone.
@@ -11,15 +11,14 @@
 //   cut its workers off mid-turn. The app ends when the server does.
 // - Single instance: starting the app again brings its window to the front.
 // - Every request to the server names the owner's key from the home (`owner.key`,
-//   src/server/owner.ts); the window and the panel sign in through a link the shell asks the server
-//   for (`POST /api/login-link`).
+//   src/server/owner.ts); the window signs in through a link the shell asks the server for
+//   (`POST /api/login-link`).
 // - Links to anything but the canvas, and new windows, open in the default browser; so does
 //   "Im Browser öffnen" (the page offers it when it finds `window.obeyaApp`, the macOS menu too),
 //   through a link that signs that one browser in.
 // - The page gets the microphone without asking (it records only while Space or the mic button is
 //   held); the system asks once for the app. WebKitGTK has media streams off until turned on here.
 // - Downloads go into the Downloads folder and are shown there.
-// - A key held anywhere on the machine records a command while another app is in front (ptt.rs).
 // - A newer release is downloaded in the background, shown in the bar and installed when the owner
 //   says so, once the workers paused (update.rs).
 // - OBEYA_APP_CHECK=<url of a module>: the page imports it once the canvas has loaded
@@ -29,12 +28,11 @@
 //   which then updates itself from its checkout as `bun start` does. Installed from a checkout
 //   (`bun run app install`), the shell has both compiled in (OBEYA_BUILT_CHECKOUT, OBEYA_BUILT_BUN),
 //   and builds itself anew when app/ changes there (update.rs).
+// - Starting again (an update, a new build) brings the window back where it was, on the page it showed
+//   (`relaunch`).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod keys;
-mod mic;
-mod ptt;
 mod update;
 
 use std::{
@@ -64,13 +62,13 @@ const SERVER: &str = if cfg!(windows) { "obeya-server.exe" } else { "obeya-serve
 const DEFAULT_PORT: u16 = 4417;
 /// How long the server may take to answer after it was started.
 const START_PATIENCE: Duration = Duration::from_secs(120);
-pub(crate) const KEY_HEADER: &str = "X-Obeya-Key";
+const KEY_HEADER: &str = "X-Obeya-Key";
 
 /// Obeya's home, once known.
 static HOME: OnceLock<PathBuf> = OnceLock::new();
 
 /// The owner's key in the home, which the server makes when it first starts.
-pub(crate) fn key() -> Option<String> {
+fn key() -> Option<String> {
   let key = fs::read_to_string(HOME.get()?.join("owner.key")).ok()?;
   Some(key.trim().to_string()).filter(|k| !k.is_empty())
 }
@@ -79,7 +77,7 @@ pub(crate) fn key() -> Option<String> {
 /// goes through the system's `open` is seen by other accounts in the process list. The plain address
 /// from an Obeya that has no such link.
 pub(crate) fn login_link(port: u16, next: &str, once: bool) -> String {
-  ptt::post(port, "/api/login-link", &serde_json::json!({ "next": next, "once": once }))
+  post(port, "/api/login-link", &serde_json::json!({ "next": next, "once": once }))
     .and_then(|v| v["url"].as_str().map(String::from))
     .unwrap_or_else(|| format!("http://127.0.0.1:{port}{next}"))
 }
@@ -89,12 +87,14 @@ pub(crate) fn login_link(port: u16, next: &str, once: bool) -> String {
 pub(crate) struct Obeya {
   /// Where it answers; 0 until known.
   pub(crate) port: AtomicU16,
-  /// Started by the app (now or by an earlier run of it): quitting stops it.
-  owned: AtomicBool,
   /// Started in this run: the shell sees it end, and how (an update is installed then).
   pub(crate) child: AtomicBool,
   /// The owner quit; the server is told once it answers.
-  stopping: AtomicBool,
+  pub(crate) stopping: AtomicBool,
+  /// The shell starts again (`relaunch`): leaving, it does not stop the server.
+  relaunching: AtomicBool,
+  /// Where the window opens: the page it showed before the shell started again, else the canvas.
+  first: Mutex<Option<String>>,
 }
 
 impl Obeya {
@@ -154,22 +154,33 @@ fn http(port: u16, method: &str, path: &str) -> Option<u16> {
   std::str::from_utf8(&head[9..12]).ok()?.parse().ok()
 }
 
+/// A JSON request to the server that names the owner's key; its answer, or none when it fails.
+pub(crate) fn post(port: u16, path: &str, body: &serde_json::Value) -> Option<serde_json::Value> {
+  let req = ureq::post(&format!("http://127.0.0.1:{port}{path}")).timeout(Duration::from_secs(2));
+  let req = match key() {
+    Some(key) => req.set(KEY_HEADER, &key),
+    None => req,
+  };
+  let res = req.set("content-type", "application/json").send_string(&body.to_string()).ok()?;
+  Some(serde_json::from_str(&res.into_string().ok()?).unwrap_or(serde_json::Value::Null))
+}
+
 fn answers(port: u16) -> bool {
   http(port, "GET", "/api/canvases") == Some(200)
 }
 
-pub(crate) fn home(app: &AppHandle) -> PathBuf {
+pub(crate) fn home() -> PathBuf {
   std::env::var_os("OBEYA_HOME")
     .map(PathBuf::from)
-    .unwrap_or_else(|| app.path().home_dir().unwrap_or_default().join(".obeya"))
+    .unwrap_or_else(|| std::env::home_dir().unwrap_or_default().join(".obeya"))
 }
 
-/// The Obeya that runs on `home` (src/server/instance.ts): its port, and whether the app started it.
-fn running(home: &Path) -> Option<(u16, bool)> {
+/// The port of the Obeya that runs on `home` (src/server/instance.ts).
+fn running(home: &Path) -> Option<u16> {
   let text = fs::read_to_string(home.join("server.json")).ok()?;
   let entry: serde_json::Value = serde_json::from_str(&text).ok()?;
   let port = u16::try_from(entry["port"].as_u64()?).ok()?;
-  answers(port).then(|| (port, entry["app"].as_bool().unwrap_or(false)))
+  answers(port).then_some(port)
 }
 
 fn pick_port() -> u16 {
@@ -226,14 +237,19 @@ fn open_outside(obeya: &Obeya, url: &Url) {
   if !obeya.ours(url) || url.scheme() != "http" || port == 0 {
     return open_in_browser(url.as_str());
   }
-  let next = match (url.query(), url.fragment()) {
+  let next = next_of(url);
+  // off the main thread: it asks the server first
+  thread::spawn(move || open_in_browser(&login_link(port, &next, true)));
+}
+
+/// Where `url` leads within Obeya, for a link that signs in and leads there.
+fn next_of(url: &Url) -> String {
+  match (url.query(), url.fragment()) {
     (Some(q), Some(f)) => format!("{}?{q}#{f}", url.path()),
     (Some(q), None) => format!("{}?{q}", url.path()),
     (None, Some(f)) => format!("{}#{f}", url.path()),
     (None, None) => url.path().to_string(),
-  };
-  // off the main thread: it asks the server first
-  thread::spawn(move || open_in_browser(&login_link(port, &next, true)));
+  }
 }
 
 /// A link out of Obeya, in the system's browser. Other schemes stay closed: the system would hand
@@ -283,7 +299,6 @@ fn start_server(app: &AppHandle, home: &Path, port: u16, log: &(fs::File, PathBu
   };
   cmd
     .args(["--port", &port.to_string()])
-    .env("OBEYA_APP", "1")
     .env("OBEYA_HOME", home)
     .stdin(Stdio::null())
     .stdout(log.0.try_clone()?)
@@ -309,16 +324,15 @@ pub(crate) fn no_window(cmd: &mut Command) {
 }
 
 /// Brings up the Obeya of this home (the running one, else a new server) and shows its canvas;
-/// ends the app when the server it owns has ended.
+/// ends the app when that server has ended.
 fn serve(app: AppHandle, obeya: Arc<Obeya>, updates: Arc<update::Updates>) {
-  let home = home(&app);
-  let attach = |port: u16, owned: bool| {
+  let home = home();
+  let attach = |port: u16| {
     obeya.port.store(port, Ordering::SeqCst);
-    obeya.owned.store(owned, Ordering::SeqCst);
     navigate(&app, &obeya);
   };
-  if let Some((port, owned)) = running(&home) {
-    attach(port, owned);
+  if let Some(port) = running(&home) {
+    attach(port);
     return watch(&app, &obeya, &home);
   }
   let Some(log) = log_file(&home) else {
@@ -340,13 +354,12 @@ fn serve(app: AppHandle, obeya: Arc<Obeya>, updates: Arc<update::Updates>) {
       )
     }
   };
-  obeya.owned.store(true, Ordering::SeqCst);
   let started = Instant::now();
   while !answers(port) {
     if let Ok(Some(status)) = child.try_wait() {
       // another start on this home got there first: the server said so and ended
-      if let Some((port, owned)) = running(&home) {
-        attach(port, owned);
+      if let Some(port) = running(&home) {
+        attach(port);
         return watch(&app, &obeya, &home);
       }
       return fail(&app, ended(status, &log.1));
@@ -362,10 +375,10 @@ fn serve(app: AppHandle, obeya: Arc<Obeya>, updates: Arc<update::Updates>) {
     }
     thread::sleep(Duration::from_millis(150));
   }
-  attach(port, true);
+  attach(port);
   obeya.child.store(true, Ordering::SeqCst);
   match child.wait() {
-    Ok(status) if status.code() == Some(update::EXIT) => update::install(&app, &updates),
+    Ok(status) if status.code() == Some(update::EXIT) => update::install(&app, &obeya, &updates),
     Ok(status) if status.success() || obeya.stopping.load(Ordering::SeqCst) => app.exit(0),
     Ok(status) => fail(&app, ended(status, &log.1)),
     Err(e) => fail(&app, e.to_string()),
@@ -379,19 +392,20 @@ fn ended(status: std::process::ExitStatus, log: &Path) -> String {
   )
 }
 
-/// An Obeya the shell did not start in this run: when it is the app's, the app ends with it.
+/// An Obeya the shell did not start in this run (an earlier run of the app did, or a terminal): the
+/// app ends with it.
 fn watch(app: &AppHandle, obeya: &Obeya, home: &Path) {
-  if !obeya.owned.load(Ordering::SeqCst) {
-    return;
-  }
   let port = obeya.port.load(Ordering::SeqCst);
   let mut silent = 0;
   loop {
     thread::sleep(Duration::from_secs(1));
     silent = if answers(port) { 0 } else { silent + 1 };
-    // a restart takes seconds and keeps the home's entry; a stop ends it for good and gives the entry up
-    let stopped = obeya.stopping.load(Ordering::SeqCst) || !home.join("server.json").exists();
-    if silent > 0 && stopped || silent > 30 {
+    // a restart keeps the home's entry, marked while new dependencies go in (up to 90 s, as a start
+    // waits for it); a stop ends it for good and gives the entry up
+    let entry = fs::read_to_string(home.join("server.json")).ok();
+    let stopped = obeya.stopping.load(Ordering::SeqCst) || entry.is_none();
+    let patience = if entry.is_some_and(|e| e.contains("\"restarting\"")) { 90 } else { 30 };
+    if silent > 0 && stopped || silent > patience {
       return app.exit(0);
     }
   }
@@ -400,7 +414,8 @@ fn watch(app: &AppHandle, obeya: &Obeya, home: &Path) {
 /// Shows the canvas once it answers, signed in, and tells it to stop when the owner quit meanwhile.
 fn navigate(app: &AppHandle, obeya: &Obeya) {
   let (Some(_), Some(w)) = (obeya.url(), main_window(app)) else { return };
-  if let Ok(url) = Url::parse(&login_link(obeya.port.load(Ordering::SeqCst), "/", false)) {
+  let next = obeya.first.lock().unwrap().take().unwrap_or_else(|| "/".into());
+  if let Ok(url) = Url::parse(&login_link(obeya.port.load(Ordering::SeqCst), &next, false)) {
     let _ = w.navigate(url);
   }
   if obeya.stopping.load(Ordering::SeqCst) {
@@ -408,11 +423,8 @@ fn navigate(app: &AppHandle, obeya: &Obeya) {
   }
 }
 
-/// The owner quits: an Obeya the app owns is told to stop, and the app waits for it (true).
+/// The owner quits: Obeya is told to stop, and the app waits for it (true).
 fn quit(app: &AppHandle, obeya: &Obeya) -> bool {
-  if !obeya.owned.load(Ordering::SeqCst) {
-    return false;
-  }
   let first = !obeya.stopping.swap(true, Ordering::SeqCst);
   match obeya.port.load(Ordering::SeqCst) {
     // still starting: told once it answers
@@ -427,6 +439,122 @@ fn quit(app: &AppHandle, obeya: &Obeya) -> bool {
   }
 }
 
+/// The window as the shell left it to start again (`relaunch`), for the new one to open it the same:
+/// where it stood and how large, the page it showed. A file in the home, taken once and only fresh.
+#[derive(Clone, Default)]
+struct Placed {
+  x: f64,
+  y: f64,
+  width: f64,
+  height: f64,
+  maximized: bool,
+  fullscreen: bool,
+  /// Shown: closed on a Mac, the window is hidden while the app stays in the Dock.
+  visible: bool,
+  next: String,
+}
+
+const PLACED: &str = "app-window.json";
+/// How old the file may be: starting again takes seconds, a start much later opens the window afresh.
+const PLACED_FRESH: Duration = Duration::from_secs(60);
+
+pub(crate) fn now_ms() -> u64 {
+  std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+impl Placed {
+  fn of(w: &WebviewWindow, obeya: &Obeya) -> Option<Placed> {
+    let scale = w.scale_factor().ok()?;
+    let at = w.outer_position().ok()?.to_logical::<f64>(scale);
+    let size = w.inner_size().ok()?.to_logical::<f64>(scale);
+    let next = w.url().ok().filter(|u| obeya.ours(u) && u.scheme() == "http").map_or_else(|| "/".into(), |u| next_of(&u));
+    Some(Placed {
+      x: at.x,
+      y: at.y,
+      width: size.width,
+      height: size.height,
+      maximized: w.is_maximized().unwrap_or(false),
+      fullscreen: w.is_fullscreen().unwrap_or(false),
+      visible: w.is_visible().unwrap_or(true),
+      next,
+    })
+  }
+
+  fn keep(&self, home: &Path) {
+    let json = serde_json::json!({
+      "at": now_ms(), "x": self.x, "y": self.y, "width": self.width, "height": self.height,
+      "maximized": self.maximized, "fullscreen": self.fullscreen, "visible": self.visible, "next": self.next,
+    });
+    let _ = fs::write(home.join(PLACED), json.to_string());
+  }
+
+  fn take(home: &Path) -> Option<Placed> {
+    let path = home.join(PLACED);
+    let text = fs::read_to_string(&path).ok()?;
+    let _ = fs::remove_file(&path);
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    if now_ms().saturating_sub(v["at"].as_u64()?) > PLACED_FRESH.as_millis() as u64 {
+      return None;
+    }
+    let n = |k: &str| v[k].as_f64();
+    let b = |k: &str| v[k].as_bool().unwrap_or(false);
+    Some(Placed {
+      x: n("x")?,
+      y: n("y")?,
+      width: n("width")?,
+      height: n("height")?,
+      maximized: b("maximized"),
+      fullscreen: b("fullscreen"),
+      visible: v["visible"].as_bool().unwrap_or(true),
+      next: v["next"].as_str().unwrap_or("/").to_string(),
+    })
+  }
+}
+
+/// Whether the shell may start again now without the owner noticing more than the page reloading:
+/// its window is out of sight (closed on a Mac), or in front with the owner in it, where the new one
+/// takes its place. Not while it is minimized or behind another app's windows, where the new window
+/// would come up on top of what the owner works in.
+pub(crate) fn may_relaunch(app: &AppHandle) -> bool {
+  let Some(w) = main_window(app) else { return true };
+  // a minimized window counts as not visible on a Mac
+  !w.is_minimized().unwrap_or(false) && (!w.is_visible().unwrap_or(true) || w.is_focused().unwrap_or(false))
+}
+
+/// Starts the shell again, whichever build is in its place now, with its window as it was (`Placed`);
+/// the server runs on unless it ended already. On a Mac through the system, as the Dock starts it, once
+/// this one has ended: run from this process instead, the new shell would count as this one's for the
+/// system's permissions (the microphone), which ends with it.
+pub(crate) fn relaunch(app: &AppHandle, obeya: &Obeya) {
+  obeya.relaunching.store(true, Ordering::SeqCst);
+  let placed = main_window(app).and_then(|w| Placed::of(&w, obeya));
+  if let Some(p) = &placed {
+    p.keep(&home());
+  }
+  #[cfg(target_os = "macos")]
+  {
+    // …/Obeya.app/Contents/MacOS/obeya
+    let bundle = std::env::current_exe().ok().and_then(|e| Some(e.parent()?.parent()?.parent()?.to_path_buf()));
+    if let Some(bundle) = bundle.filter(|b| b.extension().is_some_and(|x| x == "app")) {
+      let hidden = placed.as_ref().is_some_and(|p| !p.visible);
+      let started = Command::new("/bin/sh")
+        .args(["-c", r#"while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open $3 "$2""#, "sh"])
+        .arg(std::process::id().to_string())
+        .arg(&bundle)
+        // out of sight it stays so, without coming to the front
+        .arg(if hidden { "-g" } else { "" })
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+      if started.is_ok() {
+        return app.exit(0);
+      }
+    }
+  }
+  app.restart();
+}
+
 /// A file name in `dir` that is not taken yet: `name`, else `name (2)` and so on.
 fn free_name(dir: &Path, name: &str) -> PathBuf {
   let path = dir.join(name);
@@ -437,7 +565,7 @@ fn free_name(dir: &Path, name: &str) -> PathBuf {
   (2..).map(|i| dir.join(format!("{stem} ({i}){ext}"))).find(|p| !p.exists()).unwrap()
 }
 
-fn window(app: &AppHandle, obeya: Arc<Obeya>) -> tauri::Result<WebviewWindow> {
+fn window(app: &AppHandle, obeya: Arc<Obeya>, placed: Option<&Placed>) -> tauri::Result<WebviewWindow> {
   let navigation = obeya.clone();
   let outside = obeya.clone();
   let loaded = obeya.clone();
@@ -449,11 +577,13 @@ fn window(app: &AppHandle, obeya: Arc<Obeya>) -> tauri::Result<WebviewWindow> {
     .inner_size(1440.0, 900.0)
     .min_inner_size(720.0, 480.0)
     .initialization_script(format!(
-      "window.obeyaApp = {{ version: {:?}, platform: {:?}, built: {} }};",
+      "window.obeyaApp = {{ version: {:?}, platform: {:?}, built: {}, handedOver: {} }};",
       app.package_info().version.to_string(),
       std::env::consts::OS,
       // installed from a checkout: the commit it was built from, which the settings show
-      option_env!("OBEYA_BUILT_COMMIT").filter(|c| !c.is_empty()).map_or("null".to_string(), |c| format!("{c:?}"))
+      option_env!("OBEYA_BUILT_COMMIT").filter(|c| !c.is_empty()).map_or("null".to_string(), |c| format!("{c:?}")),
+      // started again: the page before may have handed over what a reload keeps (update.rs)
+      placed.is_some()
     ))
     .on_permission_request(|_, kind| match kind {
       PermissionKind::Microphone => PermissionResponse::Allow,
@@ -499,6 +629,15 @@ fn window(app: &AppHandle, obeya: Arc<Obeya>) -> tauri::Result<WebviewWindow> {
         }
       }
     });
+  let builder = match placed {
+    Some(p) => builder
+      .position(p.x, p.y)
+      .inner_size(p.width, p.height)
+      .maximized(p.maximized)
+      .fullscreen(p.fullscreen)
+      .visible(p.visible),
+    None => builder,
+  };
   // on a Mac the window has no title bar of its own: the canvas's bar is it, with the traffic lights in it
   #[cfg(target_os = "macos")]
   let builder = builder
@@ -546,16 +685,23 @@ fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 fn main() {
   let obeya = Arc::new(Obeya::default());
   let for_setup = obeya.clone();
-  let app = tauri::Builder::default()
+  // started again by the shell before it (`relaunch`)
+  let placed = Placed::take(&home());
+  *obeya.first.lock().unwrap() = placed.as_ref().map(|p| p.next.clone());
+  let builder = tauri::Builder::default();
+  // a window that was out of sight comes back so, and the app stays behind the one the owner is in
+  #[cfg(target_os = "macos")]
+  let builder = builder.activate_ignoring_other_apps(placed.as_ref().is_none_or(|p| p.visible));
+  let app = builder
     .plugin(tauri_plugin_single_instance::init(|app, _, _| show(app)))
-    .plugin(tauri_plugin_opener::init())
+    // the opener's functions only, not its plugin: that puts a script into the page that takes each click
+    // on a link with target=_blank and hands it to the plugin over IPC, which the page may not call
+    // (capabilities/window.json), so the click would do nothing; the shell opens such links itself
     .plugin(tauri_plugin_dialog::init())
-    .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .plugin(tauri_plugin_updater::Builder::new().build())
-    .invoke_handler(tauri::generate_handler![ptt::panel_fit])
     .setup(move |app| {
       let handle = app.handle().clone();
-      let _ = HOME.set(home(&handle));
+      let _ = HOME.set(home());
       if cfg!(target_os = "macos") {
         app.set_menu(menu(&handle)?)?;
       }
@@ -569,8 +715,7 @@ fn main() {
           app.exit(0);
         }
       });
-      window(&handle, for_setup.clone())?;
-      ptt::start(&handle, for_setup.clone());
+      window(&handle, for_setup.clone(), placed.as_ref())?;
       let updates = update::start(&handle, for_setup.clone());
       let obeya = for_setup.clone();
       thread::spawn(move || serve(handle, obeya, updates));
@@ -612,7 +757,7 @@ fn main() {
     RunEvent::Reopen { .. } => show(app),
     // ended without asking (the Dock's Quit, logging out): the server is told on the way out and
     // stops on its own once its workers paused
-    RunEvent::Exit if obeya.owned.load(Ordering::SeqCst) && !obeya.stopping.load(Ordering::SeqCst) => {
+    RunEvent::Exit if !obeya.stopping.load(Ordering::SeqCst) && !obeya.relaunching.load(Ordering::SeqCst) => {
       http(obeya.port.load(Ordering::SeqCst), "POST", "/api/stop");
     }
     _ => {}

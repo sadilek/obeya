@@ -153,7 +153,8 @@ export class Restarter {
     return true;
   }
 
-  private owner(): OwnerHold[] {
+  /** What the owner does that a restart waits for: watching a demo video, dictating; nothing while Obeya stops. */
+  owner(): OwnerHold[] {
     if (this.stopping) return [];
     const all = new Set([...this.holds.values(), this.o.held?.() ?? []].flat());
     return (['video', 'voice'] as const).filter((h) => all.has(h));

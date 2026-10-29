@@ -225,6 +225,9 @@ const TASK_BY: Record<Exclude<TaskAuthor, 'owner'>, string> = {
 export const proposalTask = (unseen: string) =>
   `task: the card's text, written for the agent who will take it on, which has seen neither ${unseen}: what is wrong or wanted, where (files, names), what done looks like. Write it as the owner would write a card: no "I", no "my question", no "your card"; name other cards by their title.`;
 
+/** How the worker hears that its approved work could not land for something that is not its own to fix. */
+const NOT_LANDED = 'Since you handed over, the owner approved your work, but Obeya could not land it on main:';
+
 /**
  * The owner's words Obeya holds for the worker while it is in a turn (`CardRow.unheard`), each with
  * the lines of the log it carries: it takes them in with its next tool step's result, or, should
@@ -1591,7 +1594,9 @@ export class Workers {
     const trailer = this.o.onApproval?.(cardId) ?? undefined;
     const result = await (direct ? this.o.workspaces.pushToMain(cardId, trailer) : this.o.workspaces.landOnMain(cardId, row.branch!, trailer));
     if ('code' in result && !result.worker) {
-      this.o.board.work(cardId, { approved_at: null });
+      // the worker hears it with its next step, so it does not tell the owner the card still waits for their approval as if nothing had happened
+      const text = `${NOT_LANDED} ${result.detail}\n\nThat is not in your work: the owner sees on the card what to do, and the card waits for their approval again.`;
+      this.o.board.work(cardId, { approved_at: null, unheard: JSON.stringify([...this.unheardBut(cardId, NOT_LANDED), { said: [], text, images: [] }] satisfies Unheard[]) });
       throw new BadRequest(result.code, result.detail);
     }
     if ('code' in result) {
@@ -1609,6 +1614,8 @@ export class Workers {
       );
       return;
     }
+    // an earlier approval that could not land is no news any more
+    if (this.unheard(cardId).some((u) => u.text.startsWith(NOT_LANDED))) this.o.board.work(cardId, { unheard: JSON.stringify(this.unheardBut(cardId, NOT_LANDED)) });
     this.o.board.planDocsLanded(cardId, added);
     this.bump(cardId);
     const restartFor = this.o.restartsFor?.(result, direct ? (row.workspace ?? undefined) : undefined) ?? false;
@@ -2612,6 +2619,11 @@ export class Workers {
   /** Whether the card's worker waits for git to make its workspace ready, without a session yet. */
   private preparingFor(cardId: string): boolean {
     return this.preparing.has(cardId) && !this.live.has(cardId);
+  }
+
+  /** What waits for the worker, without what starts with `prefix` (news an event since has made stale). */
+  private unheardBut(cardId: string, prefix: string): Unheard[] {
+    return this.unheard(cardId).filter((u) => !u.text.startsWith(prefix));
   }
 
   private unheard(cardId: string): Unheard[] {

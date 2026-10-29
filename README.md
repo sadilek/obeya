@@ -175,10 +175,7 @@ start like any other (`~/Applications` on a Mac, the Start menu on Windows, the 
 Linux); `bun run app` runs it from the terminal instead. It needs Rust, on Linux also WebKitGTK's
 development files; the first build takes a few minutes. The app runs the checkout's code and follows
 it as `bun start` does, and builds itself anew when its own part (`app/`) changes, so it is
-installed once. The app adds push-to-talk
-from anywhere: hold the right Option key on a Mac, the right Ctrl key elsewhere, while another app
-is in front (another key in the settings). On a Mac this needs the "Input Monitoring" permission,
-which macOS asks for.
+installed once.
 
 ### Workers on other machines
 

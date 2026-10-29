@@ -1,5 +1,5 @@
 // Light or dark as the owner chose in the settings, else as the system: the stylesheets read it from
-// `data-theme` on the page's root (styles.css, panel.css), so a choice applies without loading again.
+// `data-theme` on the page's root (styles.css), so a choice applies without loading again.
 // A page loads it together with its language before it first renders.
 
 import { FALLBACK_LANGUAGE, languageOf } from '../core/locale';
@@ -13,7 +13,7 @@ export function applyTheme(theme: Theme | null) {
 }
 
 /** The owner's choice from the server; one that does not answer leaves the system's. */
-export const loadTheme = () => api.theme().then((v) => applyTheme(v.chosen), () => {});
+const loadTheme = () => api.theme().then((v) => applyTheme(v.chosen), () => {});
 
 /**
  * The language and the look first, from the server (the owner's choice, else the system's), so a

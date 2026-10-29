@@ -24,7 +24,8 @@ Allgemein turns it on again (on until then). The phone view shows the same at th
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
 answer for a minute) while the setting is on and a page of Obeya is open, and closed once neither
-holds. Nothing shows for a login without plan limits (an API key, a cloud provider), a Claude Code
+holds, half a minute after the last page closed: a reload or a switch to another canvas, which loads
+the page anew, finds the numbers there and shows them in the bar from its first frame. Nothing shows for a login without plan limits (an API key, a cloud provider), a Claude Code
 too old to answer, or numbers that could not be fetched again for five minutes. The workers on other
 machines may use other logins; the bar shows this machine's.
 
@@ -157,7 +158,7 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
   never confusable, orange the loudest.
 - *Light or dark*: as the system until the owner picks Hell or Dunkel (or the system again) in Konfiguration (`theme` in
   Obeya's `settings.json`). The page reads it before its first render and applies a change without
-  reload (the push-to-talk panel, which stays loaded, reads it each time it opens); `color-scheme`
+  reload; `color-scheme`
   follows so native controls and framed pages (a worker's HTML artifact, a mock) match. The site and shared demo pages follow the system.
 - *Type*: titles and headings in Newsreader (a plan doc in the sheet too), the rest in IBM Plex
   Sans Condensed, code in the system monospace; both fonts SIL OFL and self-hosted, no Google Fonts.
@@ -243,6 +244,9 @@ code, a generic one otherwise.
   Claude Code keeps its login; and the rate-limit events of running agents alone, which say little
   until a limit is close and nothing while no agent runs. The SDK marks the call experimental: when
   it changes, the bar shows nothing until Obeya follows.
+- **The usage limits outlast the last page by half a minute** (2026-10-29). Rejected: closing the
+  session and forgetting the numbers with the last page, which left the bar without them for the
+  seconds a new session takes after every switch of canvas.
 - **The bar measures what fits** (2026-10-12). Rejected: container queries on the bar's width, which
   let a long branch or a large pool push buttons under the sheet.
 - **An unfolded card is as large as its content, up to the room it has** (2026-10-08, 2026-10-21).

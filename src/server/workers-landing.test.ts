@@ -136,6 +136,31 @@ describe('a card whose own branch changes how work lands', () => {
   });
 });
 
+describe('landing on main from a clone of the remote', () => {
+  beforeEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    // the clone's origin is the remote, as one listed in the settings or made while work went out as pull requests
+    setup({ ...generic, land: 'main', workspaces: 'clones' }, true);
+  });
+
+  test('main moved on in the checkout, not on the remote: the work is rebased onto the checkout’s main and lands', async () => {
+    const c = board.create({ title: 'Zählerstände exportieren', x: 0, y: 0 });
+    await workers.start(c.id);
+    const clone = board.row(c.id).workspace!;
+    writeFileSync(join(clone, 'k.ts'), 'k');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Zählerstände als CSV');
+    // another card landed on the checkout's main meanwhile, which nobody pushed
+    writeFileSync(join(main, 'other.ts'), 'other');
+    git(main, 'add', '.');
+    git(main, 'commit', '--quiet', '-m', 'Andere Karte');
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('live');
+    expect(git(main, 'log', '--format=%s', '-3').split('\n')).toEqual(['Zählerstände als CSV', 'Andere Karte', 'init']);
+  });
+});
+
 describe('approving directly onto main where work goes out as a pull request', () => {
   beforeEach(() => {
     rmSync(dir, { recursive: true, force: true });

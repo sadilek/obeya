@@ -54,7 +54,6 @@ import { claim, release, restarting, running } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
 import { MachineSetup, welcome } from './machine';
 import { addToPath, extendPath } from './path';
-import { ShellReports } from './push-key';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
 import { SourceUpdates } from './source-update';
@@ -299,13 +298,12 @@ if (new Set(ids).size !== ids.length) {
 }
 const transcriber = new VoiceIn(home, new LocalTranscriber());
 const voiceSetup = new VoiceSetup({ home, local: transcriber.local });
-const shells = new ShellReports();
 const updates = new AppUpdates();
 // run from a clone of Obeya's repository: new commits on its upstream, for the owner to pull
 const sources = own ? new SourceUpdates(own) : undefined;
 // the plan's usage limits in the bar, while the owner has it show them and a page is open
 const usage = new UsageMeter(() => claudeUsage(home), { on: usageMeterView(home).on });
-const machine = new MachineSetup({ home, config, voice: voiceSetup, shells });
+const machine = new MachineSetup({ home, config, voice: voiceSetup });
 // the canvas the assistant created gets a first card that says what to try
 welcome(home, canvases.all());
 const shutdown = (code: number) => {
@@ -347,8 +345,8 @@ const push = new Push({ store, home, language: () => ownerLanguage(home) });
 const awake = new Awake({ wanted: () => access.awake() === 'always' || (access.awake() === 'works' && busy().length > 0) }).start();
 // what held the server up, or a page, for the owner to notice: in this log and in the home's stalls.log
 const stalls = new Stalls({ home }).start();
-server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, shells, updates, access, push, sources, usage, stalls);
-claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, app: !!process.env.OBEYA_APP });
+server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, updates, access, push, sources, usage, stalls);
+claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION });
 // the address as a one-time link that signs a browser in (owner.ts)
 const link = access.owner.link(`http://127.0.0.1:${server.port}`);
 console.log(`Obeya ${own ? `from ${own}` : VERSION} on ${link} (${source === 'file' ? configFile : 'canvases from the command line'}), agents on ${claudeExecutable() ?? 'the Claude Code the Agent SDK brings'}`);

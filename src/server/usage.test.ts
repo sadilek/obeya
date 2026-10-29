@@ -76,7 +76,7 @@ const settle = () => new Promise((r) => setTimeout(r, 5));
 test('fetched only while the bar shows them and a page is open; closed and forgotten once neither holds', async () => {
   const f = fakeSource();
   f.answers.push(usage(4));
-  const meter = new UsageMeter(f.open, { on: true, everyMs: 60_000 });
+  const meter = new UsageMeter(f.open, { on: true, everyMs: 60_000, lingerMs: 0 });
   let changes = 0;
   meter.onChange(() => changes++);
   await settle();
@@ -92,6 +92,7 @@ test('fetched only while the bar shows them and a page is open; closed and forgo
   page();
   page();
   other();
+  await settle();
   expect(f.counts.closed).toBe(1);
   expect(meter.current()).toBeNull();
   // turned off, an open page fetches nothing
@@ -104,6 +105,28 @@ test('fetched only while the bar shows them and a page is open; closed and forgo
   await settle();
   expect(meter.current()!.limits[0]!.percent).toBe(4);
   again();
+  meter.stop();
+});
+
+test('a page that reloads or goes to another canvas finds the session and its numbers still there', async () => {
+  const f = fakeSource();
+  f.answers.push(usage(4));
+  const meter = new UsageMeter(f.open, { on: true, everyMs: 60_000, lingerMs: 30 });
+  const page = meter.watch();
+  await settle();
+  page();
+  await settle();
+  expect(meter.current()!.limits[0]!.percent).toBe(4);
+  const next = meter.watch();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(meter.current()!.limits[0]!.percent).toBe(4);
+  expect(f.counts.opened).toBe(1);
+  expect(f.counts.closed).toBe(0);
+  // with no page left after the while, the session closes and the numbers are forgotten
+  next();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(f.counts.closed).toBe(1);
+  expect(meter.current()).toBeNull();
   meter.stop();
 });
 

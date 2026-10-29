@@ -4,9 +4,8 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 
 ### Voice in
 
-Push-to-talk: hold Space or the mic button; in the app also a key held while another app is in
-front (see Push-to-talk anywhere). The browser records and posts the audio with its focus (the open
-card, the project in view).
+Push-to-talk: hold Space or the mic button in Obeya's window. The browser records and posts the
+audio with its focus (the open card, the project in view).
 
 #### Dictating or sending
 
@@ -15,7 +14,7 @@ dictated into it at the cursor and nothing is sent; the owner adds to them and s
 Elsewhere they go out at once, with what stands in the field of the card in view (or of the sidebar
 with no card open): its words before the spoken ones, its screenshots, the message it quotes; the
 field empties, and gets them back when nothing was heard. A click into the field or beside it
-switches. The app's key in another app always sends.
+switches.
 
 A dictation starts from the microphone in the field, the microphone at the bottom (pressing it keeps
 the cursor where it is), or Space held in the field. Space in a field is held back: released within
@@ -167,8 +166,9 @@ agent has the shell and asks the owner's permission.
 A new card or idea lands in view, centred where the pointer was when the owner stopped speaking or
 sent the words, else in the middle of the view, moved to the nearest free spot wholly in view; with a
 card or project open, in the view closing it returns to. A follow-up goes below the card it follows.
-What comes without a pointer (the app's key, a request an agent passed on) uses the view the page
-last reported. The camera flies only when the card landed out of view.
+What comes without a pointer (a request an agent passed on) uses the view a page last reported: each
+page reports it over its WebSocket on every change and when its window gets the focus back. The
+camera flies only when the card landed out of view.
 
 A new card or idea may go onto another canvas the owner names („leg auf Super 59 eine Aufgabe an“),
 into that canvas's home repository, with the command's screenshots; the Koordinator hears the other
@@ -270,41 +270,12 @@ the undo window starts with the confirmation.
 Obeya does not speak. Confirmations and answers are written: in the card's conversation, the
 Koordinator's sheet and the line above the mic. Demo narration is separate (see Demos).
 
-### Push-to-talk anywhere
-
-In the app, a key held while another app is in front records a command. Space cannot be it (it would
-be taken from every app), so the default is right Option on a Mac and right Ctrl elsewhere (right Alt
-is AltGr on many European layouts). „Sprachtaste überall“ in the configuration dialog takes another
-by pressing it: a key nobody types with held alone (modifier, F key, Pause) or a combination such as
-Ctrl+Shift+Space, saved as `pushKey` in `settings.json`. A lone key is only listened to, so it still
-reaches the app in front: a tap does nothing, holding it past 0.3 s records, and another key pressed
-meanwhile makes it a shortcut, not a recording (modifiers do not count).
-
-On a Mac a listen-only event tap hears it, which needs "Input Monitoring": until allowed, the
-settings and the setup assistant say so and open the system settings' page. Windows uses a low-level
-keyboard hook, X11 XInput2 raw key events. A combination goes through Tauri's global-shortcut plugin,
-which takes it for itself (no permission on a Mac). Wayland gives apps no keys of others: the Global
-Shortcuts portal binds it as a shortcut the owner confirms in the desktop's dialog (the settings show
-the binding); without the portal only the window's Space remains.
-
-The shell records itself (a background webview cannot be relied on), opening the default microphone
-when the key goes down so no words are lost, and posts a WAV to the canvas's `/voice` with where the
-owner was last: every page reports its view over its WebSocket on every change and when its window gets the focus
-back, and `GET /api/focus` gives the newest
-page's, else the first canvas with nothing in focus. Every two seconds the shell reports its state
-(`POST /api/push-to-talk/shell`: on, permission, bind, none, unsupported, error) and gets the key
-that applies, so a new key applies at once.
-
-A floating panel at the bottom of the screen the pointer is on (`/panel`, served by the server) never
-takes the keyboard: it shows that Obeya listens and to whom (with the level and the no-sound
-warning), the command being read, then what was heard with the confirmation and „Rückgängig“, or „An
-den Agenten gegangen.“; it hides when empty. A restart is not held off for the shell's recording; a
-command cut off by one shows „Das hat nicht geklappt“ in the panel. `bun run app` builds the shell and
-runs it from a checkout, starting the server there if none runs; `bun run app install` installs it
-as an app (see Distribution: The app from a checkout).
-
 ### Decisions
 
+- **Push-to-talk only in Obeya's window** (owner, 2026-10-29). Rejected: a key held while another
+  app is in front, heard and recorded by the app's shell, which sent the command to wherever the
+  owner had last been in Obeya: from the other app the owner could not tell which canvas and card
+  that was.
 - **The focus decides between dictating and sending** (2026-10-12). Rejected: always dictating (two
   steps per message), always sending at once (lost what was typed), a field in view deciding (on a
   card one almost always is, also when the owner wants to send at once).

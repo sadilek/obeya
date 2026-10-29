@@ -13,8 +13,6 @@ export interface Instance {
   port: number;
   url: string;
   version: string;
-  /** Started by the app, which then stops it when it quits; an Obeya started from a terminal it leaves running. */
-  app: boolean;
   /** Its server ended to start again (new code, a saved configuration) and does not answer yet. */
   restarting?: boolean;
 }

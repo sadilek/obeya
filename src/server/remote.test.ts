@@ -42,7 +42,7 @@ beforeEach(() => {
       return { status: 201, text: async () => '' };
     },
   });
-  server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, access, push);
+  server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, access, push);
 });
 afterEach(() => {
   access.stop();

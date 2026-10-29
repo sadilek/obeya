@@ -27,9 +27,9 @@ export interface SetupItem {
   id: SetupId;
   /**
    * `ok`: there. `missing`: it does not work without it. `later`: fetched on first use, which
-   * takes a while (Obeya's speech recognition). `off`: not in use (the push-to-talk key in other apps).
+   * takes a while (Obeya's speech recognition).
    */
-  state: 'ok' | 'missing' | 'later' | 'off';
+  state: 'ok' | 'missing' | 'later';
   /** What was found: a version, a path, the voice's missing parts. */
   found?: string;
   /** What it lacks when something is there but does not do (Node too old, ffmpeg without libx264). */

@@ -14,10 +14,11 @@
 //   updates itself from its checkout, and so does a shell installed from one (`bun run app install`,
 //   which compiles in the version of app/ it was built from, OBEYA_BUILT_TREE): every minute it
 //   looks at app/ on the checkout's HEAD, and once that is another, the checkout's scripts/app.ts
-//   builds the shell and installs it in this one's place. The shell then tells the server of it as
-//   of an update, which the server installs without asking, as it restarts for new code; nothing is
-//   left to install then but starting again. A build that failed (its output is in app-build.log in
-//   the home) is tried again for the next change of app/.
+//   builds the shell and installs it in this one's place. The shell then tells the server it started
+//   of it as of an update, which the server installs without asking, as it restarts for new code;
+//   nothing is left to install then but starting again. A server it did not start (a terminal's)
+//   runs on, and the shell starts again by itself (`start_again`). A build that failed (its output
+//   is in app-build.log in the home) is tried again for the next change of app/.
 // - OBEYA_UPDATE_EVERY=<seconds> asks that often instead (scripts/check-update.ts).
 
 use std::{
@@ -34,7 +35,7 @@ use tauri::{utils::config::BundleType, AppHandle, Url};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-use crate::{main_window, no_window, ptt, say, Obeya};
+use crate::{main_window, no_window, post, say, Obeya};
 
 /// The exit code with which the server asks the shell to install the update (src/server/self-update.ts).
 pub const EXIT: i32 = 77;
@@ -66,14 +67,14 @@ pub fn start(app: &AppHandle, obeya: Arc<Obeya>) -> Arc<Updates> {
     let Some(built) = option_env!("OBEYA_BUILT_TREE").filter(|t| !t.is_empty()) else {
       return updates;
     };
-    let (home, u) = (crate::home(app), updates.clone());
+    let (home, u) = (crate::home(), updates.clone());
     thread::spawn(move || rebuild(&checkout, built, &home, &u));
   } else {
     check_releases(app, &updates);
   }
-  let u = updates.clone();
+  let (a, u) = (app.clone(), updates.clone());
   thread::spawn(move || loop {
-    report(&obeya, &u);
+    report(&a, &obeya, &u);
     thread::sleep(Duration::from_secs(3));
   });
   updates
@@ -155,10 +156,18 @@ fn check(app: &AppHandle, updates: &Updates) -> Result<(), String> {
   Ok(())
 }
 
-/// Tells the server of the version that is ready, while it is one the app started in this run.
-fn report(obeya: &Obeya, updates: &Updates) {
+/// Tells the server of the version that is ready, while it is one the app started in this run. A
+/// new build of the shell where the server runs on without it (started from a terminal) starts
+/// again by itself (`start_again`).
+fn report(app: &AppHandle, obeya: &Obeya, updates: &Updates) {
   let port = obeya.port.load(Ordering::SeqCst);
-  if port == 0 || !obeya.child.load(Ordering::SeqCst) {
+  if port == 0 || obeya.stopping.load(Ordering::SeqCst) {
+    return;
+  }
+  if !obeya.child.load(Ordering::SeqCst) {
+    if *updates.rebuilt.lock().unwrap() {
+      start_again(app, obeya, port);
+    }
     return;
   }
   let body = match updates.ready.lock().unwrap().as_ref() {
@@ -171,12 +180,39 @@ fn report(obeya: &Obeya, updates: &Updates) {
       "download": bytes.is_none().then(|| format!("{RELEASES}/tag/v{}", update.version)),
     }),
   };
-  ptt::post(port, "/api/app-update", &body);
+  post(port, "/api/app-update", &body);
+}
+
+/// A new build of the shell is in place, and the server runs on without it: it starts again once the
+/// owner neither dictates nor watches a video (as the server's restart waits for them, which says
+/// so) and its window allows (`may_relaunch`), after the page handed over what a reload keeps
+/// (src/ui/api.ts, `handOver`), or did not within a few seconds (a page that does not know how).
+fn start_again(app: &AppHandle, obeya: &Obeya, port: u16) {
+  let ask = |kept: &str| post(port, "/api/app-rebuilt", &json!({ "kept": kept }));
+  let now = |a: &Option<serde_json::Value>| a.as_ref().is_some_and(|a| a["now"] == true);
+  if !now(&ask("")) || !crate::may_relaunch(app) {
+    return;
+  }
+  let token = format!("{}", crate::now_ms());
+  if let Some(w) = main_window(app) {
+    let _ = w.eval(format!("window.obeyaHandOver?.({token:?})"));
+  }
+  for _ in 0..25 {
+    thread::sleep(Duration::from_millis(200));
+    let answer = ask(&token);
+    if answer.as_ref().is_some_and(|a| a["kept"] == true) {
+      break;
+    }
+  }
+  // the owner may have begun to speak meanwhile; what was handed over waits for the next try
+  if now(&ask("")) && crate::may_relaunch(app) {
+    crate::relaunch(app, obeya);
+  }
 }
 
 /// The server ended to be updated: installs the update and starts the app again, the new version
 /// if it went in, else this one, after saying why. A new build of the shell is in place already.
-pub fn install(app: &AppHandle, updates: &Updates) {
+pub fn install(app: &AppHandle, obeya: &Obeya, updates: &Updates) {
   if let Some(w) = main_window(app) {
     let page = if cfg!(windows) { "http://tauri.localhost/index.html?updating" } else { "tauri://localhost/index.html?updating" };
     if let Ok(url) = Url::parse(page) {
@@ -198,5 +234,5 @@ pub fn install(app: &AppHandle, updates: &Updates) {
         .blocking_show();
     }
   }
-  app.restart();
+  crate::relaunch(app, obeya);
 }

@@ -51,3 +51,35 @@ export class AppUpdates {
     for (const fn of this.listeners) fn();
   }
 }
+
+/** How long what the page handed over waits for the page of the new shell: starting again takes seconds. */
+const HANDED_OVER_MS = 2 * 60_000;
+
+/**
+ * What the page in the app's window keeps across its shell starting again while the server runs
+ * on (a new build of a shell installed from a checkout, app/src/update.rs). A reload keeps it in
+ * the tab's session storage (keep.ts, draft.ts), which the new shell's webview starts without: the
+ * page hands it over here first (`token`: which time the shell asked), and the page the new shell
+ * opens takes it back, once.
+ */
+export class HandOver {
+  private kept: { token: string; entries: [string, string][]; at: number } | null = null;
+
+  give(input: unknown) {
+    const { token, entries } = (input ?? {}) as { token?: unknown; entries?: unknown };
+    const pair = (e: unknown): e is [string, string] => Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && typeof e[1] === 'string';
+    if (typeof token !== 'string' || !Array.isArray(entries) || !entries.every(pair)) throw new BadRequest('invalid', 'token and entries expected');
+    this.kept = { token, entries, at: Date.now() };
+  }
+
+  /** Whether the page handed over when the shell asked with `token`. */
+  has(token: unknown): boolean {
+    return typeof token === 'string' && this.kept?.token === token;
+  }
+
+  take(now = Date.now()): [string, string][] | null {
+    const kept = this.kept;
+    this.kept = null;
+    return kept && now - kept.at < HANDED_OVER_MS ? kept.entries : null;
+  }
+}

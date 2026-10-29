@@ -521,9 +521,13 @@ export const koordinatorReads = (events: CardEvent[]) => {
   return last?.kind === 'say' && last.author === 'owner';
 };
 
-/** Whether Obeya's conversation shows it at work: reading the owner's words, or looking a question up (not while the usage limit holds it). */
+/**
+ * Whether Obeya's conversation shows it at work: reading the owner's words, or looking a question up
+ * (not while the usage limit holds it). Words asked in a project's sheet went straight to its project
+ * agent: Obeya never replies to them, only their answer is awaited.
+ */
 export const obeyaWorks = (talk: Exchange[]) =>
-  talk.some((x) => (x.reply === undefined && !x.heldUntil) || (x.question !== undefined && x.answer === undefined && !x.movedTo && !x.limitedUntil));
+  talk.some((x) => (x.reply === undefined && !x.heldUntil && !x.askedIn) || (x.question !== undefined && x.answer === undefined && !x.movedTo && !x.limitedUntil));
 
 /**
  * A task an agent has worked on, stopped ones included: what came of it stands beside its

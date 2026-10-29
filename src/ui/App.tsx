@@ -950,13 +950,11 @@ function Canvas({
   }, []);
   const focusItem = focus ? itemOrArchived(focus.id) : undefined;
   const target = voiceTarget(focus && { type: focus.type, item: focusItem });
-  // the app's push-to-talk key in another app speaks to what is in view here
-  const focusTitle = focusItem && plain(focusItem.title);
-  // and a card it makes goes into what is in view, reported once the view rests
+  // a card a command makes goes into what is in view, reported once the view rests
   useEffect(() => {
-    const h = setTimeout(() => reportFocus(where(), target, focusTitle, placeNow(false)), 300);
+    const h = setTimeout(() => reportFocus(placeNow(false)), 300);
     return () => clearTimeout(h);
-  }, [focus?.type, focus?.id, target, focusTitle, cam, tick, kOn, sheetOn, sheetW.sheet]);
+  }, [focus?.type, focus?.id, cam, tick, kOn, sheetOn, sheetW.sheet]);
 
   // ---------------------------------------------------------------- pointer: pan, drag, click
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -1313,8 +1311,6 @@ function Canvas({
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     // a field being edited handles its own keys (Esc cancels the edit there); any other field's Esc closes what it is in
     if (typing && (e.target as Element).closest('[data-esc]')) return;
-    // the settings take the next key as the push-to-talk key in another app
-    if (document.querySelector('.c-push-key.listening')) return;
     // the configuration over the page takes the keys until it closes, Esc closing it
     if (cOnRef.current) {
       if (e.key === 'Escape' && !document.querySelector('.setup')) {

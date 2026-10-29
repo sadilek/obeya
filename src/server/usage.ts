@@ -18,6 +18,8 @@ const FETCH_TIMEOUT_MS = 30_000;
 const MAX_SKIPPED = 14;
 /** Limits not fetched again for this long (Claude Code failing meanwhile) are no longer shown. */
 const STALE_MS = 5 * 60_000;
+/** How long the session and its numbers outlast the last page: a reload or a switch to another canvas opens the next one sooner. */
+export const USAGE_LINGER_MS = 30_000;
 
 /** Where the limits come from: asked again each round, closed once the bar no longer shows them. */
 export interface UsageSource {
@@ -29,7 +31,8 @@ export interface UsageSource {
 /**
  * The limits for the bar: fetched now and every `everyMs` while the owner has the bar show them
  * (`setOn`) and a page is open (`watch`), from a source started for that and closed once neither
- * holds. A source that fails is closed, and a later round starts a new one, after more rounds the
+ * holds, a page closed `lingerMs` ago still counting as open (the page a reload or another canvas
+ * opens next shows the numbers at once, without a session started anew). A source that fails is closed, and a later round starts a new one, after more rounds the
  * more often it failed (a Claude Code too old to answer would otherwise start a session a minute);
  * what it fetched last stands meanwhile, for a few minutes.
  */
@@ -44,14 +47,18 @@ export class UsageMeter {
   /** Rounds failed one after the other, and how many rounds to leave out before the next try. */
   private failures = 0;
   private skip = 0;
+  /** Pages closed less than `lingerMs` ago, each still counted among the watchers. */
+  private leaving = new Set<ReturnType<typeof setTimeout>>();
   private readonly everyMs: number;
+  private readonly lingerMs: number;
 
   constructor(
     private open: () => UsageSource,
-    o: { on?: boolean; everyMs?: number } = {},
+    o: { on?: boolean; everyMs?: number; lingerMs?: number } = {},
   ) {
     this.on = !!o.on;
     this.everyMs = o.everyMs ?? USAGE_EVERY_MS;
+    this.lingerMs = o.lingerMs ?? USAGE_LINGER_MS;
   }
 
   /** Whether the owner has the bar show the limits. */
@@ -68,8 +75,13 @@ export class UsageMeter {
     return () => {
       if (done) return;
       done = true;
-      this.watchers--;
-      this.update();
+      const leave = setTimeout(() => {
+        this.leaving.delete(leave);
+        this.watchers--;
+        this.update();
+      }, this.lingerMs);
+      leave.unref?.();
+      this.leaving.add(leave);
     };
   }
 
@@ -107,6 +119,8 @@ export class UsageMeter {
 
   /** Stops fetching for good: the server stops. */
   stop() {
+    for (const leave of this.leaving) clearTimeout(leave);
+    this.leaving.clear();
     this.on = false;
     this.update();
   }

@@ -236,8 +236,7 @@ export class CanvasRuntime {
   private writing = new Map<string, { before: string; timer: ReturnType<typeof setTimeout> }>();
   /**
    * The part of the canvas the owner last had in view in a page (its middle and its bounds): a new
-   * card that comes without a place of its own (said with the app's key in another app, passed on
-   * by an agent) goes there.
+   * card that comes without a place of its own (passed on by an agent, say) goes there.
    */
   inView: Place | undefined;
 

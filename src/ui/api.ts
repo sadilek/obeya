@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
-import type { PushKeyView } from '../core/push-key';
 import { type Place, placeParam } from '../core/layout';
 import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
 import type { Wish } from '../core/wish';
@@ -119,7 +118,7 @@ export interface Heard {
 }
 /** How long "Rückgängig" shows: until shortly before the command stops waiting. */
 export const undoShownMs = (undoMs: number) => Math.max(0, undoMs - 400);
-/** How long a confirmation stays: 7 s, unless its undo window is longer (above the microphone and in the app's panel alike). */
+/** How long a confirmation stays above the microphone: 7 s, unless its undo window is longer. */
 export const confirmShownMs = (undoMs = 0) => Math.max(7000, undoMs + 1500);
 
 /**
@@ -150,9 +149,6 @@ export const api = {
   trustCommands: (path: string, trust: RepoTrust) => call<object>('POST', '/api/config/trust', { path, seen: trust.now, held: trust.held }),
   /** The interface language (chosen, or the system's) and the conversation language (chosen, or the interface's). */
   language: () => call<LanguageView>('GET', '/api/language'),
-  /** The push-to-talk key in another app, and the app's shell that hears it. */
-  pushKey: () => call<PushKeyView>('GET', '/api/push-to-talk'),
-  savePushKey: (key: string | null) => call<PushKeyView>('PUT', '/api/push-to-talk', { key }),
   /** Saves the owner's choice; `null` follows the system again. */
   saveLanguage: (language: Language | null) => call<LanguageView>('PUT', '/api/language', { language }),
   /** The language agents write the owner in until the owner's words say otherwise; `null` follows the interface's. */
@@ -415,7 +411,7 @@ export function holdRestart(by: string, what: OwnerHold | null) {
   sendHolds();
 }
 
-// What the owner has in view, for a command from the app's push-to-talk key in another app: the
+// Where the owner looks on the canvas, for a card a command makes without a place of its own: the
 // server hears every change, again after a reconnect, and when the page gets the focus back, so
 // the page the owner looked at last wins.
 let focusMessage: Extract<ClientMessage, { type: 'focus' }> | null = null;
@@ -423,8 +419,8 @@ const sendFocus = () => {
   const ws = sockets.get(canvasId);
   if (focusMessage && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(focusMessage));
 };
-export function reportFocus(where: Where, target: string, title: string | undefined, place: Place) {
-  focusMessage = { type: 'focus', ...(where ?? {}), target, ...(title ? { title } : {}), place: placeParam(place) };
+export function reportFocus(place: Place) {
+  focusMessage = { type: 'focus', place: placeParam(place) };
   sendFocus();
 }
 
@@ -477,6 +473,25 @@ export function beforeReload(fn: () => void): () => void {
 export function reload() {
   for (const fn of reloadListeners) fn();
   location.reload();
+}
+
+/**
+ * In the app's window, whose shell is about to start again while the server runs on (a new build of
+ * it, app/src/update.rs): what a reload keeps goes to the server rather than this tab's session
+ * storage, which the new shell's webview starts without. `token` tells the shell it is there.
+ */
+export async function handOver(token: string) {
+  for (const fn of reloadListeners) fn();
+  const entries = Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)!).map((k) => [k, sessionStorage.getItem(k) ?? '']);
+  await send('POST', '/api/app-rebuilt/handover', { token, entries });
+}
+
+/** In the window of a shell that started again: what the page before it handed over, back into session storage, once. */
+export async function takeHandOver() {
+  try {
+    const entries = (await call<[string, string][] | null>('GET', '/api/app-rebuilt/handover')) ?? [];
+    for (const [k, v] of entries) sessionStorage.setItem(k, v);
+  } catch {}
 }
 
 /**

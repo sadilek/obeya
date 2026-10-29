@@ -6,7 +6,7 @@ import { languageOf } from '../core/locale';
 import { AGENT_DEFAULTS, type AgentSetting } from '../core/types';
 import { withAgentSetting } from './runtime';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
-import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, pushKeyChoice, saveAgents, saveLanguage, savePushKey, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentSetting, agentsView, conversationLanguage, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
 import { FakeRuntime } from './testing';
 
 const homes: string[] = [];
@@ -97,23 +97,6 @@ test("an agent of a group starts with the group's model and effort, asked at eve
   runtime.start({ ...spec, effort: 'low' });
   expect(fake.last.spec.effort).toBe('low');
   expect(fake.last.spec.model).toBeUndefined();
-});
-
-test('the push-to-talk key in another app: the default until chosen, beside the other settings, which stay', () => {
-  const home = scratchHome();
-  expect(pushKeyChoice(home, 'darwin')).toEqual({ key: 'AltRight', chosen: null, default: 'AltRight' });
-  saveLanguage(home, { language: 'en' });
-  expect(savePushKey(home, { key: 'Shift+Control+Space' }, 'darwin')).toEqual({ key: 'Control+Shift+Space', chosen: 'Control+Shift+Space', default: 'AltRight' });
-  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en', pushKey: 'Control+Shift+Space' });
-  for (const bad of [{ key: 'KeyA' }, { key: 'Space' }, {}, { key: 3 }]) expect(() => savePushKey(home, bad, 'darwin')).toThrow();
-  // the default chosen is no choice: a changed default reaches it
-  savePushKey(home, { key: 'AltRight' }, 'darwin');
-  expect(JSON.parse(readFileSync(join(home, SETTINGS_FILE), 'utf8'))).toEqual({ language: 'en' });
-  savePushKey(home, { key: 'F13' }, 'darwin');
-  expect(savePushKey(home, { key: null }, 'darwin').chosen).toBeNull();
-  // a key the file holds that cannot be one is left out
-  writeFileSync(join(home, SETTINGS_FILE), JSON.stringify({ pushKey: 'KeyA' }));
-  expect(pushKeyChoice(home, 'linux').key).toBe('ControlRight');
 });
 
 test('light or dark: as the system until chosen, beside the other settings, and back to the system with null', () => {

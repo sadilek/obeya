@@ -60,7 +60,7 @@ touches, and keep those current in the same change.
   Obeya's makers.
 - [Voice](design/voice.md) — voice in (dictating or sending, drafts, the microphone), speech
   recognition (Parakeet, Whisper, a cloud service, the settings), who hears the words, commands to
-  the Koordinator with confirmation and undo, voice latency, no voice out, push-to-talk anywhere.
+  the Koordinator with confirmation and undo, voice latency, no voice out.
 - [Demos](design/demos.md) — making and showing demos: the demo skill, the demo settings and
   voices, what a render needs, recording a demo (cutting waits, re-voicing, frames, highlights),
   the demo on the card (watching it, comments in the video, earlier demos), UI checks in a
@@ -104,7 +104,7 @@ on the walls and decisions are made in front of the wall.
   What is to be looked at rather than watched (drafts side by side, a layout, an analysis, an
   answer) is an HTML artifact instead of a video; the worker picks, the video where either would
   do. There is no handover without one.
-- **Voice first, mouse welcome.** Push-to-talk anywhere; buttons for the obvious actions. No live
+- **Voice first, mouse welcome.** Push-to-talk in Obeya's window; buttons for the obvious actions. No live
   transcript: what the owner says to an open card's agent shows in its conversation, a command to
   Obeya gets a short written confirmation with undo. What was said and answered stays in the
   conversation of the open card, or in the Koordinator's sheet. Obeya does not speak.
