@@ -122,6 +122,7 @@ const de = {
         rows: [
           { keys: [['Doppelklick']], text: 'Neue Aufgabe an dieser Stelle' },
           { keys: [['N']], text: 'Neue Aufgabe in der Mitte' },
+          { keys: [['S']], text: 'Karten suchen, auf der Leinwand und im Archiv' },
           { keys: [['Tab']], text: 'Zur nächsten Karte, die dich braucht, oder zu Obeyas Antwort' },
           { keys: [['Esc']], text: 'Karte, Projekt oder Obeya-Chat schließen' },
         ],
@@ -1853,6 +1854,19 @@ const de = {
     projectGone: (d: Date) => `Das Plan-Dokument ist weg (${de.archive.when(d)}). So stand es zuletzt; kommt die Datei zurück, kehrt das Projekt an seinen Platz zurück.`,
     workstreams: (n: number) => (n === 1 ? '1 Workstream' : `${n} Workstreams`),
   },
+  search: {
+    button: 'Suchen',
+    title: 'Alle Karten durchsuchen, auf der Leinwand und im Archiv (Taste S)',
+    field: 'Karten suchen',
+    /** Under the empty field: what the search looks through. */
+    hint: 'Findet Karten auf der Leinwand und im Archiv, die jedes eingegebene Wort enthalten: zuerst die mit allen Wörtern im Titel, dann die übrigen. ↑ ↓ wählen, Enter öffnet.',
+    canvas: 'Auf der Leinwand',
+    archive: 'Im Archiv',
+    /** No card on the canvas or in the archive matches what the owner typed. */
+    noMatch: (q: string) => `Keine Karte passt zu „${q}“.`,
+    /** Under a section's results, the ones beyond the shown. */
+    more: (n: number) => (n === 1 ? '1 weitere: genauer suchen, um sie zu sehen' : `${n} weitere: genauer suchen, um sie zu sehen`),
+  },
   idea: {
     status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
     yourTurn: 'Idee · du bist dran',
@@ -2071,6 +2085,7 @@ const en: Strings = {
         rows: [
           { keys: [['Double-click']], text: 'New task right there' },
           { keys: [['N']], text: 'New task in the middle' },
+          { keys: [['S']], text: 'Search cards, on the canvas and in the archive' },
           { keys: [['Tab']], text: 'Next card that needs you, or Obeya’s answer' },
           { keys: [['Esc']], text: 'Close the card, project or Obeya chat' },
         ],
@@ -3703,6 +3718,16 @@ const en: Strings = {
     time: (d: Date) => clock(d),
     projectGone: (d: Date) => `The plan doc is gone (${en.archive.when(d)}). This is how it last stood; if the file comes back, the project returns to its place.`,
     workstreams: (n: number) => (n === 1 ? '1 workstream' : `${n} workstreams`),
+  },
+  search: {
+    button: 'Search',
+    title: 'Search all cards, on the canvas and in the archive (key S)',
+    field: 'Search cards',
+    hint: 'Finds cards on the canvas and in the archive that hold every word typed: those with all of them in the title first, then the rest. ↑ ↓ to choose, Enter opens.',
+    canvas: 'On the canvas',
+    archive: 'In the archive',
+    noMatch: (q: string) => `No card matches “${q}”.`,
+    more: (n: number) => (n === 1 ? '1 more: search more precisely to see it' : `${n} more: search more precisely to see them`),
   },
   idea: {
     status: { open: 'Idea', parked: 'Idea · parked', dropped: 'Idea · dropped' },

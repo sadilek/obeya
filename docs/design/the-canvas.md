@@ -7,12 +7,22 @@ edge indicators, minimap, and a frosted top bar the canvas slides under.
 
 ### The bar
 
-Left, after the canvas switcher: the archive's button (see Card lifecycle), the queue's and "Neue
-Aufgabe". The queue's button counts the waiting cards; a click lists them in turn, each with what it
+Left, after the canvas switcher: „Suchen“, the archive's button (see Card lifecycle), the queue's
+and "Neue Aufgabe". The queue's button counts the waiting cards; a click lists them in turn, each with what it
 waits for, buttons to move it and a × that takes it out of the queue at once, as „Aus der Warteschlange nehmen“ on the card does (back to planned; no
 undo, starting it again is the way back); a row opens its card. The switcher's, the archive's and
 the queue's lists close on a click beside them and on Esc. Obeya's button is the rightmost (see
 Sheets).
+
+„Suchen“ (or `S`) drops down a field like the archive's: it finds the cards on the canvas, and
+below them those in the archive, that hold every typed word, matched as the archive's search does.
+In each part, cards with every word in the title come first, then those holding the words only in
+their text, summary, last status, open question, a proposal's reason, label or a project's goal,
+with an excerpt that shows the words there. Under the empty field, a line says what it searches. The
+arrow keys pick a result and Enter opens it, as a click does. A card on the canvas opens in place and
+the search closes (a workstream of a collapsed project opens its project). An archived card unfolds
+from its row, and the list stays under the dim to fold back into, as in the archive. The search
+keeps its words between openings. The archive and the search drop down one at a time.
 
 Right, before the workspace pool: the usage limits of the Claude plan that Claude Code on this
 machine is logged in with, the session's (five hours) and the week's, each a short meter with its
@@ -219,6 +229,11 @@ for developers (a failed start's log entry carries the code too). The UI shows i
 code, a generic one otherwise.
 
 ### Decisions
+
+- **The search across canvas and archive matches as the archive's filter does, with no fuzzy
+  matching library** (2026-10-30, owner). Rejected: fuzzysort, whose subsequence matching tolerates
+  left-out letters but, over a card's long text, finds nearly any scattered letters and needs score
+  thresholds to keep that out; one way of matching across Obeya is easier to predict.
 
 - **The look is the index card** (2026-10-10), prototyped beside a Swiss editorial card (black
   frame, solid state band, Schibsted Grotesk) that read better from afar but looked like a known
