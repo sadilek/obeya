@@ -24,6 +24,7 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { forcedText, QueuePill } from './queue';
+import { SearchPill } from './search';
 import { depsOf, handleAt, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
@@ -386,6 +387,7 @@ function Canvas({
   sheetWRef.current = sheetW;
   const [kOn, setKOn, kOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
+  const [sOn, setSOn, sOnRef] = useLive(false);
   const [cOn, setCOn, cOnRef] = useLive(false);
   // the navigation pinned as a sidebar on the left (src/ui/nav.tsx)
   const [pinned, setPinned, pinnedRef] = useLive(loadPinned);
@@ -414,7 +416,9 @@ function Canvas({
     toggleKoordinator();
     if (!kOn) requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#ksheet .tell textarea')?.focus({ preventScroll: true }));
   };
-  const toggleArchive = () => setAOn(!aOnRef.current);
+  // the archive and the search drop down from the bar one at a time
+  const toggleArchive = () => (setSOn(false), setAOn(!aOnRef.current));
+  const toggleSearch = () => (setAOn(false), setSOn(!sOnRef.current));
   // the configuration is a dialog over the page: what is open behind it stays as it was
   const toggleConfig = () => setCOn(!cOnRef.current);
   // asking Obeya about the configuration: its conversation in place of the dialog, ready to type into
@@ -440,7 +444,7 @@ function Canvas({
   const [configProblems, setConfigProblems] = useState(0);
   const configRevs = [...snapshot.canvas.repos.map((r) => `${r.id}:${r.configRev ?? 0}`), ...canvases.map((c) => `${c.id}:${c.configRev ?? 0}`), `${snapshot.canvas.configRev ?? 0}`].join(' ');
   useEffect(() => void api.configCheck().then((c) => setConfigProblems(c.problems.length), console.error), [configRevs]);
-  // the archive, read while its list is open; archived cards unfold from their row there
+  // the archive, read while its list or the search is open; archived cards unfold from their row there
   const [archived, setArchived] = useState<Item[]>([]);
   const archivedRef = useRef(archived);
   archivedRef.current = archived;
@@ -460,7 +464,7 @@ function Canvas({
   // newest cards come first, for the list to show at once while the rest loads
   const archiveRead = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!aOn || (archiveRead.current !== undefined && archiveRead.current === snapshot.archive)) return;
+    if ((!aOn && !sOn) || (archiveRead.current !== undefined && archiveRead.current === snapshot.archive)) return;
     let current = true;
     let all = false;
     const rev = snapshot.archive;
@@ -472,7 +476,7 @@ function Canvas({
       setArchived(a);
     }, console.error);
     return () => void (current = false);
-  }, [aOn, snapshot.archive]);
+  }, [aOn, sOn, snapshot.archive]);
   const [popId, setPopId] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>()).current;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -524,6 +528,17 @@ function Canvas({
     clearTimeout(e.timer);
     e.timer = setTimeout(() => flushEdit().catch(console.error), 400);
   };
+
+  /**
+   * Opens a card the search found: one on the canvas where it stands, the search closing (a
+   * workstream of a collapsed project in its project's sheet); an archived one from its row.
+   */
+  function openFound(i: Item) {
+    if (i.archivedAt) return open(i);
+    setSOn(false);
+    const p = i.parent ? byId(i.parent) : undefined;
+    return open(p?.collapsed ? p : i);
+  }
 
   /** Unfolds the card `i`; `quick` without the flight and the unfold, as after a reload. */
   async function open(i: Item, quick = false) {
@@ -1735,6 +1750,7 @@ function Canvas({
       if (quoting) return setReply(quoting, null);
       // the archive's list closes after a card unfolded from it
       if (f?.type !== 'card' && aOnRef.current) return setAOn(false);
+      if (f?.type !== 'card' && sOnRef.current) return setSOn(false);
       // what is marked lets go before a sheet closes, once the colour ring for it has closed
       if (f?.type !== 'card' && !typing && !ring && marked.length) return setSelection([]);
       if (typing) (e.target as HTMLElement).blur();
@@ -1752,11 +1768,12 @@ function Canvas({
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
-    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a') {
-      // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter)
+    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a' || e.key === 's') {
+      // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter, the search)
       e.preventDefault();
       if (e.key === 'n') createAtCentre();
       else if (e.key === 'c') talkKoordinator();
+      else if (e.key === 's') toggleSearch();
       else toggleArchive();
     }
   };
@@ -1947,6 +1964,17 @@ function Canvas({
           ) : (
             <NavPill {...nav} />
           )}
+          <SearchPill
+            on={sOn}
+            onToggle={toggleSearch}
+            onClose={() => setSOn(false)}
+            held={focus?.type === 'card'}
+            items={items}
+            archived={archived}
+            onOpen={openFound}
+            els={archiveEls}
+            icon={<BarIcon d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.3 15.3 20 20" />}
+          />
           <ArchivePill
             on={aOn}
             onToggle={toggleArchive}
