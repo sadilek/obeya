@@ -201,25 +201,27 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .ph-card .state .clock-mark { margin-right: 5px; vertical-align: -1px; }
 @keyframes flow { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
-/* the pin that holds a card needing the owner */
-.badge { position: absolute; top: -10px; right: -8px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px;
-  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.45), transparent 45%), var(--waiting);
+/* the pin that holds a card needing the owner: its disc (::before) and its pulse (::after) lie under
+   its mark. The pulse only grows and fades, which the compositor does on its own: an animated
+   box-shadow repainted the card under it every frame, and on a zoomed-out canvas every repaint
+   rasterised the card a little differently, so the whole card flickered. */
+.badge { --pin: var(--waiting); position: absolute; isolation: isolate; top: -10px; right: -8px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px;
   color: var(--on-ink); font: 700 13px/1 var(--serif); display: grid; place-items: center;
-  box-shadow: 0 0 0 2px var(--bg), 1px 2px 0 2px rgba(0,0,0,.18); transform: scale(max(1, calc(.9 / var(--s)))); transform-origin: 70% 30%; }
-.badge.pulse { animation: pulse 1.8s ease-out infinite; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 2px var(--bg), 1px 2px 0 2px rgba(0,0,0,.18), 0 0 0 2px rgba(var(--waiting-rgb),.6); }
-  70%, 100% { box-shadow: 0 0 0 2px var(--bg), 1px 2px 0 2px rgba(0,0,0,.18), 0 0 0 15px rgba(var(--waiting-rgb),0); } }
+  transform: scale(max(1, calc(.9 / var(--s)))); transform-origin: 70% 30%; }
+.badge::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.45), transparent 45%), var(--pin);
+  box-shadow: 0 0 0 2px var(--bg), 1px 2px 0 2px rgba(0,0,0,.18); }
+.badge.pulse::after { content: ''; position: absolute; inset: -15px; z-index: -2; border-radius: 27px; background: var(--pin);
+  opacity: 0; pointer-events: none; animation: pulse 1.8s ease-out infinite; }
+@keyframes pulse { 0% { transform: scale(.52); opacity: .6; } 70%, 100% { transform: none; opacity: 0; } }
 /* a project's badges side by side at its corner: its agent's unread answers (a speech bubble in the
    project agent's colour), then the count of workstreams that need the owner */
 .project > .badges { position: absolute; top: -10px; right: -8px; display: flex; gap: 6px;
   transform: scale(max(1, calc(.9 / var(--s)))); transform-origin: 90% 30%; }
-.project > .badges > .badge { position: static; transform: none; }
-.badge.replied { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; border: 0; cursor: pointer;
-  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.45), transparent 45%), var(--proposal); }
+.project > .badges > .badge { position: relative; top: auto; right: auto; transform: none; }
+.badge.replied { --pin: var(--proposal); display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; border: 0; cursor: pointer;
+  background: none; }
 .badge.replied svg { display: block; flex: none; width: 14px; height: 14px; }
-.badge.replied.pulse { animation: pulse-replied 1.8s ease-out infinite; }
-@keyframes pulse-replied { 0% { box-shadow: 0 0 0 2px var(--bg), 1px 2px 0 2px rgba(0,0,0,.18), 0 0 0 2px color-mix(in srgb, var(--proposal) 60%, transparent); }
-  70%, 100% { box-shadow: 0 0 0 2px var(--bg), 1px 2px 0 2px rgba(0,0,0,.18), 0 0 0 15px color-mix(in srgb, var(--proposal) 0%, transparent); } }
 .card.lifted { opacity: 0; }
 /* taken off the wall: tilted in the hand */
 .card.dragging { box-shadow: var(--lift); z-index: 5 !important; transition: none; transform: rotate(-1.5deg) translate(-1px, -3px); }
