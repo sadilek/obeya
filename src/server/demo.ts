@@ -129,11 +129,12 @@ export function serveDemoFile(demo: { dir: string; kind: DemoKind }, name: strin
   const path = demoFile(dir, name);
   if (!path) return notFound();
   const size = statSync(path).size;
-  const file = Bun.file(path);
   const type = name.endsWith('.mp4') ? 'video/mp4' : name.endsWith('.jpg') ? 'image/jpeg' : 'text/vtt; charset=utf-8';
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('range') ?? '');
   if (!range || (!range[1] && !range[2])) {
-    return new Response(file, { headers: { 'content-type': type, 'content-length': String(size), 'accept-ranges': 'bytes' } });
+    // the poster and the captions, read at once as a range is
+    const body = size <= RANGE_BYTES ? readFileSync(path) : Bun.file(path);
+    return new Response(body, { headers: { 'content-type': type, 'content-length': String(size), 'accept-ranges': 'bytes' } });
   }
   let start = range[1] ? Number(range[1]) : size - Number(range[2]);
   let end = range[1] && range[2] ? Number(range[2]) : size - 1;
@@ -141,7 +142,7 @@ export function serveDemoFile(demo: { dir: string; kind: DemoKind }, name: strin
   // the player asks again for what follows, so a part of the file at a time
   end = Math.min(end, size - 1, start + RANGE_BYTES - 1);
   if (start > end) return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}` } });
-  // Read at once: a `file.slice` streams through the server's event loop in small pieces and
+  // Read at once: a `Bun.file` streams through the server's event loop in small pieces and
   // stalls whenever the loop is busy (on Windows 1 MB/s against 120 MB/s read at once).
   const part = Buffer.allocUnsafe(end - start + 1);
   const fd = openSync(path, 'r');

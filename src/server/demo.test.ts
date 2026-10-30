@@ -53,6 +53,9 @@ describe('serveDemoFile', () => {
       expect(part.status).toBe(206);
       expect(part.headers.get('content-range')).toBe(`bytes 1000-${1000 + (8 << 20) - 1}/${20 << 20}`);
       expect((await part.arrayBuffer()).byteLength).toBe(8 << 20);
+      const whole = serveDemoFile({ dir: big, kind: 'video' }, 'demo.mp4', new Request('http://x/'));
+      expect(whole.status).toBe(200);
+      expect((await whole.arrayBuffer()).byteLength).toBe(20 << 20);
     } finally {
       rmSync(big, { recursive: true, force: true });
     }
