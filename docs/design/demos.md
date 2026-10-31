@@ -335,9 +335,12 @@ relabel an element, a scene clears its highlights first.
 ### The demo on the card
 
 The card shows the demo on the left, beside the conversation (see Card layout). Obeya serves video,
-poster and captions (with range requests) and takes the chapter times from the captions. A video
-without a poster shows its first frame, sized from its metadata (Chrome sizes an unplayed video by
-its poster).
+poster and captions (with range requests) and takes the chapter times from the captions. A range is
+read from disk at once and answered in one piece, up to 8 MiB per answer, the player asking for the
+rest, and so is a whole file of up to 8 MiB (the poster, the captions). An answer carries only what
+the file holds when it is read, with headers to match: a file a retake cuts meanwhile gives a
+shorter answer, never one padded with other bytes. A video without a poster shows its first frame,
+sized from its metadata (Chrome sizes an unplayed video by its poster).
 
 When the result is something to look at rather than something that happens, the worker makes an HTML
 artifact instead: a directory with an `index.html` and the files it loads, shown in a frame where
@@ -518,6 +521,15 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   made without a card too. Rejected: deleting when the card lands or is archived (a demo is not
   always a card's, and a card's demos may live anywhere); deleting nothing by default (demos filled
   hundreds of gigabytes unnoticed).
+- **Demo files are read at once, up to 8 MiB per answer** (2026-10-29, measured again 2026-10-31):
+  a file streamed in pieces through the server's event loop stalls whenever the loop is busy, on
+  Windows at about 1 MB/s; the card waited for the poster before it showed the video, and the video
+  stopped with its buffer bar showing more loaded. Read synchronously, an 8 MiB range holds the loop
+  for about 15 ms and arrives in one loop turn. Rejected: streaming the file (on Windows, with the
+  loop blocked 100 of every 105 ms, 1–6 MB/s against 30–170 MB/s read at once; blocked 1000 of
+  every 1005 ms, 10–50 s per range against 0.3–2 s); reading it asynchronously (as fast as at once on
+  macOS, but on Windows two to four times slower under the same loads, 15–50 MB/s and 1.4–6 s per
+  range); a range answered in full (a whole video read for one answer).
 - **Every worker gets the plugin** (2026-10-08), not only those of a repository with demo settings,
   which otherwise had no way to the skill that writes them.
 - **Demos do not listen back to their narration** (2026-10-15). Rejected: transcribing each clip and

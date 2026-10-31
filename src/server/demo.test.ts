@@ -1,4 +1,5 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, spyOn, test } from 'bun:test';
+import * as fs from 'node:fs';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -43,6 +44,48 @@ describe('serveDemoFile', () => {
     expect(get('../secret').status).toBe(404);
     expect(get('demo.ts').status).toBe(404);
     expect(get('captions.vtt').headers.get('content-type')).toContain('text/vtt');
+  });
+
+  test('a range of a large video answers with a part of it at a time', async () => {
+    const big = mkdtempSync(join(tmpdir(), 'obeya-demo-big-'));
+    try {
+      const bytes = Buffer.alloc(20 << 20).map((_, i) => (i * 7 + (i >> 16)) & 255);
+      writeFileSync(join(big, 'demo.mp4'), bytes);
+      const part = serveDemoFile({ dir: big, kind: 'video' }, 'demo.mp4', new Request('http://x/', { headers: { range: 'bytes=1000-' } }));
+      expect(part.status).toBe(206);
+      expect(part.headers.get('content-range')).toBe(`bytes 1000-${1000 + (8 << 20) - 1}/${20 << 20}`);
+      expect(Buffer.from(await part.arrayBuffer()).equals(bytes.subarray(1000, 1000 + (8 << 20)))).toBe(true);
+      const whole = serveDemoFile({ dir: big, kind: 'video' }, 'demo.mp4', new Request('http://x/'));
+      expect(whole.status).toBe(200);
+      expect(Buffer.from(await whole.arrayBuffer()).equals(bytes)).toBe(true);
+    } finally {
+      rmSync(big, { recursive: true, force: true });
+    }
+  });
+
+  test('a file cut after its size was read answers with only what is left of it', async () => {
+    const cut = mkdtempSync(join(tmpdir(), 'obeya-demo-cut-'));
+    // its size as it was before a retake cut it
+    const sized = (size: number) => (() => ({ size })) as unknown as typeof fs.fstatSync;
+    const stat = spyOn(fs, 'fstatSync').mockImplementationOnce(sized(20 << 20));
+    try {
+      writeFileSync(join(cut, 'demo.mp4'), '0123456789');
+      const part = serveDemoFile({ dir: cut, kind: 'video' }, 'demo.mp4', new Request('http://x/', { headers: { range: 'bytes=4-' } }));
+      expect(part.status).toBe(206);
+      expect(part.headers.get('content-range')).toBe('bytes 4-9/10');
+      expect(part.headers.get('content-length')).toBe('6');
+      expect(await part.text()).toBe('456789');
+      expect(stat).toHaveBeenCalledTimes(2);
+      stat.mockImplementationOnce(sized(20 << 20));
+      expect(serveDemoFile({ dir: cut, kind: 'video' }, 'demo.mp4', new Request('http://x/', { headers: { range: 'bytes=100-' } })).status).toBe(416);
+      stat.mockImplementationOnce(sized(1000));
+      const whole = serveDemoFile({ dir: cut, kind: 'video' }, 'demo.mp4', new Request('http://x/'));
+      expect(whole.headers.get('content-length')).toBe('10');
+      expect(await whole.text()).toBe('0123456789');
+    } finally {
+      stat.mockRestore();
+      rmSync(cut, { recursive: true, force: true });
+    }
   });
 });
 
