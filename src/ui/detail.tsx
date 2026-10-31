@@ -478,7 +478,7 @@ export function Detail(p: Props) {
       {p.from && !item.prototypeOf && item.state !== 'proposal' && <p className="hint">{t.followUpOf(plain(p.from.title))}</p>}
       {!p.from && item.fromElsewhere && item.state !== 'proposal' && <FromElsewhere item={item} />}
 
-      {item.state === 'planned' && !item.queue && <LastFailure cardId={item.id} />}
+      <LastFailure item={item} />
 
       {item.state === 'planned' && !worked && !waits && (
         <>
@@ -1292,11 +1292,13 @@ function Conversation({
   // the line where the card was snoozed, while it still is, offers to wake it or change the time
   // (a planned card's conversation is a past one until it starts)
   const snoozedAt = item.snoozed && (!past || item.snoozed.start) ? turns.shown.findLast((x) => snoozeLine(x.e))?.e.id : undefined;
+  const explained = explainedFailure(item, events)?.id;
   const line = (turn: Turn) => (
     <Fragment key={turn.e.id}>
       <Line
         turn={turn}
         snoozed={turn.e.id === snoozedAt ? item : undefined}
+        explained={turn.e.id === explained}
         demoQuestion={turn === handover ? item.demo : undefined}
         quoted={turn.e.replyTo ? byId.get(turn.e.replyTo) : undefined}
         fresh={fresh.has(turn.e.id) || (!!turn.then && fresh.has(turn.then.e.id))}
@@ -1485,13 +1487,13 @@ function Scope({ files }: { files?: string[] }) {
 }
 
 /** A state change or an error between the messages, or a message. */
-function Line({ turn, snoozed, ...rest }: { turn: Turn; snoozed?: Item; demoQuestion?: Demo; quoted?: CardEvent; fresh?: boolean; onReply?: (e: CardEvent) => void; onDelete?: () => void }) {
+function Line({ turn, snoozed, explained, ...rest }: { turn: Turn; snoozed?: Item; explained?: boolean; demoQuestion?: Demo; quoted?: CardEvent; fresh?: boolean; onReply?: (e: CardEvent) => void; onDelete?: () => void }) {
   return snoozed ? (
     <SnoozeLine item={snoozed} e={turn.e} at={time(turn.e.at)} />
   ) : turn.line ? (
     <div className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
       {time(turn.e.at)} · <Linked text={eventText(turn.e)} />
-      {turn.e.kind === 'error' && claudeLoginFailed(turn.e.text) && <Reauthenticate token={turn.e.token} />}
+      {turn.e.kind === 'error' && !explained && claudeLoginFailed(turn.e.text) && <Reauthenticate token={turn.e.token} />}
     </div>
   ) : (
     <Message turn={turn} {...rest} />
@@ -3020,13 +3022,19 @@ export function useEvents(cardId: string): CardEvent[] | null {
 /** The owner's words for a logged error: the text for its code, else the server's text. */
 const eventText = (e: CardEvent) => (e.code ? errorText(e.code) : e.text);
 
+/** The error the box above the conversation explains a failed start with, which offers the login there and not again in the conversation. */
+const explainedFailure = (item: Item, events: CardEvent[] | null | undefined) => {
+  const last = item.state === 'planned' && !item.queue ? events?.at(-1) : undefined;
+  return last?.kind === 'error' ? last : undefined;
+};
+
 /**
  * Why a planned card is not running: a start through the Koordinator that failed afterwards drops
  * the card back to planned, and the reason is the last entry of its log.
  */
-function LastFailure({ cardId }: { cardId: string }) {
-  const last = useEvents(cardId)?.at(-1);
-  if (last?.kind !== 'error') return null;
+function LastFailure({ item }: { item: Item }) {
+  const last = explainedFailure(item, useEvents(item.id));
+  if (!last) return null;
   return (
     <div className="question failed">
       <h4>{t.lastFailure(time(last.at))}</h4>
