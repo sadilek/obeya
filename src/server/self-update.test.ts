@@ -17,6 +17,10 @@ const commit = (file: string, text: string) => {
   return git(repo, 'rev-parse', 'HEAD');
 };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Waits until `done` holds: the watch's git calls take their time, on Windows far longer than the interval (so do its tests: 20 s each). */
+const until = async (done: () => boolean) => {
+  for (const end = Date.now() + 10_000; !done() && Date.now() < end; ) await wait(10);
+};
 
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), 'obeya-self-'));
@@ -39,11 +43,11 @@ test('a commit that changes code asks for a restart, once', async () => {
   await wait(60);
   expect(calls).toEqual([]);
   const head = commit('src/a.ts', 'b');
-  await wait(120);
+  await until(() => calls.length > 0);
   commit('src/b.ts', 'c');
   await wait(120);
   expect(calls).toEqual([[start, head]]);
-});
+}, 20_000);
 
 test('docs, the site and its workflow alone change nothing that runs', async () => {
   const calls: string[] = [];
@@ -55,9 +59,48 @@ test('docs, the site and its workflow alone change nothing that runs', async () 
   await wait(120);
   expect(calls).toEqual([]);
   const head = commit('src/a.ts', 'b');
-  await wait(120);
+  await until(() => calls.length > 0);
   expect(calls).toEqual([head]);
-});
+}, 20_000);
+
+test('while HEAD stands still, the watch starts no git', async () => {
+  const spawn = Bun.spawn;
+  let started = 0;
+  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => (started++, spawn(...args))) as typeof Bun.spawn;
+  const calls: string[] = [];
+  try {
+    stop = watchOwnCode(repo, (_, to) => calls.push(to), 20);
+    // the start asks git, and so does the first round
+    await until(() => started >= 2);
+    await wait(100);
+    started = 0;
+    await wait(300);
+  } finally {
+    Bun.spawn = spawn;
+  }
+  expect(started).toBe(0);
+  // and it still watches
+  const head = commit('src/a.ts', 'b');
+  await until(() => calls.length > 0);
+  expect(calls).toEqual([head]);
+}, 20_000);
+
+test('a checkout that is a worktree is watched too', async () => {
+  const tree = `${repo}-tree`;
+  git(repo, 'worktree', 'add', '--quiet', '-b', 'side', tree);
+  try {
+    const calls: string[] = [];
+    stop = watchOwnCode(tree, (_, to) => calls.push(to), 20);
+    await wait(60);
+    writeFileSync(join(tree, 'src/a.ts'), 'b');
+    git(tree, 'commit', '--quiet', '-am', 'a');
+    const head = git(tree, 'rev-parse', 'HEAD');
+    await until(() => calls.length > 0);
+    expect(calls).toEqual([head]);
+  } finally {
+    rmSync(tree, { recursive: true, force: true });
+  }
+}, 20_000);
 
 test('a restart installs the dependencies only when package.json or bun.lock changed', () => {
   const start = git(repo, 'rev-parse', 'HEAD');

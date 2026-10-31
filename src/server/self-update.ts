@@ -4,11 +4,12 @@
 // (Ctrl-C, SIGTERM) waits for the workers the same way, and then nothing starts again; so does
 // installing a new version of the app, after which the app's shell starts it again (UPDATE).
 
-import { dirname } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { inert } from '../core/inert';
 import type { OwnerHold, RestartReason } from '../core/types';
 import { COMPILED } from './resources';
-import { gitOrNull } from './workspaces';
+import { gitAsync, gitOrNull } from './workspaces';
 
 /** The exit code that asks the supervisor for a fresh server. */
 export const RESTART = 75;
@@ -223,27 +224,64 @@ export function ownCheckout(): string | null {
 
 /**
  * Calls `fn` once when the checkout's HEAD has moved to commits that change code (not only docs),
- * after HEAD has held still for one interval, so a landing in progress finishes first.
+ * after HEAD has held still for one interval, so a landing in progress finishes first. Each round
+ * reads the files HEAD stands on (`headFiles`) and asks git only once they changed: on Windows,
+ * starting a process holds up the server from 50 ms to over a second on a busy machine, even
+ * started without waiting for it, and every two seconds that held up every request it answers.
  */
 export function watchOwnCode(checkout: string, fn: (from: string, to: string) => void, intervalMs = 2000): () => void {
-  const start = headOf(checkout);
-  if (!start) return () => {};
-  let seen = start;
-  let base = start;
-  const timer = setInterval(() => {
-    const head = headOf(checkout);
-    if (!head) return;
-    if (head !== seen) {
-      seen = head;
-      return;
-    }
-    if (head === base) return;
-    if (!changesCode(checkout, base, head)) {
-      base = head;
-      return;
-    }
-    clearInterval(timer);
-    fn(base, head);
-  }, intervalMs);
-  return () => clearInterval(timer);
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  void gitAsync(checkout, 'rev-parse', '--absolute-git-dir', '--git-common-dir', 'HEAD')
+    .catch(() => '')
+    .then(async (out) => {
+      const [gitDir, common, start] = out.split('\n');
+      if (!gitDir || !common || !start || stopped) return;
+      const commonDir = resolve(checkout, common);
+      // the files are always read before git is asked, so a move between the two is seen next round
+      let files = '';
+      let seen = start;
+      let base = start;
+      // the next round starts an interval after this one ended, so two never run at once
+      const round = async () => {
+        const now = await headFiles(gitDir, commonDir);
+        const head = now === files ? seen : await gitAsync(checkout, 'rev-parse', 'HEAD').catch(() => null);
+        if (stopped) return;
+        if (head) files = now;
+        if (head && head !== seen) seen = head;
+        else if (head && head !== base) {
+          if (await codeChanged(checkout, base, head)) {
+            if (!stopped) fn(base, head);
+            return;
+          }
+          base = head;
+        }
+        if (!stopped) timer = setTimeout(round, intervalMs);
+      };
+      timer = setTimeout(round, intervalMs);
+    });
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
+}
+
+/**
+ * What HEAD stands on, as files: HEAD itself, the branch it names (as a file of its own, and
+ * `packed-refs`, where git packs branches). HEAD moves only where one of them changes. A repository
+ * that keeps its refs in a reftable has no such files: there each round asks git.
+ */
+async function headFiles(gitDir: string, commonDir: string): Promise<string> {
+  const text = (path: string) => readFile(path, 'utf8').catch(() => '');
+  if (await stat(join(commonDir, 'reftable')).then(() => true, () => false)) return String(Math.random());
+  const head = await text(join(gitDir, 'HEAD'));
+  const ref = /^ref: (\S+)/.exec(head)?.[1];
+  const packed = await stat(join(commonDir, 'packed-refs')).then((s) => `${s.mtimeMs}:${s.size}`, () => '');
+  return JSON.stringify([head, ref ? await text(join(commonDir, ref)) : '', packed]);
+}
+
+/** `changesCode` without blocking the server. */
+async function codeChanged(checkout: string, from: string, to: string): Promise<boolean> {
+  const changed = await gitAsync(checkout, 'diff', '--name-only', from, to).catch(() => null);
+  return changed === null || changed.split('\n').some((f) => f && !inert(f));
 }
