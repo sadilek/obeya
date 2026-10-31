@@ -1957,16 +1957,16 @@ button.link:hover { text-decoration: underline; }
 /* everything in „Für dich“ waits for the owner: the heading says so, no pin on each card */
 .ph-card .badge { display: none; }
 .ph-none { margin: 0; color: var(--muted); font-size: 14.5px; }
-/* „Erledigt“ below the lists, closed until its head is tapped; opened, the head stands under the bar */
-.ph-done { scroll-margin-top: 60px; }
-.ph-done h2 button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: -6px 0; padding: 0; border: 0; background: none;
+/* „Geplant“ and „Erledigt“ below the lists, closed until their head is tapped; opened, the head stands under the bar */
+.ph-fold { scroll-margin-top: 60px; }
+.ph-fold h2 button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: -6px 0; padding: 0; border: 0; background: none;
   font: inherit; color: var(--muted); text-align: left; cursor: pointer; }
-.ph-done.open h2 button { color: var(--ink); }
-.ph-done .arrow { width: 9px; height: 9px; margin: 0 3px; flex: none; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; }
-.ph-done.open .arrow { transform: rotate(45deg); margin-top: -4px; }
+.ph-fold.open h2 button { color: var(--ink); }
+.ph-fold .arrow { width: 9px; height: 9px; margin: 0 3px; flex: none; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; }
+.ph-fold.open .arrow { transform: rotate(45deg); margin-top: -4px; }
 /* the word and the count trimmed to their capitals, so arrow, word and count centre on what the eye sees */
-.ph-done .label { text-box: trim-both cap alphabetic; }
-.ph-done .n { font: 600 13px/1 var(--cond); padding: 6px 8px; border-radius: 3px; background: var(--chip); color: var(--muted); text-box: trim-both cap alphabetic; }
+.ph-fold .label { text-box: trim-both cap alphabetic; }
+.ph-fold .n { font: 600 13px/1 var(--cond); padding: 6px 8px; border-radius: 3px; background: var(--chip); color: var(--muted); text-box: trim-both cap alphabetic; }
 /* the cards snoozed while they waited stand under it, as far off as the cards from each other */
 .ph-none + .ph-list { margin-top: 14px; }
 /* the button for Obeya's conversation (the canvas's talk pill, a finger's size), left of the microphone in
@@ -2079,7 +2079,7 @@ button.link:hover { text-decoration: underline; }
   .ph-quiet { top: 50px; }
   #ph-home .ph-quiet { top: 8px; }
   .ph-section { margin-top: 14px; }
-  .ph-done { scroll-margin-top: 8px; }
+  .ph-fold { scroll-margin-top: 8px; }
   .ph-view ~ #ptt { left: auto; right: env(safe-area-inset-right); width: 112px; top: calc(50% - 34px); bottom: auto; transform: none; }
   /* the clamped lines end at the padding's edge: the space above and below is a border, so no fifth line peeks out */
   .ph-view ~ #ptt #target { max-width: 104px; white-space: normal; text-align: center; padding: 0 8px; border-block: 4px solid var(--card);

@@ -132,7 +132,7 @@ On a phone the page shows the phone view instead of the canvas, at the same addr
 same bundle. A phone is a device with a coarse pointer whose screen's shorter side is under 600 px;
 a tablet and a narrow window at the desk keep the canvas. `?view=phone` or `?view=canvas` decides
 instead. The view is settled at load; turning the phone does not switch it. It uses each canvas's
-own WebSocket. It shows three lists:
+own WebSocket. It shows four lists:
 
 - **„Für dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then „Obeya hat geantwortet“ where an answer waits unread. Each card says what it waits
@@ -141,10 +141,17 @@ own WebSocket. It shows three lists:
 - **„Läuft“**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
   at the end. Every card that leaves „Für dich“ without being done stands here.
-- **„Erledigt“**, closed until its head (with the count) is tapped: the finished cards that are not
-  archived yet, those the archive's „… erledigte Aufgaben archivieren“ would take, and none the lists above
-  hold. Opened, its head moves up to the bar so its cards show; it stays open while a card is open
-  and over a reload, and is closed again in a new tab. Without such cards it is not there.
+- **„Geplant“**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
+  the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
+  what it does on the canvas („Agent starten“, „Später …“), so a task can be started from the phone.
+  Without this list an accepted proposal left the phone until it was started (2026-10-31).
+- **„Erledigt“**: the finished cards that are not archived yet, those the archive's „… erledigte
+  Aufgaben archivieren“ would take, and none the lists above hold.
+
+„Geplant“ and „Erledigt“ are closed until their head (with the count) is tapped, since either may
+hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar so its
+cards show; it stays open while a card is open and over a reload, and is closed again in a new tab.
+Without such cards it is not there.
 
 The cards look as on the canvas, as wide as the screen and without the pin, their kind line led by
 the canvas's name where there are several; where two of at least

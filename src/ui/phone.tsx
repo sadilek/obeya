@@ -41,7 +41,8 @@ export function phoneView(): boolean {
 const DRAFTS = '@phone';
 /** The canvas whose Obeya the conversation at the bottom is with, as the owner last picked it. */
 const OBEYA_CANVAS = 'obeya-phone-canvas';
-/** Whether the owner opened „Erledigt“ in this tab; it starts closed. */
+/** Whether the owner opened „Geplant“ or „Erledigt“ in this tab; each starts closed. */
+const PLANNED_OPEN = 'obeya-phone-planned';
 const DONE_OPEN = 'obeya-phone-done';
 /** How long the server may not answer before the view says so: a phone back from its lock screen reconnects within this. */
 const QUIET_MS = 3000;
@@ -287,16 +288,9 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     addEventListener('popstate', pop);
     return () => removeEventListener('popstate', pop);
   }, []);
-  // „Erledigt“ starts closed, and stays as the owner left it while a card is open and over a reload
-  const [doneOpen, setDoneOpen] = useState(() => sessionStorage.getItem(DONE_OPEN) === '1');
-  const toggleDone = () =>
-    setDoneOpen((o) => {
-      try {
-        if (o) sessionStorage.removeItem(DONE_OPEN);
-        else sessionStorage.setItem(DONE_OPEN, '1');
-      } catch {}
-      return !o;
-    });
+  // „Geplant“ and „Erledigt“ start closed, and stay as the owner left them while a card is open and over a reload
+  const [plannedOpen, togglePlanned] = useFolded(PLANNED_OPEN);
+  const [doneOpen, toggleDone] = useFolded(DONE_OPEN);
   // the list keeps where it was scrolled to while a card is open
   const homeRef = useRef<HTMLDivElement>(null);
   const homeScroll = useRef(0);
@@ -595,6 +589,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     openTalk();
   };
   const shown = talk && !closing;
+  // the tasks nobody has started yet (stopped ones and those set to start at a time among them), but nothing the lists above show already
+  const planned = all.filter(({ item }) => plannedLater(item) && !runs(item) && !isUnderway(item.id));
   // what the canvas's „Erledigte archivieren“ would take, but nothing the lists above show already
   const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
   return (
@@ -628,7 +624,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
           {/* a snoozed card at the end, after those at work now */}
           {ordered.length > 0 && <Running entries={all.filter(({ item }) => runs(item) || isUnderway(item.id)).sort((a, b) => Number(!!a.item.snoozed) - Number(!!b.item.snoozed))} several={several} onOpen={openCard} />}
         </section>
-        {done.length > 0 && <Done entries={done} several={several} open={doneOpen} onToggle={toggleDone} onOpen={openCard} />}
+        {planned.length > 0 && <Folded label={t.phone.planned} entries={planned} several={several} open={plannedOpen} onToggle={togglePlanned} onOpen={openCard} />}
+        {done.length > 0 && <Folded label={t.phone.done} entries={done} several={several} open={doneOpen} onToggle={toggleDone} onOpen={openCard} />}
       </div>
       {talk && (
         <TalkPanel title={t.koordinator.title} label={t.phone.talkTitle} banner={banner} onClose={closeTalk} leave={leaveTalk} onLeave={() => setClosing(true)}>
@@ -747,11 +744,28 @@ function Running({ entries, several, onOpen }: { entries: { item: Item; canvas: 
   );
 }
 
+/** A task planned and not archived that neither waits for the owner nor got snoozed while it did: the phone's „Geplant“. */
+const plannedLater = (i: Item) => i.kind === 'task' && i.state === 'planned' && !i.archivedAt && !needsYou(i) && !i.snoozed?.waiting;
+
+/** Whether a folded list is open, kept in this tab under `key`, and the toggle that opens and closes it. */
+function useFolded(key: string): [boolean, () => void] {
+  const [open, setOpen] = useState(() => sessionStorage.getItem(key) === '1');
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        if (o) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, '1');
+      } catch {}
+      return !o;
+    });
+  return [open, toggle];
+}
+
 /**
- * The cards that are done but not archived, below the others: a head with their count that opens
- * and closes the list. Opened, the head moves to the top of the screen so the cards below it show.
+ * The cards planned or done, below the others: a head with their count that opens and closes the
+ * list. Opened, the head moves to the top of the screen so the cards below it show.
  */
-function Done({ entries, several, open, onToggle, onOpen }: { entries: { item: Item; canvas: CanvasInfo }[]; several: boolean; open: boolean; onToggle: () => void; onOpen: (i: Item) => void }) {
+function Folded({ label, entries, several, open, onToggle, onOpen }: { label: string; entries: { item: Item; canvas: CanvasInfo }[]; several: boolean; open: boolean; onToggle: () => void; onOpen: (i: Item) => void }) {
   const head = useRef<HTMLElement>(null);
   const opened = useRef(false);
   useEffect(() => {
@@ -759,7 +773,7 @@ function Done({ entries, several, open, onToggle, onOpen }: { entries: { item: I
     opened.current = false;
   }, [open]);
   return (
-    <section className={['ph-section ph-done', open && 'open'].filter(Boolean).join(' ')} ref={head}>
+    <section className={['ph-section ph-fold', open && 'open'].filter(Boolean).join(' ')} ref={head}>
       <h2>
         <button
           aria-expanded={open}
@@ -769,7 +783,7 @@ function Done({ entries, several, open, onToggle, onOpen }: { entries: { item: I
           }}
         >
           <span className="arrow" aria-hidden="true" />
-          <span className="label">{t.phone.done}</span>
+          <span className="label">{label}</span>
           <span className="n">{entries.length}</span>
         </button>
       </h2>
