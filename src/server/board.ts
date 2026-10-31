@@ -2112,15 +2112,15 @@ export class Board {
 
   /**
    * Merges tasks into the first (`keep`), titled `title`; the caller checks they may be merged and
-   * removes the others. Their texts go in unchanged, each a section under its title (the first's
-   * too where the title changes), with their screenshots and the owner's notes they held. What
-   * followed up on them, and review findings that linked them, now point at the first.
+   * removes the others. Their texts go in unchanged, each a section under its old title, with their
+   * screenshots and the owner's notes they held. What followed up on them, and review findings that
+   * linked them, now point at the first.
    */
   merge(keep: string, others: string[], title: string) {
     const first = this.own(keep);
     const rest = others.map((id) => this.own(id));
     const section = (r: CardRow) => `## ${r.title ?? ""}\n\n${r.body ?? ''}`.trim();
-    const body = [title === first.title ? (first.body ?? '').trim() : section(first), ...rest.map(section)].filter(Boolean).join('\n\n');
+    const body = [first, ...rest].map(section).filter(Boolean).join('\n\n');
     checkText(body, 'the merged text', 20000);
     const list = (r: CardRow) => (r.images ? (JSON.parse(r.images) as string[]) : []);
     const images = [...new Set([first, ...rest].flatMap(list))];
