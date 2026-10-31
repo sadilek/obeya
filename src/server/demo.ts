@@ -1,7 +1,7 @@
 // A card's demo: the directory the `demo` skill rendered into, or an HTML artifact the worker
 // made instead, read and served by Obeya.
 
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { pagePolicy, withHeightReport, withMarkReport } from '../core/frame';
@@ -118,6 +118,9 @@ export function placeIn(dir: string, chapters: [number, string][], at: number): 
   return { ...(chapter ? { chapter } : {}), ...(narration ? { narration } : {}) };
 }
 
+/** The most of a demo file one byte-range answer carries: a minute and more of a demo video. */
+const RANGE_BYTES = 8 << 20;
+
 /** Serves one demo file: a video's with byte ranges so the player can seek, any file of an HTML artifact's directory. */
 export function serveDemoFile(demo: { dir: string; kind: DemoKind }, name: string, req: Request, route = '/demo/'): Response {
   if (demo.kind === 'html') return serveSandboxed(demo.dir, name, req, route, (path) => path === demoFile(demo.dir, ARTIFACT_PAGE));
@@ -126,18 +129,29 @@ export function serveDemoFile(demo: { dir: string; kind: DemoKind }, name: strin
   const path = demoFile(dir, name);
   if (!path) return notFound();
   const size = statSync(path).size;
-  const file = Bun.file(path);
   const type = name.endsWith('.mp4') ? 'video/mp4' : name.endsWith('.jpg') ? 'image/jpeg' : 'text/vtt; charset=utf-8';
   const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('range') ?? '');
   if (!range || (!range[1] && !range[2])) {
-    return new Response(file, { headers: { 'content-type': type, 'content-length': String(size), 'accept-ranges': 'bytes' } });
+    // the poster and the captions, read at once as a range is
+    const body = size <= RANGE_BYTES ? readFileSync(path) : Bun.file(path);
+    return new Response(body, { headers: { 'content-type': type, 'content-length': String(size), 'accept-ranges': 'bytes' } });
   }
   let start = range[1] ? Number(range[1]) : size - Number(range[2]);
   let end = range[1] && range[2] ? Number(range[2]) : size - 1;
   start = Math.max(0, start);
-  end = Math.min(end, size - 1);
+  // the player asks again for what follows, so a part of the file at a time
+  end = Math.min(end, size - 1, start + RANGE_BYTES - 1);
   if (start > end) return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}` } });
-  return new Response(file.slice(start, end + 1), {
+  // Read at once: a `Bun.file` streams through the server's event loop in small pieces and
+  // stalls whenever the loop is busy (on Windows 1 MB/s against 120 MB/s read at once).
+  const part = Buffer.allocUnsafe(end - start + 1);
+  const fd = openSync(path, 'r');
+  try {
+    readSync(fd, part, 0, part.length, start);
+  } finally {
+    closeSync(fd);
+  }
+  return new Response(part, {
     status: 206,
     headers: {
       'content-type': type,

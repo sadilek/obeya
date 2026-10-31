@@ -44,6 +44,22 @@ describe('serveDemoFile', () => {
     expect(get('demo.ts').status).toBe(404);
     expect(get('captions.vtt').headers.get('content-type')).toContain('text/vtt');
   });
+
+  test('a range of a large video answers with a part of it at a time', async () => {
+    const big = mkdtempSync(join(tmpdir(), 'obeya-demo-big-'));
+    try {
+      writeFileSync(join(big, 'demo.mp4'), Buffer.alloc(20 << 20, 7));
+      const part = serveDemoFile({ dir: big, kind: 'video' }, 'demo.mp4', new Request('http://x/', { headers: { range: 'bytes=1000-' } }));
+      expect(part.status).toBe(206);
+      expect(part.headers.get('content-range')).toBe(`bytes 1000-${1000 + (8 << 20) - 1}/${20 << 20}`);
+      expect((await part.arrayBuffer()).byteLength).toBe(8 << 20);
+      const whole = serveDemoFile({ dir: big, kind: 'video' }, 'demo.mp4', new Request('http://x/'));
+      expect(whole.status).toBe(200);
+      expect((await whole.arrayBuffer()).byteLength).toBe(20 << 20);
+    } finally {
+      rmSync(big, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('serveDemoFile for an HTML artifact', () => {
