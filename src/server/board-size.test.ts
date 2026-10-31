@@ -52,9 +52,12 @@ afterAll(() => {
 test('a canvas with hundreds of archived and shared cards: a run of changes holds the server up for far less than half a second', async () => {
   await heard();
   const board = canvas.board;
+  // the time the server's process computes, not the time on the clock: beside other test files
+  // (`bun test --parallel`) on a runner with few cores, it also waits for a core, which says
+  // nothing about the code (a run that takes under 100 ms on a laptop took 700 ms on the clock in CI)
   let longest = 0;
   for (let round = 0; round < 3; round++) {
-    const t = performance.now();
+    const start = process.cpuUsage();
     // a landing: each card moves on, says so, and is read back between the writes, as the workers do
     for (const id of onCanvas.slice(round * 30, round * 30 + 30)) {
       board.work(id, { status_line: `Landing ${round}` });
@@ -67,7 +70,8 @@ test('a canvas with hundreds of archived and shared cards: a run of changes hold
     }
     // what listens to the board hears of it once the run is through
     await heard();
-    longest = Math.max(longest, performance.now() - t);
+    const used = process.cpuUsage(start);
+    longest = Math.max(longest, (used.user + used.system) / 1000);
   }
   expect(longest).toBeLessThan(500);
 });
