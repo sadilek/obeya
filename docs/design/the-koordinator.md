@@ -45,6 +45,10 @@ not free the card. The card says so („Wartet auf W2 „…“ (noch nicht gest
 queue's list and the project's sheet), so the owner sees which to start first. Even with nothing in
 progress or queued, it skips this judgement only when no workstream of its project is left unlanded.
 
+A dependency drawn by the owner holds a card started afterwards until the prerequisite has finished,
+including while that prerequisite is not started or stopped. Removing the arrow releases that wait;
+an already running card continues. The owner may still start a queued card anyway.
+
 #### Waiting for a workspace
 
 A card let start while no workspace is free (all clones leased, or every free one dirty) waits in

@@ -1619,3 +1619,28 @@ describe("the skills of a card's agent", () => {
     }
   });
 });
+
+test('a manual dependency holds a requested card until removed', async () => {
+  const a = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
+  const b = canvas.board.create({ title: 'Dependent', x: 400, y: 0 });
+  canvas.board.connect(a.id, b.id);
+  canvas.act(b.id, { action: 'start' });
+  await until(() => !!item(b.id).queue && 'behind' in item(b.id).queue!);
+  expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+  expect(item(b.id).state).toBe('planned');
+  canvas.board.connect(a.id, b.id, true);
+  await until(() => item(b.id).state === 'working');
+  await settle();
+});
+
+test('removing a manual dependency leaves an independently inferred wait intact', async () => {
+  const a = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
+  const b = canvas.board.create({ title: 'Dependent', x: 400, y: 0 });
+  canvas.board.work(b.id, { queue: JSON.stringify({ behind: [a.id], buildsOn: [a.id], reason: 'plan', since: new Date().toISOString() }) });
+  canvas.board.connect(a.id, b.id);
+  await settle();
+  canvas.board.connect(a.id, b.id, true);
+  await settle();
+  expect(item(b.id).queue).toMatchObject({ behind: [a.id], buildsOn: [a.id] });
+  expect(item(b.id).state).toBe('planned');
+});
