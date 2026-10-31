@@ -57,7 +57,10 @@ export function readClock(row: Uint8Array, stamp: number): number | null {
   return (code + k * span) / 100;
 }
 
-/** How much earlier than the frame before a frame can have been painted and still be late, not misread. */
+/**
+ * How much earlier than the frame before a frame can have been painted and still be late, not
+ * misread; and how much after its own stamp (the clocks of page and screencast may differ a little).
+ */
 const LATE = 1;
 
 /**
@@ -69,14 +72,16 @@ const LATE = 1;
  * within a second before a frame already kept is left out. Held at the later time instead, a frame
  * from before a highlight came up showed the page without it for a moment, and the ring seemed to
  * blink. A clock read as much earlier is misread, not late (under the white veil the strip reads as
- * hours before): that frame stays, at the time before.
+ * hours before), and so is one read as after the frame was handed over (a strip read from the wrong
+ * row): that frame stays, placed as one whose clock cannot be read.
  */
 export function onPaintTime(frames: Frame[], times: (number | null)[]): Frame[] {
   let last = -Infinity;
   let delay = 0;
   return frames.flatMap((f, i) => {
-    const painted = times[i];
+    let painted = times[i];
     if (painted != null && painted < last && last - painted < LATE) return [];
+    if (painted != null && (painted < last || painted > f.t + LATE)) painted = null;
     if (painted != null) delay = f.t - painted;
     last = Math.max(last, painted ?? f.t - delay);
     return [{ ...f, t: last }];

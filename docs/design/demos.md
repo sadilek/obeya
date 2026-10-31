@@ -272,6 +272,10 @@ of silence.
 A demo is recorded at one pixel per point and compressed to CRF 30 (about 2.5 MB a minute), small
 enough to share, though flat colours go grainy on a large screen. A public video sets `sharp`: twice
 the pixels, frames at JPEG quality 100 and CRF 18, so it looks as the app does live (2026-10-15).
+The recording browser then runs at twice the device scale as a whole: Chrome's screencast sends
+frames at one pixel per point whatever scale the page itself has (Chrome 156, 2026-10-31). The clock
+strip is read from where it sits in the frame's own pixels, so frames at one pixel per point still
+make a video, scaled up and with a warning.
 
 #### The graphics card
 
@@ -312,7 +316,8 @@ into a strip of 24 black and white cells at the page's bottom left, the director
 frame and paints the strip over. A frame painted within a second before one already on the video is
 left out: the screencast now and then hands one over after later ones, and held in place it showed
 the page as it was a moment before (a highlight ring seemed to blink). A clock read as hours earlier
-(a strip under the white veil) is misread, and its frame stays. The overlay runs in the top frame
+(a strip under the white veil) or as later than the frame was handed over is misread: its frame
+stays, timed as one whose strip cannot be read. The overlay runs in the top frame
 only: Playwright runs init scripts in every frame, and each iframe would paint a strip of its own.
 The strip is read in gray before it is cut out: ffmpeg 6 cuts a 4:2:0 JPEG (as Chrome encodes its
 frames) to even heights only, and the one-pixel row failed on every frame.

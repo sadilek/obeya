@@ -51,10 +51,17 @@ describe('the video timeline', () => {
     expect(frames.map((f) => f.t)).toEqual([100.0, 100.15, 100.2]);
   });
 
-  test('a frame whose clock reads hours earlier is misread, not late: it stays', () => {
+  test('a frame whose clock reads hours earlier is misread, not late: it stays, on its stamp less the last delay', () => {
     // a strip under the white veil reads as all white, hours before the take
-    const frames = onPaintTime([frame(100.1), frame(100.2), frame(100.3)], [100.0, 100 - 43000, 100.2]);
-    expect(frames.map((f) => f.t)).toEqual([100.0, 100.0, 100.2]);
+    const frames = onPaintTime([frame(100.1), frame(100.2), frame(100.3), frame(100.4)], [100.0, 100 - 43000, null, 100.3]);
+    expect(frames.map((f) => +f.t.toFixed(3))).toEqual([100.0, 100.1, 100.2, 100.3]);
+  });
+
+  test('a frame whose clock reads after it was handed over is misread: it stays, on its stamp less the last delay', () => {
+    // a strip read from the wrong row: hours after the take, which put every frame after its end
+    const frames = onPaintTime([frame(100.1), frame(100.2), frame(100.3)], [100.0, 100 + 43000, 100.2]);
+    expect(frames.map((f) => +f.t.toFixed(3))).toEqual([100.0, 100.1, 100.2]);
+    expect(frameDurations(frames, 100, 101, []).map((h) => h.file)).toEqual(['f100.1', 'f100.2', 'f100.3']);
   });
 
   test('the picture says how much later it is', () => {

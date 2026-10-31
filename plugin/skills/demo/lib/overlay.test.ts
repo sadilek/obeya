@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { Browser, Page } from 'playwright-core';
 import { launchChromium } from '../../../lib/chromium.ts';
 import { paintTimes } from './director.ts';
+import type { Frame } from './timeline.ts';
 
 // The overlay in a real browser, on a page with iframes as a card's HTML artifact has them.
 describe('the demo overlay', () => {
@@ -56,13 +57,41 @@ describe('the demo overlay', () => {
       const file = path.join(dir, '000000.jpg');
       await page.screenshot({ path: file, type: 'jpeg', quality: 92 });
       const t = Date.now() / 1000;
-      const [painted] = paintTimes([{ file, t, width: 800, height: 600 }], dir, { width: 800, height: 600 }, 1);
+      const [painted] = paintTimes([{ file, t, width: 800, height: 600 }], dir, { width: 800, height: 600 });
       expect(painted).not.toBeNull();
       expect(Math.abs(painted! - t)).toBeLessThan(5);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // A sharp take asks for two pixels per point; Chrome's screencast sent phone-sized frames at one
+  // per point, read at the place of two, and every frame's clock was garbage.
+  test.skipIf(!Bun.which('ffmpeg'))('a phone-sized frame tells when it was painted at one pixel per point and at two', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clock-'));
+    const phone = { width: 393, height: 852 };
+    try {
+      const frames: Frame[] = [];
+      for (const scale of [1, 2, 1]) {
+        const ctx = await browser.newContext({ viewport: phone, deviceScaleFactor: scale });
+        await ctx.addInitScript({ path: path.join(import.meta.dirname, 'overlay.js') });
+        const shot = await ctx.newPage();
+        await shot.goto(server.url.href);
+        await shot.waitForFunction(() => document.querySelector('canvas')?.isConnected);
+        const file = path.join(dir, `${String(frames.length).padStart(6, '0')}.jpg`);
+        await shot.screenshot({ path: file, type: 'jpeg', quality: 92 });
+        frames.push({ file, t: Date.now() / 1000, ...phone });
+        await ctx.close();
+      }
+      const painted = paintTimes(frames, dir, phone);
+      painted.forEach((p, i) => {
+        expect(p).not.toBeNull();
+        expect(Math.abs(p! - frames[i]!.t)).toBeLessThan(5);
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   test('pointer, highlight and image stage still work in the top page', async () => {
     const button = await page.locator('#b').elementHandle();
