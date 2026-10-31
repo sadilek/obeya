@@ -224,9 +224,9 @@ export function ownCheckout(): string | null {
 }
 
 /**
- * Calls `fn` once when the checkout's HEAD has moved from `start` (the commit the server's code
- * came from) to commits that change code (not only docs), after HEAD has held still for one
- * interval, so a landing in progress finishes first. Each round takes the seal of what HEAD stands
+ * Calls `fn` once (again the next round where it threw) when the checkout's HEAD has moved from
+ * `start` (the commit the server's code came from) to commits that change code (not only docs),
+ * after HEAD has held still for one interval, so a landing in progress finishes first. Each round takes the seal of what HEAD stands
  * on (`headSeal`) and asks git only once it changed: on Windows, starting a process holds up the
  * server from 50 ms to over a second on a busy machine, even started without waiting for it, and
  * every two seconds that held up every request it answers. `afterRound` hears of each round ended.
@@ -248,21 +248,33 @@ export function watchOwnCode(checkout: string, start: string, fn: (from: string,
   let base = start;
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  // the next round starts an interval after this one ended, so two never run at once
+  // the next round starts an interval after this one ended, so two never run at once; whatever
+  // a round throws, the next one comes all the same
   const round = async () => {
-    const head = await look();
-    if (stopped) return;
-    if (head && head !== seen) seen = head;
-    else if (head && head !== base) {
-      const code = await changesCode(checkout, base, head);
-      // a commit while git diffed has not held still for a round (it may be a landing under way): the next round tells
-      const still = code && (await look()) === head;
-      if (stopped) return;
-      if (still) return fn(base, head);
-      if (!code) base = head;
+    let done = false;
+    try {
+      const head = await look();
+      if ((done = stopped)) return;
+      if (head && head !== seen) seen = head;
+      else if (head && head !== base) {
+        const code = await changesCode(checkout, base, head);
+        // a commit while git diffed has not held still for a round (it may be a landing under way): the next round tells
+        const still = code && (await look()) === head;
+        if ((done = stopped)) return;
+        // done once fn went through: one that threw restarted nothing, so the next round calls it again
+        if (still) {
+          fn(base, head);
+          done = true;
+          return;
+        }
+        if (!code) base = head;
+      }
+      afterRound?.();
+    } catch (e) {
+      console.error('Obeya: watching for new code:', e);
+    } finally {
+      if (!done) timer = setTimeout(round, intervalMs);
     }
-    afterRound?.();
-    timer = setTimeout(round, intervalMs);
   };
   timer = setTimeout(round, intervalMs);
   return () => {
@@ -279,7 +291,7 @@ const OWN_REFS = ['refs/worktree/', 'refs/bisect/', 'refs/rewritten/'];
  * it names on the way to a commit (a branch may name another branch), each by the file git wrote it
  * in last (git writes a ref anew beside it, then renames it into place), and the packed refs. While
  * it is the same, so is HEAD. Null where it cannot be told (refs in a reftable, no git directory
- * found, a ref named outside `refs/`): git tells HEAD then.
+ * found, a symbolic ref whose target cannot be read safely): git tells HEAD then.
  */
 export function headSeal(checkout: string): string | null {
   const dirs = gitDirs(checkout);
@@ -298,13 +310,29 @@ export function headSeal(checkout: string): string | null {
       const path = join(ref === 'HEAD' || OWN_REFS.some((r) => ref.startsWith(r)) ? dirs.own : dirs.common, ref);
       // a ref without a file of its own is in the packed refs, or has no commit yet
       if (!at(path)) return seal.join('\n');
-      const target = readFileSync(path, 'utf8').match(/^ref: (\S+)/)?.[1];
-      if (!target) return seal.join('\n');
-      if (!/^refs\/[\w./-]+$/.test(target) || target.includes('..')) return null;
+      const text = readFileSync(path, 'utf8');
+      // a commit, or what git would not take for a ref either
+      if (!text.startsWith('ref:')) return seal.join('\n');
+      const target = symbolicTarget(text);
+      if (!target) return null;
       ref = target;
     }
   } catch {
     // a ref that cannot be read (a directory in its place, say)
   }
   return null;
+}
+
+/**
+ * The ref a symbolic ref's file (`ref: refs/heads/main`) names, read as git reads it: the rest of
+ * the file without the whitespace git trims around it, so a name with other whitespace in it (a
+ * no-break space) stays whole. Null for a target outside `refs/`, one git-check-ref-format refuses
+ * (which keeps it a path inside the git directory), and one that is no valid UTF-8.
+ */
+export function symbolicTarget(text: string): string | null {
+  const target = text.slice('ref:'.length).replace(/^[ \t\n\r]+|[ \t\n\r]+$/g, '');
+  if (!target.startsWith('refs/') || target.includes('\uFFFD')) return null;
+  // control characters, space and ~^:?*[\ ; "..", "@{", "//"; a part starting with "." or ending in ".lock"; a "." or "/" at the end
+  if (/[\x00-\x20\x7f~^:?*[\\]|\.\.|@\{|\/\/|(^|\/)\.|\.lock(\/|$)|[./]$/.test(target)) return null;
+  return target;
 }

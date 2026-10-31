@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Busy, headSeal, installDependencies, ownCheckout, Restarter, watchOwnCode, whenIdle } from './self-update';
+import { type Busy, headSeal, installDependencies, ownCheckout, Restarter, symbolicTarget, watchOwnCode, whenIdle } from './self-update';
 import { gitRepo } from './testing';
 import { git } from './workspaces';
 
@@ -21,6 +21,23 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const until = async (done: () => boolean) => {
   for (const end = Date.now() + 10_000; !done() && Date.now() < end; ) await wait(10);
 };
+
+/** Two mtimes inside one millisecond: far from 1970, the seconds a double carries keep about 100 ns. */
+const SECOND = 1_000_000_000;
+const WITHIN_MS: [number, number] = [SECOND + 0.0002, SECOND + 0.0007];
+/** Whether the file system keeps mtimes finer than a millisecond (some keep whole seconds). */
+const fineTimes = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'obeya-times-'));
+  try {
+    const file = join(dir, 'f');
+    writeFileSync(file, '');
+    return WITHIN_MS.map((t) => (utimesSync(file, t, t), statSync(file, { bigint: true }).mtimeNs)).every(
+      (ns, i, all) => ns / 1_000_000n === BigInt(SECOND) * 1000n && (i === 0 || ns !== all[0]),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
 
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), 'obeya-self-'));
@@ -115,6 +132,47 @@ test('while HEAD stands still, the watch starts no git', async () => {
   expect(calls).toEqual([head]);
 }, 20_000);
 
+test('a round that throws ends neither the watch nor its rounds', async () => {
+  const error = console.error;
+  const logged: unknown[] = [];
+  console.error = (...args: unknown[]) => logged.push(args);
+  const calls: string[] = [];
+  let rounds = 0;
+  try {
+    stop = watchOwnCode(repo, git(repo, 'rev-parse', 'HEAD'), (_, to) => calls.push(to), 20, () => {
+      rounds++;
+      throw new Error('round');
+    });
+    await until(() => rounds >= 3);
+    expect(rounds).toBeGreaterThanOrEqual(3);
+    const head = commit('src/a.ts', 'b');
+    await until(() => calls.length > 0);
+    expect(calls).toEqual([head]);
+  } finally {
+    console.error = error;
+  }
+  expect(logged.length).toBeGreaterThanOrEqual(3);
+}, 20_000);
+
+test('a restart that threw is asked for again the next round, and once it went through no more', async () => {
+  const error = console.error;
+  console.error = () => {};
+  const start = git(repo, 'rev-parse', 'HEAD');
+  const calls: string[] = [];
+  try {
+    stop = watchOwnCode(repo, start, (_, to) => {
+      calls.push(to);
+      if (calls.length === 1) throw new Error('restart');
+    }, 20);
+    const head = commit('src/a.ts', 'b');
+    await until(() => calls.length >= 2);
+    await wait(120);
+    expect(calls).toEqual([head, head]);
+  } finally {
+    console.error = error;
+  }
+}, 20_000);
+
 test('a checkout that is a worktree is watched too', async () => {
   const tree = `${repo}-tree`;
   git(repo, 'worktree', 'add', '--quiet', '-b', 'side', tree);
@@ -158,22 +216,44 @@ test("the seal of HEAD moves with a ref of the worktree's own", () => {
   }
 }, 20_000);
 
-test('the seal of HEAD moves with packed refs written anew in the same size and millisecond', () => {
+test.skipIf(!fineTimes)('the seal of HEAD moves with packed refs written anew in the same size and millisecond', () => {
   const start = git(repo, 'rev-parse', 'HEAD');
   const next = commit('src/a.ts', 'b');
   git(repo, 'pack-refs', '--all');
   const packed = join(repo, '.git', 'packed-refs');
+  const [first, second] = WITHIN_MS;
+  utimesSync(packed, first, first);
   const was = statSync(packed, { bigint: true });
   const before = headSeal(repo);
   expect(before).not.toBeNull();
   // in place, the same size, a moment later within the same millisecond
   writeFileSync(packed, readFileSync(packed, 'utf8').replace(next, start));
-  const ns = (was.mtimeNs / 1_000_000n) * 1_000_000n + ((was.mtimeNs % 1_000_000n) + 500_000n) % 1_000_000n;
-  utimesSync(packed, Number(was.atimeNs) / 1e9, Number(ns) / 1e9);
+  utimesSync(packed, second, second);
   const now = statSync(packed, { bigint: true });
   expect([now.ino, now.size, now.mtimeNs / 1_000_000n]).toEqual([was.ino, was.size, was.mtimeNs / 1_000_000n]);
+  expect(now.mtimeNs).not.toBe(was.mtimeNs);
   expect(headSeal(repo)).not.toBe(before);
 }, 20_000);
+
+test('the seal of HEAD follows a branch whose name git allows beyond ASCII letters', () => {
+  for (const name of ['refs/heads/a\u00a0b', 'refs/heads/c++', 'refs/heads/grün']) {
+    git(repo, 'checkout', '--quiet', '-b', name.slice('refs/heads/'.length));
+    expect(git(repo, 'symbolic-ref', 'HEAD')).toBe(name);
+    const before = headSeal(repo);
+    expect(before).toContain(name);
+    commit('src/a.ts', name);
+    expect(headSeal(repo)).not.toBe(before);
+  }
+}, 20_000);
+
+test("a symbolic ref's target is read whole, and one git would refuse is not read", () => {
+  expect(symbolicTarget('ref: refs/heads/main\n')).toBe('refs/heads/main');
+  expect(symbolicTarget('ref:refs/heads/main \r\n')).toBe('refs/heads/main');
+  expect(symbolicTarget('ref: refs/heads/a\u00a0b\n')).toBe('refs/heads/a\u00a0b');
+  expect(symbolicTarget('ref: refs/heads/feature/x+1\n')).toBe('refs/heads/feature/x+1');
+  for (const bad of ['HEAD', 'refs/heads/a b', 'refs/heads/../../x', 'refs/heads/.hidden', 'refs/heads/a.lock', 'refs/heads/a/', 'refs/heads/a.', 'refs/heads//a', 'refs/heads/a@{1}', 'refs/heads/a\\b', 'refs/heads/a:b', 'refs/heads/a\nrefs/heads/b', 'refs/heads/\uFFFD'])
+    expect(symbolicTarget(`ref: ${bad}\n`)).toBeNull();
+});
 
 test('a restart installs the dependencies only when package.json or bun.lock changed', () => {
   const start = git(repo, 'rev-parse', 'HEAD');
