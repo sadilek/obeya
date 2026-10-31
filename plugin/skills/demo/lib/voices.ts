@@ -57,6 +57,11 @@ export type VoiceSpec =
        */
       respell?: boolean;
       /**
+       * The voice's own lexicons (`lexicon.<name>.<language>.json`) for words it cannot read as
+       * written: `tts.py` gives it those respelt. Marks stay for the voices that respell.
+       */
+      lexicon?: string;
+      /**
        * The voice can stay loaded: this command starts once per render and answers clip by clip
        * over its stdin and stdout (the protocol is in `qwen3.py`). Without it, `argv` or `shell`
        * runs once per clip.
@@ -252,6 +257,7 @@ export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
         host: voice,
         tag: `qwen3|${qwen3Model(!!reference)}|${reference ?? s.voiceName ?? QWEN3_SPEAKER}`,
         heavy: true,
+        lexicon: 'qwen3',
       };
     }
     case 'say': {

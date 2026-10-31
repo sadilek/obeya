@@ -156,6 +156,16 @@ describe('English terms in German narration', () => {
     ]);
   }, 30_000);
 
+  test('a voice with a lexicon of its own (Qwen3) gets the words it cannot read respelt from it, the rest as written', () => {
+    expect(voiceSpec({ language: 'de', voice: 'qwen3' })).toMatchObject({ lexicon: 'qwen3' });
+    const own = JSON.parse(readFileSync(join(LIB, 'lexicon.qwen3.de.json'), 'utf8')) as Record<string, string>;
+    const s = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8'));
+    writeFileSync(join(dir, 'spec.json'), JSON.stringify({ ...s, lexicon: 'qwen3' }));
+    jobs('Der Button Reauthenticate auf dem {Canvas|Kännwes}.');
+    expect(narrate().status).toBe(0);
+    expect(said()).toEqual([`Der Button ${own.Reauthenticate} auf dem Canvas.`]);
+  }, 30_000);
+
   test('a voice that reads English terms (Qwen3, the hosted ones) gets them as written, without marks', () => {
     spec(false);
     jobs('Der Pull Request liegt auf dem {Canvas|Kännwes}.');
@@ -312,6 +322,51 @@ def load_model(repo):
     expect(existsSync(join(dir, 'a.wav')) && existsSync(join(dir, 'c.wav'))).toBe(true);
     expect(existsSync(join(dir, 'b.wav'))).toBe(false);
   });
+  test('makes a sentence again that ran on to its last frame, and fails the clip when it keeps doing so', () => {
+    // A fake mlx-audio that, for its first FAKE_RUNON calls, never ends the sentence: it fills every frame it may.
+    const pkg = join(dir, 'fake', 'mlx_audio', 'tts');
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(dir, 'fake', 'mlx_audio', '__init__.py'), '');
+    writeFileSync(join(pkg, '__init__.py'), '');
+    writeFileSync(
+      join(pkg, 'utils.py'),
+      String.raw`
+import os, numpy
+class Segment:
+    def __init__(self, n): self.audio = numpy.zeros(n, dtype=numpy.float32)
+class Model:
+    sample_rate = 24000
+    calls = 0
+    def generate(self, text, **kwargs):
+        Model.calls += 1
+        open(os.environ["FAKE_LOG"], "a").write(f"{text} {kwargs['max_tokens']}\n")
+        yield Segment(kwargs["max_tokens"] * 1920 if Model.calls <= int(os.environ["FAKE_RUNON"]) else 2400)
+def load_model(repo):
+    return Model()
+`,
+    );
+    writeFileSync(join(dir, 'ref.wav'), '');
+    writeFileSync(join(dir, 'ref.txt'), 'Das ist meine Stimme.');
+    const serve = (runOn: number) =>
+      python(
+        [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'en', '--reference', join(dir, 'ref.wav'), '--serve'],
+        { PYTHONPATH: join(dir, 'fake'), FAKE_LOG: join(dir, 'log'), FAKE_RUNON: String(runOn) },
+        `${JSON.stringify({ text: 'Click Reauthenticate.', out: join(dir, 'a.wav'), id: 1 })}\n`,
+      );
+    const once = serve(1);
+    expect(once.status).toBe(0);
+    expect(once.stdout).toContain('"ok": true');
+    // frames for a slow reading of 21 characters and 3 s more, asked twice
+    expect(log()).toEqual(['Click Reauthenticate. 70', 'Click Reauthenticate. 70']);
+    expect(once.stderr).toContain('qwen3: ran on to 6 s in attempt 1: Click Reauthenticate.');
+    rmSync(join(dir, 'log'));
+    rmSync(join(dir, 'a.wav'));
+    const always = serve(99);
+    expect(log()).toHaveLength(5);
+    expect(always.stdout).toContain('the voice ran on 5 times in a row');
+    expect(existsSync(join(dir, 'a.wav'))).toBe(false);
+  });
+
   test('ends quietly when whoever asked is gone before the clip is done', async () => {
     const pkg = join(dir, 'fake', 'mlx_audio', 'tts');
     mkdirSync(pkg, { recursive: true });

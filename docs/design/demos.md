@@ -77,6 +77,17 @@ hosted voices read English. A term enters the lexicon only where Piper got it wr
 respelling was heard back right through Whisper (2026-10-21); terms with no working respelling
 ("Branches", "mergen") are marked in the script where they matter. There is no English lexicon yet.
 
+Qwen3 has a lexicon of its own per narration language, for the few words it cannot read as
+written; marks still do not reach it. "Reauthenticate" comes to it as "Reauthentikayt" in English
+and "Reauthentikate" in German: as written, the clone said "reauthentipate", stumbled ("reauthenti
+uh reauthentic") or lost its place in the sentence in most takes, in both languages, whatever the
+sampling (temperature, top-k, repetition penalty) or the way the text is laid before the reference.
+Respelt, 19 English takes of 20 and 8 German of 8 were clean (Parakeet heard back, 2026-10-31); the
+German reading of "ayt" was not. The word reaches the model as a prefix and one rare piece ("Re" +
+"authenticate" with no space before it); a spelling the tokeniser breaks into common pieces it reads
+by sound. A hyphen or a space ("Re-authenticate", "re authenticate") was not enough. A word enters
+only once the voice was heard getting it wrong and the respelling right.
+
 Voices are not labelled as generated, a clone included: the whole demo is generated, and that is
 clear from where it is shown. „Das ist meine eigene Stimme“ in the settings decides the person: the
 first person only in the owner's own voice, otherwise the narration presents the work without "I".
@@ -149,6 +160,12 @@ a stray line is shown and skipped. A voice that dies stops the render with the t
 one silent for 10 minutes while it loads or 5 minutes on a sentence (seconds on a GPU, a minute or
 two on a slow CPU) is ended and its clip fails the same way. The sentence lines keep a long clip from
 looking stuck.
+
+A Qwen3 sentence gets frames for a slow reading of it (8 characters a second, 3 s more; clean takes
+run at about 17), not the model's 4096 frames: a sentence that lost its place in the text went on
+to that limit, 5½ minutes of babble behind a sentence of 15 s. One that uses all its frames ran on,
+and is made again, five times at most; then its clip fails, naming the sentence, so the word it
+stumbles over can be respelt. A stumble that still ends in time is not caught this way.
 
 Under Obeya the server holds this voice across renders as a child process. The spec says which voice
 Obeya may hold (reference clip or stock speaker); the server builds the command itself, never from a

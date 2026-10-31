@@ -26,6 +26,10 @@ conditioned on its exact transcript in the `.txt` beside it. The clip must start
 pause: the model continues the reference, and a cut in the middle of a word made every clip start
 with a noise. Sentence by sentence, since the model drifts on long inputs; a short gap between
 them reads as a natural breath.
+
+A word the model cannot read ("Reauthenticate") can make it lose its place in the sentence: it
+says the word again and again and never ends, until its frame limit, minutes later. So a sentence
+gets frames for a slow reading of it, no more; one that uses them all ran on, and is made again.
 """
 
 from __future__ import annotations
@@ -41,6 +45,17 @@ from pathlib import Path
 
 SENTENCE_GAP_SECONDS = 0.28
 LANGUAGES = {"de": "german", "en": "english"}
+#: Qwen3-TTS-12Hz speaks in frames of 80 ms.
+FRAMES_PER_SECOND = 12.5
+#: A slow reading: clean takes ran at about 17 characters a second, so this is twice as long.
+SLOW_CHARACTERS_PER_SECOND = 8
+#: How often a sentence that ran on is made again before its clip fails.
+ATTEMPTS = 5
+
+
+def frames_for(sentence: str) -> int:
+    """The frames a sentence may take: a slow reading of it, and a few seconds more for a short one."""
+    return int((len(sentence) / SLOW_CHARACTERS_PER_SECOND + 3) * FRAMES_PER_SECOND)
 
 
 def sentences(text: str) -> list[str]:
@@ -59,7 +74,8 @@ def write_wav(path: str, samples, rate: int) -> None:
 
 
 def load(args):
-    """The model, ready to speak: `speak(sentence, language)` gives the samples, `rate()` their rate."""
+    """The model, ready to speak: `speak(sentence, language, frames)` gives the samples of at most
+    `frames` frames, `rate()` their rate."""
     ref_text = None
     if args.reference:
         transcript = Path(args.reference).with_suffix(".txt")
@@ -77,8 +93,8 @@ def load(args):
     if load_model:
         model = load_model(args.model)
 
-        def speak(sentence: str, language: str):
-            kwargs = {"lang_code": LANGUAGES[language]}
+        def speak(sentence: str, language: str, frames: int):
+            kwargs = {"lang_code": LANGUAGES[language], "max_tokens": frames}
             if args.reference:
                 kwargs |= {"ref_audio": args.reference, "ref_text": ref_text}
             else:
@@ -94,15 +110,26 @@ def load(args):
     model = Qwen3TTSModel.from_pretrained(args.model, device_map=device, dtype=torch.bfloat16)
     rate = 24000
 
-    def speak(sentence: str, language: str):
+    def speak(sentence: str, language: str, frames: int):
         nonlocal rate
         if args.reference:
-            wavs, rate = model.generate_voice_clone(text=sentence, language=LANGUAGES[language].capitalize(), ref_audio=args.reference, ref_text=ref_text)
+            wavs, rate = model.generate_voice_clone(text=sentence, language=LANGUAGES[language].capitalize(), ref_audio=args.reference, ref_text=ref_text, max_new_tokens=frames)
         else:
-            wavs, rate = model.generate_custom_voice(text=sentence, language=LANGUAGES[language].capitalize(), speaker=args.speaker)
+            wavs, rate = model.generate_custom_voice(text=sentence, language=LANGUAGES[language].capitalize(), speaker=args.speaker, max_new_tokens=frames)
         return np.asarray(wavs[0], dtype=np.float32)
 
     return speak, lambda: rate
+
+
+def said(speak, rate, sentence: str, language: str):
+    """The samples of `sentence`, made again while the voice runs on to its last frame."""
+    frames = frames_for(sentence)
+    for attempt in range(1, ATTEMPTS + 1):
+        samples = speak(sentence, language, frames)
+        if len(samples) < (frames - 1) * rate() / FRAMES_PER_SECOND:
+            return samples
+        print(f"qwen3: ran on to {frames / FRAMES_PER_SECOND:.0f} s in attempt {attempt}: {sentence}", file=sys.stderr, flush=True)
+    raise ValueError(f"the voice ran on {ATTEMPTS} times in a row, without ending the sentence; it may stumble over a word in it, which a respelling in lexicon.qwen3.<language>.json helps with: {sentence}")
 
 
 def clip(speak, rate, text: str, language: str, out: str, done=lambda n, of: None) -> None:
@@ -111,7 +138,7 @@ def clip(speak, rate, text: str, language: str, out: str, done=lambda n, of: Non
     chunks = []
     parts = sentences(text)
     for n, sentence in enumerate(parts, 1):
-        samples = speak(sentence, language)
+        samples = said(speak, rate, sentence, language)
         chunks += [samples, np.zeros(int(SENTENCE_GAP_SECONDS * rate()), dtype=np.float32)]
         done(n, len(parts))
     if not chunks:

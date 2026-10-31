@@ -27,8 +27,10 @@ voice + the text as spoken, so re-rendering a demo after a visual fix costs no s
 A voice whose spec has `respell` (Piper, `say`) reads every word by the rules of the narration
 language, so English terms in German narration get respelt first: from the language's lexicon
 beside this file (`lexicon.<language>.json`, term to spoken form), and from marks in the script,
-`{Canvas|Kännwes}`, which win over the lexicon. Other voices get the written form ("Canvas").
-The cache key is the spoken text, so a change to the lexicon re-synthesises only the clips it touches. Results land in
+`{Canvas|Kännwes}`, which win over the lexicon. Other voices get the written form ("Canvas"),
+respelt only where the voice has a lexicon of its own for the narration language (`lexicon` in the
+spec: `lexicon.qwen3.en.json` for the words Qwen3 cannot read in English narration). The cache key
+is the spoken text, so a change to a lexicon re-synthesises only the clips it touches. Results land in
 `<out_dir>/tts.json`: `{"clips": [{"id", "file", "seconds"}]}`.
 
 `--lock <file>` takes that file's lock before this process loads a large model and holds it to
@@ -127,9 +129,10 @@ def key(term: str) -> str:
     return " ".join(re.split(r"[\s-]+", term.lower().strip()))
 
 
-def lexicon(language: str) -> dict[str, str]:
-    """The narration language's lexicon, keyed by the term in lower case; empty without one."""
-    file = Path(__file__).with_name(f"lexicon.{language}.json")
+def lexicon(name: str) -> dict[str, str]:
+    """The lexicon of a narration language (`de`) or of a voice in it (`qwen3.de`), keyed by the term in
+    lower case; empty without one."""
+    file = Path(__file__).with_name(f"lexicon.{name}.json")
     if not file.exists():
         return {}
     return {key(term): spoken for term, spoken in json.loads(file.read_text(encoding="utf-8")).items()}
@@ -155,7 +158,9 @@ def respelt(text: str, words: dict[str, str]) -> str:
 
 def spoken(spec: dict, language: str, text: str) -> str:
     """What the voice of `spec` is given to say for `text`."""
-    return respelt(text, lexicon(language)) if spec.get("respell") else written(text)
+    if spec.get("respell"):
+        return respelt(text, lexicon(language))
+    return respelt(written(text), lexicon(f"{spec['lexicon']}.{language}")) if spec.get("lexicon") else written(text)
 
 
 def untagged(text: str) -> str:
