@@ -1,11 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from './api';
+import { phoneView } from './phone';
 import { failText, t } from './strings';
+
+/** Whether this browser runs on the machine Obeya runs on, asked once per page. */
+let local: Promise<boolean> | undefined;
+const onThisMachine = () => (local ??= api.access().then((v) => v.local, () => true));
 
 /**
  * The same terminal login as Setup, offered where an agent's expired login interrupted a chat. A
  * session that signed in with a token (`token`: on another machine, or on CLAUDE_CODE_OAUTH_TOKEN)
  * gets a new one instead: `claude setup-token` in a terminal, its token pasted here for Obeya to keep.
+ * The terminal opens on the machine Obeya runs on, so the phone view and another device get no
+ * button, only where to go.
  */
 export function Reauthenticate({ start = false, token = false }: { start?: boolean; token?: boolean }) {
   const [busy, setBusy] = useState(false);
@@ -13,6 +20,12 @@ export function Reauthenticate({ start = false, token = false }: { start?: boole
   const [command, setCommand] = useState('');
   const [pasted, setPasted] = useState('');
   const [saved, setSaved] = useState(false);
+  const [here, setHere] = useState(() => !phoneView());
+  useEffect(() => {
+    let live = true;
+    if (here) void onThisMachine().then((v) => live && setHere(v));
+    return () => void (live = false);
+  }, []);
   const login = async () => {
     setBusy(true);
     setStatus('');
@@ -39,6 +52,7 @@ export function Reauthenticate({ start = false, token = false }: { start?: boole
       setBusy(false);
     }
   };
+  if (!here) return <div className="reauthenticate"><div className="hint">{t.setup.atComputer(token)}</div></div>;
   if (saved) return <div className="reauthenticate"><div className="hint" role="status">{t.setup.tokenSaved(start)}</div></div>;
   return (
     <div className="reauthenticate">

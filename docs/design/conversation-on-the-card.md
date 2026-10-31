@@ -38,6 +38,9 @@ instead, since a new login here would leave the token expired: the terminal runs
 as `claude-token` for the sessions that start from then on. The field is not kept as an unsent
 draft, since it holds a secret. Errors recorded before sessions said how they signed in offer the
 login.
+The terminal opens on the machine Obeya runs on, so on the phone and on any other device the error
+offers no button, only the hint that the login happens at that computer, where the same message
+offers it.
 
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its
