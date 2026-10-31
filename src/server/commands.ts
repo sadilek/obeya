@@ -2,7 +2,7 @@
 // confirms them in one sentence, and runs them after a short delay unless the owner takes them back.
 
 import { z } from 'zod';
-import { type AgentSetting, agentListens, answering, askable, type Awaited, awaited, type AwaitedState, blocksSaving, type CanvasConfig, finished, handedOver, type Item, type NextStep, type Notice, openQuestions, pausableNow, plannableAsProject, halted, prototypeWorkstream, snoozable, SNOOZE_LIMIT, type Queue, type SpotInput, type Talk, type TalkAfter, type TalkQuote, type TalkRef } from '../core/types';
+import { type AgentSetting, agentListens, answering, askable, type Awaited, awaited, type AwaitedState, blocksSaving, type CanvasConfig, finished, handedOver, type Item, type NextStep, type Notice, openQuestions, pausableNow, plannableAsProject, halted, untouched, prototypeWorkstream, snoozable, SNOOZE_LIMIT, type Queue, type SpotInput, type Talk, type TalkAfter, type TalkQuote, type TalkRef } from '../core/types';
 import { holdsNotes, notStarted } from '../core/queue';
 import { answerTag, fromAnswerTag } from './answers';
 import { BadRequest, type Board, excerpt, replyNote } from './board';
@@ -68,6 +68,10 @@ export type Command = (
   | { do: 'waitFor'; card?: string; newCard?: string; state: AwaitedState; then: string }
   /** It no longer waits on the card. */
   | { do: 'stopWaiting'; card: string }
+  /** Planned tasks nobody has worked on (`others`) merged into `card`, which stays, titled `title`; the others go. */
+  | { do: 'merge'; card: string; others: string[]; title: string }
+  /** A planned task nobody has worked on, deleted. */
+  | { do: 'delete'; card: string }
 ) & {
   /** Screenshots that came with the command (image ids), on the actions that take them (`TAKES_IMAGES`). */
   images?: string[];
@@ -246,7 +250,7 @@ type More = { wish?: string; cannot?: boolean };
 type Decision = { commands: Command[]; confirm: string; lookUp?: LookUp } & More;
 
 /** The actions `act` takes, as the Koordinator names them. */
-const ACTIONS = ['new_card', 'new_idea', 'review_pr', 'start', 'dequeue', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'keep', 'revise', 'stop', 'pause', 'resume', 'snooze', 'wake', 'discuss', 'build', 'split_off', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group', 'wait_for', 'stop_waiting', 'wish'] as const;
+const ACTIONS = ['new_card', 'new_idea', 'review_pr', 'start', 'dequeue', 'note', 'answer', 'feedback', 'approve', 'accept', 'dismiss', 'keep', 'revise', 'stop', 'pause', 'resume', 'snooze', 'wake', 'discuss', 'build', 'split_off', 'plan_doc', 'prototype', 'park', 'drop', 'remember', 'work_retro', 'group', 'ungroup', 'rename_group', 'merge', 'delete', 'wait_for', 'stop_waiting', 'wish'] as const;
 
 /** What `act` gets for one action. */
 const ACTION = z.object({
@@ -794,6 +798,7 @@ export class Commander {
             "- On a card in state idea: discuss (text: what the owner says in its discussion: a thought, a question, an answer to the idea's agent; it goes on at once, without undo), build (its brief becomes the task and a worker starts on it at once; while its agent works on a reply, or starts on one with a discuss in the same command, once that reply is there, unless the reply asks questions; it ends the discussion, and the idea's prototypes, planned and running, are thrown away; path: where the owner wants it built in a repository that does not exist yet („bau das in einem neuen Repo unter ~/dev/super59“), its folder, absolute or from ~: Obeya creates the folder and a local git repository (no remote), a canvas of its own named after it, moves the idea there with its brief, conversation and decisions, and builds it there, after a few seconds in which the owner can take it back on the card; own_canvas: false where the owner wants the new repository on this canvas instead; the list says where the idea's agent or the owner chose a new repository already, and build without path builds it there), split_off (only where the list says its agent marked a part as settled: that part becomes a task of its own beside the idea, which a worker starts on at once, and the idea stays open with its discussion and its prototypes for what is still open), plan_doc (a big idea becomes a project: an agent starts at once on its plan doc, and the project then takes the idea's place), prototype (a worker builds a throwaway prototype shown as a demo on it, beside any others; text: what it should show, its approach first in a few words; empty: one prototype for each variant its agent planned that has none running yet, all at once, or without planned variants one of the idea as it stands), park (for later), drop (it stays on the canvas with its brief). Planning an idea, or splitting a task off it, waits for its agent's reply while it works on one, or starts on one in the same command: then pass what the owner said with discuss, and say that it goes by a click once the reply is there.",
             "- plan_doc also on a planned task of the owner's that nobody has worked on yet (not with Obeya, no branch): an agent starts at once on a plan doc with workstreams from the task, and the project then takes the task's place („plane das als Projekt“).",
             `- group: put cards into a group, shown on the canvas as a coloured territory behind them. cards: their tags; text: the group's name (group is only for rename_group), one the canvas has (see the list) or a new one, which is then created. A card is in one group at most, so this takes it out of its group. A workstream stands for its project: the whole project goes into the group. ungroup: take cards (cards) out of their group. rename_group: group the group's current name, text its new name. A group no card belongs to any more goes. confirm e.g. ${say.group}`,
+            `- merge: planned tasks that are one task (dictated twice, say, or follow-ups that belong together) become one. cards: their tags, the one that stays first (it keeps its place and group); title: the merged task's title, short and precise. Their texts go into it unchanged, each under its title, and the others go. delete: a planned task the owner no longer wants (card). Both only on planned tasks nobody has worked on yet (no branch, not queued), merge only within one repository; a proposal is dismissed instead, an idea dropped. confirm e.g. ${say.merge}`,
             '- On a prototype (a card marked prototype of an idea): build (the idea is built on this prototype\'s branch; its other prototypes are thrown away; when the idea became a project, one of its workstreams is built on the branch instead: the one its plan doc builds on the prototype with, or cards: the tag of the one the owner names), drop (the prototype is thrown away into the archive). approve on a prototype also throws it away.',
             `- wish (no card): the owner wants Obeya's makers told something about Obeya itself: a wish, something missing, a bug („Obeya, Feedback: …“, „Sag den Entwicklern …“, „Wunsch an Obeya: …“). text: what they want the makers to know, in their words. It opens a draft for the owner to check and send on GitHub themselves; nothing goes out. Feedback on a card's work is feedback, and the developers of the repository's own app are the agents (a new card), not this. confirm e.g. ${say.wish}`,
             "Texts for a card's agent (note, answer, feedback) and for revise in the owner's own words, not rephrased: all they said, or with several actions in one sentence the part for that action. Other texts (a new card's body, a rule, talk to an idea) as the owner meant them (fix obvious recognition errors).",
@@ -1034,6 +1039,25 @@ export class Commander {
       if (name.length > 60) return "a group's name has at most 60 characters";
       if (groups.some((x) => x.id !== g.id && x.name.toLowerCase() === name.toLowerCase())) return `there is a group "${name}" already`;
       return { do: 'renameGroup', group: g.id, name };
+    }
+    if (a.do === 'merge' || a.do === 'delete') {
+      const tags = [...new Set([...(a.card ? [a.card] : []), ...(a.cards ?? [])])];
+      if (!tags.length) return a.do === 'merge' ? 'name the cards with cards (their tags, the one that stays first)' : 'name the card (its tag)';
+      const cards: Item[] = [];
+      for (const t of tags) {
+        const card = this.o.board.item(s.tags.get(t) ?? '');
+        if (!card) return `unknown tag ${t}`;
+        const why = notUntouched(card);
+        if (why) return `only a planned task nobody has worked on yet can be ${a.do === 'merge' ? 'merged' : 'deleted'}: ${t} "${card.title}" ${why}`;
+        cards.push(card);
+      }
+      if (a.do === 'delete') return cards.length === 1 ? { do: 'delete', card: cards[0]!.id } : 'delete takes one card; give one delete action for each';
+      if (cards.length < 2) return 'name at least two cards to merge (cards)';
+      if (new Set(cards.map((c) => c.repo)).size > 1) return `only tasks of one repository can be merged: ${cards.map((c) => `"${c.title}" is in ${c.repo}`).join(', ')}`;
+      const title = (a.title || a.text)?.replace(/\s+/g, ' ').trim();
+      if (!title) return "the merged task's title is missing (title)";
+      if (title.length > 200) return 'a title has at most 200 characters';
+      return { do: 'merge', card: cards[0]!.id, others: cards.slice(1).map((c) => c.id), title };
     }
     if (a.do === 'review_pr') {
       const pr = a.pr?.trim().replace(/^#/, '') ?? '';
@@ -1467,7 +1491,7 @@ function when(iso: string): string {
 }
 
 /** Examples of the confirmations the Koordinator speaks, and the owner's words for its cards, per language. */
-const CONFIRM: Record<Language, { act: string; words: string; remember: string; retro: string; reviewPr: string; group: string; configure: string; lookUp: string; lookUpThen: string; idea: string; wish: string }> = {
+const CONFIRM: Record<Language, { act: string; words: string; remember: string; retro: string; reviewPr: string; group: string; merge: string; configure: string; lookUp: string; lookUpThen: string; idea: string; wish: string }> = {
   de: {
     act: '"Neue Aufgabe „Zählerstände als CSV“, der Agent fängt an." / "„Rabatt“ freigegeben, und die Folgeaufgabe „Archiv“ ist angelegt." / "An den Agenten von „Export“ weitergegeben."',
     words: 'In German, a card is an „Aufgabe“ (a follow-up: „Folgeaufgabe“), an idea „Idee“, a project „Projekt“; never say „Karte“. The owner may still say „Karte“ and means the same.',
@@ -1475,6 +1499,7 @@ const CONFIRM: Record<Language, { act: string; words: string; remember: string; 
     retro: '„Ich mache die Arbeitsrückschau für den Shop; Vorschläge erscheinen als Karten.“',
     reviewPr: '„Ich lege eine Review-Karte für PR #5 an, mit Blick auf Security.“',
     group: '„„Export“ und „Rabatt“ gehören jetzt zur Gruppe Abrechnung.“',
+    merge: '„Ich führe „Login-Fehler“ und „Neu anmelden“ zu „Neu anmelden, wann und wo“ zusammen.“',
     configure: '„Das Repository shop-web kommt auf die Leinwand Shop.“ / „shop-web bekommt einen dritten Klon; seine Agenten starten neu, sobald sie pausieren.“',
     lookUp: '„Ich schaue im Plan nach.“ / „Moment, ich lese nach, was der Agent bei „…“ tun würde.“',
     lookUpThen: '„Ich lese die offenen Issues auf GitHub und lege dann für jedes eine Aufgabe an.“',
@@ -1488,6 +1513,7 @@ const CONFIRM: Record<Language, { act: string; words: string; remember: string; 
     retro: '“I am running the work retrospective for the shop; proposals appear as cards.”',
     reviewPr: '“I am starting a review card for PR #5, with an eye on security.”',
     group: '““Export” and “Discount” now belong to the group Billing.”',
+    merge: '“I am merging “Login error” and “Sign in again” into “Sign in again: when and where”.”',
     configure: '“The repository shop-web joins the canvas Shop.” / “shop-web gets a third clone; its agents restart once they paused.”',
     lookUp: '“Let me look at the plan.” / “One moment, I am reading what the agent would do on “…”.”',
     lookUpThen: '“I am reading the open issues on GitHub and will then create a task for each.”',
@@ -1518,3 +1544,17 @@ On an idea, "Mach, was du vorschlägst" takes the step its agent would take next
 
 /** Whether an agent is on the card: working on it, waiting for the owner, in a PR, or finishing what remains after the landing. */
 const hasAgent = (i: Item) => agentListens(i) && i.state !== 'idea' && i.state !== 'proposal';
+
+/** Why a card is no planned task nobody has worked on yet (`untouched`), as the Koordinator reads it; none where it is one. */
+function notUntouched(i: Item): string | undefined {
+  if (untouched(i)) return undefined;
+  if (i.state === 'proposal') return 'is a proposal (dismiss it instead)';
+  if (i.state === 'idea') return 'is an idea (drop it instead)';
+  if (i.kind !== 'task') return `is a ${i.kind}`;
+  if (i.state !== 'planned') return `is ${i.state}`;
+  if (i.source === 'plan') return 'is a workstream of a plan doc (changed there)';
+  if (i.prototypeOf) return 'is a prototype';
+  if (i.queue) return 'is with Obeya to start (dequeue it first)';
+  if (i.becomesProject) return 'is being planned as a project';
+  return 'was worked on already (it has a branch or a workspace)';
+}

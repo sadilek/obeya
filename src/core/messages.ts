@@ -42,6 +42,8 @@ const de = {
     held: (when: string) => `Das Nutzungslimit ist erreicht. Ich lese das ${when} von selbst.`,
     undone: 'Zurückgenommen.',
     created: 'Per Sprache angelegt.',
+    /** On the task Obeya merged others into: which, by their titles. */
+    merged: (titles: string[]) => `Zusammengeführt mit ${titles.map((t) => `„${t}“`).join(', ')}.`,
   },
   failure: {
     notLoggedIn: 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.',
@@ -520,6 +522,7 @@ const en: Messages = {
     held: (when: string) => `The usage limit is reached. I will read this by myself ${when}.`,
     undone: 'Taken back.',
     created: 'Created by voice.',
+    merged: (titles: string[]) => `Merged with ${titles.map((t) => `“${t}”`).join(', ')}.`,
   },
   failure: {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',

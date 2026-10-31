@@ -198,26 +198,95 @@ describe('a review card', () => {
     ]);
   });
 
-  test('a finding made a follow-up task becomes a card beside the review card, settled for the PR', async () => {
-    const id = await reviewCard(false);
-    await handOver();
-    workers.message(id, '', [], false, undefined, undefined, { 2: 'later' });
-    const finding = board.item(id)!.contribution!.findings![1]!;
-    expect(finding).toMatchObject({ status: 'later' });
-    expect(finding.decided).toBeUndefined();
-    const task = board.item(finding.card!)!;
-    expect(task).toMatchObject({ title: 'No shortcut', state: 'planned', from: id });
-    expect(task.body).toBe(`The menu entry has no keyboard shortcut.\n\nAus dem Review von PR #5: ${URL_}`);
-    expect(runtime.last.inbox.at(-1)!).toContain('As follow-up tasks: #2 „No shortcut“');
-    expect(board.events(id).at(-1)!.text).toContain('Befund 2 „No shortcut“: als Folgeaufgabe');
-    // not again, and it stays one when the worker rewrites its list or sends the others
-    expect(() => workers.message(id, '', [], false, undefined, undefined, { 2: 'later' })).toThrow();
-    runtime.last.call('findings', { findings: [{ id: 1, title: 'Path in the file name', text: 'T' }, { id: 2, title: 'No shortcut', text: 'T', status: 'open' }] });
-    await runtime.last.call('request_changes', { body: 'Please keep the file in its folder.', findings: [1, 2] });
-    expect(board.item(id)!.contribution!.findings!.map((f) => [f.id, f.status, f.card])).toEqual([
-      [1, 'sent', undefined],
-      [2, 'later', task.id],
+  test('the worker bundles findings that would be one follow-up task, in both directions and across a chain', async () => {
+    const id = await reviewCard();
+    runtime.last.call('findings', {
+      findings: [
+        { title: 'A', text: 'T', with: [3] },
+        { title: 'B', text: 'T' },
+        { title: 'C', text: 'T', with: [4] },
+        { title: 'D', text: 'T' },
+        { title: 'E', text: 'T', with: [9] },
+      ],
+    });
+    expect(board.item(id)!.contribution!.findings!.map((f) => [f.id, f.with])).toEqual([
+      [1, [3, 4]],
+      [2, undefined],
+      [3, [1, 4]],
+      [4, [1, 3]],
+      [5, undefined],
     ]);
+  });
+
+  test('a finding chosen as a follow-up task waits for the worker, which makes the task as it bundled it, the owner’s words first', async () => {
+    const id = await reviewCard(false);
+    runtime.last.call('findings', {
+      findings: [
+        { title: 'Re-login does not help remotely', text: 'T' },
+        { title: 'Detection misses messages', text: 'T', with: [4] },
+        { title: 'Terminal opens on the Mac', text: 'T' },
+        { title: 'Two buttons for one error', text: 'T' },
+      ],
+    });
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact(), review: results });
+    runtime.last.emit({ type: 'idle' });
+    workers.message(id, 'Combine them as you see fit.', [], false, undefined, undefined, { 1: 'later', 2: 'later', 4: 'later' });
+    // nothing made yet: each waits for the worker, which hears the bundle among those chosen and the owner's words
+    expect(board.items().filter((i) => i.from === id)).toEqual([]);
+    expect(board.item(id)!.contribution!.findings!.map((f) => [f.id, f.status, f.decided])).toEqual([
+      [1, 'open', 'later'],
+      [2, 'open', 'later'],
+      [3, 'open', undefined],
+      [4, 'open', 'later'],
+    ]);
+    const told = runtime.last.inbox.at(-1)!;
+    expect(told).toContain('As follow-up tasks: #1 „Re-login does not help remotely“, #2 „Detection misses messages“, #4 „Two buttons for one error“');
+    expect(told).toContain('as you bundled them (findings 2 + 4)');
+    expect(told).toContain('Combine them as you see fit.');
+    expect(board.events(id).at(-1)!.text).toContain('Befund 2 „Detection misses messages“: als Folgeaufgabe');
+    // not chosen again
+    expect(() => workers.message(id, '', [], false, undefined, undefined, { 2: 'later' })).toThrow();
+    // neither a reply nor a handover while one has no task
+    expect(runtime.last.call('reply', { text: 'Done.' })).toContain('first make the follow-up tasks the owner chose, for findings #1');
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', review: results })).toContain('Not handed over: first make the follow-up tasks');
+    expect(runtime.last.call('follow_up_task', { findings: [9], title: 'X', task: 'Y' })).toContain('there is no finding 9');
+    expect(runtime.last.call('follow_up_task', { findings: [2, 4], title: 'Re-login button: when and where', task: 'The button shows on the wrong messages, and twice on a failed start. See src/ui/login.tsx.' })).toContain(
+      'Still to make: finding #1',
+    );
+    const findings = () => board.item(id)!.contribution!.findings!;
+    const task = board.item(findings()[1]!.card!)!;
+    expect(task).toMatchObject({ title: 'Re-login button: when and where', state: 'planned', from: id });
+    expect(task.body).toBe(`The button shows on the wrong messages, and twice on a failed start. See src/ui/login.tsx.\n\nAus dem Review von PR #5: ${URL_}`);
+    expect(board.events(task.id).at(-1)!.text).toBe('Als Folgeaufgabe aus dem Review von PR #5 angelegt.');
+    // a finding settled already makes none
+    expect(runtime.last.call('follow_up_task', { findings: [1, 2], title: 'X', task: 'Y' })).toContain('finding 2 is later (a follow-up task already)');
+    runtime.last.call('follow_up_task', { findings: [1], title: 'Re-login on remote machines', task: `Re-login runs on the wrong machine: ${URL_}` });
+    expect(board.item(findings()[0]!.card!)!.body).toBe(`Re-login runs on the wrong machine: ${URL_}`);
+    expect(findings().map((f) => [f.id, f.status, f.decided, f.card === task.id])).toEqual([
+      [1, 'later', undefined, false],
+      [2, 'later', undefined, true],
+      [3, 'open', undefined, false],
+      [4, 'later', undefined, true],
+    ]);
+    expect(runtime.last.call('reply', { text: 'Made two tasks.' })).toBe('Shown to the owner.');
+    // it stays one when the worker rewrites its list, which cannot make one later itself
+    runtime.last.call('findings', { findings: [{ id: 1, title: 'A', text: 'T', status: 'open' }, { id: 2, title: 'B', text: 'T' }, { id: 3, title: 'C', text: 'T', status: 'later' }, { id: 4, title: 'D', text: 'T' }] });
+    expect(findings().map((f) => [f.id, f.status])).toEqual([
+      [1, 'later'],
+      [2, 'later'],
+      [3, 'open'],
+      [4, 'later'],
+    ]);
+  });
+
+  test('request_changes waits for the follow-up tasks the owner chose with it', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 1: 'contributor', 2: 'later' });
+    expect(await runtime.last.call('request_changes', { body: 'Please keep the file in its folder.', findings: [1] })).toContain('Not sent: first make the follow-up tasks');
+    expect(fake.said.reviews).toEqual([]);
+    runtime.last.call('follow_up_task', { findings: [2], title: 'Shortcut for the menu entry', task: 'Add one.' });
+    expect(await runtime.last.call('request_changes', { body: 'Please keep the file in its folder.', findings: [1] })).toContain('waits for amerlander');
   });
 
   test('„Selbst ändern“ only where the contributor allows maintainers’ edits', async () => {

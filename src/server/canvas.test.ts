@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
 import type { CardAction, RepoConfig, RepoSettings } from '../core/types';
-import type { BadRequest } from './board';
+import type { BadRequest, StoredContribution } from './board';
 import { Canvases, CanvasRuntime, startCanvases } from './canvas';
 import { Store } from './db';
 import { readShared } from '../adapters';
@@ -1298,6 +1298,46 @@ describe('groups by voice', () => {
     await canvas.run({ do: 'ungroup', cards: [a.id] });
     expect(canvas.board.snapshot().groups).toEqual([{ ...g!, name: 'Billing' }]);
     expect(item(a.id).group).toBeUndefined();
+  });
+});
+
+describe('merging and deleting planned tasks by voice', () => {
+  test('a merge keeps the first card with a new title and every text; what pointed at the others points at it', async () => {
+    const a = canvas.board.create({ title: 'Login error', body: 'The button shows on the wrong message.', x: 100, y: 200, repo: 'web' });
+    const b = canvas.board.create({ title: 'Sign in again', body: 'Two buttons for one error.', x: 600, y: 200, repo: 'web' });
+    const after = canvas.board.create({ title: 'After it', from: b.id });
+    const review = canvas.board.create({ title: 'PR #5', x: 0, y: 900, repo: 'web' });
+    const c: StoredContribution = { url: 'https://github.com/acme/app/pull/5', number: 5, author: 'amerlander', title: 'T', canModify: true, findings: [{ id: 1, title: 'F', text: 'T', status: 'later', card: b.id }] };
+    canvas.board.work(review.id, { contribution: JSON.stringify(c) });
+    const g = canvas.board.createGroup('Login', [a.id]);
+    await canvas.run({ do: 'merge', card: a.id, others: [b.id], title: 'Sign in again: when and where' });
+    expect(item(a.id)).toMatchObject({ title: 'Sign in again: when and where', x: 100, y: 200, group: g.id });
+    expect(item(a.id).body).toBe('## Login error\n\nThe button shows on the wrong message.\n\n## Sign in again\n\nTwo buttons for one error.');
+    expect(canvas.board.item(b.id)).toBeUndefined();
+    expect(item(after.id).from).toBe(a.id);
+    expect(item(review.id).contribution!.findings![0]!.card).toBe(a.id);
+    expect(canvas.board.events(a.id).at(-1)!.text).toContain('„Sign in again“');
+  });
+
+  test('both only on planned tasks nobody has worked on, a merge only within one repository', async () => {
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0, repo: 'web' });
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0, repo: 'web' });
+    const other = canvas.board.create({ title: 'Elsewhere', x: 800, y: 0, repo: 'api' });
+    const worked = canvas.board.create({ title: 'Stopped', x: 1200, y: 0, repo: 'web' });
+    canvas.board.work(worked.id, { branch: 'obeya/stopped' });
+    const code = (c: Parameters<CanvasRuntime['run']>[0]) => {
+      try {
+        canvas.run(c);
+      } catch (e) {
+        return (e as BadRequest).code;
+      }
+    };
+    expect(code({ do: 'merge', card: a.id, others: [other.id], title: 'X' })).toBe('otherRepos');
+    expect(code({ do: 'merge', card: a.id, others: [worked.id], title: 'X' })).toBe('notUntouched');
+    expect(code({ do: 'delete', card: worked.id })).toBe('notUntouched');
+    expect([item(a.id).title, item(other.id).title, item(worked.id).title]).toEqual(['A', 'Elsewhere', 'Stopped']);
+    await canvas.run({ do: 'delete', card: b.id });
+    expect(canvas.board.item(b.id)).toBeUndefined();
   });
 });
 

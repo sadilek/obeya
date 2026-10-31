@@ -2164,11 +2164,13 @@ function useZoom(video: RefObject<HTMLVideoElement | null>) {
 /**
  * What a review card's agent found, beside its demo: the checks on the PR's head and the merge probe
  * on one line, then each finding of the review, which its agent keeps as the conversation goes on.
- * On an open finding the owner decides („An Beitragenden“, „Selbst ändern“, „Als Folgeaufgabe“, a
- * second click takes it back) while their words reach its agent (`decides`); the decisions stand in
- * the card's draft and go out with the field's one Send. „Selbst ändern“ is greyed with its reason
- * where the contributor allows no edits by maintainers. A finding something came of says what; one
- * made a follow-up task links that task.
+ * Findings its agent would make one follow-up task stand together in a bracket that says so, while
+ * they are open or made one. On an open finding the owner decides („An Beitragenden“, „Selbst
+ * ändern“, „Als Folgeaufgabe“, a second click takes it back; a bracket picks nothing for its others)
+ * while their words reach its agent (`decides`); the decisions stand in the card's draft and go out
+ * with the field's one Send. „Selbst ändern“ is greyed with its reason where the contributor allows
+ * no edits by maintainers. A finding something came of says what; one made a follow-up task links
+ * that task.
  */
 function Findings({ item, decides }: { item: Item; decides: boolean }) {
   const c = item.contribution!;
@@ -2183,75 +2185,98 @@ function Findings({ item, decides }: { item: Item; decides: boolean }) {
       return { findings: was === route ? rest : { ...rest, [f.id]: route } };
     });
   const ok = !!c.results && c.results.mergeable && c.results.checks.every((x) => x.passed);
+  const one = (f: Finding) => {
+    const task = f.status === 'later' && f.card ? cards.items.find((x) => x.id === f.card) : undefined;
+    return (
+      <div key={f.id} className={['finding', f.security && 'security', f.status !== 'open' && 'settled'].filter(Boolean).join(' ')}>
+        <div className="f-head">
+          <span className="f-no">{f.id}</span>
+          <b>{f.title}</b>
+          {f.security && <span className="f-tag">{t.review.security}</span>}
+        </div>
+        <div className="f-text">
+          <Inline md={f.text} />
+        </div>
+        {f.status !== 'open' ? (
+          <div className="f-status">
+            {task ? (
+              <a href="#" onClick={(e) => (e.preventDefault(), cards.open(task))}>
+                {t.review.laterCard(plain(task.title))} →
+              </a>
+            ) : f.url ? (
+              <a href={f.url} target="_blank" rel="noreferrer">
+                {t.review.status[f.status](c.author)} ↗
+              </a>
+            ) : (
+              t.review.status[f.status](c.author)
+            )}
+          </div>
+        ) : f.decided ? (
+          <div className="f-status pending">{f.decided === 'self' ? t.review.goingSelf : f.decided === 'later' ? t.review.goingLater : t.review.goingTo(c.author)}</div>
+        ) : (
+          decides && (
+            <div className="choices single f-choices" role="group">
+              <button className={`choice${picks[f.id] === 'contributor' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'contributor'} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'contributor')}>
+                {t.review.toContributor}
+              </button>
+              <button
+                className={`choice${picks[f.id] === 'self' ? ' on' : ''}`}
+                aria-pressed={picks[f.id] === 'self'}
+                disabled={!c.canModify}
+                title={c.canModify ? t.review.selfHint : t.review.selfOff(c.author)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(f, 'self')}
+              >
+                {t.review.self}
+              </button>
+              <button className={`choice${picks[f.id] === 'later' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'later'} title={t.review.laterHint} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'later')}>
+                {t.review.later}
+              </button>
+            </div>
+          )
+        )}
+      </div>
+    );
+  };
+  // each finding once: alone, or where the first of its bundle stands, with the others of it
+  const shown = new Set<number>();
+  const blocks = findings.flatMap((f) => {
+    if (shown.has(f.id)) return [];
+    const bundle = findings.filter((o) => (o.id === f.id || f.with?.includes(o.id)) && bundled(o));
+    if (!bundled(f) || bundle.length < 2) return [one(f)];
+    for (const o of bundle) shown.add(o.id);
+    return [
+      <div key={`b${f.id}`} className="f-bundle">
+        <div className="f-bundle-head">{t.review.bundle(bundle.map((o) => o.id))}</div>
+        {bundle.map(one)}
+      </div>,
+    ];
+  });
   return (
     <section className="findings">
       {c.results && <div className={ok ? 'rr-checks ok' : 'rr-checks bad'}>{t.review.checks(c.results)}</div>}
       {c.findings && (
         <h4 className="p-h">{t.review.findings(findings.length, open.length, open.filter((f) => f.security).length)}</h4>
       )}
-      {findings.map((f) => {
-        const task = f.status === 'later' && f.card ? cards.items.find((x) => x.id === f.card) : undefined;
-        return (
-          <div key={f.id} className={['finding', f.security && 'security', f.status !== 'open' && 'settled'].filter(Boolean).join(' ')}>
-            <div className="f-head">
-              <span className="f-no">{f.id}</span>
-              <b>{f.title}</b>
-              {f.security && <span className="f-tag">{t.review.security}</span>}
-            </div>
-            <div className="f-text">
-              <Inline md={f.text} />
-            </div>
-            {f.status !== 'open' ? (
-              <div className="f-status">
-                {task ? (
-                  <a href="#" onClick={(e) => (e.preventDefault(), cards.open(task))}>
-                    {t.review.laterCard(plain(task.title))} →
-                  </a>
-                ) : f.url ? (
-                  <a href={f.url} target="_blank" rel="noreferrer">
-                    {t.review.status[f.status](c.author)} ↗
-                  </a>
-                ) : (
-                  t.review.status[f.status](c.author)
-                )}
-              </div>
-            ) : f.decided ? (
-              <div className="f-status pending">{f.decided === 'self' ? t.review.goingSelf : t.review.goingTo(c.author)}</div>
-            ) : (
-              decides && (
-                <div className="choices single f-choices" role="group">
-                  <button className={`choice${picks[f.id] === 'contributor' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'contributor'} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'contributor')}>
-                    {t.review.toContributor}
-                  </button>
-                  <button
-                    className={`choice${picks[f.id] === 'self' ? ' on' : ''}`}
-                    aria-pressed={picks[f.id] === 'self'}
-                    disabled={!c.canModify}
-                    title={c.canModify ? t.review.selfHint : t.review.selfOff(c.author)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => pick(f, 'self')}
-                  >
-                    {t.review.self}
-                  </button>
-                  <button className={`choice${picks[f.id] === 'later' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'later'} title={t.review.laterHint} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'later')}>
-                    {t.review.later}
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-        );
-      })}
+      {blocks}
       {decides && open.some((f) => !f.decided) && <p className="hint">{t.review.decideHint}</p>}
     </section>
   );
 }
 
-/** Above the field of a review card: what the owner decided for its findings, which goes out with the words. */
+/** A finding whose bundle still means something: open, or made a follow-up task. */
+const bundled = (f: Finding) => f.status === 'open' || f.status === 'later';
+
+/**
+ * Above the field of a review card: what the owner decided for its findings, which goes out with the
+ * words; with several made follow-up tasks, how many tasks they become as their agent bundled them.
+ */
 function DecidedChip({ item, decided }: { item: Item; decided: Record<string, ChangeRoute> }) {
   const c = item.contribution!;
   const named = Object.entries(decided).filter(([id]) => c.findings?.some((f) => f.id === Number(id) && f.status === 'open' && !f.decided));
   if (!named.length) return null;
+  const later = named.filter(([, route]) => route === 'later').map(([id]) => c.findings!.find((f) => f.id === Number(id))!);
+  const tasks = new Set(later.map((f) => [f.id, ...(f.with ?? []).filter((w) => later.some((l) => l.id === w))].sort((a, b) => a - b).join())).size;
   return (
     <div className="quote decided">
       <div className="decided-lines">
@@ -2260,6 +2285,7 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
             {t.review.decidedLine(Number(id), route === 'self' ? t.review.self : route === 'later' ? t.review.later : t.review.toContributor)}
           </span>
         ))}
+        {later.length > 1 && <span className="decided-tasks">{t.review.tasks(tasks)}</span>}
       </div>
       <button className="quote-clear" title={t.review.undecide} aria-label={t.review.undecide} onMouseDown={(m) => m.preventDefault()} onClick={() => updateDraft(cardDraft(item.id), { findings: undefined })}>
         ×

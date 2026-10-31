@@ -148,6 +148,7 @@ A Koordinator turn reads the transcript as speech that may be misheard (typed wo
 it knows which, and in which field) and either acts or replies. One sentence may give up to 20
 actions: new card, new idea, a review card for a pull request, start, out of the queue, note, answer, feedback, approve, accept,
 dismiss, revise, stop, remember, Arbeitsrückschau, grouping and ungrouping cards, renaming a group,
+merging and deleting planned tasks,
 `configure` (see The Konfiguration dialog), `wish` (see Wishes for Obeya's makers), `wait_for` (see A
 step once a card gets somewhere); on ideas discuss, build, plan doc (also for a planned task nobody
 has worked on), prototype, park, drop; on prototypes build on it, discard. Actions are checked
@@ -188,6 +189,16 @@ Start on a queued card starts it now despite the conflict, like "Trotzdem starte
 sees what queued cards wait for ("starte alle wartenden Aufgaben"); "nimm sie aus der Warteschlange"
 takes a card back to planned. Replies answer questions ("Was ist seit gestern passiert?") as far as
 the cards and their history do.
+
+Planned tasks that are one (dictated twice, follow-ups of a review that belong together) are merged
+(„fass die beiden zusammen“): the first named stays, with its place and group, under a title Obeya
+gives it; the texts of all go in unchanged, each a section under its old title, with their
+screenshots and the notes the owner left on them, and the others go. What followed up on them, and
+review findings that linked them, then point at the one that stays. A planned task the owner no
+longer wants is deleted. Both hold only for planned tasks nobody has worked on yet (no branch, no
+workspace, not queued; not a proposal, an idea, a workstream of a plan doc or a prototype), merging
+only within one repository; for anything else Obeya refuses with the reason. Like every command they
+run after the undo window.
 
 „Review PR #5“ (or a pull request's link, „schau dir den PR an“) makes a review card for a
 contributor's pull request and starts it; a number is the PR of the card's repository (the first on
@@ -351,6 +362,11 @@ Koordinator's sheet and the line above the mic. Demo narration is separate (see 
   „leg auf Super 59 eine Karte an“ said elsewhere, or a step it waited for, failed twice on one
   idea, and a card it then made on the wrong canvas could not start there. Its other actions stay
   on its own canvas.
+- **The Koordinator merges and deletes planned tasks** (2026-10-31, the review of PR #33: too many
+  follow-up tasks, and Obeya could only group them). Only tasks nobody has worked on, since a branch
+  or a workspace holds work a merge would lose or split; a merge keeps every text unchanged under its
+  title rather than rewriting them, so nothing the owner said gets lost in a summary. Rejected:
+  merging into a new card (it would lose the first card's place, group and history).
 - **The Koordinator's model stays**: Sonnet, Haiku or a shorter prompt saved nothing reliable.
 - **Obeya does not speak** (2026-10-08): spoken confirmations and answers distracted the owner, who
   reads them anyway.

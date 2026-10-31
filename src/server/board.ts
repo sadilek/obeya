@@ -2110,6 +2110,32 @@ export class Board {
     this.changed();
   }
 
+  /**
+   * Merges tasks into the first (`keep`), titled `title`; the caller checks they may be merged and
+   * removes the others. Their texts go in unchanged, each a section under its title (the first's
+   * too where the title changes), with their screenshots and the owner's notes they held. What
+   * followed up on them, and review findings that linked them, now point at the first.
+   */
+  merge(keep: string, others: string[], title: string) {
+    const first = this.own(keep);
+    const rest = others.map((id) => this.own(id));
+    const section = (r: CardRow) => `## ${r.title ?? ""}\n\n${r.body ?? ''}`.trim();
+    const body = [title === first.title ? (first.body ?? '').trim() : section(first), ...rest.map(section)].filter(Boolean).join('\n\n');
+    checkText(body, 'the merged text', 20000);
+    const list = (r: CardRow) => (r.images ? (JSON.parse(r.images) as string[]) : []);
+    const images = [...new Set([first, ...rest].flatMap(list))];
+    const notes = [first, ...rest].flatMap((r) => (r.unheard ? (JSON.parse(r.unheard) as unknown[]) : []));
+    this.store.update(keep, { title, body, images: images.length ? JSON.stringify(images) : null, ...(notes.length ? { unheard: JSON.stringify(notes) } : {}) });
+    const gone = new Set(others);
+    for (const r of this.store.cards(this.canvas.id)) {
+      if (r.from_id && gone.has(r.from_id) && r.id !== keep) this.store.update(r.id, { from_id: keep });
+      const c = contributionOf(r);
+      if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: JSON.stringify({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) } satisfies StoredContribution) });
+    }
+    this.log(keep, 'state', 'obeya', this.t.voice.merged(rest.map((r) => r.title ?? '')));
+    this.changed();
+  }
+
   /** Manual cards only; a plan card goes away with its workstream. */
   remove(id: string) {
     if (this.own(id).plan_ref) throw new BadRequest('planCard', 'plan cards are removed in the plan doc');

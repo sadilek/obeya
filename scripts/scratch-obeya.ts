@@ -6,7 +6,7 @@
 //   bun scripts/scratch-obeya.ts <stage.json> [--port <n>] [--code <commit> | --binary <obeya>] [--real-workers | --record <dir> | --replay <dir>] [--restarts]
 //   bun scripts/scratch-obeya.ts --stop <port>
 //   bun scripts/scratch-obeya.ts --login <port>
-//   bun scripts/scratch-obeya.ts --say <port> <card key> <say|report|talk|question|review|to_obeya|end> <text>
+//   bun scripts/scratch-obeya.ts --say <port> <card key> <say|report|talk|question|review|to_obeya|tool|end> <text>
 //   bun scripts/scratch-obeya.ts --artifact <port> <card key> <file> [<summary>]
 //
 // Prints one JSON line, also kept in <dir>/staged.json:
@@ -29,7 +29,8 @@
 // agent's words between its steps), `report` (its status line), `talk` (a reply), `question` (it
 // asks, and the card waits for the owner), `review` (a handover that keeps the card's demo); besides
 // those, `to_obeya` (it passes the owner's words on to Obeya, whose Koordinator is real and answers
-// on the card) and `end` (the agent's turn ends, which an idle worker's never does by itself).
+// on the card), `tool` (any other tool of the agent's, the text a JSON object `{ "tool", "args" }`)
+// and `end` (the agent's turn ends, which an idle worker's never does by itself).
 // --artifact copies the file into the card's HTML artifact (<dir>/artifacts/<key>, where staging
 // put a copy of the stage's) and hands it over again, as an agent does after rewriting it, with the
 // summary given or "Updated the artifact."; a card without one starts it with an index.html. Each
@@ -286,6 +287,7 @@ const SAYS = {
   question: (question: string) => ({ tool: 'ask', args: { question } }),
   review: (summary: string) => ({ tool: 'ready_for_review', args: { summary } }),
   to_obeya: (request: string) => ({ tool: 'to_obeya', args: { request } }),
+  tool: (json: string) => ({ args: {}, ...(JSON.parse(json) as { tool: string; args?: Record<string, unknown> }) }) as { tool: string; args: Record<string, unknown> },
   end: () => ({ end: true as const }),
 };
 

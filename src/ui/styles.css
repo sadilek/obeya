@@ -2128,7 +2128,11 @@ button.link:hover { text-decoration: underline; }
 .finding .f-status { margin-top: 5px; font-size: 12px; color: var(--muted); }
 .finding .f-status.pending { color: var(--working); }
 .finding .f-choices { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.f-bundle { border-left: 3px solid var(--waiting); padding-left: 8px; margin-bottom: 8px; }
+.f-bundle .f-bundle-head { font-size: 12px; color: var(--warn); margin-bottom: 4px; }
+.f-bundle .finding:last-child { margin-bottom: 0; }
 .quote.decided { --q: var(--waiting); }
+.decided-lines .decided-tasks { font-size: 12px; color: var(--muted); }
 .decided-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 5px 9px 6px; }
 .decided-lines .quote-text { color: var(--ink); }
 .tell-hint { display: flex; align-items: center; gap: 4px; margin: -2px 0 8px; font-size: 11px; color: var(--muted); }

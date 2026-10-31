@@ -100,6 +100,12 @@ export function openPerGroup(items: Item[]): Map<string, number> {
 export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i.queue;
 
 /**
+ * A planned task nobody has worked on yet, which the Koordinator may merge with others or delete:
+ * no branch, no workspace, not with the Koordinator, and no prototype nor becoming a project.
+ */
+export const untouched = (i: Item) => i.kind === 'task' && i.source === 'manual' && i.state === 'planned' && !i.branch && !i.workspace && !i.queue && !i.prototypeOf && !i.becomesProject;
+
+/**
  * A task of the owner's that can still be planned as a project, as an idea can: planned, nobody has
  * worked on it, the Koordinator does not hold it, and it is no prototype nor decided as a project already.
  */
@@ -707,14 +713,17 @@ export interface Finding {
   /**
    * `open` until something came of it: `sent` to the contributor (`url`, the review it went in),
    * `fixed` by the worker on the PR's branch, `resolved` (the contributor's push fixed it, or it no
-   * longer applies), `dropped` (the owner does not pursue it), `later` (a follow-up task, `card`).
+   * longer applies), `dropped` (the owner does not pursue it), `later` (a follow-up task, `card`,
+   * which the worker makes once the owner chose it).
    */
   status: FindingStatus;
   url?: string;
-  /** The follow-up task the owner made of it. */
+  /** The follow-up task the worker made of it, on the owner's word; several findings may share one. */
   card?: string;
   /** What the owner decided for it, while the worker carries it out. */
-  decided?: Exclude<ChangeRoute, 'later'>;
+  decided?: ChangeRoute;
+  /** The other findings its worker would make one follow-up task with it (their ids), in both directions. */
+  with?: number[];
 }
 
 export type FindingStatus = 'open' | 'sent' | 'fixed' | 'resolved' | 'dropped' | 'later';
@@ -1555,6 +1564,10 @@ export type ErrorCode =
   | 'holdsWork'
   | 'notArchived'
   | 'notIdea'
+  /** Merging or deleting by the Koordinator: the card is no planned task nobody has worked on (any more). */
+  | 'notUntouched'
+  /** Merging tasks of different repositories. */
+  | 'otherRepos'
   /** The card holds no thread of looked-up answers (it is no Question card). */
   | 'notQuestion'
   /** A looked-up answer's file that is not in its thread's output directory. */

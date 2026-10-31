@@ -13,7 +13,7 @@ import { repoName } from '../adapters/generic';
 import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, pathOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
@@ -2415,7 +2415,28 @@ export class CanvasRuntime {
         return this.board.group(c.cards, null);
       case 'renameGroup':
         return this.board.renameGroup(c.group, c.name);
+      case 'merge':
+        return this.merge(c.card, c.others, c.title);
+      case 'delete':
+        this.untouched(c.card);
+        return this.remove(c.card);
     }
+  }
+
+  /** A planned task nobody has worked on yet, still as when the Koordinator chose it; else why not. */
+  private untouched(cardId: string): Item {
+    const card = this.board.item(cardId);
+    if (!card) throw new BadRequest('unknownCard', 'unknown card');
+    if (!untouched(card)) throw new BadRequest('notUntouched', `„${card.title}“ is no planned task nobody has worked on any more`);
+    return card;
+  }
+
+  /** Planned tasks nobody has worked on merged into the first (`Board.merge`); the others go. */
+  private merge(keep: string, others: string[], title: string) {
+    const cards = [keep, ...others].map((id) => this.untouched(id));
+    if (new Set(cards.map((c) => c.repo)).size > 1) throw new BadRequest('otherRepos', 'only tasks of one repository can be merged');
+    this.board.merge(keep, others, title);
+    for (const id of others) this.remove(id);
   }
 
   /**
