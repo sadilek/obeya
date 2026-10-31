@@ -49,11 +49,11 @@ export function Reauthenticate({ start = false, token = false }: { start?: boole
       {command && !token && <div className="hint">{start ? t.setup.startAfterReauthenticate : t.setup.afterReauthenticate}</div>}
       {command && token && (
         <form className="reauthenticate-token" onSubmit={(e) => (e.preventDefault(), void save())}>
-          <label className="hint">
-            {t.setup.pasteToken}
-            <input type="password" autoComplete="off" spellCheck={false} placeholder={t.setup.tokenPlaceholder} value={pasted} onChange={(e) => setPasted(e.target.value)} />
-          </label>
-          <button className="btn small" type="submit" disabled={busy || !pasted.trim()}>{t.setup.saveToken}</button>
+          <label className="hint" htmlFor="reauthenticate-token">{t.setup.pasteToken}</label>
+          <div className="c-row">
+            <input id="reauthenticate-token" type="password" autoComplete="off" spellCheck={false} placeholder={t.setup.tokenPlaceholder} value={pasted} onChange={(e) => setPasted(e.target.value)} />
+            <button className="btn small" type="submit" disabled={busy || !pasted.trim()}>{t.setup.saveToken}</button>
+          </div>
         </form>
       )}
     </div>

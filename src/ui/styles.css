@@ -969,9 +969,11 @@ span.cl-name { color: inherit; cursor: default; }
 .reauthenticate code { overflow-wrap: anywhere; white-space: normal; }
 .reauthenticate > .btn.small { margin-top: 0; color: var(--ink); background: var(--card); border: 1px solid var(--line); }
 .talk .note .reauthenticate { justify-content: center; }
-.reauthenticate-token { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; flex-basis: 100%; }
-.reauthenticate-token label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 220px; }
-.talk .note .reauthenticate-token { justify-content: center; font-style: normal; }
+.reauthenticate-token { display: flex; flex-direction: column; gap: 6px; flex-basis: 100%; font-style: normal; }
+.reauthenticate-token .c-row { display: flex; align-items: center; gap: 8px; }
+.reauthenticate-token input { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); font-size: 13px; outline: none; }
+.reauthenticate-token input:focus { border-color: var(--muted); }
+.reauthenticate-token .btn.small { margin-top: 0; color: var(--ink); background: var(--card); border: 1px solid var(--line); }
 .talk .note.ev-denied { color: var(--warn); font-style: normal; }
 /* the line where the card was snoozed, while it is: with „Jetzt zurückholen“ and „Ändern“ under it */
 .talk .note.snooze-line { display: flex; flex-direction: column; align-items: center; gap: 2px; border-top: 1px dashed var(--line); padding-top: 8px; font-style: normal; }
