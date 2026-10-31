@@ -964,6 +964,11 @@ span.cl-name { color: inherit; cursor: default; }
 .talk .steps .step-state { color: var(--idea); }
 .talk .note { font-size: 12px; color: var(--muted); font-style: italic; align-self: center; text-align: center; }
 .talk .note.ev-error { color: var(--error); font-style: normal; }
+.reauthenticate { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; }
+.reauthenticate > div { flex-basis: 100%; }
+.reauthenticate code { overflow-wrap: anywhere; white-space: normal; }
+.reauthenticate > .btn.small { margin-top: 0; color: var(--ink); background: var(--card); border: 1px solid var(--line); }
+.talk .note .reauthenticate { justify-content: center; }
 .talk .note.ev-denied { color: var(--warn); font-style: normal; }
 /* the line where the card was snoozed, while it is: with „Jetzt zurückholen“ and „Ändern“ under it */
 .talk .note.snooze-line { display: flex; flex-direction: column; align-items: center; gap: 2px; border-top: 1px dashed var(--line); padding-top: 8px; font-style: normal; }

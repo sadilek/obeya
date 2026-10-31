@@ -175,7 +175,7 @@ export const api = {
   setup: () => call<MachineView>('GET', '/api/setup'),
   setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),
   /** Opens a terminal that logs in; `opened: false` where Obeya found none. */
-  setupLogin: (section: MachineSectionId, id: MachineItem['id']) => call<{ opened: boolean }>('POST', '/api/setup/login', { section, id }),
+  setupLogin: (section: MachineSectionId, id: MachineItem['id']) => call<{ opened: boolean; command: string }>('POST', '/api/setup/login', { section, id }),
   setupIdentity: (name: string, email: string) => call<MachineView>('POST', '/api/setup/identity', { name, email }),
   /** A folder from the system's dialog; null when cancelled. */
   setupPick: (prompt: string) => call<{ path: string | null }>('POST', '/api/setup/pick', { prompt }),

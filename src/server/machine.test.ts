@@ -53,6 +53,15 @@ const setup = (o: { compiled?: boolean; env?: Record<string, string> } = {}) =>
 const section = (v: MachineView, id: string) => v.sections.find((s) => s.id === id)!;
 
 describe('what Obeya needs on this machine', () => {
+  test('reauthenticates even when auth status still reports a login', async () => {
+    fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn":true,"email":"ada@example.com"}\';; esac');
+    const machine = setup();
+    expect(section(await machine.view(), 'needed').items.find((i) => i.id === 'claudeLogin')).toMatchObject({ state: 'ok' });
+    // No terminal on this PATH: a valid login action returns the manual-command fallback.
+    expect(await machine.login({ section: 'needed', id: 'claudeLogin' })).toEqual({ opened: false, command: `${bin}/claude auth login` });
+    await expect(machine.login({ section: 'needed', id: 'git' })).rejects.toThrow();
+  });
+
   test('finds Claude Code, its login, git and gh, and says what is missing with how to get it', async () => {
     fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn": false}\'; exit 1;; esac');
     fake('git', 'case "$1" in --version) echo "git version 2.45.0";; config) exit 1;; esac');
