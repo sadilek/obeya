@@ -911,6 +911,12 @@ export interface CardEvent {
    * a step of the agent's, so it stands under the agent's message that step leads to.
    */
   forwarded?: true;
+  /**
+   * An error of a session that signed in to Claude with a token (Obeya's `claude-token` or
+   * `CLAUDE_CODE_OAUTH_TOKEN`; on another machine, without one, that machine's own login), not with
+   * this machine's account: signing in again here does not renew it, a new token does.
+   */
+  token?: true;
 }
 
 /** Obeya's line that a worker started on the card afresh: what it handed over before belongs to an earlier run. */

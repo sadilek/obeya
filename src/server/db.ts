@@ -448,10 +448,12 @@ export const MIGRATIONS = [
   // a question looked up for an action that needs its answer: the step the Koordinator takes then, and
   // the exchange of no one's it took that step up in (the id of the exchange whose answer came in)
   'ALTER TABLE talk ADD COLUMN then_step TEXT; ALTER TABLE talk ADD COLUMN after_answer INTEGER;',
+  // an error of a session that signed in with a token rather than this machine's account
+  'ALTER TABLE events ADD COLUMN token INTEGER;',
 ];
 
-const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded';
-type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded'> & {
+const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
+type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answer' | 'picks' | 'unread' | 'readAfter' | 'wish' | 'reply' | 'forwarded' | 'token'> & {
   code: CardEvent['code'] | null;
   images: string | null;
   mocks: string | null;
@@ -464,8 +466,9 @@ type EventRow = Omit<CardEvent, 'images' | 'mocks' | 'replyTo' | 'spot' | 'answe
   wish: string | null;
   reply: number | null;
   forwarded: number | null;
+  token: number | null;
 };
-const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, ...e }: EventRow): CardEvent => ({
+const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, readAfter, wish, reply, forwarded, token, ...e }: EventRow): CardEvent => ({
   ...e,
   ...(code ? { code } : {}),
   ...(images ? { images: JSON.parse(images) as string[] } : {}),
@@ -479,6 +482,7 @@ const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, re
   ...(wish ? { wish: JSON.parse(wish) as Wish } : {}),
   ...(reply ? { reply: true as const } : {}),
   ...(forwarded ? { forwarded: true as const } : {}),
+  ...(token ? { token: true as const } : {}),
 });
 
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
@@ -723,7 +727,7 @@ export class Store {
     const at = e.at ?? now();
     const { id } = this.db
       .query(
-        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded) RETURNING id',
+        'INSERT INTO events (card_id, at, kind, author, text, code, images, mocks, reply_to, spot, answer, picks, unread, wish, reply, forwarded, token) VALUES ($cardId, $at, $kind, $author, $text, $code, $images, $mocks, $replyTo, $spot, $answer, $picks, $unread, $wish, $reply, $forwarded, $token) RETURNING id',
       )
       .get({
         ...e,
@@ -738,6 +742,7 @@ export class Store {
         wish: e.wish ? JSON.stringify(e.wish) : null,
         reply: e.reply ? 1 : null,
         forwarded: e.forwarded ? 1 : null,
+        token: e.token ? 1 : null,
         at,
       }) as { id: number };
     return { ...e, id, at };

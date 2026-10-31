@@ -31,6 +31,13 @@ Claude login errors offer „Erneut anmelden“ in the conversation and in a fai
 It opens the same terminal login as Setup, even when the login check still reports an account
 after a session failed to refresh. The error stays visible. The action reports whether a terminal
 opened, offers the manual command, and tells the owner to send the message again after signing in.
+A session that signed in with a token instead of this machine's account (on another machine, or
+here on `CLAUDE_CODE_OAUTH_TOKEN`), which its error records, gets „Neuen Token erstellen“ there
+instead, since a new login here would leave the token expired: the terminal runs
+`claude setup-token`, and the token it prints goes into a field beside the error, which Obeya keeps
+as `claude-token` for the sessions that start from then on. The field is not kept as an unsent
+draft, since it holds a secret. Errors recorded before sessions said how they signed in offer the
+login.
 
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its

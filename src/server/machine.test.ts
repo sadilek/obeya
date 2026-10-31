@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CLONES, type MachineView } from '../core/types';
@@ -7,6 +7,7 @@ import { Board } from './board';
 import type { CanvasRuntime } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
+import { claudeToken } from './hosts';
 import { cloneName, machineHint, MachineSetup, runnable, WELCOME_FILE, welcome } from './machine';
 import { gitRepo } from './testing';
 import { VoiceSetup } from './voice-setup';
@@ -60,6 +61,28 @@ describe('what Obeya needs on this machine', () => {
     // No terminal on this PATH: a valid login action returns the manual-command fallback.
     expect(await machine.login({ section: 'needed', id: 'claudeLogin' })).toEqual({ opened: false, command: `${bin}/claude auth login` });
     await expect(machine.login({ section: 'needed', id: 'git' })).rejects.toThrow();
+  });
+
+  test('a session on a token gets a new one: claude setup-token, its token kept for the sessions from then on', async () => {
+    fake('claude', 'case "$1" in --version) echo "2.1.300 (Claude Code)";; auth) echo \'{"loggedIn":true,"authMethod":"oauth_token"}\';; esac');
+    const env: Record<string, string> = { PATH: bin, CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-old' };
+    const machine = new MachineSetup({ home, config: config(), env, platform: 'linux', arch: 'x64', compiled: true });
+    expect(await machine.login({ section: 'needed', id: 'claudeLogin', token: true })).toEqual({ opened: false, command: `${bin}/claude setup-token` });
+    await expect(machine.login({ section: 'needed', id: 'gh', token: true })).rejects.toThrow();
+    expect(() => machine.saveToken({ token: 'two words' })).toThrow();
+    expect(() => machine.saveToken({ token: ' ' })).toThrow();
+    expect(machine.saveToken({ token: ' sk-ant-oat01-new\n' })).toEqual({ saved: true });
+    expect(readFileSync(join(home, 'claude-token'), 'utf8')).toBe('sk-ant-oat01-new\n');
+    expect(statSync(join(home, 'claude-token')).mode & 0o777).toBe(0o600);
+    expect(claudeToken(home, {})).toBe('sk-ant-oat01-new');
+    // this machine runs on the token: its sessions from now on take the new one
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('sk-ant-oat01-new');
+  });
+
+  test('a token kept for the hosts leaves a machine on its own login on that login', () => {
+    const env: Record<string, string> = { PATH: bin };
+    new MachineSetup({ home, config: config(), env, platform: 'linux', arch: 'x64' }).saveToken({ token: 'sk-ant-oat01-new' });
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
   });
 
   test('finds Claude Code, its login, git and gh, and says what is missing with how to get it', async () => {

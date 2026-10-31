@@ -24,6 +24,7 @@ import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
+import { saveClaudeToken } from './hosts';
 import { repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable } from './runtime';
@@ -415,13 +416,28 @@ export class MachineSetup {
     });
   }
 
-  /** Opens a terminal that logs in; `opened: false` where Obeya finds none, and the command is to be run by hand. */
+  /**
+   * Opens a terminal that logs in; `opened: false` where Obeya finds none, and the command is to be
+   * run by hand. `token`: Claude's login for the sessions that run on a token, `claude setup-token`,
+   * whose token the owner then gives Obeya (`saveToken`).
+   */
   async login(input: unknown): Promise<{ opened: boolean; command: string }> {
-    const { section, id } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id'] };
+    const { section, id, token } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id']; token?: boolean };
     const { item, found } = await this.item(section!, id!);
-    const argv = found.logins[item.id];
-    if (!argv || (item.act !== 'login' && item.id !== 'claudeLogin')) throw new BadRequest('invalid', `${id} needs no login`);
+    const login = found.logins[item.id];
+    if (!login || (item.act !== 'login' && item.id !== 'claudeLogin')) throw new BadRequest('invalid', `${id} needs no login`);
+    if (token && item.id !== 'claudeLogin') throw new BadRequest('invalid', `${id} takes no token`);
+    const argv = token ? [login[0]!, 'setup-token'] : login;
     return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };
+  }
+
+  /** The token the owner got from `claude setup-token`, for the sessions that run on a token. */
+  saveToken(input: unknown): { saved: true } {
+    const { token } = (input ?? {}) as { token?: unknown };
+    const value = typeof token === 'string' ? token.trim() : '';
+    if (!value || /\s/.test(value)) throw new BadRequest('invalid', 'not a token');
+    saveClaudeToken(this.o.home, value, this.env);
+    return { saved: true };
   }
 
   /** git's name and e-mail for commits, as the owner gives them. */

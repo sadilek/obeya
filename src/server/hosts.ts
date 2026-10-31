@@ -586,11 +586,26 @@ export function registerHost(o: HostOptions): SshHost {
   return host;
 }
 
-/** The token a host's sessions log in to Claude with: `claude-token` in Obeya's home, or `CLAUDE_CODE_OAUTH_TOKEN`. */
-export function claudeToken(home: string): string | undefined {
+/**
+ * The token sessions log in to Claude with where not on this machine's account (a host's, and this
+ * machine's when it runs on `CLAUDE_CODE_OAUTH_TOKEN`): `claude-token` in Obeya's home, or
+ * `CLAUDE_CODE_OAUTH_TOKEN`.
+ */
+export function claudeToken(home: string, env: Record<string, string | undefined> = process.env): string | undefined {
   const file = join(home, 'claude-token');
   if (existsSync(file)) return readFileSync(file, 'utf8').trim() || undefined;
-  return process.env.CLAUDE_CODE_OAUTH_TOKEN || undefined;
+  return env.CLAUDE_CODE_OAUTH_TOKEN || undefined;
+}
+
+/**
+ * Keeps a new token (from `claude setup-token`) as `claude-token`, for the owner's eyes alone; the
+ * sessions that start from now on log in with it, this machine's too where it runs on a token.
+ */
+export function saveClaudeToken(home: string, token: string, env: Record<string, string | undefined> = process.env) {
+  const file = join(home, 'claude-token');
+  writeFileSync(file, `${token}\n`, { mode: 0o600 });
+  chmodSync(file, 0o600);
+  if (env.CLAUDE_CODE_OAUTH_TOKEN) env.CLAUDE_CODE_OAUTH_TOKEN = token;
 }
 
 /**

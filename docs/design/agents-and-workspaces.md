@@ -9,7 +9,9 @@ subscription, no API key). The checkout runs the Claude Code binary the SDK brin
 runs the machine's own (`claude` on the `PATH`, else `~/.local/bin`, or `OBEYA_CLAUDE`). Agents get
 Obeya's environment without the marks of a Claude Code session that may have started Obeya
 (`CLAUDE_CODE_*`, `CLAUDECODE`, `CLAUDE_PID`) or of what started it (`OBEYA_SUPERVISED`, `OBEYA_FROM_APP`,
-`BUN_BE_BUN`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain.
+`BUN_BE_BUN`), but with `CLAUDE_CODE_OAUTH_TOKEN`, the login of a machine without a keychain. On
+such a machine `claude-token` in Obeya's home, once there, takes the variable's place: it holds the
+newest token the owner gave Obeya, which the variable Obeya was started with may not.
 
 A worker is one session per card with streaming input, permission mode `auto`, and the repository's
 Claude Code settings and CLAUDE.md (only once the owner trusted them, see Trusting a repository's
@@ -279,7 +281,8 @@ when it answers, waiting cards look again.
 #### Logins and files
 
 Nothing secret is stored there: the repository's GitHub login (from `git credential fill` here) and
-the Claude login (`claude-token` in Obeya's home, from `claude setup-token`) travel as the first line
+the Claude login (`claude-token` in Obeya's home, from `claude setup-token`, else
+`CLAUDE_CODE_OAUTH_TOKEN`) travel as the first line
 of stdin of each command and session; the clones' credential helper reads `GH_TOKEN` (after an empty
 helper, so macOS's keychain does not keep it). The clones are marked trusted in the host's
 `~/.claude.json`, since nobody answers the folder dialog there and the repository's own permission

@@ -604,6 +604,15 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toContain('nicht angemeldet');
   });
 
+  test('an error of a session that signed in with a token says so in the conversation', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    runtime.last.emit({ type: 'error', message: 'OAuth token has expired', token: true });
+    runtime.last.emit({ type: 'error', message: 'API Error: 500' });
+    const errors = board.events(c.id).filter((e) => e.kind === 'error');
+    expect(errors.map((e) => e.token)).toEqual([true, undefined]);
+  });
+
   test('a worker the usage limit stopped goes on by itself once the limit lifts', async () => {
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, limitMargin: 30 }));
     const c = manual();

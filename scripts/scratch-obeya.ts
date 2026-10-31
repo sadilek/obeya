@@ -110,7 +110,7 @@
 // into the database:
 // state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
 // now), scope (files), branch (a working or waiting card without one gets the branch a start would
-// have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot? }]; an idea's reply with `mocks` needs code that has them;
+// have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
 // place in a demo video, `{ at, chapter?, demo? }`) names its demo by its place in that order; earlier demos need code that has them),
 // workspace (true: the card holds the next free clone, for a repository whose settings say clones; with
@@ -197,7 +197,7 @@ interface StageCard {
   prototypeOf?: string;
   createdAgo?: string;
   archivedAgo?: string;
-  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number } }[];
+  events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean }[];
   row?: Record<string, unknown>;
 }
 
@@ -677,9 +677,9 @@ for (const [i, c] of stage.cards.entries()) {
   const reviews: { id: number; at: string }[] = [];
   const spots: [number, NonNullable<StageEvent['spot']>][] = [];
   for (const e of c.events ?? []) {
-    // only code that has mocks has their column
+    // only code that has mocks (an error's token) has their column
     const at = ago(e.ago ?? '0s');
-    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''})`).run({
+    const { lastInsertRowid } = db.query(`INSERT INTO events (card_id, at, kind, author, text${e.mocks ? ', mocks' : ''}${e.token ? ', token' : ''}) VALUES ($c, $at, $kind, $author, $text${e.mocks ? ', $mocks' : ''}${e.token ? ', 1' : ''})`).run({
       c: id,
       at,
       kind: e.kind,

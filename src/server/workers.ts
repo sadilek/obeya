@@ -2940,7 +2940,7 @@ export class Workers {
           break;
         }
         live.failed = e.message;
-        this.o.board.log(cardId, 'error', 'obeya', e.message);
+        this.o.board.log(cardId, 'error', 'obeya', e.message, { token: e.token });
         break;
       case 'lost':
         this.lost(cardId, live);

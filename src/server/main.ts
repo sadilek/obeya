@@ -66,6 +66,7 @@ import { oldLinuxBun, onGitHub } from './repo';
 import { Access } from './remote';
 import { Push } from './push';
 import { Awake } from './awake';
+import { claudeToken } from './hosts';
 import { serve, serveNarration } from './server';
 import { LocalTranscriber, VoiceIn } from './voice';
 import { VoiceSetup } from './voice-setup';
@@ -98,6 +99,8 @@ const home = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
 // the home holds the logins, the cards and the agents' transcripts: the owner's alone
 mkdirSync(home, { recursive: true, mode: 0o700 });
 if (process.platform !== 'win32' && (statSync(home).mode & 0o077) !== 0 && statSync(home).uid === process.getuid?.()) chmodSync(home, 0o700);
+// a machine that runs on a token runs on the newest one the owner gave Obeya (claude-token), not one its environment kept since
+if (process.env.CLAUDE_CODE_OAUTH_TOKEN) process.env.CLAUDE_CODE_OAUTH_TOKEN = claudeToken(home) ?? process.env.CLAUDE_CODE_OAUTH_TOKEN;
 // what the official installers and Homebrew install is found from a process the desktop started too
 extendPath();
 // and from a checkout the bun this runs on, for the workers' and scripts' `bun` (the app's shell names it by its path)

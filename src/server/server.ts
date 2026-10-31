@@ -524,6 +524,7 @@ export function serve(
       '/api/setup': { GET: needs(machine, (m) => m.view()) },
       '/api/setup/install': { POST: needs(machine, async (m, req) => m.install(await req.json())) },
       '/api/setup/login': { POST: needs(machine, async (m, req) => m.login(await req.json())) },
+      '/api/setup/token': { POST: needs(machine, async (m, req) => m.saveToken(await req.json())) },
       '/api/setup/identity': { POST: needs(machine, async (m, req) => m.identity(await req.json())) },
       '/api/setup/folder': { POST: needs(machine, async (m, req) => m.folder(await req.json())) },
       // setting up git in a folder that has none: what the first commit holds, then the commit

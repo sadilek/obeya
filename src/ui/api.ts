@@ -174,8 +174,10 @@ export const api = {
   /** The setup assistant's list: what Obeya needs on this machine. */
   setup: () => call<MachineView>('GET', '/api/setup'),
   setupInstall: (section: MachineSectionId, id: MachineItem['id']) => call<MachineView>('POST', '/api/setup/install', { section, id }),
-  /** Opens a terminal that logs in; `opened: false` where Obeya found none. */
-  setupLogin: (section: MachineSectionId, id: MachineItem['id']) => call<{ opened: boolean; command: string }>('POST', '/api/setup/login', { section, id }),
+  /** Opens a terminal that logs in (`token`: Claude's `claude setup-token`); `opened: false` where Obeya found none. */
+  setupLogin: (section: MachineSectionId, id: MachineItem['id'], token?: boolean) => call<{ opened: boolean; command: string }>('POST', '/api/setup/login', { section, id, ...(token ? { token } : {}) }),
+  /** The token from `claude setup-token`, for the sessions that run on a token. */
+  setupToken: (token: string) => call<{ saved: true }>('POST', '/api/setup/token', { token }),
   setupIdentity: (name: string, email: string) => call<MachineView>('POST', '/api/setup/identity', { name, email }),
   /** A folder from the system's dialog; null when cancelled. */
   setupPick: (prompt: string) => call<{ path: string | null }>('POST', '/api/setup/pick', { prompt }),

@@ -336,7 +336,7 @@ export class Explorers {
         if (!e.name.startsWith('mcp__') && !OWN_TOOLS.includes(e.name)) this.o.board.log(cardId, 'activity', 'explorer', describeTool(e.name, e.input, this.o.board.t));
         break;
       case 'error':
-        this.o.board.log(cardId, 'error', 'obeya', e.message);
+        this.o.board.log(cardId, 'error', 'obeya', e.message, { token: e.token });
         this.interrupt(cardId, 'error');
         this.o.onReplied?.(cardId, false);
         break;

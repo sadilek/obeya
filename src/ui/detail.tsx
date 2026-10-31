@@ -1491,7 +1491,7 @@ function Line({ turn, snoozed, ...rest }: { turn: Turn; snoozed?: Item; demoQues
   ) : turn.line ? (
     <div className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
       {time(turn.e.at)} · <Linked text={eventText(turn.e)} />
-      {turn.e.kind === 'error' && loginError(turn.e.text) && <Reauthenticate />}
+      {turn.e.kind === 'error' && loginError(turn.e.text) && <Reauthenticate token={turn.e.token} />}
     </div>
   ) : (
     <Message turn={turn} {...rest} />
@@ -3006,7 +3006,7 @@ function LastFailure({ cardId }: { cardId: string }) {
       <h4>{t.lastFailure(time(last.at))}</h4>
       <div className="q-text" title={last.code ? last.text : undefined}>
         {eventText(last)}
-        {loginError(last.text) && <Reauthenticate start />}
+        {loginError(last.text) && <Reauthenticate start token={last.token} />}
       </div>
     </div>
   );
