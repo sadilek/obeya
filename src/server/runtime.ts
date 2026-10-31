@@ -28,6 +28,7 @@ import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
 import type { AgentEffort, AgentRole, AgentSetting } from '../core/types';
 import { messageOf } from '../core/text';
+import { claudeLoginFailed } from '../core/login';
 
 export interface AgentTool {
   name: string;
@@ -607,7 +608,7 @@ export async function askOwner(
 
 /** A session's failure in the owner's words. */
 export function failureReason(message: string, t: Messages): string {
-  if (/not logged in|\/login/i.test(message)) return t.failure.notLoggedIn;
+  if (claudeLoginFailed(message)) return t.failure.notLoggedIn;
   return t.failure.session(message);
 }
 

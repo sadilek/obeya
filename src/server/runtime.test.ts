@@ -98,6 +98,10 @@ test('a turn that failed on the API counts as failed, with its error', () => {
   expect(failureReason('Not logged in · Please run /login', MESSAGES.de)).toContain('nicht angemeldet');
   expect(failureReason('Not logged in · Please run /login', MESSAGES.en)).toContain('not logged in');
   expect(failureReason('overloaded', MESSAGES.en)).toContain('overloaded');
+  expect(failureReason('Claude Code process exited with code 1. stderr: not logged in', MESSAGES.en)).toBe(MESSAGES.en.failure.notLoggedIn);
+  expect(failureReason('Invalid API key · Please run /login', MESSAGES.en)).toBe(MESSAGES.en.failure.notLoggedIn);
+  // another tool's login error is not Claude's
+  expect(failureReason('gh: OAuth token expired', MESSAGES.en)).toContain('gh: OAuth token expired');
 });
 
 test('a turn the usage limit stopped says when the limit lifts', () => {

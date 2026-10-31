@@ -42,6 +42,12 @@ The terminal opens on the machine Obeya runs on, so on the phone and on any othe
 offers no button, only the hint that the login happens at that computer, where the same message
 offers it.
 
+A Claude login error is one in Claude Code's own words: its `/login` or `claude auth login` hints,
+„Failed to authenticate“ with an OAuth or 401 API error, or „not logged in“ on the stderr of its
+process's exit. The server words a session's failure by the same rule („Claude is not logged in on
+this machine …“). Another tool's login error (gh's, an expired OAuth token of some API) offers no
+Claude login.
+
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its
 background work that runs („Im Hintergrund“, each with how long it has run). Once the card waits for
