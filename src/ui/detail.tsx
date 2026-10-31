@@ -36,6 +36,8 @@ import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen,
 import { agentWorks, cardTalk, demoHandover, talkState, koordinatorReads, ownerField, parseQuestion, snoozeLine, talkAlone, type Turn, unseenTurns, waitsFirstStart, worked as isWorked } from './talk';
 import { PageChangeList } from './page-changes';
 import { WishReplyLink } from './wish';
+import { loginError } from './auth';
+import { Reauthenticate } from './reauthenticate';
 
 /**
  * What the panel does after an action: fold the card and confirm (with undo, when it has one), or stay open.
@@ -1489,6 +1491,7 @@ function Line({ turn, snoozed, ...rest }: { turn: Turn; snoozed?: Item; demoQues
   ) : turn.line ? (
     <div className={`note ev-${turn.e.kind}`} title={turn.e.code ? turn.e.text : undefined}>
       {time(turn.e.at)} · <Linked text={eventText(turn.e)} />
+      {turn.e.kind === 'error' && loginError(turn.e.text) && <Reauthenticate />}
     </div>
   ) : (
     <Message turn={turn} {...rest} />
@@ -3003,6 +3006,7 @@ function LastFailure({ cardId }: { cardId: string }) {
       <h4>{t.lastFailure(time(last.at))}</h4>
       <div className="q-text" title={last.code ? last.text : undefined}>
         {eventText(last)}
+        {loginError(last.text) && <Reauthenticate start />}
       </div>
     </div>
   );

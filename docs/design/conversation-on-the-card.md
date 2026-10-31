@@ -27,6 +27,11 @@ owner says more. Once no agent works on the card and no question is open, steps 
 message stand where they happened, the agent's last words among them as its message. A card that was
 an idea continues the idea's conversation.
 
+Claude login errors offer „Erneut anmelden“ in the conversation and in a failed start's explanation.
+It opens the same terminal login as Setup, even when the login check still reports an account
+after a session failed to refresh. The error stays visible. The action reports whether a terminal
+opened, offers the manual command, and tells the owner to send the message again after signing in.
+
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its
 background work that runs („Im Hintergrund“, each with how long it has run). Once the card waits for

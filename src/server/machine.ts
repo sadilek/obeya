@@ -286,9 +286,10 @@ export class MachineSetup {
       try {
         account = JSON.parse(status ?? '{}');
       } catch {}
+      // A session may have failed to refresh while auth status still reports a login.
+      if (claude) logins.claudeLogin = [claude, 'auth', 'login'];
       if (account.loggedIn) items.push({ id: 'claudeLogin', state: 'ok', found: account.email ?? account.authMethod ?? '' });
       else if (claude) {
-        logins.claudeLogin = [claude, 'auth', 'login'];
         items.push(missing({ id: 'claudeLogin', install: { commands: [shown([claude === own ? 'claude' : claude, 'auth', 'login'])] }, act: 'login' }));
       } else items.push({ id: 'claudeLogin', state: 'missing' });
       return items;
@@ -415,12 +416,12 @@ export class MachineSetup {
   }
 
   /** Opens a terminal that logs in; `opened: false` where Obeya finds none, and the command is to be run by hand. */
-  async login(input: unknown): Promise<{ opened: boolean }> {
+  async login(input: unknown): Promise<{ opened: boolean; command: string }> {
     const { section, id } = (input ?? {}) as { section?: MachineSectionId; id?: MachineItem['id'] };
     const { item, found } = await this.item(section!, id!);
     const argv = found.logins[item.id];
-    if (item.act !== 'login' || !argv) throw new BadRequest('invalid', `${id} needs no login`);
-    return { opened: await openTerminal(argv, this.platform, this.env) };
+    if (!argv || (item.act !== 'login' && item.id !== 'claudeLogin')) throw new BadRequest('invalid', `${id} needs no login`);
+    return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };
   }
 
   /** git's name and e-mail for commits, as the owner gives them. */
