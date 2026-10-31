@@ -362,7 +362,8 @@ claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, po
 // the address as a one-time link that signs a browser in (owner.ts)
 const link = access.owner.link(`http://127.0.0.1:${server.port}`);
 console.log(`Obeya ${own ? `from ${own}` : VERSION} on ${link} (${source === 'file' ? configFile : 'canvases from the command line'}), agents on ${claudeExecutable() ?? 'the Claude Code the Agent SDK brings'}`);
-if (own) watchOwnCode(own, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
+// from the commit the server started from: a landing since is new code to it, not where it started
+if (own && ranFrom) watchOwnCode(own, ranFrom, (from, to) => restart('code', `${own} moved from ${from.slice(0, 7)} to ${to.slice(0, 7)}`));
 sources?.start();
 if (!canvases.all().length) console.log(`  no canvas yet: the setup assistant there checks this machine and creates the first`);
 for (const c of canvases.all()) {

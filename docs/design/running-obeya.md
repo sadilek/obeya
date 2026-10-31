@@ -370,7 +370,14 @@ no checkout and never restarts for new code). Without `--dev` the `obeya` proces
 server: when the checkout moves to commits that change code (not only `docs/`, `.md` files, `site/`
 or `.github/`), it restarts the server, running `bun install --frozen-lockfile` first when
 `package.json` or `bun.lock` changed (a failure is logged and the restart goes ahead). Workers resume,
-and an open page reloads when it reconnects to a new server process.
+and an open page reloads when it reconnects to a new server process. What counts as new is measured from
+the commit the server started from, and a restart waits until HEAD has held still for a round (a
+landing under way finishes first), HEAD checked once more after git has told what changed. The
+server looks every two seconds at the files HEAD stands on, by their `stat`s: HEAD, each ref it names
+on the way to a commit (a branch may name another branch; refs of a worktree's own, such as
+`refs/worktree/` and `refs/bisect/`, are in its own git directory), and `packed-refs`; only once
+they changed does it ask git, without waiting for it, what HEAD is. A repository that keeps its refs
+in a reftable, which has no such files, is asked every round.
 
 #### Waiting for the workers
 
@@ -531,6 +538,14 @@ them).
   lost the confirmed command.
 - **Sidecars end through their stdin**, not by being killed: killed, Python left the model download's
   progress-bar semaphore behind and its resource tracker warned on the terminal.
+- **The watch for new code reads files, not git, while nothing moves** (2026-10-29): on Windows,
+  starting a process holds up the server's one thread even when it does not wait for the process;
+  on a busy laptop `git rev-parse HEAD` held it 330 ms at the median and up to 11 s waited for
+  (`spawnSync`), 60 ms and up to 1.5 s started without waiting. Asked every two seconds, it delayed
+  the requests in that rhythm, a video's ranges among them. The files are told apart by inode, size
+  and mtime in nanoseconds: `packed-refs` written anew can keep both its size and its millisecond. Rejected: git without waiting alone (still a process every two seconds, each holding
+  the server up to a second); watching the git directory (watches miss changes, which is why plan
+  directories are polled as well).
 - **Git is called directly, and test repositories are copied**: on macOS Obeya calls the binary
   `xcrun --find git` names, not the `/usr/bin/git` shim, which looks it up on every call (10 ms instead
   of 4, over a few thousand calls a test run); test repositories are copies of a template committed

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Busy, installDependencies, ownCheckout, Restarter, watchOwnCode, whenIdle } from './self-update';
+import { type Busy, headSeal, installDependencies, ownCheckout, Restarter, watchOwnCode, whenIdle } from './self-update';
 import { gitRepo } from './testing';
 import { git } from './workspaces';
 
@@ -17,6 +17,10 @@ const commit = (file: string, text: string) => {
   return git(repo, 'rev-parse', 'HEAD');
 };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Waits until `done` holds: the watch's git calls take their time, on Windows far longer than the interval (so do its tests: 20 s each). */
+const until = async (done: () => boolean) => {
+  for (const end = Date.now() + 10_000; !done() && Date.now() < end; ) await wait(10);
+};
 
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), 'obeya-self-'));
@@ -35,19 +39,26 @@ test('the code comes from a checkout', () => {
 test('a commit that changes code asks for a restart, once', async () => {
   const start = git(repo, 'rev-parse', 'HEAD');
   const calls: [string, string][] = [];
-  stop = watchOwnCode(repo, (from, to) => calls.push([from, to]), 20);
-  await wait(60);
-  expect(calls).toEqual([]);
+  stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
   const head = commit('src/a.ts', 'b');
-  await wait(120);
+  await until(() => calls.length > 0);
   commit('src/b.ts', 'c');
   await wait(120);
   expect(calls).toEqual([[start, head]]);
-});
+}, 20_000);
+
+test('a commit between the server starting and the watch is new code to it', async () => {
+  const start = git(repo, 'rev-parse', 'HEAD');
+  const head = commit('src/a.ts', 'b');
+  const calls: [string, string][] = [];
+  stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
+  await until(() => calls.length > 0);
+  expect(calls).toEqual([[start, head]]);
+}, 20_000);
 
 test('docs, the site and its workflow alone change nothing that runs', async () => {
   const calls: string[] = [];
-  stop = watchOwnCode(repo, (_, to) => calls.push(to), 20);
+  stop = watchOwnCode(repo, git(repo, 'rev-parse', 'HEAD'), (_, to) => calls.push(to), 20);
   commit('docs/plan.md', 'plan');
   commit('README.md', 'readme');
   commit('site/index.html', '<!doctype html>');
@@ -55,9 +66,114 @@ test('docs, the site and its workflow alone change nothing that runs', async () 
   await wait(120);
   expect(calls).toEqual([]);
   const head = commit('src/a.ts', 'b');
-  await wait(120);
+  await until(() => calls.length > 0);
   expect(calls).toEqual([head]);
-});
+}, 20_000);
+
+test('a commit while git looks at what changed has not held still: the restart waits for a round of its own', async () => {
+  const start = git(repo, 'rev-parse', 'HEAD');
+  const first = commit('src/a.ts', 'b');
+  let second = '';
+  const spawn = Bun.spawn;
+  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
+    if (!second && (args[0] as string[]).includes('diff')) second = commit('src/b.ts', 'c');
+    return spawn(...args);
+  }) as typeof Bun.spawn;
+  const calls: [string, string][] = [];
+  try {
+    stop = watchOwnCode(repo, start, (from, to) => calls.push([from, to]), 20);
+    await until(() => calls.length > 0);
+  } finally {
+    Bun.spawn = spawn;
+  }
+  expect(second).not.toBe('');
+  expect(calls).toEqual([[start, second]]);
+  expect(first).not.toBe(second);
+}, 20_000);
+
+test('while HEAD stands still, the watch starts no git', async () => {
+  const spawn = Bun.spawn;
+  let started = 0;
+  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => (started++, spawn(...args))) as typeof Bun.spawn;
+  const calls: string[] = [];
+  let rounds = 0;
+  try {
+    stop = watchOwnCode(repo, git(repo, 'rev-parse', 'HEAD'), (_, to) => calls.push(to), 20, () => rounds++);
+    // the first round asks git: HEAD may have moved since the server started
+    await until(() => rounds >= 1);
+    started = 0;
+    const from = rounds;
+    await until(() => rounds >= from + 5);
+    expect(rounds).toBeGreaterThanOrEqual(from + 5);
+  } finally {
+    Bun.spawn = spawn;
+  }
+  expect(started).toBe(0);
+  // and it still watches
+  const head = commit('src/a.ts', 'b');
+  await until(() => calls.length > 0);
+  expect(calls).toEqual([head]);
+}, 20_000);
+
+test('a checkout that is a worktree is watched too', async () => {
+  const tree = `${repo}-tree`;
+  git(repo, 'worktree', 'add', '--quiet', '-b', 'side', tree);
+  try {
+    const calls: string[] = [];
+    stop = watchOwnCode(tree, git(tree, 'rev-parse', 'HEAD'), (_, to) => calls.push(to), 20);
+    writeFileSync(join(tree, 'src/a.ts'), 'b');
+    git(tree, 'commit', '--quiet', '-am', 'a');
+    const head = git(tree, 'rev-parse', 'HEAD');
+    await until(() => calls.length > 0);
+    expect(calls).toEqual([head]);
+  } finally {
+    rmSync(tree, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test('the seal of HEAD moves with a branch that HEAD reaches through another', () => {
+  const branch = git(repo, 'symbolic-ref', 'HEAD');
+  git(repo, 'symbolic-ref', 'refs/heads/alias', branch);
+  git(repo, 'symbolic-ref', 'HEAD', 'refs/heads/alias');
+  const before = headSeal(repo);
+  expect(before).not.toBeNull();
+  commit('src/a.ts', 'b');
+  expect(headSeal(repo)).not.toBe(before);
+}, 20_000);
+
+test("the seal of HEAD moves with a ref of the worktree's own", () => {
+  const tree = `${repo}-tree`;
+  const start = git(repo, 'rev-parse', 'HEAD');
+  const next = commit('src/a.ts', 'b');
+  git(repo, 'worktree', 'add', '--quiet', '--detach', tree);
+  try {
+    git(tree, 'update-ref', 'refs/worktree/own', start);
+    git(tree, 'symbolic-ref', 'HEAD', 'refs/worktree/own');
+    const before = headSeal(tree);
+    expect(before).not.toBeNull();
+    git(tree, 'update-ref', 'refs/worktree/own', next);
+    expect(headSeal(tree)).not.toBe(before);
+  } finally {
+    rmSync(tree, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test('the seal of HEAD moves with packed refs written anew in the same size and millisecond', () => {
+  const start = git(repo, 'rev-parse', 'HEAD');
+  const next = commit('src/a.ts', 'b');
+  git(repo, 'pack-refs', '--all');
+  const packed = join(repo, '.git', 'packed-refs');
+  const was = statSync(packed, { bigint: true });
+  const before = headSeal(repo);
+  expect(before).not.toBeNull();
+  // in place, the same size, a moment later within the same millisecond
+  writeFileSync(packed, readFileSync(packed, 'utf8').replace(next, start));
+  const ns = (was.mtimeNs / 1_000_000n) * 1_000_000n + ((was.mtimeNs % 1_000_000n) + 500_000n) % 1_000_000n;
+  utimesSync(packed, Number(was.atimeNs) / 1e9, Number(ns) / 1e9);
+  const now = statSync(packed, { bigint: true });
+  expect([now.ino, now.size, now.mtimeNs / 1_000_000n]).toEqual([was.ino, was.size, was.mtimeNs / 1_000_000n]);
+  expect(headSeal(repo)).not.toBe(before);
+}, 20_000);
 
 test('a restart installs the dependencies only when package.json or bun.lock changed', () => {
   const start = git(repo, 'rev-parse', 'HEAD');

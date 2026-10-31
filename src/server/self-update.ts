@@ -4,9 +4,11 @@
 // (Ctrl-C, SIGTERM) waits for the workers the same way, and then nothing starts again; so does
 // installing a new version of the app, after which the app's shell starts it again (UPDATE).
 
-import { dirname } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { inert } from '../core/inert';
 import type { OwnerHold, RestartReason } from '../core/types';
+import { gitDirs } from './read-tree';
 import { COMPILED } from './resources';
 import { gitAsync, gitOrNull } from './workspaces';
 
@@ -222,42 +224,87 @@ export function ownCheckout(): string | null {
 }
 
 /**
- * Calls `fn` once when the checkout's HEAD has moved to commits that change code (not only docs),
- * after HEAD has held still for one interval, so a landing in progress finishes first.
+ * Calls `fn` once when the checkout's HEAD has moved from `start` (the commit the server's code
+ * came from) to commits that change code (not only docs), after HEAD has held still for one
+ * interval, so a landing in progress finishes first. Each round takes the seal of what HEAD stands
+ * on (`headSeal`) and asks git only once it changed: on Windows, starting a process holds up the
+ * server from 50 ms to over a second on a busy machine, even started without waiting for it, and
+ * every two seconds that held up every request it answers. `afterRound` hears of each round ended.
  */
-export function watchOwnCode(checkout: string, fn: (from: string, to: string) => void, intervalMs = 2000): () => void {
-  const start = headOf(checkout);
-  if (!start) return () => {};
+export function watchOwnCode(checkout: string, start: string, fn: (from: string, to: string) => void, intervalMs = 2000, afterRound?: () => void): () => void {
+  // HEAD as last read, and the seal it was read under; none yet, so the first round asks git: HEAD
+  // may have moved since the server started
+  let read: { seal: string | null; head: string } = { seal: null, head: start };
+  /** HEAD now: as last read while its seal holds, else from git (null where git failed). */
+  const look = async (): Promise<string | null> => {
+    // the seal is taken before git is asked, so a move between the two is seen next round
+    const seal = headSeal(checkout);
+    if (seal !== null && seal === read.seal) return read.head;
+    const head = await gitAsync(checkout, 'rev-parse', 'HEAD').catch(() => null);
+    if (head) read = { seal, head };
+    return head;
+  };
   let seen = start;
   let base = start;
-  let looking = false;
   let stopped = false;
-  const look = async () => {
-    const head = await gitAsync(checkout, 'rev-parse', 'HEAD').catch(() => null);
-    if (!head || stopped) return;
-    if (head !== seen) {
-      seen = head;
-      return;
-    }
-    if (head === base) return;
-    const code = await changesCode(checkout, base, head);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // the next round starts an interval after this one ended, so two never run at once
+  const round = async () => {
+    const head = await look();
     if (stopped) return;
-    if (!code) {
-      base = head;
-      return;
+    if (head && head !== seen) seen = head;
+    else if (head && head !== base) {
+      const code = await changesCode(checkout, base, head);
+      // a commit while git diffed has not held still for a round (it may be a landing under way): the next round tells
+      const still = code && (await look()) === head;
+      if (stopped) return;
+      if (still) return fn(base, head);
+      if (!code) base = head;
     }
-    stop();
-    fn(base, head);
+    afterRound?.();
+    timer = setTimeout(round, intervalMs);
   };
-  // git answers without the server waiting; a look that takes longer than the interval is not overtaken
-  const timer = setInterval(() => {
-    if (looking) return;
-    looking = true;
-    void look().finally(() => (looking = false));
-  }, intervalMs);
-  const stop = () => {
+  timer = setTimeout(round, intervalMs);
+  return () => {
     stopped = true;
-    clearInterval(timer);
+    clearTimeout(timer);
   };
-  return stop;
+}
+
+/** The refs each worktree keeps of its own, in its own git directory; the others are in the one they share. */
+const OWN_REFS = ['refs/worktree/', 'refs/bisect/', 'refs/rewritten/'];
+
+/**
+ * A seal of what the checkout's HEAD stands on, taken without git, by a few `stat`s: HEAD, each ref
+ * it names on the way to a commit (a branch may name another branch), each by the file git wrote it
+ * in last (git writes a ref anew beside it, then renames it into place), and the packed refs. While
+ * it is the same, so is HEAD. Null where it cannot be told (refs in a reftable, no git directory
+ * found, a ref named outside `refs/`): git tells HEAD then.
+ */
+export function headSeal(checkout: string): string | null {
+  const dirs = gitDirs(checkout);
+  if (!dirs || existsSync(join(dirs.common, 'reftable'))) return null;
+  const seal: string[] = [];
+  const at = (path: string) => {
+    const s = statSync(path, { bigint: true, throwIfNoEntry: false });
+    seal.push(`${path} ${s ? `${s.ino}:${s.size}:${s.mtimeNs}` : '-'}`);
+    return s;
+  };
+  try {
+    at(join(dirs.common, 'packed-refs'));
+    let ref = 'HEAD';
+    // a few steps at most: refs that name each other in a circle stop git as well
+    for (let step = 0; step < 5; step++) {
+      const path = join(ref === 'HEAD' || OWN_REFS.some((r) => ref.startsWith(r)) ? dirs.own : dirs.common, ref);
+      // a ref without a file of its own is in the packed refs, or has no commit yet
+      if (!at(path)) return seal.join('\n');
+      const target = readFileSync(path, 'utf8').match(/^ref: (\S+)/)?.[1];
+      if (!target) return seal.join('\n');
+      if (!/^refs\/[\w./-]+$/.test(target) || target.includes('..')) return null;
+      ref = target;
+    }
+  } catch {
+    // a ref that cannot be read (a directory in its place, say)
+  }
+  return null;
 }

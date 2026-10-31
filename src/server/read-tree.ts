@@ -100,7 +100,7 @@ const knownDirs = new Map<string, { own: string; common: string }>();
  * where its HEAD is) and the one its worktrees share (`--git-common-dir`, where the refs are); null
  * where none is found.
  */
-function gitDirs(repoPath: string): { own: string; common: string } | null {
+export function gitDirs(repoPath: string): { own: string; common: string } | null {
   const known = knownDirs.get(repoPath);
   if (known) return known;
   let own = join(repoPath, '.git');
