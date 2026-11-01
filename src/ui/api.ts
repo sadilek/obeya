@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
+import type { InboxEntry } from '../core/inbox';
 import { type Place, placeParam } from '../core/layout';
 import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
 import type { Wish } from '../core/wish';
@@ -75,6 +76,8 @@ const canvasOfCard = new Map<string, string>();
 export function cardsOn(canvas: string, cards: string[]) {
   for (const id of cards) canvasOfCard.set(id, canvas);
 }
+/** The canvas of the card `id`: the one it is on where the page shows several, else the shown one. */
+export const canvasOf = (id: string) => canvasOfCard.get(id) ?? canvasId;
 /** A path in the API of the card's canvas, about the card or project `id`. */
 export const cardAt = (id: string, path = '') => `/api/c/${encodeURIComponent(canvasOfCard.get(id) ?? canvasId)}/cards/${id}${path}`;
 /** A path in the API of the canvas of what the words are about, else of the shown one. */
@@ -530,6 +533,8 @@ export function useCanvas(id = canvasId): {
   /** The plan's usage limits, while the bar shows them. */
   usage: Usage | null;
   waiting: Record<string, number>;
+  /** Everything that waits for the owner, on every canvas, the newest first. */
+  inbox: InboxEntry[];
   oldBun: string | null;
   /** The canvases as they changed while the page is open (one started, stopped or renamed); null until they do. */
   canvases: CanvasInfo[] | null;
@@ -543,6 +548,7 @@ export function useCanvas(id = canvasId): {
   const [source, setSource] = useState<SourceUpdate | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [waiting, setWaiting] = useState<Record<string, number>>({});
+  const [inbox, setInbox] = useState<InboxEntry[]>([]);
   const [oldBun, setOldBun] = useState<string | null>(null);
   const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
   useEffect(() => {
@@ -592,6 +598,7 @@ export function useCanvas(id = canvasId): {
         else if (msg.type === 'source') setSource(msg.source);
         else if (msg.type === 'usage') setUsage(msg.usage);
         else if (msg.type === 'waiting') setWaiting(msg.waiting);
+        else if (msg.type === 'inbox') setInbox(msg.inbox);
         else if (msg.type === 'canvases') setCanvases(msg.canvases);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
         else if (msg.type === 'eventGone') for (const fn of goneListeners) fn(msg.cardId, msg.id);
@@ -605,7 +612,7 @@ export function useCanvas(id = canvasId): {
         // device removed from Obeya's devices, or a browser whose cookie no longer names the
         // owner's key, gets the page that says how to connect or sign in again
         api.canvases().then(
-          (list) => list.some((c) => c.id === id) || location.replace(location.pathname),
+          (list) => list.some((c) => c.id === id) || location.replace('/'),
           (e) => e instanceof ApiError && (e.code === 'notPaired' || e.code === 'notOwner') && location.reload(),
         );
         retry = setTimeout(connect, delay);
@@ -644,5 +651,5 @@ export function useCanvas(id = canvasId): {
       ws.close();
     };
   }, [id]);
-  return { snapshot, online, offlineSince, restart, update, source, usage, waiting, oldBun, canvases };
+  return { snapshot, online, offlineSince, restart, update, source, usage, waiting, inbox, oldBun, canvases };
 }

@@ -29,7 +29,7 @@ for the owner on that canvas (its count in the switcher), with „Vorgeschlagen 
 Its agent can take it back or replace it there as on its own canvas, and the worker that takes it on
 reads the card it came from as with any follow-up.
 
-The UI opens `?c=<canvas>`; the pill after the logo switches canvases. Cards on other canvases that
+The UI opens `/c/<canvas>` (see Addresses in The canvas); the pill after the logo switches canvases. Cards on other canvases that
 need the owner show as a count at their entry in the switcher and, while it is closed, as the sum on
 the pill, kept current on every page. Wherever canvases are listed (the switcher, the phone) they
 stand in the configuration's order, so the owner sets it by moving them in the Konfiguration dialog;

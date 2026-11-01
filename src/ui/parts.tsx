@@ -1,5 +1,6 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
+import { Docked } from './docked';
 import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
@@ -13,6 +14,7 @@ import { Body } from './message';
 import { useMenuClose, waitedOn } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
+import { canvasPath } from './address';
 
 /** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
 const firstLine = (md: string) =>
@@ -318,7 +320,7 @@ export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; 
             const n = c.id === canvas.id ? 0 : (waiting[c.id] ?? 0);
             return (
               <li key={c.id} className={c.id === canvas.id ? 'on' : ''}>
-                <a href={`?c=${encodeURIComponent(c.id)}`} title={n ? t.waitingThere(n) : undefined}>
+                <a href={canvasPath(c.id)} title={n ? t.waitingThere(n) : undefined}>
                   <b>{c.name}</b>
                   <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
                   {n > 0 && <span className="waits">{n}</span>}
@@ -1147,11 +1149,7 @@ export function Sheet({
     return () => clearTimeout(h);
   }, [shown?.id, reading, !!shown]);
   return (
-    <aside
-      id="sheet"
-      ref={box}
-      className={['sheet', on && 'on', reading && 'reading'].filter(Boolean).join(' ')}
-    >
+    <Docked id="sheet" ref={box} on={!!on} className={reading ? 'reading' : undefined}>
       {project?.plan && reading && (
         <>
           <div className="read-head">
@@ -1245,7 +1243,7 @@ export function Sheet({
           )}
         </>
       )}
-    </aside>
+    </Docked>
   );
 }
 

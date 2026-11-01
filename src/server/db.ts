@@ -122,6 +122,8 @@ export interface CardRow {
   new_repo: string | null;
   /** What the card's worker last heard of its demo's page (`PageHeard` in workers.ts), so it hears of a change with its next step. */
   page_heard: string | null;
+  /** The card's code in addresses (`/c/<canvas>/card/<code>`): the start of its id's hex digits, unique among all cards (`SHORT`). */
+  short: string;
 }
 
 /** Words the usage limit keeps the Koordinator from reading (`talk.held`): until when, and how it reads them then (`Commander`'s). */
@@ -354,6 +356,9 @@ const SCHEMA = `
     decided_at TEXT
   );`;
 
+/** How many hex digits of its id a card's code has at least. */
+export const SHORT = 6;
+
 /**
  * The `user_version` of a database at `SCHEMA`: the steps its schema took before the release. One
  * that took fewer is from an Obeya before it (`OlderDatabase`).
@@ -450,6 +455,11 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN then_step TEXT; ALTER TABLE talk ADD COLUMN after_answer INTEGER;',
   // an error of a session that signed in with a token rather than this machine's account
   'ALTER TABLE events ADD COLUMN token INTEGER;',
+  // a card's code in addresses: the first `SHORT` hex digits of its id, one more for each card that shares them
+  `ALTER TABLE cards ADD COLUMN short TEXT;
+   UPDATE cards SET short = substr(replace(id, '-', ''), 1, ${SHORT});
+   ${Array.from({ length: 32 - SHORT }, (_, k) => `UPDATE cards SET short = substr(replace(id, '-', ''), 1, ${SHORT + 1 + k}) WHERE short IN (SELECT short FROM cards GROUP BY short HAVING count(*) > 1);`).join('\n   ')}
+   CREATE UNIQUE INDEX cards_short ON cards (short);`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -623,14 +633,20 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at)
-       VALUES ($id, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now)`,
+      `INSERT INTO cards (id, short, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at)
+       VALUES ($id, $short, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now)`,
     );
+    const taken = this.db.query('SELECT 1 FROM cards WHERE short = $s');
     const ids = this.db.transaction(() =>
       rows.map((r) => {
         const id = crypto.randomUUID();
+        // the shortest start of its hex digits no other card has as its code; the whole of them is its own
+        const hex = id.replaceAll('-', '');
+        let n = SHORT;
+        while (n < hex.length && taken.get({ s: hex.slice(0, n) })) n++;
         stmt.run({
           id,
+          short: hex.slice(0, n),
           canvas_id: r.canvas_id,
           kind: r.kind,
           state: r.state ?? null,

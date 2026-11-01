@@ -283,7 +283,7 @@ async function phone(d: Director) {
     veil.id = 'hero-phone';
     veil.innerHTML = `<div class="frame"><div class="screen"><div class="status"><span>9:41</span><span class="island"></span><span class="bars"><i></i></span></div><iframe src="${src}"></iframe></div></div>`;
     document.body.append(style, veil);
-  }, '/?c=tipjar&view=phone');
+  }, '/c/tipjar?view=phone');
   await d.page.frameLocator('#hero-phone iframe').locator('.ph-card', { hasText: 'Settle up after a trip' }).waitFor({ timeout: 30_000 });
 }
 
@@ -694,7 +694,7 @@ await runDemo(
         localStorage.setItem('obeya-help-key-known', '1');
         localStorage.setItem('obeya-move-marked-known', '1');
       });
-      await d.goto('/?c=tipjar');
+      await d.goto('/c/tipjar');
       await d.page.addStyleTag({ content: 'bun-hmr { display: none !important; }' });
       for (const name of Object.keys(clips)) await d.page.evaluate((n) => (window as unknown as Mic).__load(n, `/__demo/${n}.wav`), name);
       await card(d, 'App icon').waitFor();

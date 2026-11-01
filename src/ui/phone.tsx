@@ -25,6 +25,7 @@ import { agentWorks, cardTalk, koordinatorReads, obeyaWorks, opensWithTalk, runs
 import { seenOf } from './seen';
 import { noticeLine, tellers, useAck } from './tell';
 import { HoldToTalk, PushToTalk, ToldList, usePushToTalk, useTold } from './voice';
+import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 
 /**
  * Whether the page shows the phone view: on a phone, which has a coarse pointer and a short side
@@ -47,17 +48,8 @@ const DONE_OPEN = 'obeya-phone-done';
 /** How long the server may not answer before the view says so: a phone back from its lock screen reconnects within this. */
 const QUIET_MS = 3000;
 
-/** The address with `card` open (or none) and the conversation of what is in view open or not, keeping what else it holds (`?view=phone`, say). */
-function addressWith({ card, talk }: { card: string | null; talk: boolean }) {
-  const q = new URLSearchParams(location.search);
-  if (card) q.set('card', card);
-  else q.delete('card');
-  if (talk) q.set('talk', '');
-  else q.delete('talk');
-  const s = q.toString().replace(/=(&|$)/g, '$1');
-  return `${location.pathname}${s ? `?${s}` : ''}`;
-}
-const cardInAddress = () => new URLSearchParams(location.search).get('card');
+/** The card the address names, by its code or its id. */
+const cardInAddress = () => readAddress().card ?? null;
 const talkInAddress = () => new URLSearchParams(location.search).has('talk');
 /** What a step in the browser's history opened: a card, or the conversation of what is in view. */
 type Step = 'card' | 'talk';
@@ -189,6 +181,19 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
 
   // ---------------------------------------------------------------- what is open
   const [open, setOpenState] = useState<string | null>(cardInAddress);
+  /**
+   * The address with `card` open on its canvas (or the canvas of Obeya's conversation with none),
+   * and that conversation open or not, keeping what else it holds (`?view=phone`, say).
+   */
+  const addressWith = ({ card, talk }: { card: string | null; talk: boolean }) => {
+    const x = card ? allRef.current.find((c) => c.item.id === card) : undefined;
+    // a card not known yet (the snapshots still on their way) keeps the address that named it
+    const path = !card ? canvasPath(obeyaRef.current) : x ? cardPath(x.canvas.id, x.item) : location.pathname;
+    const q = queryWithout(location.search, 'c', 'card', 'talk');
+    return `${path}${talk ? (q ? `${q}&talk` : '?talk') : q}`;
+  };
+  /** The id of the card a code names, once the snapshots hold it. */
+  const resolve = (code: string | null) => (code && named(allRef.current.map((x) => x.item), code)?.id) || code;
   const openRef = useRef(open);
   openRef.current = open;
   // the conversation of what is in view, a panel over it: the open card's, else Obeya's
@@ -267,8 +272,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     if (!sw) return;
     const tapped = (e: MessageEvent) => {
       if (e.data?.type !== 'open' || typeof e.data.url !== 'string') return;
-      const card = new URL(e.data.url, location.href).searchParams.get('card');
-      if (card) openId(card);
+      const card = readAddress(new URL(e.data.url, location.href)).card;
+      if (card) openId(resolve(card)!);
       else home();
     };
     sw.addEventListener('message', tapped);
@@ -282,7 +287,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
         leavesCard.current = false;
         history.replaceState(null, '', addressWith({ card: null, talk: false }));
       }
-      setOpenState(cardInAddress());
+      setOpenState(resolve(cardInAddress()));
       setTalk(talkInAddress());
     };
     addEventListener('popstate', pop);
@@ -304,6 +309,14 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const allRef = useRef(all);
   allRef.current = all;
   const byId = (id: string) => allRef.current.find((x) => x.item.id === id)?.item;
+  // a card the address names by its code: its id once the snapshots hold it, and its address by the code
+  useEffect(() => {
+    const id = resolve(open);
+    if (!open || id === open) return;
+    if (looked.current === open) looked.current = id;
+    setOpenState(id);
+    history.replaceState(history.state, '', addressWith({ card: id, talk: talkRef.current }));
+  }, [all]);
   // approved cards the server is still landing: they need the owner no longer
   const [underway, setUnderway] = useState<string[]>([]);
   useEffect(() => setUnderway((u) => u.filter((id) => byId(id)?.state === 'waiting')), [snaps]);
@@ -311,7 +324,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
 
   // the canvas whose Obeya is spoken to without a card open
   const [obeyaCanvas, setObeyaCanvasState] = useState(() => {
-    const wanted = new URLSearchParams(location.search).get('c') ?? localStorage.getItem(OBEYA_CANVAS);
+    const wanted = readAddress().canvas ?? localStorage.getItem(OBEYA_CANVAS);
     return (canvases.find((c) => c.id === wanted) ?? canvases[0]!).id;
   });
   const obeyaId = canvases.some((c) => c.id === obeyaCanvas) ? obeyaCanvas : canvases[0]!.id;

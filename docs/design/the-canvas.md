@@ -29,6 +29,24 @@ the page anew, finds the numbers there and shows them in the bar from its first 
 too old to answer, or numbers that could not be fetched again for five minutes. The workers on other
 machines may use other logins; the bar shows this machine's.
 
+„brauchen dich“ counts what waits for the owner on every canvas, and its click slides out the
+inbox from the right instead of jumping to a card. The inbox is a sheet like Obeya's and a project's
+(see Sheets): docked to the edge from top to bottom, the canvas moved aside, one sheet open at a
+time, the same width and grip; the button's second click, the sheet's ✕ and Esc close it. The inbox lists every entry across canvases, the one that has waited the shortest
+time first. An entry shows its canvas small on top (name and icon, with since when it waits), the
+card's title large and, lighter, what the card waits for (the question, the summary, the proposal's
+text). Buttons answer an entry in one click, and exactly one of them, the default, is primary:
+„Freigeben“ on a handover („Mergen“ on a contributor's pull request, „Beenden“ where nothing
+changed), „Übernehmen und starten“ with „Verwerfen“ on a proposal that asks nothing, „Behalten“ with
+„Entfernen“ on a card its agent withdrew, and on a single-choice question of up to four options one
+button per option, primary only for the option its agent would pick. Anything the card alone can
+settle (an idea's reply, a multiple-choice question, a pull request waiting for a merge) has no quick
+reply. „Zur Karte“ is always there, last and never primary, even alone; it opens the card on this
+canvas or switches to the other canvas and opens it there. Obeya's own unread answers stand in it as
+an entry that leads to Obeya's sheet. A quick reply takes its entry out of the list at once and puts
+it back with the reason if the server refuses it. Tab still goes through the cards of this canvas
+that need the owner.
+
 The bar has no hint line. `?` (or the round `?` button) shows the legend of mouse and keys, ending
 with the link „Wunsch oder Fehler melden“ (see Wishes for Obeya's makers). The button only teaches
 the key: the legend says so, and once the key has been used the button is gone for good (per
@@ -123,9 +141,30 @@ width, growing with it up to the room above the microphone before it scrolls, li
 a looked-up answer is long, and a box of fixed height left most of the window unused. A proposal's
 text box grows until the reason below it would leave view.
 
+### Addresses
+
+The page's address names what it shows: `/c/<canvas>` a canvas, `/c/<canvas>/card/<code>` a card
+open on it (the phone view: the card full screen). The code is the card's short code, the first six
+hex digits of its id with one more digit for each card already holding those; its whole id works in
+its place, and the page then shows the short one. The short code is given once, when the card is
+made, and never changes, so a link stays good; existing cards got theirs when the database was
+migrated, each the shortest start of its id no other card shared. Opening an address (a link, a
+bookmark, a reload) opens that card at once, without the flight; an archived one unfolds from its
+row in the archive; a code no card has leaves the canvas open. Addresses of the form before paths
+(`/?c=<canvas>&card=<id>`) are rewritten to this form, so old links and bookmarks keep working.
+What else the page shows that is not a place (`?view=phone`, the phone's open conversation `?talk`)
+stays in the query.
+
+On the canvas each card opened and closed is a step in the browser's history: Back and Forward go
+through the cards the owner looked at, in place of the open one. Where a card names another (what a
+queued card waits for, the card a follow-up or a proposal comes from, the card that replaced a
+proposal, a prototype's idea, what Obeya waits on), the name is a link to that card while it is on
+the canvas: a click opens it in place of the open one, a click with a modifier in a tab of its own.
+Card faces on the canvas link nothing, since a click there opens the card itself.
+
 ### Sheets
 
-The sheets (Obeya's, a project's, a plan doc being read) are a sidebar docked to the window's right
+The sheets (Obeya's, a project's, a plan doc being read, the inbox) are a sidebar docked to the window's right
 edge, full height. The canvas is the rest: the top bar, the microphone and its confirmations, the
 edge indicators, the minimap and an unfolding card all keep to it. Opening, closing or resizing a
 sheet shifts the view so its middle stays in the middle of the rest. A card opened beside a sheet
@@ -220,6 +259,14 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **Path addresses with short card codes** (owner, 2026-11-01): a card's address is a permalink
+  that survives a reload and can be passed on, and paths leave room for views nested deeper. The
+  code is stored, not derived from the cards there are at the time, so a later card whose id starts
+  alike cannot make an earlier link ambiguous. Rejected: query parameters (`?c=`, `?card=`), and
+  the whole id in the address, which is long to read and pass on.
+- **„brauchen dich“ opens an inbox instead of jumping to the next card** (owner, 2026-11-01): with
+  several things waiting, a jump hides what the others are and cannot answer anything. Entries are
+  newest first, as in a mail inbox. Rejected: keeping the jump on the button (Tab keeps it).
 - **The look is the index card** (2026-10-10), prototyped beside a Swiss editorial card (black
   frame, solid state band, Schibsted Grotesk) that read better from afar but looked like a known
   designer style; a kanji seal and a kanban ticket were not pursued. Ruled lines and inks too close

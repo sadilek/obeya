@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CardEvent } from '../core/types';
-import { MIGRATIONS, NewerDatabase, OlderDatabase, RELEASED, Store } from './db';
+import { MIGRATIONS, NewerDatabase, OlderDatabase, RELEASED, SHORT, Store } from './db';
 
 const version = (path: string) => {
   const db = new Database(path);
@@ -90,6 +90,8 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE talk DROP COLUMN then_step');
     s.db.run('ALTER TABLE talk DROP COLUMN after_answer');
     s.db.run('ALTER TABLE events DROP COLUMN token');
+    s.db.run('DROP INDEX cards_short');
+    s.db.run('ALTER TABLE cards DROP COLUMN short');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -101,5 +103,40 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     expect(JSON.parse(after.card(held!.id)!.share!)).toMatchObject({ state: 'publishing', shown: { kind: 'video' } });
     expect(JSON.parse(after.card(project!.id)!.plan!)).toEqual({ file: 'docs/plan/gone.md', title: 'Gone', goal: '', workstreams: [], markdown: '' });
     expect(after.setting('c', 'work_retro_runs:app')).toBe('3');
+    expect(after.card(video!.id)!.short).toBe(video!.id.replaceAll('-', '').slice(0, SHORT));
+    after.db.close();
+  }));
+
+test('a card gets the shortest code no other card has: the start of its id, one digit longer for each card that shares it', () => {
+  const s = new Store(':memory:');
+  s.ensureCanvas('c', 'C');
+  const [a] = s.insert([{ canvas_id: 'c', kind: 'task', x: 0, y: 0 }]);
+  expect(a!.short).toMatch(new RegExp(`^[0-9a-f]{${SHORT}}$`));
+  expect(a!.id.replaceAll('-', '').startsWith(a!.short)).toBe(true);
+  // ids that share their start with cards there are already
+  const ids = ['abcdef01-0000-4000-8000-000000000001', 'abcdef01-0000-4000-8000-000000000002', 'abcdef01-0000-4000-8000-000000000003'];
+  const real = crypto.randomUUID;
+  let n = 0;
+  crypto.randomUUID = () => ids[n++] as ReturnType<typeof crypto.randomUUID>;
+  try {
+    expect(s.insert([0, 1, 2].map((y) => ({ canvas_id: 'c', kind: 'task' as const, x: 0, y }))).map((r) => r.short)).toEqual(['abcdef', 'abcdef0', 'abcdef01']);
+  } finally {
+    crypto.randomUUID = real;
+  }
+});
+
+test('the migration gives the cards there are codes of their own, longer where their ids start alike', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    const ids = ['12345678-0000-4000-8000-000000000001', '12345678-0000-4000-8000-000000000002', '1234aaaa-0000-4000-8000-000000000003', 'ffffffff-0000-4000-8000-000000000004'];
+    const insert = s.db.query("INSERT INTO cards (id, short, canvas_id, kind, x, y, created_at, updated_at) VALUES ($id, $id, 'c', 'task', 0, 0, '', '')");
+    for (const id of ids) insert.run({ id });
+    s.db.run('DROP INDEX cards_short');
+    s.db.run('ALTER TABLE cards DROP COLUMN short');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 1}`);
+    s.db.close();
+    const after = new Store(path);
+    expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
     after.db.close();
   }));
