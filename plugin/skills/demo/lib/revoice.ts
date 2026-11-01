@@ -9,9 +9,9 @@
 // synthesises the clips in that language's voice, stretches each scene's narrated stretch to the
 // new clip's length, so what happened on a word still happens on it, and rebuilds `demo.mp4`,
 // the captions, `chapters.vtt`, the stills, the poster and `index.html` in place. The demo as
-// recorded stays in `.work/revoice/original/`, which every later run reads from. A demo with
-// subtitles in further languages keeps them: the new narration's track gets the new clips' times,
-// and every other track, a cue per sentence as well, the same times. A silent demo (no voice) can
+// recorded stays in `.work/revoice/original/`, which every later run reads from. The demo keeps
+// the caption tracks it had, on the new clips' times: a track in the new narration's language takes
+// its sentences, every other keeps its own, a cue per sentence as well. A silent demo (no voice) can
 // be voiced this way too.
 //
 // Plain Node with type stripping, like the director.
@@ -24,7 +24,7 @@ import { isMain } from './here.ts';
 import { LANGUAGE_NAMES, LANGUAGES, type Language } from './locale.ts';
 import { inLanguage, readDemoSettings, silent, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
-import { sentencesOf, sharedOut, type Track } from './subtitles.ts';
+import { listedTracks, sentencesOf, sharedOut, type Track, trackFile } from './subtitles.ts';
 
 /** What a demo says, in one language: what is translated. */
 export interface Words {
@@ -253,7 +253,7 @@ export async function revoice(dir: string, language: string | undefined) {
   const total = frames.reduce((t, f) => t + (f.seconds ?? 0), 0);
   const newList = path.join(here, 'frames.txt');
   fs.writeFileSync(newList, frameListText(retimed(frames, at), work, here));
-  // the new narration's sentences share its clips; every other track keeps a cue per sentence on the same times
+  // the new narration's sentences share its clips; every track keeps a cue per sentence on the same times
   const narration: Track = { language: to, scenes: words.scenes.map((s) => sentencesOf(s.say)) };
   const marks: Mark[] = captions.map((c, i) => ({
     title: words.scenes[i]!.title,
@@ -263,7 +263,7 @@ export async function revoice(dir: string, language: string | undefined) {
     sentences: sharedOut(clips[i]!.seconds, narration.scenes[i]!),
   }));
   const { viewport, sharp } = renderOf(path.join(original, 'demo.mp4'));
-  assemble({ outDir: dir, work: here, list: newList, clips, marks, total: at(total), viewport, sharp, title: words.title, tracks: [narration, ...otherTracks(original, page.language, says, to)], report: words.report, language: to });
+  assemble({ outDir: dir, work: here, list: newList, clips, marks, total: at(total), viewport, sharp, title: words.title, narration, tracks: keptTracks(original, page.language, says, narration), report: words.report, language: to });
 
   console.log(`\nre-voiced in ${LANGUAGE_NAMES[to]}; the narration per scene:`);
   stretches.forEach((s, i) => {
@@ -274,19 +274,19 @@ export async function revoice(dir: string, language: string | undefined) {
 }
 
 /**
- * The caption tracks of the demo as recorded but the one in `to`, the language it is re-voiced in:
- * that of its narration (in `from`, its sentences from `says`) and of each further language, the
- * texts of its cues, scene by scene. A demo from before the tracks has the narration's alone.
+ * The caption tracks of the demo as recorded, in their order, re-voiced as `narration`: the one in
+ * its language takes its sentences, that of the recorded narration (in `from`) the sentences of
+ * `says`, each other the texts of its cues, scene by scene. A demo from before its `captions.vtt`
+ * named its tracks had the narration's alone, and keeps that.
  */
-function otherTracks(original: string, from: string | undefined, says: string[], to: string): Track[] {
-  const tracks: Track[] = [];
-  if (from && from !== to) tracks.push({ language: from, scenes: says.map(sentencesOf) });
-  for (const f of fs.readdirSync(original).sort()) {
-    const language = TRACK_FILE.exec(f)?.[1];
-    if (!language || language === to || language === from) continue;
-    tracks.push({ language, scenes: cuesByScene(cuesOf(read(path.join(original, f))), says).map((cues) => cues.map((c) => c.text)) });
-  }
-  return tracks;
+export function keptTracks(original: string, from: string | undefined, says: string[], narration: Track): Track[] {
+  const listed = listedTracks(read(path.join(original, 'captions.vtt')));
+  if (!listed) return [narration];
+  return listed.map((language) => {
+    if (language === narration.language) return narration;
+    if (language === from) return { language, scenes: says.map(sentencesOf) };
+    return { language, scenes: cuesByScene(cuesOf(read(path.join(original, trackFile(language)))), says).map((cues) => cues.map((c) => c.text)) };
+  });
 }
 
 /** What the agent is asked to translate, and how. */

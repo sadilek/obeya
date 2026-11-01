@@ -1,6 +1,6 @@
 // Records a narrated feature demo: a scripted walk through the running app, spoken in the voice the
-// demo settings name (`settings.ts`), rendered as an MP4 with chapters and captions, a track per
-// subtitle language (`subtitles.ts`), plus a one-page report beside it. Without a voice (`none`)
+// demo settings name (`settings.ts`), rendered as an MP4 with chapters and a caption track per
+// subtitle language the settings list (`subtitles.ts`), plus a one-page report beside it. Without a voice (`none`)
 // the video is silent and its captions tell the narration, each scene as long as it takes to read.
 //
 // A demo file default-exports nothing; it calls `runDemo(spec, import.meta.dirname)` and is run
@@ -16,7 +16,7 @@ import { launchChromium, SILENT_SPEECH } from '../../../lib/chromium.ts';
 import { languageName, preferredTrack } from './locale.ts';
 import { type DemoSettings, demoSettingsHere, type NarrationLanguage, silent, subtitleLanguages, withVoice } from './settings.ts';
 import { checkSetup, describeSetup } from './setup.ts';
-import { readingTimes, sentencesOf, sharedOut, subtitleTracks, type Track, trackFile, trackVtt, vttTime } from './subtitles.ts';
+import { narrationTrack, narrationVtt, readingTimes, sentencesOf, sharedOut, subtitleTracks, type Track, trackFile, trackVtt, vttTime } from './subtitles.ts';
 import { CLOCK, type Cut, type Frame, frameDurations, laterLabel, mmss, onPaintTime, readClock, videoTime } from './timeline.ts';
 import { ttsArgs, voiceSpec } from './voices.ts';
 
@@ -758,11 +758,13 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     return;
   }
   const { tracks } = subtitles;
+  const narration = narrationTrack(source);
   let clips: Clip[] | undefined;
   if (SILENT) writeJobs(says, work);
   else clips = synthesize(says, work);
-  // each sentence's time: its share of the scene's clip, or as long as it takes to read
-  const timings = spec.scenes.map((_, i) => (clips ? sharedOut(clips[i]!.seconds, tracks[0]!.scenes[i]!) : readingTimes(tracks.map((t) => t.scenes[i]!))));
+  // each sentence's time: its share of the scene's clip, or as long as it takes to read in the slowest of the subtitles' languages
+  const shown = tracks.length ? tracks : [narration];
+  const timings = spec.scenes.map((_, i) => (clips ? sharedOut(clips[i]!.seconds, narration.scenes[i]!) : readingTimes(shown.map((t) => t.scenes[i]!))));
   const speech = timings.map((t) => t.reduce((a, b) => a + b, 0));
 
   const { browser, ctx, page, d } = await openPage(spec, viewport, work, true);
@@ -813,7 +815,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   frameList(cast.frames, t0, tEnd, d.cuts, list);
   assemble({
     outDir, work, list, clips, marks, total, viewport, sharp: !!spec.sharp,
-    title: spec.title, tracks, report: spec.report, language: LANGUAGE,
+    title: spec.title, narration, tracks, report: spec.report, language: LANGUAGE,
   });
   if (d.cuts.length) console.log(`cut ${d.cuts.length / 2}× (${Math.round(d.cuts.reduce((s, c) => s + c.to - c.from, 0))} s of waiting)`);
 }
@@ -843,7 +845,9 @@ export interface Take {
   /** Twice the pixels and gentle compression (`DemoSpec.sharp`). */
   sharp: boolean;
   title: string;
-  /** The captions, the narration's track first: per language, each scene's sentences. */
+  /** The narration's captions: each scene's sentences. */
+  narration: Track;
+  /** The caption tracks the demo offers, in their order (none: no subtitles): per language, each scene's sentences. */
   tracks: Track[];
   report: Report;
   language: NarrationLanguage;
@@ -851,10 +855,10 @@ export interface Take {
 
 /**
  * Makes the take into `demo.mp4` with its narration (none for a silent demo), a caption file per
- * track and `captions.vtt` (the narration's), `chapters.vtt`, a still from the middle and the end of
- * each scene, the poster and the report page; prints the review table.
+ * track and `captions.vtt` (the narration's, naming the tracks: `narrationVtt`), `chapters.vtt`, a
+ * still from the middle and the end of each scene, the poster and the report page; prints the review table.
  */
-export function assemble({ outDir, work, list, clips, marks, total, viewport, sharp, title, tracks, report, language }: Take) {
+export function assemble({ outDir, work, list, clips, marks, total, viewport, sharp, title, narration: spoken, tracks, report, language }: Take) {
   const scale = sharp ? 2 : 1;
   // Narration track: every clip at its scene's offset, levelled once as a whole.
   const narration = path.join(work, 'narration.wav');
@@ -886,7 +890,7 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   // a track of an earlier render in a language no longer among them goes
   for (const f of fs.readdirSync(outDir)) if (/^captions\.[^.]+\.vtt$/.test(f) && !tracks.some((t) => trackFile(t.language) === f)) fs.rmSync(path.join(outDir, f));
   for (const t of tracks) fs.writeFileSync(path.join(outDir, trackFile(t.language)), trackVtt(t, marks));
-  fs.writeFileSync(path.join(outDir, 'captions.vtt'), trackVtt(tracks[0]!, marks));
+  fs.writeFileSync(path.join(outDir, 'captions.vtt'), narrationVtt(spoken, marks, tracks.map((t) => t.language)));
   // The scenes as chapters, for a player outside Obeya (the hero video on obeya.si reads them).
   const chapters = ['WEBVTT', ''];
   marks.forEach((m, i) => chapters.push(`${vttTime(m.start)} --> ${vttTime(i + 1 < marks.length ? marks[i + 1]!.start : total)}`, m.title, ''));
@@ -929,11 +933,11 @@ const PAGE_WORDS: Record<NarrationLanguage, { question: string }> = {
 };
 
 /**
- * The report page. Its caption tracks (`tracks`, the narration's first) are named in its language;
- * a silent video shows one from the start: in the viewer's language where there is a track in it,
- * else the narration's.
+ * The report page. Its caption tracks (`tracks`, in the settings' order; none: no subtitles) are
+ * named in its language; a silent video shows one from the start: in the viewer's language where
+ * there is a track in it, else the first.
  */
-export function reportPage(title: string, r: Report, marks: { title: string; start: number }[], language: NarrationLanguage, tracks: string[] = [language], silentVideo = false) {
+export function reportPage(title: string, r: Report, marks: { title: string; start: number }[], language: NarrationLanguage, tracks: string[] = [], silentVideo = false) {
   const w = PAGE_WORDS[language];
   const summary = r.summary
     .split(/\n\s*\n/)

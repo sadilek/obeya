@@ -9,6 +9,7 @@ import { join, resolve, sep } from 'node:path';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { languageName, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
+import { listedTracks, trackFile } from '../../plugin/skills/demo/lib/subtitles.ts';
 
 /** The languages a page speaks: those a demo is narrated in. */
 export type PageLanguage = 'de' | 'en';
@@ -156,7 +157,7 @@ export interface DemoPageParts extends PageParts {
   /** The video's URL, or its bytes in base64 for a page that holds everything. */
   video: { src: string } | { base64: string };
   poster?: string;
-  /** Its caption tracks, the narration's first. */
+  /** Its caption tracks, in their order (none: no subtitles). */
   tracks: PageTrack[];
   /** A video without sound: its captions show from the start. */
   silent?: boolean;
@@ -169,25 +170,20 @@ export interface CaptionTrack {
 }
 
 /**
- * The caption tracks of a video demo's directory: a file per language (`captions.<language>.vtt`),
- * the narration's first (the one `captions.vtt` holds as well), or, from before those, `captions.vtt` alone.
+ * The caption tracks of a video demo's directory: those its `captions.vtt` names (`listedTracks`), a
+ * file per language (`captions.<language>.vtt`) in their order, none where it names none; one from
+ * before it named them has its `captions.vtt` alone.
  */
 export function captionTracks(dir: string): CaptionTrack[] {
-  let files: string[];
+  let narration: string;
   try {
-    files = readdirSync(dir);
+    narration = readFileSync(join(dir, 'captions.vtt'), 'utf8');
   } catch {
     return [];
   }
-  const tracks = files.flatMap((f) => {
-    const language = /^captions\.([A-Za-z0-9-]+)\.vtt$/.exec(f)?.[1];
-    return language ? [{ file: f, language }] : [];
-  });
-  if (!files.includes('captions.vtt')) return tracks;
-  if (!tracks.length) return [{ file: 'captions.vtt' }];
-  const narration = readFileSync(join(dir, 'captions.vtt'), 'utf8');
-  const first = tracks.find((t) => readFileSync(join(dir, t.file), 'utf8') === narration);
-  return first ? [first, ...tracks.filter((t) => t !== first)] : tracks;
+  const listed = listedTracks(narration);
+  if (!listed) return [{ file: 'captions.vtt' }];
+  return listed.flatMap((language) => (/^[A-Za-z0-9-]+$/.test(language) && existsSync(join(dir, trackFile(language))) ? [{ file: trackFile(language), language }] : []));
 }
 
 /** How much of an MP4's start is searched for its tracks: the director writes them there (`+faststart`). */
@@ -300,7 +296,7 @@ const CUES = `
   }
 `;
 
-// a silent video shows its captions from the start: in the viewer's language where it has a track in it, else the narration's (its first)
+// a silent video shows its captions from the start: in the viewer's language where it has a track in it, else the first
 const SILENT_CAPTIONS = `
   for (const sv of document.querySelectorAll('video[data-silent]')) {
     const tracks = [...sv.textTracks], pick = (${preferredTrack.toString()})(tracks.map((t) => t.language), navigator.languages);

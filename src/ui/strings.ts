@@ -1426,8 +1426,8 @@ const de = {
       languages: { de: 'Deutsch', en: 'Englisch' } satisfies Record<NarrationLanguage, string>,
       subtitles: 'Untertitelsprachen',
       subtitlesHint: (narration: string) =>
-        `Sprachcodes, durch Komma getrennt, z. B. fr oder pt-BR. Jede wird eine eigene Untertitelspur, die man im Player umschaltet; ${narration} als Sprache der Erzählung ist immer dabei. Der Agent übersetzt die Erzählung beim Rendern.`,
-      subtitlesPlaceholder: 'leer: nur die Sprache der Erzählung',
+        `Sprachcodes, durch Komma getrennt, z. B. de, fr oder pt-BR. Genau diese werden Untertitelspuren, die man im Player umschaltet; ${narration} als Sprache der Erzählung nur, wenn sie in der Liste steht. Der Agent übersetzt die Erzählung beim Rendern. Leer: keine Untertitel; nur ein Video ohne Stimme zeigt dann die Erzählung als Untertitel.`,
+      subtitlesPlaceholder: 'leer: keine Untertitel',
       subtitlesUnknown: (codes: string) => `Unbekannter Sprachcode: ${codes}`,
       voice: 'Stimme',
       groups: { local: 'Auf diesem Rechner', service: 'Dienst (API-Schlüssel)', own: 'Eigene' },
@@ -3299,8 +3299,8 @@ const en: Strings = {
       languages: { de: 'German', en: 'English' },
       subtitles: 'Subtitle languages',
       subtitlesHint: (narration: string) =>
-        `Language codes separated by commas, e.g. fr or pt-BR. Each becomes a subtitle track of its own, switched in the player; ${narration}, the narration language, is always one. The agent translates the narration when it renders.`,
-      subtitlesPlaceholder: 'empty: the narration language only',
+        `Language codes separated by commas, e.g. de, fr or pt-BR. Exactly these become subtitle tracks, switched in the player; ${narration}, the narration language, only when it is in the list. The agent translates the narration when it renders. Empty: no subtitles; only a video without a voice then shows the narration as subtitles.`,
+      subtitlesPlaceholder: 'empty: no subtitles',
       subtitlesUnknown: (codes: string) => `Unknown language code: ${codes}`,
       voice: 'Voice',
       groups: { local: 'On this machine', service: 'Service (API key)', own: 'Your own' },

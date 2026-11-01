@@ -87,15 +87,24 @@ synthesised once and kept as it comes (see Decisions).
 
 #### Subtitles and silent demos
 
-Every demo has captions, a cue per sentence of its narration, in the narration language and in each
-further language of the settings' `subtitles` (BCP 47 codes such as `fr` or `pt-BR`, any language
-`Intl` names, not only those Obeya speaks; the configuration dialog refuses a code it does not know,
-and an empty list means the narration's language alone). Each language is a file of its own,
-`captions.<language>.vtt`; `captions.vtt` holds the narration's track as well, for players that know
-one track (old demos, the hero video's scripts). A sentence ends at `.`, `!`, `?` or `…` before a
-space and a capital, not after a single letter, a number (a German ordinal) or a common abbreviation.
+A demo's subtitles are caption tracks in exactly the languages of the settings' `subtitles`, in
+their order (BCP 47 codes such as `fr` or `pt-BR`, any language `Intl` names, not only those Obeya
+speaks; the configuration dialog refuses a code it does not know). The narration's language is a
+track only where it is listed. An empty list means no subtitles, except in a silent demo, which would
+then show nothing of its narration: its one track is the narration's. Whether a voice speaks does not
+depend on the list: a voiced demo with listed languages has both. Each track is a file of its own,
+`captions.<language>.vtt`, a cue per sentence of the narration. A sentence ends at `.`, `!`, `?` or
+`…` before a space and a capital, not after a single letter, a number (a German ordinal) or a common
+abbreviation.
 
-The agent that renders translates the narration: before recording, the render writes the sentences
+`captions.vtt` holds the narration's cues in every demo, track or not: Obeya reads there what the
+narration says at a place a comment refers to, and the chapters of a demo without `chapters.vtt`.
+Its first line names the tracks the demo offers, in order (`WEBVTT - subtitles: de fr`, or
+`WEBVTT - subtitles: none`); every player offers those and only those. A `captions.vtt` whose first
+line names none is from before the tracks and is its demo's one track (old demos, the hero video's
+scripts).
+
+The agent that renders translates the narration into each listed language but its own: before recording, the render writes the sentences
 per scene (`.work/subtitles/source.json`), and while a language lacks its translation
 (`.work/subtitles/<language>.json`) it stops (exit 2) and says where each goes, as re-voicing does.
 A translation keeps the sentences one to one, or it is refused, so every track shares the cue times.
@@ -104,16 +113,17 @@ After the narration changes, a translation made for the old one is set aside
 
 With a voice, a scene's clip is shared out over its sentences by their length. With the voice
 `none` there is no synthesis, no audio track and nothing to install: each sentence stays as long as
-it takes to read in the language slowest to read it (15 characters a second, a wide character as in
+it takes to read in the slowest to read of its tracks' languages (15 characters a second, a wide character as in
 Chinese counting twice, at least 2 s), and `untilSpoken` waits for that, so demo scripts are the same
 for both.
 
-Every player (the card, the report page, a shared page online and as one file, a ZIP) offers all
-tracks, each with its language and named in the language of the interface or page (French is
-„Französisch“ on a German one). A silent video shows its captions from the start: the track in the
-interface's language on the card, the browser's preferred languages on a page (by the language alone
-where no track has the very variant), else the narration's. Obeya tells a silent video by its MP4's
-track list (no audio handler), read at the handover, and keeps the track languages with the demo.
+Every player (the card, the report page, a shared page online and as one file, a ZIP) offers the
+demo's tracks, none where it has none, each with its language and named in the language of the
+interface or page (French is „Französisch“ on a German one). A silent video shows its captions from
+the start: the track in the interface's language on the card, the browser's preferred languages on a
+page (by the language alone where no track has the very variant), else the first of the list. Obeya
+tells a silent video by its MP4's track list (no audio handler), read at the handover, and keeps the
+track languages with the demo.
 
 #### The demo directory
 
@@ -333,8 +343,9 @@ report, whether it was sharp), so it works on a demo of any director version, a 
    `untilSpoken` lands on the same word; leads, gaps and the cuts' flashes keep their length. A scene
    whose words change length by more than a third is flagged for a look at its stills.
 4. Video, captions, chapters, stills, poster and report are rebuilt in place by the render's own
-   code. The new narration's track gets its clips' times, and every other track, the old narration's
-   included, the same cue times sentence by sentence. The demo as recorded stays in
+   code. The demo keeps the tracks it had (one from before the tracks, its narration's), all on the
+   new clips' times sentence by sentence: a track in the new narration's language takes its
+   sentences, every other its own, the old narration's included. The demo as recorded stays in
    `.work/revoice/original/`, which every later run reads from.
 
 The card then shows it (`POST …/cards/<id>/demo-rebuilt`): the chapters are read again and the share
@@ -521,6 +532,15 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   demo** (2026-11-01): a silent demo needs no other switch, and one more track costs a voiced demo
   only a translation. Captions come a sentence per cue for every demo, so all tracks share their
   times; a scene as one block was too long to read along.
+- **The subtitle languages are the tracks, no more** (owner, 2026-11-01): an empty list means no
+  subtitles, and the narration's language is a track only when listed, so a voiced English demo for
+  German and French readers offers just those two. The one exception is a silent demo with an empty
+  list, which gets the narration's track rather than neither sound nor text. Rejected: the
+  narration's track always there, with the list adding further ones (the first version), which
+  left no way to a video without subtitles. `captions.vtt` stays in every demo with the narration
+  and names the tracks in its first line, so placing comments works without subtitles and old demos
+  (no names there) keep their one track; a separate manifest would have been one more file to
+  serve and publish.
 - **A demo is a video or an HTML artifact, chosen by the worker** (2026-10-01): drafts to choose
   from (a logo) say more side by side on a page than in a recording.
 - **There is no handover without a demo** (owner, 2026-10-15): without one the owner has to read to

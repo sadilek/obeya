@@ -1881,7 +1881,7 @@ function DemoView({
                 }}
               >
                 {demo.tracks ? (
-                  // a track per language, named in the interface's; a silent video shows one from the start, in the interface's language where it has a track in it
+                  // a track per language, named in the interface's (none: no subtitles); a silent video shows one from the start, in the interface's language where it has a track in it, else the first
                   demo.tracks.map((l) => (
                     <track
                       key={src(`captions.${l}.vtt`)}

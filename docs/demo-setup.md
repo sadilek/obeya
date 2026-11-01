@@ -60,12 +60,14 @@ form, e.g. `"Branch": "Bräntsch"`), and from a mark in a demo's script, `{Canva
 captions show the written form; the other voices get it too. To add a term, write its spoken form
 into the lexicon and listen to a clip of it in Piper first.
 
-## Subtitles in other languages
+## Subtitles
 
-"Untertitelsprachen" in the same settings lists further languages for the subtitles (`fr, pt-BR`,
-any BCP 47 code); the narration's language is always one. Each becomes a track the viewer switches
-in the player. The agent that renders a demo translates its narration into them, so they need
-nothing installed.
+"Untertitelsprachen" in the same settings lists the languages of the subtitles (`de, fr, pt-BR`, any
+BCP 47 code). Exactly these become tracks the viewer switches in the player, the narration's
+language only when it is in the list. Left empty, a demo has no subtitles; only a silent one (voice
+"None") then shows its narration as subtitles. The voice speaks either way, so a voiced demo with
+listed languages has both. The agent that renders a demo translates its narration into them, so they
+need nothing installed.
 
 ## Without Obeya
 

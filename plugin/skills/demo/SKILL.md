@@ -196,8 +196,8 @@ Start the narration as soon as the `say` texts are written, while you still scri
 (`run` may be empty then): `--narration` synthesises and caches the clips and exits, so the
 render later starts recording at once.
 
-Where the settings name subtitle languages beside the narration's (`subtitles` in what
-`lib/settings.ts` prints), a render first writes the sentences to translate
+Where the subtitle languages (`subtitles` in what `lib/settings.ts` prints) include others than
+the narration's, a render first writes the sentences to translate
 (`.work/subtitles/source.json`), says where each language's translation goes
 (`.work/subtitles/<language>.json`) and exits with code 2 before recording. Translate them
 yourself, a sentence for a sentence, as many per scene as the source has (a translation with
@@ -239,8 +239,9 @@ the locator it waited for.
 
 ## 6. Review your own video — before the owner sees it
 
-- The render writes `captions.vtt` (the narration's) and a `captions.<language>.vtt` per subtitle
-  language, a cue per sentence, all on the same times.
+- The render writes a `captions.<language>.vtt` per subtitle language, and `captions.vtt` with the
+  narration whether or not it is one of them, its first line naming the tracks the demo offers
+  (`WEBVTT - subtitles: de fr`, or `none`): a cue per sentence, all on the same times.
 - The render ends with a review table: per scene its chapter time and title. A scene flagged
   with seconds "without narration" shows a stretch where nothing is said: if it only waits, wrap
   the wait in `d.skip`; otherwise let the narration say what happens there.
@@ -271,7 +272,7 @@ appears with its meaning after it, in a `say` as an aside („Teilen“, share, 
 parentheses at times), elsewhere „Teilen“ (Share); read the labels from `review/`. The next run
 synthesises the clips, stretches each scene's narrated stretch to its new clip so actions stay on
 their words, and rebuilds the video, captions, chapters, stills and report page in place; the demo
-as recorded stays in `.work/revoice/original/`. Its other subtitle tracks stay, on the new times.
+as recorded stays in `.work/revoice/original/`. Its subtitle tracks stay the ones it had, on the new times.
 Check the result as section 6 says, the scenes it flags for a changed pace first.
 
 ## 7. Feedback
