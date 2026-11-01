@@ -441,6 +441,35 @@ export class Board {
     for (const fn of this.noticeListeners) fn(n);
   }
 
+  /** Owner-drawn dependencies, directed from the prerequisite to the waiting card. */
+  manualDependencies(): [string, string][] {
+    try { return JSON.parse(this.setting('manual_dependencies') || '[]'); } catch { return []; }
+  }
+
+  connect(from: string, to: string, remove = false) {
+    const items = this.snapshot().items;
+    if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
+      throw new BadRequest('unknownCard', 'invalid dependency');
+    if (!remove && items.some((i) => (i.id === from || i.id === to) && (i.source === 'plan' || i.kind === 'project')))
+      throw new BadRequest('invalid', 'project dependencies are decided from the plan');
+    const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
+    if (!remove) {
+      // A cycle would leave the cards waiting for each other forever.
+      const all = [...edges, ...items.flatMap((i): [string, string][] => [...(i.buildsOn ?? []), ...(i.queue && 'behind' in i.queue ? i.queue.behind : []), ...(i.snoozed?.on ? [i.snoozed.on.card] : [])].map((before) => [before, i.id]))];
+      const seen = new Set<string>();
+      const visit = (id: string): boolean => {
+        if (id === from) return true;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return all.some(([a, b]) => a === id && visit(b));
+      };
+      if (visit(to)) throw new BadRequest('invalid', 'dependency cycle');
+      edges.push([from, to]);
+    }
+    this.setSetting('manual_dependencies', JSON.stringify(edges));
+    this.changed();
+  }
+
   /**
    * A card changed. The listeners hear of it once the code that made the change is through, once
    * for all it changed: each of them may ask for the snapshot, which a change builds anew, and a
@@ -1508,6 +1537,14 @@ export class Board {
       this.tell();
       rows = this.store.cards(this.canvas.id);
       items = toItems(rows, docs, this.home);
+    }
+    const manual = this.manualDependencies();
+    if (manual.length) {
+      const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
+      items = items.map((i) => {
+        const on = eligible.has(i.id) ? manual.filter(([from, to]) => to === i.id && eligible.has(from)).map(([from]) => from) : [];
+        return on.length ? { ...i, manualDependsOn: on } : i;
+      });
     }
     items = this.withPrototypes(items);
     items = this.withElsewhere(items);

@@ -224,6 +224,7 @@ export const api = {
   installUpdate: () => call<{ updating: boolean }>('POST', '/api/app-update/install'),
   /** Fast-forwards the checkout Obeya runs from to its upstream; Obeya then restarts with the new code once the workers paused. */
   pullSource: () => call<{ source: SourceUpdate | null }>('POST', '/api/source-update/pull'),
+  dependency: (from: string, to: string, remove = false) => call<void>(remove ? 'DELETE' : 'POST', at('/dependencies'), { from, to }),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   /** The card that writes a repository's settings for everyone, on the canvas it belongs to (not necessarily the shown one). */
   adapterSetup: (canvas: string, repo: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/adapter-setup`, { repo }),

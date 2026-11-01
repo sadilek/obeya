@@ -733,7 +733,14 @@ export class Koordinator {
   }
 
   private startNow(cardId: string, why: string) {
-    const since = this.o.board.item(cardId)?.queue?.since;
+    const card = this.o.board.item(cardId);
+    const since = card?.queue?.since;
+    const items = this.o.board.snapshot().items;
+    const manual = (card?.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
+    if (manual.length) {
+      this.setQueue(cardId, { behind: manual, buildsOn: manual, manualWait: manual, reason: this.o.board.t.koordinator.buildsOn }, since);
+      return;
+    }
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.says(why));
     this.launch(cardId, since);
@@ -819,13 +826,15 @@ export class Koordinator {
         if (this.o.board.item(w.id)?.queue) full.add(w.repo);
         continue;
       }
-      const q = w.queue as { behind: string[]; reason: string; buildsOn?: string[] };
-      // what it builds on holds it until it has landed, also while not started or stopped
-      const still = q.behind.filter((id) => active.has(id) || (q.buildsOn?.includes(id) && unlanded(items.find((i) => i.id === id))));
-      if (still.length === q.behind.length) continue;
+      const q = w.queue as { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] };
+      const manual = (w.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
+      const inferred = q.behind.filter((id) => !q.manualWait?.includes(id));
+      const manualOnly = manual.filter((id) => !inferred.includes(id));
+      const still = [...new Set([...inferred.filter((id) => active.has(id) || (q.buildsOn?.includes(id) && unlanded(items.find((i) => i.id === id)))), ...manual])];
+      if (still.length === q.behind.length && still.every((id) => q.behind.includes(id)) && manualOnly.length === (q.manualWait?.length ?? 0) && manualOnly.every((id) => q.manualWait?.includes(id))) continue;
       if (still.length) {
-        const buildsOn = q.buildsOn?.filter((id) => still.includes(id));
-        this.setQueue(w.id, { behind: still, reason: q.reason, ...(buildsOn?.length && { buildsOn }) });
+        const buildsOn = [...new Set([...(q.buildsOn ?? []).filter((id) => still.includes(id) && !q.manualWait?.includes(id)), ...manual])];
+        this.setQueue(w.id, { behind: still, reason: q.reason, ...(buildsOn.length && { buildsOn }), ...(manualOnly.length && { manualWait: manualOnly }) });
         continue;
       }
       // what it waited for is done; with nothing else running it starts, else it is judged again

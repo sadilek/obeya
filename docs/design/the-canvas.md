@@ -73,7 +73,11 @@ the project. Nothing around it moves. Collapsing is stored in this Obeya, not in
 holds across reloads, devices and the archive.
 
 A planned or queued card shows a play button under the pointer that starts it without unfolding.
-Under the pointer a card also shows the waits around it (see Scheduling).
+Under the pointer a card also shows the waits around it (see Scheduling). A dot appears in the card’s colour when the pointer comes within 16 screen pixels of the middle of an edge; it lets the
+owner draw a dependency from a prerequisite to the card that waits for it. The ghost arrow follows
+the pointer, snaps when over a card or within 8 screen pixels of its edge, and a click connects it; Escape cancels. Manual arrows stay on
+the canvas, and their trash button removes them after confirmation. Inferred waits have no delete
+button. Projects and their workstreams have no dots: their order is decided from the plan. Cycles are refused; manual dependencies enter scheduling (see Scheduling).
 
 #### A project arranged by its dependencies
 
