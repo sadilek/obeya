@@ -25,8 +25,8 @@ opened after the installation (on Windows, `winget` changes the PATH only for ne
 | Playwright | drives the browser | `bun install` in the Obeya checkout | same | same |
 | A Chromium browser | the recording | Chrome: `brew install --cask google-chrome` | Chrome on x64 ([google.com/chrome](https://www.google.com/chrome/)); on ARM, where there is no Chrome: `npx playwright-core install --with-deps chromium` in the Obeya checkout | Edge comes with Windows; Chrome (`winget install Google.Chrome`) is used when present |
 | ffmpeg with libx264 | cutting the video, converting the narration | `brew install ffmpeg` | Debian, Ubuntu: `sudo apt install ffmpeg`; Fedora: the `ffmpeg` of [RPM Fusion](https://rpmfusion.org/Configuration) (Fedora's own `ffmpeg-free` has no libx264); Arch: `sudo pacman -S ffmpeg` | `winget install Gyan.FFmpeg` |
-| uv | runs the Python parts (narration) in environments of their own; it fetches Python itself | `brew install uv` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `winget install --id=astral-sh.uv -e` |
-| A voice | speaking the narration | see below | see below | see below |
+| uv | runs the Python parts (narration) in environments of their own; it fetches Python itself; not needed for silent demos | `brew install uv` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `winget install --id=astral-sh.uv -e` |
+| A voice | speaking the narration; not needed for silent demos | see below | see below | see below |
 | poppler (`pdftoppm`) | only for demos that show a PDF (`d.pdfFrom`) | `brew install poppler` | `sudo apt install poppler-utils` | `winget install oschwartz10612.Poppler` |
 
 The browser is looked for in this order: `DEMO_CHROME` (the path of any Chromium-based browser),
@@ -36,6 +36,9 @@ Chrome, Edge, Playwright's own Chromium.
 
 The voice is chosen in Obeya's settings ("Demos"); "Anhören" plays a sentence in it first.
 
+- **None (subtitles only)**: silent videos whose subtitles tell the narration, on from the start;
+  each scene lasts as long as its text takes to read. Nothing to install. `DEMO_VOICE=none` renders
+  one demo that way.
 - **Piper**, the default: runs on any CPU at about twice real time. Obeya installs it on request
   (about 265 MB, into `voices/` in Obeya's home); without Obeya, `node
   plugin/skills/demo/lib/voices.ts install`.
@@ -56,6 +59,13 @@ English terms are respelt for them: from `plugin/skills/demo/lib/lexicon.de.json
 form, e.g. `"Branch": "Bräntsch"`), and from a mark in a demo's script, `{Canvas|Kännwes}`. The
 captions show the written form; the other voices get it too. To add a term, write its spoken form
 into the lexicon and listen to a clip of it in Piper first.
+
+## Subtitles in other languages
+
+"Untertitelsprachen" in the same settings lists further languages for the subtitles (`fr, pt-BR`,
+any BCP 47 code); the narration's language is always one. Each becomes a track the viewer switches
+in the player. The agent that renders a demo translates its narration into them, so they need
+nothing installed.
 
 ## Without Obeya
 

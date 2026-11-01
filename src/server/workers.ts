@@ -15,7 +15,7 @@ import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
 import { BadRequest, type Board, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
-import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
+import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, videoFacts } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import { outsidePlanDir } from './repo';
@@ -3720,7 +3720,7 @@ export class Workers {
                 .enum(['video', 'html'])
                 .optional()
                 .describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at, for results that are seen rather than watched happening"),
-              dir: z.string().describe('absolute path of the demo: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
+              dir: z.string().describe('absolute path of the demo: a video holds demo.mp4 and captions.vtt (and a captions.<language>.vtt per subtitle language), an HTML artifact holds index.html and the files it loads'),
               chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
               question: z
                 .object({
@@ -3842,7 +3842,7 @@ export class Workers {
               } else {
                 const chapters = readChapters(d.dir, d.chapters ?? []);
                 if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
-                demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...report, ...(page ? { page } : {}) });
+                demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...videoFacts(d.dir), ...report, ...(page ? { page } : {}) });
               }
             }
             handOver();
