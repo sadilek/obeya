@@ -3,7 +3,7 @@
 // reload (sessionStorage, per tab), and taken once by the page that loads.
 
 /** A sheet on the right that is not a project's, or the archive's list under its button. */
-export type SideSheet = 'koordinator' | 'archive';
+export type SideSheet = 'koordinator' | 'inbox' | 'archive';
 
 export interface Kept {
   at: number;
@@ -23,7 +23,7 @@ export interface Kept {
 }
 
 /** Where the open things are: the panel of the open card, the sheets, the archive's list and the configuration's dialog. */
-export const ROOTS = ['panel', 'sheet', 'ksheet', 'amenu', 'config'];
+export const ROOTS = ['panel', 'sheet', 'ksheet', 'inbox', 'amenu', 'config'];
 
 /** How old what was kept may be to come back: a restart takes seconds, a page reloaded much later starts afresh. */
 const FRESH_MS = 5 * 60_000;

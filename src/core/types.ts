@@ -3,6 +3,7 @@
 import type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { CardFile } from './files';
+import type { InboxEntry } from './inbox';
 import type { Language } from './locale';
 import { MESSAGES } from './messages';
 import type { PageChangeId } from './page-changes';
@@ -2642,6 +2643,8 @@ export type ServerMessage =
   | { type: 'usage'; usage: Usage | null }
   /** On connect and whenever it changes: how many cards on each canvas need the owner, by canvas id. */
   | { type: 'waiting'; waiting: Record<string, number> }
+  /** On connect and whenever it changes: everything that waits for the owner on every canvas, the newest first (the inbox). */
+  | { type: 'inbox'; inbox: InboxEntry[] }
   /** Whenever a canvas starts, stops, or changes its name or repositories while Obeya runs. */
   | { type: 'canvases'; canvases: CanvasInfo[] }
   /** A line for the owner above the microphone, wherever they are. */

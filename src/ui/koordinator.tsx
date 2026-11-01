@@ -3,6 +3,7 @@
 // settings the Arbeitsrückschau proposes, and the owner's preferences; shared demos to bring
 // up to date at once.
 
+import { Docked } from './docked';
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuote, TalkRef, TalkWait } from '../core/types';
 import { api } from './api';
@@ -50,7 +51,7 @@ export function KoordinatorSheet({ on, canvas, items, preferences, settings, rep
   const ids = [...proposals.map((p) => p.id), ...settings.map((p) => -p.id)];
   const proposalsOpen = !folds.proposalsClosed || ids.some((id) => !folds.proposalsClosed!.includes(id));
   return (
-    <aside id="ksheet" className={on ? 'sheet on' : 'sheet'}>
+    <Docked id="ksheet" on={on}>
       <h2>{t.koordinator.title}</h2>
       <KoordinatorTalk on={on} talk={talk} items={items} repos={repos} onOpen={onOpen} onTell={onTell} />
 
@@ -98,7 +99,7 @@ export function KoordinatorSheet({ on, canvas, items, preferences, settings, rep
         </Fold>
 
       </div>
-    </aside>
+    </Docked>
   );
 }
 
