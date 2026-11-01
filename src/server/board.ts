@@ -1538,12 +1538,14 @@ export class Board {
       rows = this.store.cards(this.canvas.id);
       items = toItems(rows, docs, this.home);
     }
-    const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
-    const manual = this.manualDependencies().filter(([from, to]) => eligible.has(from) && eligible.has(to));
-    items = items.map((i) => {
-      const on = manual.filter(([, to]) => to === i.id).map(([from]) => from);
-      return on.length ? { ...i, manualDependsOn: on } : i;
-    });
+    const manual = this.manualDependencies();
+    if (manual.length) {
+      const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
+      items = items.map((i) => {
+        const on = eligible.has(i.id) ? manual.filter(([from, to]) => to === i.id && eligible.has(from)).map(([from]) => from) : [];
+        return on.length ? { ...i, manualDependsOn: on } : i;
+      });
+    }
     items = this.withPrototypes(items);
     items = this.withElsewhere(items);
     const inTurn = new Map([...this.turns].flatMap((f) => [...f()]));
