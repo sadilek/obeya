@@ -743,3 +743,13 @@ describe('owner-drawn dependencies', () => {
     expect(reopened.item(c.id)?.manualDependsOn).toEqual([b.id]);
   });
 });
+
+test('owner-drawn dependencies cannot connect projects or their workstreams', () => {
+  const own = board.create({ title: 'Own task', x: 0, y: 0 });
+  const project = board.snapshot().items.find((i) => i.kind === 'project')!;
+  const workstream = board.snapshot().items.find((i) => i.parent === project.id)!;
+  for (const plan of [project, workstream]) {
+    expect(() => board.connect(own.id, plan.id)).toThrow(BadRequest);
+    expect(() => board.connect(plan.id, own.id)).toThrow(BadRequest);
+  }
+});

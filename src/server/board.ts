@@ -450,6 +450,8 @@ export class Board {
     const items = this.snapshot().items;
     if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
       throw new BadRequest('unknownCard', 'invalid dependency');
+    if (!remove && items.some((i) => (i.id === from || i.id === to) && (i.source === 'plan' || i.kind === 'project')))
+      throw new BadRequest('invalid', 'project dependencies are decided from the plan');
     const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
     if (!remove) {
       // A cycle would leave the cards waiting for each other forever.
@@ -1536,7 +1538,8 @@ export class Board {
       rows = this.store.cards(this.canvas.id);
       items = toItems(rows, docs, this.home);
     }
-    const manual = this.manualDependencies();
+    const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
+    const manual = this.manualDependencies().filter(([from, to]) => eligible.has(from) && eligible.has(to));
     items = items.map((i) => {
       const on = manual.filter(([, to]) => to === i.id).map(([from]) => from);
       return on.length ? { ...i, manualDependsOn: on } : i;
