@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage } from '../core/types';
-import { api, ApiError, beforeReload, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
+import { api, ApiError, beforeReload, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, placeIn, shows, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
@@ -37,6 +37,8 @@ import { videoOf } from './spot';
 import { CanvasPill, CardView, shownState, DepLinks, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
+import { Inbox, entryKey, type QuickReply } from './inbox';
+import type { InboxEntry } from '../core/inbox';
 import { beingWritten, split, talkAlone } from './talk';
 import { noticeLine, tellers, useAck, voiceTarget } from './tell';
 
@@ -127,10 +129,10 @@ function Splash({ offline }: { offline: boolean }) {
 }
 
 function Live({ canvases: loaded }: { canvases: CanvasInfo[] }) {
-  const { snapshot, online, restart, update, source, usage, waiting, oldBun, canvases } = useCanvas();
+  const { snapshot, online, restart, update, source, usage, waiting, inbox, oldBun, canvases } = useCanvas();
   if (!snapshot) return <Splash offline={!online} />;
   // a canvas started, stopped or renamed while the page is open: the switcher follows
-  return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} source={source} usage={usage} canvases={canvases ?? loaded} waiting={waiting} oldBun={oldBun} />;
+  return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} source={source} usage={usage} canvases={canvases ?? loaded} waiting={waiting} inbox={inbox} oldBun={oldBun} />;
 }
 
 /** What is open, and the view to go back to: `prevCam` laid out beside a sheet `prevSide` wide. */
@@ -164,6 +166,7 @@ function Canvas({
   usage,
   canvases,
   waiting,
+  inbox,
   oldBun,
 }: {
   snapshot: CanvasSnapshot;
@@ -175,6 +178,8 @@ function Canvas({
   usage: Usage | null;
   canvases: CanvasInfo[];
   waiting: Record<string, number>;
+  /** Everything that waits for the owner, on every canvas. */
+  inbox: InboxEntry[];
   /** The Bun the server runs on, when it is too old for it (docs/design/distribution.md, Builds). */
   oldBun: string | null;
 }) {
@@ -316,6 +321,8 @@ function Canvas({
   const sheetWRef = useRef(sheetW);
   sheetWRef.current = sheetW;
   const [kOn, setKOn, kOnRef] = useLive(false);
+  // the inbox, a docked sheet like Obeya's: only one of them is open
+  const [inboxOn, setInboxOn, inboxOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
   const [cOn, setCOn, cOnRef] = useLive(false);
   /**
@@ -323,7 +330,7 @@ function Canvas({
    * A narrow window lays the sheet over the canvas instead (styles.css).
    */
   const sideNow = () =>
-    matchMedia(NARROW).matches || !(kOnRef.current || sheetOnRef.current)
+    matchMedia(NARROW).matches || !(kOnRef.current || inboxOnRef.current || sheetOnRef.current)
       ? 0
       : sheetOnRef.current && readingRef.current
         ? sheetWRef.current.read
@@ -331,6 +338,7 @@ function Canvas({
   /** Opens Obeya's sheet or closes it; an open project closes. */
   const toggleKoordinator = () => {
     setKOn(!kOn);
+    if (!kOn) setInboxOn(false);
     if (!kOn && focusRef.current?.type === 'project') closeProject(false);
   };
   /** The sheet as the owner opens it to talk (its button, `C`): the field under the conversation takes the cursor. */
@@ -584,6 +592,7 @@ function Canvas({
     setReading(r);
     setSheetOn(true);
     setKOn(false);
+    setInboxOn(false);
     setAOn(false);
     if (inView) await flyOrJump(camFor(bounds(p), sideNow()), 700, quick);
   }
@@ -634,7 +643,7 @@ function Canvas({
     flushEdit().catch(console.error);
     const f = focusRef.current;
     const project = f?.type === 'project' ? f.id : f?.type === 'card' ? f.project?.id : undefined;
-    const sheet: SideSheet | undefined = kOn ? 'koordinator' : aOn ? 'archive' : undefined;
+    const sheet: SideSheet | undefined = kOn ? 'koordinator' : inboxOn ? 'inbox' : aOn ? 'archive' : undefined;
     keep(sessionStorage, snapshot.canvas.id, {
       at: Date.now(),
       ...(f?.type === 'card' ? { card: f.id } : {}),
@@ -676,6 +685,7 @@ function Canvas({
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
     quickSide.current = Date.now() + 2000;
     if (k.sheet === 'koordinator') setKOn(true);
+    else if (k.sheet === 'inbox') setInboxOn(true);
     else if (k.sheet === 'archive') setAOn(true);
     if (k.config) setCOn(true);
     let gone: Item[] | undefined;
@@ -1065,7 +1075,7 @@ function Canvas({
   }, [side]);
 
   // the grip at the open sheet's left edge widens or narrows it; reading a plan doc has its own width
-  const gripOn = kOn || sheetOn;
+  const gripOn = kOn || inboxOn || sheetOn;
   const gripKind = !!reading && sheetOn ? 'read' : 'sheet';
   const gripRef = useRef<{ x: number; w: number; kind: 'sheet' | 'read' } | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -1293,10 +1303,13 @@ function Canvas({
   const underwayRef = useRef(underway);
   underwayRef.current = underway;
   const yours = (i: Item) => needsYou(i) && !underwayRef.current[i.id];
-  const attention = items.filter(yours);
-  // answers in Obeya's sheet the owner has not seen: Obeya waits for them like a card
+  // the inbox: what the owner acted on stays out until the server has caught up, and so does an answer of Obeya's sheet they have open
+  const [acted, setActed] = useState<Set<string>>(new Set());
+  useEffect(() => setActed((a) => (a.size ? new Set([...a].filter((k) => inbox.some((e) => entryKey(e) === k))) : a)), [inbox]);
+  const listed = inbox.filter((e) => !acted.has(entryKey(e)) && !(e.canvas === snapshot.canvas.id && (e.card ? underway[e.card] : kOn)));
+  const attentionCount = listed.length;
+  // answers in Obeya's sheet the owner has not seen: its button counts them
   const unread = kOn ? 0 : unreadAnswers(snapshot.talk);
-  const attentionCount = attention.length + (unread ? 1 : 0);
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
   const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
   async function archiveDone() {
@@ -1318,6 +1331,36 @@ function Canvas({
     attnLast.current = key(next);
     if (next === 'k') toggleKoordinator();
     else open(next);
+  }
+  /** The inbox slides out in place of Obeya's sheet or a project's, and closes again. */
+  const toggleInbox = () => {
+    const open = !inboxOnRef.current;
+    setInboxOn(open);
+    if (!open) return;
+    setKOn(false);
+    if (focusRef.current?.type === 'project') closeProject(false);
+  };
+  /** „Zur Karte“: the card on this canvas flies open; one on another canvas opens there. */
+  function goToEntry(e: InboxEntry) {
+    if (e.canvas !== snapshot.canvas.id) return location.assign(`?c=${encodeURIComponent(e.canvas)}${e.card ? `&card=${encodeURIComponent(e.card)}` : ''}`);
+    if (!e.card) return kOnRef.current || toggleKoordinator();
+    const i = byId(e.card);
+    if (i) void openFresh(i);
+  }
+  /** A quick reply of the inbox, sent to the canvas of its card. */
+  async function replyToEntry(e: InboxEntry, r: QuickReply) {
+    if (!e.card) return;
+    const key = entryKey(e);
+    setActed((a) => new Set(a).add(key));
+    cardsOn(e.canvas, [e.card]);
+    if (r.wait) showWait(`${r.wait.charAt(0).toUpperCase()}${r.wait.slice(1)}`);
+    try {
+      await api.act(e.card, r.action);
+      showAck(r.ack);
+    } catch (err) {
+      setActed((a) => new Set([...a].filter((k) => k !== key)));
+      showAck(t.cardError(plain(e.title), failText(err)));
+    }
   }
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
@@ -1387,6 +1430,7 @@ function Canvas({
       if (typing) (e.target as HTMLElement).blur();
       if (f?.type === 'card') closeCard();
       else if (kOnRef.current) setKOn(false);
+      else if (inboxOnRef.current && f?.type !== 'project') setInboxOn(false);
       else if (f?.type === 'project' && readingRef.current && sheetProject) readPlan(sheetProject, null);
       else if (f?.type === 'project') closeProject();
       return;
@@ -1600,8 +1644,8 @@ function Canvas({
                 </span>
               )}
             </button>
-            {attentionCount > 0 && (
-              <button className="pill" id="attention" onClick={nextAttention}>
+            {(attentionCount > 0 || inboxOn) && (
+              <button className={inboxOn ? 'pill on' : 'pill'} id="attention" aria-expanded={inboxOn} onClick={toggleInbox}>
                 <span className="n">{attentionCount}</span> <span className="lbl">{t.needsYou}</span>
               </button>
             )}
@@ -1621,6 +1665,7 @@ function Canvas({
           onJump={(wx, wy) => !focusRef.current && fly(viewOn(wx, wy), 500)}
           onFollow={(wx, wy) => !focusRef.current && chase(camRef.current, viewOn(wx, wy), setCam)}
         />
+        <Inbox entries={listed} on={inboxOn} onGo={goToEntry} onReply={(e, r) => void replyToEntry(e, r)} />
         <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
         {helpOn && <Help note={helpNote} onClose={() => setHelpOn(false)} />}
         <WishDialog />
@@ -1711,7 +1756,7 @@ function Canvas({
           {talkButton}
         </div>
         {gripOn && !kOn && (
-          <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : setKOn(false))}>
+          <button id="sheet-close" title={t.close} onClick={() => (sheetOn ? closeProject() : setInboxOn(false))}>
             ✕
           </button>
         )}

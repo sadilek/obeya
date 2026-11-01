@@ -1,5 +1,6 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
+import { Docked } from './docked';
 import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
@@ -1147,11 +1148,7 @@ export function Sheet({
     return () => clearTimeout(h);
   }, [shown?.id, reading, !!shown]);
   return (
-    <aside
-      id="sheet"
-      ref={box}
-      className={['sheet', on && 'on', reading && 'reading'].filter(Boolean).join(' ')}
-    >
+    <Docked id="sheet" ref={box} on={!!on} className={reading ? 'reading' : undefined}>
       {project?.plan && reading && (
         <>
           <div className="read-head">
@@ -1245,7 +1242,7 @@ export function Sheet({
           )}
         </>
       )}
-    </aside>
+    </Docked>
   );
 }
 
