@@ -122,6 +122,7 @@ const de = {
         rows: [
           { keys: [['Doppelklick']], text: 'Neue Aufgabe an dieser Stelle' },
           { keys: [['N']], text: 'Neue Aufgabe in der Mitte' },
+          { keys: [['S']], text: 'Karten suchen, auf der Leinwand und im Archiv' },
           { keys: [['Tab']], text: 'Zur nächsten Karte, die dich braucht, oder zu Obeyas Antwort' },
           { keys: [['Esc']], text: 'Karte, Projekt oder Obeya-Chat schließen' },
         ],
@@ -759,6 +760,7 @@ const de = {
     zoomHint: 'Größer mit',
     unzoomHint: 'Kleiner mit',
     seekHint: '5 Sekunden springen mit',
+    captions: 'Untertitel',
     comment: 'Hier kommentieren',
     fullscreen: 'Vollbild',
     fullscreenOff: 'Vollbild beenden',
@@ -1423,9 +1425,15 @@ const de = {
       language: 'Sprache der Erzählung',
       languageHint: 'Ein Repository kann für seine Demos eine andere nennen: „Sprache der Demos“ in seinen Einstellungen.',
       languages: { de: 'Deutsch', en: 'Englisch' } satisfies Record<NarrationLanguage, string>,
+      subtitles: 'Untertitelsprachen',
+      subtitlesHint: (narration: string) =>
+        `Sprachcodes, durch Komma getrennt, z. B. fr oder pt-BR. Jede wird eine eigene Untertitelspur, die man im Player umschaltet; ${narration} als Sprache der Erzählung ist immer dabei. Der Agent übersetzt die Erzählung beim Rendern.`,
+      subtitlesPlaceholder: 'leer: nur die Sprache der Erzählung',
+      subtitlesUnknown: (codes: string) => `Unbekannter Sprachcode: ${codes}`,
       voice: 'Stimme',
       groups: { local: 'Auf diesem Rechner', service: 'Dienst (API-Schlüssel)', own: 'Eigene' },
       voices: {
+        none: 'Keine (nur Untertitel)',
         piper: 'Piper (Standard)',
         qwen3: 'Qwen3-TTS (bessere Qualität)',
         say: 'macOS „say“',
@@ -1437,6 +1445,7 @@ const de = {
         http: 'Eigener HTTP-Dienst',
       } satisfies Record<VoiceKind, string>,
       about: {
+        none: 'Stumme Videos: Die Untertitel erzählen, was sonst die Stimme sagt, und sind von Anfang an eingeschaltet. Jede Szene dauert so lange, wie sich ihr Text lesen lässt. Es muss keine Stimme installiert sein.',
         piper: 'Läuft auf jedem Rechner, schnell auch ohne Grafikkarte. Obeya installiert Piper und die Stimme auf Wunsch.',
         qwen3: 'Natürlicher als Piper, braucht aber viel Speicher; auf einem Mac mit MLX, sonst praktisch nur mit Grafikkarte. Mit einer Stimmprobe klont es eine Stimme.',
         say: 'Kostenlos und sofort da, klingt aber deutlich synthetischer.',
@@ -1464,6 +1473,7 @@ const de = {
       },
       ownVoice: 'Das ist meine eigene Stimme',
       person: { first: 'Erzählt in der Ich-Form, weil es deine eigene Stimme ist.', third: 'Erzählt ohne „ich“: Die Stimme ist nicht deine.' },
+      silentPerson: 'Die Untertitel stellen die Arbeit ohne „ich“ vor.',
       notInstalled: (what: string, size: string) => `Noch nicht installiert: ${what} (etwa ${size}).`,
       install: (size: string) => `Installieren (${size})`,
       installing: 'Wird installiert …',
@@ -1844,6 +1854,23 @@ const de = {
     projectGone: (d: Date) => `Das Plan-Dokument ist weg (${de.archive.when(d)}). So stand es zuletzt; kommt die Datei zurück, kehrt das Projekt an seinen Platz zurück.`,
     workstreams: (n: number) => (n === 1 ? '1 Workstream' : `${n} Workstreams`),
   },
+  search: {
+    button: 'Suchen',
+    title: 'Alle Karten durchsuchen, auf der Leinwand und im Archiv (Taste S)',
+    field: 'Karten suchen',
+    /** Under the empty field: what the search looks through. */
+    hint: 'Findet Karten auf der Leinwand und im Archiv, die jedes eingegebene Wort enthalten: zuerst die mit allen Wörtern im Titel, dann die übrigen. ↑ ↓ wählen, Enter öffnet.',
+    /** Over the list before the first word: the canvas's cards, in this order. */
+    recent: 'Auf der Leinwand, zuletzt geänderte zuerst',
+    canvas: 'Auf der Leinwand',
+    archive: 'Im Archiv',
+    /** No card on the canvas or in the archive matches what the owner typed. */
+    noMatch: (q: string) => `Keine Karte passt zu „${q}“.`,
+    /** Under a section's results, the ones beyond the shown. */
+    more: (n: number) => (n === 1 ? '1 weitere: genauer suchen, um sie zu sehen' : `${n} weitere: genauer suchen, um sie zu sehen`),
+    /** Under the list before the first word, the cards beyond the shown. */
+    moreAll: (n: number) => (n === 1 ? '1 weitere: ein Wort eingeben, um sie zu finden' : `${n} weitere: ein Wort eingeben, um sie zu finden`),
+  },
   idea: {
     status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
     yourTurn: 'Idee · du bist dran',
@@ -2062,6 +2089,7 @@ const en: Strings = {
         rows: [
           { keys: [['Double-click']], text: 'New task right there' },
           { keys: [['N']], text: 'New task in the middle' },
+          { keys: [['S']], text: 'Search cards, on the canvas and in the archive' },
           { keys: [['Tab']], text: 'Next card that needs you, or Obeya’s answer' },
           { keys: [['Esc']], text: 'Close the card, project or Obeya chat' },
         ],
@@ -2647,6 +2675,7 @@ const en: Strings = {
     zoomHint: 'Larger with',
     unzoomHint: 'Smaller with',
     seekHint: 'Jump 5 seconds with',
+    captions: 'Subtitles',
     comment: 'Comment here',
     fullscreen: 'Full screen',
     fullscreenOff: 'Exit full screen',
@@ -3287,9 +3316,15 @@ const en: Strings = {
       language: 'Narration language',
       languageHint: 'A repository can name another for its demos: “Demo language” in its settings.',
       languages: { de: 'German', en: 'English' },
+      subtitles: 'Subtitle languages',
+      subtitlesHint: (narration: string) =>
+        `Language codes separated by commas, e.g. fr or pt-BR. Each becomes a subtitle track of its own, switched in the player; ${narration}, the narration language, is always one. The agent translates the narration when it renders.`,
+      subtitlesPlaceholder: 'empty: the narration language only',
+      subtitlesUnknown: (codes: string) => `Unknown language code: ${codes}`,
       voice: 'Voice',
       groups: { local: 'On this machine', service: 'Service (API key)', own: 'Your own' },
       voices: {
+        none: 'None (subtitles only)',
         piper: 'Piper (default)',
         qwen3: 'Qwen3-TTS (better quality)',
         say: 'macOS “say”',
@@ -3301,6 +3336,7 @@ const en: Strings = {
         http: 'Your own HTTP service',
       },
       about: {
+        none: 'Silent videos: the subtitles tell what the voice would say, and are on from the start. Each scene lasts as long as its text takes to read. No voice needs to be installed.',
         piper: 'Runs on any machine, fast even without a graphics card. Obeya installs Piper and the voice on request.',
         qwen3: 'More natural than Piper, but needs a lot of memory; on a Mac with MLX, elsewhere practically only with a graphics card. With a voice sample it clones a voice.',
         say: 'Free and there at once, but sounds clearly more synthetic.',
@@ -3328,6 +3364,7 @@ const en: Strings = {
       },
       ownVoice: 'This is my own voice',
       person: { first: 'Narrates in the first person, because it is your own voice.', third: 'Narrates without “I”: the voice is not yours.' },
+      silentPerson: 'The subtitles present the work without “I”.',
       notInstalled: (what: string, size: string) => `Not installed yet: ${what} (about ${size}).`,
       install: (size: string) => `Install (${size})`,
       installing: 'Installing …',
@@ -3686,6 +3723,18 @@ const en: Strings = {
     projectGone: (d: Date) => `The plan doc is gone (${en.archive.when(d)}). This is how it last stood; if the file comes back, the project returns to its place.`,
     workstreams: (n: number) => (n === 1 ? '1 workstream' : `${n} workstreams`),
   },
+  search: {
+    button: 'Search',
+    title: 'Search all cards, on the canvas and in the archive (key S)',
+    field: 'Search cards',
+    hint: 'Finds cards on the canvas and in the archive that hold every word typed: those with all of them in the title first, then the rest. ↑ ↓ to choose, Enter opens.',
+    recent: 'On the canvas, last changed first',
+    canvas: 'On the canvas',
+    archive: 'In the archive',
+    noMatch: (q: string) => `No card matches “${q}”.`,
+    more: (n: number) => (n === 1 ? '1 more: search more precisely to see it' : `${n} more: search more precisely to see them`),
+    moreAll: (n: number) => (n === 1 ? '1 more: type a word to find it' : `${n} more: type a word to find them`),
+  },
   idea: {
     status: { open: 'Idea', parked: 'Idea · parked', dropped: 'Idea · dropped' },
     yourTurn: 'Idea · your turn',
@@ -3801,6 +3850,9 @@ const en: Strings = {
 const tables: Record<Language, Strings> = { de, en };
 /** The strings in effect. */
 export let t: Strings = de;
+let current: Language = 'de';
+/** The language of the interface. */
+export const uiLanguage = () => current;
 /** The locale dates and numbers are written in. */
 let locale = 'de-DE';
 
@@ -3811,6 +3863,7 @@ let locale = 'de-DE';
  */
 export function setLanguage(language: Language, preferred: readonly string[] = typeof navigator === 'undefined' ? [] : navigator.languages) {
   t = tables[language];
+  current = language;
   locale = preferred.find((l) => languageOf(l) === language && validTag(l)) ?? (language === 'de' ? 'de-DE' : 'en-US');
   if (typeof document !== 'undefined') document.documentElement.lang = language;
 }

@@ -113,23 +113,23 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
 }
 
 /** An archived card's kind or state; a plain finished task, nearly every entry, goes without one, so the others stand out. */
-function labelOf(i: Item) {
+export function labelOf(i: Item) {
   return i.idea || i.prototypeEnd || stopped(i) ? stateLabel(i) : i.becomesProject ? becomesLabel(i) : i.kind === 'task' ? '' : t.kind[i.kind];
 }
 
 /** Lower case without accents, so „uber“ finds „Über“. */
-const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+export const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
 /** The words of a search in the archive, folded. */
 export const searchWords = (query: string) => fold(query).split(/\s+/).filter(Boolean);
 
 /**
- * Whether an archived card holds every word of the search, each anywhere in its title, text,
- * summary, last status or label; a project's in its goal and its workstreams too.
+ * Whether a card holds every word of the search, each anywhere in its title, text, summary, last
+ * status, open question, a proposal's reason or label; a project's in its goal and its workstreams too.
  */
 export function matches(i: Item, words: string[], workstreams: Item[] = []) {
   const text = fold(
-    [i.title, i.body, i.summary, i.statusLine, labelOf(i), i.plan?.goal, ...workstreams.flatMap((w) => [w.title, w.body])].filter(Boolean).join('\n'),
+    [i.title, i.body, i.summary, i.statusLine, i.question?.text, i.proposal?.reason, labelOf(i), i.plan?.goal, ...workstreams.flatMap((w) => [w.title, w.body])].filter(Boolean).join('\n'),
   );
   return words.every((w) => text.includes(w));
 }

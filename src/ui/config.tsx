@@ -7,7 +7,7 @@ import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef,
 import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
-import { LANGUAGES } from '../core/locale';
+import { knownLanguage, LANGUAGES } from '../core/locale';
 import { AccessSection } from './access';
 import { api, reload, type SiteHow } from './api';
 import { keepConfigDraft, keptConfigDraft } from './configDraft';
@@ -690,6 +690,7 @@ const VOICE_GROUPS: { group: 'local' | 'service' | 'own'; voices: VoiceKind[] }[
 ];
 /** The fields each voice reads, in the order the sheet shows them. */
 const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'command' | 'url' | 'keyFile')[]> = {
+  none: [],
   piper: ['voiceName'],
   qwen3: ['voiceName'],
   say: ['voiceName'],
@@ -700,8 +701,10 @@ const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'command' | 'url' | 'keyFil
   elevenlabs: ['voiceName', 'keyFile'],
   azure: ['url', 'voiceName', 'keyFile'],
 };
-/** A stock voice of a model or service is nobody's own. */
-const STOCK_ONLY: VoiceKind[] = ['piper', 'say'];
+/** A stock voice of a model or service is nobody's own, and no voice at all neither. */
+const STOCK_ONLY: VoiceKind[] = ['none', 'piper', 'say'];
+/** The language codes of a list as typed: separated by commas or spaces. */
+const codesOf = (text: string) => text.split(/[\s,;]+/).filter(Boolean);
 /** Where demos go when the settings name no directory (`DEFAULT_DEMO_DIRECTORY` of the demo skill, which the page cannot import). */
 const DEFAULT_DEMO_DIRECTORY = '~/demos';
 
@@ -903,6 +906,8 @@ function DemoBlock({ on }: { on: boolean }) {
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [sampling, setSampling] = useState(false);
+  // the subtitle languages as typed, separators and all, while the field has them; the draft holds their codes
+  const [subtitlesText, setSubtitlesText] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
     if (!on) return;
@@ -940,6 +945,7 @@ function DemoBlock({ on }: { on: boolean }) {
   const set = <K extends keyof DemoSettings>(k: K, v: DemoSettings[K]) => setDraft({ ...draft, [k]: v });
   const shown = check ?? view.check;
   const job = view.job?.voice === draft.voice ? view.job : undefined;
+  const unknownCodes = (draft.subtitles ?? []).filter((c) => !knownLanguage(c));
   const failed = (e: unknown) => setStatus(failText(e, { detail: ['voiceSample'] }));
   const save = async () => {
     setBusy(true);
@@ -947,6 +953,7 @@ function DemoBlock({ on }: { on: boolean }) {
       const v = await api.saveDemoSettings(draft);
       setView(v);
       setDraft(v.settings);
+      setSubtitlesText(null);
       setStatus(d.saved);
     } catch (e) {
       failed(e);
@@ -1012,15 +1019,38 @@ function DemoBlock({ on }: { on: boolean }) {
               ))}
             </select>
           </Field>
+          <Field label={d.subtitles} hint={d.subtitlesHint(d.languages[draft.language])}>
+            <input
+              className="c-path"
+              aria-label={d.subtitles}
+              spellCheck={false}
+              placeholder={d.subtitlesPlaceholder}
+              value={subtitlesText ?? (draft.subtitles ?? []).join(', ')}
+              onChange={(e) => {
+                setSubtitlesText(e.target.value);
+                const codes = codesOf(e.target.value);
+                set('subtitles', codes.length ? codes : undefined);
+              }}
+              onBlur={() => setSubtitlesText(null)}
+            />
+            {unknownCodes.length > 0 && <p className="p-error">{d.subtitlesUnknown(unknownCodes.join(', '))}</p>}
+          </Field>
           <Field label={d.voice} hint={d.about[draft.voice]}>
             <select
               aria-label={d.voice}
               value={draft.voice}
-              // another voice starts with its own fields, and is nobody's own until ticked; directory and frames stay
+              // another voice starts with its own fields, and is nobody's own until ticked; directory, frames and subtitles stay
               onChange={(e) =>
-                setDraft({ language: draft.language, voice: e.target.value as VoiceKind, ...(draft.directory ? { directory: draft.directory } : {}), ...(draft.keepFrames ? { keepFrames: draft.keepFrames } : {}) })
+                setDraft({
+                  language: draft.language,
+                  voice: e.target.value as VoiceKind,
+                  ...(draft.directory ? { directory: draft.directory } : {}),
+                  ...(draft.keepFrames ? { keepFrames: draft.keepFrames } : {}),
+                  ...(draft.subtitles ? { subtitles: draft.subtitles } : {}),
+                })
               }
             >
+              <option value="none">{d.voices.none}</option>
               {VOICE_GROUPS.map(({ group, voices }) => (
                 <optgroup key={group} label={d.groups[group]}>
                   {voices
@@ -1053,7 +1083,7 @@ function DemoBlock({ on }: { on: boolean }) {
                 {shown.clips[l] && <p className="p-error">{d.clip[shown.clips[l]]}</p>}
               </Field>
             ))}
-          <Field label="" hint={d.person[shown.person]}>
+          <Field label="" hint={draft.voice === 'none' ? d.silentPerson : d.person[shown.person]}>
             {!STOCK_ONLY.includes(draft.voice) && (
               <label className="c-check">
                 <input type="checkbox" checked={!!draft.ownVoice} onChange={(e) => set('ownVoice', e.target.checked || undefined)} />
@@ -1082,16 +1112,25 @@ function DemoBlock({ on }: { on: boolean }) {
                 {d.problem[p]}
               </p>
             ))}
-            <button className="btn small" disabled={sampling || !shown.install.installed || !!shown.problems.length || !!shown.clips[draft.language]} onClick={listen}>
-              {sampling ? d.sampling : d.listen}
-            </button>
+            {draft.voice !== 'none' && (
+              <button className="btn small" disabled={sampling || !shown.install.installed || !!shown.problems.length || !!shown.clips[draft.language]} onClick={listen}>
+                {sampling ? d.sampling : d.listen}
+              </button>
+            )}
           </Field>
           <div className="cfg-actions">
-            <button className="btn primary" disabled={!changed || busy} onClick={save}>
+            <button className="btn primary" disabled={!changed || busy || unknownCodes.length > 0} onClick={save}>
               {d.save}
             </button>
             {changed && (
-              <button className="btn" disabled={busy} onClick={() => setDraft(view.settings)}>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => {
+                  setDraft(view.settings);
+                  setSubtitlesText(null);
+                }}
+              >
                 {t.config.reset}
               </button>
             )}

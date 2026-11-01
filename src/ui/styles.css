@@ -379,10 +379,10 @@ button.pill:hover { box-shadow: var(--lift); }
 .bar-sign, .bar-icon { display: none; }
 #bar[data-fit~="1"] > svg, #bar[data-fit~="1"] .canvas-pill .lbl, #bar[data-fit~="1"] .pill.restart .hint { display: none; }
 #bar[data-fit~="1"] .bar-sign { display: block; line-height: 0; }
-#bar[data-fit~="2"] :is(#workspaces, #usage, .config) .lbl, #bar[data-fit~="3"] :is(.archive, .new-card) .lbl,
+#bar[data-fit~="2"] :is(#workspaces, #usage, .config) .lbl, #bar[data-fit~="3"] :is(.search, .archive, .new-card) .lbl,
   #bar[data-fit~="4"] :is(.queue, #attention) .lbl { display: none; }
-#bar[data-fit~="2"] .config .bar-icon, #bar[data-fit~="3"] .archive .bar-icon, #bar[data-fit~="4"] .queue .bar-icon { display: block; }
-#bar[data-fit~="2"] .config, #bar[data-fit~="3"] :is(.archive .kpill, .new-card), #bar[data-fit~="4"] .queue .kpill { padding-inline: 10px; }
+#bar[data-fit~="2"] .config .bar-icon, #bar[data-fit~="3"] :is(.search, .archive) .bar-icon, #bar[data-fit~="4"] .queue .bar-icon { display: block; }
+#bar[data-fit~="2"] .config, #bar[data-fit~="3"] :is(.search .kpill, .archive .kpill, .new-card), #bar[data-fit~="4"] .queue .kpill { padding-inline: 10px; }
 #bar[data-fit~="5"] :is(#workspaces, #usage), #bar[data-fit~="5"] .help { display: none; }
 #bar[data-fit~="6"] .canvas-pill, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
 /* the bar's buttons are one height, whatever they hold: text, an icon, a count */
@@ -516,6 +516,12 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
   background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 5px 11px 5px 7px; font-size: 13px; font-weight: 500;
   transform: translate(-50%, -50%); white-space: nowrap; border: 0; }
 .edge .arr { width: 20px; height: 20px; border-radius: 50%; background: var(--c); color: var(--on-ink); display: grid; place-items: center; font-size: 12px; }
+/* the card whose row in the search is under the pointer or picked by the arrow keys: a ring in its state's colour that breathes, or its edge indicator while out of sight */
+.item.lit { outline: 4px solid var(--c); outline-offset: 5px; animation: lit 1.2s ease-in-out infinite; }
+.edge.lit { box-shadow: 0 0 0 3px var(--c), var(--shadow); animation: lit-edge 1.2s ease-in-out infinite; }
+@keyframes lit { 50% { outline-offset: 10px; outline-color: color-mix(in srgb, var(--c) 40%, transparent); } }
+@keyframes lit-edge { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--c) 40%, transparent), var(--shadow); } }
+@media (prefers-reduced-motion: reduce) { .item.lit, .edge.lit { animation: none; } }
 
 #minimap { position: fixed; left: 14px; bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 3px;
   box-shadow: var(--shadow); z-index: 20; cursor: pointer; overflow: hidden; }
@@ -1325,6 +1331,20 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .timeline .a-card:focus-visible { outline: 2px solid var(--working); outline-offset: 2px; }
 .timeline .a-ttl { font-size: 15.5px; line-height: 1.25; }
 .timeline .hint { font-size: 11.5px; }
+/* the search: what it found on the canvas, then in the archive, the best first */
+.search-menu { width: min(520px, calc(100vw - 28px)); padding: 8px 10px 4px; }
+.search-menu h4 { margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.search-menu ol { list-style: none; padding: 0; margin: 0 0 4px; }
+.search-menu > section > .hint { margin: 2px 8px 6px; font-size: 12px; }
+.s-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 7px 8px; text-align: left; font: inherit; color: var(--ink);
+  background: none; border: 0; border-radius: 2px; cursor: pointer; }
+.s-row.active { background: var(--chip); }
+.s-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); margin-top: 5px; flex: none; }
+.s-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.s-ttl { font-size: 14.5px; line-height: 1.3; }
+.s-text { font-size: 12.5px; line-height: 1.4; color: var(--ink); opacity: .8; overflow-wrap: anywhere; }
+.s-what .hint { font-size: 11.5px; }
+.s-what mark { background: none; color: inherit; font-weight: 700; text-decoration: underline 2px var(--working); text-underline-offset: 3px; }
 .sheet .btn.read { margin-top: 14px; padding: 7px 14px; font-size: 13px; }
 .sheet .start-all { margin-top: 10px; }
 .sheet .start-all .btn { padding: 7px 14px; font-size: 13px; }

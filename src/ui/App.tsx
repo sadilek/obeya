@@ -21,6 +21,7 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { QueuePill } from './queue';
+import { SearchPill } from './search';
 import { depsOf } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
@@ -317,6 +318,9 @@ function Canvas({
   sheetWRef.current = sheetW;
   const [kOn, setKOn, kOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
+  const [sOn, setSOn, sOnRef] = useLive(false);
+  // the card whose row in the search is under the pointer or picked by the arrow keys
+  const [foundId, setFoundId] = useState<string | null>(null);
   const [cOn, setCOn, cOnRef] = useLive(false);
   /**
    * How wide the sheet docked on the right is, as just set: the canvas is what remains to its left.
@@ -338,7 +342,9 @@ function Canvas({
     toggleKoordinator();
     if (!kOn) requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#ksheet .tell textarea')?.focus({ preventScroll: true }));
   };
-  const toggleArchive = () => setAOn(!aOnRef.current);
+  // the archive and the search drop down from the bar one at a time
+  const toggleArchive = () => (setSOn(false), setAOn(!aOnRef.current));
+  const toggleSearch = () => (setAOn(false), setSOn(!sOnRef.current));
   // the configuration is a dialog over the page: what is open behind it stays as it was
   const toggleConfig = () => setCOn(!cOnRef.current);
   // asking Obeya about the configuration: its conversation in place of the dialog, ready to type into
@@ -364,7 +370,7 @@ function Canvas({
   const [configProblems, setConfigProblems] = useState(0);
   const configRevs = [...snapshot.canvas.repos.map((r) => `${r.id}:${r.configRev ?? 0}`), ...canvases.map((c) => `${c.id}:${c.configRev ?? 0}`), `${snapshot.canvas.configRev ?? 0}`].join(' ');
   useEffect(() => void api.configCheck().then((c) => setConfigProblems(c.problems.length), console.error), [configRevs]);
-  // the archive, read while its list is open; archived cards unfold from their row there
+  // the archive, read while its list or the search is open; archived cards unfold from their row there
   const [archived, setArchived] = useState<Item[]>([]);
   const archivedRef = useRef(archived);
   archivedRef.current = archived;
@@ -379,11 +385,11 @@ function Canvas({
   // an archived card opened from a project's sheet, which the archive list may not hold
   const [opened, setOpened] = useState<Item | null>(null);
   useEffect(() => {
-    if (!aOn) return;
+    if (!aOn && !sOn) return;
     let current = true;
     api.archived().then((a) => current && setArchived(a), console.error);
     return () => void (current = false);
-  }, [aOn, snapshot]);
+  }, [aOn, sOn, snapshot]);
   const [popId, setPopId] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>()).current;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -422,6 +428,17 @@ function Canvas({
     clearTimeout(e.timer);
     e.timer = setTimeout(() => flushEdit().catch(console.error), 400);
   };
+
+  /**
+   * Opens a card the search found: one on the canvas where it stands, the search closing (a
+   * workstream of a collapsed project in its project's sheet); an archived one from its row.
+   */
+  function openFound(i: Item) {
+    if (i.archivedAt) return open(i);
+    setSOn(false);
+    const p = i.parent ? byId(i.parent) : undefined;
+    return open(p?.collapsed ? p : i);
+  }
 
   /** Unfolds the card `i`; `quick` without the flight and the unfold, as after a reload. */
   async function open(i: Item, quick = false) {
@@ -1382,6 +1399,7 @@ function Canvas({
       if (quoting) return setReply(quoting, null);
       // the archive's list closes after a card unfolded from it
       if (f?.type !== 'card' && aOnRef.current) return setAOn(false);
+      if (f?.type !== 'card' && sOnRef.current) return setSOn(false);
       // what is marked lets go before a sheet closes, once the colour ring for it has closed
       if (f?.type !== 'card' && !typing && !ring && marked.length) return setSelection([]);
       if (typing) (e.target as HTMLElement).blur();
@@ -1399,11 +1417,12 @@ function Canvas({
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
-    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a') {
-      // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter)
+    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a' || e.key === 's') {
+      // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter, the search)
       e.preventDefault();
       if (e.key === 'n') createAtCentre();
       else if (e.key === 'c') talkKoordinator();
+      else if (e.key === 's') toggleSearch();
       else toggleArchive();
     }
   };
@@ -1420,10 +1439,15 @@ function Canvas({
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
+  // the card picked in the search lights up where it stands: on its folded project, or its edge indicator while out of sight
+  const found = foundId ? byId(foundId) : undefined;
+  const litId = found && standsFor(found).id;
   const edgeTargets = items.flatMap((item) => {
     const b = at.get(standsFor(item).id);
     return b && yours(item) && (focus?.type !== 'project' || item.parent === focus.id) ? [{ item, b }] : [];
   });
+  let litEdge = litId ? edgeTargets.find((e) => standsFor(e.item).id === litId) : undefined;
+  if (found && litId && !litEdge && at.has(litId)) edgeTargets.push((litEdge = { item: found, b: at.get(litId)! }));
 
   // the button for the conversation with Obeya: the rightmost in the bar; while its sidebar is open it
   // belongs to the sidebar, at its top corner, and closes it. It is one element that never moves to
@@ -1475,7 +1499,7 @@ function Canvas({
             {deps && <DepLinks placed={placed} edges={deps.edges} />}
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
-                <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
+                <ProjectView key={item.id} item={item} b={b} lit={item.id === litId} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
               ) : (
                 <CardView
                   key={item.id}
@@ -1484,6 +1508,7 @@ function Canvas({
                   lifted={item.id === openId}
                   dragging={item.id === dragId || dragWith.includes(item.id)}
                   pop={item.id === popId}
+                  lit={item.id === litId}
                   prototyped={prototyped.has(item.id)}
                   showRepo={snapshot.canvas.repos.length > 1}
                   els={els}
@@ -1548,7 +1573,7 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={side} onOpen={open} />}
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={side} onOpen={open} lit={litEdge?.item.id} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs) */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
@@ -1556,6 +1581,18 @@ function Canvas({
             <Sign size={24} />
           </span>
           <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
+          <SearchPill
+            on={sOn}
+            onToggle={toggleSearch}
+            onClose={() => setSOn(false)}
+            held={focus?.type === 'card'}
+            items={items}
+            archived={archived}
+            onOpen={openFound}
+            onLight={setFoundId}
+            els={archiveEls}
+            icon={<BarIcon d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.3 15.3 20 20" />}
+          />
           <ArchivePill
             on={aOn}
             onToggle={toggleArchive}

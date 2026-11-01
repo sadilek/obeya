@@ -332,6 +332,8 @@ export interface Item {
    * Obeya's reading session. A dimension without a key has none chosen yet.
    */
   tags?: PageTags;
+  /** When something last happened at the card (a change of state, a line in its conversation, an edit); moving it does not count. */
+  changedAt?: string;
   /** The card it comes from: a proposal's source, a prototype's idea, or the card a follow-up follows up on. */
   from?: string;
   /** With `from` on another canvas (a card moved there, or one made there by Obeya): that card's title and canvas. */
@@ -816,6 +818,10 @@ export interface Demo {
   follows?: 'replaces' | 'supplements';
   /** A video without `poster.jpg` (one the demo skill did not render): the player shows its first frame instead. */
   noPoster?: true;
+  /** A video's caption tracks by language, the narration's first, each in `captions.<language>.vtt`; none for one with `captions.vtt` alone. */
+  tracks?: string[];
+  /** A video without sound: its captions show from the start. */
+  silent?: true;
 }
 
 /** A demo a later handover replaced: `n` is its place among the card's earlier demos, for its files. */

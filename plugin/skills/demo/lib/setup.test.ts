@@ -65,6 +65,11 @@ describe('demo setup', () => {
     expect(by.playwright?.state).toBe('ok');
   });
 
+  test('a silent demo needs neither uv nor a voice', async () => {
+    const check = await checkSetup({ language: 'de', voice: 'none' }, { env: { PATH: join(dir, 'none'), HOME: dir }, home: dir, narrationOnly: true });
+    expect(check.items.map((i) => i.id)).toEqual(['node', 'ffmpeg']);
+  });
+
   test('a voice Obeya holds on its own machine counts as there for a worker on another one', async () => {
     const env = { PATH: join(dir, 'none'), HOME: dir, DEMO_CHROME: join(dir, 'no-chrome') };
     const voice = async (more: Record<string, string>, voice: 'qwen3' | 'piper' = 'qwen3') =>

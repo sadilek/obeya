@@ -24,8 +24,8 @@ import { type Gone, siteBase, siteMissing, siteTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
 import { GITHUB_PAGES } from './site-hosts';
-import { rereadChapters } from './demo';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoFile, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage } from './demo-page';
+import { rereadChapters, videoFacts } from './demo';
+import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, captionTracks, type DemoPageParts, day, demoFile, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage, silentVideo } from './demo-page';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { readSession } from './koordinator';
@@ -341,8 +341,8 @@ export class Sharing {
     if (s?.state || (s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo))))) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
     const chapters = rereadChapters(demo.dir);
     if (typeof chapters === 'string') throw new BadRequest('invalid', chapters);
-    const { page: _, ...rest } = demo;
-    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters }) });
+    const { page: _, tracks: _tracks, silent: _silent, ...rest } = demo;
+    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters, ...videoFacts(demo.dir) }) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.rebuilt(this.languageOf(demo.dir, this.card(cardId))));
   }
 
@@ -711,8 +711,12 @@ export class Sharing {
       return path ? new Uint8Array(readFileSync(path)) : null;
     };
     const poster = file('poster.jpg');
-    const captions = file('captions.vtt');
     const language = this.languageOf(demo.dir, card);
+    // every caption track goes with it; one from before the tracks is in the demo's language
+    const tracks = captionTracks(demo.dir).flatMap((t) => {
+      const data = file(t.file);
+      return data ? [{ file: t.file, language: t.language ?? language, data }] : [];
+    });
     const parts: Omit<DemoPageParts, 'video' | 'poster'> = {
       title: page.title,
       text: page.text,
@@ -723,7 +727,8 @@ export class Sharing {
       tabTitle: page.title,
       language,
       // a page opened from disk may not load a caption file
-      captions: { vtt: captions ? new TextDecoder().decode(captions) : 'WEBVTT\n' },
+      tracks: tracks.map((t) => ({ language: t.language, vtt: new TextDecoder().decode(t.data) })),
+      ...(silentVideo(video) ? { silent: true } : {}),
     };
     let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
     if (as === 'html') {
@@ -739,7 +744,7 @@ export class Sharing {
         { name: `${slug}/index.html`, data: new TextEncoder().encode(html) },
         { name: `${slug}/demo.mp4`, data: new Uint8Array(readFileSync(video)) },
         ...(poster ? [{ name: `${slug}/poster.jpg`, data: poster }] : []),
-        ...(captions ? [{ name: `${slug}/captions.vtt`, data: captions }] : []),
+        ...tracks.map((t) => ({ name: `${slug}/${t.file}`, data: t.data })),
       ];
       out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
     }
