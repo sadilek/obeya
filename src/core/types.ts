@@ -5,7 +5,7 @@ import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { CardFile } from './files';
 import type { Language } from './locale';
 import { MESSAGES } from './messages';
-import type { PageChangeId } from './page-changes';
+import type { OutdatedBy } from './page-changes';
 import type { NotAProject } from './plan-doc';
 import type { Wish } from './wish';
 
@@ -869,7 +869,7 @@ export interface Share {
   /** The card's latest demo is not on the page. */
   stale?: boolean;
   /** The page shows the card's demo, but pages changed since it was published ("Erneut teilen"): those changes, oldest first. */
-  outdated?: PageChangeId[];  /** The page is on the owner’s personal demo site, unlisted (behind a random part of its address). */
+  outdated?: OutdatedBy[];  /** The page is on the owner’s personal demo site, unlisted (behind a random part of its address). */
   unlisted?: true;
 }
 
@@ -1118,7 +1118,7 @@ export interface Reshare {
   /** Shared pages on a site with a vocabulary that lack tags in a dimension (none chosen, or a value the vocabulary no longer has), not queued. */
   untagged?: number;
   /** What sharing them again brings: each change they lack, oldest first, with how many of them lack it. */
-  changes?: { id: PageChangeId; pages: number }[];
+  changes?: { id: OutdatedBy; pages: number }[];
   run?: {
     total: number;
     /** Shared again. */

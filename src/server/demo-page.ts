@@ -142,6 +142,8 @@ interface PageParts {
   /** The page's tags, by dimension, each a link (say, to the overview showing the pages with it). */
   tags?: { dimension: string; value: string; href: string }[];  /** A page of an unlisted site: kept out of search engines, and its links send no referrer. */
   unlisted?: true;
+  /** The theme of the card's repository (theme.ts): its CSS, after Obeya's own style. */
+  theme?: string;
 }
 
 /**
@@ -278,6 +280,9 @@ export const PAGE_STYLE = `
   .credit { margin-top: 48px; font-size: 13px; color: var(--muted); }
 `;
 
+/** A repository's theme (theme.ts) in a page's head, after Obeya's own style, so it wins; nothing in it may close its element. */
+export const themeStyle = (css?: string) => (css ? `<style>${css.replace(/<\/(style)/gi, '<\\/$1')}</style>` : '');
+
 /** Obeya's site, which every page and the overview link at their end. */
 export const OBEYA_URL = 'https://obeya.si';
 
@@ -392,11 +397,16 @@ ${credit(language)}</main>
 /** What an unlisted page's head says: no index, no referrer (the meta tags hold where a host sends no headers of the site's own, GitHub Pages). */
 const UNLISTED_META = '<meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">';
 
-/** A page's start, down to the demo's text: its head (with its `policy`, if it has one), the link above the title, the title, when it was shared. */
+/**
+ * A page's start, down to the demo's text: its head (with its `policy`, if it has one), the link
+ * above the title, the title, when it was shared. A page with a theme has a policy in any case, that
+ * of a shared artifact's page, so nothing the theme names loads from elsewhere.
+ */
 function pageStart(p: PageParts, language: PageLanguage, policy?: string, style = '', list = ''): string {
+  policy ??= p.theme ? pagePolicy(ON_DISK) : undefined;
   return `<!doctype html>
 <html lang="${language}"><head><meta charset="utf-8">${policy ? `<meta http-equiv="Content-Security-Policy" content="${policy}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">${p.unlisted ? UNLISTED_META : ''}
-<title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}${style}</style></head>
+<title>${esc(p.tabTitle)}</title><style>${PAGE_STYLE}${style}</style>${themeStyle(p.theme)}</head>
 <body><main>
 ${p.top ? `<div class="top"><a href="${esc(p.top.href)}">${esc(p.top.text)}</a></div>\n` : ''}<h1>${esc(p.title)}</h1>
 <div class="when">${esc(p.when)}</div>

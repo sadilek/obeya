@@ -29,6 +29,10 @@
 // their pull request's link. What counts is the demo's own files (`source` in meta.json), not the
 // copies on the site, which carry what Obeya adds to an artifact (artifact-copy.ts).
 //
+// A repository's theme (theme.ts) goes into each page of its cards, and into the overview of a listed
+// site whose target names it (the repository publishing), after Obeya's style; `meta.json` keeps its
+// hash, so a changed theme shows as outdated. Without one, the pages are what they were.
+//
 // A host may serve no byte ranges (Cloudflare Pages does not): the video page then loads the video
 // whole, so a browser can seek in it (`demo-page.ts`).
 //
@@ -48,7 +52,8 @@ import type { Messages } from '../core/messages';
 import { dimensions } from '../core/page-tags';
 import type { PageTags } from '../core/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type CaptionTrack, captionTracks, credit, day, demoPageHtml, esc, OBEYA_URL, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, silentVideo, type StackedDemo, stackedPageHtml } from './demo-page';
+import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type CaptionTrack, captionTracks, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, silentVideo, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
+import type { Theme } from './theme';
 import { artifactCopy } from './artifact-copy';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { demoFiles, OWN_CONNECTIONS } from './demo';
@@ -86,6 +91,8 @@ interface Meta {
   more?: MoreMeta[];
   /** The page's tags from the site's vocabulary (`demo.site.tags`), by dimension; absent on pages without. */
   tags?: PageTags;
+  /** The hash of the theme of the card's repository the page was written with (theme.ts); absent on pages without one. */
+  theme?: string;
 }
 
 /** A later demo version on a page: what its section shows, and when it was handed over (`handed`, its heading). */
@@ -206,6 +213,8 @@ export interface SiteOptions {
    * for search engines, no referrer for the links leaving it.
    */
   unlisted?: { secret: string };
+  /** The theme of the repository publishing (theme.ts), for the overview: a listed site's overview carries the theme of the repository that published last. */
+  theme?: Theme | null;
 }
 
 /** git's name in the repository (its own `user.name`, else the global one); undefined where it has none. */
@@ -443,7 +452,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       return;
     }
     const pages = readPages(dir);
-    writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage()));
+    writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), opts.theme?.css));
     writeFileSync(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
     writeFileSync(join(dir, HEADERS), artifactHeaders(site));
   };
@@ -631,6 +640,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               language: p.language,
               ...(by ? { by } : {}),
               ...(p.tags && Object.values(p.tags).some((v) => v.length) ? { tags: p.tags } : {}),
+              ...(p.theme ? { theme: p.theme.hash } : {}),
               ...(later.length
                 ? {
                     more: later.map(({ d, html, source, at }) => ({
@@ -647,7 +657,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
                 : {}),
             };
             writeFileSync(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
-            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted));
+            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, p.theme?.css));
             return { ...entryOf(slug), rev };
           },
           log,
@@ -803,9 +813,9 @@ function versionFiles(dir: string): VersionFiles {
 /**
  * A page of the site, in its language; `files`: what a version's directory (the page's own: '')
  * holds. A page of an unlisted site links no overview and no tags, and keeps itself out of search
- * engines.
+ * engines. `theme`: the CSS of the card's repository's theme.
  */
-function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false): string {
+function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
   const { language } = m;
   const w = PAGE_WORDS[language];
   const parts = {
@@ -816,6 +826,7 @@ function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles,
     when: w.sharedOn(day(m.at, language), m.by),
     tabTitle: unlisted ? m.title : `${m.title} · ${site.title}`,
     language,
+    ...(theme ? { theme } : {}),
     ...(unlisted
       ? { unlisted: true as const }
       : {
@@ -898,7 +909,7 @@ const COPY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9"
  * icon, those shown all at once by „Links kopieren“: as HTML links and as a Markdown list. It all
  * runs in the browser; the site stays static.
  */
-function overviewHtml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage): string {
+function overviewHtml(site: DemoSite, pages: (Meta & { slug: string })[], language: PageLanguage, theme?: string): string {
   const w = PAGE_WORDS[language];
   const has = (d: string, v: string) => pages.some((p) => p.tags?.[d]?.includes(v));
   const dims = dimensions(site.tags).flatMap(([d, values]) => {
@@ -918,8 +929,8 @@ ${dims.map(([d, values]) => `<div class="dim" role="group" aria-label="${esc(d)}
 <div class="bar"><span id="count">${esc(w.shown.replace('{n}', String(pages.length)).replace('{m}', String(pages.length)))}</span><button class="copy-all" title="${esc(w.copyLinksHint)}">${COPY_ICON}<span>${esc(w.copyLinks)}</span></button></div>
 `;
   return `<!doctype html>
-<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(site.title)}</title><link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="${FEED}"><style>${PAGE_STYLE}${OVERVIEW_STYLE}</style></head>
+<html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(site.title)}</title><link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="${FEED}"><style>${PAGE_STYLE}${OVERVIEW_STYLE}</style>${themeStyle(theme)}</head>
 <body><main>
 <h1>${esc(site.title)}</h1>
 <div class="when">${esc(w.overview)} · <a href="${FEED}">${esc(w.feed)}</a></div>

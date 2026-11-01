@@ -48,6 +48,7 @@ import { dimensions } from '../core/page-tags';
 import { type DueRestart, Workers } from './workers';
 import { branchSetting, type CardWorkspaces, defaultBranch, type FileAt, detectingBranch, gitCalls, gitOrNull, type GitSteps, gitSteps, gitStepsSync, isFolder, type Landed, markFolder, readingBranches, together, useBranchSetting, Workspaces } from './workspaces';
 import { FolderWorkspaces } from './folder';
+import { readTheme, type Theme } from './theme';
 import { claudeToken, githubToken, hostName, registerHost } from './hosts';
 import { clip, messageOf, oneLine } from '../core/text';
 import { type WishDraft, type WishInput, writeWish } from './wish';
@@ -406,7 +407,9 @@ export class CanvasRuntime {
       // the site of a repository not running is not known meanwhile
       sourceFor: (card) => {
         const r = this.runs(card) ? this.repoOf(card) : undefined;
-        return r ? { site: r.site, repo: r.info.path, ...(r.isPublic ? { isPublic: true } : {}) } : null;
+        if (!r) return null;
+        const theme = this.themeOf(r.info.path);
+        return { site: r.site, repo: r.info.path, ...(r.isPublic ? { isPublic: true } : {}), ...(theme ? { theme } : {}) };
       },
       languageFor: (card) => (this.runs(card) ? this.repoOf(card).adapter.demo?.language : undefined),
       onPage: (cardId, r) => {
@@ -419,6 +422,11 @@ export class CanvasRuntime {
     board.showVocabulary((repo) => {
       const site = this.repos.find((r) => r.ref.id === repo)?.site;
       return site && dimensions(site.tags).length ? site.tags : undefined;
+    });
+    // the pages a repository's new theme leaves outdated
+    board.showThemes((repo) => {
+      const r = this.repos.find((x) => x.ref.id === repo);
+      return r ? (this.themeOf(r.info.path)?.hash ?? null) : undefined;
     });
     // snoozed cards wake at their time: one that passed while Obeya was not running, or the machine slept, at once
     this.wakeDue();
@@ -532,6 +540,11 @@ export class CanvasRuntime {
     if (!this.shared.has(path)) this.shared.set(path, readShared(path));
     return () => withoutHeld(this.shared.get(path)!.settings, this.heldOf(path));
   };
+
+  /** The repository's theme for its shared pages, as its Lesestand last had it (theme.ts); null without one. */
+  private themeOf(path: string): Theme | null {
+    return readTheme(path, this.shared.get(path)?.obeyaTree);
+  }
 
   /**
    * The groups of the repository's commands that do not count until the owner confirms them: new
@@ -1230,7 +1243,10 @@ export class CanvasRuntime {
     const path = r.info.path;
     if (this.shutDown || !this.repos.includes(r)) return 'same';
     if (this.pending?.paths.has(path)) return 'due';
+    const tree = this.shared.get(path)?.obeyaTree;
     const shared = this.reread(r, read.shared);
+    // a new theme leaves pages outdated
+    if (read.shared.obeyaTree !== tree) this.board.changed();
     const was = this.held.get(path);
     this.held.delete(path);
     const held = JSON.stringify(this.heldOf(path)) !== JSON.stringify(was ?? []);

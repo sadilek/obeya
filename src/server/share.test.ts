@@ -11,6 +11,7 @@ import { demoPageHtml } from './demo-page';
 import { DEMO_MARKER, SHARE_CWD, Sharing, withDemoLink } from './share';
 import { siteKey } from './site';
 import { missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
+import type { Theme } from './theme';
 import { FakeRuntime, gitRepo, noContributions } from './testing';
 import { git } from './workspaces';
 
@@ -77,11 +78,14 @@ const SITE_URL = `http://localhost:${server.port}/`;
 let publish: DemoSite['publish'];
 /** The site's vocabulary of tags (`demo.site.tags`); none without. */
 let vocabulary: DemoSite['tags'];
+/** The repository's theme (`.obeya/theme.css`); none without. */
+let theme: Theme | null;
 const site = (): DemoSite => ({ title: 'Demos', url: SITE_URL, deploy: `${join(dir, 'deploy.ts')} {dir} ${dir}`, ...(publish ? { publish } : {}), ...(vocabulary ? { tags: vocabulary } : {}) });
 
 beforeEach(() => {
   publish = undefined;
   vocabulary = undefined;
+  theme = null;
   dir = mkdtempSync(join(tmpdir(), 'obeya-share-'));
   writeFileSync(join(dir, 'deploy.ts'), DEPLOY);
   board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: dir, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
@@ -92,6 +96,7 @@ beforeEach(() => {
   settled = [];
   sharing = make();
   board.showVocabulary(() => vocabulary);
+  board.showThemes(() => theme?.hash ?? null);
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
@@ -103,7 +108,8 @@ function make(repo = dir) {
     runtime,
     home: join(dir, 'home'),
     forge,
-    sourceFor: (card) => (card.title.startsWith('Ohne') ? null : { site: site(), repo }),
+    // a repository with a theme and without a site still has its theme for the export
+    sourceFor: (card) => (card.title.startsWith('Ohne') ? (theme ? { site: null, repo, theme } : null) : { site: site(), repo, ...(theme ? { theme } : {}) }),
     // the repository names English for its demos (`demo.language`) on cards so titled
     languageFor: (card) => (card.title.startsWith('In English') ? 'en' : undefined),
     onPage: (id, r) => void settled.push([id, r]),
@@ -1400,5 +1406,73 @@ describe('exporting a demo, where the repository has no demo site', () => {
     const gone = card('Weg');
     rmSync(join(dir, `demo-${gone.id}`, 'demo.mp4'));
     await expect(sharing.export(gone.id, 'zip')).rejects.toMatchObject({ code: 'noShare' });
+  });
+});
+
+describe('a repository’s theme', () => {
+  const THEME = { css: ':root { --accent: #1d4ed8; } h1 { font-family: system-ui; }', hash: 'aaaaaaaaaaaaaaaa' };
+  const pageOf = (id: string) => readFileSync(join(dir, 'deployed', slug(id), 'index.html'), 'utf8');
+
+  test('goes into the page after Obeya’s style; a new theme leaves the page outdated, and sharing again brings it', async () => {
+    theme = THEME;
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    const html = pageOf(c.id);
+    expect(html.indexOf(`<style>${THEME.css}</style>`)).toBeGreaterThan(html.indexOf('</style>'));
+    // nothing the theme names loads from elsewhere
+    expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:;`);
+    expect(meta(c.id)).toMatchObject({ theme: THEME.hash });
+    expect(readFileSync(join(dir, 'deployed', 'index.html'), 'utf8')).toContain(`<style>${THEME.css}</style>`);
+    expect(share(c.id)!.outdated).toBeUndefined();
+
+    // a new theme on the main branch: the canvas shows what it leaves outdated
+    theme = { css: ':root { --accent: #b91c1c; }', hash: 'bbbbbbbbbbbbbbbb' };
+    board.changed();
+    expect(share(c.id)!.outdated).toEqual(['theme']);
+    expect(board.snapshot().reshare).toEqual({ outdated: 1, changes: [{ id: 'theme', pages: 1 }] });
+    // "Ausblenden" until the theme changes anew; the card still offers it
+    sharing.dismissResharing();
+    expect(board.snapshot().reshare).toBeUndefined();
+    expect(share(c.id)!.outdated).toEqual(['theme']);
+    theme = { css: ':root { --accent: #15803d; }', hash: 'cccccccccccccccc' };
+    board.changed();
+    expect(board.snapshot().reshare).toEqual({ outdated: 1, changes: [{ id: 'theme', pages: 1 }] });
+
+    sharing.reshareMany(null);
+    await until(() => board.snapshot().reshare?.run?.left === 0);
+    expect(share(c.id)!.outdated).toBeUndefined();
+    expect(pageOf(c.id)).toContain(`<style>${theme.css}</style>`);
+    expect(pageOf(c.id)).not.toContain(THEME.css);
+
+    // the theme taken away: the page goes back to Obeya's look
+    theme = null;
+    board.changed();
+    expect(share(c.id)!.outdated).toEqual(['theme']);
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared' && !share(c.id)!.outdated);
+    expect(pageOf(c.id)).not.toContain('Content-Security-Policy');
+    expect(meta(c.id)).not.toHaveProperty('theme');
+  });
+
+  test('a page without a theme stays as it was, and a repository with none marks no page', async () => {
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    expect(pageOf(c.id)).not.toContain('Content-Security-Policy');
+    expect(JSON.parse(board.row(c.id).share!)).not.toHaveProperty('theme');
+    expect(share(c.id)!.outdated).toBeUndefined();
+  });
+
+  test('the export carries it, as one HTML file and in the ZIP', async () => {
+    theme = THEME;
+    const c = card('Ohne Ziel');
+    const one = new TextDecoder().decode((await sharing.export(c.id, 'html')).data);
+    expect(one).toContain(`<style>${THEME.css}</style>`);
+    const out = await sharing.export(c.id, 'zip');
+    expect(new TextDecoder().decode(out.data)).toContain(`<style>${THEME.css}</style>`);
+    const art = card('Ohne Ziel, ein Artefakt', { kind: 'html', chapters: [] });
+    writeFileSync(join(dir, `demo-${art.id}`, 'index.html'), '<!doctype html><p>Auswertung</p>');
+    expect(new TextDecoder().decode((await sharing.export(art.id, 'html')).data)).toContain(`<style>${THEME.css}</style>`);
   });
 });

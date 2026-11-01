@@ -143,6 +143,12 @@ pages. The run survives a restart; a page shared again on its own, withdrawn or 
 drops out of it. It is not counted on the Koordinator button: each card offers "Erneut teilen", and
 nothing is lost by leaving them.
 
+A page is outdated by its repository's theme too (see A repository's theme): the share keeps the
+theme's hash, and once the repository's current one differs (a new theme, a changed one, one taken
+away), the card lists „Theme geändert“ without a day beside the page changes, and the Koordinator's
+entry counts its pages with them. „Ausblenden“ hides them until that repository's theme changes
+again.
+
 A page published again with the same video keeps its date („Geteilt am“), so the overview keeps its
 order; a new video dates it anew.
 
@@ -245,6 +251,39 @@ play sound only after a click on the page, and the owner did not want it muted.
 Every page and every overview ends in „Aufgenommen mit Obeya“ ("Recorded with Obeya") linking
 https://obeya.si, without a setting to turn it off; `?alone` leaves it out.
 
+#### A repository's theme
+
+A repository gives its shared pages a look of its own with one file, `.obeya/theme.css`, without a
+setting or anything in Obeya's UI: Obeya manages nothing of it. Like the settings, it is read from
+the default branch, not from a card's branch. Every page of the repository carries it, on its own
+site and on the personal site alike, and so does an export (ZIP and HTML file); the overview and the
+feed of a repository's site carry the theme of the repository publishing, as with the site's title,
+while the overview of a listed personal site keeps Obeya's look, as it belongs to no repository. An
+artifact in its frame stays untouched.
+
+The file goes into the page's head after Obeya's own style, so its rules win. Files it names with
+`url()` or `@import` (a logo, a font, another stylesheet, which may name more in turn) go in as
+`data:` URLs where their real path lies inside `.obeya/` (a link to a file elsewhere does not
+count); every other reference, a file elsewhere or an address on the internet, is dropped, and a
+page with a theme carries the policy of a shared artifact's page, so nothing it names loads from
+another server. Without the file, pages are byte for byte what they are without the feature.
+
+What a theme styles is the pages' markup, which is its interface and changes only on purpose:
+
+- the colour variables on `:root`: `--bg`, `--card`, `--ink`, `--muted`, `--line`, `--chip`,
+  `--accent`, set for light and dark (`prefers-color-scheme`), which a theme may set apart too;
+- a page: `main` around everything, `.top` (the link to all demos), `h1`, `.when` (who shared it
+  when), `.tags` with `.tag` chips, `.text` with its paragraphs, `.grid` with `.player` (the `video`
+  and its `.start` button) and the chapters as `ol` of buttons, `.pr` (the link to the change),
+  `.links`, `.artifact` (the frame), `.credit` (the closing line); several versions on one page add
+  `.sections` and `section.addendum` with its `h2` and `h3`;
+- the overview: `h1`, `.when`, `.filter` with the search field and `.dim` rows of `.chip` buttons,
+  `.bar` with the count and `.copy-all`, `ul.demos` whose entries are links holding `b` (the
+  title), `span` (the line under it) and `i` with `em` tags, each with a `.copy` button.
+
+A logo goes in as a `background-image` on an element there or a `::before`. „Aufgenommen mit Obeya“
+stays in the markup of every page; a theme may hide it.
+
 #### Static sites
 
 A static host takes the site as a directory, deployed whole with each change. Obeya keeps it under its
@@ -277,7 +316,7 @@ Pages, Netlify, Vercel, `aws s3 sync`, `rsync`, a Pages branch, a script.
 The site lives in `sites/<key>/` under Obeya's home, the key from the URL's host and path, shared by
 all repositories naming it. `site/` holds a directory per page (demo files, `index.html`,
 `meta.json`: kind, title, text, chapters, PR (or without one the commit: its address, and whether it is a comparison over several), first shared, last changed, a hash of the demo's own
-files, language, who shared it, its tags, and under `more` the later versions, their files in `2/`, `3/` …),
+files, language, who shared it, its tags, the hash of the repository's theme it carries, and under `more` the later versions, their files in `2/`, `3/` …),
 the overview, dated by each page's newest version, and an Atom feed (`feed.xml`, linked from the
 overview as „Feed abonnieren“ and by `<link rel="alternate">`) with one entry per page in the overview's order (title,
 first sentence as summary, the whole text as content, the page's address as link and id, the
@@ -470,6 +509,11 @@ another machine withdrew loses its link here, with a line naming the machine.
   approval always sharing.
 - **Deploys run in `share/` under Obeya's home** (2026-10-05): run in the checkout, wrangler's cache
   blocked the pool workspace from being leased.
+- **A repository's theme is a file in it, `.obeya/theme.css`, not settings** (owner, 2026-11-01):
+  a stylesheet gives full freedom (colours, fonts, spacing, a logo), and Obeya manages nothing of
+  it. Rejected: single colour fields in the settings (too narrow), a `theme.html` with pieces of
+  markup (it would need insertion points and scripts, a risk without a gain), and a theme UI in
+  Obeya. The markup the pages have is its interface from then on.
 - **A page is outdated by a change written down for its viewers** (2026-10-16). Rejected: a hash of
   the pages' bytes, which marked pages outdated without saying what changed, also where nothing
   showed, so the owner could not judge whether resharing 70 pages was worth it.

@@ -6,7 +6,7 @@ import { ApiError } from './api';
 import type { DiffFile } from '../core/diff';
 import { type Language, languageOf } from '../core/locale';
 import { MESSAGES } from '../core/messages';
-import type { PageChangeId } from '../core/page-changes';
+import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
 import { type AgentEffort, type AgentModel, type AgentRole, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
 
@@ -859,7 +859,8 @@ const de = {
       '2026-10-30-commit': 'Ist die Arbeit ohne Pull Request auf main gelandet, verlinkt die Seite den Commit (bei mehreren den Vergleich über alle).',
       '2026-10-30-steady':
         'Der Rahmen des Artefakts nimmt gleich die Höhe der Seite an und bleibt dabei: Bei einer Seite mit Bildern in voller Breite sprang er beim Öffnen eine Sekunde lang zwischen zwei Höhen, und eine kurze Seite stand in einem zu hohen Rahmen.',
-    } satisfies Record<PageChangeId, string>,
+      theme: 'Theme geändert: Die Datei .obeya/theme.css des Repositorys ist neu, anders oder entfernt.',
+    } satisfies Record<OutdatedBy, string>,
     pages: (n: number) => (n === 1 ? 'eine Seite' : `${n} Seiten`),
   },
   answer: {
@@ -2763,6 +2764,7 @@ const en: Strings = {
       '2026-10-30-commit': 'Where the work landed on main without a pull request, the page links its commit (for several, the comparison over them).',
       '2026-10-30-steady':
         'The artifact’s frame takes the page’s height at once and keeps it: for a page of images as wide as itself, it jumped between two heights for a second as it opened, and a short page stood in a frame too high for it.',
+      theme: 'Theme changed: the repository’s .obeya/theme.css is new, different or removed.',
     },
     pages: (n: number) => (n === 1 ? 'one page' : `${n} pages`),
   },
