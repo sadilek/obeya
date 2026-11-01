@@ -449,6 +449,13 @@ where a detached process opens a console window for every program it starts, the
 ignore Ctrl-C instead, and the agents stay in the console (a stop through the app still waits for
 them).
 
+On Windows every program Obeya starts runs without a window (git above all, many times a minute),
+except one meant to be seen (Explorer, a terminal for a login). An Obeya without a console of its own
+(a scratch Obeya, one started without a terminal) otherwise gave each a window: with Windows Terminal
+as the default terminal, one flashed up per call and took the focus from what the owner was typing
+in, several a second while workers were busy. It is the default for every program started, not an
+option at each call, since one call forgotten brings the flashing back (2026-11-01).
+
 ### Decisions
 
 - **Other devices over the owner's private network, paired by a QR code** (2026-10-16, plan „Obeya
