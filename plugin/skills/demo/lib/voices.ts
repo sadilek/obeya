@@ -263,6 +263,8 @@ export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
       return { kind: 'command', shell: s.command ?? '', tag: `command|${s.command ?? ''}`, heavy: true };
     case 'http':
       return { kind: 'http', service: 'http', url: s.url, keyEnv: KEY_ENV.http, keyFile };
+    case 'none':
+      throw new Error('a demo without a voice has nothing to synthesise');
     default:
       return { kind: 'http', service: s.voice, url: s.url, voiceName: s.voiceName, keyEnv: KEY_ENV[s.voice], keyFile };
   }

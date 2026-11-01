@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
+import { languageName, preferredTrack } from '../core/locale';
 import { answerText, toggle } from './answer';
 import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { useCopy } from './copy';
@@ -32,7 +33,7 @@ import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPi
 import { dismissPlace, type Place, seekTo, showsVersions, usePlace, videoOf, watch } from './spot';
 import { cameInView, useSeen } from './seen';
 import { ClockMark, SnoozeLine, SnoozeMenu, snoozeWho } from './snooze';
-import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen, stateLabel, t } from './strings';
+import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen, stateLabel, t, uiLanguage } from './strings';
 import { agentWorks, cardTalk, demoHandover, talkState, koordinatorReads, ownerField, parseQuestion, snoozeLine, talkAlone, type Turn, unseenTurns, waitsFirstStart, worked as isWorked } from './talk';
 import { PageChangeList } from './page-changes';
 import { WishReplyLink } from './wish';
@@ -1879,7 +1880,21 @@ function DemoView({
                   watching.ended();
                 }}
               >
-                <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
+                {demo.tracks ? (
+                  // a track per language, named in the interface's; a silent video shows one from the start, in the interface's language where it has a track in it
+                  demo.tracks.map((l) => (
+                    <track
+                      key={src(`captions.${l}.vtt`)}
+                      kind="captions"
+                      src={src(`captions.${l}.vtt`)}
+                      srcLang={l}
+                      label={languageName(l, uiLanguage())}
+                      default={!!demo.silent && l === preferredTrack(demo.tracks!, [uiLanguage()])}
+                    />
+                  ))
+                ) : (
+                  <track key={src('captions.vtt')} kind="captions" src={src('captions.vtt')} label={t.demo.captions} default={!!demo.silent} />
+                )}
               </video>
               {seek.hint && (
                 <span className="seek-hint">

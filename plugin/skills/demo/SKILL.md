@@ -136,7 +136,8 @@ Create `<demos>/<repo-dir>-<slug>/demo.ts` (model: the newest demo of the same r
 Narration — in the language and person of the demo settings, matter-of-fact. Read them first:
 `node ${CLAUDE_SKILL_DIR}/lib/settings.ts` prints the language (narration, chapter titles, report;
 the repository's own where its settings name one) and the person: the first person only when the voice is the owner's own, otherwise the work
-is presented without "I" or "we".
+is presented without "I" or "we". With no voice (`voice: none`) the video is silent: the narration
+is shown as captions only, and each scene lasts as long as its text takes to read.
 - One scene per behaviour, 1–3 sentences each. Say what the viewer sees and why it matters,
   never the implementation. Length follows the size of the change, never padded: a small one
   30–60 s (for a fix: the broken behaviour, then the fixed one), a larger one 1½–3 min,
@@ -149,6 +150,8 @@ is presented without "I" or "we".
   sometimes) is measured before the narration is written, and narrated so it holds in any take
   ("several seconds", "mostly"), not with the value of one run. Other agents load the same
   machine: compare CPU time or counts rather than wall-clock time.
+- Each sentence of a `say` is a caption of its own, shown while it is spoken (or read): keep
+  sentences short enough to read in a few seconds.
 - Waiting is not shown: where the demo waits for something slow (an agent's answer, a build, a
   sync), put the wait into `d.skip` after the scene's `untilSpoken(1)`. The video cuts it out
   with a white flash that says how much later it is; the next scene's narration starts with the
@@ -193,6 +196,14 @@ Start the narration as soon as the `say` texts are written, while you still scri
 (`run` may be empty then): `--narration` synthesises and caches the clips and exits, so the
 render later starts recording at once.
 
+Where the settings name subtitle languages beside the narration's (`subtitles` in what
+`lib/settings.ts` prints), a render first writes the sentences to translate
+(`.work/subtitles/source.json`), says where each language's translation goes
+(`.work/subtitles/<language>.json`) and exits with code 2 before recording. Translate them
+yourself, a sentence for a sentence, as many per scene as the source has (a translation with
+another number is refused), then render again. After a change to a `say`, the render sets the
+translation it makes stale aside (`<language>.stale.json`) and asks for it anew.
+
 Before the first render, once the scenes are scripted, run `node demo.ts --dry`: it runs `login`,
 `open` and every scene against the running app as a render would, without narration, video or
 waiting for the voice, and ends with a line per scene or with the first one that failed. A scene
@@ -206,7 +217,7 @@ render takes one to three minutes). Not with `&`, and do not wait with `sleep` o
 (sleep is blocked; `pgrep -f "node demo.ts"` matches its own command line). A second run of the
 same demo while one runs is refused with the PID of the first.
 
-Narration is synthesised first by `lib/tts.py`, in the voice of the demo settings: Piper (the
+Narration is synthesised first by `lib/tts.py` (except in a silent demo), in the voice of the demo settings: Piper (the
 default) or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
 (Gemini, OpenAI, ElevenLabs, Azure, an own endpoint) with its key from its environment variable or
 a key file. The settings live in `demo.json` in Obeya's home (`OBEYA_HOME`, else `~/.obeya`);
@@ -215,7 +226,7 @@ is not installed stops the render with how to install it: from the configuration
 `node ${CLAUDE_SKILL_DIR}/lib/voices.ts install`; so does anything else the render needs
 (`lib/setup.ts`, section 3). `DEMO_VOICE=<provider>` renders in another
 voice; `DEMO_VOICE=<path>.wav` clones that clip with Qwen3-TTS (its exact transcript beside it as
-`.txt`). Clips are cached by voice and text, so re-runs after a visual fix skip synthesis. A
+`.txt`); `DEMO_VOICE=none` renders a silent version. Clips are cached by voice and text, so re-runs after a visual fix skip synthesis. A
 voice that loads a large model (Qwen3-TTS, the owner's command) takes several GB, so only one such
 demo loads it at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it"
 and wait, which is expected, not a hang. Under Obeya (`OBEYA_URL` set), Obeya holds Qwen3-TTS
@@ -228,6 +239,8 @@ the locator it waited for.
 
 ## 6. Review your own video — before the owner sees it
 
+- The render writes `captions.vtt` (the narration's) and a `captions.<language>.vtt` per subtitle
+  language, a cue per sentence, all on the same times.
 - The render ends with a review table: per scene its chapter time and title. A scene flagged
   with seconds "without narration" shows a stretch where nothing is said: if it only waits, wrap
   the wait in `d.skip`; otherwise let the narration say what happens there.
@@ -252,13 +265,14 @@ keeps its language; the narration, chapter titles and report change.
 
 The first run writes the words to translate (`.work/revoice/source.json`) and says where their
 translation goes (`.work/revoice/en.json`, same shape). Translate them yourself: each `say` as it
-should sound, in the same person, its audio tags where they stand; a label on screen quoted as it
+should sound, in the same person, its audio tags where they stand, as many sentences as the
+source's (each is a caption, timed with the other languages' tracks); a label on screen quoted as it
 appears with its meaning after it, in a `say` as an aside („Teilen“, share, …: a voice drops
 parentheses at times), elsewhere „Teilen“ (Share); read the labels from `review/`. The next run
 synthesises the clips, stretches each scene's narrated stretch to its new clip so actions stay on
 their words, and rebuilds the video, captions, chapters, stills and report page in place; the demo
-as recorded stays in `.work/revoice/original/`. Check the result as section 6 says, the scenes it
-flags for a changed pace first.
+as recorded stays in `.work/revoice/original/`. Its other subtitle tracks stay, on the new times.
+Check the result as section 6 says, the scenes it flags for a changed pace first.
 
 ## 7. Feedback
 
