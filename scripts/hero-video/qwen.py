@@ -92,12 +92,14 @@ def main() -> None:
     at = starts(track, [read(Path(j["file"])) for j in jobs])
 
     speak, rate = qwen3.load(types.SimpleNamespace(model=MODEL, reference=str(reference), speaker=None))
+    ear = qwen3.Ear()
+    ear.load()
     mix = np.zeros(len(track), np.float32)
     for job, start in zip(jobs, at):
         # the audio tags are for ElevenLabs; the pipeline gives other voices the script without them
         text = re.sub(r"\s{2,}", " ", re.sub(r"\[[^\]]*\]", " ", texts[job["id"]])).strip()
         clip = out / "clips" / f"{job['id']}.wav"
-        qwen3.clip(speak, rate, text, "en", str(clip))
+        qwen3.clip(speak, rate, ear, text, "en", str(clip))
         samples = read(clip)[: len(mix) - start]
         mix[start : start + len(samples)] += samples
         print(f"{job['id']} at {start / RATE:6.2f} s: ElevenLabs {job['seconds']:5.1f} s, Qwen {len(samples) / RATE:5.1f} s", flush=True)

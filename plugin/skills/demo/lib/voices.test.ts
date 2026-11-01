@@ -31,7 +31,7 @@ describe('voices', () => {
     const s = { language: 'de', voice: 'piper' } as const;
     expect(installState(s, home)).toEqual({ installed: false, missing: ['Piper', 'Piper-Stimme de_DE-thorsten-high'], mb: 265 });
     mkdirSync(join(home, 'voices', 'piper', 'env'), { recursive: true });
-    writeFileSync(join(home, 'voices', 'piper', 'env', '.obeya-installed'), '');
+    writeFileSync(join(home, 'voices', 'piper', 'env', '.obeya-installed'), 'piper-tts\n');
     writeFileSync(join(home, 'voices', 'piper', 'de_DE-thorsten-high.onnx'), '');
     expect(installState(s, home).missing).toEqual(['Piper-Stimme de_DE-thorsten-high']);
     writeFileSync(join(home, 'voices', 'piper', 'de_DE-thorsten-high.onnx.json'), '{}');
@@ -58,6 +58,13 @@ describe('voices', () => {
     expect(installState({ language: 'de', voice: 'qwen3' }, home).missing).toHaveLength(2);
     writeFileSync(join(snapshot, 'model.safetensors'), '');
     expect(installState({ language: 'de', voice: 'qwen3' }, home).missing).toEqual([onMlx() ? 'Qwen3-TTS (MLX)' : 'Qwen3-TTS (PyTorch)']);
+    // an environment from before Qwen3 heard its sentences back lacks the speech recognition
+    const tts = onMlx() ? 'mlx-audio' : 'qwen-tts';
+    mkdirSync(join(home, 'voices', 'qwen3', 'env'), { recursive: true });
+    writeFileSync(join(home, 'voices', 'qwen3', 'env', '.obeya-installed'), `${tts}\n`);
+    expect(installState({ language: 'de', voice: 'qwen3' }, home).installed).toBe(false);
+    writeFileSync(join(home, 'voices', 'qwen3', 'env', '.obeya-installed'), `${tts} onnx-asr[cpu,hub]\n`);
+    expect(installState({ language: 'de', voice: 'qwen3' }, home)).toEqual({ installed: true, missing: [], mb: 0 });
   });
 
   test('Qwen3-TTS stays loaded for a render; Piper, say and the own command run once per clip', () => {

@@ -82,6 +82,46 @@ export interface Clip {
   id: string;
   file: string;
   seconds: number;
+  /**
+   * What a voice that hears its clips back (Qwen3) heard, a line per sentence: `stumbled` where
+   * every take differed from the script by a stretch, `misheard` the words heard as others.
+   */
+  heard?: { script: string; heard: string | null; stumbled?: true; misheard?: [string, string][] }[];
+  /** Why such a voice heard nothing of the clip. */
+  unheard?: string;
+}
+
+/**
+ * What the review table says of what was heard: per scene, each sentence that stumbled in every
+ * take; once per word heard as another, how it was heard and in which scenes; why nothing was
+ * heard, if so.
+ */
+export function heardNotes(clips: Clip[]) {
+  const stumbled = clips.map((c) =>
+    (c.heard ?? []).filter((h) => h.stumbled).map((h) => `stumbled in every take, the best kept: "${h.script}" heard as "${h.heard}"`),
+  );
+  const words = new Map<string, { as: Set<string>; scenes: Set<number> }>();
+  clips.forEach((c, i) =>
+    c.heard?.forEach((h) =>
+      h.misheard?.forEach(([word, as]) => {
+        const seen = words.get(word) ?? { as: new Set(), scenes: new Set() };
+        seen.as.add(as);
+        seen.scenes.add(i + 1);
+        words.set(word, seen);
+      }),
+    ),
+  );
+  const misheard = [...words].map(
+    ([word, { as, scenes }]) => `"${word}" heard as ${[...as].map((a) => `"${a}"`).join(', ')} (scene ${[...scenes].join(', ')})`,
+  );
+  const unheard = clips.find((c) => c.unheard)?.unheard;
+  return { stumbled, misheard, unheard };
+}
+
+/** The notes on what was heard that follow the review table, or the scene list of `--narration`. */
+function printHeard({ misheard, unheard }: ReturnType<typeof heardNotes>) {
+  if (misheard.length) console.log(`heard differently (a word the voice cannot read goes into lib/lexicon.qwen3.<language>.json):\n${misheard.map((m) => `  ${m}`).join('\n')}`);
+  if (unheard) console.log(`narration not heard back: ${unheard}`);
 }
 
 export class Director {
@@ -744,6 +784,9 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   const clips = synthesize(spec.scenes.map((s) => s.say), work);
   if (process.argv.includes('--narration')) {
     console.log(`narration only: ${clips.length} clips cached, ${clips.reduce((t, c) => t + c.seconds, 0).toFixed(0)} s spoken`);
+    const heard = heardNotes(clips);
+    heard.stumbled.forEach((lines, i) => lines.forEach((line) => console.log(`  ${String(i + 1).padStart(2)}  ${line}`)));
+    printHeard(heard);
     return;
   }
 
@@ -886,12 +929,15 @@ export function assemble({ outDir, work, list, clips, marks, total, viewport, sh
   fs.writeFileSync(path.join(outDir, 'index.html'), reportPage(title, report, marks, language));
   console.log(`\n${Math.round(total)} s video → ${path.join(outDir, 'index.html')}`);
   console.log('\nreview:');
+  const heard = heardNotes(clips);
   marks.forEach((m, i) => {
     const end = i + 1 < marks.length ? marks[i + 1]!.start : total;
     const silent = end - m.speechEnd - GAP_SECONDS;
     const idle = silent > SILENCE_WARN ? `  ← ${Math.round(silent)} s without narration: cut it with d.skip where it only waits` : '';
     console.log(`  ${String(i + 1).padStart(2)}  ${mmss(m.start)}  ${m.title.padEnd(32).slice(0, 32)}${idle}`.trimEnd());
+    for (const line of heard.stumbled[i] ?? []) console.log(`               ${line}`);
   });
+  printHeard(heard);
   console.log(`stills → ${reviewDir}: NN-mid.jpg (middle of each scene), NN.jpg (its end)`);
 }
 

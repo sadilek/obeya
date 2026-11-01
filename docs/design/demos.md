@@ -86,14 +86,17 @@ Respelt, 19 English takes of 20 and 8 German of 8 were clean (Parakeet heard bac
 German reading of "ayt" was not. The word reaches the model as a prefix and one rare piece ("Re" +
 "authenticate" with no space before it); a spelling the tokeniser breaks into common pieces it reads
 by sound. A hyphen or a space ("Re-authenticate", "re authenticate") was not enough. A word enters
-only once the voice was heard getting it wrong and the respelling right.
+only once the voice was heard getting it wrong and the respelling right. The render names the
+candidates, the words its hearing back found said differently (see A voice that stays loaded); most
+of them are the recognition's own mishearings of names, which no respelling mends.
 
 Voices are not labelled as generated, a clone included: the whole demo is generated, and that is
 clear from where it is shown. „Das ist meine eigene Stimme“ in the settings decides the person: the
 first person only in the owner's own voice, otherwise the narration presents the work without "I".
 `DEMO_VOICE` overrides the voice for one render (another provider, never the owner's own, or a
 `.wav` that Qwen3-TTS clones). A clone of the owner's voice never leaves the machine. Each clip is
-synthesised once and kept as it comes (see Decisions).
+synthesised once and kept as it comes, but for Qwen3's sentences, which are heard back and made
+again where they ran on or stumbled (see A voice that stays loaded, and Decisions).
 
 #### The demo directory
 
@@ -143,7 +146,9 @@ since Obeya started shows beside it (when, how many demos, how much freed).
 Obeya installs Piper and Qwen3-TTS on request from the configuration dialog, which first shows what
 is missing and about how large it is (each in its own uv-made Python environment under `voices/` in
 Obeya's home, Qwen3's models in the Hugging Face cache, where one downloaded before counts as
-installed; without Obeya the skill installs them the same way from the command line). A render
+installed; without Obeya the skill installs them the same way from the command line). Qwen3's
+environment holds the speech recognition it hears its sentences back with (onnx-asr); one installed
+with fewer packages than today's counts as missing, and installing it again adds the rest. A render
 refuses a voice that is not installed and says how to install it. „Anhören“
 plays a sentence in the chosen voice and narration language. For Qwen3-TTS the dialog has a field
 per language for the clip to clone, each saying what keeps it from working (no such file, no
@@ -164,8 +169,40 @@ looking stuck.
 A Qwen3 sentence gets frames for a slow reading of it (8 characters a second, 3 s more; clean takes
 run at about 17), not the model's 4096 frames: a sentence that lost its place in the text went on
 to that limit, 5½ minutes of babble behind a sentence of 15 s. One that uses all its frames ran on,
-and is made again, five times at most; then its clip fails, naming the sentence, so the word it
-stumbles over can be respelt. A stumble that still ends in time is not caught this way.
+and is made again.
+
+A stumble that still ends in time ("reauthenti uh reauthentic") is caught by hearing each sentence
+back with Parakeet, the recognition of voice in (int8, on the CPU, loaded with the voice: about 1 GB
+and a second once, then about 0.13 s for a sentence of 8 s that takes 3 s to make). Parakeet writes
+what was said, a wrong sound included ("reauthentipate", "Rare Templet"); it does not correct it
+into the word. Script and transcript are compared as letters: spaces and punctuation dropped, audio
+tags left out, digits spelt out the way the other text says them ("elfhundert" for "1100",
+"zwölften" for "12.", "twenty-first" for "21st"). The script is the text as written, not as respelt
+for the voice. A sentence whose longest stretch said otherwise or said more is 5 letters or more
+stumbled and is made again; letters that are only missing count from 12 on (or from half of a short
+sentence), since Parakeet now and then drops a word or two of a clean take ("ich sage", "shows"; up
+to 9 letters, which Whisper heard in the same takes), while a voice that lost its place leaves out
+far more. On 198 takes of one sentence in two languages (2026-10-31), every take that repeated or
+babbled reached 5 and no clean one did; a single wrong sound ("reauthentipate") differs by 1 or 2
+letters, as much as Parakeet's own noise ("show" for "showed", "Kastenlast" for "Kasten Last", "Fällt" for an English
+"failed" in German narration), so it is no reason to make the sentence again. Eleven existing demos
+narrated afresh (126 sentences, German and English, 2026-11-01) made no sentence again, and of 377
+clips of earlier demos heard back only names with digits in them and a sentence of file names
+reached 5.
+
+Run-ons and stumbles share five attempts, and the take that differs least is kept. When every
+attempt stumbled, that take is kept and named, and the clip does not fail: names, file names and
+English terms in German narration that Parakeet always mishears must not stop a render. When every
+attempt ran on, the clip fails, naming the sentence, so the word it stumbles over can be respelt.
+A word of the kept take heard as another is named too ("Reauthenticate" heard as "reauthentipate"),
+except an ending of a letter or two lost or gained and a compound heard apart or together. The
+render's review table lists those words once each with their scenes, and under its scene each
+sentence that stumbled in every attempt; `tts.json` in `.work/` holds every sentence as heard, and
+a cached clip keeps what was heard of it beside it. None of it goes onto the report page. A
+recognition that fails to load leaves the sentences unheard, and the review table says so once.
+Hearing back belongs to the Qwen3 voice: no setting turns it off, and the setup check has no line
+for it. Under Obeya the voice Obeya holds hears too: the clip request carries the script beside the
+text, the reply what was heard.
 
 Under Obeya the server holds this voice across renders as a child process. The spec says which voice
 Obeya may hold (reference clip or stock speaker); the server builds the command itself, never from a
@@ -554,9 +591,14 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   range); a range answered in full (a whole video read for one answer).
 - **Every worker gets the plugin** (2026-10-08), not only those of a repository with demo settings,
   which otherwise had no way to the skill that writes them.
-- **Demos do not listen back to their narration** (2026-10-15). Rejected: transcribing each clip and
-  synthesising it again below a 95 % match: of 1,034 clips none had matched below 0.90, no retake
-  came out better, and the owner found it overkill.
+- **Qwen3's sentences are heard back, the other voices' clips are not** (2026-11-01). Qwen3 stumbles
+  over a word it cannot read and still ends in time, which no frame limit catches, and hearing a
+  sentence costs a twentieth of making it again. Rejected: hearing every voice's clips and
+  synthesising a clip again below a 95 % match: of 1,034 clips, all from before Qwen3
+  stumbled, none had matched below 0.90, no retake came out better, and the owner found it overkill; a match
+  ratio for Qwen3 too, in which one stumbled word in a long clip is lost; failing the clip when every
+  attempt stumbles, which a name Parakeet always mishears would turn into a render that cannot
+  succeed; a setting or a setup-check line for the hearing.
 - **Earlier demos stay on the card** (2026-10-16): a demo after feedback often shows only the
   corrected part.
 - **The demo zooms within the window** (2026-10-12). Rejected: full screen, too much on a large

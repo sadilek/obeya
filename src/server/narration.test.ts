@@ -13,6 +13,7 @@ import { asOwner } from './testing';
  * Logs its start, each clip and its end; `dies` as the speaker makes it die at the second clip,
  * `stumm` at loading, `lahm` never gets loaded. A clip whose text says „hängt“ gets no answer, as
  * the Qwen3 voice gave none on 2026-10-21; a clip of several sentences reports each after a while.
+ * Given the script as written, it says it heard the text as said.
  */
 const FAKE_VOICE = `
 import { appendFileSync, writeFileSync } from 'node:fs';
@@ -32,7 +33,8 @@ for await (const line of console) {
   if (sentences.length > 1) for (const n of sentences.keys()) { await Bun.sleep(150); console.log(JSON.stringify({ sentence: n + 1, of: sentences.length })); }
   writeFileSync(request.out, 'RIFF');
   appendFileSync(log, request.language + ':' + request.text + '\\n');
-  console.log(JSON.stringify({ ok: true, seconds: 0.01 }));
+  const heard = request.script ? { heard: [{ script: request.script, heard: request.text }] } : {};
+  console.log(JSON.stringify({ ok: true, seconds: 0.01, ...heard }));
 }
 appendFileSync(log, 'end ' + who + '\\n');
 `;
@@ -81,6 +83,12 @@ describe('the voice Obeya holds', () => {
     expect(host.loaded).toBe(false);
     await host.clip(clip('drei'));
     expect(log()).toEqual(['start ryan', 'de:eins', 'de:zwei', 'end ryan', 'start ryan', 'de:drei']);
+  });
+
+  test('gives the voice the script as written, and passes on what it heard', async () => {
+    hold();
+    const reply = await host.clip({ ...clip('Reauthentikayt.'), script: 'Reauthenticate.' });
+    expect(reply).toEqual({ ok: true, seconds: 0.01, heard: [{ script: 'Reauthenticate.', heard: 'Reauthentikayt.' }] });
   });
 
   test('another voice ends the one loaded', async () => {
@@ -183,5 +191,7 @@ describe('a clip over HTTP', () => {
     expect(parseClipRequest({ ...ok, text: ' ' })).toContain('text');
     expect(parseClipRequest({ ...ok, voice: { speaker: '--model evil' } })).toContain('voice');
     expect(parseClipRequest({ ...ok, voice: { reference: 'ich.wav' } })).toContain('reference');
+    expect(parseClipRequest({ ...ok, script: 'Hallo.' })).toEqual({ ...ok, script: 'Hallo.' });
+    expect(parseClipRequest({ ...ok, script: 7 })).toContain('script');
   });
 });
