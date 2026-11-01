@@ -181,11 +181,12 @@ spring back. Swiping takes nothing back: „Rückgängig“ goes unused, a comma
 without its confirmation. Until the owner has swiped one in this browser, each line nudges aside once
 as a hint. The canvas has no such gesture.
 
-*A card* opens full screen at a tap, at `?card=<id>` (a reload or restart opens it again); Back (the
+*A card* opens full screen at a tap, at its address `/c/<canvas>/card/<code>` (see Addresses in
+The canvas; a reload or restart opens it again); Back (the
 button, the browser's, Esc) returns to the list where it was scrolled. It is the canvas's detail view
 with the same answer options, demo, approve buttons and undo, its page the only thing that scrolls;
 plan docs and the configuration are not opened from there. Its conversation is in the same panel as
-Obeya's, at `?card=<id>&talk`, opened by the button left of the microphone, whose number counts the
+Obeya's, at the card's address with `?talk`, opened by the button left of the microphone, whose number counts the
 messages the conversation shows (not the agent's folded words between steps; a reply and the handover
 under it in the same message count once) since the owner last had it open or wrote there, plus one for the open questions, however many stand in their block (until
 2026-10-22 each question counted). Every card kind gets there the same way, through the
@@ -279,7 +280,7 @@ phone's choice (Android held Chrome's messages until unlock on the owner's Pixel
 *Several at once:* the first goes out at once; what starts waiting within the minute after goes out
 as one push at its end („3 Karten warten auf dich“, the titles as text, leaving out what no longer
 waits), and a further minute starts. *Tapping a push* opens its card in the phone view
-(`/?card=<id>`), „Für dich“ for several, in the open app if there is one; a later push for the same
+(at its address), „Für dich“ for several, in the open app if there is one; a later push for the same
 card replaces the earlier.
 
 *The web app.* The page names a manifest (standalone, icons `/icons/180.png`, `/icons/512.png`), and

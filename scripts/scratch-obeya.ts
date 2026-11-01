@@ -301,7 +301,7 @@ const loginPort = opt('login');
 if (loginPort) {
   const d = opt('dir') ?? scratchDir(Number(loginPort));
   const canvas = existsSync(join(d, 'staged.json')) ? (JSON.parse(readFileSync(join(d, 'staged.json'), 'utf8')) as { canvas?: string }).canvas : undefined;
-  const link = await loginLink(`http://127.0.0.1:${loginPort}`, join(d, 'home'), canvas ? `/?c=${canvas}` : '/');
+  const link = await loginLink(`http://127.0.0.1:${loginPort}`, join(d, 'home'), canvas ? `/c/${canvas}` : '/');
   if (!link) fail(`no scratch Obeya of ${d} answers on port ${loginPort}`);
   console.log(link);
   process.exit(0);
@@ -789,7 +789,7 @@ for (const on of allCanvases) {
 for (const g of stage.groups ?? [])
   await api('POST', '/groups', { name: g.name, cards: g.cards.map((k) => ids[k] ?? fail(`group ${g.name}: card ${k} does not exist`)) });
 
-const staged = { url: (await loginLink(base, home, `/?c=${canvas}`)) ?? `${base}/?c=${canvas}`, port, dir, canvas, pid: server.pid, log, from, cards: ids, ...(record ? { record } : {}), ...(replay ? { replay } : {}) };
+const staged = { url: (await loginLink(base, home, `/c/${canvas}`)) ?? `${base}/c/${canvas}`, port, dir, canvas, pid: server.pid, log, from, cards: ids, ...(record ? { record } : {}), ...(replay ? { replay } : {}) };
 writeFileSync(join(dir, 'staged.json'), JSON.stringify(staged, null, 2));
 console.log(JSON.stringify(staged));
 process.exit(0);

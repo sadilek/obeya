@@ -14,6 +14,7 @@ import { Body } from './message';
 import { useMenuClose, waitedOn } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
+import { canvasPath } from './address';
 
 /** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
 const firstLine = (md: string) =>
@@ -319,7 +320,7 @@ export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; 
             const n = c.id === canvas.id ? 0 : (waiting[c.id] ?? 0);
             return (
               <li key={c.id} className={c.id === canvas.id ? 'on' : ''}>
-                <a href={`?c=${encodeURIComponent(c.id)}`} title={n ? t.waitingThere(n) : undefined}>
+                <a href={canvasPath(c.id)} title={n ? t.waitingThere(n) : undefined}>
                   <b>{c.name}</b>
                   <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
                   {n > 0 && <span className="waits">{n}</span>}

@@ -417,6 +417,8 @@ export function serve(
     development: development && { hmr: true, console: true },
     routes: guarded({
       '/': index,
+      // a canvas, and a card open on it (`/c/<canvas>/card/<code>`): the page reads the address
+      '/c/*': index,
       // a browser on this machine signing in with a one-time link (owner.ts)
       '/login': { GET: (req, srv) => access.loginRoute(req, srv) },
       // such a link, for whoever holds the owner's key (the app's shell, a second start, scripts); `next`: where it leads; `once`: for one browser

@@ -141,6 +141,27 @@ width, growing with it up to the room above the microphone before it scrolls, li
 a looked-up answer is long, and a box of fixed height left most of the window unused. A proposal's
 text box grows until the reason below it would leave view.
 
+### Addresses
+
+The page's address names what it shows: `/c/<canvas>` a canvas, `/c/<canvas>/card/<code>` a card
+open on it (the phone view: the card full screen). The code is the card's short code, the first six
+hex digits of its id with one more digit for each card already holding those; its whole id works in
+its place, and the page then shows the short one. The short code is given once, when the card is
+made, and never changes, so a link stays good; existing cards got theirs when the database was
+migrated, each the shortest start of its id no other card shared. Opening an address (a link, a
+bookmark, a reload) opens that card at once, without the flight; an archived one unfolds from its
+row in the archive; a code no card has leaves the canvas open. Addresses of the form before paths
+(`/?c=<canvas>&card=<id>`) are rewritten to this form, so old links and bookmarks keep working.
+What else the page shows that is not a place (`?view=phone`, the phone's open conversation `?talk`)
+stays in the query.
+
+On the canvas each card opened and closed is a step in the browser's history: Back and Forward go
+through the cards the owner looked at, in place of the open one. Where a card names another (what a
+queued card waits for, the card a follow-up or a proposal comes from, the card that replaced a
+proposal, a prototype's idea, what Obeya waits on), the name is a link to that card while it is on
+the canvas: a click opens it in place of the open one, a click with a modifier in a tab of its own.
+Card faces on the canvas link nothing, since a click there opens the card itself.
+
 ### Sheets
 
 The sheets (Obeya's, a project's, a plan doc being read, the inbox) are a sidebar docked to the window's right
@@ -238,6 +259,11 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **Path addresses with short card codes** (owner, 2026-11-01): a card's address is a permalink
+  that survives a reload and can be passed on, and paths leave room for views nested deeper. The
+  code is stored, not derived from the cards there are at the time, so a later card whose id starts
+  alike cannot make an earlier link ambiguous. Rejected: query parameters (`?c=`, `?card=`), and
+  the whole id in the address, which is long to read and pass on.
 - **„brauchen dich“ opens an inbox instead of jumping to the next card** (owner, 2026-11-01): with
   several things waiting, a jump hides what the others are and cannot answer anything. Entries are
   newest first, as in a mail inbox. Rejected: keeping the jump on the button (Tab keeps it).

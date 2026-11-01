@@ -23,6 +23,8 @@ import { useStoredState } from './stored';
 import { WishReplyLink } from './wish';
 import { ClockMark } from './snooze';
 import { know, known } from './known';
+import { cardPath } from './address';
+import { CardLink, Naming } from './cardLink';
 
 interface Props {
   on: boolean;
@@ -300,7 +302,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
           return (
             <div key={x.id} className="note ev-state">
               {clock(x.at)} · {t.koordinator.moved(plain(x.moved.title), x.moved.canvasName)}{' '}
-              <a className="link" href={`?c=${encodeURIComponent(x.moved.canvas)}&card=${encodeURIComponent(x.moved.card)}`}>
+              <a className="link" href={cardPath(x.moved.canvas, x.moved.card)}>
                 {t.openThere}
               </a>
             </div>
@@ -340,7 +342,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                 <Body md={x.reply} />
                 {x.wish && !x.undone && <WishReplyLink wish={x.wish} />}
                 {x.undone && <div className="hint">{t.koordinator.undone}</div>}
-                {x.waits?.map((w) => <WaitLine key={w.card} talk={x.id} wait={w} />)}
+                {x.waits?.map((w) => <WaitLine key={w.card} talk={x.id} wait={w} card={items.find((i) => i.id === w.card)} onOpen={onOpen} />)}
               </Msg>
             )}
             {/* a line leads to the Question card the thread goes on at */}
@@ -380,11 +382,11 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
 }
 
 /** Under Obeya's reply: a card it waits on, to take the step it said it would take then; „Nicht mehr warten“ drops that step. */
-function WaitLine({ talk, wait }: { talk: number; wait: TalkWait }) {
+function WaitLine({ talk, wait, card, onOpen }: { talk: number; wait: TalkWait; card: Item | undefined; onOpen: (i: Item) => void }) {
   return (
     <div className="hint wait-line">
       <span>
-        <ClockMark /> {t.koordinator.waits(wait.title, wait.state)}
+        <ClockMark /> <Naming text={(title) => t.koordinator.waits(title, wait.state)} cards={[{ card, title: wait.title }]} onOpen={onOpen} />
       </span>
       <button className="btn small" title={t.koordinator.unwaitHint} onClick={() => void api.unwait(talk, wait.card).catch(() => {})}>
         {t.koordinator.unwait}
@@ -405,17 +407,6 @@ function useAct(fail?: Parameters<typeof failText>[1]): [string, (fn: () => Prom
     }
   };
   return [error, act];
-}
-
-/** A card named in a row, which opens it while it is still on the canvas. */
-function CardLink({ card, title, onOpen }: { card: Item | undefined; title: string; onOpen: (i: Item) => void }) {
-  return card ? (
-    <a className="from" onClick={() => onOpen(card)}>
-      {plain(title)}
-    </a>
-  ) : (
-    plain(title)
-  );
 }
 
 /** Where a rule goes: the owner's preferences or a repository's CLAUDE.md. */
@@ -488,7 +479,7 @@ function ProposalRow({ p, items, rules, repos, onOpen }: { p: Preference; items:
           </>
         ) : (
           <>
-            {card && <CardLink card={card} title={card.title} onOpen={onOpen} />}
+            {card && <CardLink card={card} title={card.title} onOpen={onOpen} className="from" />}
             {card && quote && ': '}
             {quote && <q>{quote}</q>}
           </>
@@ -616,7 +607,7 @@ function SettingRow({ p, items, repo, onOpen, onConfig }: { p: SettingProposal; 
           return (
             <Fragment key={c.id}>
               {i > 0 && ', '}
-              <CardLink card={card} title={c.title} onOpen={onOpen} />
+              <CardLink card={card} title={c.title} onOpen={onOpen} className="from" />
             </Fragment>
           );
         })}
@@ -689,7 +680,7 @@ function ReshareBox({ r, items, onOpen }: { r: Reshare; items: Item[]; onOpen: (
                   const card = items.find((i) => i.id === f.id);
                   return (
                     <span key={f.id} className="failed">
-                      <CardLink card={card} title={f.title} onOpen={onOpen} />
+                      <CardLink card={card} title={f.title} onOpen={onOpen} className="from" />
                     </span>
                   );
                 })}

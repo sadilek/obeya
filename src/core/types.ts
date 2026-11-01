@@ -262,6 +262,8 @@ export const taskAuthor = (item: Pick<Item, 'source' | 'prototypeOf' | 'retro' |
 
 export interface Item {
   id: string;
+  /** The card's code in addresses (`/c/<canvas>/card/<code>`): a few hex digits, unique among all cards; the id works there too. */
+  short?: string;
   kind: CardKind;
   state: CardState;
   need?: Need;

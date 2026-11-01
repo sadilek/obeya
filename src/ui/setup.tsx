@@ -11,6 +11,7 @@ import { api, reload } from './api';
 import { useCopy } from './copy';
 import { Sign } from './logo';
 import { failText, fileSize, t } from './strings';
+import { canvasPath } from './address';
 
 const PLATFORMS: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 /** The machine's system and processor, as the owner knows them: "macOS (arm64)". */
@@ -443,7 +444,7 @@ function FirstCanvas({ view, ready, onView }: { view: MachineView; ready: boolea
         api.canvases().then((list) => {
           if (opened.current || !list.some((c) => c.id === saved.canvas)) return;
           opened.current = true;
-          location.href = `/?c=${encodeURIComponent(saved.canvas)}`;
+          location.href = canvasPath(saved.canvas);
         }, () => {}),
       1000,
     );

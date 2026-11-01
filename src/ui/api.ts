@@ -76,6 +76,8 @@ const canvasOfCard = new Map<string, string>();
 export function cardsOn(canvas: string, cards: string[]) {
   for (const id of cards) canvasOfCard.set(id, canvas);
 }
+/** The canvas of the card `id`: the one it is on where the page shows several, else the shown one. */
+export const canvasOf = (id: string) => canvasOfCard.get(id) ?? canvasId;
 /** A path in the API of the card's canvas, about the card or project `id`. */
 export const cardAt = (id: string, path = '') => `/api/c/${encodeURIComponent(canvasOfCard.get(id) ?? canvasId)}/cards/${id}${path}`;
 /** A path in the API of the canvas of what the words are about, else of the shown one. */
@@ -610,7 +612,7 @@ export function useCanvas(id = canvasId): {
         // device removed from Obeya's devices, or a browser whose cookie no longer names the
         // owner's key, gets the page that says how to connect or sign in again
         api.canvases().then(
-          (list) => list.some((c) => c.id === id) || location.replace(location.pathname),
+          (list) => list.some((c) => c.id === id) || location.replace('/'),
           (e) => e instanceof ApiError && (e.code === 'notPaired' || e.code === 'notOwner') && location.reload(),
         );
         retry = setTimeout(connect, delay);

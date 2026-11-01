@@ -2653,7 +2653,7 @@ export class Canvases {
       const [c] = this.start([config]);
       if (!c) return;
       this.list.push(c);
-      console.log(`Obeya: the canvas ${c.board.canvas.name} (?c=${c.id}) runs now`);
+      console.log(`Obeya: the canvas ${c.board.canvas.name} (/c/${c.id}) runs now`);
       this.started(c);
     });
     // the configuration's order is the order canvases are listed in (the switcher, the phone); one leaving goes last

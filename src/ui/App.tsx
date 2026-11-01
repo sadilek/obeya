@@ -37,6 +37,7 @@ import { videoOf } from './spot';
 import { CanvasPill, CardView, shownState, DepLinks, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
+import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 import { Inbox, entryKey, type QuickReply } from './inbox';
 import type { InboxEntry } from '../core/inbox';
 import { beingWritten, split, talkAlone } from './talk';
@@ -64,7 +65,7 @@ export function App() {
   }, []);
   if (!canvases) return <Splash offline={failed} />;
   // the canvas in the address, else the first
-  const wanted = new URLSearchParams(location.search).get('c');
+  const wanted = readAddress().canvas;
   const current = canvases.find((c) => c.id === wanted) ?? canvases[0];
   if (!current) return <NoCanvas />;
   // a phone gets every canvas's waits and work, and the cards full screen, instead of the canvas
@@ -446,6 +447,7 @@ function Canvas({
     const panel = panelRef.current;
     // nothing to unfold from: the canvas stays as it was, open for the next card
     if (!el || !panel) return setFocus(f);
+    showAddress(i);
     const r = el.getBoundingClientRect();
     flushSync(() => setOpenId(i.id));
     panel.style.setProperty('--c', `var(--${shownState(i)})`);
@@ -527,10 +529,12 @@ function Canvas({
     );
   }
 
-  async function closeCard({ keepUntitled = false } = {}) {
+  /** Folds the open card; `onward` where another card opens next, whose address follows instead of the canvas's. */
+  async function closeCard({ keepUntitled = false, onward = false } = {}) {
     const f = focusRef.current;
     const panel = panelRef.current;
     if (f?.type !== 'card' || !panel) return;
+    if (!onward) showAddress(null);
     const saved = flushEdit().catch(console.error);
     panel.querySelector('video')?.pause();
     const i = byId(f.id);
@@ -564,7 +568,7 @@ function Canvas({
     const f = focusRef.current;
     if (f?.type === 'card') {
       if (f.id === i.id) return;
-      await closeCard({ keepUntitled: true });
+      await closeCard({ keepUntitled: true, onward: true });
     }
     flushSync(() => {
       if (!snapshotRef.current.items.some((x) => x.id === i.id)) setPending((p) => [...p, i]);
@@ -663,24 +667,71 @@ function Canvas({
   useEffect(() => {
     const k = takeKept(sessionStorage, snapshot.canvas.id);
     const sheetLeft = takeSheetLeft(sessionStorage, snapshot.canvas.id);
-    if (k) return void reopen(k).catch(console.error);
+    // the canvas's own address, where the page came without one or with another canvas's
+    const a = readAddress();
+    const code = !a.canvas || a.canvas === snapshot.canvas.id ? a.card : undefined;
+    history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card')}`);
+    // what comes back takes the address it had in place: no step in the history
+    const restored = () => void (addressMode.current = 'push');
+    if (k) return void reopen(k).catch(console.error).finally(restored);
     if (sheetLeft) {
       // beside the sheet at once, as the canvas comes back
       quickSide.current = Date.now() + 2000;
       setKOn(true);
     }
-    openFromAddress().catch(console.error);
+    (code ? openFromAddress(code) : Promise.resolve()).catch(console.error).finally(restored);
   }, []);
-  /** A card the address names (`?card=`, from another canvas's Workspaces list): the canvas flies to it and opens it, once. */
-  async function openFromAddress() {
-    const q = new URLSearchParams(location.search);
-    const id = q.get('card');
-    if (!id) return;
-    q.delete('card');
-    history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}`);
-    const i = await soon(() => byId(id));
-    if (i) await open(i);
+  /** A card the address names (a reload, a link, another canvas's Workspaces list): it opens at once, an archived one from its row in the archive. */
+  async function openFromAddress(code: string) {
+    let i = await soon(() => named(itemsRef.current, code));
+    if (!i) {
+      const gone = await api.archived().catch(() => []);
+      i = named(gone, code);
+      if (i) {
+        setArchived(gone);
+        setAOn(true);
+        if (!(await soon(() => fromEl(i!.id, false)))) i = undefined;
+      }
+    }
+    if (i) await open(i, true);
+    else history.replaceState(history.state, '', `${canvasPath(snapshot.canvas.id)}${location.search}`);
   }
+
+  // ---------------------------------------------------------------- the address
+  // each card opened and closed is a step in the browser's history, so Back and Forward go through
+  // the cards; while the page comes back after a load the address is replaced instead, and while
+  // it follows Back or Forward it is left as the browser set it
+  const addressMode = useRef<'push' | 'replace' | 'none'>('replace');
+  /** The address for the card `i` open, or for the canvas with none. */
+  function showAddress(i: Item | null) {
+    const path = i ? cardPath(snapshot.canvas.id, i) : canvasPath(snapshot.canvas.id);
+    if (addressMode.current === 'none' || location.pathname === path) return;
+    if (addressMode.current === 'push') history.pushState(null, '', `${path}${location.search}`);
+    else history.replaceState(history.state, '', `${path}${location.search}`);
+  }
+  /** Back or Forward: the card the address names opens, in place of the open one; with none, the open one folds. */
+  const followAddress = useRef(async () => {});
+  followAddress.current = async () => {
+    const code = readAddress().card;
+    const f = focusRef.current;
+    const i = code ? (named(itemsRef.current, code) ?? named(archivedRef.current, code)) : undefined;
+    addressMode.current = 'none';
+    try {
+      if (i) await openFresh(i);
+      else if (f?.type === 'card') await closeCard({ keepUntitled: true });
+    } finally {
+      addressMode.current = 'push';
+    }
+    // a card no longer there: the canvas's address
+    if (code && !i) history.replaceState(history.state, '', `${canvasPath(snapshot.canvas.id)}${location.search}`);
+  };
+  useEffect(() => {
+    // one after the other, as each waits for the fold and unfold before it
+    let chain = Promise.resolve();
+    const pop = () => void (chain = chain.then(() => followAddress.current()).catch(console.error));
+    addEventListener('popstate', pop);
+    return () => removeEventListener('popstate', pop);
+  }, []);
   async function reopen(k: Kept) {
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
     quickSide.current = Date.now() + 2000;
@@ -896,7 +947,7 @@ function Canvas({
       onNotice((n) => {
         // the open card moved to another canvas (built in a new repository there): the page follows it
         const f = focusRef.current;
-        if (n.movedTo && n.cardId && f?.type === 'card' && f.id === n.cardId) return location.assign(`?c=${encodeURIComponent(n.movedTo)}&card=${encodeURIComponent(n.cardId)}`);
+        if (n.movedTo && n.cardId && f?.type === 'card' && f.id === n.cardId) return location.assign(cardPath(n.movedTo, n.cardId));
         const i = itemsRef.current.find((x) => x.id === n.cardId);
         if (n.wish) openWish(n.wish);
         // the card a review of its PR asked for, unless the owner has another one open; one just made, once it is on the canvas
@@ -1342,7 +1393,7 @@ function Canvas({
   };
   /** „Zur Karte“: the card on this canvas flies open; one on another canvas opens there. */
   function goToEntry(e: InboxEntry) {
-    if (e.canvas !== snapshot.canvas.id) return location.assign(`?c=${encodeURIComponent(e.canvas)}${e.card ? `&card=${encodeURIComponent(e.card)}` : ''}`);
+    if (e.canvas !== snapshot.canvas.id) return location.assign(e.card ? cardPath(e.canvas, e.card) : canvasPath(e.canvas));
     if (!e.card) return kOnRef.current || toggleKoordinator();
     const i = byId(e.card);
     if (i) void openFresh(i);
@@ -1634,7 +1685,7 @@ function Canvas({
             {online && update && restart?.reason !== 'update' && <UpdatePill update={update} />}
             {online && source && <SourcePill source={source} />}
             {online && usage && <UsagePill usage={usage} />}
-            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => location.assign(`?c=${encodeURIComponent(c)}&card=${encodeURIComponent(card)}`)} onTake={takeWorkspace} onKeep={keepWorkspace} />}
+            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => location.assign(cardPath(c, card))} onTake={takeWorkspace} onKeep={keepWorkspace} />}
             <button className={cOn ? 'pill kpill config on' : 'pill kpill config'} title={t.config.button} onClick={toggleConfig}>
               <BarIcon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
               <span className="lbl">{t.config.button}</span>

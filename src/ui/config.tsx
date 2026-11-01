@@ -19,6 +19,7 @@ import { useCopy } from './copy';
 import { failText, fileSize, snoozeWhen, t } from './strings';
 import { applyTheme } from './theme';
 import { WishLink } from './wish';
+import { canvasPath } from './address';
 
 declare global {
   interface Window {
@@ -1551,7 +1552,7 @@ function CanvasBlock({ n, canvas, file, checking, resolved, running, pin, saved,
           <h3>{canvas.name?.trim() || resolved?.name || here}</h3>
           {resolved && (
             <span className={fresh ? 'c-id fresh' : 'c-id'}>
-              ?c={resolved.id} · {fresh ? t.config.fresh : t.config.runs}
+              {canvasPath(resolved.id)} · {fresh ? t.config.fresh : t.config.runs}
             </span>
           )}
           {onMove && (
@@ -2502,7 +2503,7 @@ function AdapterSetup({ canvas, repo, takeover }: { canvas: string; repo: string
       const card = await api.adapterSetup(canvas, repo);
       // the canvas loads with the card open, as after a restart
       keep(sessionStorage, canvas, { at: Date.now(), card: card.id, scroll: [], drafts: [] });
-      location.assign(`?c=${encodeURIComponent(canvas)}`);
+      location.assign(canvasPath(canvas));
     } catch (e) {
       setError(failText(e));
       setBusy(false);
