@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { cuesOf, frameListText, framesOf, reportOf, retimed, stretched, translationProblems, type Words } from './revoice.ts';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { cuesByScene, cuesOf, frameListText, framesOf, keptTracks, reportOf, retimed, stretched, translationProblems, type Words } from './revoice.ts';
 
 const source: Words = {
   title: 'Vorschläge lassen sich übernehmen',
@@ -111,5 +114,40 @@ describe('re-voicing a demo', () => {
     expect(translationProblems(source, { ...good, report: { ...good.report, summary: 'Works again. Not checked: the phone.' } })).toEqual([
       'report.summary: 2 paragraphs expected, separated by a blank line',
     ]);
+    // a sentence a caption: as many as the source has
+    const merged = { ...good, scenes: [{ title: 'Before', say: 'A proposal [short pause] that failed until now.' }, good.scenes[1]!] };
+    expect(translationProblems(source, merged)).toEqual([
+      'scene 1: 2 sentences expected, 1 given (one per sentence of the source: each is a caption, shown at the same time as in the other languages)',
+    ]);
+  });
+
+  test("the captions are grouped by scene: a cue per sentence, or one per scene in a demo from before", () => {
+    const says = source.scenes.map((s) => s.say);
+    expect(cuesByScene(['a', 'b', 'c'], says)).toEqual([['a', 'b'], ['c']]);
+    expect(cuesByScene(['ab', 'c'], says)).toEqual([['ab'], ['c']]);
+    expect(() => cuesByScene(['a'], says)).toThrow('does not add up');
+  });
+
+  test('the demo keeps the tracks its captions named, the new narration in the one of its language', () => {
+    const original = mkdtempSync(join(tmpdir(), 'obeya-revoice-'));
+    try {
+      const says = source.scenes.map((s) => s.say);
+      const cues = (texts: string[]) => `WEBVTT\n\n${texts.map((t, i) => `00:00:0${i}.000 --> 00:00:0${i + 1}.000\n${t}\n`).join('\n')}`;
+      writeFileSync(join(original, 'captions.vtt'), cues(['Ein Vorschlag.', 'Bisher scheiterte das.', 'Jetzt geht es.']).replace('WEBVTT', 'WEBVTT - subtitles: fr en de'));
+      writeFileSync(join(original, 'captions.fr.vtt'), cues(['Une proposition.', 'Cela échouait.', 'Maintenant ça marche.']));
+      const narration = { language: 'en', scenes: [['A proposal.', 'It failed until now.'], ['Now it works.']] };
+      expect(keptTracks(original, 'de', says, narration)).toEqual([
+        { language: 'fr', scenes: [['Une proposition.', 'Cela échouait.'], ['Maintenant ça marche.']] },
+        narration,
+        { language: 'de', scenes: [['Ein Vorschlag.', 'Bisher scheiterte das.'], ['Jetzt geht es.']] },
+      ]);
+      // one from before its captions named tracks had the narration's alone
+      writeFileSync(join(original, 'captions.vtt'), cues(['Ein Vorschlag.', 'Bisher scheiterte das.', 'Jetzt geht es.']));
+      expect(keptTracks(original, 'de', says, narration)).toEqual([narration]);
+      writeFileSync(join(original, 'captions.vtt'), 'WEBVTT - subtitles: none\n');
+      expect(keptTracks(original, 'de', says, narration)).toEqual([]);
+    } finally {
+      rmSync(original, { recursive: true, force: true });
+    }
   });
 });

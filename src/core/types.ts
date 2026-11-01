@@ -816,6 +816,10 @@ export interface Demo {
   follows?: 'replaces' | 'supplements';
   /** A video without `poster.jpg` (one the demo skill did not render): the player shows its first frame instead. */
   noPoster?: true;
+  /** A video's caption tracks by language, in their order, each in `captions.<language>.vtt` (empty: no subtitles); missing for one with `captions.vtt` alone. */
+  tracks?: string[];
+  /** A video without sound: its captions show from the start. */
+  silent?: true;
 }
 
 /** A demo a later handover replaced: `n` is its place among the card's earlier demos, for its files. */

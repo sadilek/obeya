@@ -4,10 +4,12 @@
 // without one exports it (share.ts): as a ZIP with the video or the artifact beside the page, or as
 // one HTML file with everything inside.
 
-import { type Dirent, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, type Dirent, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
+import { languageName, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
+import { listedTracks, trackFile } from '../../plugin/skills/demo/lib/subtitles.ts';
 
 /** The languages a page speaks: those a demo is narrated in. */
 export type PageLanguage = 'de' | 'en';
@@ -17,7 +19,6 @@ export const PAGE_WORDS: Record<
   PageLanguage,
   {
     locale: string;
-    captions: string;
     play: string;
     pr: string;
     /** The link to work that landed without a pull request: its commit, or the comparison over its commits. */
@@ -50,7 +51,6 @@ export const PAGE_WORDS: Record<
 > = {
   de: {
     locale: 'de-DE',
-    captions: 'Deutsch',
     play: 'Abspielen',
     pr: 'Pull Request ansehen',
     commit: 'Commit ansehen',
@@ -79,7 +79,6 @@ export const PAGE_WORDS: Record<
   },
   en: {
     locale: 'en-US',
-    captions: 'English',
     play: 'Play',
     pr: 'View pull request',
     commit: 'View commit',
@@ -146,16 +145,71 @@ interface PageParts {
   unlisted?: true;
 }
 
+/**
+ * A caption track on a page: its language, and its file's URL or its text in the page: a page
+ * opened from disk may not load a `<track>` (Chrome treats `file:` as another origin), so those come
+ * as cues from a script.
+ */
+export type PageTrack = { language: string } & ({ src: string } | { vtt: string });
+
 export interface DemoPageParts extends PageParts {
   chapters: [number, string][];
   /** The video's URL, or its bytes in base64 for a page that holds everything. */
   video: { src: string } | { base64: string };
   poster?: string;
-  /**
-   * The captions' URL, or their text in the page: a page opened from disk may not load a `<track>`
-   * (Chrome treats `file:` as another origin), so those come as cues from a script.
-   */
-  captions: { src: string } | { vtt: string };
+  /** Its caption tracks, in their order (none: no subtitles). */
+  tracks: PageTrack[];
+  /** A video without sound: its captions show from the start. */
+  silent?: boolean;
+}
+
+/** A caption track of a video demo's directory: its file, and its language, unknown for a demo from before the tracks. */
+export interface CaptionTrack {
+  file: string;
+  language?: string;
+}
+
+/**
+ * The caption tracks of a video demo's directory: those its `captions.vtt` names (`listedTracks`), a
+ * file per language (`captions.<language>.vtt`) in their order, none where it names none; one from
+ * before it named them has its `captions.vtt` alone.
+ */
+export function captionTracks(dir: string): CaptionTrack[] {
+  let narration: string;
+  try {
+    narration = readFileSync(join(dir, 'captions.vtt'), 'utf8');
+  } catch {
+    return [];
+  }
+  const listed = listedTracks(narration);
+  if (!listed) return [{ file: 'captions.vtt' }];
+  return listed.flatMap((language) => (/^[A-Za-z0-9-]+$/.test(language) && existsSync(join(dir, trackFile(language))) ? [{ file: trackFile(language), language }] : []));
+}
+
+/** How much of an MP4's start is searched for its tracks: the director writes them there (`+faststart`). */
+const MP4_HEAD = 4 << 20;
+
+/**
+ * Whether a demo video has no sound: an MP4 whose track list, at its start, holds no audio
+ * track (a handler of type `soun`). One whose list is not at its start counts as having sound.
+ */
+export function silentVideo(file: string): boolean {
+  let head: Buffer;
+  try {
+    const fd = openSync(file, 'r');
+    try {
+      head = Buffer.alloc(MP4_HEAD);
+      head = head.subarray(0, readSync(fd, head, 0, MP4_HEAD, 0));
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+  const text = head.toString('latin1');
+  if (!text.includes('moov')) return false;
+  // a `hdlr` box: its type, four bytes of version and flags, four predefined, then the handler's type
+  return !/hdlr[\s\S]{8}soun/.test(text);
 }
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -227,19 +281,32 @@ export const OBEYA_URL = 'https://obeya.si';
 export const credit = (language: PageLanguage) => `<footer class="credit">${PAGE_WORDS[language].recordedWith} <a href="${OBEYA_URL}">Obeya</a></footer>
 `;
 
-// the cues of captions held in the page, for a page opened from disk
-const CUES = (language: PageLanguage) => `
-  const vtt = document.getElementById('captions').textContent;
-  const track = v.addTextTrack('captions', ${JSON.stringify(PAGE_WORDS[language].captions)}, ${JSON.stringify(language)});
+// the cues of captions held in the page, for a page opened from disk: a track per script
+const CUES = `
   const sec = (t) => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
-  for (const block of vtt.replace(/\\r/g, '').split(/\\n\\s*\\n/)) {
-    const lines = block.split('\\n');
-    const at = lines.findIndex((l) => l.includes('-->'));
-    if (at < 0) continue;
-    const [from, to] = lines[at].split('-->').map((s) => sec(s.trim().split(/\\s+/)[0]));
-    track.addCue(new VTTCue(from, to, lines.slice(at + 1).join('\\n')));
+  for (const held of document.querySelectorAll('script.captions')) {
+    const track = v.addTextTrack('captions', held.dataset.label, held.dataset.lang);
+    for (const block of held.textContent.replace(/\\r/g, '').split(/\\n\\s*\\n/)) {
+      const lines = block.split('\\n');
+      const at = lines.findIndex((l) => l.includes('-->'));
+      if (at < 0) continue;
+      const [from, to] = lines[at].split('-->').map((s) => sec(s.trim().split(/\\s+/)[0]));
+      track.addCue(new VTTCue(from, to, lines.slice(at + 1).join('\\n')));
+    }
   }
 `;
+
+// a silent video shows its captions from the start: in the viewer's language where it has a track in it, else the first
+const SILENT_CAPTIONS = `
+  for (const sv of document.querySelectorAll('video[data-silent]')) {
+    const tracks = [...sv.textTracks], pick = (${preferredTrack.toString()})(tracks.map((t) => t.language), navigator.languages);
+    for (const t of tracks) t.mode = t.language === pick ? 'showing' : 'disabled';
+  }
+`;
+
+/** A video's `<track>` elements, each named in the page's language. */
+const trackTags = (tracks: { language: string; src: string }[], language: PageLanguage) =>
+  tracks.map((t) => `<track kind="captions" src="${esc(t.src)}" srclang="${esc(t.language)}" label="${esc(languageName(t.language, language))}">`).join('');
 
 // A host that serves no byte ranges (Cloudflare Pages answers a range request with the whole file)
 // leaves a video a browser cannot seek in (it jumps back): then the page loads the video once and
@@ -341,14 +408,15 @@ export function demoPageHtml(p: DemoPageParts): string {
     : '';
   const src = 'src' in p.video ? ` src="${esc(p.video.src)}"` : '';
   const link = changeLink(p, w);
-  const track = 'src' in p.captions ? `<track kind="captions" src="${esc(p.captions.src)}" srclang="${language}" label="${w.captions}">` : '';
+  const linked = p.tracks.flatMap((t) => ('src' in t ? [t] : []));
+  const held = p.tracks.flatMap((t) => ('vtt' in t ? [t] : []));
   return `${pageStart(p, language)}<div class="grid">
-  <div class="player"><video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}>${track}</video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
+  <div class="player"><video controls preload="metadata"${src}${p.poster ? ` poster="${esc(p.poster)}"` : ''}${p.silent ? ' data-silent' : ''}>${trackTags(linked, language)}</video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
   <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
 </div>
 ${credit(language)}</main>
-${'vtt' in p.captions ? `<script type="text/vtt" id="captions">${inScript(p.captions.vtt)}</script>\n` : ''}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>
-  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${'vtt' in p.captions ? CUES(language) : ''}
+${held.map((t) => `<script type="text/vtt" class="captions" data-lang="${esc(t.language)}" data-label="${esc(languageName(t.language, language))}">${inScript(t.vtt)}</script>\n`).join('')}${'base64' in p.video ? `<script type="application/octet-stream" id="video">${p.video.base64}</script>\n` : ''}<script>
+  const v = document.querySelector('video'), bs = [...document.querySelectorAll('ol button')];${'base64' in p.video ? `${BLOB}  const seekable = Promise.resolve();\n` : SEEKABLE(p.video.src)}${held.length ? CUES : ''}${p.silent ? SILENT_CAPTIONS : ''}
   bs.forEach((b) => b.addEventListener('click', () => seekable.then(() => { v.currentTime = Number(b.dataset.at); v.play(); })));
   // a big play button over the video until it first plays: a click anywhere on it but its
   // controls starts it, instead of the small button in the corner
@@ -365,7 +433,10 @@ ${'vtt' in p.captions ? `<script type="text/vtt" id="captions">${inScript(p.capt
 }
 
 /** A demo version on a page with several: its title and text, and where its files are, relative to the page. */
-export type StackedDemo = { title: string; text: string; base: string } & ({ kind: 'video'; chapters: [number, string][]; poster: boolean } | { kind: 'html' });
+export type StackedDemo = { title: string; text: string; base: string } & (
+  | { kind: 'video'; chapters: [number, string][]; poster: boolean; tracks: { file: string; language: string }[]; silent?: boolean }
+  | { kind: 'html' }
+);
 
 export interface StackedPageParts extends Omit<PageParts, 'title' | 'text'> {
   /** The first version, with the page's title and text, then each later one, with when it was handed over. */
@@ -407,7 +478,10 @@ export function stackedPageHtml(p: StackedPageParts): string {
       ? `<ol>${d.chapters.map(([at, title], j) => `<li><button data-at="${at}"${j === 0 ? ' class="on"' : ''}><span class="t">${mmss(at)}</span>${esc(title)}</button></li>`).join('')}</ol>`
       : '';
     return `<div class="grid">
-  <div class="player"><video controls preload="metadata" src="${esc(d.base)}demo.mp4"${d.poster ? ` poster="${esc(d.base)}poster.jpg"` : ''}><track kind="captions" src="${esc(d.base)}captions.vtt" srclang="${language}" label="${w.captions}"></video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
+  <div class="player"><video controls preload="metadata" src="${esc(d.base)}demo.mp4"${d.poster ? ` poster="${esc(d.base)}poster.jpg"` : ''}${d.silent ? ' data-silent' : ''}>${trackTags(
+    d.tracks.map((t) => ({ language: t.language, src: d.base + t.file })),
+    language,
+  )}</video><button class="start" aria-label="${w.play}"><span><svg viewBox="0 0 24 24"><path d="M6 4l15 8-15 8z"/></svg></span></button></div>
   <div>${chapters}${link ? `<div class="pr">${link}</div>` : ''}</div>
 </div>`;
   };
@@ -454,7 +528,7 @@ ${credit(language)}</main>
     const f = [...steps.keys()].find((f) => f.contentWindow === e.source);
     const h = f && e.data && e.data.obeyaHeight;
     if (typeof h === 'number' && h > 0 && steps.get(f) < 30) { steps.set(f, steps.get(f) + 1); f.style.height = Math.min(Math.ceil(h), 30000) + 'px'; }
-  });
+  });${p.demos.some((d) => d.kind === 'video' && d.silent) ? SILENT_CAPTIONS : ''}
 </script>
 </body></html>
 `;
