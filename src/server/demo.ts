@@ -7,7 +7,7 @@ import { basename, join } from 'node:path';
 import { pagePolicy, withHeightReport, withMarkReport } from '../core/frame';
 import { chapterAt, type DemoKind } from '../core/types';
 import { filesKey, ownOrigin } from './access';
-import { demoFile, esc } from './demo-page';
+import { captionTracks, demoFile, esc, silentVideo } from './demo-page';
 import type { FileAt } from './workspaces';
 import { resource } from './resources';
 
@@ -49,8 +49,25 @@ export function demoSkillName(skills = join(process.env.CLAUDE_CONFIG_DIR ?? joi
   return readdirSync(skills).find((name) => realpath(join(skills, name, 'SKILL.md')) === own) ?? DEMO_SKILL;
 }
 
-/** The files of a video demo the UI loads; nothing else in the directory is served. */
+/** The files of a video demo the UI loads, beside a caption file per language (`captions.<language>.vtt`); nothing else in the directory is served. */
 export const DEMO_FILES = ['demo.mp4', 'poster.jpg', 'captions.vtt'] as const;
+
+/** Whether a file of a video demo's directory is one the UI loads (`DEMO_FILES`, a caption track). */
+export const isDemoFile = (name: string) => (DEMO_FILES as readonly string[]).includes(name) || /^captions\.[A-Za-z0-9-]+\.vtt$/.test(name);
+
+/** The files of a video demo's directory that are served, published and passed on: those of `DEMO_FILES` it has, and its caption tracks. */
+export const demoFiles = (dir: string): string[] =>
+  [...DEMO_FILES, ...captionTracks(dir).flatMap((t) => (t.language ? [t.file] : []))].filter((f) => demoFile(dir, f));
+
+/**
+ * What a player needs to know of a video demo beyond its files: the languages of its caption
+ * tracks, the narration's first (none for a demo from before them), and whether it is silent.
+ */
+export function videoFacts(dir: string): { tracks?: string[]; silent?: true } {
+  const tracks = captionTracks(dir).flatMap((t) => (t.language ? [t.language] : []));
+  const video = demoFile(dir, 'demo.mp4');
+  return { ...(tracks.length ? { tracks } : {}), ...(video && silentVideo(video) ? { silent: true as const } : {}) };
+}
 
 /** The page of an HTML artifact; the files beside it (images, styles) are served too. */
 export const ARTIFACT_PAGE = 'index.html';
@@ -64,11 +81,17 @@ export function checkArtifact(dir: string): string | null {
 const NARRATION_LEAD = 0.35;
 
 /**
- * Chapter marks for the scene titles, from the captions (one cue per scene, in order).
- * Returns what is wrong with the directory instead, for the worker to fix.
+ * Chapter marks for the scene titles, from `chapters.vtt` (one cue per scene, in order), or from
+ * the captions of a demo without one, rendered when they had one cue per scene. Returns what is
+ * wrong with the directory instead, for the worker to fix.
  */
 export function readChapters(dir: string, titles: string[]): [number, string][] | string {
   for (const f of ['demo.mp4', 'captions.vtt']) if (!existsSync(join(dir, f))) return `${f} is missing in ${dir}`;
+  const scenes = cues(dir, 'chapters.vtt').map((c) => c.start);
+  if (scenes.length) {
+    if (scenes.length !== titles.length) return `chapters.vtt has ${scenes.length} scenes but ${titles.length} chapter titles were given`;
+    return titles.map((t, i) => [Math.max(0, Math.round(scenes[i]! * 100) / 100), t]);
+  }
   const starts = cues(dir).map((c) => c.start);
   if (starts.length !== titles.length) return `captions.vtt has ${starts.length} cues but ${titles.length} chapter titles were given`;
   return titles.map((t, i) => [Math.max(0, Math.round((starts[i]! - NARRATION_LEAD) * 100) / 100), t]);
@@ -83,7 +106,7 @@ export function rereadChapters(dir: string): [number, string][] | string {
   return readChapters(dir, cues(dir, 'chapters.vtt').map((c) => c.text));
 }
 
-/** The cues of a demo's captions (one per scene, its narration), or of another WebVTT file of it. */
+/** The cues of a demo's captions (one per sentence of its narration; per scene before 2026-11), or of another WebVTT file of it. */
 function cues(dir: string, file = 'captions.vtt'): { start: number; end: number; text: string }[] {
   let vtt: string;
   try {
@@ -125,7 +148,7 @@ const RANGE_BYTES = 8 << 20;
 export function serveDemoFile(demo: { dir: string; kind: DemoKind }, name: string, req: Request, route = '/demo/'): Response {
   if (demo.kind === 'html') return serveSandboxed(demo.dir, name, req, route, (path) => path === demoFile(demo.dir, ARTIFACT_PAGE));
   const dir = demo.dir;
-  if (!(DEMO_FILES as readonly string[]).includes(name)) return notFound();
+  if (!isDemoFile(name)) return notFound();
   const path = demoFile(dir, name);
   if (!path) return notFound();
   const type = name.endsWith('.mp4') ? 'video/mp4' : name.endsWith('.jpg') ? 'image/jpeg' : 'text/vtt; charset=utf-8';

@@ -75,7 +75,8 @@ describe('withSettings', () => {
 describe('.obeya/settings.json', () => {
   test('is read from the default branch, not the checkout; a field that is wrong does not count, the rest does', () => {
     const repo = gitRepo(join(dir, 'shop'), { 'README.md': 'hi\n', '.obeya/settings.json': '{ "land": "main", "checks": ["bun test"] }\n' });
-    expect(readShared(repo)).toEqual({ settings: { land: 'main', checks: ['bun test'] }, raw: { land: 'main', checks: ['bun test'] }, problems: [] });
+    // with the tree of .obeya/ there, which the repository's theme is read from (theme.ts)
+    expect(readShared(repo)).toEqual({ settings: { land: 'main', checks: ['bun test'] }, raw: { land: 'main', checks: ['bun test'] }, problems: [], obeyaTree: expect.stringMatching(/^[0-9a-f]{40,64}$/) });
     // the checkout's own change counts once it is committed on the default branch
     writeFileSync(join(repo, '.obeya/settings.json'), '{ "land": "pr" }\n');
     expect(readShared(repo).settings).toEqual({ land: 'main', checks: ['bun test'] });

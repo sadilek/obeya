@@ -418,7 +418,7 @@ export class SshHost {
           env: true,
           ...(here ? { forward: `127.0.0.1:${there}:127.0.0.1:${here}` } : {}),
         });
-        const child = spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], detached: OWN_GROUP });
+        const child = spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
         // with Obeya reachable, a voice it holds loaded narrates from Obeya's machine (OBEYA_HOLDS_VOICE: no need to install it here)
         const { OBEYA_URL: _, OBEYA_NARRATION_URL: __, ...own } = s.env;
         const env = { ...own, OBEYA_HOME: dir, ...(here ? { OBEYA_URL: `http://127.0.0.1:${there}`, OBEYA_HOLDS_VOICE: '1' } : {}), ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) };

@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { LANGUAGE_NAMES } from '../core/locale';
 import { MESSAGES, type Messages } from '../core/messages';
 import { type Demo, type DemoKind, type DemoPage, EXPORT_HTML_MAX, type Item, type PageTags, withSupplemented } from '../core/types';
-import { BadRequest, type Board, cardDemos, contributionOf, type DemoRef, pageTagsOf, type PrState, reshareable, sameDemo, type SharedDemo, sharedDemos, type Shipped, type StoredDemo, type StoredReshare, type StoredShare } from './board';
+import { BadRequest, type Board, cardDemos, contributionOf, type DemoRef, pageTagsOf, type PrState, sameDemo, type SharedDemo, sharedDemos, type Shipped, type StoredDemo, type StoredReshare, type StoredShare } from './board';
 import { PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { dimensions, shownTags, tagsOf, untagged } from '../core/page-tags';
 import type { DemoSite } from '../adapters/types';
@@ -24,8 +24,9 @@ import { type Gone, siteBase, siteMissing, siteTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
 import { GITHUB_PAGES } from './site-hosts';
-import { rereadChapters } from './demo';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type DemoPageParts, day, demoFile, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage } from './demo-page';
+import { rereadChapters, videoFacts } from './demo';
+import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, captionTracks, type DemoPageParts, day, demoFile, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage, silentVideo } from './demo-page';
+import type { Theme } from './theme';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
 import type { AgentRuntime } from './runtime';
 import { readSession } from './koordinator';
@@ -70,6 +71,8 @@ export interface SharePage {
   more?: PageDemo[];
   /** The page's tags from the site's vocabulary, by dimension (`tagsOf`); none where the site has none. */
   tags?: PageTags;
+  /** The theme of the card's repository (theme.ts); none where it has none. */
+  theme?: Theme;
 }
 
 /**
@@ -80,6 +83,8 @@ export interface ShareSource {
   site: DemoSite | null;
   repo: string;
   isPublic?: boolean;
+  /** Its theme for the pages (`.obeya/theme.css`, theme.ts); none where it has none. */
+  theme?: Theme | null;
 }
 
 /**
@@ -341,8 +346,8 @@ export class Sharing {
     if (s?.state || (s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo))))) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
     const chapters = rereadChapters(demo.dir);
     if (typeof chapters === 'string') throw new BadRequest('invalid', chapters);
-    const { page: _, ...rest } = demo;
-    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters }) });
+    const { page: _, tracks: _tracks, silent: _silent, ...rest } = demo;
+    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters, ...videoFacts(demo.dir) }) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.rebuilt(this.languageOf(demo.dir, this.card(cardId))));
   }
 
@@ -473,7 +478,7 @@ export class Sharing {
     else {
       const row = this.find(id) && this.o.board.row(id);
       // one that got its tags meanwhile, or is up to date, no longer counts
-      const still = row && (tags ? this.o.board.untaggedRows().some((r) => r.id === id) : reshareable(row).length > 0);
+      const still = row && (tags ? this.o.board.untaggedRows().some((r) => r.id === id) : this.o.board.outdatedBy(row).length > 0);
       if (s && still) {
         this.set(id, { ...s, state: 'publishing', refresh: true, again: true });
         this.o.board.log(id, 'state', 'owner', tags ? this.o.board.t.share.tagging : this.o.board.t.share.againWithOthers);
@@ -605,6 +610,7 @@ export class Sharing {
     const tags = tagsOf(pageTagsOf(this.o.board.row(cardId)), vocabulary);
     const pr = this.prOf(cardId);
     const commit = pr ? null : await this.commitOf(card);
+    const theme = this.o.sourceFor(card)?.theme;
     const input: SharePage = {
       slug: pathOf(s),
       ...first.shown,
@@ -615,12 +621,13 @@ export class Sharing {
       shared: this.others(cardId, target.key),
       ...(later.length ? { more: later.map((d) => ({ ...d.shown, dir: d.dir, ...(d.at ? { at: d.at } : {}) })) } : {}),
       ...(Object.keys(tags).length ? { tags } : {}),
+      ...(theme ? { theme } : {}),
     };
     const r = await target.publish(input, (text) => this.o.board.log(cardId, 'activity', 'obeya', text));
     this.lost(target.key, r.gone);
     if ('why' in r) return back(r.why, r.said);
     const { url } = r;
-    this.set(cardId, { slug: s.slug, url, demos, ...(pr ? { pr } : {}), ...(commit ? { commit: commit.url } : {}), version: pagesVersion(), ...kept(s), ...(s.personal ? { personal: true as const } : {}) });
+    this.set(cardId, { slug: s.slug, url, demos, ...(pr ? { pr } : {}), ...(commit ? { commit: commit.url } : {}), version: pagesVersion(), ...(theme ? { theme: theme.hash } : {}), ...kept(s), ...(s.personal ? { personal: true as const } : {}) });
     if (r.said) this.o.board.log(cardId, 'activity', 'obeya', r.said);
     this.o.board.log(cardId, 'state', 'obeya', s.again ? t.sharedAgain(url) : s.retag ? t.retagged(url) : s.refresh ? (pr ? t.linksPr(url) : t.linksCommit(url)) : t.shared(url));
     this.settled(cardId, { url });
@@ -711,8 +718,12 @@ export class Sharing {
       return path ? new Uint8Array(readFileSync(path)) : null;
     };
     const poster = file('poster.jpg');
-    const captions = file('captions.vtt');
     const language = this.languageOf(demo.dir, card);
+    // every caption track goes with it; one from before the tracks is in the demo's language
+    const tracks = captionTracks(demo.dir).flatMap((t) => {
+      const data = file(t.file);
+      return data ? [{ file: t.file, language: t.language ?? language, data }] : [];
+    });
     const parts: Omit<DemoPageParts, 'video' | 'poster'> = {
       title: page.title,
       text: page.text,
@@ -722,8 +733,10 @@ export class Sharing {
       when: PAGE_WORDS[language].demoOf(day(statSync(video).mtime, language)),
       tabTitle: page.title,
       language,
+      ...this.themeOf(card),
       // a page opened from disk may not load a caption file
-      captions: { vtt: captions ? new TextDecoder().decode(captions) : 'WEBVTT\n' },
+      tracks: tracks.map((t) => ({ language: t.language, vtt: new TextDecoder().decode(t.data) })),
+      ...(silentVideo(video) ? { silent: true } : {}),
     };
     let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
     if (as === 'html') {
@@ -739,7 +752,7 @@ export class Sharing {
         { name: `${slug}/index.html`, data: new TextEncoder().encode(html) },
         { name: `${slug}/demo.mp4`, data: new Uint8Array(readFileSync(video)) },
         ...(poster ? [{ name: `${slug}/poster.jpg`, data: poster }] : []),
-        ...(captions ? [{ name: `${slug}/captions.vtt`, data: captions }] : []),
+        ...tracks.map((t) => ({ name: `${slug}/${t.file}`, data: t.data })),
       ];
       out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
     }
@@ -756,7 +769,7 @@ export class Sharing {
     const index = readFileSync(join(demo.dir, 'index.html'), 'utf8');
     const language = this.languageOf(demo.dir, card);
     const when = PAGE_WORDS[language].demoOf(day(statSync(join(demo.dir, 'index.html')).mtime, language));
-    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), commit: await this.commitOf(card), when, tabTitle: page.title, language };
+    const parts = { title: page.title, text: page.text, pr: this.prOf(card.id), commit: await this.commitOf(card), when, tabTitle: page.title, language, ...this.themeOf(card) };
     let out: { name: string; type: string; data: Uint8Array<ArrayBuffer> };
     if (as === 'html') {
       out = { name: `${slug}.html`, type: 'text/html; charset=utf-8', data: new TextEncoder().encode(artifactPageHtml({ ...parts, artifact: { html: index } })) };
@@ -773,6 +786,12 @@ export class Sharing {
     }
     this.o.board.log(card.id, 'state', 'owner', this.o.board.t.share.exported(as === 'zip', out.name));
     return out;
+  }
+
+  /** The theme of the card's repository for an exported page, as the page's parts take it. */
+  private themeOf(card: Item): { theme?: string } {
+    const theme = this.o.sourceFor(card)?.theme;
+    return theme ? { theme: theme.css } : {};
   }
 
   /**
@@ -925,7 +944,7 @@ export class Sharing {
     const src = this.o.sourceFor(card);
     if (!src?.site || siteMissing(this.o.home, src.site)) return null;
     const language = this.o.languageFor?.(card);
-    return siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share, language ? { language } : {});
+    return siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share, { ...(language ? { language } : {}), ...(src.theme ? { theme: src.theme } : {}) });
   }
 
   /**
