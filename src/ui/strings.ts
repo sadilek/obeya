@@ -1860,12 +1860,16 @@ const de = {
     field: 'Karten suchen',
     /** Under the empty field: what the search looks through. */
     hint: 'Findet Karten auf der Leinwand und im Archiv, die jedes eingegebene Wort enthalten: zuerst die mit allen Wörtern im Titel, dann die übrigen. ↑ ↓ wählen, Enter öffnet.',
+    /** Over the list before the first word: the canvas's cards, in this order. */
+    recent: 'Auf der Leinwand, zuletzt geänderte zuerst',
     canvas: 'Auf der Leinwand',
     archive: 'Im Archiv',
     /** No card on the canvas or in the archive matches what the owner typed. */
     noMatch: (q: string) => `Keine Karte passt zu „${q}“.`,
     /** Under a section's results, the ones beyond the shown. */
     more: (n: number) => (n === 1 ? '1 weitere: genauer suchen, um sie zu sehen' : `${n} weitere: genauer suchen, um sie zu sehen`),
+    /** Under the list before the first word, the cards beyond the shown. */
+    moreAll: (n: number) => (n === 1 ? '1 weitere: ein Wort eingeben, um sie zu finden' : `${n} weitere: ein Wort eingeben, um sie zu finden`),
   },
   idea: {
     status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
@@ -3724,10 +3728,12 @@ const en: Strings = {
     title: 'Search all cards, on the canvas and in the archive (key S)',
     field: 'Search cards',
     hint: 'Finds cards on the canvas and in the archive that hold every word typed: those with all of them in the title first, then the rest. ↑ ↓ to choose, Enter opens.',
+    recent: 'On the canvas, last changed first',
     canvas: 'On the canvas',
     archive: 'In the archive',
     noMatch: (q: string) => `No card matches “${q}”.`,
     more: (n: number) => (n === 1 ? '1 more: search more precisely to see it' : `${n} more: search more precisely to see them`),
+    moreAll: (n: number) => (n === 1 ? '1 more: type a word to find it' : `${n} more: type a word to find them`),
   },
   idea: {
     status: { open: 'Idea', parked: 'Idea · parked', dropped: 'Idea · dropped' },

@@ -319,6 +319,8 @@ function Canvas({
   const [kOn, setKOn, kOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
   const [sOn, setSOn, sOnRef] = useLive(false);
+  // the card whose row in the search is under the pointer or picked by the arrow keys
+  const [foundId, setFoundId] = useState<string | null>(null);
   const [cOn, setCOn, cOnRef] = useLive(false);
   /**
    * How wide the sheet docked on the right is, as just set: the canvas is what remains to its left.
@@ -1437,10 +1439,15 @@ function Canvas({
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
+  // the card picked in the search lights up where it stands: on its folded project, or its edge indicator while out of sight
+  const found = foundId ? byId(foundId) : undefined;
+  const litId = found && standsFor(found).id;
   const edgeTargets = items.flatMap((item) => {
     const b = at.get(standsFor(item).id);
     return b && yours(item) && (focus?.type !== 'project' || item.parent === focus.id) ? [{ item, b }] : [];
   });
+  let litEdge = litId ? edgeTargets.find((e) => standsFor(e.item).id === litId) : undefined;
+  if (found && litId && !litEdge && at.has(litId)) edgeTargets.push((litEdge = { item: found, b: at.get(litId)! }));
 
   // the button for the conversation with Obeya: the rightmost in the bar; while its sidebar is open it
   // belongs to the sidebar, at its top corner, and closes it. It is one element that never moves to
@@ -1492,7 +1499,7 @@ function Canvas({
             {deps && <DepLinks placed={placed} edges={deps.edges} />}
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
-                <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
+                <ProjectView key={item.id} item={item} b={b} lit={item.id === litId} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
               ) : (
                 <CardView
                   key={item.id}
@@ -1501,6 +1508,7 @@ function Canvas({
                   lifted={item.id === openId}
                   dragging={item.id === dragId || dragWith.includes(item.id)}
                   pop={item.id === popId}
+                  lit={item.id === litId}
                   prototyped={prototyped.has(item.id)}
                   showRepo={snapshot.canvas.repos.length > 1}
                   els={els}
@@ -1565,7 +1573,7 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={side} onOpen={open} />}
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={side} onOpen={open} lit={litEdge?.item.id} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs) */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
@@ -1581,6 +1589,7 @@ function Canvas({
             items={items}
             archived={archived}
             onOpen={openFound}
+            onLight={setFoundId}
             els={archiveEls}
             icon={<BarIcon d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.3 15.3 20 20" />}
           />

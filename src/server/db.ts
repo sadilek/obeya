@@ -19,6 +19,10 @@ export interface CardRow {
   /** `docs/plan/x.md` for a project, `docs/plan/x.md#W3` for a workstream; null for manual cards. */
   plan_ref: string | null;
   created_at: string;
+  /**
+   * When something last happened at the card: an update of the row or a line in its log other than
+   * a worker's tool activity. Moving it on the canvas or into a group, or folding a project, does not count.
+   */
   updated_at: string;
   deleted_at: string | null;
   /** Agent session of the card's worker, or of a project's project agent. */
@@ -672,7 +676,9 @@ export class Store {
     const keys = Object.keys(fields) as (keyof typeof fields)[];
     if (!keys.length) return;
     const set = keys.map((k) => `${k} = $${k}`).join(', ');
-    this.db.query(`UPDATE cards SET ${set}, updated_at = $now WHERE id = $id`).run({ ...fields, id, now: now() });
+    // the card's place on the canvas, or a project folded or unfolded, is no change at the card
+    const moved = keys.every((k) => k === 'x' || k === 'y' || k === 'collapsed');
+    this.db.query(`UPDATE cards SET ${set}${moved ? '' : ', updated_at = $now'} WHERE id = $id`).run({ ...fields, id, ...(moved ? {} : { now: now() }) });
   }
 
   // ---------------------------------------------------------------- groups
@@ -703,8 +709,8 @@ export class Store {
 
   /** Puts the cards into the group, or with `null` into none. */
   setGroup(cardIds: string[], groupId: string | null) {
-    const stmt = this.db.query('UPDATE cards SET group_id = $g, updated_at = $now WHERE id = $id');
-    this.db.transaction(() => cardIds.forEach((id) => stmt.run({ id, g: groupId, now: now() })))();
+    const stmt = this.db.query('UPDATE cards SET group_id = $g WHERE id = $id');
+    this.db.transaction(() => cardIds.forEach((id) => stmt.run({ id, g: groupId })))();
   }
 
   /** Removes the groups no card belongs to, on the canvas or in the archive; returns how many. */
@@ -745,6 +751,7 @@ export class Store {
         token: e.token ? 1 : null,
         at,
       }) as { id: number };
+    if (e.kind !== 'activity') this.db.query('UPDATE cards SET updated_at = max(updated_at, $at) WHERE id = $id').run({ id: e.cardId, at });
     return { ...e, id, at };
   }
 

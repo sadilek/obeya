@@ -332,6 +332,8 @@ export interface Item {
    * Obeya's reading session. A dimension without a key has none chosen yet.
    */
   tags?: PageTags;
+  /** When something last happened at the card (a change of state, a line in its conversation, an edit); moving it does not count. */
+  changedAt?: string;
   /** The card it comes from: a proposal's source, a prototype's idea, or the card a follow-up follows up on. */
   from?: string;
   /** With `from` on another canvas (a card moved there, or one made there by Obeya): that card's title and canvas. */

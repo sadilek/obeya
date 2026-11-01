@@ -111,7 +111,7 @@
 // into the database:
 // state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
 // now), scope (files), branch (a working or waiting card without one gets the branch a start would
-// have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
+// have given it, which every started card has), createdAgo, changedAgo (when something last happened at it), archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
 // place in a demo video, `{ at, chapter?, demo? }`) names its demo by its place in that order; earlier demos need code that has them),
 // workspace (true: the card holds the next free clone, for a repository whose settings say clones; with
@@ -197,6 +197,7 @@ interface StageCard {
   /** A prototype of the idea with this key. */
   prototypeOf?: string;
   createdAgo?: string;
+  changedAgo?: string;
   archivedAgo?: string;
   events?: { kind: string; author: string; text: string; ago?: string; mocks?: { title: string; html: string }[]; spot?: { at: number; chapter?: string; demo?: number }; token?: boolean }[];
   row?: Record<string, unknown>;
@@ -667,6 +668,7 @@ for (const [i, c] of stage.cards.entries()) {
   if (c.prototypeOf !== undefined) row.prototype_of = ids[c.prototypeOf] ?? fail(`card ${c.key ?? i}: prototypeOf names ${c.prototypeOf}, which does not exist`);
   if (c.createdAgo !== undefined) row.created_at = ago(c.createdAgo);
   if (c.archivedAgo !== undefined) row.archived_at = ago(c.archivedAgo);
+  if (c.changedAgo !== undefined) row.updated_at = ago(c.changedAgo);
   Object.assign(row, c.row ?? {});
   const keys = Object.keys(row).filter((k) => row[k] !== undefined);
   const missing = keys.filter((k) => !columns.has(k));
