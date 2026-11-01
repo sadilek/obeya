@@ -68,7 +68,7 @@ touches, and keep those current in the same change.
   headless browser.
 - [Sharing demos](design/sharing-demos.md) — demos on a page of their own for colleagues: where a
   demo goes, tags, several versions on one page, publishing (on approval too), outdated pages, the page
-  and the pull request, export without a site, static sites, several machines on one site.
+  and the pull request, export without a site, a repository's theme, static sites, several machines on one site.
 - [Repositories and configuration](design/repositories-and-configuration.md) — canvases and
   repositories, main branch, Lesestand, plan docs (and how Obeya reads them), repository settings
   (`.obeya/settings.json`, problems, trusting commands, writing them), the Konfiguration dialog,

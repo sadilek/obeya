@@ -37,6 +37,15 @@ export const PAGE_CHANGES = [
 export type KnownChange = (typeof PAGE_CHANGES)[number];
 export type PageChangeId = KnownChange['id'];
 
+/**
+ * A page is outdated by its repository's theme too (`.obeya/theme.css`, src/server/theme.ts): once the
+ * theme differs from the one it was published with. That is no change of Obeya's pages, so it has
+ * no day, and the card and the Koordinator name it beside them.
+ */
+export const THEME_CHANGED = 'theme';
+/** What leaves a page outdated: a change of Obeya's pages, or its repository's theme. */
+export type OutdatedBy = PageChangeId | typeof THEME_CHANGED;
+
 /** The sample pages' hash (`pagesHash` in site.ts) the changes above account for. */
 export const PAGES_HASH = { video: '5812f704acfb', html: '3aa9944faee4', stacked: 'c6e50038fdfa' };
 

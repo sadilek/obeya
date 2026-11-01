@@ -71,10 +71,17 @@ function inside(dir: string, from: string, ref: string): string | null {
  */
 const DATA_BUDGET = 64 * 1024 * 1024;
 
-/** What inlining one page goes by: the artifact's directory and what is left of the page's budget. */
+/**
+ * What inlining one page goes by: the directory its files are in, how a file of it is read (by its
+ * path relative to it; null for one that may not go in), and what is left of the page's budget.
+ * `strict`: a reference that does not go in is dropped rather than left to load from wherever it
+ * leads (a repository's theme, see `themeData`).
+ */
 interface Inlining {
   dir: string;
+  read: (path: string) => Buffer | null;
   left: number;
+  strict?: true;
 }
 
 /**
@@ -85,7 +92,7 @@ interface Inlining {
  */
 function dataUrl(at: Inlining, from: string, ref: string, outer: string[] = []): string | null {
   const path = inside(at.dir, from, ref);
-  const data = path && !outer.includes(path) && at.left > 0 ? read(at.dir, path) : null;
+  const data = path && !outer.includes(path) && at.left > 0 ? at.read(path) : null;
   if (!path || !data) return null;
   const bytes = /\.css$/i.test(path) ? Buffer.from(withStyleData(data.toString('utf8'), at, dirname(path), [...outer, path])) : data;
   const url = `data:${Bun.file(path).type};base64,${bytes.toString('base64')}${/#.*$/.exec(ref)?.[0] ?? ''}`;
@@ -94,17 +101,36 @@ function dataUrl(at: Inlining, from: string, ref: string, outer: string[] = []):
   return at.left > 0 ? url : null;
 }
 
-/** CSS with the files of the directory it names (`url()`, `@import`) as `data:` URLs; one has no quote, space or parenthesis to end the text around it early. */
+/** A reference that loads nothing, or what is in the page already: a `data:` URL, a part of the page (`#id`, an SVG's gradient). */
+const HELD = /^(?:data:|#)/i;
+
+/**
+ * CSS with the files of the directory it names (`url()`, `@import`) as `data:` URLs; one has no
+ * quote, space or parenthesis to end the text around it early. `strict`, the others go: an
+ * `@import` with its rule, a `url()` as an empty one, which loads nothing.
+ */
 function withStyleData(css: string, at: Inlining, from: string, outer: string[] = []): string {
   return css
-    .replace(/(@import\s+)(['"])([^'"]+)\2/gi, (all, start: string, _q, ref: string) => {
+    .replace(/(@import\s+)(?:(['"])([^'"]+)\2|url\(\s*(['"]?)([^'")\s]+)\4\s*\))([^;{}@]*;?)/gi, (all, start: string, _q, quoted: string | undefined, _u, bare: string | undefined, rest: string) => {
+      const ref = quoted ?? bare ?? '';
       const url = dataUrl(at, from, ref, outer);
-      return url ? `${start}url(${url})` : all;
+      return url ? `${start}url(${url})${rest}` : at.strict && !HELD.test(ref) ? '' : all;
     })
     .replace(/url\(\s*(?:(['"])([^'"]*)\1|([^'")\s]+))\s*\)/gi, (all, q: string | undefined, quoted: string | undefined, bare: string | undefined) => {
-      const url = dataUrl(at, from, quoted ?? bare ?? '', outer);
-      return url ? `url(${q ?? ''}${url}${q ?? ''})` : all;
+      const ref = quoted ?? bare ?? '';
+      const url = dataUrl(at, from, ref, outer);
+      return url ? `url(${q ?? ''}${url}${q ?? ''})` : at.strict && !HELD.test(ref) ? 'url("")' : all;
     });
+}
+
+/**
+ * A stylesheet of its own (a repository's theme, theme.ts) with the files it names as `data:` URLs,
+ * each read by `read` (by its path relative to `dir`, where the stylesheet lies; null for one that
+ * may not go in); what it names that does not go in, a file elsewhere or an address on the internet,
+ * is dropped.
+ */
+export function themeData(css: string, dir: string, read: (path: string) => Buffer | null): string {
+  return withStyleData(css, { dir, read, left: DATA_BUDGET, strict: true }, '.');
 }
 
 /**
@@ -172,7 +198,7 @@ function withData(html: string, dir: string, from: string): string {
       from = dirname(file);
     }
   }
-  const at: Inlining = { dir, left: DATA_BUDGET };
+  const at: Inlining = { dir, read: (path) => read(dir, path), left: DATA_BUDGET };
   const rewriter = new HTMLRewriter();
   for (const [element, attribute] of NAMED)
     rewriter.on(`${element}[${attribute.replace(':', '\\:')}]`, {
