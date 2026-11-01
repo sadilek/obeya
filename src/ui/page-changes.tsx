@@ -12,7 +12,7 @@ export function PageChangeList({ changes }: { changes: { id: OutdatedBy; pages?:
         return (
           <li key={id}>
             {/* a change of the repository's theme has no day of Obeya's */}
-            <span className="when">{id === THEME_CHANGED ? '' : shortDay(`${id.slice(0, 10)}T12:00`)}</span>
+            {id !== THEME_CHANGED && <span className="when">{shortDay(`${id.slice(0, 10)}T12:00`)}</span>}
             <span>
               {kinds.length === 1 && <b>{t.pageChanges.only[kinds[0]!]}: </b>}
               {t.pageChanges.text[id]}
