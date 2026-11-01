@@ -110,8 +110,9 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   since the machine's active gh account may be another without admin rights.
 - A recurring step that needs a longer CLI call (an upload, say) goes into a script in the repo,
   not into the docs as a command to copy.
-- Commit directly to `main`; this repo uses no feature branches or pull requests. An Obeya worker
-  is the exception: it commits on its card's branch, and Obeya lands that branch on `main`.
+- Finished work never lands directly on `main`: it goes as a branch to the fork Amerlander/obeya
+  (remote `fork`), with a pull request against `main` of https://github.com/sadilek/obeya. An Obeya
+  worker commits on its card's branch, and that branch is the one pushed to the fork.
 - When a task handles a GitHub issue, its worker closes the issue once the work has landed, with a
   comment linking the demo video and the commit on `main`.
 - Once the owner approves the demo of an external contributor's pull request: comment on the PR
