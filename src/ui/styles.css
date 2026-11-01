@@ -2173,7 +2173,7 @@ button.link:hover { text-decoration: underline; }
 .manual-edge button { width: 28px; height: 28px; border: 1px solid var(--waiting); border-radius: 50%; background: var(--card); color: var(--waiting); cursor: pointer; }
 .connection-handles { position: absolute; z-index: 4; pointer-events: none; }
 .connection-handles.target { pointer-events: auto; outline: 3px solid var(--waiting); outline-offset: 3px; border-radius: 4px; }
-.connection-dot { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid var(--waiting); border-radius: 50%; background: var(--card); opacity: 0; pointer-events: none; cursor: crosshair; transform: translate(-50%, -50%); }
+.connection-dot { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid var(--waiting); border-radius: 50%; background: var(--card); opacity: 0; pointer-events: none; cursor: pointer; transform: translate(-50%, -50%); }
 .connection-handles.visible .connection-dot, .connection-dot:focus-visible { opacity: 1; pointer-events: auto; }
 .connection-dot.top { left: 50%; top: 0; } .connection-dot.right { left: 100%; top: 50%; }
 .connection-dot.bottom { left: 50%; top: 100%; } .connection-dot.left { left: 0; top: 50%; }
