@@ -61,12 +61,14 @@ export const demoFiles = (dir: string): string[] =>
 
 /**
  * What a player needs to know of a video demo beyond its files: the languages of its caption
- * tracks, the narration's first (none for a demo from before them), and whether it is silent.
+ * tracks in their order (empty: no subtitles; none for a demo from before them, whose track is its
+ * `captions.vtt`), and whether it is silent.
  */
 export function videoFacts(dir: string): { tracks?: string[]; silent?: true } {
-  const tracks = captionTracks(dir).flatMap((t) => (t.language ? [t.language] : []));
+  const all = captionTracks(dir);
+  const tracks = all.flatMap((t) => (t.language ? [t.language] : []));
   const video = demoFile(dir, 'demo.mp4');
-  return { ...(tracks.length ? { tracks } : {}), ...(video && silentVideo(video) ? { silent: true as const } : {}) };
+  return { ...(all.some((t) => !t.language) ? {} : { tracks }), ...(video && silentVideo(video) ? { silent: true as const } : {}) };
 }
 
 /** The page of an HTML artifact; the files beside it (images, styles) are served too. */

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { knownLanguage, languageName, preferredTrack } from './locale.ts';
-import { READING, readingSeconds, readingTimes, sentencesOf, sharedOut, type SubtitleSource, subtitleProblems, subtitleTracks, trackVtt } from './subtitles.ts';
+import { listedTracks, narrationVtt, READING, readingSeconds, readingTimes, sentencesOf, sharedOut, type SubtitleSource, subtitleProblems, subtitleTracks, trackVtt } from './subtitles.ts';
 
 describe('sentences', () => {
   test('a narration is split into its sentences, without its audio tags and respellings', () => {
@@ -48,6 +48,16 @@ describe('timing', () => {
       'WEBVTT\n\n00:00:00.350 --> 00:00:02.350\nUn.\n\n00:00:02.350 --> 00:00:05.350\nDeux.\n\n00:00:06.350 --> 00:00:08.850\nTrois.\n',
     );
   });
+
+  test("the narration's captions name the demo's tracks in their first line, none where it has none", () => {
+    const scenes = [{ speechStart: 0.35, sentences: [2] }];
+    const narration = { language: 'en', scenes: [['One.']] };
+    const listed = narrationVtt(narration, scenes, ['de', 'fr']);
+    expect(listed).toBe('WEBVTT - subtitles: de fr\n\n00:00:00.350 --> 00:00:02.350\nOne.\n');
+    expect(listedTracks(listed)).toEqual(['de', 'fr']);
+    expect(listedTracks(narrationVtt(narration, scenes, []))).toEqual([]);
+    expect(listedTracks(trackVtt(narration, scenes))).toBeUndefined();
+  });
 });
 
 describe('translations for the subtitles', () => {
@@ -63,9 +73,24 @@ describe('translations for the subtitles', () => {
   };
   const fr = { scenes: [{ sentences: ['La liste.', 'Elle était longue.'] }, { sentences: ['Maintenant elle est courte.'] }] };
 
-  test('the narration alone needs no translation', () => {
+  test('the narration alone needs no translation, and no languages make no tracks', () => {
     expect(subtitleTracks(work, source, ['en'])).toEqual({ tracks: [{ language: 'en', scenes: [['The list.', 'It was long.'], ['Now it is short.']] }] });
+    expect(subtitleTracks(work, source, [])).toEqual({ tracks: [] });
     expect(existsSync(join(work, 'subtitles'))).toBe(false);
+  });
+
+  test("the tracks are the languages listed, in their order, the narration's only where it is among them", () => {
+    subtitleTracks(work, source, ['de', 'fr']);
+    writeFileSync(join(work, 'subtitles', 'fr.json'), JSON.stringify(fr));
+    writeFileSync(join(work, 'subtitles', 'de.json'), JSON.stringify({ scenes: [{ sentences: ['Die Liste.', 'Sie war lang.'] }, { sentences: ['Jetzt ist sie kurz.'] }] }));
+    const listed = subtitleTracks(work, source, ['de', 'fr']);
+    expect('tracks' in listed && listed.tracks.map((t) => t.language)).toEqual(['de', 'fr']);
+    const withNarration = subtitleTracks(work, source, ['fr', 'en', 'de']);
+    expect('tracks' in withNarration && withNarration.tracks.map((t) => [t.language, t.scenes[0]![0]])).toEqual([
+      ['fr', 'La liste.'],
+      ['en', 'The list.'],
+      ['de', 'Die Liste.'],
+    ]);
   });
 
   test('a language without its translation stops the render with where it goes; once there, it is a track', () => {
@@ -121,7 +146,7 @@ describe('subtitle languages', () => {
     expect(languageName('de', 'de')).toBe('Deutsch');
   });
 
-  test("a silent video shows the track in the viewer's language, by the language alone where no track has the variant, else the narration's", () => {
+  test("a silent video shows the track in the viewer's language, by the language alone where no track has the variant, else the first", () => {
     expect(preferredTrack(['en', 'de', 'fr'], ['fr-CA', 'en'])).toBe('fr');
     expect(preferredTrack(['en', 'pt-BR'], ['pt-PT'])).toBe('pt-BR');
     expect(preferredTrack(['en', 'de'], ['ja'])).toBe('en');

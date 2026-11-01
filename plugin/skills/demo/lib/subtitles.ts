@@ -1,5 +1,7 @@
-// A demo's captions: its narration a cue per sentence, in the narration language and in each
-// language the demo settings add (`subtitles`), every track with the same cue times. With a voice,
+// A demo's captions: its narration a cue per sentence, a track in each language the demo settings
+// list (`subtitleLanguages`), every track with the same cue times. `captions.vtt` holds the
+// narration's cues whether or not it is a track: where in the video it says what (`placeIn` of the
+// server reads it there), and which tracks the demo offers, in its first line (`narrationVtt`). With a voice,
 // a scene's clip is shared out over its sentences by their length; without one (voice `none`), each
 // sentence stays as long as it takes to read in the language that takes longest.
 //
@@ -106,8 +108,26 @@ export function trackVtt(track: Track, scenes: Timed[]): string {
   return vtt.join('\n');
 }
 
-/** The file of a track's captions. `captions.vtt` holds the narration's as well, for players that know one track only. */
+/** The file of a track's captions. */
 export const trackFile = (language: string) => `captions.${language}.vtt`;
+
+/** The first line of a `captions.vtt` that names the demo's tracks: WebVTT lets text follow its signature. */
+const LISTED = /^\uFEFF?WEBVTT[ \t]+-[ \t]+subtitles:[ \t]*([^\r\n]*)/;
+
+/**
+ * The narration's captions as `captions.vtt` holds them: `trackVtt`, whose first line names the
+ * languages of the demo's tracks in their order (`WEBVTT - subtitles: de fr`), or `none`.
+ */
+export function narrationVtt(narration: Track, scenes: Timed[], tracks: string[]): string {
+  return trackVtt(narration, scenes).replace(/^WEBVTT/, `WEBVTT - subtitles: ${tracks.length ? tracks.join(' ') : 'none'}`);
+}
+
+/** The languages of a demo's tracks, in order, as its `captions.vtt` names them; undefined for one from before, which names none and is its only track. */
+export function listedTracks(captions: string): string[] | undefined {
+  const listed = LISTED.exec(captions)?.[1]?.trim();
+  if (listed === undefined) return undefined;
+  return listed === 'none' ? [] : listed.split(/\s+/).filter(Boolean);
+}
 
 /** What a render translates: per scene, its chapter title (for context) and its sentences. */
 export interface SubtitleSource {
@@ -133,21 +153,25 @@ export function subtitleProblems(source: SubtitleSource, t: unknown): string[] {
 const read = (f: string) => fs.readFileSync(f, 'utf8');
 const sameSentences = (a: SubtitleSource, b: SubtitleSource) => JSON.stringify(a.scenes.map((s) => s.sentences)) === JSON.stringify(b.scenes.map((s) => s.sentences));
 
+/** The narration's own captions: its sentences, scene by scene. */
+export const narrationTrack = (source: SubtitleSource): Track => ({ language: source.language, scenes: source.scenes.map((s) => s.sentences) });
+
 /**
- * The caption tracks of a render, the narration's (`source`) first, then one for each further
- * language of `languages` from its translation in `work/subtitles/<language>.json`. Where one is
- * missing, or was made for a narration that has changed since (it is set aside as
- * `<language>.stale.json`), the brief that asks the agent for it instead. A translation that does
- * not keep the sentences one to one fails the render.
+ * The caption tracks of a render, one per language of `languages` in their order: the narration's
+ * (`source`) where it is among them, each other from its translation in
+ * `work/subtitles/<language>.json`. Where one is missing, or was made for a narration that has
+ * changed since (it is set aside as `<language>.stale.json`), the brief that asks the agent for it
+ * instead. A translation that does not keep the sentences one to one fails the render.
  */
 export function subtitleTracks(work: string, source: SubtitleSource, languages: string[]): { tracks: Track[] } | { brief: string } {
-  const narration: Track = { language: source.language, scenes: source.scenes.map((s) => s.sentences) };
+  const narration = narrationTrack(source);
   const others = languages.filter((l) => l !== source.language);
-  if (!others.length) return { tracks: [narration] };
+  const ordered = (translated: Track[]) => languages.flatMap((l) => (l === source.language ? [narration] : translated.filter((t) => t.language === l)));
+  if (!others.length) return { tracks: ordered([]) };
   const here = path.join(work, 'subtitles');
   fs.mkdirSync(here, { recursive: true });
   fs.writeFileSync(path.join(here, 'source.json'), `${JSON.stringify(source, null, 2)}\n`);
-  const tracks = [narration];
+  const tracks: Track[] = [];
   const missing: string[] = [];
   const stale: string[] = [];
   for (const language of others) {
@@ -175,14 +199,14 @@ export function subtitleTracks(work: string, source: SubtitleSource, languages: 
     if (!asked) fs.writeFileSync(from, `${JSON.stringify(source, null, 2)}\n`);
     tracks.push({ language, scenes: (t as { scenes: { sentences: string[] }[] }).scenes.map((s) => s.sentences.map((x) => x.trim())) });
   }
-  return missing.length ? { brief: subtitleBrief(here, source.language, missing, stale) } : { tracks };
+  return missing.length ? { brief: subtitleBrief(here, source.language, missing, stale) } : { tracks: ordered(tracks) };
 }
 
 /** What the agent is asked to translate for the subtitles, and how. */
 function subtitleBrief(here: string, narration: string, missing: string[], stale: string[]) {
   const name = (l: string) => `${languageName(l, 'en')} (${l})`;
   return [
-    `This demo's subtitles come in ${missing.map(name).join(', ')} besides ${name(narration)}. Translate the sentences of`,
+    `This demo's subtitles come in ${missing.map(name).join(', ')}, and it is narrated in ${name(narration)}. Translate the sentences of`,
     `  ${path.join(here, 'source.json')}`,
     'into each and write them to',
     ...missing.map((l) => `  ${path.join(here, `${l}.json`)}`),

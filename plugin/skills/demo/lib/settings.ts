@@ -1,6 +1,6 @@
 // The demo settings: in which language a demo is narrated and by which voice (or none, for a demo
-// that only shows subtitles), so the person it speaks in follows, in which further languages its
-// subtitles come, and the directory demos go into. Obeya's settings sheet edits them; they live in `demo.json` under Obeya's home
+// that only shows subtitles), so the person it speaks in follows, in which languages its subtitles
+// come, and the directory demos go into. Obeya's settings sheet edits them; they live in `demo.json` under Obeya's home
 // (`OBEYA_HOME`, else `~/.obeya`), where a session without Obeya finds them as well. Missing
 // entries take the defaults; the language without one is the owner's conversation language. A
 // repository may name the language of its own demos (`demo.language` of its `.obeya/settings.json`):
@@ -63,9 +63,10 @@ export interface DemoSettings {
    */
   keepFrames?: number | 'always';
   /**
-   * The languages a demo's subtitles come in beside the narration's (BCP 47 codes: `fr`, `pt-BR`),
-   * each a caption track of its own, translated by the agent that renders it. The narration's
-   * language is always one; left out or empty, it is the only one.
+   * The languages a demo's subtitles come in (BCP 47 codes: `fr`, `pt-BR`), each a caption track of
+   * its own, in this order; the agent that renders it translates the narration into each but the
+   * narration's own. Left out or empty: no subtitles, except in a silent demo, whose subtitles are
+   * then the narration's (`subtitleLanguages`).
    */
   subtitles?: string[];
 }
@@ -115,8 +116,13 @@ export function tidyDemoSettings(input: unknown, fallbackLanguage: NarrationLang
   return out;
 }
 
-/** The languages of a demo's caption tracks: the narration's first, then those the settings add. */
-export const subtitleLanguages = (s: Pick<DemoSettings, 'language' | 'subtitles'>): string[] => [...new Set([s.language, ...(s.subtitles ?? [])])];
+/**
+ * The languages of a demo's caption tracks: those the settings list, in their order. Listing none
+ * means none, but a silent demo without them would show nothing of its narration: it gets the
+ * narration's.
+ */
+export const subtitleLanguages = (s: Pick<DemoSettings, 'language' | 'subtitles' | 'voice'>): string[] =>
+  s.subtitles?.length ? [...new Set(s.subtitles)] : silent(s) ? [s.language] : [];
 
 /** Whether a demo with these settings is silent: no voice, its subtitles alone tell what it shows. */
 export const silent = (s: Pick<DemoSettings, 'voice'>) => s.voice === 'none';
@@ -198,6 +204,15 @@ export function narrationPerson(s: Partial<DemoSettings>): 'first' | 'third' {
   return s.voice === 'qwen3' && !(s.language && s.references?.[s.language]) ? 'third' : 'first';
 }
 
+/** The settings' subtitles, as `describeDemoSettings` tells them. */
+function subtitlesLine(s: DemoSettings): string {
+  const languages = subtitleLanguages(s);
+  if (!languages.length) return 'subtitles: none — the video gets no caption track';
+  if (!s.subtitles?.length) return `subtitles: ${s.language} — none are listed, so a silent demo shows the narration's`;
+  const others = languages.filter((l) => l !== s.language);
+  return `subtitles: ${languages.join(', ')}${others.length ? ` — the render asks for a translation of the narration into ${others.join(', ')}` : ''}`;
+}
+
 /** What the agent writing a narration needs to know, in a few lines; `repo` names the repository's language for its demos. */
 export function describeDemoSettings(saved: DemoSettings, override: string | undefined = process.env.DEMO_VOICE, repo: ReturnType<typeof repositoryLanguage> = undefined): string {
   const s = withVoice(inLanguage(saved, repo?.language), override);
@@ -216,7 +231,7 @@ export function describeDemoSettings(saved: DemoSettings, override: string | und
     s.voice === 'none'
       ? 'voice: none — a silent video with subtitles; each scene lasts as long as its text takes to read'
       : `voice: ${s.voice}${s.voiceName ? ` (${s.voiceName})` : ''}${clip ? ` (clone of ${clip})` : ''}`,
-    `subtitles: ${subtitleLanguages(s).join(', ')}${subtitleLanguages(s).length > 1 ? ' — the render asks for a translation of the narration into each language but the first' : ''}`,
+    subtitlesLine(s),
     `from: ${path.join(obeyaHome(), DEMO_SETTINGS_FILE)}${override ? ' (voice from DEMO_VOICE)' : ''}`,
     `directory: ${demoDirectory(saved)} — every demo goes into a directory of its own in it`,
   ].join('\n');

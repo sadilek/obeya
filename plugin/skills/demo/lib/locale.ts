@@ -42,9 +42,9 @@ export function languageName(code: string, inLanguage: string): string {
 }
 
 /**
- * Of a demo's caption tracks (their languages, the narration's first), the one to show without
+ * Of a demo's caption tracks (their languages, in their order), the one to show without
  * being asked, for a viewer who prefers `preferred` (most preferred first): the first whose
- * language matches, by the language alone where no track has the very variant; else the narration's.
+ * language matches, by the language alone where no track has the very variant; else the first.
  */
 export function preferredTrack(tracks: readonly string[], preferred: readonly string[]): string | undefined {
   const base = (l: string) => l.toLowerCase().split('-')[0];
