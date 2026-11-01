@@ -77,6 +77,10 @@ import { qwen3Serve } from '../../plugin/skills/demo/lib/voices.ts';
 import { agentSetting, conversationLanguage, ownerLanguage, usageMeterView } from './settings';
 import { loginLink } from './owner';
 import { Stalls } from './stalls';
+import { hideConsoleWindows } from './spawn';
+
+// before anything starts a program: git and the rest flash no window on Windows
+hideConsoleWindows();
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
