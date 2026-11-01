@@ -1,5 +1,6 @@
-// The demo settings: in which language a demo is narrated and by which voice, so the person it
-// speaks in follows, and the directory demos go into. Obeya's settings sheet edits them; they live in `demo.json` under Obeya's home
+// The demo settings: in which language a demo is narrated and by which voice (or none, for a demo
+// that only shows subtitles), so the person it speaks in follows, in which further languages its
+// subtitles come, and the directory demos go into. Obeya's settings sheet edits them; they live in `demo.json` under Obeya's home
 // (`OBEYA_HOME`, else `~/.obeya`), where a session without Obeya finds them as well. Missing
 // entries take the defaults; the language without one is the owner's conversation language. A
 // repository may name the language of its own demos (`demo.language` of its `.obeya/settings.json`):
@@ -15,16 +16,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { isMain } from './here.ts';
 import { conversationLanguageIn } from './language.ts';
-import { type Language, LANGUAGE_NAMES, LANGUAGES } from './locale.ts';
+import { knownLanguage, type Language, LANGUAGE_NAMES, LANGUAGES } from './locale.ts';
 
 /** The language a demo is narrated in: one Obeya speaks. */
 export type NarrationLanguage = Language;
 /**
  * The voice providers (`voices.ts` turns each into what `tts.py` runs). Local models Obeya
  * installs on request (`piper`, the default, and `qwen3`), macOS `say`, the owner's own command or
- * HTTP endpoint, and templates for four hosted services.
+ * HTTP endpoint, and templates for four hosted services. `none`: no voice at all, a silent video
+ * whose subtitles tell what the narration would; each scene lasts as long as its text takes to read.
  */
-export const VOICES = ['piper', 'qwen3', 'say', 'command', 'http', 'gemini', 'openai', 'elevenlabs', 'azure'] as const;
+export const VOICES = ['none', 'piper', 'qwen3', 'say', 'command', 'http', 'gemini', 'openai', 'elevenlabs', 'azure'] as const;
 export type VoiceKind = (typeof VOICES)[number];
 /** The hosted services `tts.py` has a template for. */
 export const SERVICES = ['gemini', 'openai', 'elevenlabs', 'azure'] as const satisfies readonly VoiceKind[];
@@ -60,6 +62,12 @@ export interface DemoSettings {
    * which only re-voicing needs; `always` keeps them. Left out: Obeya's default (see `demo-space.ts`).
    */
   keepFrames?: number | 'always';
+  /**
+   * The languages a demo's subtitles come in beside the narration's (BCP 47 codes: `fr`, `pt-BR`),
+   * each a caption track of its own, translated by the agent that renders it. The narration's
+   * language is always one; left out or empty, it is the only one.
+   */
+  subtitles?: string[];
 }
 
 export const DEFAULT_DEMO_SETTINGS: DemoSettings = { language: 'de', voice: 'piper' };
@@ -101,9 +109,17 @@ export function tidyDemoSettings(input: unknown, fallbackLanguage: NarrationLang
   const given = (o.references && typeof o.references === 'object' ? o.references : { [language]: o.reference }) as Record<string, unknown>;
   const references = Object.fromEntries(LANGUAGES.flatMap((l) => (str(given[l]) ? [[l, str(given[l])]] : [])));
   if (Object.keys(references).length) out.references = references;
+  const subtitles = Array.isArray(o.subtitles) ? [...new Set(o.subtitles.flatMap((c) => (typeof c === 'string' && knownLanguage(c) ? [knownLanguage(c)!] : [])))] : [];
+  if (subtitles.length) out.subtitles = subtitles;
   if (o.keepFrames === 'always' || (typeof o.keepFrames === 'number' && Number.isInteger(o.keepFrames) && o.keepFrames > 0)) out.keepFrames = o.keepFrames;
   return out;
 }
+
+/** The languages of a demo's caption tracks: the narration's first, then those the settings add. */
+export const subtitleLanguages = (s: Pick<DemoSettings, 'language' | 'subtitles'>): string[] => [...new Set([s.language, ...(s.subtitles ?? [])])];
+
+/** Whether a demo with these settings is silent: no voice, its subtitles alone tell what it shows. */
+export const silent = (s: Pick<DemoSettings, 'voice'>) => s.voice === 'none';
 
 /** The clip a Qwen3 voice clones for the narration language of these settings; none: a speaker. */
 export const referenceOf = (s: Pick<DemoSettings, 'language' | 'references'>): string | undefined => s.references?.[s.language];
@@ -178,7 +194,7 @@ export function withVoice(s: DemoSettings, voice: string | undefined): DemoSetti
  * stock speaker, which is nobody's own.
  */
 export function narrationPerson(s: Partial<DemoSettings>): 'first' | 'third' {
-  if (!s.ownVoice) return 'third';
+  if (!s.ownVoice || s.voice === 'none') return 'third';
   return s.voice === 'qwen3' && !(s.language && s.references?.[s.language]) ? 'third' : 'first';
 }
 
@@ -196,8 +212,11 @@ export function describeDemoSettings(saved: DemoSettings, override: string | und
         : []),
     person === 'first'
       ? `person: first — the voice is the owner's own, so the narration speaks as the owner ("I added …")`
-      : `person: third — the voice is not the owner's, so the narration presents the work without "I" or "we" ("The card now shows …")`,
-    `voice: ${s.voice}${s.voiceName ? ` (${s.voiceName})` : ''}${clip ? ` (clone of ${clip})` : ''}`,
+      : `person: third — ${s.voice === 'none' ? 'no voice speaks' : "the voice is not the owner's"}, so the narration presents the work without "I" or "we" ("The card now shows …")`,
+    s.voice === 'none'
+      ? 'voice: none — a silent video with subtitles; each scene lasts as long as its text takes to read'
+      : `voice: ${s.voice}${s.voiceName ? ` (${s.voiceName})` : ''}${clip ? ` (clone of ${clip})` : ''}`,
+    `subtitles: ${subtitleLanguages(s).join(', ')}${subtitleLanguages(s).length > 1 ? ' — the render asks for a translation of the narration into each language but the first' : ''}`,
     `from: ${path.join(obeyaHome(), DEMO_SETTINGS_FILE)}${override ? ' (voice from DEMO_VOICE)' : ''}`,
     `directory: ${demoDirectory(saved)} — every demo goes into a directory of its own in it`,
   ].join('\n');
