@@ -238,7 +238,7 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 
 /* ---------- chrome ---------- */
 /* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the panels docked at the window's edges */
-#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1), padding-left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
+#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1), padding-left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 21;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
 .pill { background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 0; white-space: nowrap; }
