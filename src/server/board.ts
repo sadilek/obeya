@@ -461,7 +461,7 @@ export class Board {
     this.setManualDependencies(edges);
   }
 
-  /** Arrows of cards that no longer exist go; those of a deleted card stay, for its restore. */
+  /** Arrows of cards that no longer exist go; those of a deleted or archived card stay, for its return. */
   private setManualDependencies(edges: [string, string][]) {
     this.setSetting('manual_dependencies', JSON.stringify(edges.filter(([a, b]) => this.store.card(a) && this.store.card(b))));
     this.changed();
@@ -1348,6 +1348,7 @@ export class Board {
     if (row.prototype_of) throw new BadRequest('prototypeEnded', 'a discarded or built prototype stays in the archive');
     this.store.update(id, { archived_at: null });
     this.changed();
+    this.backOnCanvas(id);
   }
 
   /**
@@ -2182,7 +2183,11 @@ export class Board {
     if (!row || row.canvas_id !== this.canvas.id) throw new BadRequest('unknownCard', 'unknown card');
     this.store.update(id, { deleted_at: null });
     this.changed();
-    // its arrows come back, but none that the arrows drawn meanwhile would make a cycle
+    this.backOnCanvas(id);
+  }
+
+  /** A card deleted or archived is back: its arrows too, but none that the arrows drawn meanwhile would make a cycle. */
+  private backOnCanvas(id: string) {
     const items = this.items();
     const edges = this.manualDependencies();
     const kept = edges.filter(([a, b]) => a !== id && b !== id);
@@ -2764,7 +2769,7 @@ const connectable = (i: Item) => i.source !== 'plan' && i.kind !== 'project';
 
 /**
  * Whether an arrow from `from` to `to` would close a cycle with the arrows between the cards shown
- * (`edges`; a deleted card's count for nothing) and the waits Obeya inferred.
+ * (`edges`; a deleted or archived card's count for nothing) and the waits Obeya inferred.
  */
 function closesCycle(from: string, to: string, edges: [string, string][], items: Item[]): boolean {
   const shown = new Set(items.map((i) => i.id));

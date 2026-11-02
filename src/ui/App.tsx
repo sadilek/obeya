@@ -990,6 +990,28 @@ function Canvas({
   // arrows the owner removed that the server may still have: one holding a queued card goes there only
   // once „Rückgängig“ has run out (`sent` from then on), so that taking it back never leaves the card started
   const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
+  // those removals while „Rückgängig“ runs, each with its timer and what sends it
+  const pendingRemovals = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; send: (keepalive?: boolean) => void }>());
+  // what the owner removed goes to the server even when the page goes before „Rückgängig“ has run out
+  useEffect(() => {
+    const away = () => {
+      for (const p of pendingRemovals.current.values()) {
+        clearTimeout(p.timer);
+        p.send(true);
+      }
+      pendingRemovals.current.clear();
+    };
+    addEventListener('pagehide', away);
+    return () => removeEventListener('pagehide', away);
+  }, []);
+  /** A removal still waiting for „Rückgängig“ to run out is taken back: the arrow stays. */
+  function keepDependency(key: string) {
+    const p = pendingRemovals.current.get(key);
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingRemovals.current.delete(key);
+    setRemoving((r) => r.filter((x) => x.key !== key));
+  }
   // Shift + drag on the canvas draws a lasso, Shift + click on a card takes it in or out: what is marked
   // moves together and goes into a group at once through the colour ring
   const lassoRef = useRef<Pos[] | null>(null);
@@ -1045,17 +1067,19 @@ function Canvas({
       return;
     }
     setRemoving((r) => [...r, { key }]);
-    const timer = setTimeout(() => {
+    const send = (keepalive = false) => {
       setRemoving((r) => r.map((x) => (x.key === key ? { key, sent: true } : x)));
-      api.dependency(from, to.id, true).catch((e) => {
+      api.dependency(from, to.id, true, keepalive).catch((e) => {
         setRemoving((r) => r.filter((x) => x.key !== key));
         fail(e);
       });
+    };
+    const timer = setTimeout(() => {
+      pendingRemovals.current.delete(key);
+      send();
     }, ACK_MS);
-    showAck(t.deps.removed, () => {
-      clearTimeout(timer);
-      setRemoving((r) => r.filter((x) => x.key !== key));
-    });
+    pendingRemovals.current.set(key, { timer, send });
+    showAck(t.deps.removed, () => keepDependency(key));
   }
   // a removal the server has done is shown by the snapshot from then on
   useEffect(() => {
@@ -1140,7 +1164,11 @@ function Canvas({
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
     if (connection) {
       e.stopPropagation();
-      if (connection.target) api.dependency(connection.from, connection.target).catch((err) => showAck(failText(err)));
+      if (connection.target) {
+        // the arrow drawn again while its removal waits for „Rückgängig“ to run out: it simply stays
+        if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
+        else api.dependency(connection.from, connection.target).catch((err) => showAck(failText(err)));
+      }
       setConnection(null);
       return;
     }

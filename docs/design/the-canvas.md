@@ -80,11 +80,12 @@ in the card's colour; a click on it starts an arrow that follows the pointer and
 under it or close to it, a click there connects the two (Escape cancels). The arrow points from the
 prerequisite to the card that waits for it and stays on the canvas; under the pointer it shows a
 trash button that removes it at once, with „Rückgängig“. While the arrow holds a queued card, the
-removal waits until the undo has run out, so taking it back never leaves a card started. Projects
+removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
+started. Projects
 and their workstreams get no dots, since the plan doc decides their order, and inferred waits have
 no trash button. An arrow that would close a cycle with other arrows or waits is refused. A deleted
-card's arrows are hidden and count for nothing; restoring the card brings them back, except one that
-would now close a cycle. How an arrow holds a card's start: see Scheduling.
+or archived card's arrows are hidden and count for nothing; bringing the card back brings them back,
+except one that would now close a cycle. How an arrow holds a card's start: see Scheduling.
 
 #### A project arranged by its dependencies
 

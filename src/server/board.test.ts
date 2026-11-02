@@ -760,6 +760,19 @@ test("a deleted card's arrows count for nothing until it is restored, and come b
   expect(board.manualDependencies()).toEqual([[c.id, a.id], [a.id, x.id]]);
 });
 
+test("an archived card's arrows come back with it, without closing a cycle", () => {
+  const a = board.create({ title: 'A', x: 0, y: 0 });
+  const x = board.create({ title: 'X', x: 0, y: 0 });
+  const c = board.create({ title: 'C', x: 0, y: 0 });
+  board.connect(a.id, x.id);
+  board.connect(x.id, c.id);
+  board.patch(x.id, { state: 'live' });
+  board.archive([x.id]);
+  board.connect(c.id, a.id);
+  board.unarchive(x.id);
+  expect(board.manualDependencies()).toEqual([[c.id, a.id], [a.id, x.id]]);
+});
+
 test('owner-drawn dependencies cannot connect projects or their workstreams', () => {
   const own = board.create({ title: 'Own task', x: 0, y: 0 });
   const project = board.snapshot().items.find((i) => i.kind === 'project')!;
