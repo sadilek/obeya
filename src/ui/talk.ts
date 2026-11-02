@@ -88,7 +88,7 @@ const place = (e: CardEvent, prev: CardEvent | undefined): 'owner' | 'agent' | '
     case 'denied':
       return 'line';
     case 'state':
-      return e.author === 'explorer' || (e.author === 'obeya' && !MILESTONE.test(e.text) && !limitLine(e) && !wokeLine(e) && !unansweredLine(e)) ? 'step' : 'line';
+      return e.author === 'explorer' || (e.author === 'obeya' && !MILESTONE.test(e.text) && !limitLine(e) && !wokeLine(e) && !unansweredLine(e) && !waitLine(e)) ? 'step' : 'line';
     default:
       return 'step';
   }
@@ -281,6 +281,9 @@ const wokeLine = (e: CardEvent) => e.kind === 'state' && LANGUAGES.some((l) => e
 
 /** Obeya's line that the agent stopped without answering the owner's words: they write again. */
 const unansweredLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text === MESSAGES[l].worker.unanswered);
+
+/** Obeya's line that the card waits for others before it starts, and why. */
+const waitLine = (e: CardEvent) => e.kind === 'state' && e.author === 'obeya' && LANGUAGES.some((l) => e.text.startsWith(MESSAGES[l].koordinator.waitsFor('\0', '').split('\0')[0]!));
 
 /** Obeya's line that the usage limit stopped the agent's turn, and when it goes on. */
 const limitLine = (e: CardEvent) =>

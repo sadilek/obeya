@@ -15,7 +15,7 @@ import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { holdsNotes } from '../core/queue';
-import { QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText } from './queue';
+import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
@@ -388,7 +388,7 @@ export function Detail(p: Props) {
           </div>
           <QueuePlace item={item} items={all} />
           <div className="actions">
-            <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: t.queue.forced })}>
+            <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: forcedText(item.queue) })}>
               {t.queue.force}
             </button>
             <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>

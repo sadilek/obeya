@@ -141,6 +141,9 @@ type Behind = { behind: string[]; reason: string; manualWait?: string[] };
 /** Why a card waits behind others: the reason Obeya gave, or the owner's arrows where only they hold it. */
 export const waitReason = (q: Behind) => (q.behind.some((id) => !q.manualWait?.includes(id)) ? q.reason : t.queue.drawn);
 
+/** The confirmation that a waiting card was started anyway. */
+export const forcedText = (q: Item['queue']) => (q && 'behind' in q && q.behind.every((id) => q.manualWait?.includes(id)) ? t.queue.forcedDrawn : t.queue.forced);
+
 /** What a card waits for and why: the waits Obeya inferred with their reason, then those the owner's arrows hold it for. */
 export function waitText(q: Behind, items: Item[]): string {
   const drawn = q.behind.filter((id) => q.manualWait?.includes(id));

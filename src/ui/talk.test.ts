@@ -844,3 +844,12 @@ test('a question nobody waits on shows how it ended, the same on every kind of c
   // an archived card's question nobody answered was left open too
   expect(cardTalk(idea, [reply, q1], true).shown[1]).toEqual({ e: q1, steps: [], end: 'left' });
 });
+
+test("Obeya's line that a card waits for others before it starts stands, in either language", () => {
+  const k = MESSAGES.en.koordinator;
+  const drawn = ev('state', 'obeya', k.waitsFor('“Export”', k.drawn));
+  const inferred = ev('state', 'obeya', MESSAGES.de.koordinator.waitsFor('„Export“', MESSAGES.de.koordinator.likelyConflict));
+  const t = talkTurns([drawn, inferred], { over: false });
+  expect(t.shown.map((x) => x.e)).toEqual([drawn, inferred]);
+  expect(t.shown.every((x) => x.line)).toBe(true);
+});

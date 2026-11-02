@@ -521,6 +521,8 @@ const de = {
     dequeue: 'Aus der Warteschlange nehmen',
     drag: 'Ziehen, um die Aufgabe an einen anderen Platz zu stellen',
     forced: 'Gestartet, trotz möglicher Merge-Konflikte.',
+    /** Started anyway where only the owner's arrows held it. */
+    forcedDrawn: 'Gestartet, ohne auf die verbundenen Karten zu warten.',
     earlier: 'Früher',
     later: 'Später',
     place: (n: number, of: number) => `Platz ${n} von ${of} in der Warteschlange.`,
@@ -2469,6 +2471,7 @@ const en: Strings = {
     dequeue: 'Take out of the queue',
     drag: 'Drag to move the task to another place',
     forced: 'Started, despite possible merge conflicts.',
+    forcedDrawn: 'Started without waiting for the cards you connected it to.',
     earlier: 'Earlier',
     later: 'Later',
     place: (n: number, of: number) => `Place ${n} of ${of} in the queue.`,

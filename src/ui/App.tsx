@@ -21,7 +21,7 @@ import { PhoneDialog } from './access';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
-import { QueuePill } from './queue';
+import { forcedText, QueuePill } from './queue';
 import { depsOf, handleAt, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
@@ -719,7 +719,7 @@ function Canvas({
   const startCard = useCallback(async (i: Item) => {
     try {
       await api.act(i.id, { action: i.queue ? 'force' : 'start' });
-      if (i.queue) showAck(t.queue.forced);
+      if (i.queue) showAck(forcedText(i.queue));
     } catch (e) {
       fail(e);
     }
