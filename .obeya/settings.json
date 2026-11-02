@@ -1,14 +1,14 @@
 {
-  "setup": "bun install",
+  "land": "main",
   "checks": [
     "bun test --parallel",
     "bun run typecheck"
   ],
-  "land": "main",
-  "workspaces": "worktrees",
+  "setup": "bun install",
   "softPaths": [
     "docs/"
   ],
+  "workspaces": "worktrees",
   "app": {
     "run": "Run a scratch Obeya from your worktree, never the Obeya on port 4417 (it serves the owner's canvases): `bun scripts/scratch-obeya.ts <stage.json>` (its header describes the stage file) stages a fresh repository with plan docs, a fresh OBEYA_HOME and the cards in the states you need, in about a second, and prints the `url` to open, a link that signs the browser in, and the `port` it picked by itself (leave `port` out of the stage file); `--stop`, `--login`, `--say` and `--artifact` take that `port` (`--login <port>` prints the link again). Its page reloads by itself after a change to `src/ui/`; after a change to the server, stage afresh. Its workers are idle: a started card is in progress without an agent. To see a working card's conversation or artifact change live without `--real-workers`, use `--say`/`--artifact`. Give it `--real-workers` only when the change is about what agents do; they take minutes. Such a take records them when you give it `--record <demo dir>/recording` in place of `--real-workers`, and a retake of the same demo plays that run back with `--replay <demo dir>/recording`, the same in minutes, until the playback refuses because the agents' instructions or tools changed: then record anew. Stop each instance with `--stop <port>` when you are done. Write stage files in English (card titles, conversations, plan docs): this repository's demos are narrated in English, and the scratch Obeya speaks the language of the demos. For a demo, keep `stage.json` in the demo directory and stage afresh before every take: call the script from the demo's `login` (`execFileSync('bun', [`${worktree}/scripts/scratch-obeya.ts`, `${import.meta.dirname}/stage.json`])`) and record against the `url` it prints. The newest `obeya-*` demo in the demo directory is the model for the demo script. For a before and after, stage a second instance from the earlier commit with `--code <commit>`: it gets a port of its own."
   },
