@@ -276,10 +276,10 @@ function Line({ row, on, onPick, onDiff, tabs }: { row: ChangeRow; on: boolean; 
   );
 }
 
-/** Whether the top of `el` is in sight: in the window, scrolled into view and not under the card's buttons. */
+/** Whether enough of `el` is in sight to be seen, not only a strip of its top: in the window, scrolled into view and not under the card's buttons. */
 function seen(el: Element): boolean {
   const r = el.getBoundingClientRect();
-  const at = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(60, r.height / 2));
+  const at = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(200, r.height / 2));
   return !!at && el.contains(at);
 }
 
