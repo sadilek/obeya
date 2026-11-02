@@ -15,7 +15,7 @@ import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { holdsNotes } from '../core/queue';
-import { QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitedOn } from './queue';
+import { QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
@@ -384,7 +384,7 @@ export function Detail(p: Props) {
       ) : (
         <>
           <div className="q-text">
-            {t.queue.behind(waitedOn(item.queue.behind, all))} {item.queue.reason}
+            {waitText(item.queue, all)}
           </div>
           <QueuePlace item={item} items={all} />
           <div className="actions">

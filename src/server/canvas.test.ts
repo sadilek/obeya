@@ -1644,8 +1644,11 @@ test('a manual dependency holds a requested card until removed', async () => {
   canvas.board.connect(a.id, b.id);
   canvas.act(b.id, { action: 'start' });
   await until(() => !!item(b.id).queue && 'behind' in item(b.id).queue!);
-  expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+  const t = canvas.board.t.koordinator;
+  expect(item(b.id).queue).toMatchObject({ behind: [a.id], reason: t.drawn });
   expect(item(b.id).state).toBe('planned');
+  // the card says why it waits: the owner connected it, not a wait Obeya inferred
+  expect(canvas.board.events(b.id).at(-1)).toMatchObject({ kind: 'state', author: 'obeya', text: t.waitsFor(t.notStarted('„Prerequisite“'), t.drawn) });
   canvas.board.connect(a.id, b.id, true);
   await until(() => item(b.id).state === 'working');
   await settle();
@@ -1709,6 +1712,9 @@ describe('owner-drawn dependencies in the queue', () => {
     canvas.board.connect(p.id, b.id);
     await settle();
     expect(item(b.id).queue).toMatchObject({ behind: [a.id, p.id], manualWait: [p.id] });
+    // the arrow drawn while it waited is said once; the one over the inferred wait adds nothing to say
+    const t = canvas.board.t.koordinator;
+    expect(canvas.board.events(b.id).filter((e) => e.author === 'obeya' && e.text.includes(t.drawn)).map((e) => e.text)).toEqual([t.waitsFor(t.notStarted('„Prerequisite“'), t.drawn)]);
     canvas.board.connect(a.id, b.id, true);
     await settle();
     // a likely conflict holds only while A is in progress; the other arrow holds on

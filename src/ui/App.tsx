@@ -1208,7 +1208,10 @@ function Canvas({
       if (connection.target) {
         // the arrow drawn again while its removal waits for „Rückgängig“ to run out: it simply stays
         if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
-        else api.dependency(connection.from, connection.target).catch((err) => showAck(failText(err)));
+        else {
+          const { from, target } = connection;
+          api.dependency(from, target).catch((err) => showAck(err instanceof ApiError && err.code === 'dependencyCycle' ? t.deps.cycle(titleOf(from), titleOf(target)) : failText(err)));
+        }
         if (!depKnown) {
           know(DEP_KNOWN);
           setDepKnown(true);

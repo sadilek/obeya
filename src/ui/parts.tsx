@@ -10,7 +10,7 @@ import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';
 import { Doc, excerpt, Inline, plain } from './markdown';
 import { Body } from './message';
-import { waitedOn } from './queue';
+import { waitedOn, waitReason } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
 
@@ -181,7 +181,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
     (item.limitedUntil ? t.limitedUntil(clock(item.limitedUntil)) : undefined) ??
     (item.kind === 'question' && item.thread ? t.question.count(item.thread.answers, item.thread.files) : undefined) ??
     (asked === undefined ? undefined : excerpt(asked)) ??
-    (item.queue && 'behind' in item.queue ? excerpt(item.queue.reason) : undefined) ??
+    (item.queue && 'behind' in item.queue ? excerpt(waitReason(item.queue)) : undefined) ??
     (item.queue && 'workspace' in item.queue ? t.queue.workspaceWhy[item.queue.workspace] : undefined) ??
     (item.queue && 'paused' in item.queue ? t.queue.pausedWhy : undefined) ??
     status ??

@@ -1557,6 +1557,10 @@ export type ErrorCode =
   /** A group that no card belongs to any more, so it is gone. */
   | 'unknownGroup'
   | 'project'
+  /** An arrow between cards that would make them wait for each other, directly or through other cards. */
+  | 'dependencyCycle'
+  /** An arrow to or from a project or one of its workstreams, whose order comes from the plan doc. */
+  | 'planDependency'
   /** An action that needs the card's agents while its repository does not run on the canvas (`Item.repoDown`). */
   | 'repoDown'
   | 'notPlanned'

@@ -498,6 +498,11 @@ const de = {
     waiting: 'In der Warteschlange',
     checkingLong: 'Obeya prüft, ob die Aufgabe mit laufender Arbeit wahrscheinlich in Merge-Konflikte gerät.',
     behind: (cards: { title: string; notStarted: boolean }[]) => `Wartet auf ${cards.map((c) => `„${c.title}“${c.notStarted ? ' (noch nicht gestartet)' : ''}`).join(', ')}.`,
+    /** Why a card waits that only the owner's arrows hold. */
+    drawn: 'Du hast die Karten verbunden; sie startet, sobald das erledigt ist.',
+    /** After a wait Obeya inferred, the cards the owner's arrows hold it for besides. */
+    drawnToo: (cards: { title: string; notStarted: boolean }[]) =>
+      `Außerdem wartet sie auf ${cards.map((c) => `„${c.title}“${c.notStarted ? ' (noch nicht gestartet)' : ''}`).join(', ')}: Du hast die Karten verbunden.`,
     workspace: 'Wartet auf Workspace',
     slot: 'Wartet auf freien Slot',
     paused: 'Wartet: Leinwand pausiert',
@@ -539,6 +544,8 @@ const de = {
     /** While the owner draws their first arrow: what it will do. */
     pick: (from: string) => `Klick auf die Karte, die warten soll: Sie beginnt erst, wenn „${from}“ erledigt ist. Esc bricht ab.`,
     waits: (from: string, to: string) => `„${to}“ beginnt erst, wenn „${from}“ erledigt ist.`,
+    /** The arrow refused because the two cards would wait for each other. */
+    cycle: (from: string, to: string) => `Kein Pfeil: „${from}“ wartet schon auf „${to}“, direkt oder über andere Karten. Die beiden würden aufeinander warten.`,
   },
   /** A card whose repository does not run on the canvas (`Item.repoDown`): on the card, and in its panel. */
   repoDown: {
@@ -551,6 +558,8 @@ const de = {
     unknownCard: 'Das gibt es nicht mehr.',
     unknownGroup: 'Diese Gruppe gibt es nicht mehr.',
     project: 'Ein Projekt wird über seine Workstreams bearbeitet, nicht als Ganzes.',
+    dependencyCycle: 'Kein Pfeil: Die beiden Karten würden aufeinander warten, weil die erste schon auf die zweite wartet, direkt oder über andere Karten.',
+    planDependency: 'Kein Pfeil: Projekte und ihre Workstreams bekommen ihre Reihenfolge aus dem Plan-Doc.',
     notPlanned: 'Nur eine geplante Aufgabe kann gestartet werden.',
     queued: 'Die Aufgabe liegt schon bei Obeya.',
     notQueued: 'Die Aufgabe wartet nicht in der Warteschlange.',
@@ -2441,6 +2450,9 @@ const en: Strings = {
     waiting: 'In the queue',
     checkingLong: 'Obeya checks whether the task is likely to run into merge conflicts with work in progress.',
     behind: (cards: { title: string; notStarted: boolean }[]) => `Waits for ${cards.map((c) => `“${c.title}”${c.notStarted ? ' (not started yet)' : ''}`).join(', ')}.`,
+    drawn: 'You connected the cards; it starts once that is done.',
+    drawnToo: (cards: { title: string; notStarted: boolean }[]) =>
+      `It also waits for ${cards.map((c) => `“${c.title}”${c.notStarted ? ' (not started yet)' : ''}`).join(', ')}: you connected the cards.`,
     workspace: 'Waiting for a workspace',
     slot: 'Waiting for a free slot',
     paused: 'Waiting: canvas paused',
@@ -2477,6 +2489,7 @@ const en: Strings = {
     after: 'waits for it',
     pick: (from: string) => `Click the card that is to wait: it starts only once “${from}” is done. Esc cancels.`,
     waits: (from: string, to: string) => `“${to}” starts only once “${from}” is done.`,
+    cycle: (from: string, to: string) => `No arrow: “${from}” already waits for “${to}”, directly or through other cards. The two would wait for each other.`,
   },
   repoDown: {
     short: 'Repository not running',
@@ -2487,6 +2500,8 @@ const en: Strings = {
     unknownCard: 'That no longer exists.',
     unknownGroup: 'This group no longer exists.',
     project: 'A project is worked on through its workstreams, not as a whole.',
+    dependencyCycle: 'No arrow: the two cards would wait for each other, because the first already waits for the second, directly or through other cards.',
+    planDependency: 'No arrow: projects and their workstreams take their order from the plan doc.',
     notPlanned: 'Only a planned task can be started.',
     queued: 'The task is already with Obeya.',
     notQueued: 'The task is not waiting in the queue.',

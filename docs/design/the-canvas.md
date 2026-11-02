@@ -126,7 +126,9 @@ middle, or the nearest point along it no card covers. While the arrow holds a qu
 removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
 started. Projects and their workstreams get no dots, since the plan doc decides their order, and
 inferred waits have no trash button. An arrow that would close a cycle with other arrows or waits is
-refused. A deleted or archived card's arrows are hidden and count for nothing; bringing the card
+refused, and the line says why: the card it starts from already waits for the other, directly or
+through other cards, so the two would wait for each other. One to or from a project or a workstream
+is refused the same way, saying the plan doc gives their order. A deleted or archived card's arrows are hidden and count for nothing; bringing the card
 back brings them back, except one that would now close a cycle. How an arrow holds a card's start:
 see Scheduling.
 

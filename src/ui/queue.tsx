@@ -136,6 +136,19 @@ export function waitedOn(ids: string[], items: Item[], name: (id: string) => str
   });
 }
 
+type Behind = { behind: string[]; reason: string; manualWait?: string[] };
+
+/** Why a card waits behind others: the reason Obeya gave, or the owner's arrows where only they hold it. */
+export const waitReason = (q: Behind) => (q.behind.some((id) => !q.manualWait?.includes(id)) ? q.reason : t.queue.drawn);
+
+/** What a card waits for and why: the waits Obeya inferred with their reason, then those the owner's arrows hold it for. */
+export function waitText(q: Behind, items: Item[]): string {
+  const drawn = q.behind.filter((id) => q.manualWait?.includes(id));
+  const inferred = q.behind.filter((id) => !drawn.includes(id));
+  if (!inferred.length) return `${t.queue.behind(waitedOn(drawn, items))} ${t.queue.drawn}`;
+  return `${t.queue.behind(waitedOn(inferred, items))} ${q.reason}${drawn.length ? ` ${t.queue.drawnToo(waitedOn(drawn, items))}` : ''}`;
+}
+
 type Sort = ReturnType<typeof useSortable>;
 
 /** A card in the queue, with its grip and what it waits for; in the bar's list (`onOpen`) also the × that takes it out of the queue. */

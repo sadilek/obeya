@@ -698,13 +698,17 @@ export class Koordinator {
       this.startNow(cardId, why);
       return true;
     }
-    const t = this.o.board.t.koordinator;
-    const behind = [...inferred, ...drawn];
-    const because = inferred.length ? reason : t.buildsOn;
-    this.setQueue(cardId, { behind, reason: because, ...(buildsOn.length && { buildsOn }), ...(drawn.length && { manualWait: drawn }) });
-    const names = behind.map((id) => name?.(id) ?? this.nameOf(items.find((i) => i.id === id)!)).join(', ');
-    this.o.board.log(cardId, 'state', 'obeya', t.waitsFor(names, because));
+    this.setQueue(cardId, { behind: [...inferred, ...drawn], reason: inferred.length ? reason : this.o.board.t.koordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(drawn.length && { manualWait: drawn }) });
+    this.logWait(cardId, inferred, reason, drawn, (id) => name?.(id) ?? this.nameOf(items.find((i) => i.id === id)!));
     return false;
+  }
+
+  /** The card's line on what it waits for: the waits inferred with their `reason`, and those the owner's arrows hold it for (`drawn`). */
+  private logWait(cardId: string, inferred: string[], reason: string, drawn: string[], name: (id: string) => string) {
+    const t = this.o.board.t.koordinator;
+    const names = (ids: string[]) => ids.map(name).join(', ');
+    const line = inferred.length ? `${t.waitsFor(names(inferred), reason)}${drawn.length ? ` ${t.drawnToo(names(drawn))}` : ''}` : t.waitsFor(names(drawn), t.drawn);
+    this.o.board.log(cardId, 'state', 'obeya', line);
   }
 
   /**
@@ -850,9 +854,8 @@ export class Koordinator {
         // an arrow the owner drew since it was let start holds it as one drawn before
         const drawn = drawnWaits(w, items);
         if (drawn.length) {
-          const reason = this.o.board.t.koordinator.buildsOn;
-          this.setQueue(w.id, { behind: drawn, reason, manualWait: drawn });
-          this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.waitsFor(drawn.map((id) => this.nameOf(items.find((i) => i.id === id)!)).join(', '), reason));
+          this.setQueue(w.id, { behind: drawn, reason: this.o.board.t.koordinator.drawn, manualWait: drawn });
+          this.logWait(w.id, [], '', drawn, (id) => this.nameOf(items.find((i) => i.id === id)!));
           continue;
         }
       }
@@ -896,7 +899,10 @@ export class Koordinator {
       const still = [...inferred, ...manualWait];
       if (same(still, q.behind) && same(manualWait, q.manualWait ?? []) && same(buildsOn, q.buildsOn ?? [])) continue;
       if (still.length) {
-        this.setQueue(w.id, { behind: still, reason: inferred.length ? q.reason : this.o.board.t.koordinator.buildsOn, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }) });
+        this.setQueue(w.id, { behind: still, reason: inferred.length ? q.reason : this.o.board.t.koordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }) });
+        // an arrow the owner drew to it while it waited holds it too, which it says
+        const drawnNow = manualWait.filter((id) => !q.behind.includes(id));
+        if (drawnNow.length) this.logWait(w.id, [], '', drawnNow, (id) => this.nameOf(items.find((i) => i.id === id)!));
         continue;
       }
       freed.push(w);

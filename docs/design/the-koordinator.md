@@ -63,7 +63,10 @@ again), one the owner started anyway („Trotzdem starten“) and one whose work
 go on once a workspace is free, whatever arrows are drawn. An arrow is kept apart from the waits the
 Koordinator inferred: removing it leaves exactly those (a likely conflict still holds only while
 the other card is in progress), and where both name the same card, the arrow holds on once the
-inferred wait has ended.
+inferred wait has ended. The card says that it waits because the owner connected the cards, in its
+waiting box, on its face and with a line in its conversation once the arrow holds it, with the
+inferred waits' own reason beside that where both hold it; an arrow is never given the reason of an
+inferred wait.
 
 #### Follow-up tasks of a review
 

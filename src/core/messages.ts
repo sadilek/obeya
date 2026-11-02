@@ -365,6 +365,10 @@ const de = {
     reviewClosed: (review: string) => `Zurück auf geplant: Der PR von ${review} wurde ohne Merge geschlossen. Starte die Folgeaufgabe selbst, wenn sie trotzdem gebraucht wird.`,
     notStarted: (name: string) => `${name} (noch nicht gestartet)`,
     waitsFor: (names: string, reason: string) => `Obeya: wartet auf ${names}. ${reason}`,
+    /** Why a card waits that only the owner's arrows hold. */
+    drawn: 'Du hast die Karten verbunden; sie startet, sobald das erledigt ist.',
+    /** After `waitsFor`, the cards the owner's arrows hold it for besides. */
+    drawnToo: (names: string) => `Außerdem wartet sie auf ${names}: Du hast die Karten verbunden.`,
     togetherFailed: (why: string) => `Obeya konnte die Workstreams nicht gemeinsam einplanen (${why}) und prüft sie einzeln.`,
     arrangeFailed: (why: string) => `Obeya konnte nicht lesen, welcher Workstream auf welchem aufbaut (${why}); die Karten bleiben, wo sie stehen.`,
     togetherStarts: 'Gemeinsam mit den anderen Workstreams eingeplant; startet jetzt.',
@@ -829,6 +833,8 @@ const en: Messages = {
     reviewClosed: (review: string) => `Back to planned: the PR of ${review} was closed without a merge. Start the follow-up task yourself if it is still needed.`,
     notStarted: (name: string) => `${name} (not started yet)`,
     waitsFor: (names: string, reason: string) => `Obeya: waits for ${names}. ${reason}`,
+    drawn: 'You connected the cards; it starts once that is done.',
+    drawnToo: (names: string) => `It also waits for ${names}: you connected the cards.`,
     togetherFailed: (why: string) => `Obeya could not plan the workstreams together (${why}); it checks them one by one.`,
     arrangeFailed: (why: string) => `Obeya could not read which workstream builds on which (${why}); the cards stay where they are.`,
     togetherStarts: 'Planned together with the other workstreams; starts now.',

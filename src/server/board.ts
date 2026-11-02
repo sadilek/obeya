@@ -465,11 +465,11 @@ export class Board {
     if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
       throw new BadRequest('unknownCard', 'invalid dependency');
     if (!remove && items.some((i) => (i.id === from || i.id === to) && !connectable(i)))
-      throw new BadRequest('invalid', 'project dependencies are decided from the plan');
+      throw new BadRequest('planDependency', 'project dependencies are decided from the plan');
     const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
     if (!remove) {
       // A cycle would leave the cards waiting for each other forever.
-      if (closesCycle(from, to, edges, items)) throw new BadRequest('invalid', 'dependency cycle');
+      if (closesCycle(from, to, edges, items)) throw new BadRequest('dependencyCycle', 'dependency cycle');
       edges.push([from, to]);
     }
     this.setManualDependencies(edges);
