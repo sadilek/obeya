@@ -1444,8 +1444,7 @@ export class Board {
     if (row.state && finished(row.state)) return 'stale';
     const hash = row.plan_ref?.indexOf('#') ?? -1;
     if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
-    // until the worker reports its pull request, there is none the doc could say was merged
-    if (row.state === 'inPr' && !(row.pr && (JSON.parse(row.pr) as PrState).url)) return null;
+    if (row.state === 'inPr' && !row.pr) return null;
     if (row.state === 'inPr' && OUTSIDE_PATH.test(pathOfRef(row.plan_ref!))) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();

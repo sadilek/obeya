@@ -991,17 +991,16 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     return clone;
   };
 
-  test('approved, before its pull request is open, a ticked workstream is not merged', async () => {
+  test('a workstream the doc on the default branch ticks off counts as merged though its worker never reported the pull request', async () => {
     rmSync(dir, { recursive: true, force: true });
     setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const w = w1();
-    const clone = await approvedIntoPr(w.id);
+    await approvedIntoPr(w.id);
+    // the worker opened the pull request without reporting it, and someone merged it by hand
     ticked();
     await flush();
-    expect(state(w.id)).toBe('inPr');
-    expect(merged).toEqual([]);
-    expect(runtime.last.inbox.at(-1)).not.toContain('Your pull request was merged');
-    expect(spaces.leasedBy(w.id)).toBe(clone);
+    expect(state(w.id)).toBe('live');
+    expect(merged).toEqual([w.id]);
   });
 
   test('a box ticked in a plan folder outside the repository does not count as the pull request merged', async () => {
@@ -1015,6 +1014,9 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     // the worker ticks its box in the folder, which takes effect at once, then opens the pull request
     setDocs([{ ...outside, workstreams: [{ ...ws('W1'), done: true }] }]);
     board.docsChanged();
+    await flush();
+    expect(state(w.id)).toBe('inPr');
+    expect(runtime.last.inbox.at(-1) ?? '').not.toContain('Your pull request was merged');
     board.work(w.id, { pr: JSON.stringify({ url: 'https://github.com/acme/app/pull/822', number: 822, seen: [], reported: [] }) });
     runtime.last.emit({ type: 'idle' });
     await flush();
