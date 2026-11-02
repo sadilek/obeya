@@ -245,8 +245,9 @@ owner's account, as a comment, or with requests as one review asking for changes
 findings fixed or sent, linking the post. A merge after it is pinned to the head just pushed. A push
 the contributor's repository rejects as no fast-forward is a push of theirs that the forge had not
 shown yet: nothing is posted or merged, and the worker reviews the PR as it is now, as for a moved
-head. Any other refusal (rights, the network) stays with the owner, with the reason; a text the
-forge refuses after the push stands in the card's log as an error.
+head. Any other refusal (rights, the network) stays with the owner, with the reason. A text the
+forge refuses after the push stops it there: nothing is merged, the card waits with „Mergen“ and
+the reason, and the findings it asked the contributor for are open again, to be decided anew.
 
 #### Unpushed commits the PR collides with
 

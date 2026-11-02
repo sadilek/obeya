@@ -21,7 +21,7 @@ const URL_ = 'https://github.com/acme/app/pull/5';
 
 /** A forge with one open pull request by a contributor, which records what Obeya does on it. */
 function fakeForge(head: () => string) {
-  const said = { comments: [] as string[], reviews: [] as string[], merges: [] as string[], refuse: undefined as string | undefined };
+  const said = { comments: [] as string[], reviews: [] as string[], merges: [] as string[], refuse: undefined as string | undefined, refusePost: undefined as string | undefined };
   const status: PrStatus = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: '', author: 'amerlander', viewer: 'owner', checks: [{ name: 'test', state: 'success' }], comments: [] };
   const info: ContributionInfo = { title: 'Watcher polls gh in the background', author: 'amerlander', state: 'OPEN', head: '', canModify: true, headRepo: 'https://github.com/amerlander/app.git', headRef: 'bg-poll' };
   const forge: Forge = {
@@ -36,6 +36,7 @@ function fakeForge(head: () => string) {
       return `${URL_}#issuecomment-${said.comments.length}`;
     },
     requestChanges: async (_cwd, _url, body) => {
+      if (said.refusePost) throw new Error(said.refusePost);
       said.reviews.push(body);
       return `${URL_}#pullrequestreview-${said.reviews.length}`;
     },
@@ -645,6 +646,25 @@ describe('a review card', () => {
     expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(prHead);
     expect([...fake.said.comments, ...fake.said.reviews, ...fake.said.merges]).toEqual([]);
     expect(board.item(id)!.state).toBe('working');
+  });
+
+  test('a text the forge refuses after the push stops there: nothing merged, the requests open again', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 1: 'contributor', 2: 'self' });
+    runtime.last.emit({ type: 'idle' });
+    const head = commitOwn(id, 'shortcut.ts');
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact(), review: results, pr_draft: 'I added a shortcut. Please keep the file in its folder.' });
+    runtime.last.emit({ type: 'idle' });
+    fake.said.refusePost = 'HTTP 502';
+    await expect(workers.approve(id)).rejects.toMatchObject({ code: 'mergeRefused' });
+    expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(head);
+    expect(fake.said.merges).toEqual([]);
+    expect(board.item(id)).toMatchObject({ state: 'waiting', need: 'demo' });
+    expect(board.item(id)!.contribution!.held).toBeUndefined();
+    expect(board.item(id)!.contribution!.findings![0]).toMatchObject({ status: 'open' });
+    expect(board.item(id)!.contribution!.findings![0]!.decided).toBeUndefined();
+    expect(board.events(id).at(-1)!.text).toContain('HTTP 502');
   });
 
   test('a merge the forge refuses leaves the card with the owner, saying why', async () => {

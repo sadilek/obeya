@@ -1541,8 +1541,8 @@ export class Workers {
       if (c.held) {
         if (now.head !== c.reviewed) await this.pushHeld(cardId, c);
         if (this.generation.get(cardId) !== generation || !this.o.board.item(cardId)) return;
-        const asked = await this.postHeld(cardId, c);
-        if (asked || !merge) return;
+        await this.postHeld(cardId, c);
+        if (c.held.asks.length || !merge) return;
       }
       // the comments held back while the owner watched go with the approval
       const comments = this.approvalComments(cardId);
@@ -1644,10 +1644,11 @@ export class Workers {
   /**
    * Once the worker's own commits are on the PR's branch, their text goes onto the PR in the owner's
    * name: a comment, or with requests to the contributor one review asking for changes, after which
-   * the card waits for them. The findings it fixed and those it asks for link it. Returns whether
-   * the card now waits for the contributor.
+   * the card waits for them. The findings it fixed and those it asks for link it. A text the forge
+   * refuses leaves the card with the owner, its commits pushed and nothing merged, and the findings
+   * it asked for open, to be decided anew.
    */
-  private async postHeld(cardId: string, c: StoredContribution): Promise<boolean> {
+  private async postHeld(cardId: string, c: StoredContribution): Promise<void> {
     const t = this.o.board.t.worker;
     const held = c.held!;
     const asks = held.asks.length > 0;
@@ -1662,7 +1663,7 @@ export class Workers {
     const { held: _, changing: __, ...rest } = now;
     const findings = now.findings?.map((f): Finding => {
       const { decided: ___, withChanges: ____, ...plain } = f;
-      if (held.asks.includes(f.id) && f.status === 'open') return { ...plain, status: 'sent', ...(url ? { url } : {}) };
+      if (held.asks.includes(f.id) && f.status === 'open') return failed ? plain : { ...plain, status: 'sent', ...(url ? { url } : {}) };
       if (f.status === 'fixed' && !f.url && url) return { ...f, url };
       return f;
     });
@@ -1676,9 +1677,11 @@ export class Workers {
       // the state says it: „Wartet auf Beitragenden“
       ...(sent ? { state: 'inPr', need: null, detail: null, status_line: null } : {}),
     });
+    if (failed) {
+      this.o.board.log(cardId, 'error', 'obeya', t.postFailed(failed));
+      throw new BadRequest('mergeRefused', `pushed, but the forge refused the text that goes with it (${failed})`);
+    }
     this.o.board.log(cardId, 'state', 'owner', `${t.pushedHeld(c.number, held.commits, asks ? c.author : undefined)}${url ? ` ${url}` : ''}`);
-    if (failed) this.o.board.log(cardId, 'error', 'obeya', t.postFailed(failed));
-    return sent;
   }
 
   /**
@@ -1785,7 +1788,8 @@ export class Workers {
     );
     if (!on)
       return `Not handed over: the pull request's head is ${base.slice(0, 7)}, and your branch does not build on it (${c.author} pushed since you fetched it, or your branch was rewritten). Fetch refs/pull/${c.number}/head from ${this.prSource(c)} and look at what changed before you run any of it; put the commits of your own that are not on the PR yet on top of it (rebase; the PR's commits stay as they are), review what is new, then hand over again.`;
-    const commits = Number(await gitAsync(ws, 'rev-list', '--count', `${base}..${head}`).catch(() => '0')) || 0;
+    // a merge of main into it counts once, not with each commit it brings
+    const commits = Number(await gitAsync(ws, 'rev-list', '--count', '--first-parent', `${base}..${head}`).catch(() => '0')) || 0;
     return { head, base, commits };
   }
 
@@ -2396,7 +2400,7 @@ export class Workers {
       [
         `The owner had Obeya push the local main to origin (${r.to.slice(0, 7)} there now): its commits nobody had pushed yet collide with this pull request${files.length ? ` in ${files.join(', ')}` : ''}, so the pull request now conflicts with origin's main. Bring it up to date with origin's main, so that both changes keep working.`,
         c.canModify
-          ? `${c.author} allows maintainers' edits: merge origin's main into your branch, which is the PR's head (or rebase it, as the repository does), resolve the conflict, run the checks and commit. Then review the new head as before (the checks, the merge probe; a new demo only where what the pull request does looks different now) and hand over again with pr_draft saying what you changed and why: Obeya pushes it onto the PR's branch and posts the text once the owner approves.`
+          ? `${c.author} allows maintainers' edits: merge origin's main into your branch, which is the PR's head (a merge, not a rebase: Obeya pushes onto the PR's branch only what builds on its head), resolve the conflict, run the checks and commit. Then review the new head as before (the checks, the merge probe; a new demo only where what the pull request does looks different now) and hand over again with pr_draft saying what you changed and why: Obeya pushes it onto the PR's branch and posts the text once the owner approves.`
           : `${c.author} does not allow maintainers' edits: ask them with request_changes, in the PR's language, to bring the PR up to date with main${files.length ? ` (the conflict is in ${files.join(', ')})` : ''}. The card then waits for them, and you review their push as any other.`,
       ].join('\n\n'),
       [],
