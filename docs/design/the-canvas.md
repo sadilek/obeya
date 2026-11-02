@@ -66,7 +66,8 @@ legend).
 The list's head has a button that pins it as a sidebar docked to the window's left edge, full
 height, as the sheets are on the right (see Sheets); the same button, pressed, unpins it. Pinned,
 the bar's button is gone (the sidebar is its place now), a click on an entry leaves it open, and
-pinning holds per browser, on every canvas. A narrow window, or one that would leave the canvas
+pinning holds per browser, on every canvas. Unlike a sheet it is not dimmed while a card is open:
+the open card is marked in it, and a click on another entry opens that one in its place. A narrow window, or one that would leave the canvas
 less than about a column of cards beside the sidebar and an open sheet, folds it back into the
 bar's button until there is room again: the two sidebars never stack, neither over each other nor
 side by side on one edge.

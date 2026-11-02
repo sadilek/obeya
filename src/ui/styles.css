@@ -278,9 +278,10 @@ button.pill:hover { box-shadow: var(--lift); }
 @keyframes pulse-in { 0% { box-shadow: 0 0 0 0 rgba(var(--waiting-rgb),.55); } 70%, 100% { box-shadow: 0 0 0 10px rgba(var(--waiting-rgb),0); } }
 .nav-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(360px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; box-sizing: border-box;
   padding: 14px 14px 16px; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); z-index: 30; }
-/* pinned: a sidebar docked to the window's left edge, from top to bottom, as the sheets are on the right */
+/* pinned: a sidebar docked to the window's left edge, from top to bottom, as the sheets are on the right;
+   above the dim of an open card (#dim), so its entries stay in view and open the next card */
 .nav-sheet { position: fixed; top: 0; left: 0; bottom: 0; width: 340px; box-sizing: border-box; background: var(--panel); border-right: 1px solid var(--line);
-  z-index: 25; transform: translateX(calc(-100% - 1px)); visibility: hidden; transition: transform .45s cubic-bezier(.3,.9,.3,1), visibility 0s .45s;
+  z-index: 31; transform: translateX(calc(-100% - 1px)); visibility: hidden; transition: transform .45s cubic-bezier(.3,.9,.3,1), visibility 0s .45s;
   overflow: auto; padding: 14px 14px 30px; }
 .nav-sheet.on { transform: none; visibility: visible; transition-delay: 0s; }
 .nav-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
