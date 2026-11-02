@@ -326,9 +326,10 @@ button.pill:hover { box-shadow: var(--lift); }
   background: transparent; color: var(--muted); opacity: .55; cursor: pointer; transition: opacity .12s; }
 .agents-turn .btn-mark { margin: 0; }
 .agents-turn:hover, .agents-turn:focus-visible { opacity: 1; color: var(--ink); border-color: var(--muted); }
-/* what it does, at once while the pointer is on it, beside the menu */
+/* what it does, at once while the pointer is on it, to its left over the row: the list and the sidebar
+   scroll, so a tip past their right edge would be cut off and scroll them sideways */
 .agents-turn { position: relative; }
-.agents-turn .tip { display: none; position: absolute; left: calc(100% + 16px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 3px;
+.agents-turn .tip { display: none; position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 3px;
   background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: nowrap; font-size: 13px; font-weight: 400; pointer-events: none; z-index: 31; }
 .agents-turn:is(:hover, :focus-visible) .tip { display: block; }
 .nav-row:is(:hover, :focus-within) .agents-turn { display: grid; }
