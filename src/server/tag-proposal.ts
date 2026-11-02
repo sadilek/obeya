@@ -70,7 +70,7 @@ export async function proposeTags(o: TagRun): Promise<{ tags: PageTags; why: str
         description: `The vocabulary of tags: its dimensions, each with its values, in ${LANGUAGE_NAMES[o.language]}; and why, in ${LANGUAGE_NAMES[o.owner]}.`,
         schema: {
           tags: z.record(z.string(), z.array(z.string())).describe('Each dimension with its values, in the order the overview shows them.'),
-          why: z.string().describe('Two or three sentences on why these dimensions and values.'),
+          why: z.string().describe('At most three short sentences on why these dimensions and values.'),
         },
         run: ({ tags, why }) => {
           if (out) return 'Already proposed.';
@@ -105,7 +105,7 @@ const system = (language: Language, owner: Language) =>
 
 Read the repository first to learn how the app is built: its README and docs, its source tree (routes, screens, modules, packages), whom it serves. Then read the cards in the brief: the changes made and planned, and what their demos show. Base the dimensions on both: the parts of the app a colleague would look for (an area, a screen, a feature), and where the cards show it, another axis that tells the changes apart (who they are for, a platform, a kind of change). Name values as a user of the app would, not by file or module names. Where the brief names a vocabulary already in use, keep its dimensions and values that still fit, since pages carry them; change only what the app or the cards ask for.
 
-Call the tool tags once: the dimensions and values in ${LANGUAGE_NAMES[language]}, and why in ${LANGUAGE_NAMES[owner]} (two or three sentences for the owner, who decides on it). Then end your turn.`;
+Call the tool tags once: the dimensions and values in ${LANGUAGE_NAMES[language]}, and why in ${LANGUAGE_NAMES[owner]}: at most three short sentences for the owner, who decides on it. Then end your turn.`;
 
 function brief(o: TagRun): string {
   const head = [
