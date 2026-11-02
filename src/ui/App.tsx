@@ -1409,6 +1409,7 @@ function Canvas({
     canvases,
     waiting: waits,
     underway: (id: string) => !!underway[id],
+    open: openId ?? undefined,
     pinned,
     pinnable: !matchMedia(NARROW).matches && innerWidth - NAV_W - side.right >= NAV_CANVAS_MIN,
     onPin: pin,

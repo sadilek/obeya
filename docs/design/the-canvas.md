@@ -50,9 +50,10 @@ place of a canvas switcher, a count of this canvas's cards that need the owner, 
 button names the canvas and its home branch (or its count of repositories) and counts, in the
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
 them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Für dich“, the
-phone's list (see The phone view), built once for both: the same entries in the same order, with
-the same card faces and since when each waits. With several canvases, each canvas in the
-configuration's order heads what waits on it, the open one marked; a click on it switches there,
+phone's list (see The phone view), built once for both: the same entries in the same order. Here
+each is a light row, its title and what it waits for since when, without the waiting card's orange
+frame, and the card open now is marked in it. With several canvases, each canvas in the
+configuration's order heads what waits on it, the open one in full ink; a click on it switches there,
 and its row carries its agents' pause (see Pausing a canvas's agents). With one canvas the list has
 no such heads. A click on an entry opens its card, on this canvas or by switching to its own, and
 closes the list; Obeya's answers open Obeya's sheet on their canvas. Nothing waiting says so, and
@@ -275,8 +276,9 @@ code, a generic one otherwise.
   popover that closes, pinned only by choice on a large screen. Rejected: one-click actions on the
   entries (approve, accept, dismiss, keep or remove, an answer option), since a click there is made
   blind to the card's demo, open questions and remarks, and a decision the owner can make blind is
-  one the agent should not have asked for; and an inbox as a sheet on the right, which competes
-  with Obeya's sheet for the same edge.
+  one the agent should not have asked for; an inbox as a sheet on the right, which competes
+  with Obeya's sheet for the same edge; and the phone's card faces in the list, whose orange frames
+  say nothing where every entry waits for the owner and make the list loud.
 - **Waits are always on the canvas, as faint lines** (owner, 2026-11-02): with waits shown only
   under the pointer, the overall picture was missing, and one forgot that Obeya tracks them at all.
   There is no switch to hide them. Rejected: stubs at the cards' edges only (they say there is a

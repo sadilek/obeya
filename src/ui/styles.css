@@ -289,23 +289,27 @@ button.pill:hover { box-shadow: var(--lift); }
 .nav-pin { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px;
   background: var(--chip); color: var(--muted); cursor: pointer; }
 .nav-pin:hover, .nav-pin.on { color: var(--ink); }
-.nav-canvas + .nav-canvas { margin-top: 12px; }
-.nav-canvas > .ph-list { margin-top: 8px; gap: 10px; }
-.nav-menu > .ph-list, .nav-sheet > .ph-list, .ph-none + .nav-canvas { margin-top: 12px; }
+.nav-canvas + .nav-canvas { margin-top: 10px; }
 .nav-row { position: relative; }
-.nav-row a { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; color: var(--ink); }
-.nav-row a svg { flex: none; color: var(--muted); }
+.nav-row a { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; color: var(--muted); }
+.nav-row a svg { flex: none; }
 .nav-row a .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-row a:hover, .nav-canvas.on > .nav-row a { background: var(--chip); }
+.nav-row a:hover { background: var(--chip); }
+.nav-canvas.on > .nav-row a { color: var(--ink); }
 .nav-row:has(.canvas-agents) a { padding-right: 46px; }
-/* the cards in it are the phone's, at the size of a card on the canvas */
-:is(.nav-menu, .nav-sheet) .ph-card { padding: 12px 13px 10px; }
-:is(.nav-menu, .nav-sheet) .ph-card .kind { font-size: 11.5px; }
-:is(.nav-menu, .nav-sheet) .ph-card .ttl { font-size: 16px; }
-:is(.nav-menu, .nav-sheet) .ph-card .meta { font-size: 13px; }
-:is(.nav-menu, .nav-sheet) .ph-card .state { font-size: 12px; padding-top: 6px; }
-:is(.nav-menu, .nav-sheet) .ph-card:hover { box-shadow: var(--lift); }
-:is(.nav-menu, .nav-sheet) .ph-none { font-size: 13.5px; }
+.ph-none + .nav-canvas, :is(.nav-menu, .nav-sheet) > .ph-none { margin-bottom: 6px; }
+:is(.nav-menu, .nav-sheet) .ph-none { font-size: 13.5px; padding: 0 10px; }
+/* its entries are light rows, the title and what it waits for: everything in it waits for the owner,
+   so a waiting card's orange frame would say nothing; the card open now is marked */
+.fy-rows { list-style: none; margin: 0; padding: 0; }
+.nav-canvas > .fy-rows { margin: 1px 0 0 22px; }
+.fy-row { position: relative; display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 6px 10px; border: 0; border-radius: 2px;
+  background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.fy-row:hover { background: var(--chip); }
+.fy-row.on { background: var(--chip); }
+.fy-row.on::before { content: ""; position: absolute; left: -6px; top: 7px; bottom: 7px; width: 3px; border-radius: 2px; background: var(--ink); }
+.fy-ttl { font: 600 14.5px/1.25 var(--serif); }
+.fy-state { font-size: 12px; color: var(--muted); }
 /* a canvas's agents on its row: the moving line while one works there, which turns into a pause for
    all of them while the pointer is on the row; with only paused ones, a play on the same hover */
 .canvas-agents { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); width: 26px; height: 20px;

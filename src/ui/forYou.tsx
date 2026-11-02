@@ -1,12 +1,14 @@
 // „Für dich“: what waits for the owner on a canvas, as the phone view lists it and the canvas's
-// navigation does on every page. Built once for both: the same entries, in the same order, with
-// the same card faces. An entry only opens its card (or Obeya's conversation): the owner decides on
-// a card with its demo, its questions and its conversation in view.
+// navigation does on every page. Built once for both: the same entries, in the same order; the phone
+// shows them as the canvas's cards, the navigation as light rows (everything in it waits for the
+// owner, so a waiting card's orange frame would say nothing there). An entry only opens its card (or
+// Obeya's conversation): the owner decides on a card with its demo, its questions and its
+// conversation in view.
 
 import { type Item, needsYou, type Talk, type Waiting } from '../core/types';
 import { plain } from './markdown';
-import { CardFace, cardClass } from './parts';
-import { clock, shortDay, t } from './strings';
+import { CardFace, cardClass, shownTitle } from './parts';
+import { clock, shortDay, stateLabel, t } from './strings';
 
 /** When it began: the time today, else the day. */
 export const when = (iso: string | number) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
@@ -22,12 +24,17 @@ export function forYouOf(w: Waiting, underway: (id: string) => boolean): { cards
   return unread.length ? { cards, obeya: unread.at(-1)! } : { cards };
 }
 
-/** One canvas's entries as rows of a list; `where` (its name, with several canvases) leads each card's kind line. */
+/**
+ * One canvas's entries as rows of a list: as cards, `where` (its name, with several canvases) leading
+ * each one's kind line; or `light`, each its title and what it waits for, the card `open` now marked.
+ */
 export function ForYouRows({
   waiting,
   canvas,
   where,
   underway,
+  light,
+  open,
   onOpen,
   onObeya,
 }: {
@@ -35,10 +42,38 @@ export function ForYouRows({
   canvas: string;
   where?: string;
   underway: (id: string) => boolean;
+  light?: boolean;
+  open?: string;
   onOpen: (i: Item) => void;
   onObeya: (canvas: string) => void;
 }) {
   const { cards, obeya } = forYouOf(waiting, underway);
+  if (light)
+    return (
+      <>
+        {cards.map((i) => (
+          <li key={i.id}>
+            <button className={i.id === open ? 'fy-row on' : 'fy-row'} aria-current={i.id === open || undefined} onClick={() => onOpen(i)}>
+              <span className="fy-ttl">{shownTitle(i)}</span>
+              <span className="fy-state">
+                {stateLabel(i)}
+                {i.waitingSince && ` · ${t.phone.since(when(i.waitingSince))}`}
+              </span>
+            </button>
+          </li>
+        ))}
+        {obeya && (
+          <li key={`obeya:${canvas}`}>
+            <button className="fy-row" onClick={() => onObeya(canvas)}>
+              <span className="fy-ttl">{plain(obeya.question ?? obeya.said)}</span>
+              <span className="fy-state">
+                {t.phone.obeyaAnswered} · {t.phone.since(when(obeya.at))}
+              </span>
+            </button>
+          </li>
+        )}
+      </>
+    );
   return (
     <>
       {cards.map((i) => (

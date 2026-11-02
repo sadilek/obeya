@@ -36,6 +36,8 @@ interface ListProps {
   /** What waits on each canvas, this one's as this page sees it. */
   waiting: Record<string, Waiting>;
   underway: (id: string) => boolean;
+  /** The card open on this canvas: its entry is marked. */
+  open?: string;
   pinned: boolean;
   /** Pinning is offered: the window has room for the sidebar. */
   pinnable: boolean;
@@ -90,12 +92,12 @@ export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
  * „Für dich“ and the canvases: with several, each canvas in the configuration's order heads what
  * waits on it, so a click on it switches there; within a canvas in Tab's order.
  */
-function NavList({ canvas, canvases, waiting, underway, pinned, pinnable, onPin, onOpen, onObeya }: ListProps) {
+function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya }: ListProps) {
   // with one canvas, its name heads the list only where the bar's button with the name is not there
   const several = canvases.length > 1 || pinned;
   const waits = waitingCount(canvases, waiting) > 0;
   const none: Waiting = { items: [], talk: [] };
-  const rows = (c: CanvasInfo) => <ForYouRows waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />;
+  const rows = (c: CanvasInfo) => <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />;
   return (
     <>
       <div className="nav-head">
@@ -125,12 +127,12 @@ function NavList({ canvas, canvases, waiting, underway, pinned, pinnable, onPin,
                 </a>
                 <CanvasAgents canvas={c} />
               </div>
-              {(listed.cards.length > 0 || listed.obeya) && <ul className="ph-list">{rows(c)}</ul>}
+              {(listed.cards.length > 0 || listed.obeya) && <ul className="fy-rows">{rows(c)}</ul>}
             </section>
           );
         })
       ) : (
-        <ul className="ph-list">{rows(canvas)}</ul>
+        <ul className="fy-rows">{rows(canvas)}</ul>
       )}
     </>
   );
