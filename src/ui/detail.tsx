@@ -240,6 +240,7 @@ export function Detail(p: Props) {
   // once the idea has become a project, one of its workstreams is built on the prototype instead
   const project = item.prototypeOf ? all.find((i) => i.kind === 'project' && i.origin === item.prototypeOf) : undefined;
   const ideaCard = item.prototypeOf ? all.find((i) => i.id === item.prototypeOf) : undefined;
+  const builtOn = item.builtOn ? item.prototypes?.find((x) => x.id === item.builtOn) : undefined;
   const workstreams = project ? all.filter((i) => i.parent === project.id && buildableOn(i)) : [];
   // the plan doc says which workstream builds on the prototypes; the owner picks only where it does not, or another
   const named = project && !picking ? prototypeWorkstream(all, project.id) : undefined;
@@ -489,7 +490,7 @@ export function Detail(p: Props) {
       )}
       {item.builtOn && (
         <p className="hint">
-          <Naming text={t.idea.builtOn} cards={[{ card: item.prototypes?.find((x) => x.id === item.builtOn), title: item.prototypes?.find((x) => x.id === item.builtOn)?.title ?? '' }]} />
+          <Naming text={t.idea.builtOn} cards={[{ card: builtOn, title: builtOn?.title ?? '' }]} />
         </p>
       )}
       {p.from && !item.prototypeOf && item.state !== 'proposal' && <p className="hint"><Naming text={t.followUpOf} cards={[{ card: p.from }]} /></p>}

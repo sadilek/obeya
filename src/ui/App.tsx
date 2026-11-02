@@ -674,13 +674,16 @@ function Canvas({
     const code = !a.canvas || a.canvas === snapshot.canvas.id ? a.card : undefined;
     const talk = new URLSearchParams(location.search).has('talk');
     history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card', 'talk')}`);
-    if (k) return void reopen(k).catch(console.error);
+    // what comes back is what the address names already
+    addressSet.current = true;
+    const done = () => void (addressSet.current = false);
+    if (k) return void reopen(k).catch(console.error).finally(done);
     if (sheetLeft || talk) {
       // beside the sheet at once, as the canvas comes back
       quickSide.current = Date.now() + 2000;
       setKOn(true);
     }
-    if (code) openAddress(code, true).catch(console.error);
+    (code ? openAddress(code, true) : Promise.resolve()).catch(console.error).finally(done);
   }, []);
   async function reopen(k: Kept) {
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
@@ -714,12 +717,12 @@ function Canvas({
   const address = (change: () => void | Promise<void>) => void (addressChain.current = addressChain.current.then(change).catch(console.error));
   /** The step back this page asked the browser for, until it is done. */
   const stepBack = useRef<(() => void) | null>(null);
-  /** While the page follows Back or Forward: the browser has set the address already. */
-  const following = useRef(false);
+  /** While the page opens what the address names (as it loads, on Back or Forward): the address is set already. */
+  const addressSet = useRef(false);
   const pathOf = (i: Item | undefined) => `${i ? cardPath(snapshot.canvas.id, i) : canvasPath(snapshot.canvas.id)}${location.search}`;
   /** `i` opens over `under` (the project it is opened from, else the canvas). */
   function addressOpens(i: Item, under: Item | undefined) {
-    if (following.current) return;
+    if (addressSet.current) return;
     address(() => {
       const at = readAddress().card;
       if (at && named([i], at)) return;
@@ -729,7 +732,7 @@ function Canvas({
   }
   /** What is open closes down to `under` (the project still open, else the canvas). */
   function addressCloses(under: Item | undefined) {
-    if (following.current) return;
+    if (addressSet.current) return;
     address(() => {
       if (!(history.state as { step?: true } | null)?.step) return history.replaceState(history.state, '', pathOf(under));
       return new Promise<void>((done) => {
@@ -747,10 +750,12 @@ function Canvas({
     setArchived(gone);
     return named(gone, code);
   }
-  /** Opens what the address names; a code no card has leaves the canvas, at its own address. */
+  /** Opens what the address names; a code no card has leaves the canvas, at its address. */
   async function openAddress(code: string, quick: boolean) {
     const i = await namedBy(code);
-    if (!i) return history.replaceState(history.state, '', pathOf(undefined));
+    // by its short code, where it was named by its id
+    history.replaceState(history.state, '', pathOf(i));
+    if (!i) return;
     if (i.kind === 'project') return openAgain({ project: i.id }, quick);
     // an archived workstream unfolds from its project's sheet, any other archived card from the archive's list
     const project = i.archivedAt ? i.parent : undefined;
@@ -761,7 +766,7 @@ function Canvas({
   async function followAddress() {
     const code = readAddress().card;
     const i = code ? await namedBy(code) : undefined;
-    following.current = true;
+    addressSet.current = true;
     try {
       const f = focusRef.current;
       if (f?.type === 'card' && f.id !== i?.id) await closeCard({ keepUntitled: true });
@@ -769,7 +774,7 @@ function Canvas({
       if (p?.type === 'project' && p.id !== i?.id && i?.parent !== p.id) await closeProject(false);
       if (code && focusRef.current?.id !== i?.id) await openAddress(code, false);
     } finally {
-      following.current = false;
+      addressSet.current = false;
     }
   }
   const follow = useRef(followAddress);

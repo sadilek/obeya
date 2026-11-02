@@ -79,11 +79,11 @@ export function cardsOn(canvas: string, cards: string[]) {
 /** The canvas of the card `id`: the one it is on where the page shows several, else the shown one. */
 export const canvasOf = (id: string) => canvasOfCard.get(id) ?? canvasId;
 /** A path in the API of the card's canvas, about the card or project `id`. */
-export const cardAt = (id: string, path = '') => `/api/c/${encodeURIComponent(canvasOfCard.get(id) ?? canvasId)}/cards/${id}${path}`;
+export const cardAt = (id: string, path = '') => `/api/c/${encodeURIComponent(canvasOf(id))}/cards/${id}${path}`;
 /** A path in the API of the canvas of what the words are about, else of the shown one. */
 const whereAt = (where: Where, path: string) => {
   const id = where && ('card' in where ? where.card : where.project);
-  return id ? `/api/c/${encodeURIComponent(canvasOfCard.get(id) ?? canvasId)}${path}` : at(path);
+  return id ? `/api/c/${encodeURIComponent(canvasOf(id))}${path}` : at(path);
 };
 /** Where a looked-up answer's file is served; `download` to save it. */
 export const answerFile = (thread: number, name: string, download = false) =>
