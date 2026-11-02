@@ -15,12 +15,17 @@ the estimated files and what the branch has changed so far (each file with its c
 and git's function context). Sharing a file is fine (additions in different places merge cleanly);
 touching the same lines or function, or code one card moves, renames or reformats while the other
 edits it, is not. Soft paths (`softPaths`, docs) do not count. In doubt the card runs: a conflict
-that happens anyway goes back to its worker on landing.
+that happens anyway goes back to its worker on landing. The estimated files stay internal: a card does not show
+them (they read as a guess beside the files the card actually changed, and the owner has nothing to
+do with them; 2026-11-02).
 
 A branch's change is measured from where it left the nearest branch that is not a card's
 (`obeya/…`): the main branch, or a long-lived branch the card was built on; from the main branch if
 it was merged into the card's branch since. So a card built on another card's branch keeps that work
-as its own. git reads the changes of all cards in progress at once, without blocking the server.
+as its own. Commits the branch starts with whose change the main branch holds as other commits are not
+the card's: a pull after a merge on the forge rebases the local main's unpushed commits onto
+`origin`, and the branches cards made before it keep those commits as they were. Counted, a card that
+changed nothing showed their files and „Approve“ (2026-11-02). git reads the changes of all cards in progress at once, without blocking the server.
 
 In a folder without git (see Folders without git) the judgement is whether the card gets in the way
 of one in progress: the same files changed, moved or deleted, or a directory reorganised that the
@@ -28,7 +33,8 @@ other works in; working side by side in one directory is fine. No paths are soft
 
 Cards queued before it count too: a card likely to conflict with one waits behind it rather than
 overtaking it, and once that one has started, until it has landed. A card judged again sees only the
-cards queued before it, and a card waiting for another (directly or through others) is never among
+cards queued before it, and a card waiting for another (directly or through others, an arrow the
+owner drew counting as a wait) is never among
 the cards that one sees as ahead or to build on, so no two cards wait for each other.
 
 A waiting card shows the reason (one that starts says which files it shares and why that is fine).
@@ -50,9 +56,22 @@ not free the card. The card says so („Wartet auf W2 „…“ (noch nicht gest
 queue's list and the project's sheet), so the owner sees which to start first. Even with nothing in
 progress or queued, it skips this judgement only when no workstream of its project is left unlanded.
 
-A dependency drawn by the owner holds a card started afterwards until the prerequisite has finished,
-including while that prerequisite is not started or stopped. Removing the arrow releases that wait;
-an already running card continues. The owner may still start a queued card anyway.
+A dependency drawn by the owner (see Cards on the canvas) holds the card until the prerequisite has
+finished, including while that prerequisite is not started or stopped: a card started afterwards
+queues behind it once judged, and one in the queue when the arrow is drawn waits for it from then on,
+also one waiting only for a workspace or for the canvas's agents to resume. An arrow counts as a
+wait wherever the queue reads waits: a card held by one is never ahead of its prerequisite or
+among the cards that one may build on, a card does not pass it in the queue, and the arrows that
+would close a cycle with other arrows or waits are refused. An arrow holds a card only until it
+starts: one running or stopped by the owner afterwards (planned again, held anew once started
+again), one the owner started anyway („Trotzdem starten“) and one whose workspace was taken from it
+go on once a workspace is free, whatever arrows are drawn. An arrow is kept apart from the waits the
+Koordinator inferred: removing it leaves exactly those (a likely conflict still holds only while
+the other card is in progress), and where both name the same card, the arrow holds on once the
+inferred wait has ended. The card says that it waits because the owner connected the cards, in its
+waiting box, on its face and with a line in its conversation once the arrow holds it, with the
+inferred waits' own reason beside that where both hold it; an arrow is never given the reason of an
+inferred wait.
 
 #### Follow-up tasks of a review
 
@@ -257,7 +276,7 @@ The answer comes 10–30 s later: its start above the microphone (as plain text 
 Markdown stripped), in full in the open card's log, else
 in the Koordinator's sheet; meanwhile the open card shows what the agent reads. An answer in the
 sheet stays unread until the owner has the sheet in view (open, the page not hidden): until then
-Obeya's button counts it in orange, it counts once in the navigation and stands in its „Für dich“ as one entry, and Tab
+Obeya's button counts it in orange, it counts once in the navigation and stands in its „Braucht dich“ as one entry, and Tab
 goes there after the cards that need the owner; such answers keep an orange edge until the sheet
 closes. An answer that arrives while the sheet is in view, or in a card's log, is read where it
 arrives. The quick turn's own reply waits the same way when it only answers, since a long one takes

@@ -49,7 +49,7 @@ One element at the bar's left holds the canvases and what waits for the owner on
 place of a canvas switcher, a count of this canvas's cards that need the owner, and an inbox. Its
 button names the canvas and its home branch (or its count of repositories) and counts, in the
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
-them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Für dich“, the
+them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Braucht dich“, the
 phone's list (see The phone view), built once for both: the same entries in the same order. Here
 each is a light row, its title and what it waits for since when, without the waiting card's orange
 frame, and the card open now is marked in it. With several canvases, each canvas in the
@@ -70,7 +70,9 @@ pinning holds per browser, on every canvas. Unlike a sheet it is not dimmed whil
 the open card is marked in it, and a click on another entry opens that one in its place. A narrow window, or one that would leave the canvas
 less than about a column of cards beside the sidebar and an open sheet, folds it back into the
 bar's button until there is room again: the two sidebars never stack, neither over each other nor
-side by side on one edge.
+side by side on one edge. In the app on a Mac the sidebar reaches up to the window's top, so the
+traffic lights move from the bar into its head, which stays in place as the list scrolls and drags
+the window as the bar does; the bar beside it then starts at its own edge.
 
 ### Creating cards
 
@@ -110,19 +112,28 @@ those it builds on, a card snoozed until another, an arrow the owner drew); a wa
 waited for is finished, so finished cards keep no lines. A workstream of a collapsed project shows
 its waits at the project's head. The lines stay thin on screen however far the view zooms out.
 Under the pointer a card shows the waits around it over every step instead, in the waiting colour
-(see Scheduling); a wait shows once, never as both.
+(see Scheduling); a wait shows once, never as both. Only the colour changes: line, head and course
+stay as they were, so that moving the pointer over the cards leaves the picture calm.
 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
-under it or close to it, a click there connects the two (Escape cancels). The arrow points from the
-prerequisite to the card that waits for it and stays on the canvas, as every wait does; under the pointer it shows a
-trash button that removes it at once, with „Rückgängig“. While the arrow holds a queued card, the
+under it or close to it, a click there connects the two (Escape cancels). Until the owner has drawn
+their first arrow, a line beside the pointer says what it will do while they draw: which card is to
+be clicked, and once one is under the pointer, that it starts only once the other is done. The arrow
+points from the prerequisite to the card that waits for it and stays on the canvas, as every wait
+does, under the cards: a card it crosses stays clickable and draggable all over. Under the pointer
+it shows a trash button that removes it at once, with „Rückgängig“; the button sits on the arrow's
+middle, or the nearest point along it no card covers. It is grey like the canvas's other remove
+buttons, darker under the pointer, and keeps its size on screen at every zoom, as does the band
+along the arrow that shows it. While the arrow holds a queued card, the
 removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
-started. Projects
-and their workstreams get no dots, since the plan doc decides their order, and inferred waits have
-no trash button. An arrow that would close a cycle with other arrows or waits is refused. A deleted
-or archived card's arrows are hidden and count for nothing; bringing the card back brings them back,
-except one that would now close a cycle. How an arrow holds a card's start: see Scheduling.
+started. Projects and their workstreams get no dots, since the plan doc decides their order, and
+inferred waits have no trash button. An arrow that would close a cycle with other arrows or waits is
+refused, and the line says why: the card it starts from already waits for the other, directly or
+through other cards, so the two would wait for each other. One to or from a project or a workstream
+is refused the same way, saying the plan doc gives their order. A deleted or archived card's arrows are hidden and count for nothing; bringing the card
+back brings them back, except one that would now close a cycle. How an arrow holds a card's start:
+see Scheduling.
 
 #### A project arranged by its dependencies
 
@@ -166,7 +177,9 @@ starten“ without scrolling.
 
 A card whose conversation stands alone is a conversation wide. A card with a conversation beside
 what it is about (an idea, a proposal, a task with a result) is a wide split, the conversation a
-third, as tall as its taller column, centred left of a docked sheet and keeping at least a conversation's width beside it. Each
+third, as tall as its taller column. An open card sits in the middle of the canvas; where the canvas
+is too narrow for it, it reaches over the docked sheet, which lies dimmed under it anyway, but not
+over the pinned navigation, which stays usable beside it. Each
 column scrolls on its own, the panel never. A Question card is its conversation alone at a card's
 width, growing with it up to the room above the microphone before it scrolls, like a split's column:
 a looked-up answer is long, and a box of fixed height left most of the window unused. A proposal's
@@ -297,7 +310,7 @@ code, a generic one otherwise.
 
 - **One navigation on the left for canvases and what waits** (owner, 2026-11-02): what waits for the
   owner was split between „brauchen dich“ (this canvas), the switcher's counts (the others) and the
-  cards themselves; an inbox would have been a fourth place. Its list is the phone's „Für dich“, so
+  cards themselves; an inbox would have been a fourth place. Its list is the phone's „Braucht dich“, so
   the two never drift apart. A click on an entry always leads to another context, so the list is a
   popover that closes, pinned only by choice on a large screen. Rejected: one-click actions on the
   entries (approve, accept, dismiss, keep or remove, an answer option), since a click there is made
@@ -364,7 +377,8 @@ code, a generic one otherwise.
 - **An unfolded card is as large as its content, up to the room it has** (2026-10-08, 2026-10-21).
   Rejected: filling the room (empty space, stray scrollbars), a fixed size (small on a large
   screen), and a proposal sized by its text alone (a long conversation scrolled in a small box). It may reach over the bar (2026-10-09), as keeping the bar free cost moderate windows much
-  room.
+  room, and over a docked sheet (owner, 2026-11-02): the sheet is dimmed and out of use while a card
+  is open, and keeping beside it squeezed a split into the canvas's width.
 - **The sheets are a docked sidebar** (2026-10-06, 2026-10-09). Rejected: panels floating over a
   full-window canvas, which cut off cards and covered the microphone. Obeya's button becomes the
   sidebar's corner (the owner's wish) rather than sliding with the bar.

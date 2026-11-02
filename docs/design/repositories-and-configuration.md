@@ -24,7 +24,7 @@ otherwise inherits its card's: a worker in one repository often notices what nee
 another (one drafting posts about the app sees what the app lacks), and a proposal filed under the
 wrong repository would start its worker in the wrong place unless the owner noticed and switched it.
 That repository may be on another canvas: the proposal is then made there, at a free spot, and waits
-for the owner on that canvas (in the navigation's „Für dich“), with „Vorgeschlagen vom Agenten der Aufgabe
+for the owner on that canvas (in the navigation's „Braucht dich“), with „Vorgeschlagen vom Agenten der Aufgabe
 „…“ auf der Leinwand „…““ and a link to that card; the proposing card's conversation names the canvas.
 Its agent can take it back or replace it there as on its own canvas, and the worker that takes it on
 reads the card it came from as with any follow-up.
@@ -140,7 +140,11 @@ doc still holds open, what landed (with its pull request and last demo) beside t
 
 A worker still finishing after the landing keeps its card live until done. A workstream in a pull
 request whose box the main branch ticks off counts as merged even where the PR watcher missed the
-merge: its worker hears so and finishes, and its clone returns to the pool.
+merge (by hand, say, or before the worker reported it): its worker hears so and finishes, and its
+clone returns to the pool. That needs the box in the repository: a box in a plan folder outside it is
+ticked by the worker before the merge, often before the pull request is open, so there only the
+watcher sees the merge (GitHub issue #41, 2026-11-02: approved cards read as merged at once and their
+PRs were never merged).
 
 #### Reading a plan doc
 
@@ -322,7 +326,7 @@ source, the clones, slots and other machines), branch and landing (main branch, 
 auto-merge, accounts without review, soft paths), app and checks (setup, checks, „So läuft die
 App“ in a large text field, „Stoppen, solange eine Karte wartet“, the keep condition once there is
 one), plans and language (plan docs, „Sprache des Repositorys“), demos („Sprache der Demos“,
-„Demo-Site“ with title, URL, deploy command, env file, headers, largest file, tags and when a demo
+„Demo-Site“ with title, URL, deploy command, env file, headers, largest file, tags (with „Tags von einem Agenten vorschlagen lassen“, see Tags in Sharing demos) and when a demo
 goes on it, all behind „Anderer Hoster, von Hand eingetragen …“ beside „Demo-Seite einrichten …“ while it has
 no site), then „Für alle ins Repository übernehmen“. A folder without git has no workspace or
 branch group.

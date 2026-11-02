@@ -1,5 +1,5 @@
 // The navigation at the bar's left: the canvas's name, and under it the canvases with what waits
-// for the owner on each („Für dich“, the phone's list), in one place. It opens as a list under its
+// for the owner on each („Braucht dich“, the phone's list), in one place. It opens as a list under its
 // button, or stays pinned as a sidebar docked on the left, the canvas the rest. An entry opens its
 // card, on this canvas or on its own.
 
@@ -82,18 +82,20 @@ export function NavPill(p: ListProps) {
 
 /** The navigation pinned as a sidebar on the left, sliding in and out. */
 export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
+  // in the app on a Mac it reaches up to the window's top: the traffic lights sit in its head, which moves the window as the bar does
+  const titlebar = window.obeyaApp?.platform === 'macos';
   return (
-    <aside id="nav" className={on ? 'nav-sheet on' : 'nav-sheet'} aria-hidden={!on}>
-      <NavList {...p} />
+    <aside id="nav" className={['nav-sheet', on && 'on', titlebar && 'titlebar'].filter(Boolean).join(' ')} aria-hidden={!on}>
+      <NavList {...p} titlebar={titlebar} />
     </aside>
   );
 }
 
 /**
- * „Für dich“ and the canvases: with several, each canvas in the configuration's order heads what
+ * „Braucht dich“ and the canvases: with several, each canvas in the configuration's order heads what
  * waits on it, so a click on it switches there; within a canvas in Tab's order.
  */
-function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya }: ListProps) {
+function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya, titlebar }: ListProps & { titlebar?: boolean }) {
   // with one canvas, its name heads the list only where the bar's button with the name is not there
   const several = canvases.length > 1 || pinned;
   const waits = waitingCount(canvases, waiting) > 0;
@@ -101,8 +103,8 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
   const rows = (c: CanvasInfo) => <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />;
   return (
     <>
-      <div className="nav-head">
-        <h2>{t.phone.forYou}</h2>
+      <div className="nav-head" {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>
+        <h2 {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>{t.phone.forYou}</h2>
         {(pinnable || pinned) && (
           <button className={pinned ? 'nav-pin on' : 'nav-pin'} title={pinned ? t.nav.unpin : t.nav.pin} aria-label={pinned ? t.nav.unpin : t.nav.pin} aria-pressed={pinned} onClick={() => onPin(!pinned)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>

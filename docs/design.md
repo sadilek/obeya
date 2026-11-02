@@ -53,8 +53,8 @@ touches, and keep those current in the same change.
   (running there, logins and files, a dropped connection).
 - [Landing](design/landing.md) — how approved work reaches `main`: how work lands, the PR loop
   (watching the PR, ready to merge, the PR on the card), review cards for a contributor's pull
-  request (unpushed commits it collides with), after landing (restarts for landed code,
-  finishing, questions after the work).
+  request (own changes wait for the approval, unpushed commits it collides with), after landing
+  (restarts for landed code, finishing, questions after the work).
 - [The Koordinator](design/the-koordinator.md) — the per-canvas agent the UI calls Obeya:
   scheduling and the queue, learning the owner's rules (Rückschau, rules for a CLAUDE.md), its
   sheet, Arbeitsrückschau, looked-up questions and threads, Question cards, its memory, wishes for

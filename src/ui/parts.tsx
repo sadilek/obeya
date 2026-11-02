@@ -10,7 +10,7 @@ import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';
 import { Doc, excerpt, Inline, plain } from './markdown';
 import { Body } from './message';
-import { waitedOn } from './queue';
+import { waitedOn, waitReason } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
 
@@ -181,7 +181,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
     (item.limitedUntil ? t.limitedUntil(clock(item.limitedUntil)) : undefined) ??
     (item.kind === 'question' && item.thread ? t.question.count(item.thread.answers, item.thread.files) : undefined) ??
     (asked === undefined ? undefined : excerpt(asked)) ??
-    (item.queue && 'behind' in item.queue ? excerpt(item.queue.reason) : undefined) ??
+    (item.queue && 'behind' in item.queue ? excerpt(waitReason(item.queue)) : undefined) ??
     (item.queue && 'workspace' in item.queue ? t.queue.workspaceWhy[item.queue.workspace] : undefined) ??
     (item.queue && 'paused' in item.queue ? t.queue.pausedWhy : undefined) ??
     status ??
@@ -948,6 +948,14 @@ export const ProjectView = memo(
  * its last direction goes, so the head ends on `b`'s side however sharply the curve bends.
  */
 export function linkPath(a: Bounds, b: Bounds, head = 0): string {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+  return `M${p0.x},${p0.y} C${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+}
+
+type Pt = { x: number; y: number };
+
+/** The cubic Bézier curve `linkPath` draws: its start, its two control points and its end. */
+function linkCurve(a: Bounds, b: Bounds, head: number): [Pt, Pt, Pt, Pt] {
   const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
   const gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
   const across = gapX > gapY;
@@ -961,7 +969,29 @@ export function linkPath(a: Bounds, b: Bounds, head = 0): string {
   const along = across ? x2 - x1 : y2 - y1;
   const aside = across ? y2 - y1 : x2 - x1;
   const reach = dir * Math.max(dir * along / 2, Math.min(Math.abs(aside) / 2, head));
-  return across ? `M${x1},${y1} C${x1 + reach},${y1} ${x2 - reach},${y2} ${x2},${y2}` : `M${x1},${y1} C${x1},${y1 + reach} ${x2},${y2 - reach} ${x2},${y2}`;
+  const [c1, c2] = across ? [{ x: x1 + reach, y: y1 }, { x: x2 - reach, y: y2 }] : [{ x: x1, y: y1 + reach }, { x: x2, y: y2 - reach }];
+  return [{ x: x1, y: y1 }, c1, c2, { x: x2, y: y2 }];
+}
+
+/**
+ * Where on the link from `a` to `b` its button goes: the middle, or the point nearest the middle that
+ * keeps `room` clear of every card in `cards`, so that a card the link passes under never covers it.
+ */
+export function linkSpot(a: Bounds, b: Bounds, head: number, cards: Bounds[], room: number): Pt {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+  const at = (t: number) => {
+    const u = 1 - t;
+    const [k0, k1, k2, k3] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+    return { x: k0 * p0.x + k1 * p1.x + k2 * p2.x + k3 * p3.x, y: k0 * p0.y + k1 * p1.y + k2 * p2.y + k3 * p3.y };
+  };
+  const clear = (p: Pt) => !cards.some((c) => p.x > c.x - room && p.x < c.x + c.w + room && p.y > c.y - room && p.y < c.y + c.h + room);
+  for (let step = 0; step <= 20; step++) {
+    for (const t of step ? [0.5 - step * 0.02, 0.5 + step * 0.02] : [0.5]) {
+      const p = at(t);
+      if (clear(p)) return p;
+    }
+  }
+  return at(0.5);
 }
 
 /**
@@ -984,9 +1014,13 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   );
 }
 
-/** The length of the arrow head at the end of a wait's line, in canvas pixels: highlighted, faint. */
-const DEP_HEAD = 15;
-const FAINT_HEAD = 9;
+/**
+ * The width of a wait's line in canvas pixels at zoom `s`, the same faint or highlighted, so that
+ * the pointer on a card only changes its colour; never thinner on screen than a hair when zoomed out.
+ */
+export const depWidth = (s: number) => Math.max(2, 1.6 / s);
+/** The length of the arrow head at the end of a wait's line, in canvas pixels: six widths of its line. */
+export const depHead = (s: number) => 6 * depWidth(s);
 
 /**
  * Every direct wait between cards on the canvas as a faint line, from the card waited for to the
@@ -999,12 +1033,14 @@ export function DepLinks({
   waits,
   lit,
   standsFor,
+  s,
   children,
 }: {
   placed: { item: Item; b: Bounds }[];
   waits: [string, string][];
   lit: [string, string][];
   standsFor: (id: string) => string;
+  s: number;
   children?: ReactNode;
 }) {
   const byId = new Map(placed.map((p) => [p.item.id, p.b]));
@@ -1018,24 +1054,22 @@ export function DepLinks({
     );
   const hot = shown(lit);
   const faint = [...shown(waits)].filter(([k]) => !hot.has(k));
-  const path = (cls: string, head: number) => ([k, [from, to]]: [string, [string, string]]) => (
-    <path key={`${cls} ${k}`} className={cls} d={linkPath(byId.get(from)!, byId.get(to)!, head)} markerEnd={`url(#${cls}-arrow)`} />
+  const path = (cls: string) => ([k, [from, to]]: [string, [string, string]]) => (
+    <path key={`${cls} ${k}`} className={cls} d={linkPath(byId.get(from)!, byId.get(to)!, depHead(s))} strokeWidth={depWidth(s)} markerEnd={`url(#${cls}-arrow)`} />
   );
   return (
     <svg id="deps" width="1" height="1">
       <defs>
-        {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points on to the card. */}
-        <marker id="lit-arrow" className="lit" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="userSpaceOnUse" markerWidth={DEP_HEAD} markerHeight={(DEP_HEAD * 8) / 9} orient="auto">
-          <path d="M0,0 L9,4 L0,8 z" />
-        </marker>
-        {/* measured in the line's width, which grows as the view zooms out; a head longer than the room
-            left for it ends under the card */}
-        <marker id="faint-arrow" className="faint" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={FAINT_HEAD / 1.5} markerHeight={(FAINT_HEAD * 8) / 9 / 1.5} orient="auto">
-          <path d="M0,0 L9,4 L0,8 z" />
-        </marker>
+        {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points
+            on to the card; measured in the line's width, as `depHead` is. */}
+        {['lit', 'faint'].map((cls) => (
+          <marker key={cls} id={`${cls}-arrow`} className={cls} viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={6} markerHeight={(6 * 8) / 9} orient="auto">
+            <path d="M0,0 L9,4 L0,8 z" />
+          </marker>
+        ))}
       </defs>
-      {faint.map(path('faint', FAINT_HEAD))}
-      {[...hot].map(path('lit', DEP_HEAD))}
+      {faint.map(path('faint'))}
+      {[...hot].map(path('lit'))}
       {children}
     </svg>
   );

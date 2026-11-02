@@ -170,6 +170,34 @@ describe('a worktree per card', () => {
     expect((await spaces.diff(a.id, true))!.files.map((f) => f.file)).toEqual(['a.ts', 'feature1.ts', 'new.ts']);
   });
 
+  test("main's commits rebased by a pull after a card left them are not the card's work: it holds none until it commits, then lands only its own", async () => {
+    commitIn(main, 'voice.ts', 'Voice');
+    const a = manual();
+    await workers.start(a.id);
+    const wa = board.row(a.id).workspace!;
+    // a pull rebases main's unpushed commit onto what came from origin: the card's branch keeps it as it was
+    git(main, 'reset', '--quiet', '--hard', 'HEAD~1');
+    commitIn(main, 'upstream.ts', 'Upstream');
+    git(main, 'cherry-pick', '--quiet', 'ORIG_HEAD');
+    expect(git(wa, 'log', '--format=%s', '-1')).toBe('Voice');
+    expect(await spaces.hasWork(a.id)).toBe(false);
+    expect(await spaces.changedFiles(a.id)).toEqual([]);
+    expect(await spaces.changes(a.id)).toEqual([]);
+    expect((await spaces.diff(a.id, true))!.files).toEqual([]);
+    // the worker hears what the owner's button does, as the card shows it
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() })).toContain('Obeya sees no change on your branch');
+    expect(board.item(a.id)!.noChange).toBe(true);
+
+    commitIn(wa, 'own.ts', 'Own');
+    expect(await spaces.hasWork(a.id)).toBe(true);
+    expect(await spaces.changedFiles(a.id)).toEqual(['own.ts']);
+    expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() })).toContain("Approving lands your branch's change to 1 file: own.ts.");
+    expect(board.item(a.id)!.noChange).toBeUndefined();
+    await workers.approve(a.id);
+    expect(state(a.id)).toBe('live');
+    expect(git(main, 'log', '--format=%s', '-4').split('\n')).toEqual(['Own', 'Voice', 'Upstream', 'init']);
+  });
+
   test("a card's branch that another card is built on still holds the first card's work", async () => {
     const a = manual();
     await workers.start(a.id);

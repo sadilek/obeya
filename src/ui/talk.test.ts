@@ -744,7 +744,7 @@ test('the phone opens a card at work, or one with a question open, with its conv
   expect(opensWithTalk({ state: 'done' } as Item)).toBe(false);
 });
 
-test("the phone's „Läuft“ holds a handed-over card while its worker takes in the owner's note, and „Für dich“ holds it again after", () => {
+test("the phone's „Läuft“ holds a handed-over card while its worker takes in the owner's note, and „Braucht dich“ holds it again after", () => {
   const demo = { kind: 'task', state: 'waiting', need: 'demo' } as Item;
   expect(needsYou(demo)).toBe(true);
   expect(runs(demo)).toBe(false);
@@ -843,4 +843,13 @@ test('a question nobody waits on shows how it ended, the same on every kind of c
   ]);
   // an archived card's question nobody answered was left open too
   expect(cardTalk(idea, [reply, q1], true).shown[1]).toEqual({ e: q1, steps: [], end: 'left' });
+});
+
+test("Obeya's line that a card waits for others before it starts stands, in either language", () => {
+  const k = MESSAGES.en.koordinator;
+  const drawn = ev('state', 'obeya', k.waitsFor('“Export”', k.drawn));
+  const inferred = ev('state', 'obeya', MESSAGES.de.koordinator.waitsFor('„Export“', MESSAGES.de.koordinator.likelyConflict));
+  const t = talkTurns([drawn, inferred], { over: false });
+  expect(t.shown.map((x) => x.e)).toEqual([drawn, inferred]);
+  expect(t.shown.every((x) => x.line)).toBe(true);
 });

@@ -24,6 +24,7 @@ import {
   type CardPatch,
   type ClonePool,
   type Contribution,
+  type HeldChanges,
   type Decision,
   type Demo,
   type DemoKind,
@@ -112,6 +113,10 @@ const waitOf = (r: Pick<CardRow, 'queue'>) => {
 
 /** What is stored of a review card's pull request (`CardRow.contribution`): what the card shows, and what only the server needs. */
 export interface StoredContribution extends Contribution {
+  /** `base`: the PR's head the held commits go on top of, as it stood at the handover. */
+  held?: HeldChanges & { base: string };
+  /** The owner chose „Selbst ändern“, and the worker's changes have not gone out yet: requests to the contributor wait for them. */
+  changing?: true;
   /** The PR's head commit the worker reviewed at its latest handover: only that one is merged. */
   reviewed?: string;
   /** Where the PR's branch is, for a worker that pushes onto it: its repository's URL and branch. */
@@ -460,11 +465,11 @@ export class Board {
     if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
       throw new BadRequest('unknownCard', 'invalid dependency');
     if (!remove && items.some((i) => (i.id === from || i.id === to) && !connectable(i)))
-      throw new BadRequest('invalid', 'project dependencies are decided from the plan');
+      throw new BadRequest('planDependency', 'project dependencies are decided from the plan');
     const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
     if (!remove) {
       // A cycle would leave the cards waiting for each other forever.
-      if (closesCycle(from, to, edges, items)) throw new BadRequest('invalid', 'dependency cycle');
+      if (closesCycle(from, to, edges, items)) throw new BadRequest('dependencyCycle', 'dependency cycle');
       edges.push([from, to]);
     }
     this.setManualDependencies(edges);
@@ -1428,7 +1433,9 @@ export class Board {
    * card does not name it as its workspace, or its work is over and its worker done (`stale`: the
    * lease outlived what it was for); it was deleted; or it is a workstream no worker is on whose box
    * the plan doc on the default branch ticks off (`ticked`; `merged` while it is in its pull request,
-   * which the doc says has been merged), or that the doc there no longer has (`gone`).
+   * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
+   * in a plan folder outside the repository says nothing of a merge: the worker ticks it there before
+   * its pull request is even open.
    */
   leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
@@ -1443,6 +1450,7 @@ export class Board {
     const hash = row.plan_ref?.indexOf('#') ?? -1;
     if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
+    if (row.state === 'inPr' && OUTSIDE_PATH.test(pathOfRef(row.plan_ref!))) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();
     const doc = this.docs?.find((d) => d.file === row.plan_ref!.slice(0, hash));
@@ -2217,7 +2225,10 @@ export class Board {
       const w = r.id === keep ? undefined : waitOf(r);
       if (w?.behind.some((id) => gone.has(id))) {
         const to = (ids: string[]) => [...new Set(ids.map((id) => (gone.has(id) ? keep : id)))];
-        this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }) }) });
+        // a card it waited for by an inferred wait stays waited for so, also where an arrow named another merged into it
+        const inferred = to(w.behind.filter((id) => !w.manualWait?.includes(id)));
+        const manualWait = to(w.manualWait ?? []).filter((id) => !inferred.includes(id));
+        this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }), manualWait: manualWait.length ? manualWait : undefined }) });
       }
       const c = contributionOf(r);
       if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: JSON.stringify({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) } satisfies StoredContribution) });
@@ -2471,6 +2482,8 @@ export function pathOfRef(ref: string): string {
 }
 
 const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
+/** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
+const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
 
 /** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
 type Prototypes = {
@@ -2621,7 +2634,7 @@ function work(r: CardRow): Partial<Item> {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
     ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
-    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
+    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice

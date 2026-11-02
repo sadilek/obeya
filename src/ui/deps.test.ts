@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { depsOf, waitsAmong } from './deps';
+import { depsOf, nearestHandle, waitsAmong } from './deps';
 
 const card = (id: string, ...behind: string[]) =>
   ({ id, kind: 'task', state: behind.length ? 'planned' : 'working', title: id, body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...(behind.length && { queue: { behind, reason: '' } }) }) as Item;
@@ -69,4 +69,17 @@ test('every direct wait on the canvas, of all kinds, not the chain; a finished c
   const done = { ...card('F'), state: 'done' } as Item;
   const all = [...items, snoozed, drawn, done, card('G', 'F'), { ...card('H'), state: 'live', manualDependsOn: ['A'] } as Item];
   expect(waitsAmong(all).sort()).toEqual([['A', 'B'], ['A', 'D'], ['A', 'R'], ['B', 'C'], ['B', 'D'], ['B', 'M']]);
+});
+
+test('the dot nearest the pointer shows, only within reach', () => {
+  const cards = [
+    { id: 'A', b: { x: 0, y: 0, w: 200, h: 100 } },
+    { id: 'B', b: { x: 0, y: 130, w: 200, h: 100 } },
+  ];
+  expect(nearestHandle(cards, { x: 100, y: 108 }, 16)).toEqual({ id: 'A', side: 'bottom' });
+  expect(nearestHandle(cards, { x: 100, y: 124 }, 16)).toEqual({ id: 'B', side: 'top' });
+  expect(nearestHandle(cards, { x: 205, y: 50 }, 16)).toEqual({ id: 'A', side: 'right' });
+  // in the middle of a card, and beside an edge but far from its middle, no dot
+  expect(nearestHandle(cards, { x: 100, y: 50 }, 16)).toBeNull();
+  expect(nearestHandle(cards, { x: 20, y: 100 }, 16)).toBeNull();
 });

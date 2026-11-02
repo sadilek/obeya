@@ -2,7 +2,7 @@
 // (`since`). The owner moves a waiting card earlier or later, one place or several at once, past
 // cards it has no wait with: the waits fix the order between the cards they join, the owner the rest.
 
-import type { Item } from './types';
+import { finished, type Item } from './types';
 
 /** Waiting to start: being judged, behind others, or for a workspace. */
 export const inQueue = (i: Pick<Item, 'state' | 'queue'>) => i.state === 'planned' && !!i.queue;
@@ -15,7 +15,21 @@ export function queueOrder(items: Item[]): Item[] {
   return items.filter(inQueue).sort((a, b) => a.queue!.since.localeCompare(b.queue!.since) || a.id.localeCompare(b.id));
 }
 
-const behind = (i: Item) => (i.queue && 'behind' in i.queue ? i.queue.behind : []);
+/**
+ * The prerequisites the owner's arrows hold the card for: those not finished. An arrow holds a card
+ * until it starts: not one at work, nor one the owner started anyway or that was at work before
+ * (`begun`, waiting for a workspace or a paused canvas only to go on).
+ */
+export function drawnWaits(card: Item, items: Item[]): string[] {
+  if (card.state !== 'planned' || (card.queue && 'begun' in card.queue)) return [];
+  return (card.manualDependsOn ?? []).filter((id) => {
+    const i = items.find((x) => x.id === id);
+    return !!i && !finished(i.state) && !i.archivedAt;
+  });
+}
+
+/** The cards `card` waits for: those it queued behind, and those the owner's arrows hold it for. */
+const behind = (card: Item, items: Item[]) => [...new Set([...(card.queue && 'behind' in card.queue ? card.queue.behind : []), ...drawnWaits(card, items)])];
 
 /**
  * A card no agent works on until it starts: planned, in the queue or not, a stopped one too. What the
@@ -32,7 +46,7 @@ export function waitsOn(card: Item, id: string, items: Item[]): boolean {
   const seen = new Set<string>();
   const todo = [card];
   while (todo.length) {
-    for (const b of behind(todo.pop()!)) {
+    for (const b of behind(todo.pop()!, items)) {
       if (b === id) return true;
       if (seen.has(b)) continue;
       seen.add(b);
@@ -46,9 +60,9 @@ export function waitsOn(card: Item, id: string, items: Item[]): boolean {
 type Stuck = 'waitsFor' | 'waitedOn' | 'checking';
 
 /** Why `card` cannot pass `past`, the next card in the way it moves, if so. */
-function stuck(card: Item, past: Item, earlier: boolean): Stuck | undefined {
+function stuck(card: Item, past: Item, earlier: boolean, items: Item[]): Stuck | undefined {
   const [first, second] = earlier ? [past, card] : [card, past];
-  if (behind(second).includes(first.id)) return earlier ? 'waitsFor' : 'waitedOn';
+  if (behind(second, items).includes(first.id)) return earlier ? 'waitsFor' : 'waitedOn';
   if (!movable(past)) return 'checking';
 }
 
@@ -63,7 +77,7 @@ export function move(id: string, earlier: boolean, items: Item[]): { past?: Item
   const n = order.findIndex((i) => i.id === id);
   const past = n < 0 ? undefined : order[earlier ? n - 1 : n + 1];
   if (!past) return {};
-  return { past, why: stuck(order[n]!, past, earlier) };
+  return { past, why: stuck(order[n]!, past, earlier, items) };
 }
 
 /**
@@ -77,7 +91,7 @@ export function reach(id: string, earlier: boolean, items: Item[]): { places: nu
   if (n < 0) return { places: 0 };
   const step = earlier ? -1 : 1;
   for (let k = n + step; k >= 0 && k < order.length; k += step) {
-    const why = stuck(order[n]!, order[k]!, earlier);
+    const why = stuck(order[n]!, order[k]!, earlier, items);
     if (why) return { places: Math.abs(k - n) - 1, stop: order[k], why };
   }
   return { places: earlier ? n : order.length - 1 - n };

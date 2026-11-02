@@ -98,7 +98,7 @@ export function worker() {
     e.waitUntil(sw.registration.showNotification(m.title || 'Obeya', { body: m.body ?? '', tag: m.tag, icon: '/icons/180.png', data: { url: m.url ?? '/' } }));
   });
 
-  // a tapped push opens its card in the phone view (or „Für dich“ for several): in the open app, else in a new one
+  // a tapped push opens its card in the phone view (or „Braucht dich“ for several): in the open app, else in a new one
   sw.addEventListener('notificationclick', (e) => {
     e.notification.close();
     const url = new URL(e.notification.data?.url ?? '/', location.origin).href;

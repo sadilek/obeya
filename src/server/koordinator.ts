@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
-import { inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
+import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
 import { type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
 import { ACTIVE, BadRequest, type Board, contributionOf } from './board';
 import type { Utterance } from './db';
@@ -148,10 +148,11 @@ export class Koordinator {
       } catch {
         return this.o.board.changed();
       }
-      // queued at once, so that a card waiting behind it for a likely conflict keeps waiting
+      // queued at once, so that a card waiting behind it for a likely conflict keeps waiting; at work
+      // already, it goes on once a workspace is free, whatever arrows the owner draws meanwhile
       const active = now.state !== 'planned';
       if (active && !now.queue) {
-        this.setQueue(cardId, { workspace: 'none' });
+        this.setQueue(cardId, { workspace: 'none', begun: true });
         this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.requeued);
       }
       this.giving.add(cardId);
@@ -324,14 +325,14 @@ export class Koordinator {
       .sort((a, b) => a.queue!.since.localeCompare(b.queue!.since));
   }
 
-  /** Start a queued card anyway. */
+  /** Start a queued card anyway: should it wait for a workspace then, the owner's arrows no longer hold it. */
   force(cardId: string) {
     const card = this.card(cardId);
     if (!card.queue || !('behind' in card.queue)) throw new BadRequest('notQueued', 'the card is not waiting');
     const since = card.queue.since;
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'owner', this.o.board.t.koordinator.startedDespite);
-    this.launch(cardId, since);
+    this.launch(cardId, since, true);
   }
 
   /**
@@ -644,6 +645,8 @@ export class Koordinator {
     const ahead = this.ahead(card);
     const pending = this.pending(card, active, ahead);
     if (!active.length && !ahead.length && !pending.length) {
+      // held by the owner's arrows alone, it is judged once they let it go
+      if (drawnWaits(card, this.o.board.items()).length) return void this.queueOrStart(cardId, [], [], '', '');
       // nothing it could collide with or build on: start at once, and estimate the scope for the cards after it
       this.startNow(cardId, this.o.board.t.koordinator.nothingRuns);
       if (this.o.board.item(cardId)?.state !== 'working') return;
@@ -669,17 +672,43 @@ export class Koordinator {
     // expects to conflict with the card's
     const behind = [...active, ...ahead, ...pending].filter((a) => scope.buildsOn.includes(a.id) || scope.conflictsWith.includes(a.id)).map((a) => a.id);
     const t = this.o.board.t.koordinator;
-    if (!behind.length) return this.startNow(cardId, `${t.noConflict}${scope.reason ? ` ${scope.reason}` : ''}`);
-    const names = behind
-      .map((id) => {
-        const a = ahead.find((x) => x.id === id);
-        return a ? t.waitsAhead(a.title) : this.nameOf([...active, ...pending].find((x) => x.id === id)!);
-      })
-      .join(', ');
     const buildsOn = behind.filter((id) => scope.buildsOn.includes(id));
     const reason = scope.reason || (buildsOn.length ? t.buildsOn : t.likelyConflict);
-    this.setQueue(cardId, { behind, reason, ...(buildsOn.length && { buildsOn }) });
-    this.o.board.log(cardId, 'state', 'obeya', t.waitsFor(names, reason));
+    void this.queueOrStart(cardId, behind, buildsOn, reason, `${t.noConflict}${scope.reason ? ` ${scope.reason}` : ''}`, (id) => {
+      const a = ahead.find((x) => x.id === id);
+      return a && t.waitsAhead(a.title);
+    });
+  }
+
+  /**
+   * Queues the card behind the cards the Koordinator found it waits for (`inferred`, `buildsOn`
+   * among them, for `reason`) and those the owner's arrows hold it for, or starts it (`why`) when
+   * there are none, which it says. `name` names a card in the log where it knows better than `nameOf`.
+   */
+  private queueOrStart(cardId: string, inferred: string[], buildsOn: string[], reason: string, why: string, name?: (id: string) => string | undefined): boolean {
+    const items = this.o.board.items();
+    // an arrow drawn while it was judged may make a card it was to wait for wait for it instead
+    inferred = inferred.filter((id) => {
+      const i = items.find((x) => x.id === id);
+      return !(i && waitsOn(i, cardId, items));
+    });
+    buildsOn = buildsOn.filter((id) => inferred.includes(id));
+    const drawn = drawnWaits(this.card(cardId), items).filter((id) => !inferred.includes(id));
+    if (!inferred.length && !drawn.length) {
+      this.startNow(cardId, why);
+      return true;
+    }
+    this.setQueue(cardId, { behind: [...inferred, ...drawn], reason: inferred.length ? reason : this.o.board.t.koordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(drawn.length && { manualWait: drawn }) });
+    this.logWait(cardId, inferred, reason, drawn, (id) => name?.(id) ?? this.nameOf(items.find((i) => i.id === id)!));
+    return false;
+  }
+
+  /** The card's line on what it waits for: the waits inferred with their `reason`, and those the owner's arrows hold it for (`drawn`). */
+  private logWait(cardId: string, inferred: string[], reason: string, drawn: string[], name: (id: string) => string) {
+    const t = this.o.board.t.koordinator;
+    const names = (ids: string[]) => ids.map(name).join(', ');
+    const line = inferred.length ? `${t.waitsFor(names(inferred), reason)}${drawn.length ? ` ${t.drawnToo(names(drawn))}` : ''}` : t.waitsFor(names(drawn), t.drawn);
+    this.o.board.log(cardId, 'state', 'obeya', line);
   }
 
   /**
@@ -738,14 +767,9 @@ export class Koordinator {
       const behind = p.waitsFor.filter((b) => before.has(b) && this.blocks(b));
       before.add(id);
       this.o.board.work(id, { scope: JSON.stringify({ files: p.files, reason: p.reason }), queue: JSON.stringify({ checking: true, together: key, since: times[n] }) });
-      if (!behind.length) {
-        started++;
-        return this.startNow(id, `${project ? t.togetherStarts : t.freedStarts}${p.reason ? ` ${p.reason}` : ''}`);
-      }
       const buildsOn = behind.filter((b) => p.buildsOn.includes(b));
       const reason = p.reason || (buildsOn.length ? t.buildsOn : t.likelyConflict);
-      this.setQueue(id, { behind, reason, ...(buildsOn.length && { buildsOn }) });
-      this.o.board.log(id, 'state', 'obeya', t.waitsFor(behind.map((b) => names.get(b) ?? b).join(', '), reason));
+      if (this.queueOrStart(id, behind, buildsOn, reason, `${project ? t.togetherStarts : t.freedStarts}${p.reason ? ` ${p.reason}` : ''}`, (b) => names.get(b))) started++;
     });
     if (project) this.o.board.log(key, 'state', 'koordinator', t.planned(started, plan.length));
   }
@@ -756,36 +780,31 @@ export class Koordinator {
     return !!i && (this.inProgress(i.repo).some((a) => a.id === id) || inQueue(i));
   }
 
-  private startNow(cardId: string, why: string) {
-    const card = this.o.board.item(cardId);
-    const since = card?.queue?.since;
-    const items = this.o.board.snapshot().items;
-    const manual = (card?.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
-    if (manual.length) {
-      this.setQueue(cardId, { behind: manual, buildsOn: manual, manualWait: manual, reason: this.o.board.t.koordinator.buildsOn }, since);
-      return;
-    }
+  /** `begun`: it waited, started anyway or at work before, for a workspace or the canvas's agents (see `Wait`). */
+  private startNow(cardId: string, why: string, begun?: boolean) {
+    const since = this.o.board.item(cardId)?.queue?.since;
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.says(why));
-    this.launch(cardId, since);
+    this.launch(cardId, since, begun);
   }
 
   /**
    * Starts the card's worker. Without a free workspace the card waits for one, in its place in the
    * queue (`since`), and starts once one is free; any other failure is logged and leaves it planned.
    */
-  private launch(cardId: string, since?: string) {
+  private launch(cardId: string, since?: string, begun?: boolean) {
     const card = this.o.board.item(cardId);
     if (!card) return;
+    const unheld = begun ? { begun: true as const } : {};
     if (this.o.paused?.()) {
-      this.setQueue(cardId, { paused: true }, since);
+      this.setQueue(cardId, { paused: true, ...unheld }, since);
       this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.canvasPaused);
       return;
     }
     const refused = (e: unknown) => {
       const shortage = e instanceof BadRequest ? shortageOf(e.code) : undefined;
       if (!shortage) return this.o.board.log(cardId, 'error', 'obeya', messageOf(e), { code: e instanceof BadRequest ? e.code : undefined });
-      this.setQueue(cardId, { workspace: shortage }, since);
+      this.setQueue(cardId, { workspace: shortage, ...unheld }, since);
       this.o.board.log(cardId, 'state', 'obeya', { none: this.o.board.t.koordinator.noWorkspace, dirty: this.o.board.t.koordinator.dirtyWorkspaces, slots: this.o.board.t.koordinator.noSlot }[shortage]);
     };
     try {
@@ -830,14 +849,24 @@ export class Koordinator {
       // one whose repository does not run waits on until it is back; one giving up its workspace, until it has;
       // one let start, until the owner resumes the canvas's agents
       if (w.repoDown || this.giving.has(w.id)) continue;
+      const begun = 'begun' in w.queue! && !!w.queue.begun;
+      if (!('behind' in w.queue!)) {
+        // an arrow the owner drew since it was let start holds it as one drawn before
+        const drawn = drawnWaits(w, items);
+        if (drawn.length) {
+          this.setQueue(w.id, { behind: drawn, reason: this.o.board.t.koordinator.drawn, manualWait: drawn });
+          this.logWait(w.id, [], '', drawn, (id) => this.nameOf(items.find((i) => i.id === id)!));
+          continue;
+        }
+      }
       if ('paused' in w.queue!) {
-        if (!paused) this.startNow(w.id, this.o.board.t.koordinator.canvasPlays);
+        if (!paused) this.startNow(w.id, this.o.board.t.koordinator.canvasPlays, begun);
         continue;
       }
       if ('workspace' in w.queue!) {
         // the slots the paused agents freed are not for it: it waits for them to resume
         if (paused) {
-          this.setQueue(w.id, { paused: true }, w.queue!.since);
+          this.setQueue(w.id, { paused: true, ...(begun && { begun }) }, w.queue!.since);
           this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.canvasPaused);
           continue;
         }
@@ -848,7 +877,7 @@ export class Koordinator {
           else full.add(w.repo);
           continue;
         }
-        this.startNow(w.id, w.queue!.workspace === 'slots' ? this.o.board.t.koordinator.slotFree : this.o.board.t.koordinator.workspaceFree);
+        this.startNow(w.id, w.queue!.workspace === 'slots' ? this.o.board.t.koordinator.slotFree : this.o.board.t.koordinator.workspaceFree, begun);
         if (this.o.board.item(w.id)?.queue) full.add(w.repo);
         continue;
       }
@@ -861,14 +890,19 @@ export class Koordinator {
         this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.reviewClosed(this.o.board.t.quote(unmerged.title)));
         continue;
       }
-      const manual = (w.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
-      const inferred = q.behind.filter((id) => !q.manualWait?.includes(id));
-      const manualOnly = manual.filter((id) => !inferred.includes(id));
-      const still = [...new Set([...inferred.filter((id) => active.has(id) || (q.buildsOn?.includes(id) && unlanded(items.find((i) => i.id === id)))), ...manual])];
-      if (still.length === q.behind.length && still.every((id) => q.behind.includes(id)) && manualOnly.length === (q.manualWait?.length ?? 0) && manualOnly.every((id) => q.manualWait?.includes(id))) continue;
+      // the waits the Koordinator inferred hold while what they wait for is in progress or queued, or
+      // has not landed where it builds on it; the owner's arrows hold beside them while drawn, so
+      // removing one leaves exactly the waits inferred
+      const inferred = q.behind.filter((id) => !q.manualWait?.includes(id) && (active.has(id) || (q.buildsOn?.includes(id) && unlanded(items.find((i) => i.id === id)))));
+      const manualWait = drawnWaits(w, items).filter((id) => !inferred.includes(id));
+      const buildsOn = (q.buildsOn ?? []).filter((id) => inferred.includes(id));
+      const still = [...inferred, ...manualWait];
+      if (same(still, q.behind) && same(manualWait, q.manualWait ?? []) && same(buildsOn, q.buildsOn ?? [])) continue;
       if (still.length) {
-        const buildsOn = [...new Set([...(q.buildsOn ?? []).filter((id) => still.includes(id) && !q.manualWait?.includes(id)), ...manual])];
-        this.setQueue(w.id, { behind: still, reason: q.reason, ...(buildsOn.length && { buildsOn }), ...(manualOnly.length && { manualWait: manualOnly }) });
+        this.setQueue(w.id, { behind: still, reason: inferred.length ? q.reason : this.o.board.t.koordinator.drawn, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }) });
+        // an arrow the owner drew to it while it waited holds it too, which it says
+        const drawnNow = manualWait.filter((id) => !q.behind.includes(id));
+        if (drawnNow.length) this.logWait(w.id, [], '', drawnNow, (id) => this.nameOf(items.find((i) => i.id === id)!));
         continue;
       }
       freed.push(w);
@@ -1415,6 +1449,8 @@ const describe = (c: Change) =>
 /** The tag a turn of the Koordinator knows a card by. */
 /** A card waited on that still holds back what builds on it: there, and its work not on the main branch yet. */
 const unlanded = (i?: Item) => !!i && !finished(i.state) && !i.archivedAt;
+/** Whether two lists hold the same cards. */
+const same = (a: string[], b: string[]) => a.length === b.length && a.every((id) => b.includes(id));
 
 const tagOf = (tags: Map<string, string>, id: string) => [...tags].find(([, x]) => x === id)![0];
 

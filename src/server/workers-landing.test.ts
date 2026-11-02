@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
+import type { PlanDoc } from '../core/plan-doc';
 import { needsYou } from '../core/types';
 import { artifact, identify, until } from './testing';
 import { Board } from './board';
@@ -974,5 +975,53 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     runtime.last.emit({ type: 'idle' });
     expect(spaces.leasedBy(w.id)).toBeNull();
     expect(board.item(w.id)!.finishing).toBeUndefined();
+  });
+
+  /** Approves the workstream's handed-over work into its pull request phase; the PR is not reported yet. */
+  const approvedIntoPr = async (id: string) => {
+    await workers.start(id);
+    const clone = board.row(id).workspace!;
+    writeFileSync(join(clone, 'config.ts'), 'export {}\n');
+    git(clone, 'add', '.');
+    git(clone, 'commit', '--quiet', '-m', 'Config');
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(id);
+    expect(state(id)).toBe('inPr');
+    return clone;
+  };
+
+  test('a workstream the doc on the default branch ticks off counts as merged though its worker never reported the pull request', async () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    const w = w1();
+    await approvedIntoPr(w.id);
+    // the worker opened the pull request without reporting it, and someone merged it by hand
+    ticked();
+    await flush();
+    expect(state(w.id)).toBe('live');
+    expect(merged).toEqual([w.id]);
+  });
+
+  test('a box ticked in a plan folder outside the repository does not count as the pull request merged', async () => {
+    rmSync(dir, { recursive: true, force: true });
+    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    const outside: PlanDoc = { ...doc, file: '/plans/a.md' };
+    setDocs([outside]);
+    board.docsChanged();
+    const w = board.snapshot().items.find((i) => i.label === 'W1' && board.row(i.id).plan_ref?.startsWith('/plans/'))!;
+    const clone = await approvedIntoPr(w.id);
+    // the worker ticks its box in the folder, which takes effect at once, then opens the pull request
+    setDocs([{ ...outside, workstreams: [{ ...ws('W1'), done: true }] }]);
+    board.docsChanged();
+    await flush();
+    expect(state(w.id)).toBe('inPr');
+    expect(runtime.last.inbox.at(-1) ?? '').not.toContain('Your pull request was merged');
+    board.work(w.id, { pr: JSON.stringify({ url: 'https://github.com/acme/app/pull/822', number: 822, seen: [], reported: [] }) });
+    runtime.last.emit({ type: 'idle' });
+    await flush();
+    expect(state(w.id)).toBe('inPr');
+    expect(merged).toEqual([]);
+    expect(spaces.leasedBy(w.id)).toBe(clone);
   });
 });

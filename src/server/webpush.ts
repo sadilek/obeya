@@ -122,7 +122,7 @@ export async function vapidAuth(endpoint: string, vapid: Vapid, now = Date.now()
 export interface PushMessage {
   title: string;
   body: string;
-  /** Where tapping it leads: a card in the phone view (`/c/<canvas>/card/<code>`), or „Für dich“ (`/`). */
+  /** Where tapping it leads: a card in the phone view (`/c/<canvas>/card/<code>`), or „Braucht dich“ (`/`). */
   url: string;
   /** A later push with the same tag replaces this one in the list of notifications. */
   tag: string;
@@ -140,7 +140,7 @@ export async function send(sub: Subscription, message: PushMessage, vapid: Vapid
       authorization: await vapidAuth(sub.endpoint, vapid),
       'content-encoding': 'aes128gcm',
       'content-type': 'application/octet-stream',
-      // a day: a phone switched off for longer gets what still waits from „Für dich“
+      // a day: a phone switched off for longer gets what still waits from „Braucht dich“
       ttl: '86400',
       urgency: 'high',
     },

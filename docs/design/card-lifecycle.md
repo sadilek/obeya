@@ -153,8 +153,12 @@ Merged (or landed on `main`) → `live`. The demo stays on the card. The worker 
 on main and may finish what waited for that (see After landing).
 
 Work that changed nothing in the repository (a demo, an analysis, an answer) has nothing to land:
-when the handover finds no commits and nothing uncommitted, the button reads "Beenden" with a line
-that no pull request follows, and approving makes the card `done` ("Erledigt"). A worker whose
+when the handover finds no commits of the card's own (measured as in The Koordinator) and nothing
+uncommitted, the button reads "Beenden" with a line that no pull request follows, and approving makes
+the card `done` ("Erledigt"). The handover's answer tells the worker what the button will do, as
+Obeya sees the branch: close the card, or land the files it names. A worker knows the commits it made,
+not those its branch carried from before, and otherwise told the owner the opposite of what the card
+showed. A worker whose
 branch emptied after the approval closes the card with `close_unchanged`, refused while the
 workspace holds changes.
 

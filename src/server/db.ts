@@ -405,7 +405,7 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN wish TEXT; ALTER TABLE events ADD COLUMN wish TEXT;',
   // the demos of earlier handovers a later one replaced
   'ALTER TABLE cards ADD COLUMN demos TEXT;',
-  // since when a card waits for the owner, for the phone view's „Für dich“
+  // since when a card waits for the owner, for the phone view's „Braucht dich“
   'ALTER TABLE cards ADD COLUMN waiting_since TEXT;',
   // a repository's commands as the owner last confirmed them, by its path (JSON `RepoCommands`)
   `CREATE TABLE trusted_commands (

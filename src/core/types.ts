@@ -251,7 +251,7 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
 export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
 /**
- * What of a canvas „Für dich“ lists (the phone's, and the navigation on every other canvas's page):
+ * What of a canvas „Braucht dich“ lists (the phone's, and the navigation on every other canvas's page):
  * the cards that need the owner and those snoozed while they did, and the Koordinator's answers that
  * wait unread.
  */
@@ -434,7 +434,7 @@ export interface Item {
    * the Koordinator naming or checking it) waits for the account's usage limit: it goes on by itself then (ISO time).
    */
   limitedUntil?: string;
-  /** Since when it waits for the owner (`needsYou`), for the phone view's „Für dich“. */
+  /** Since when it waits for the owner (`needsYou`), for the phone view's „Braucht dich“. */
   waitingSince?: string;
   /**
    * The owner paused the card's agent (its worker, the idea's agent, the Question card's agent):
@@ -711,8 +711,21 @@ export interface Contribution {
   findings?: Finding[];
   /** The worker's change request on the PR, while the card waits for the contributor. */
   requested?: { url?: string; at: string };
+  /** The worker's own commits for the PR, held on the card until the owner approves (`HeldChanges`). */
+  held?: HeldChanges;
   /** Where work lands on the local main: its unpushed commits collide with the PR, as Obeya found before the merge. */
   clash?: Clash;
+}
+
+/**
+ * What a review card's worker changed itself on the PR, held on the card: on the owner's approval
+ * Obeya pushes its `commits` onto the PR's branch and posts `body` there, as a comment, or with
+ * requests to the contributor (the findings `asks`) as one review asking for changes.
+ */
+export interface HeldChanges {
+  body: string;
+  commits: number;
+  asks: number[];
 }
 
 /**
@@ -730,7 +743,8 @@ export interface Clash {
 
 /**
  * What the owner decides for a finding of a review card: it goes to the contributor as a change
- * request, (`self`) the worker makes the change and pushes it onto the PR's branch, or (`later`)
+ * request, (`self`) the worker makes the change, which Obeya pushes onto the PR's branch on the
+ * owner's approval, or (`later`)
  * it becomes a follow-up task of its own, outside the PR.
  */
 export type ChangeRoute = 'contributor' | 'self' | 'later';
@@ -744,7 +758,7 @@ export interface Finding {
   security?: boolean;
   /**
    * `open` until something came of it: `sent` to the contributor (`url`, the review it went in),
-   * `fixed` by the worker on the PR's branch, `resolved` (the contributor's push fixed it, or it no
+   * `fixed` by the worker (`url`, the post its push went out with, once Obeya pushed it), `resolved` (the contributor's push fixed it, or it no
    * longer applies), `dropped` (the owner does not pursue it), `later` (a follow-up task, `card`,
    * which the worker makes once the owner chose it).
    */
@@ -754,6 +768,8 @@ export interface Finding {
   card?: string;
   /** What the owner decided for it, while the worker carries it out. */
   decided?: ChangeRoute;
+  /** Decided for the contributor while the worker's own changes are under way or held: the request goes with them, as one message. */
+  withChanges?: true;
   /** The other findings its worker would make one follow-up task with it (their ids), in both directions. */
   with?: number[];
 }
@@ -808,7 +824,11 @@ export const PUSH_HOLD_MS = 8000;
  * leased or none set up; `dirty`: every free one has uncommitted changes); it starts once one is.
  * `behind`: the cards it waits for; `buildsOn`: those of them it builds on (workstreams of its
  * project), which hold it until they have landed, also while not started or stopped.
+ * `manualWait`: those of `behind` that only an arrow the owner drew holds it for, not a wait the
+ * Koordinator inferred; `buildsOn` names inferred waits alone.
  * `paused`: the Koordinator let it start, but the owner paused its canvas's agents; it starts once they resume them.
+ * `begun`, on a card waiting for a workspace or a paused canvas: the owner started it anyway, or it
+ * was at work before (its workspace taken from it); the owner's arrows no longer hold it.
  */
 export type Queue = Wait & { since: string };
 
@@ -816,7 +836,7 @@ export type Queue = Wait & { since: string };
  * What a card in the queue waits for (`Queue`). `together`: judged in one turn with the cards of the
  * same key, a project's workstreams started at once (the project's id) or cards freed at once (`freed:…`).
  */
-export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] } | { workspace: WorkspaceShortage } | { paused: true };
+export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] } | { workspace: WorkspaceShortage; begun?: true } | { paused: true; begun?: true };
 
 /** Why a card waits to start: no clone free (`none`), the free ones dirty, or every machine with a clean free one busy to its slots (`slots`). */
 export type WorkspaceShortage = 'none' | 'dirty' | 'slots';
@@ -1426,6 +1446,8 @@ export type CardAction =
    */
   | { action: 'pushMain' }
   | { action: 'keepMain' }
+  /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging („Nur pushen“). */
+  | { action: 'pushChanges' }
   /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
   | { action: 'approve'; direct?: boolean }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */
@@ -1537,6 +1559,10 @@ export type ErrorCode =
   /** A group that no card belongs to any more, so it is gone. */
   | 'unknownGroup'
   | 'project'
+  /** An arrow between cards that would make them wait for each other, directly or through other cards. */
+  | 'dependencyCycle'
+  /** An arrow to or from a project or one of its workstreams, whose order comes from the plan doc. */
+  | 'planDependency'
   /** An action that needs the card's agents while its repository does not run on the canvas (`Item.repoDown`). */
   | 'repoDown'
   | 'notPlanned'
@@ -1569,6 +1595,8 @@ export type ErrorCode =
   | 'pullClash'
   | 'prClosed'
   | 'mergeRefused'
+  /** Approving a review card: the worker's own commits could not go onto the PR's branch (the detail says why). */
+  | 'pushRefused'
   /** „Review PR #5“: no such pull request, or none Obeya can read. */
   | 'noPr'
   /** Deleting a comment on the demo video: it is no longer held back, the worker has it. */
@@ -1751,6 +1779,14 @@ export interface SiteSetupJob {
   offer?: 'cloudflare';
   /** A repository's site once it is set up, for its settings. */
   site?: DemoSite;
+}
+
+/** A proposal for a demo site's tags (`demo.site.tags`), as the configuration follows it: running, then the tags and why, or the error. */
+export interface TagProposalJob {
+  running: boolean;
+  tags?: PageTags;
+  why?: string;
+  error?: string;
 }
 
 /** The owner's personal demo site on this machine, as Konfiguration → Demos shows it. */

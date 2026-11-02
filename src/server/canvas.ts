@@ -34,6 +34,7 @@ import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust } from './runtime';
+import { type TagCard, tagCards } from './tag-proposal';
 import { commandsOf, heldGroups, withoutHeld } from './trust';
 import { Skills } from './skills';
 
@@ -1320,6 +1321,30 @@ export class CanvasRuntime {
     return r;
   }
 
+  /**
+   * What a proposal for the tags of the site of the repository at `path` reads on this canvas,
+   * where it runs here: its checkout, the agents' runtime, the language of its demos, and its cards
+   * (`tagCards`), those on the canvas first, then the archive.
+   */
+  tagSource(path: string): { cwd: string; runtime: AgentRuntime; language?: Language; cards: TagCard[] } | null {
+    const r = this.repos.find((x) => resolve(x.info.path) === resolve(path));
+    if (!r) return null;
+    const mine = (i: Item) => i.repo === r.ref.id;
+    const summary = (id: string) => {
+      try {
+        return this.board.summary(id);
+      } catch {
+        return undefined;
+      }
+    };
+    return {
+      cwd: r.info.path,
+      runtime: this.deps.runtime,
+      ...(r.adapter.demo?.language ? { language: r.adapter.demo.language } : {}),
+      cards: tagCards([...this.board.items().filter(mine), ...this.board.archived().filter(mine)], summary),
+    };
+  }
+
   /** Whether the card's repository runs on the canvas. */
   private runs(card: Item | string): boolean {
     const item = typeof card === 'string' ? this.board.card(card) : card;
@@ -1620,6 +1645,8 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.pushMainFor(cardId);
       case 'keepMain':
         return this.repoOf(cardId).workers.keepMainFor(cardId);
+      case 'pushChanges':
+        return this.repoOf(cardId).workers.pushContribution(cardId);
       case 'accept':
         return this.accept(cardId, a.picks, a.start !== false, a.idea);
       case 'unaccept':

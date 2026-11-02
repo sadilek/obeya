@@ -43,7 +43,8 @@ run or an earlier one, or `bun start` in a terminal, which then ends too), and t
 the stop waits for; quitting again goes ahead at once. The app ends when its server does; a server
 it started in this run that ends unasked shows the last lines of its log in a dialog. The server's output goes to `app.log` in the home. A second start
 brings the window to the front. On a Mac, closing the window keeps the app in the Dock, and the
-window has no title bar: the canvas's bar holds the traffic lights and drags the window. Links
+window has no title bar: the canvas's bar holds the traffic lights, centred on its height, and drags the
+window (the pinned navigation's head, as tall, while it is pinned). Links
 leaving the canvas and new windows open in the default browser, as does „Im Browser öffnen“ in the
 settings (and the Mac's File menu). The shell itself opens them, a plain click on a link with
 `target=_blank` included; Tauri's opener plugin stays unregistered, since its link script takes such

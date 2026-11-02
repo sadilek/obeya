@@ -72,8 +72,15 @@ const de = {
     reviewStarted: (n: number, author: string) => `Agent gestartet: Er prüft PR #${n} von ${author}.`,
     /** The worker sent the owner's change request to the contributor as a review on the PR. */
     changesRequested: (n: number, author: string) => `Änderungswunsch als Review-Kommentar an PR #${n}. Wartet auf ${author}.`,
-    /** The worker wrote a comment on the contributor's PR (what it changed itself, say). */
-    commented: (n: number) => `Kommentar an PR #${n} geschrieben.`,
+    /** On the owner's approval, Obeya pushed the worker's own commits onto the contributor's PR and posted their text, with a request to them or without. */
+    pushedHeld: (n: number, commits: number, author?: string) =>
+      `${commits === 1 ? '1 Commit' : `${commits} Commits`} auf den Branch von PR #${n} gepusht und ${author ? `mit dem Änderungswunsch an ${author} geschickt. Wartet auf ${author}.` : 'kommentiert.'}`,
+    /** The worker's own commits could not go onto the PR's branch. */
+    pushRefused: (reason: string) => `Nicht gepusht: ${reason}`,
+    /** The contributor pushed after the handover: the worker's own commits are not pushed, posted or merged. */
+    heldMoved: (head: string) => `Nicht gepusht: Der PR steht seit der Übergabe auf einem anderen Stand (${head}). Der Agent setzt seine Commits darauf und prüft das Neue.`,
+    /** Pushed, but the forge refused the text that goes with it. */
+    postFailed: (reason: string) => `Gepusht, aber der Text dazu ließ sich nicht posten: ${reason}`,
     /** Approving a review card: Obeya merges the PR. */
     approvedMerge: (n: number) => `Freigegeben. Obeya mergt PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} gemergt. Live.`,
@@ -358,6 +365,10 @@ const de = {
     reviewClosed: (review: string) => `Zurück auf geplant: Der PR von ${review} wurde ohne Merge geschlossen. Starte die Folgeaufgabe selbst, wenn sie trotzdem gebraucht wird.`,
     notStarted: (name: string) => `${name} (noch nicht gestartet)`,
     waitsFor: (names: string, reason: string) => `Obeya: wartet auf ${names}. ${reason}`,
+    /** Why a card waits that only the owner's arrows hold. */
+    drawn: 'Du hast die Karten verbunden; sie startet, sobald das erledigt ist.',
+    /** After `waitsFor`, the cards the owner's arrows hold it for besides. */
+    drawnToo: (names: string) => `Außerdem wartet sie auf ${names}: Du hast die Karten verbunden.`,
     togetherFailed: (why: string) => `Obeya konnte die Workstreams nicht gemeinsam einplanen (${why}) und prüft sie einzeln.`,
     arrangeFailed: (why: string) => `Obeya konnte nicht lesen, welcher Workstream auf welchem aufbaut (${why}); die Karten bleiben, wo sie stehen.`,
     togetherStarts: 'Gemeinsam mit den anderen Workstreams eingeplant; startet jetzt.',
@@ -570,7 +581,11 @@ const en: Messages = {
     started: (branch: string) => `Agent started on ${branch}.`,
     reviewStarted: (n: number, author: string) => `Agent started: it reviews PR #${n} by ${author}.`,
     changesRequested: (n: number, author: string) => `Change request sent as a review comment on PR #${n}. Waiting for ${author}.`,
-    commented: (n: number) => `Commented on PR #${n}.`,
+    pushedHeld: (n: number, commits: number, author?: string) =>
+      `Pushed ${commits === 1 ? '1 commit' : `${commits} commits`} onto the branch of PR #${n} and ${author ? `sent the change request to ${author}. Waiting for ${author}.` : 'commented.'}`,
+    pushRefused: (reason: string) => `Not pushed: ${reason}`,
+    heldMoved: (head: string) => `Not pushed: the PR is at another commit than at the handover (${head}). The agent puts its commits on top and reviews what is new.`,
+    postFailed: (reason: string) => `Pushed, but the text with it could not be posted: ${reason}`,
     approvedMerge: (n: number) => `Approved. Obeya merges PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} merged. Live.`,
     unreviewedHead: (head: string) => `Not merged: the PR is at another commit than at the handover (${head}). The agent reviews it.`,
@@ -818,6 +833,8 @@ const en: Messages = {
     reviewClosed: (review: string) => `Back to planned: the PR of ${review} was closed without a merge. Start the follow-up task yourself if it is still needed.`,
     notStarted: (name: string) => `${name} (not started yet)`,
     waitsFor: (names: string, reason: string) => `Obeya: waits for ${names}. ${reason}`,
+    drawn: 'You connected the cards; it starts once that is done.',
+    drawnToo: (names: string) => `It also waits for ${names}: you connected the cards.`,
     togetherFailed: (why: string) => `Obeya could not plan the workstreams together (${why}); it checks them one by one.`,
     arrangeFailed: (why: string) => `Obeya could not read which workstream builds on which (${why}); the cards stay where they are.`,
     togetherStarts: 'Planned together with the other workstreams; starts now.',

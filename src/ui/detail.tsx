@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
@@ -17,7 +17,7 @@ import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { holdsNotes } from '../core/queue';
-import { QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitedOn } from './queue';
+import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
@@ -77,9 +77,9 @@ interface Props {
 }
 
 /** What a queued card waits for, each card a link that opens it in this one's place. */
-function WaitsFor({ ids, all }: { ids: string[]; all: Item[] }) {
-  const cards = waitedOn(ids, all);
-  return <Naming text={(...names) => t.queue.behind(cards.map((c, k) => ({ ...c, title: names[k]! })))} cards={cards.map((c, k) => ({ card: all.find((x) => x.id === ids[k]), title: c.title }))} />;
+function WaitsFor({ queue, all }: { queue: Behind; all: Item[] }) {
+  const cards = queue.behind.map((id) => ({ card: all.find((x) => x.id === id), title: all.find((x) => x.id === id)?.title ?? id }));
+  return <Naming text={(...names) => waitText(queue, all, (id) => names[queue.behind.indexOf(id)]!)} cards={cards} />;
 }
 
 /** Where a waiting card stands in the queue, with the buttons that move it; unfolded, the queue around it, where it is dragged instead. */
@@ -301,13 +301,7 @@ export function Detail(p: Props) {
   const pr = !inFolder && !item.noChange && (item.lands?.land ?? (repoRef?.pullRequests ? 'pr' : 'main')) === 'pr';
   const direct = pr && (item.lands?.direct ?? !!repoRef?.direct);
   const approveButton = item.contribution ? (
-    <button
-      className="btn primary"
-      title={item.contribution.clash ? t.review.mergeClashHint : t.review.mergeHint}
-      onClick={() => act({ action: 'approve' }, { close: true, ack: t.review.merged(item.contribution!.number), pending: t.review.merging })}
-    >
-      {item.contribution.clash ? t.review.mergeAnyway(item.contribution.number) : t.review.merge(item.contribution.number)}
-    </button>
+    <ApproveReview c={item.contribution} act={act} />
   ) : inFolder ? (
     <>
       <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.folder.approved })}>
@@ -400,11 +394,11 @@ export function Detail(p: Props) {
       ) : (
         <>
           <div className="q-text">
-            <WaitsFor ids={item.queue.behind} all={all} /> {item.queue.reason}
+            <WaitsFor queue={item.queue} all={all} />
           </div>
           <QueuePlace item={item} items={all} />
           <div className="actions">
-            <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: t.queue.forced })}>
+            <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: forcedText(item.queue) })}>
               {t.queue.force}
             </button>
             <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>
@@ -511,8 +505,6 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {item.state === 'planned' && !worked && !waits && <Scope files={item.scope} />}
-
       {/* what the card changed in a folder without git stays in view: in its left column, or above its conversation where it has none */}
       {worked && inFolder && talkAlone(item) && <FolderBox item={item} diff={changes.diff} />}
       {waits ? (
@@ -528,7 +520,6 @@ export function Detail(p: Props) {
                   <Shots ids={item.images} />
                 </>
               )}
-              <Scope files={item.scope} />
             </>
           }
           talk={<TaskTalk item={item} act={act} tell={tell} />}
@@ -553,7 +544,6 @@ export function Detail(p: Props) {
                     ) : (
                       <Body md={item.body} />
                     )}
-                    <Scope files={item.scope} />
                   </div>
                 )}
                 {/* what landed of a workstream the plan doc keeps open comes first: the demo below shows it */}
@@ -601,7 +591,7 @@ export function Detail(p: Props) {
                     )
                   }
                 />
-                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} />}
+                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author } : {})} />}
                 {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
                 {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
                 {brief}
@@ -695,7 +685,7 @@ export function Detail(p: Props) {
             </button>
           )}
           {review ? prototypeActions || approveButton : (running || (halted && !item.archivedAt)) && prototypeActions}
-          <Later item={item} act={act} />
+          <Later item={item} act={act} {...(review && item.contribution?.held && !item.contribution.held.asks.length ? { pushOnly: item.contribution.number } : {})} />
           {running && (
             <button className="btn" title={t.stopHint} onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
               {t.stop}
@@ -722,10 +712,37 @@ const Limited = ({ item }: { item: Item }) => (item.limitedUntil ? <span classNa
 /** When the card went into the archive, after its state. */
 const archivedOn = (i: Item) => i.archivedAt && <span className="p-status"> · {t.archive.when(new Date(i.archivedAt))}</span>;
 
-/** „Später …“ in a card's action row, on any card the owner can snooze that is not snoozed yet (a snoozed one changes its time on its line in the conversation). */
-function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
-  if (!snoozable(item) || item.snoozed) return null;
-  return <SnoozeMenu label={t.snooze.button} onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })} />;
+/**
+ * „Später …“ in a card's action row, on any card the owner can snooze that is not snoozed yet (a
+ * snoozed one changes its time on its line in the conversation). On a review card whose agent's own
+ * changes wait for the approval (`pushOnly`, its PR's number), it also holds „Nur pushen“: the
+ * changes go onto the PR now, the merge later.
+ */
+function Later({ item, act, pushOnly }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; pushOnly?: number }) {
+  const extra = pushOnly !== undefined ? { label: t.review.pushOnly, hint: t.review.pushOnlyHint, onClick: () => void act({ action: 'pushChanges' }, { close: true, ack: t.review.pushed(pushOnly), pending: t.review.pushingHeld }) } : undefined;
+  if ((!snoozable(item) || item.snoozed) && !extra) return null;
+  return <SnoozeMenu label={t.snooze.button} onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })} {...(extra ? { extra } : {})} />;
+}
+
+/**
+ * Approving a review card: „Mergen (PR #5)“, or where its agent's own changes wait for the approval,
+ * „Pushen und mergen“, and with requests to the contributor beside them „Pushen und an … schicken“,
+ * which merges nothing and leaves the card waiting for them.
+ */
+function ApproveReview({ c, act }: { c: Contribution; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+  const go = (ack: string, pending: string) => act({ action: 'approve' }, { close: true, ack, pending });
+  if (c.held?.asks.length)
+    return (
+      <button className="btn primary" title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
+        {t.review.pushSend(c.author)}
+      </button>
+    );
+  const label = c.held ? (c.clash ? t.review.pushMergeAnyway(c.number) : t.review.pushMerge(c.number)) : c.clash ? t.review.mergeAnyway(c.number) : t.review.merge(c.number);
+  return (
+    <button className="btn primary" title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
+      {label}
+    </button>
+  );
 }
 
 // ------------------------------------------------------------------ ideas
@@ -1301,9 +1318,7 @@ function Conversation({
   // a workstream's task is its text in the plan doc, which stands beside the conversation
   const task = (isWorked(item) || !!item.prototypeEnd) && item.brief === undefined && item.source !== 'plan' && (!!item.body.trim() || !!item.images?.length);
   const seed = task ? (
-    <Seed item={item} by={taskAuthor(item)} who={`${t.talk.opening[taskAuthor(item)]} · ${t.task}`}>
-      <Scope files={item.scope} />
-    </Seed>
+    <Seed item={item} by={taskAuthor(item)} who={`${t.talk.opening[taskAuthor(item)]} · ${t.task}`} />
   ) : (
     idea && !past && item.body.trim() && !opened(events, item.body) && <Seed item={item} by="owner" who={t.idea.seed} />
   );
@@ -1449,14 +1464,13 @@ const takeBack = (cardId: string, e: CardEvent) =>
 /** Who wrote the task an agent started on: the owner, a plan doc, the Arbeitsrückschau, an agent's proposal, or a prototype's idea. */
 
 /** Where a conversation starts, as its first message: what was said to an idea, the task an agent started on; long ones folded. */
-function Seed({ item, by, who, children }: { item: Item; by: string; who: string; children?: ReactNode }) {
+function Seed({ item, by, who }: { item: Item; by: string; who: string }) {
   return (
     <Msg by={by} className="seed" who={who}>
       <Fold>
         <Body md={item.body} />
       </Fold>
       <Shots ids={item.images} />
-      {children}
     </Msg>
   );
 }
@@ -1486,25 +1500,6 @@ function Fold({ children, lines }: { children: ReactNode; lines?: number }) {
         </button>
       )}
     </>
-  );
-}
-
-/** The files the Koordinator expects a card to change, folded. */
-function Scope({ files }: { files?: string[] }) {
-  if (!files?.length) return null;
-  return (
-    <details className="p-task">
-      <summary>
-        {t.scope} ({files.length})
-      </summary>
-      <ul className="p-files">
-        {files.map((f) => (
-          <li key={f}>
-            <code>{f}</code>
-          </li>
-        ))}
-      </ul>
-    </details>
   );
 }
 
@@ -2135,18 +2130,17 @@ function useZoom(video: RefObject<HTMLVideoElement | null>) {
     const r = player.current!.getBoundingClientRect();
     const back = { left: r.left, top: r.top, width: r.width, height: cur.from.height * (r.width / cur.from.width) };
     setBox({ ...cur, closing: true });
-    el.animate([{ transform: 'none' }, { transform: onto(back, cur.to) }], { duration: ZOOM_MS, easing: ZOOM_EASE, fill: 'forwards' }).onfinish = () => {
-      setBox(null);
-      el.getAnimations().forEach((a) => a.cancel());
-    };
+    el.animate([{ transform: 'none' }, { transform: onto(back, cur.to) }], { duration: ZOOM_MS, easing: ZOOM_EASE, fill: 'forwards' }).onfinish = () => setBox(null);
   };
   const toggleRef = useRef(toggle);
   toggleRef.current = toggle;
-  // grows out of where it stood
+  // grows out of where it stood; back in its place, it lets go of the shrinking's last frame only
+  // once it no longer stands zoomed, so the large video does not show for a frame in between
   const zoomed = !!box;
   useLayoutEffect(() => {
     const cur = boxRef.current;
-    if (!cur || !screen.current) return;
+    if (!screen.current) return;
+    if (!cur) return screen.current.getAnimations().forEach((a) => a.cancel());
     screen.current.animate([{ transform: onto(cur.from, cur.to) }, { transform: 'none' }], { duration: ZOOM_MS, easing: ZOOM_EASE });
   }, [zoomed]);
   useEffect(() => {
@@ -2231,12 +2225,16 @@ function Findings({ item, decides, onPush }: { item: Item; decides: boolean; onP
               <a href={f.url} target="_blank" rel="noreferrer">
                 {t.review.status[f.status](c.author)} ↗
               </a>
+            ) : f.status === 'fixed' && c.held ? (
+              t.review.fixedHeld
             ) : (
               t.review.status[f.status](c.author)
             )}
           </div>
         ) : f.decided ? (
-          <div className="f-status pending">{f.decided === 'self' ? t.review.goingSelf : f.decided === 'later' ? t.review.goingLater : t.review.goingTo(c.author)}</div>
+          <div className="f-status pending">
+            {f.decided === 'self' ? t.review.goingSelf : f.decided === 'later' ? t.review.goingLater : f.withChanges ? t.review.goingWithChanges(c.author) : t.review.goingTo(c.author)}
+          </div>
         ) : (
           decides && (
             <div className="choices single f-choices" role="group">
@@ -2358,8 +2356,12 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
   );
 }
 
-/** A card's pull request: its checks, whether it is ready, and its review. */
-function PrBox({ pr }: { pr: PullRequest }) {
+/**
+ * A card's pull request: its checks, whether it is ready, and its review. On a review card whose
+ * agent's own changes wait for the approval (`held`), first what goes onto the PR with it: how many
+ * commits, the text posted with them, and the findings it asks the contributor for.
+ */
+function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; author?: string }) {
   return (
     <div className="question pr">
       <h4>
@@ -2367,6 +2369,17 @@ function PrBox({ pr }: { pr: PullRequest }) {
           {t.pr.title(pr.number)} ↗
         </a>
       </h4>
+      {held && (
+        <div className="pr-held">
+          <h5>
+            {t.review.heldHead(pr.number)} · {t.review.heldCommits(held.commits)}
+          </h5>
+          <div className="pr-held-text">
+            <Body md={held.body} />
+          </div>
+          {held.asks.length > 0 && author && <div className="pr-held-asks">{t.review.heldAsks(held.asks, author)}</div>}
+        </div>
+      )}
       {pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
       {pr.ready && <div className="q-text">{pr.held ? t.pr.held(pr.held.score, pr.held.by) : pr.manual ? t.pr.manual : t.pr.ready(pr.mergeError ?? '')}</div>}
       {pr.checks.length > 0 ? (

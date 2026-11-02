@@ -10,7 +10,7 @@ agent got them); the agent's questions with their options and the owner's pick m
 replies; its handovers (the one a demo came with carries the report's question, with its options
 and the owner's pick marked, muted once answered; a handover in the same turn as a reply stands
 under it after a dashed line as „Übergabe“); and what the Koordinator looked up. Small lines between
-them mark state changes (started, pull request, approved, landed, the demo's link put on the pull
+them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, the demo's link put on the pull
 request, stopped, errors, usage limit); an address in them is a link (the comment on the pull
 request, say). Everything else (tool calls, thoughts, status
 lines, Obeya's notes) folds away as „Verlauf“ under the agent's next message. Obeya's reply to what
@@ -204,11 +204,15 @@ What a card's work made or changed is its result, shown on the left for folder a
 The change list at the top of the column is also its row of tabs, so each file shows once: a line
 per file with its sign (＋ added, ✎ changed, ↪ moved or renamed, ✕ deleted), its path cut at the
 front so the name stays, its lines added and removed, and on a folder card what discarding would
-leave. „▶ Demo“ comes first, then the files the worker named at its handover (`ready_for_review`'s
+leave. The demo comes first, named by its kind („Demo-Video“, „Demo-Artefakt“; „Demo“ where the
+card's demos are of both) and without a play mark: it is a tab, not a player, and a ▶ there made
+it read as a button that ought to start a video (a colleague's report, 2026-11-02). Then the files the worker named at its handover (`ready_for_review`'s
 `files`, the caption under the path), then other changed files that can be shown, documents first;
 last, greyed and not to be picked, deleted files, directories and files that are neither documents
 nor text (their line counts still open their diff). The line picked is marked like a tab; a click on
-a line shows its file below, a click on its line counts its changes there. Beside a demo, and while
+a line shows its file below, a click on its line counts its changes there. Where what a click picked
+(the line marked already too) lies out of sight, below the column's visible part or under the card's
+buttons in a low window, the click scrolls it into view: otherwise it seemed to do nothing. Beside a demo, and while
 the agent is at work (working, stopped, or asking), the list shows the demo and the named files
 only, the other changed files folded under „N geänderte Dateien ▾“ (or „und N weitere ▾“ below named
 files), and no file is picked until the owner picks one; handed over without a demo, the list is

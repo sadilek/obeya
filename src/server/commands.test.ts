@@ -665,6 +665,17 @@ describe('the Koordinator remembers', () => {
     expect(brief).not.toContain('Read src/app.ts');
   });
 
+  test('review cards stand out from tasks titled like reviews, in the card list and the history', async () => {
+    const contribution = { url: 'https://github.com/acme/shop/pull/4', number: 4, author: 'alice', title: 'Round totals', canModify: true };
+    board.work(board.create({ title: 'PR #4: Round totals', x: 0, y: 0 }).id, { contribution: JSON.stringify(contribution) });
+    board.create({ title: 'Review PR #3', x: 0, y: 0 });
+    const { brief } = await say(commander(), 'was liegt an?', 'reply', { confirm: 'Zwei Karten.' });
+    expect(brief).toContain('"PR #4: Round totals" (review card for PR #4 by alice)');
+    expect(brief).toContain('K1 "PR #4: Round totals": new review card for PR #4');
+    expect(brief).toContain('K2 "Review PR #3": new card');
+    expect(brief).not.toMatch(/"Review PR #3" \(review card/);
+  });
+
   test('a long session makes way for a fresh one that starts from memory', async () => {
     board.create({ title: 'Export', x: 0, y: 0 });
     const k = commander(2);

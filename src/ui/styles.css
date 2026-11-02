@@ -238,7 +238,7 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 
 /* ---------- chrome ---------- */
 /* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the panels docked at the window's edges */
-#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
+#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1), padding-left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
 .pill { background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 0; white-space: nowrap; }
@@ -266,7 +266,7 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.restart .tip.risk { border-left: 3px solid var(--waiting); }
 .pill.restart:hover:not(:has(button:hover)) > .tip.why, .pill.restart button:hover > .tip.risk { display: block; }
 /* the navigation at the bar's left (src/ui/nav.tsx): the canvas's name, and under it the canvases
-   with what waits for the owner on each, as the phone's „Für dich“ shows it */
+   with what waits for the owner on each, as the phone's „Braucht dich“ shows it */
 .nav-pill { position: relative; }
 .nav-pill .switch { cursor: pointer; }
 .nav-pill .switch.on { background: var(--chip); }
@@ -287,6 +287,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .nav-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .nav-head h2 { margin: 0; font: 600 21px/1.15 var(--serif); }
 .nav-sheet .nav-head { height: 30px; margin: 0 0 12px; }
+/* in the app on a Mac the window's traffic lights sit in its head, as tall as the bar; it stays put as the list scrolls under it
+   (a sticky box keeps clear of its scroller's padding, hence the negative top) */
+.nav-sheet.titlebar .nav-head { position: sticky; top: -14px; z-index: 1; height: 58px; margin: -14px -14px 0; padding: 0 14px 0 92px; background: var(--panel); }
 .nav-pin { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px;
   background: var(--chip); color: var(--muted); cursor: pointer; }
 .nav-pin:hover, .nav-pin.on { color: var(--ink); }
@@ -395,8 +398,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.workspaces .ws-menu .hint { font-size: 12px; line-height: 1.4; }
 #bar > svg { flex: none; margin-right: 4px; }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-/* the traffic lights of the app's window on a Mac sit at the bar's left */
+/* the traffic lights of the app's window on a Mac sit at the bar's left, or in the pinned navigation's head */
 #bar.titlebar { padding-left: 92px; }
+#bar.titlebar.beside-nav { padding-left: 14px; }
 .kpill .n { background: var(--planned); color: var(--on-ink); border-radius: 3px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
 /* the bar's buttons always fit (src/ui/barFit.ts): narrower than its contents, the bar gives up in steps the
@@ -663,9 +667,6 @@ textarea.p-body:focus { border-color: var(--muted); }
 .p-status { color: var(--muted); font-weight: 500; }
 .p-h { margin: 22px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .p-error { color: var(--error); margin: 12px 0 0; font-size: 13.5px; }
-.p-task { margin-top: 14px; font-size: 13.5px; }
-.p-task summary { cursor: pointer; color: var(--muted); }
-.p-task .p-lead { font-size: 14px; }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
 .demo-view video { width: 100%; border-radius: 3px; background: #000; display: block; }
@@ -1053,6 +1054,12 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .talk .msg .demo-q.answered b { color: var(--muted); }
 .question.pr { border-color: var(--inPr); background: color-mix(in srgb, var(--inPr) 7%, transparent); }
 .question.pr h4 a { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
+/* on a review card: what goes onto the PR with the approval, the agent's text as the contributor will read it */
+.pr-held { margin-top: 10px; }
+.pr-held h5 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pr-held-text { padding: 6px 10px; border-radius: 6px; background: var(--card); border: 1px solid color-mix(in srgb, var(--inPr) 25%, transparent); font-size: 13px; }
+.pr-held-text .p-lead { margin: 4px 0; }
+.pr-held-asks { margin-top: 6px; font-size: 13px; color: var(--waiting); }
 .checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .checks li::before { margin-right: 5px; font-weight: 700; }
 .checks li.success::before { content: "✓"; color: var(--approved); }
@@ -1124,7 +1131,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .qlist.on-card li.own .hint { font-weight: 400; }
 .qlist.on-card li.own[data-sorting=dragged] { box-shadow: var(--lift); }
 .sorting, .sorting * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
-.p-files { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
 .card.queued .state { font-style: italic; }
 .card.queued::before { background: repeating-linear-gradient(90deg, var(--c) 0 8px, transparent 8px 13px); }
 .question h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -1204,7 +1210,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .shot img { height: 88px; max-width: 240px; object-fit: cover; border-radius: 2px; display: block; }
 .talk .msg.by-owner .shots { justify-content: flex-end; }
 /* where a conversation starts, long ones folded to about eight lines */
-.talk .msg.seed .p-task { margin-top: 6px; font-size: 13px; }
 .talk .msg.by-plan .who, .talk .msg.by-proposal .who { color: var(--muted); }
 .fold { font-size: 14px; }
 .fold.folded { max-height: calc(var(--fold-lines, 8) * 1lh + 2px); overflow: hidden; }
@@ -1754,10 +1759,10 @@ button.link:hover { text-decoration: underline; }
 
 /* while the pointer is on a card with waits: the cards it waits for and those waiting for it, over every step */
 #deps { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
-/* every wait as a faint line under the cards; those around the card under the pointer in the waiting colour */
-/* never thinner on screen than a hair when zoomed out, its head growing with it */
-#deps .faint { fill: none; stroke: var(--dep-line); stroke-width: max(1.5px, calc(1.2px / var(--s))); }
-#deps .lit { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+/* every wait as a faint line under the cards; those around the card under the pointer in the waiting
+   colour, as wide as the faint one (the width comes with the path) */
+#deps .faint { fill: none; stroke: var(--dep-line); }
+#deps .lit { fill: none; stroke: var(--waiting); }
 #deps marker.faint path { fill: var(--dep-line); }
 #deps marker.lit path { fill: var(--waiting); }
 .card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
@@ -1989,7 +1994,7 @@ button.link:hover { text-decoration: underline; }
 .ph-card .state::after { margin-left: 7px; }
 .ph-card .state .state-text { display: contents; }
 .ph-card .state .since { color: var(--muted); font-weight: 500; white-space: pre; }
-/* everything in „Für dich“ waits for the owner: the heading says so, no pin on each card */
+/* everything in „Braucht dich“ waits for the owner: the heading says so, no pin on each card */
 .ph-card .badge { display: none; }
 .ph-none { margin: 0; color: var(--muted); font-size: 14.5px; }
 /* „Geplant“ and „Erledigt“ below the lists, closed until their head is tapped; opened, the head stands under the bar */
@@ -2184,6 +2189,8 @@ button.link:hover { text-decoration: underline; }
 .personal-private { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .personal-private li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
 .site-setup { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.cfg-sub > .tag-propose { flex-direction: column; align-items: flex-start; gap: 6px; }
+.tag-propose > .hint { margin: 0; }
 .site-setup > .seg { margin-top: 0; }
 .site-setup > .hint { margin: 0; }
 .personal-actions { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; }
@@ -2199,13 +2206,19 @@ button.link:hover { text-decoration: underline; }
 
 /* Owner-drawn dependencies and their edge handles. */
 .manual-deps { position: absolute; left: 0; top: 0; overflow: visible; z-index: 3; pointer-events: none; }
-.manual-deps .manual-ghost { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+.manual-deps .manual-ghost { fill: none; stroke: var(--waiting); }
 .manual-deps marker path { fill: var(--waiting); }
 .manual-deps .manual-ghost { opacity: .55; stroke-dasharray: 7 5; }
-#deps .manual-hit { fill: none; stroke: transparent; stroke-width: 22; pointer-events: stroke; }
+#deps .manual-hit { fill: none; stroke: transparent; pointer-events: stroke; }
 .manual-edge foreignObject { overflow: visible; opacity: 0; pointer-events: none; }
 .manual-edge:hover foreignObject, .manual-edge:focus-within foreignObject { opacity: 1; pointer-events: auto; }
-.manual-edge button { width: 28px; height: 28px; border: 1px solid var(--waiting); border-radius: 50%; background: var(--card); color: var(--waiting); cursor: pointer; }
+/* faint like the other remove buttons, darker under the pointer; sized by its foreignObject, which
+   keeps it the same on screen at every zoom */
+.manual-edge button { display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 100%; padding: 0;
+  border: calc(1px / var(--s)) solid var(--line); border-radius: 50%; background: var(--card); color: var(--muted); cursor: pointer;
+  transition: color .12s, border-color .12s; }
+.manual-edge button svg { width: 54%; height: 54%; }
+.manual-edge button:hover, .manual-edge button:focus-visible { color: var(--ink); border-color: var(--muted); }
 .connection-handles { position: absolute; z-index: 4; pointer-events: none; }
 .connection-handles.target { pointer-events: auto; outline: 3px solid var(--waiting); outline-offset: 3px; border-radius: 4px; }
 .connection-dot { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid var(--c); border-radius: 50%; background: var(--card); opacity: 0; pointer-events: none; cursor: pointer; transform: translate(-50%, -50%); }
@@ -2218,3 +2231,6 @@ button.link:hover { text-decoration: underline; }
 .connection-handles.s-waiting.underway { --c: var(--approved); }
 .connection-handles.s-waiting.answering { --c: var(--working); }
 .connection-handles:not(.snoozed):not(.underway):not(.answering):is(.s-waiting, .s-idea.your-turn), .connection-handles.dep-highlight { --c: var(--waiting); }
+/* what an arrow does, beside the pointer while the owner draws their first */
+#dephint { position: fixed; z-index: 40; pointer-events: none; transform: translate(16px, 16px); max-width: 300px; margin: 0; padding: 6px 10px; border-radius: 3px;
+  background: var(--ink); color: var(--bg); font: 13px/1.35 var(--cond); text-align: left; animation: fade .15s ease-out; }

@@ -4,7 +4,7 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { LANGUAGES } from '../core/locale';
@@ -2064,6 +2064,7 @@ function RepoSettingsBlock({
               />,
             )}
             {sub(c.siteTags, <TagLines tags={site.tags} placeholder={c.siteTagsPlaceholder} label={c.siteTags} onChange={(tags) => setSite({ tags })} />, true)}
+            {!folder && <TagProposal path={repo.path} current={site.tags} language={demoLanguage} onTags={(tags) => setSite({ tags })} />}
             {/* not a label: a click on its words would press the first button */}
             <div className="wide">
               <span className="hint">{c.sitePublish}</span>
@@ -2203,6 +2204,92 @@ function TagLines({ tags, placeholder, label, onChange }: { tags: PageTags | und
         onChange(parseTagLines(e.target.value));
       }}
     />
+  );
+}
+
+/**
+ * „Tags von einem Agenten vorschlagen lassen“ under the site's tags: a read-only agent reads the
+ * repository and its cards with their demos and proposes a vocabulary, which goes into the field
+ * for the owner to change and save; the tags before can be had back. Offered where the repository
+ * runs on a canvas; a proposal that finished while the dialog was closed is taken in when it opens again.
+ */
+function TagProposal({ path, current, language, onTags }: { path: string; current: PageTags | undefined; language: NarrationLanguage | null; onTags: (tags: PageTags | undefined) => void }) {
+  const [job, setJob] = useState<TagProposalJob | null>(null);
+  const [available, setAvailable] = useState(false);
+  const [taken, setTaken] = useState<{ why: string; before: PageTags | undefined } | null>(null);
+  const [status, setStatus] = useState('');
+  const c = t.config.settings;
+  // the poll outlives renders: the field as it is now, and the draft to set
+  const now = useRef({ current, onTags });
+  now.current = { current, onTags };
+  const take = (j: TagProposalJob | null) => {
+    setJob(j);
+    if (!j || j.running) return;
+    if (j.tags) {
+      setTaken({ why: j.why ?? '', before: now.current.current });
+      now.current.onTags(j.tags);
+    }
+    void api.tagProposalTaken(path).catch(console.error);
+  };
+  const poll = () =>
+    api.tagProposal(path).then((r) => {
+      setAvailable(r.available);
+      take(r.job);
+    }, console.error);
+  useEffect(() => {
+    if (path.trim()) void poll();
+  }, [path]);
+  const running = !!job?.running;
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(poll, 2000);
+    return () => clearInterval(timer);
+  }, [running, path]);
+  if (!available && !running) return null;
+  return (
+    <div className="wide tag-propose">
+      <button
+        type="button"
+        className="btn small"
+        title={c.siteTagsProposeHint}
+        disabled={running}
+        onClick={async () => {
+          setStatus('');
+          setTaken(null);
+          try {
+            take((await api.proposeTags(path, current, language)).job);
+          } catch (e) {
+            setStatus(failText(e));
+          }
+        }}
+      >
+        {running ? c.siteTagsProposing : c.siteTagsPropose}
+      </button>
+      {running && <p className="hint">{c.siteTagsProposeHint}</p>}
+      {taken && (
+        <p className="hint">
+          {c.siteTagsProposed} {taken.why}{' '}
+          {taken.before && (
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                onTags(taken.before);
+                setTaken(null);
+              }}
+            >
+              {c.siteTagsBefore}
+            </button>
+          )}
+        </p>
+      )}
+      {job?.error && !running && (
+        <p className="p-error">
+          {c.siteTagsProposeFailed} {job.error}
+        </p>
+      )}
+      {status && <p className="p-error">{status}</p>}
+    </div>
   );
 }
 

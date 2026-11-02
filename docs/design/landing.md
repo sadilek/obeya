@@ -182,11 +182,14 @@ same; anything else the owner says (a question, more to look at) stays on the ca
   account; the findings it names are sent, linking it, and the card waits for the contributor (`in
   PR`, „Wartet auf Beitragenden“), its log linking the review. Their comments since then and a new
   head (once per commit) go to the worker, which reviews again, updates the findings and hands over
-  anew.
+  anew. This goes out at once only while none of the worker's own changes are under way or held
+  (below); otherwise the request goes with them.
 - Itself: only where the PR allows edits by maintainers (GitHub's „Allow edits by maintainers“;
-  otherwise the choice is greyed with the reason). The worker makes the change, pushes it onto the
-  PR's branch in the contributor's fork, writes a short comment on the PR saying what and why, marks
-  the finding fixed and hands over with a new demo. The squash merge keeps the contributor as author.
+  otherwise the choice is greyed with the reason). The worker commits the change on the card's
+  branch, which stands on the PR's head, marks the finding fixed and hands over with a new demo and
+  the text for the PR: what it changed and why, in the PR's language. The worker pushes and posts
+  nothing itself (see Own changes wait for the approval). The squash merge keeps the contributor as
+  author.
 - As a follow-up task: for what is worth doing but no reason to hold the PR up (the same gap in
   files the PR does not touch, say). The worker makes the tasks with a tool of its own, as tasks
   (not proposals) beside the review card, following up on it, each started at once and waiting in
@@ -200,7 +203,8 @@ same; anything else the owner says (a question, more to look at) stays on the ca
   handover, its reply (which may end its turn) and its change request.
 
 „Mergen (PR #5)“ approves: Obeya reads the PR, and at a head other than the one handed over (the
-contributor pushed since) it merges nothing and the worker reviews the PR as it is. Otherwise the
+contributor pushed since) it pushes, posts and merges nothing, and the worker reviews the PR as it
+is, its own commits not pushed yet put on top of the new head. Otherwise the
 demo goes on its page as with any approval („Demo teilen und am PR verlinken“, see Publishing on
 approval), its link goes into a comment on the PR once the page is online (the description stays the
 contributor's), and Obeya merges with the repository's allowed method, squash first, pinned to the
@@ -210,6 +214,40 @@ does it there. Where neither the repository nor the global git configuration set
 and the local `main` has commits of its own, it pulls with a rebase, as Obeya brings its own work
 onto `main`; without commits of its own it fast-forwards, uncommitted changes outside the merge
 kept. A PR closed without a merge asks the owner whether the card can go; „Ja“ closes it as done.
+
+#### Own changes wait for the approval
+
+What Obeya does on a contributor's PR in the owner's name goes out only with the owner's approval of
+the demo, except a request to the contributor alone, which the owner sent with their decision. The
+worker's own commits stay on the card's branch; at a handover Obeya reads the PR's head on the
+forge and counts the commits of the card's branch on top of it. A branch that does not build on that
+head (the contributor pushed, and the worker had not fetched it) cannot be handed over. With commits
+of its own, the handover brings the text that goes onto the PR with them, and the card shows it in
+the PR's block under „Geht mit der Freigabe an PR #5“ with the number of commits; the owner's words
+to the worker change it, and it hands over the new text, the demo standing where nothing else
+changed. Findings decided for the contributor in the same Send as „Selbst ändern“, or while the
+worker's own changes are under way or held, go in the same text as one message, and read „Geht mit
+deinen Änderungen an amerlander“ until the approval; the owner's choice for them is not asked again.
+Follow-up tasks are made at once, as always: they are the owner's, not the contributor's.
+
+The approve button names what it does:
+
+- own changes alone: „Pushen und mergen (PR #5)“; „Später …“ also holds „Nur pushen“, after which the
+  card waits with „Mergen (PR #5)“ again;
+- own changes and requests to the contributor: „Pushen und an amerlander schicken“, which merges
+  nothing: the card then waits for the contributor as after any change request;
+- no own changes: as above.
+
+On the approval Obeya acts, not the worker: it pushes the card's branch onto the PR's branch in the
+contributor's repository (the head repository and branch the forge names), fast-forward only and
+without the workspace's git hooks, since the PR's code ran there; then it posts the text with the
+owner's account, as a comment, or with requests as one review asking for changes, and marks the
+findings fixed or sent, linking the post. A merge after it is pinned to the head just pushed. A push
+the contributor's repository rejects as no fast-forward is a push of theirs that the forge had not
+shown yet: nothing is posted or merged, and the worker reviews the PR as it is now, as for a moved
+head. Any other refusal (rights, the network) stays with the owner, with the reason. A text the
+forge refuses after the push stops it there: nothing is merged, the card waits with „Mergen“ and
+the reason, and the findings it asked the contributor for are open again, to be decided anew.
 
 #### Unpushed commits the PR collides with
 
@@ -229,8 +267,9 @@ that landed it (a link to it), the files, and the two ways out, each naming whos
 work. The recommended one is „main pushen und PR anpassen“: after an undo window Obeya pushes the
 local `main` to the remote, never forced (what the remote has of its own pulled first, as above;
 where that would conflict, nothing is pushed and the card says why), and the review card's agent
-brings the PR up to date with it: itself on the PR's branch where the contributor allows
-maintainers' edits, else by a change request to them; then it hands over again. The other is to
+brings the PR up to date with it: itself on the card's branch where the contributor allows
+maintainers' edits (pushed with the next approval, as Own changes wait for the approval says),
+else by a change request to them; then it hands over again. The other is to
 merge anyway, which leaves `main` unpushed (below). The approve button then reads „Trotzdem
 mergen (PR #5)“, and the card on the canvas says „⚠ kollidiert mit lokalem main“. A collision the card did
 not show yet when the owner clicks („Mergen“ while a landing just moved `main`) holds the merge
@@ -364,6 +403,15 @@ A card no agent worked on, a prototype or an archived card has no field.
 - **One card per PR, the demo linked in a comment on it** (2026-10-27): each demo gets a page of its
   own, and the description is the contributor's.
 - **Obeya merges only the head the worker reviewed** (2026-10-27).
+- **The worker's own changes to a contributor's PR wait for the owner's approval, and one approval
+  sends everything** (2026-11-02, the review of PR #34: the commits for three findings were pushed
+  onto the contributor's branch and commented on before the owner had seen the demo). Obeya, not the
+  worker, pushes and posts, so nothing goes out in the owner's name that they have not seen; requests
+  to the contributor beside own changes go in the same text, so the contributor gets one message and
+  does not work on a branch that is pushed to afterwards. Rejected: two approvals, one for the push
+  and one for the merge (a round more where the owner merges after their own correction anyway;
+  „Nur pushen“ covers the other case); requests at once and own changes after the approval (two
+  messages to the contributor, who may by then be working on the branch pushed to afterwards).
 - **The findings are an element of the card, decided on one by one, the decisions going with the
   one Send** (2026-10-27, the owner after the first demo). Rejected: a switch below the field for
   where a change request goes (it read as if what is typed into the field went to the contributor or

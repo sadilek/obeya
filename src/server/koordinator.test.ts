@@ -837,6 +837,22 @@ describe('Koordinator waits for a free workspace', () => {
     expect(git(at, 'log', '-1', '--format=%B')).not.toContain('Obeya-Kept');
   });
 
+  test("a card whose clone was taken goes on once one is free, whatever arrows the owner drew meanwhile", async () => {
+    pool(1);
+    const a = card('A');
+    k.request(a.id);
+    await scope(['src/a.ts']);
+    board.connect(card('Prerequisite').id, a.id);
+    const b = card('B');
+    k.request(b.id);
+    await scope(['src/b.ts']);
+    k.evict(a.id);
+    await until(() => item(b.id).state === 'working');
+    expect(item(a.id)).toMatchObject({ state: 'planned', queue: { workspace: 'none', begun: true } });
+    await workers.stop(b.id);
+    await until(() => item(a.id).state === 'working');
+  });
+
   test("taking a card's clone waits a few seconds, in which the owner takes it back", async () => {
     pool(1);
     k = new Koordinator({ board, runtime, home: () => join(dir, 'main'), repoFor: () => ({ workers, workspaces, adapter: generic, path: join(dir, 'main') }), holdMs: 40 });

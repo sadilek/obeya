@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
+import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
 import type { Wish } from '../core/wish';
 import { noteMessage, watchPageStalls } from './stalls';
 
@@ -208,6 +208,10 @@ export const api = {
   setUpRepoSite: (path: string, host: 'cloudflare' | 'github', name: string, how: SiteHow = {}) => call<{ job: SiteSetupJob | null }>('POST', '/api/site-setup', { path, host, name, ...how }),
   repoSiteSetup: (path: string) => call<{ job: SiteSetupJob | null }>('GET', `/api/site-setup?path=${encodeURIComponent(path)}`),
   repoSiteTaken: (path: string) => call<object>('DELETE', `/api/site-setup?path=${encodeURIComponent(path)}`),
+  proposeTags: (path: string, current: PageTags | undefined, language: NarrationLanguage | null) =>
+    call<{ job: TagProposalJob }>('POST', '/api/tag-proposal', { path, ...(current ? { current } : {}), ...(language ? { language } : {}) }),
+  tagProposal: (path: string) => call<{ job: TagProposalJob | null; available: boolean }>('GET', `/api/tag-proposal?path=${encodeURIComponent(path)}`),
+  tagProposalTaken: (path: string) => call<object>('DELETE', `/api/tag-proposal?path=${encodeURIComponent(path)}`),
   demoSettings: () => call<DemoSettingsView>('GET', '/api/demo-settings'),
   saveDemoSettings: (settings: DemoSettings) => call<DemoSettingsView>('PUT', '/api/demo-settings', settings),
   checkDemoVoice: (settings: DemoSettings) => call<DemoVoiceCheck>('POST', '/api/demo-settings/check', settings),

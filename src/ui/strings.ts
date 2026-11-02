@@ -498,6 +498,11 @@ const de = {
     waiting: 'In der Warteschlange',
     checkingLong: 'Obeya prüft, ob die Aufgabe mit laufender Arbeit wahrscheinlich in Merge-Konflikte gerät.',
     behind: (cards: { title: string; notStarted: boolean }[]) => `Wartet auf ${cards.map((c) => `„${c.title}“${c.notStarted ? ' (noch nicht gestartet)' : ''}`).join(', ')}.`,
+    /** Why a card waits that only the owner's arrows hold. */
+    drawn: 'Du hast die Karten verbunden; sie startet, sobald das erledigt ist.',
+    /** After a wait Obeya inferred, the cards the owner's arrows hold it for besides. */
+    drawnToo: (cards: { title: string; notStarted: boolean }[]) =>
+      `Außerdem wartet sie auf ${cards.map((c) => `„${c.title}“${c.notStarted ? ' (noch nicht gestartet)' : ''}`).join(', ')}: Du hast die Karten verbunden.`,
     workspace: 'Wartet auf Workspace',
     slot: 'Wartet auf freien Slot',
     paused: 'Wartet: Leinwand pausiert',
@@ -516,6 +521,8 @@ const de = {
     dequeue: 'Aus der Warteschlange nehmen',
     drag: 'Ziehen, um die Aufgabe an einen anderen Platz zu stellen',
     forced: 'Gestartet, trotz möglicher Merge-Konflikte.',
+    /** Started anyway where only the owner's arrows held it. */
+    forcedDrawn: 'Gestartet, ohne auf die verbundenen Karten zu warten.',
     earlier: 'Früher',
     later: 'Später',
     place: (n: number, of: number) => `Platz ${n} von ${of} in der Warteschlange.`,
@@ -536,6 +543,11 @@ const de = {
     removed: 'Abhängigkeit entfernt.',
     before: 'kommt zuerst',
     after: 'wartet darauf',
+    /** While the owner draws their first arrow: what it will do. */
+    pick: (from: string) => `Klick auf die Karte, die warten soll: Sie beginnt erst, wenn „${from}“ erledigt ist. Esc bricht ab.`,
+    waits: (from: string, to: string) => `„${to}“ beginnt erst, wenn „${from}“ erledigt ist.`,
+    /** The arrow refused because the two cards would wait for each other. */
+    cycle: (from: string, to: string) => `Kein Pfeil: „${from}“ wartet schon auf „${to}“, direkt oder über andere Karten. Die beiden würden aufeinander warten.`,
   },
   /** A card whose repository does not run on the canvas (`Item.repoDown`): on the card, and in its panel. */
   repoDown: {
@@ -548,6 +560,8 @@ const de = {
     unknownCard: 'Das gibt es nicht mehr.',
     unknownGroup: 'Diese Gruppe gibt es nicht mehr.',
     project: 'Ein Projekt wird über seine Workstreams bearbeitet, nicht als Ganzes.',
+    dependencyCycle: 'Kein Pfeil: Die beiden Karten würden aufeinander warten, weil die erste schon auf die zweite wartet, direkt oder über andere Karten.',
+    planDependency: 'Kein Pfeil: Projekte und ihre Workstreams bekommen ihre Reihenfolge aus dem Plan-Doc.',
     notPlanned: 'Nur eine geplante Aufgabe kann gestartet werden.',
     queued: 'Die Aufgabe liegt schon bei Obeya.',
     notQueued: 'Die Aufgabe wartet nicht in der Warteschlange.',
@@ -570,11 +584,12 @@ const de = {
     notReview: 'Diese Karte prüft keinen Pull Request.',
     noEdits: 'Der Beitragende erlaubt keine Änderungen durch Maintainer: Befunde gehen an ihn.',
     noFinding: 'Über diesen Befund ist schon entschieden.',
-    prMoved: 'Nicht gemergt: Der PR steht nicht mehr auf dem übergebenen Stand. Der Agent prüft ihn neu.',
+    prMoved: 'Nichts gepusht oder gemergt: Der PR steht nicht mehr auf dem übergebenen Stand. Der Agent prüft ihn neu.',
     pullClash: 'Nicht gemergt: Der PR kollidiert mit ungepushten Commits auf main (steht jetzt auf der Karte). Erst main pushen, oder trotzdem mergen.',
     noClash: 'Der PR kollidiert mit nichts Ungepushtem auf main (mehr).',
     prClosed: 'Der Pull Request ist geschlossen.',
     mergeRefused: 'Nicht gemergt:',
+    pushRefused: 'Nicht gepusht:',
     noPr: 'Diesen Pull Request kann Obeya nicht lesen:',
     notFolder: 'Das geht nur in einem Ordner ohne git.',
     inFolder: 'Das gibt es in einem Ordner ohne git nicht.',
@@ -648,7 +663,6 @@ const de = {
     invalid: 'Das hat nicht geklappt. Der Server hat die Aktion abgelehnt.',
   } satisfies Record<ErrorCode, string>,
   offlineError: 'Der Server ist nicht erreichbar.',
-  scope: 'Voraussichtlich betroffen',
   voice: {
     hold: 'Halten zum Sprechen (Leertaste)',
     koordinator: 'Obeya',
@@ -713,11 +727,13 @@ const de = {
     } as Record<'sent' | 'fixed' | 'resolved' | 'dropped' | 'later', (author: string) => string>,
     laterCard: (title: string) => `Folgeaufgabe „${title}“`,
     goingTo: (author: string) => `Geht an ${author} …`,
+    goingWithChanges: (author: string) => `Geht mit deinen Änderungen an ${author}`,
+    fixedHeld: 'Vom Agenten geändert; geht mit der Freigabe auf den PR',
     goingSelf: 'Der Agent ändert es …',
     goingLater: 'Wird Folgeaufgabe …',
     bundle: (ids: number[]) => `Befunde ${ids.join(' + ')}: eine Folgeaufgabe`,
     tasks: (n: number) => `→ ${n === 1 ? '1 Folgeaufgabe' : `${n} Folgeaufgaben`}`,
-    selfHint: 'Der Agent ändert es selbst und pusht auf den Branch des PRs',
+    selfHint: 'Der Agent ändert es selbst; auf den Branch des PRs geht es erst mit deiner Freigabe',
     decideHint: 'Pro Befund wählen; die Wahl geht mit „Senden“ an den Agenten, gern mit ein paar Worten dazu.',
     decidedLine: (id: number, what: string) => `Befund ${id}: ${what}`,
     undecide: 'Wahl verwerfen',
@@ -735,6 +751,20 @@ const de = {
       `Oder „Trotzdem mergen“: Der Pull danach hält dort an, und ${card ? `der Agent von „${card}“` : 'der Agent dieser Karte'} setzt main neu auf und löst den Konflikt, ohne dass main gepusht wird.`,
     clashShort: '⚠ kollidiert mit lokalem main',
     mergeHint: 'Veröffentlicht die Demo, verlinkt sie in einem Kommentar am PR, mergt genau den geprüften Stand und holt main nach.',
+    /** Above the text the review card's agent wrote for the PR, while its own changes wait for the approval. */
+    heldHead: (n: number) => `Geht mit der Freigabe an PR #${n}`,
+    heldCommits: (n: number) => (n === 1 ? '1 Commit' : `${n} Commits`),
+    heldAsks: (ids: number[], author: string) => `${ids.length === 1 ? `Befund ${ids[0]}` : `Befunde ${ids.join(', ')}`}: ${ids.length === 1 ? 'geht' : 'gehen'} mit deinen Änderungen an ${author}`,
+    pushMerge: (n: number) => `Pushen und mergen (PR #${n})`,
+    pushMergeAnyway: (n: number) => `Trotzdem pushen und mergen (PR #${n})`,
+    pushMergeHint: 'Pusht die Änderungen des Agenten auf den Branch des PRs und postet den Text dazu, veröffentlicht die Demo, verlinkt sie am PR, mergt genau diesen Stand und holt main nach.',
+    pushSend: (author: string) => `Pushen und an ${author} schicken`,
+    pushSendHint: (author: string) => `Pusht die Änderungen des Agenten auf den Branch des PRs und schickt den Text als Review „Request changes“ an ${author}. Gemergt wird nicht; die Karte wartet dann auf ${author}.`,
+    pushOnly: 'Nur pushen',
+    pushOnlyHint: 'Pusht die Änderungen des Agenten auf den Branch des PRs und postet den Text dazu, ohne zu mergen. Danach wartet die Karte wieder mit „Mergen“.',
+    pushed: (n: number) => `Auf PR #${n} gepusht.`,
+    pushedSent: (author: string) => `Gepusht und an ${author} geschickt.`,
+    pushingHeld: 'wird gepusht …',
     merged: (n: number) => `PR #${n} gemergt.`,
     merging: 'wird gemergt …',
     onApproval: 'Demo teilen und am PR verlinken',
@@ -893,7 +923,7 @@ const de = {
     download: 'Herunterladen',
   },
   files: {
-    demo: 'Demo',
+    demo: { video: 'Demo-Video', html: 'Demo-Artefakt', any: 'Demo' } satisfies Record<DemoKind | 'any', string>,
     more: (n: number) => `und ${n} weitere`,
     changed: (n: number) => (n === 1 ? '1 geänderte Datei' : `${n} geänderte Dateien`),
     less: 'weniger',
@@ -1078,7 +1108,7 @@ const de = {
   },
   /** The phone view (src/ui/phone.tsx). */
   phone: {
-    forYou: 'Für dich',
+    forYou: 'Braucht dich',
     running: 'Läuft',
     nothingWaits: 'Nichts wartet auf dich.',
     nothingRuns: 'Gerade arbeitet kein Agent.',
@@ -1290,6 +1320,12 @@ const de = {
       siteMaxFile: 'Größte Datei (MiB)',
       siteTags: 'Tags der Seiten, eine Dimension pro Zeile: Name, Doppelpunkt, erlaubte Werte mit Komma',
       siteTagsPlaceholder: 'Bereich: Abrechnung, Berichte, Einstellungen\nZielgruppe: Admins, Endkunden',
+      siteTagsPropose: 'Tags von einem Agenten vorschlagen lassen',
+      siteTagsProposing: 'Agent liest Repository und Karten …',
+      siteTagsProposeHint: 'Ein Agent liest, wie die App im Repository aufgebaut ist, und die Karten dieses Repositorys, erledigte und offene, auch archivierte, mit ihren Demos. Seinen Vorschlag trägt er ins Feld ein; „Speichern“ übernimmt ihn.',
+      siteTagsProposed: 'Vorschlag eingetragen, „Speichern“ übernimmt ihn.',
+      siteTagsBefore: 'Vorherige Tags zurückholen',
+      siteTagsProposeFailed: 'Kein Vorschlag:',
       sitePublish: 'Auf die Site kommt eine Demo',
       sitePublishes: { click: 'beim Klick auf „Teilen“', approved: 'mit der Freigabe' },
       siteSetup: 'Demo-Seite einrichten …',
@@ -2421,6 +2457,9 @@ const en: Strings = {
     waiting: 'In the queue',
     checkingLong: 'Obeya checks whether the task is likely to run into merge conflicts with work in progress.',
     behind: (cards: { title: string; notStarted: boolean }[]) => `Waits for ${cards.map((c) => `“${c.title}”${c.notStarted ? ' (not started yet)' : ''}`).join(', ')}.`,
+    drawn: 'You connected the cards; it starts once that is done.',
+    drawnToo: (cards: { title: string; notStarted: boolean }[]) =>
+      `It also waits for ${cards.map((c) => `“${c.title}”${c.notStarted ? ' (not started yet)' : ''}`).join(', ')}: you connected the cards.`,
     workspace: 'Waiting for a workspace',
     slot: 'Waiting for a free slot',
     paused: 'Waiting: canvas paused',
@@ -2437,6 +2476,7 @@ const en: Strings = {
     dequeue: 'Take out of the queue',
     drag: 'Drag to move the task to another place',
     forced: 'Started, despite possible merge conflicts.',
+    forcedDrawn: 'Started without waiting for the cards you connected it to.',
     earlier: 'Earlier',
     later: 'Later',
     place: (n: number, of: number) => `Place ${n} of ${of} in the queue.`,
@@ -2455,6 +2495,9 @@ const en: Strings = {
     removed: 'Dependency removed.',
     before: 'comes first',
     after: 'waits for it',
+    pick: (from: string) => `Click the card that is to wait: it starts only once “${from}” is done. Esc cancels.`,
+    waits: (from: string, to: string) => `“${to}” starts only once “${from}” is done.`,
+    cycle: (from: string, to: string) => `No arrow: “${from}” already waits for “${to}”, directly or through other cards. The two would wait for each other.`,
   },
   repoDown: {
     short: 'Repository not running',
@@ -2465,6 +2508,8 @@ const en: Strings = {
     unknownCard: 'That no longer exists.',
     unknownGroup: 'This group no longer exists.',
     project: 'A project is worked on through its workstreams, not as a whole.',
+    dependencyCycle: 'No arrow: the two cards would wait for each other, because the first already waits for the second, directly or through other cards.',
+    planDependency: 'No arrow: projects and their workstreams take their order from the plan doc.',
     notPlanned: 'Only a planned task can be started.',
     queued: 'The task is already with Obeya.',
     notQueued: 'The task is not waiting in the queue.',
@@ -2487,11 +2532,12 @@ const en: Strings = {
     notReview: 'This card reviews no pull request.',
     noEdits: 'The contributor does not allow edits by maintainers: findings go to them.',
     noFinding: 'This finding has been decided on already.',
-    prMoved: 'Not merged: the PR is no longer at the state handed over. The agent reviews it again.',
+    prMoved: 'Nothing pushed or merged: the PR is no longer at the state handed over. The agent reviews it again.',
     pullClash: 'Not merged: the PR collides with unpushed commits on main (now shown on the card). Push main first, or merge anyway.',
     noClash: 'The PR no longer collides with anything unpushed on main.',
     prClosed: 'The pull request is closed.',
     mergeRefused: 'Not merged:',
+    pushRefused: 'Not pushed:',
     noPr: 'Obeya cannot read this pull request:',
     notFolder: 'That is only possible in a folder without git.',
     inFolder: 'A folder without git has no such thing.',
@@ -2565,7 +2611,6 @@ const en: Strings = {
     invalid: 'That did not work. The server refused the action.',
   },
   offlineError: 'The server cannot be reached.',
-  scope: 'Likely affected',
   voice: {
     hold: 'Hold to speak (space)',
     koordinator: 'Obeya',
@@ -2620,11 +2665,13 @@ const en: Strings = {
     } as Record<'sent' | 'fixed' | 'resolved' | 'dropped' | 'later', (author: string) => string>,
     laterCard: (title: string) => `Follow-up task “${title}”`,
     goingTo: (author: string) => `Going to ${author} …`,
+    goingWithChanges: (author: string) => `Goes to ${author} with your changes`,
+    fixedHeld: 'Changed by the agent; goes onto the PR with the approval',
     goingSelf: 'The agent changes it …',
     goingLater: 'Becoming a follow-up task …',
     bundle: (ids: number[]) => `Findings ${ids.join(' + ')}: one follow-up task`,
     tasks: (n: number) => `→ ${n === 1 ? '1 follow-up task' : `${n} follow-up tasks`}`,
-    selfHint: 'The agent changes it itself and pushes onto the PR’s branch',
+    selfHint: 'The agent changes it itself; it goes onto the PR’s branch only with your approval',
     decideHint: 'Choose per finding; the choice goes to the agent with Send, with a few words of yours if you like.',
     decidedLine: (id: number, what: string) => `Finding ${id}: ${what}`,
     undecide: 'Drop the choice',
@@ -2642,6 +2689,19 @@ const en: Strings = {
       `Or “Merge anyway”: the pull afterwards stops there, and ${card ? `the agent of “${card}”` : 'this card’s agent'} rebases main and resolves the conflict, without main being pushed.`,
     clashShort: '⚠ collides with local main',
     mergeHint: 'Publishes the demo, links it in a comment on the PR, merges exactly the reviewed state and pulls main.',
+    heldHead: (n: number) => `Goes to PR #${n} with the approval`,
+    heldCommits: (n: number) => (n === 1 ? '1 commit' : `${n} commits`),
+    heldAsks: (ids: number[], author: string) => `${ids.length === 1 ? `Finding ${ids[0]}` : `Findings ${ids.join(', ')}`}: ${ids.length === 1 ? 'goes' : 'go'} to ${author} with your changes`,
+    pushMerge: (n: number) => `Push and merge (PR #${n})`,
+    pushMergeAnyway: (n: number) => `Push and merge anyway (PR #${n})`,
+    pushMergeHint: 'Pushes the agent’s changes onto the PR’s branch and posts the text with them, publishes the demo, links it on the PR, merges exactly this state and pulls main.',
+    pushSend: (author: string) => `Push and send to ${author}`,
+    pushSendHint: (author: string) => `Pushes the agent’s changes onto the PR’s branch and sends the text to ${author} as a review requesting changes. Nothing is merged; the card then waits for ${author}.`,
+    pushOnly: 'Push only',
+    pushOnlyHint: 'Pushes the agent’s changes onto the PR’s branch and posts the text with them, without merging. The card then waits with “Merge” again.',
+    pushed: (n: number) => `Pushed onto PR #${n}.`,
+    pushedSent: (author: string) => `Pushed and sent to ${author}.`,
+    pushingHeld: 'pushing …',
     merged: (n: number) => `PR #${n} merged.`,
     merging: 'merging …',
     onApproval: 'Share the demo and link it on the PR',
@@ -2793,7 +2853,7 @@ const en: Strings = {
     download: 'Download',
   },
   files: {
-    demo: 'Demo',
+    demo: { video: 'Demo video', html: 'Demo artifact', any: 'Demo' },
     more: (n: number) => `and ${n} more`,
     changed: (n: number) => (n === 1 ? '1 changed file' : `${n} changed files`),
     less: 'fewer',
@@ -2969,7 +3029,7 @@ const en: Strings = {
     toSection: 'Devices and settings',
   },
   phone: {
-    forYou: 'For you',
+    forYou: 'Needs you',
     running: 'Running',
     nothingWaits: 'Nothing waits for you.',
     nothingRuns: 'No agent is at work right now.',
@@ -3173,6 +3233,12 @@ const en: Strings = {
       siteMaxFile: 'Largest file (MiB)',
       siteTags: 'Tags of the pages, a dimension per line: its name, a colon, its values separated by commas',
       siteTagsPlaceholder: 'Area: Billing, Reports, Settings\nAudience: Admins, Customers',
+      siteTagsPropose: 'Have an agent propose the tags',
+      siteTagsProposing: 'The agent reads the repository and the cards …',
+      siteTagsProposeHint: 'An agent reads how the app in the repository is built, and the cards of this repository, finished and open, archived ones too, with their demos. It puts its proposal into the field; “Save” takes it over.',
+      siteTagsProposed: 'Proposal filled in; “Save” takes it over.',
+      siteTagsBefore: 'Bring back the tags before',
+      siteTagsProposeFailed: 'No proposal:',
       sitePublish: 'A demo goes on the site',
       sitePublishes: { click: 'on a click on “Share”', approved: 'with the approval' },
       siteSetup: 'Set up a demo site …',
@@ -3966,10 +4032,11 @@ export const errorText = (code: string | undefined) => (code && Object.hasOwn(t.
 
 /**
  * The owner's text for a call that failed: the server's refusal, else `offline` (Obeya could not be
- * reached). For the codes in `detail`, the refusal's own message follows, which names the particulars.
+ * reached). For the codes in `detail`, and those whose text ends in a colon, the refusal's own
+ * message follows, which names the particulars.
  */
 export const failText = (e: unknown, { detail = [], offline = t.offlineError }: { detail?: string[]; offline?: string } = {}) =>
-  e instanceof ApiError ? errorText(e.code) + (e.code && detail.includes(e.code) ? ` ${e.message}` : '') : offline;
+  e instanceof ApiError ? errorText(e.code) + (e.code && (detail.includes(e.code) || errorText(e.code).endsWith(':')) ? ` ${e.message}` : '') : offline;
 
 /**
  * On a phone, which has no space bar: the texts that name it name the microphone instead. Enter

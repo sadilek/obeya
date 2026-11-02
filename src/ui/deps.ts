@@ -5,6 +5,7 @@
 // another card gets somewhere waits for that card; and a card waits for those the owner drew an arrow
 // from. A wait ends once the card waited for is finished.
 
+import type { Bounds } from '../core/layout';
 import { finished, type Item } from '../core/types';
 
 export interface Deps {
@@ -60,4 +61,36 @@ export function depsOf(id: string, items: Item[]): Deps | undefined {
   const after = walk((x) => waiters.get(x) ?? [], (x, y) => [x, y]);
   if (!before.size && !after.size) return undefined;
   return { before, after, edges: [...edges.values()] };
+}
+
+// ---------------------------------------------------------------- the dots an owner draws an arrow from
+
+export type Side = 'top' | 'right' | 'bottom' | 'left';
+export const SIDES: Side[] = ['top', 'right', 'bottom', 'left'];
+
+/** The middle of a card's edge, where its dot for that side sits. */
+export function handleAt(b: Bounds, side: Side): { x: number; y: number } {
+  if (side === 'top') return { x: b.x + b.w / 2, y: b.y };
+  if (side === 'bottom') return { x: b.x + b.w / 2, y: b.y + b.h };
+  if (side === 'left') return { x: b.x, y: b.y + b.h / 2 };
+  return { x: b.x + b.w, y: b.y + b.h / 2 };
+}
+
+/** The dot nearest to world point `at` within `reach` (world units), among the cards `cards`; null when none is that close. */
+export function nearestHandle(cards: { id: string; b: Bounds }[], at: { x: number; y: number }, reach: number): { id: string; side: Side } | null {
+  let best: { id: string; side: Side } | null = null;
+  let bestD = Infinity;
+  for (const { id, b } of cards) {
+    // a card whose edges all lie farther away has no dot in reach
+    if (at.x < b.x - reach || at.x > b.x + b.w + reach || at.y < b.y - reach || at.y > b.y + b.h + reach) continue;
+    for (const side of SIDES) {
+      const h = handleAt(b, side);
+      const d = Math.hypot(h.x - at.x, h.y - at.y);
+      if (d <= reach && d < bestD) {
+        best = { id, side };
+        bestD = d;
+      }
+    }
+  }
+  return best;
 }

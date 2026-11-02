@@ -3,8 +3,8 @@
 // agent works on; new tasks that start, wait, or start at a time the owner names; questions with no card open (an opinion becomes
 // an idea, a fact stays in the conversation, work on the machine such as a new repository is a task);
 // actions that depend on reading first, looked up with the step to take then;
-// requests Obeya cannot do, or words for its makers; and a step promised for once a card is done,
-// which it waits for and then takes by itself.
+// requests Obeya cannot do, or words for its makers; a step promised for once a card is done,
+// which it waits for and then takes by itself; and reviews of pull requests, a review card each.
 // Runs only with OBEYA_LIVE=1 (it uses the machine's
 // Claude login and takes about a minute): `OBEYA_LIVE=1 bun test src/server/commands.live.test.ts`.
 
@@ -328,6 +328,58 @@ test.skipIf(!process.env.OBEYA_LIVE)(
     const wrong = results.filter((r) => JSON.stringify(r.got.now) !== JSON.stringify(r.want) || (r.on !== null && r.got.on !== r.on) || !configured(r));
     for (const r of results)
       console.log(`${wrong.includes(r) ? '✗' : '✓'} „${r.text}“ → ${r.got.now.join(', ')} · ${r.got.confirm} · body: ${r.got.body} · waits on: ${r.got.on}, then: ${r.got.then} → ${r.got.after?.map((c) => c.do).join(', ')} · ${r.got.notice}`);
+    expect(wrong.map((r) => r.text)).toEqual([]);
+  },
+  300_000,
+);
+
+/**
+ * What the owner says to have pull requests reviewed (several in one sentence, or the step taken
+ * once the open ones are looked up), on a canvas whose history holds tasks titled like reviews
+ * beside a review card, and the number of review cards expected: one for each pull request.
+ */
+const REVIEWS: [string, number][] = [
+  ['Mach Reviews der Pull Requests 5, 6 und 7.', 3],
+  ['Review Pull Requests 5 und 6, jeweils auf ihrer eigenen Karte.', 2],
+  ['Review PR 5', 1],
+  ['Mach eine Reviewkarte für die neuen Pull-Requests.', 3],
+];
+
+/** What the Koordinator makes of one request for reviews: the actions as they run. */
+async function reviews(text: string) {
+  const board = new Board(new Store(':memory:'), { id: 'c', name: 'Shop', repos: [{ id: 'shop', name: 'Shop', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
+  board.work(board.create({ title: 'Checkout button looks disabled', x: 0, y: 0 }).id, { state: 'live' });
+  const contribution = { url: 'https://github.com/acme/shop/pull/4', number: 4, author: 'alice', title: 'Round totals to cents', canModify: true };
+  board.work(board.create({ title: 'PR #4: Round totals to cents', x: 0, y: 0 }).id, { state: 'done', contribution: JSON.stringify(contribution) });
+  board.addTalk('Review bitte Pull Request Nummer 4.', 'Neue Aufgabe für das Review von Pull Request 4, der Agent prüft ihn.');
+  // tasks made for reviews before, which only look like review cards
+  board.work(board.create({ title: 'Review PR #2', body: 'Review Pull Request 2.', x: 0, y: 0 }).id, { state: 'done' });
+  board.work(board.create({ title: 'Review PR #3', body: 'Review Pull Request 3.', x: 0, y: 0 }).id, { state: 'waiting', need: 'demo', demo: DEMO });
+  board.addTalk('Review Pull Requests 2 und 3, jeweils auf ihrer eigenen Karte.', 'Neue Aufgaben „Review PR #2“ und „Review PR #3“, die Agenten starten.');
+  board.addPreference('When a request of mine contains several separate tasks (e.g. a release and a website update), create a separate card for each instead of one card for all.');
+  board.addPreference("When I ask for a review of a pull request, the review checks the changes (including anything hidden that doesn't belong there) and records no demo video if the PR already contains one.");
+  const executed: Command[] = [];
+  const runtime = withAgentSetting(sdkRuntime, () => AGENT_DEFAULTS.koordinator);
+  const asked: number[] = [];
+  const k = new Commander({ board, runtime, cwd: cwd(), execute: (c) => void executed.push(c), lookUp: (t) => void asked.push(t), delayMs: 1 });
+  const heard = await k.hear(text, {}, [], { typed: true });
+  if (heard.token) k.arm(heard.token);
+  // the open pull requests, looked up: the Koordinator takes the step it looked them up for
+  if (asked.length) {
+    board.answerTalk(asked[0]!, 'Three open pull requests are newer than PR #4:\n- #5 "Empty cart shows a hint" by bob: https://github.com/acme/shop/pull/5\n- #6 "Discount codes" by carol: https://github.com/acme/shop/pull/6\n- #7 "Currency symbol per locale" by dave: https://github.com/acme/shop/pull/7', 'koordinator');
+    k.answerIn(asked[0]!);
+    for (const end = Date.now() + 120_000; !executed.length && Date.now() < end; ) await new Promise((r) => setTimeout(r, 100));
+  }
+  await new Promise((r) => setTimeout(r, 20));
+  return { did: executed.map((c) => c.do), executed };
+}
+
+test.skipIf(!process.env.OBEYA_LIVE)(
+  'every pull request the owner asks to have reviewed gets a review card of its own, also beside tasks titled like reviews',
+  async () => {
+    const results = await Promise.all(REVIEWS.flatMap((c) => [c, c, c]).map(async ([text, want]) => ({ text, want, got: await reviews(text) })));
+    const wrong = results.filter((r) => JSON.stringify(r.got.did) !== JSON.stringify(Array(r.want).fill('reviewPr')));
+    for (const r of results) console.log(`${wrong.includes(r) ? '✗' : '✓'} „${r.text}“ → ${r.got.did.join(', ') || 'nothing'} · ${JSON.stringify(r.got.executed.map((c) => (c.do === 'reviewPr' ? c.pr : 'title' in c ? c.title : '')))}`);
     expect(wrong.map((r) => r.text)).toEqual([]);
   },
   300_000,

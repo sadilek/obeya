@@ -7,7 +7,7 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type CardDiff, diffSize, shownChanges, splitDiff } from '../core/diff';
 import { type ChangeRow, changeRows, imageAt, type ShownFile } from '../core/files';
-import type { Item } from '../core/types';
+import type { DemoKind, Item } from '../core/types';
 import { api, cardFile } from './api';
 import { ChangeNote, DiffView, FileDiff, Lines, MARK } from './diff';
 import { Doc, DocImages } from './markdown';
@@ -48,6 +48,9 @@ function useChange(item: Item, given: CardDiff | null | undefined): CardDiff | n
  */
 export function ResultFiles({ item, diff, demo, tab, onTab }: { item: Item; diff?: CardDiff | null; demo: ReactNode; tab: string | null; onTab: (path: string) => void }) {
   const change = useChange(item, diff);
+  // the demo's line says what it is, a video or an artifact; where the card's demos are of both kinds, only that it is the demo
+  const kinds = new Set([...(item.demos ?? []), item.demo].map((d) => d?.kind ?? 'video'));
+  const demoKind = demo ? (kinds.size === 1 ? [...kinds][0]! : 'any') : undefined;
   // beside a demo, and while the agent is at work, the code behind the result waits folded
   const fold = !!demo || atWork(item);
   const rows = changeRows(change, item.files);
@@ -73,6 +76,14 @@ export function ResultFiles({ item, diff, demo, tab, onTab }: { item: Item; diff
     shown.current = current;
     if (current !== DEMO) demoBox.current?.querySelectorAll('video').forEach((v) => v.pause());
   }, [current]);
+  // a line picked brings its view into sight where it lies below the column's visible part, the line picked already too:
+  // the click would otherwise seem to do nothing
+  const [picked, setPicked] = useState(0);
+  useEffect(() => {
+    if (!picked) return;
+    const view = current === DEMO ? (demoBox.current?.querySelector('video, iframe') ?? demoBox.current) : box.current?.querySelector('.r-file');
+    if (view && !seen(view)) view.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [picked]);
   if (!rows.length && !demo) return item.files && change ? <p className="hint">{t.files.none}</p> : null;
   const file = files.find((f) => f.path === current);
   // the size of the whole change stands with its files, not up in the card's branch line
@@ -84,12 +95,13 @@ export function ResultFiles({ item, diff, demo, tab, onTab }: { item: Item; diff
         <ChangeList
           item={item}
           rows={rows}
-          demo={!!demo}
+          demo={demoKind}
           fold={fold}
           total={count ? { ...diffSize(change!.files), files: count } : undefined}
           current={current}
           onPick={(path, changes) => {
             onTab(path);
+            setPicked(picked + 1);
             if (changes !== undefined) setAsChanges({ ...asChanges, [path]: changes });
           }}
         />
@@ -122,7 +134,7 @@ export const atWork = (item: Item) => item.state === 'working' || item.state ===
  * The card's change list, a line per file: its sign, its path (cut at the front, so its name stays),
  * its lines added and removed, and in a folder what discarding would leave. With `onPick` it picks
  * what the left column shows: the line `current` marked, a click on a line showing its file (on its
- * lines, its changes), the demo first where there is one (`demo`), lines without a view greyed. A
+ * lines, its changes), the demo first where there is one (`demo`, named by its kind), lines without a view greyed. A
  * line's lines open its diff over the page where it has no view, and without `onPick` its path does
  * too. With `fold`, only the demo and the files its worker named show, the rest a click away; without it,
  * the lines past `FOLD`. `total`, the size of the whole change, stands below the list and opens its whole diff.
@@ -138,7 +150,7 @@ export function ChangeList({
 }: {
   item: Item;
   rows: ChangeRow[];
-  demo?: boolean;
+  demo?: DemoKind | 'any';
   fold?: boolean;
   total?: { added: number; removed: number; files: number };
   current?: string;
@@ -175,10 +187,10 @@ export function ChangeList({
           {visible.map((l) =>
             l === DEMO ? (
               <tr key="demo" className={current === DEMO ? 'cl-row on' : 'cl-row'} onClick={() => pick?.(DEMO)}>
-                <td className="f-mark">▶</td>
+                <td />
                 <td className="cl-path">
                   <button className="cl-name" role="tab" aria-selected={current === DEMO}>
-                    {t.files.demo}
+                    {t.files.demo[demo!]}
                   </button>
                 </td>
                 <td />
@@ -262,6 +274,13 @@ function Line({ row, on, onPick, onDiff, tabs }: { row: ChangeRow; on: boolean; 
       <td className="d-del">{lines && count(`−${row.removed}`)}</td>
     </tr>
   );
+}
+
+/** Whether enough of `el` is in sight to be seen, not only a strip of its top: in the window, scrolled into view and not under the card's buttons. */
+function seen(el: Element): boolean {
+  const r = el.getBoundingClientRect();
+  const at = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(200, r.height / 2));
+  return !!at && el.contains(at);
 }
 
 const base = (path: string) => path.slice(path.lastIndexOf('/') + 1);

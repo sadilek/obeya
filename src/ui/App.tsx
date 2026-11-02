@@ -8,6 +8,7 @@ import { api, ApiError, beforeReload, onNotice, quietAtStart, reportFocus, setCa
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
+import { clip } from '../core/text';
 import { type ActDone, Detail, type Pending } from './detail';
 import { Cards } from './message';
 import type { Heard, Where } from './api';
@@ -20,8 +21,8 @@ import { PhoneDialog } from './access';
 import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
-import { QueuePill } from './queue';
-import { depsOf, waitsAmong } from './deps';
+import { forcedText, QueuePill } from './queue';
+import { depsOf, handleAt, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
@@ -34,7 +35,7 @@ import { attachTo, imageFiles } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
-import { CardView, cardClass, shownState, DepLinks, linkPath, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
+import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath, linkSpot, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
@@ -105,6 +106,8 @@ function NoCanvas() {
 /** While the page loads, and after a restart until the canvas is back: the sign in the middle, above "offline" when the server cannot be reached. */
 /** The canvases the phone view last had, for when the machine does not answer. */
 const KEPT_CANVASES = 'obeya-phone-canvases';
+/** Set once the owner has drawn their first arrow between cards: what an arrow does no longer shows while drawing. */
+const DEP_KNOWN = 'obeya-dep-known';
 function keepCanvases(list: CanvasInfo[]) {
   try {
     localStorage.setItem(KEPT_CANVASES, JSON.stringify(list));
@@ -810,7 +813,7 @@ function Canvas({
   const startCard = useCallback(async (i: Item) => {
     try {
       await api.act(i.id, { action: i.queue ? 'force' : 'start' });
-      if (i.queue) showAck(t.queue.forced);
+      if (i.queue) showAck(forcedText(i.queue));
     } catch (e) {
       fail(e);
     }
@@ -1099,9 +1102,25 @@ function Canvas({
   const [dragWith, setDragWith] = useState<string[]>([]);
   // the card the pointer is on, for the waits around it
   const [hoverId, setHoverId] = useState<string | null>(null);
-  const [connection, setConnection] = useState<{ from: string; side: string; x: number; y: number; target?: string } | null>(null);
-  const [handle, setHandle] = useState<{ id: string; side: string } | null>(null);
+  const [connection, setConnection] = useState<{ from: string; side: Side; x: number; y: number; target?: string } | null>(null);
+  // the dot under the pointer: the canvas renders again only when it changes
+  const [handle, setHandle] = useState<{ id: string; side: Side } | null>(null);
+  const handleRef = useRef(handle);
+  const showHandle = (h: { id: string; side: Side } | null) => {
+    const was = handleRef.current;
+    if (was?.id === h?.id && was?.side === h?.side) return;
+    handleRef.current = h;
+    setHandle(h);
+  };
   const connectable = (item: Item) => item.source !== 'plan' && item.kind !== 'project';
+  // what covers an arrow's trash button: the cards, which lie above the arrows
+  const cardBoxes = useMemo(() => placed.flatMap(({ item, b }) => (item.kind === 'project' ? [] : [b])), [placed]);
+  const titleOf = (id: string) => {
+    const i = byId(id);
+    return clip(i ? plain(i.title) || titleFrom(i.body) || t.titlePlaceholder : '…', 50);
+  };
+  // what an arrow does shows while the owner draws one, until they have drawn their first
+  const [depKnown, setDepKnown] = useState(() => known(DEP_KNOWN));
   // arrows the owner removed that the server may still have: one holding a queued card goes there only
   // once „Rückgängig“ has run out (`sent` from then on), so that taking it back never leaves the card started
   const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
@@ -1283,7 +1302,14 @@ function Canvas({
       if (connection.target) {
         // the arrow drawn again while its removal waits for „Rückgängig“ to run out: it simply stays
         if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
-        else api.dependency(connection.from, connection.target).catch((err) => showAck(failText(err)));
+        else {
+          const { from, target } = connection;
+          api.dependency(from, target).catch((err) => showAck(err instanceof ApiError && err.code === 'dependencyCycle' ? t.deps.cycle(titleOf(from), titleOf(target)) : failText(err)));
+        }
+        if (!depKnown) {
+          know(DEP_KNOWN);
+          setDepKnown(true);
+        }
       }
       setConnection(null);
       return;
@@ -1367,15 +1393,14 @@ function Canvas({
       setConnection({ ...connection, x: p.x, y: p.y, target: near?.id });
       return;
     }
-    const pointer = toWorld(camRef.current, e.clientX, e.clientY);
-    const handles = placed.filter(({ item }) => connectable(item)).flatMap(({ item, b }) => [
-      { id: item.id, side: 'top', x: b.x + b.w / 2, y: b.y },
-      { id: item.id, side: 'right', x: b.x + b.w, y: b.y + b.h / 2 },
-      { id: item.id, side: 'bottom', x: b.x + b.w / 2, y: b.y + b.h },
-      { id: item.id, side: 'left', x: b.x, y: b.y + b.h / 2 },
-    ]);
-    const nearest = handles.map((h) => ({ ...h, distance: Math.hypot(h.x - pointer.x, h.y - pointer.y) * camRef.current.s })).filter((h) => h.distance <= 16).sort((a, b) => a.distance - b.distance)[0];
-    setHandle(nearest ? { id: nearest.id, side: nearest.side } : null);
+    // the dots stay hidden while something is dragged, lassoed or panned, and while a card is open
+    const busy = lassoRef.current || dragRef.current || panRef.current || focusRef.current?.type === 'card';
+    if (busy) showHandle(null);
+    else {
+      const c = camRef.current;
+      const near = placed.flatMap(({ item, b }) => (connectable(item) ? [{ id: item.id, b }] : []));
+      showHandle(nearestHandle(near, toWorld(c, e.clientX, e.clientY), 16 / c.s));
+    }
     if (lassoRef.current) {
       lassoRef.current = [...lassoRef.current, { x: e.clientX, y: e.clientY }];
       setLasso(lassoRef.current);
@@ -1689,21 +1714,23 @@ function Canvas({
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} />
-            <DepLinks placed={placed} waits={waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))} lit={deps?.edges ?? []} standsFor={(id) => (byId(id) ? standsFor(byId(id)!).id : id)}>
-              {/* an arrow the owner drew: under the pointer, a trash button that removes it */}
+            <DepLinks placed={placed} waits={waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))} lit={deps?.edges ?? []} standsFor={(id) => (byId(id) ? standsFor(byId(id)!).id : id)} s={cam.s}>
+              {/* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
+                  covers it; the button and the band that shows it keep their size on screen at every zoom */}
               {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
                 const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
                 if (!a) return [];
-                const x = (a.x + a.w / 2 + b.x + b.w / 2) / 2, y = (a.y + a.h / 2 + b.y + b.h / 2) / 2;
+                const r = 13 / cam.s;
+                const { x, y } = linkSpot(a, b, depHead(cam.s), cardBoxes, r);
                 return [<g className="manual-edge" key={`${from}:${item.id}`}>
-                  <path className="manual-hit" d={linkPath(a, b, 15)} />
-                  <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
+                  <path className="manual-hit" d={linkPath(a, b, depHead(cam.s))} strokeWidth={22 / cam.s} />
+                  <foreignObject x={x - r} y={y - r} width={2 * r} height={2 * r}><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
                 </g>];
               }))}
             </DepLinks>
             <svg className="manual-deps" width="1" height="1">
-              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
-              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = connection.side === 'top' ? {x:a.x+a.w/2,y:a.y} : connection.side === 'bottom' ? {x:a.x+a.w/2,y:a.y+a.h} : connection.side === 'left' ? {x:a.x,y:a.y+a.h/2} : {x:a.x+a.w,y:a.y+a.h/2}; const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, 15) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
+              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
+              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = handleAt(a, connection.side); const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, depHead(cam.s)) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} strokeWidth={depWidth(cam.s)} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
             </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
@@ -1728,7 +1755,7 @@ function Canvas({
               ),
             )}
             {placed.filter(({ item }) => connectable(item)).map(({ item, b }) => <div key={`handles:${item.id}`} data-id={item.id} className={`connection-handles ${cardClass(item, underway[item.id]).replace(/^card\s*/, '')}${depOf(item.id) ? ' dep-highlight' : ''}${connection?.target === item.id ? ' target' : ''}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-              {['top', 'right', 'bottom', 'left'].map((side) => <button key={side} className={`connection-dot ${side}${!connection && handle?.id === item.id && handle.side === side ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
+              {SIDES.map((side) => <button key={side} className={`connection-dot ${side}${!connection && handle?.id === item.id && handle.side === side ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
             </div>)}
             {planDirs?.map((d, n) => (
               <PlanDirNote
@@ -1771,6 +1798,11 @@ function Canvas({
           />
         )}
         {markHint && <MarkHint key={markHint.key} at={markHint.at} />}
+        {connection && !depKnown && (
+          <p id="dephint" style={{ left: cam.x + connection.x * cam.s, top: cam.y + connection.y * cam.s }}>
+            {connection.target ? t.deps.waits(titleOf(connection.from), titleOf(connection.target)) : t.deps.pick(titleOf(connection.from))}
+          </p>
+        )}
         {ring && (
           <Ring
             at={ring.at}
@@ -1784,8 +1816,8 @@ function Canvas({
           />
         )}
         {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} />}
-        {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs) */}
-        <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: 'titlebar', 'data-tauri-drag-region': '' } : {})}>
+        {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
+        <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
           <span className="bar-sign">
             <Sign size={24} />
@@ -1968,8 +2000,9 @@ function Canvas({
 }
 
 /**
- * Where the unfolded card sits: in the middle of the canvas between the panels `side`, as tall as
- * its content needs up to a limit, beyond which it scrolls. Lays the content out at the final width
+ * Where the unfolded card sits: in the middle of the canvas between the panels `side`, reaching over
+ * the sheet where the canvas is too narrow for it, as tall as its content needs up to a limit, beyond
+ * which it scrolls. Lays the content out at the final width
  * to measure it, so call it with the content rendered.
  */
 function panelRect(i: Item, inner: HTMLElement, side: Sides) {
@@ -1978,8 +2011,11 @@ function panelRect(i: Item, inner: HTMLElement, side: Sides) {
   const wide = split(i);
   // a task an agent works on without a result yet is its conversation alone, and only as wide
   const want = wide ? 1600 : talkAlone(i) ? TALK_W : tall ? 980 : 900;
-  // beside a sheet dragged wide a card keeps at least the width of a conversation and reaches over the sheet
-  const W = Math.min(want, Math.max(innerWidth - side.left - side.right - 80, Math.min(TALK_W, innerWidth - 80)));
+  // the sheet lies dimmed under an open card, so a card wider than the canvas reaches over it; the
+  // pinned navigation, which stays usable beside it, limits it unless the window leaves less than a
+  // conversation's width beside the navigation
+  const room = innerWidth - side.left - 80;
+  const W = Math.min(want, Math.max(room, Math.min(TALK_W, innerWidth - 80)));
   inner.style.width = `${W}px`;
   inner.style.removeProperty('--pb');
   inner.style.overflowY = '';
@@ -2020,8 +2056,9 @@ function panelRect(i: Item, inner: HTMLElement, side: Sides) {
   const extra = under(H);
   // through --pb, which the card's sticky row of decisions reaches down over too (styles.css)
   if (extra) inner.style.setProperty('--pb', `${base + extra}px`);
-  // a card wider than the room beside the pinned navigation reaches over it, as it does over a sheet, but stays in the window
-  return { left: `${Math.max(40, Math.min(midX(side) - W / 2, innerWidth - W - 40))}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
+  // in the middle of the canvas where it fits there, else as near to it as the window allows
+  const lo = W <= room ? side.left + 40 : 40;
+  return { left: `${Math.max(lo, Math.min(midX(side) - W / 2, innerWidth - W - 40))}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
 }
 
 /** A panel holding a conversation alone: its column at its widest (560 px, styles.css) and the panel's padding. */
