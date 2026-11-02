@@ -124,7 +124,8 @@
 // is the folder itself, and its `changes`, as `[{ "kind": "added", "path": "…" }]` with `from` for a move, are what it
 // changed there: the files are as `files` and `copy` leave them, a changed one without a copy from before), and `copy` copies a directory into it first (documents, binaries). The repository has settings of its own where `files` hold `.obeya/settings.json` (a demo site among them, say). `poolCheckout` makes the repository's checkout a workspace of the pool too
 // (`workspaces` in the configuration), as a pool of clones often has it, with a bare origin in
-// <dir>; with it, the server
+// <dir>; `settings` are the repository's settings on this machine, in the configuration (a plan
+// folder outside the repository, which only they may name); with either, the server
 // starts from a configuration file in <dir>. `slots` caps the workers busy at once on this machine
 // (an idle worker counts as busy). `hosts` are other machines over SSH (as in the configuration;
 // `root` defaults to <dir>/far there): the repository gets a bare origin in <dir>, copied to each
@@ -230,6 +231,8 @@ interface Stage {
   clones?: number;
   /** The repository's checkout is a workspace of the pool too. */
   poolCheckout?: boolean;
+  /** The repository's settings on this machine, in the configuration (a plan folder outside it, say). */
+  settings?: Record<string, unknown>;
   /** Workers busy at once on this machine. */
   slots?: number;
   /** Other machines over SSH, as in the configuration. */
@@ -479,7 +482,7 @@ const env = {
 };
 // a pool's workspaces live in the configuration, which the command line cannot give
 const configFile = join(dir, 'canvases.json');
-const configured = folder || !!stage.poolCheckout || stage.slots !== undefined || !!stage.hosts?.length || !!stage.name || further.length > 0 || others.length > 0;
+const configured = folder || !!stage.poolCheckout || !!stage.settings || stage.slots !== undefined || !!stage.hosts?.length || !!stage.name || further.length > 0 || others.length > 0;
 if (configured)
   writeFileSync(
     configFile,
@@ -493,6 +496,7 @@ if (configured)
               ...(folder ? { git: false } : {}),
               ...(stage.clones ? { clones: stage.clones } : {}),
               ...(stage.poolCheckout ? { workspaces: [repo] } : {}),
+              ...(stage.settings ? { settings: stage.settings } : {}),
               ...(stage.slots !== undefined ? { slots: stage.slots } : {}),
               ...(stage.hosts?.length ? { hosts: stage.hosts.map(({ gone: _, ...h }) => ({ ...h, root: rootOn(h) })) } : {}),
             },
