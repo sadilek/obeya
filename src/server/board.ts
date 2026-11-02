@@ -386,6 +386,8 @@ export class Board {
   private cache: CanvasSnapshot | null = null;
   /** The snapshot's `items`, also while the rest of it is not built (`items`); gone with `cache`. */
   private itemsCache: Item[] | null = null;
+  /** What `toItems` made of each card's row, for as long as the row stays the same; gone with any change but a write to one card (`work`). */
+  private worked: Worked = new Map();
   /** The archive as `archived` built it; gone with `cache`, since it changes with the same writes. */
   private archiveItems: Item[] | null = null;
   /** The canvas's prototypes, and those `withPrototypes` handed out so far; gone with `cache`. */
@@ -487,6 +489,17 @@ export class Board {
    * landing or a card moving on makes dozens of changes in a row.
    */
   changed() {
+    // the demos' files may have come or gone with it
+    this.worked.clear();
+    this.changedRows();
+  }
+
+  /**
+   * Cards' rows changed, and nothing else: what the other cards' rows make stays (their demos' files
+   * are looked at again with the next change of anything else). A landing writes to its card dozens
+   * of times, each read back at once, on a canvas of hundreds of cards with demos.
+   */
+  private changedRows() {
     this.cache = null;
     this.itemsCache = null;
     this.archiveItems = null;
@@ -679,7 +692,7 @@ export class Board {
   work(id: string, fields: RowUpdate) {
     this.own(id);
     this.store.update(id, fields);
-    this.changed();
+    this.changedRows();
   }
 
   /** The cards of the canvas, archived ones too, that were ever shared or are about to be. */
@@ -1383,7 +1396,7 @@ export class Board {
     const projects = rows.filter((r) => r.plan_ref);
     const docs = projects.map((r) => JSON.parse(r.plan!) as PlanDoc);
     const kids = this.store.children(projects.map((r) => r.id));
-    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home));
+    const items = this.withPrototypes(toItems([...rows, ...kids], docs, this.home, this.worked));
     const byId = new Map(items.map((i) => [i.id, i]));
     const kidsOf = Map.groupBy(items.filter((i) => i.parent), (i) => i.parent!);
     return rows.flatMap((r) => {
@@ -1434,8 +1447,7 @@ export class Board {
    * lease outlived what it was for); it was deleted; or it is a workstream no worker is on whose box
    * the plan doc on the default branch ticks off (`ticked`; `merged` while it is in its pull request,
    * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
-   * in a plan folder outside the repository says nothing of a merge: the worker ticks it there before
-   * its pull request is even open.
+   * in a plan folder outside the repository says nothing of a landing (`tickedAhead`).
    */
   leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
@@ -1450,7 +1462,7 @@ export class Board {
     const hash = row.plan_ref?.indexOf('#') ?? -1;
     if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
-    if (row.state === 'inPr' && OUTSIDE_PATH.test(pathOfRef(row.plan_ref!))) return null;
+    if (row.state === 'inPr' && tickedAhead(row)) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();
     const doc = this.docs?.find((d) => d.file === row.plan_ref!.slice(0, hash));
@@ -1458,7 +1470,7 @@ export class Board {
     // an open pull request goes on without the doc: its watcher sees it merged or closed; a repository
     // not (yet) on the canvas has no docs read
     if (!w) return row.state === 'inPr' || !this.canvas.repos.some((r) => r.id === repoOfRef(row.plan_ref!, this.home)) ? null : 'gone';
-    if (!w.done) return null;
+    if (!w.done || tickedAhead(row)) return null;
     return row.state === 'inPr' ? 'merged' : 'ticked';
   }
 
@@ -1538,22 +1550,24 @@ export class Board {
       this.docsOf = repos;
     }
     const all = this.docs;
-    const docs = this.openDocs(all);
+    let rows = this.store.cards(this.canvas.id);
+    const docs = this.openDocs(all, rows);
     const open = docs.map((d) => d.file).join('\n');
     if (read || open !== this.open) {
       this.open = open;
       this.keepDocs(all, docs);
       if (read) this.reopen(all);
+      // keeping and reopening docs archives and brings back their cards
+      rows = this.store.cards(this.canvas.id);
     }
-    let rows = this.store.cards(this.canvas.id);
-    let items = toItems(rows, docs, this.home);
+    let items = toItems(rows, docs, this.home, this.worked);
     if (this.placeNew(docs, items, all, rows)) {
       // projects seen for the first time keep their doc too
       this.keepDocs(all, docs);
       // what reacts to changes hears of them too (the Koordinator reads what builds on what in a project just come)
       this.tell();
       rows = this.store.cards(this.canvas.id);
-      items = toItems(rows, docs, this.home);
+      items = toItems(rows, docs, this.home, this.worked);
     }
     const manual = this.manualDependencies();
     if (manual.length) {
@@ -1564,7 +1578,7 @@ export class Board {
       });
     }
     items = this.withPrototypes(items);
-    items = this.withElsewhere(items);
+    items = this.withElsewhere(items, rows);
     const inTurn = new Map([...this.turns].flatMap((f) => [...f()]));
     if (inTurn.size) items = items.map((i) => {
       const turn = inTurn.get(i.id);
@@ -1591,12 +1605,15 @@ export class Board {
   }
 
   /** Cards that come from a card on another canvas name it, with that canvas. */
-  private withElsewhere(items: Item[]): Item[] {
+  private withElsewhere(items: Item[], rows: CardRow[]): Item[] {
+    // a card on this canvas is not looked up: the others are, all at once
+    const here = new Set(rows.map((r) => r.id));
+    const ids = [...new Set(items.flatMap((i) => (i.from && !here.has(i.from) ? [i.from] : [])))];
+    const elsewhere = new Map(this.store.elsewhere(ids, this.canvas.id).map((o) => [o.id, o]));
+    if (!elsewhere.size) return items;
     return items.map((i) => {
-      if (!i.from) return i;
-      const from = this.store.card(i.from);
-      if (!from || from.canvas_id === this.canvas.id || from.deleted_at) return i;
-      return { ...i, fromElsewhere: { canvas: from.canvas_id, canvasName: this.store.canvasName(from.canvas_id) ?? from.canvas_id, title: from.title ?? '' } };
+      const from = i.from ? elsewhere.get(i.from) : undefined;
+      return from ? { ...i, fromElsewhere: { canvas: from.canvas, canvasName: from.canvasName ?? from.canvas, title: from.title ?? '' } } : i;
     });
   }
 
@@ -1675,11 +1692,10 @@ export class Board {
    * cards is still at work (in progress, or its worker finishing after the landing). The others'
    * projects have ended.
    */
-  private openDocs(all: PlanDoc[]): PlanDoc[] {
+  private openDocs(all: PlanDoc[], rows: CardRow[]): PlanDoc[] {
     const busy = new Set(
-      this.store
-        .cards(this.canvas.id)
-        .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace)))
+      rows
+        .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace) || tickedAhead(r)))
         .map((r) => r.plan_ref!.slice(0, r.plan_ref!.indexOf('#'))),
     );
     const files = new Set(all.map((d) => d.file));
@@ -2485,6 +2501,16 @@ const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
 /** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
 const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
 
+/**
+ * A workstream card with work not landed yet that a box in a plan folder outside the repository says
+ * nothing of: the worker ticks it there at once, in no commit, so it may be ticked while the card is
+ * in its pull request (before it is even open) or stopped with its branch.
+ */
+function tickedAhead(r: Pick<CardRow, 'plan_ref' | 'state' | 'branch'>): boolean {
+  if (!r.plan_ref || !OUTSIDE_PATH.test(pathOfRef(r.plan_ref))) return false;
+  return r.state === 'inPr' || (r.state === 'planned' && !!r.branch);
+}
+
 /** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
 type Prototypes = {
   rows: PrototypeRef[];
@@ -2496,7 +2522,8 @@ type Prototypes = {
 type PrototypeRef = Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>;
 
 /** Visible items: projects first, their workstreams in doc order, then manual cards. */
-export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] {
+export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?: Worked): Item[] {
+  const work = (r: CardRow) => workOf(r, worked);
   const docByFile = new Map(docs.map((d) => [d.file, d]));
   // a project's group covers its workstreams
   const groupOf = new Map(rows.flatMap((r) => (r.kind === 'project' && r.group_id ? [[r.id, r.group_id]] : [])));
@@ -2562,8 +2589,9 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] 
     const w = doc.workstreams[order];
     if (!w || !r.parent_id) continue;
     const derived = w.done ? 'live' : w.inReview ? 'inPr' : 'planned';
-    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge
-    const state = r.state && ACTIVE.includes(r.state) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
+    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge, and so
+    // does a stopped one whose box a plan folder outside the repository ticked
+    const state = r.state && (ACTIVE.includes(r.state) || tickedAhead(r)) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
     // what landed of a workstream planned again, also while a new run does the rest; once that lands, the card is live
     const shipped = (state === 'planned' || ACTIVE.includes(state)) && r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
     const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(`${doc.file}#${k}`) ?? []);
@@ -2615,6 +2643,23 @@ function newRepoOf(r: CardRow): Pick<Item, 'newRepo'> {
   const { made: _, ...newRepo } = n;
   return { newRepo };
 }
+
+/** What `toItems` made of cards' rows: the fields a worker adds, by card, with the row they came from. */
+type Worked = Map<string, { row: CardRow; work: Partial<Item> }>;
+
+/** The fields a worker adds to the card, as `worked` holds them while its row is the same. */
+function workOf(r: CardRow, worked?: Worked): Partial<Item> {
+  const had = worked?.get(r.id);
+  if (had && sameRow(had.row, r)) return had.work;
+  const made = work(r);
+  worked?.set(r.id, { row: r, work: made });
+  return made;
+}
+
+const sameRow = (a: CardRow, b: CardRow) => {
+  for (const k in b) if (a[k as keyof CardRow] !== b[k as keyof CardRow]) return false;
+  return true;
+};
 
 /** The fields a worker adds to a card. */
 function work(r: CardRow): Partial<Item> {

@@ -21,7 +21,7 @@ import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueue
 import { dimensions, shownTags } from '../core/page-tags';
 import { Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
-import { appended, cardDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft } from './draft';
+import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
@@ -131,7 +131,12 @@ export function Detail(p: Props) {
       setError(failText(e));
     }
   };
-  const act = (a: CardAction, done: ActDone) => run(() => api.act(item.id, a), done);
+  // an approval that posts the text for the PR takes the owner's edit of it as it stands, saved or not
+  const act = (a: CardAction, done: ActDone) =>
+    run(async () => {
+      if (a.action === 'approve' || a.action === 'pushChanges') await saveHeld(item.id);
+      await api.act(item.id, a);
+    }, done);
   // the repository the card is to be built in, before work on it begins: one of the canvas's or a new one
   const choice = useRepoChoice(item, p.onEdit);
   // in a folder without git the card's change list takes the place of its branch
@@ -591,7 +596,9 @@ export function Detail(p: Props) {
                     )
                   }
                 />
-                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author } : {})} />}
+                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && (
+                  <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id, save: (body: string) => api.act(item.id, { action: 'editHeld', body }) } : {})} />
+                )}
                 {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
                 {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
                 {brief}
@@ -2361,7 +2368,7 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
  * agent's own changes wait for the approval (`held`), first what goes onto the PR with it: how many
  * commits, the text posted with them, and the findings it asks the contributor for.
  */
-function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; author?: string }) {
+function PrBox({ pr, held, author, card, save }: { pr: PullRequest; held?: HeldChanges; author?: string; card?: string; save?: (body: string) => Promise<void> }) {
   return (
     <div className="question pr">
       <h4>
@@ -2374,9 +2381,13 @@ function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; auth
           <h5>
             {t.review.heldHead(pr.number)} · {t.review.heldCommits(held.commits)}
           </h5>
-          <div className="pr-held-text">
-            <Body md={held.body} />
-          </div>
+          {card && save ? (
+            <HeldText card={card} body={held.body} save={save} />
+          ) : (
+            <div className="pr-held-text">
+              <Body md={held.body} />
+            </div>
+          )}
           {held.asks.length > 0 && author && <div className="pr-held-asks">{t.review.heldAsks(held.asks, author)}</div>}
         </div>
       )}
@@ -2400,6 +2411,85 @@ function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; auth
         <div className="hint">{t.pr.noChecks}</div>
       )}
       {pr.review && <PrReview entries={pr.review} />}
+    </div>
+  );
+}
+
+/** The draft of the text for the PR the owner is rewriting on card `id`, kept like the card's field. */
+const heldDraft = (id: string) => `${cardDraft(id)}:pr-text`;
+
+/** Saves what the owner wrote into the text for the PR on card `id` and has not saved yet. */
+async function saveHeld(id: string) {
+  const { text } = draftOf(heldDraft(id));
+  if (!text.trim()) return;
+  await api.act(id, { action: 'editHeld', body: text });
+  dropDraft(heldDraft(id));
+}
+
+/**
+ * The text that goes onto the PR with the approval, and „Bearbeiten“ on it: the text as a field in
+ * its place, which „Speichern“ makes the text that goes out, as does the approval. What is typed
+ * waits in a draft of its own until then, through closing the card and a reload; words dictated
+ * with the cursor in it go in.
+ */
+function HeldText({ card, body, save }: { card: string; body: string; save: (body: string) => Promise<void> }) {
+  const key = heldDraft(card);
+  const editing = useDrafting(key);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const { text } = useDraft(key);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useFitHeight(ref, text, editing);
+  useDraftField(key, () => ref.current, false);
+  // the field opens with the cursor after the text, where words are mostly added
+  useEffect(() => {
+    const f = ref.current;
+    if (!editing || !f || document.activeElement === f) return;
+    f.focus({ preventScroll: true });
+    f.setSelectionRange(f.value.length, f.value.length);
+  }, [editing]);
+  const close = () => {
+    dropDraft(key);
+    setError('');
+  };
+  const submit = async () => {
+    if (text.trim() === body) return close();
+    setSaving(true);
+    setError('');
+    try {
+      await save(text);
+      close();
+    } catch (e) {
+      setError(failText(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  if (!editing)
+    return (
+      <div className="pr-held-text">
+        <button
+          className="pr-held-edit"
+          title={t.review.heldEditHint}
+          onClick={() => updateDraft(key, { text: body })}
+        >
+          ✎ {t.review.heldEdit}
+        </button>
+        <Body md={body} />
+      </div>
+    );
+  return (
+    <div className="pr-held-editing">
+      <textarea ref={ref} className="pr-held-field" value={text} maxLength={20000} onChange={(e) => updateDraft(key, { text: e.target.value })} />
+      <div className="pr-held-acts">
+        <button className="btn small primary" disabled={saving || !text.trim()} onClick={() => void submit()}>
+          {t.review.heldSave}
+        </button>
+        <button className="btn small" disabled={saving} onClick={close}>
+          {t.review.heldCancel}
+        </button>
+        {error && <span className="p-error">{error}</span>}
+      </div>
     </div>
   );
 }

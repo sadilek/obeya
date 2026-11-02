@@ -291,6 +291,66 @@ describe('a review card', () => {
     expect(fake.said.comments).toEqual(['I added the shortcut.']);
   });
 
+  test('the owner edits the held text: it goes out with the approval, and the worker hears it before a new pr_draft', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
+    runtime.last.emit({ type: 'idle' });
+    const head = commitOwn(id, 'shortcut.ts');
+    await runtime.last.call('ready_for_review', { summary: 'Fixed 2.', demo: artifact(), review: results, pr_draft: 'I added the shortcut.' });
+    runtime.last.emit({ type: 'idle' });
+    expect(() => workers.editHeld(id, '  ')).toThrow(expect.objectContaining({ code: 'emptyText' }));
+    workers.editHeld(id, 'Thanks! I added a keyboard shortcut on top of your branch.');
+    workers.editHeld(id, 'Thanks a lot! I added a keyboard shortcut on top of your branch.');
+    expect(board.item(id)!.contribution!.held).toEqual({ body: 'Thanks a lot! I added a keyboard shortcut on top of your branch.', commits: 1, asks: [] });
+    expect(board.item(id)!.state).toBe('waiting');
+    expect(board.events(id).filter((e) => e.text === board.t.worker.heldEdited(5))).toHaveLength(2);
+    // the worker, idle, hears only the latest edit, with its next message
+    const before = runtime.last.inbox.length;
+    expect(runtime.last.inbox.slice(-1)[0]).not.toContain('edited the text');
+    workers.message(id, 'Also mention the menu entry.', [], false);
+    const told = runtime.last.inbox.at(-1)!;
+    expect(runtime.last.inbox.length).toBe(before + 1);
+    expect(told).toContain('the owner edited the text that goes onto the pull request');
+    expect(told).toContain('Thanks a lot! I added a keyboard shortcut on top of your branch.');
+    expect(told).not.toContain('Thanks! I added');
+    expect(told).toContain('Also mention the menu entry.');
+    // a pr_draft written before the worker heard of a later edit is refused, and tells it the owner's text
+    workers.editHeld(id, 'Thanks a lot! I added a keyboard shortcut (Ctrl+K) on top of your branch.');
+    const refused = await runtime.last.call('ready_for_review', { summary: 'Menu entry.', review: results, pr_draft: 'I added the shortcut and the menu entry.' });
+    expect(refused).toContain('Not handed over: the owner edited the text');
+    expect(refused).toContain('(Ctrl+K)');
+    expect(board.item(id)!.contribution!.held!.body).toBe('Thanks a lot! I added a keyboard shortcut (Ctrl+K) on top of your branch.');
+    // heard once: the next pr_draft builds on it
+    expect(runtime.last.toolStep() ?? '').not.toContain('edited the text');
+    await runtime.last.call('ready_for_review', { summary: 'Menu entry.', review: results, pr_draft: 'Thanks a lot! I added a keyboard shortcut (Ctrl+K) and a menu entry on top of your branch.' });
+    runtime.last.emit({ type: 'idle' });
+    workers.editHeld(id, 'Thanks a lot! I added a keyboard shortcut (Ctrl+K) and a menu entry.');
+    await workers.approve(id);
+    expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(head);
+    expect(fake.said.comments).toEqual(['Thanks a lot! I added a keyboard shortcut (Ctrl+K) and a menu entry.']);
+    expect(fake.said.merges).toEqual([head]);
+    // what went out is no news for the worker after the merge
+    expect(runtime.last.inbox.at(-1)).not.toContain('edited the text');
+    // nothing held any more: nothing to edit
+    expect(() => workers.editHeld(id, 'Too late.')).toThrow(expect.objectContaining({ code: 'notReady' }));
+  });
+
+  test('an edit the worker hears mid-turn comes with its next tool step', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
+    runtime.last.emit({ type: 'idle' });
+    commitOwn(id, 'shortcut.ts');
+    await runtime.last.call('ready_for_review', { summary: 'Fixed 2.', demo: artifact(), review: results, pr_draft: 'I added the shortcut.' });
+    runtime.last.emit({ type: 'idle' });
+    workers.message(id, 'Look at the menu too.', [], false);
+    workers.editHeld(id, 'Thanks! I added the shortcut.');
+    expect(runtime.last.toolStep()).toContain('Thanks! I added the shortcut.');
+    expect(await runtime.last.call('ready_for_review', { summary: 'Menu.', review: results, pr_draft: 'Thanks! I added the shortcut, and the menu shows it.' })).not.toContain('Not handed over');
+    expect(board.item(id)!.contribution!.held!.body).toBe('Thanks! I added the shortcut, and the menu shows it.');
+  });
+
   test('with requests to the contributor beside its own change, approving pushes and sends both as one review, and the card waits for them', async () => {
     const id = await reviewCard();
     await handOver();

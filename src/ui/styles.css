@@ -1055,10 +1055,16 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .question.pr { border-color: var(--inPr); background: color-mix(in srgb, var(--inPr) 7%, transparent); }
 .question.pr h4 a { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
 /* on a review card: what goes onto the PR with the approval, the agent's text as the contributor will read it */
-.pr-held { margin-top: 10px; }
+.pr-held { margin: 10px 0 8px; }
 .pr-held h5 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .pr-held-text { padding: 6px 10px; border-radius: 6px; background: var(--card); border: 1px solid color-mix(in srgb, var(--inPr) 25%, transparent); font-size: 13px; }
 .pr-held-text .p-lead { margin: 4px 0; }
+.pr-held-edit { float: right; margin: 0 -4px 4px 10px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.pr-held-edit:hover { color: var(--ink); border-color: color-mix(in srgb, var(--inPr) 50%, transparent); }
+.pr-held-field { display: block; width: 100%; box-sizing: border-box; min-height: 6em; padding: 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--inPr) 50%, transparent); background: var(--card); color: var(--ink); font: inherit; font-size: 14.5px; line-height: 1.45; resize: none; }
+.pr-held-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.pr-held-acts .btn.small { margin-top: 0; }
+.pr-held-acts .p-error { margin: 0; }
 .pr-held-asks { margin-top: 6px; font-size: 13px; color: var(--waiting); }
 .checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .checks li::before { margin-right: 5px; font-weight: 700; }

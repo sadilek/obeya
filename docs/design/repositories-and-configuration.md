@@ -100,11 +100,13 @@ For plans kept out of the repository (gitignored, or a folder of their own), the
 be an absolute path or one from `~`, set on this machine. Obeya reads and watches the docs there as
 they are, and names each by its absolute path with forward slashes (so a Windows drive does not read
 as a repository id), as the agents do. Workers on this machine get the folder as an extra directory:
-ticking a workstream there takes effect at once and goes into no commit, though the card's work in
-progress still wins until it lands. A doc „Als Projekt planen“ writes there cannot land, so Obeya
-names it at the start (the card's title, `-2` on a clash) and keeps it on the card; it shows as a
-project once written, and the project takes the card's place once approved (the card is done without
-a change). Workers on other machines do not reach the folder.
+ticking a workstream there takes effect at once and goes into no commit, so the box says nothing of
+a landing: the card's work in progress still wins until it lands, and so does a stopped card with
+its branch, which stays stopped, keeps its workspace and holds its project on the canvas (see A
+workstream's state). A doc „Als Projekt planen“ writes there cannot land, so Obeya names it at the
+start (the card's title, `-2` on a clash) and keeps it on the card; it shows as a project once
+written, and the project takes the card's place once approved (the card is done without a change).
+Workers on other machines do not reach the folder.
 
 #### Docs that are no projects
 
@@ -124,10 +126,11 @@ the same in every browser) and new cards go clear of it. Until dragged, it follo
 
 #### A workstream's state
 
-Work in progress (working, waiting, in PR, approved) wins over the doc, so a workstream ticked off on
-its branch still waits for its merge. Then a ticked workstream is `live`; otherwise the stored state
-counts (`done`, `planned`), and without one the doc's. `done` (finished without a change) stays: the
-doc has nothing to say about it.
+Work in progress (working, waiting, in PR, approved) wins over the doc, so a workstream ticked off
+on its branch still waits for its merge. In a plan folder outside the repository so does a stopped
+card (planned with its branch): its worker ticked the box there before the work landed. Then a
+ticked workstream is `live`; otherwise the stored state counts (`done`, `planned`), and without one
+the doc's. `done` (finished without a change) stays: the doc has nothing to say about it.
 
 A stored `live` holds only until the Lesestand has what landed. A card keeps the commit it landed
 with (on main after a direct landing, the merge commit for a pull request, else the Lesestand's
@@ -141,10 +144,14 @@ doc still holds open, what landed (with its pull request and last demo) beside t
 A worker still finishing after the landing keeps its card live until done. A workstream in a pull
 request whose box the main branch ticks off counts as merged even where the PR watcher missed the
 merge (by hand, say, or before the worker reported it): its worker hears so and finishes, and its
-clone returns to the pool. That needs the box in the repository: a box in a plan folder outside it is
-ticked by the worker before the merge, often before the pull request is open, so there only the
-watcher sees the merge (GitHub issue #41, 2026-11-02: approved cards read as merged at once and their
-PRs were never merged).
+clone returns to the pool. That needs the box in the repository: a box in a plan folder outside it
+is ticked by the worker before the merge, often before the pull request is open, so there only the
+watcher sees the merge (GitHub issue #41, 2026-11-02: approved cards read as merged at once and
+their PRs were never merged). Likewise a stopped workstream whose box the main branch ticks off is
+done elsewhere: it shows `live`, its clone returns to the pool („Im Plan-Doc abgehakt: Workspace
+freigegeben.“) and its branch stays there. A box in a plan folder outside the repository leaves a
+stopped card as it is (2026-11-02: such cards read as live and lost their workspace with nothing
+landed).
 
 #### Reading a plan doc
 

@@ -213,6 +213,8 @@ export function uploaded(key: string): Promise<void> {
 
 /** The draft, live. */
 export const useDraft = (key: string): Draft => useSyncExternalStore(subscribe, () => draftOf(key));
+/** Whether there is a draft under `key` at all, even an empty one (until `dropDraft`), live. */
+export const useDrafting = (key: string): boolean => useSyncExternalStore(subscribe, () => drafts.has(key));
 
 /** Makes `el` the text field of the draft while it is on the page; `images`: whether it takes screenshots. */
 export function useDraftField(key: string, el: () => HTMLTextAreaElement | null, images: boolean) {

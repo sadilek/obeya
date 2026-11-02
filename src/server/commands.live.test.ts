@@ -279,9 +279,11 @@ async function later(text: string) {
   const board = new Board(new Store(':memory:'), { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: '/r', branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => 'en');
   board.work(board.create({ title: 'Export als CSV', x: 0, y: 0 }).id, { state: 'working' });
   board.create({ title: 'Login', x: 0, y: 0 });
+  // a folder no repository is in yet, as on the owner's machine then: the Koordinator may look
+  const place = join(cwd(), 'recipes');
   board.addTalk(
-    'Kannst du mir ein neues Repo in ~/dev/leserina und einen entsprechenden Obeya canvas anlegen? Privater Account, erstmal nicht nach GitHub.',
-    "I can't create a repository myself; Obeya can only put a canvas on one that already exists. Run `mkdir -p ~/dev/leserina && cd ~/dev/leserina && git init -b main && git commit --allow-empty -m \"Start\"`. Tell me once it's there, and I'll add the canvas “Leserina”.",
+    `Kannst du mir ein neues Repo in ${place} und einen entsprechenden Obeya canvas anlegen? Privater Account, erstmal nicht nach GitHub.`,
+    `I can't create a repository myself; Obeya can only put a canvas on one that already exists. Run \`mkdir -p ${place} && cd ${place} && git init -b main && git commit --allow-empty -m "Start"\`. Tell me once it's there, and I'll add the canvas “Recipes”.`,
   );
   const view = { file: '/h/canvases.json', source: 'file', canvases: [{ name: 'Obeya', repos: [{ path: '/r' }] }], running: ['obeya'] } as unknown as ConfigView;
   const config = { view: () => view, check: async (canvases: unknown) => ({ canvases: canvases as CanvasConfig[], resolved: [], problems: [] }), checkSaved: async () => ({ canvases: view.canvases, resolved: [], problems: [] }) };
@@ -306,7 +308,8 @@ async function later(text: string) {
   const made = executed.length;
   const now = [...executed.map((c) => c.do), ...(wait ? ['waitFor' as const] : [])];
   if (!wait) return { now, confirm: heard.confirm };
-  // the card gets done: the Koordinator takes the step by itself
+  // the card gets done, with the repository its agent made: the Koordinator takes the step by itself
+  gitRepo(place);
   board.work(wait.card, { state: 'done' });
   const notices: string[] = [];
   board.onNotice((n) => void notices.push(n.text));
@@ -323,7 +326,7 @@ test.skipIf(!process.env.OBEYA_LIVE)(
     const results = await Promise.all(LATER.flatMap((c) => [c, c, c]).map(async ([text, want, on]) => ({ text, want, on, got: await later(text) })));
     const configured = (r: (typeof results)[number]) =>
       r.want.includes('newCard')
-        ? r.got.after?.some((c) => c.do === 'configure' && c.canvases.some((x) => x.repos.some((y) => y.path.includes('leserina'))))
+        ? r.got.after?.some((c) => c.do === 'configure' && c.canvases.some((x) => x.repos.some((y) => y.path.includes('recipes'))))
         : r.got.after?.some((c) => c.do === 'start');
     const wrong = results.filter((r) => JSON.stringify(r.got.now) !== JSON.stringify(r.want) || (r.on !== null && r.got.on !== r.on) || !configured(r));
     for (const r of results)

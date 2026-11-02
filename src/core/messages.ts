@@ -81,6 +81,8 @@ const de = {
     heldMoved: (head: string) => `Nicht gepusht: Der PR steht seit der Übergabe auf einem anderen Stand (${head}). Der Agent setzt seine Commits darauf und prüft das Neue.`,
     /** Pushed, but the forge refused the text that goes with it. */
     postFailed: (reason: string) => `Gepusht, aber der Text dazu ließ sich nicht posten: ${reason}`,
+    /** The owner rewrote the text that goes onto the PR with the approval of the worker's own changes. */
+    heldEdited: (n: number) => `Text für PR #${n} bearbeitet.`,
     /** Approving a review card: Obeya merges the PR. */
     approvedMerge: (n: number) => `Freigegeben. Obeya mergt PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} gemergt. Live.`,
@@ -586,6 +588,7 @@ const en: Messages = {
     pushRefused: (reason: string) => `Not pushed: ${reason}`,
     heldMoved: (head: string) => `Not pushed: the PR is at another commit than at the handover (${head}). The agent puts its commits on top and reviews what is new.`,
     postFailed: (reason: string) => `Pushed, but the text with it could not be posted: ${reason}`,
+    heldEdited: (n: number) => `Edited the text for PR #${n}.`,
     approvedMerge: (n: number) => `Approved. Obeya merges PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} merged. Live.`,
     unreviewedHead: (head: string) => `Not merged: the PR is at another commit than at the handover (${head}). The agent reviews it.`,

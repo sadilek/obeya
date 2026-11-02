@@ -394,7 +394,9 @@ draft on GitHub writes the new one too; a draft with only a title gives way at o
 remembers the wish it came from, so that reply's link reopens it as it stands.
 
 The Koordinator flags a reply when Obeya lacks the feature, not when the request is unclear,
-something just failed, it does not fit a card's state, or for questions of fact. On a card such a
+something just failed, it does not fit a card's state, or for questions of fact. What an agent can
+work out or make on the machine (a chart of each task's tokens from the agents' session logs, say)
+is a look-up or a task, also where Obeya itself shows nothing of it. On a card such a
 reply stays in the conversation rather than folding away with the confirmations. An agent that
 passed the words on through `to_obeya` hears that the owner finds the link under the answer; a
 `wish` passed on that way opens the draft on the page.
