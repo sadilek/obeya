@@ -2725,6 +2725,9 @@ export class Workers {
       this.o.board.unsnooze(cardId, met ? { met } : timeUp ? 'time' : owner ? 'owner' : 'news');
       const live = this.live.get(cardId);
       if (live) live.snoozed = false;
+      // snoozed on its handover, it goes on towards what it told the owner: the card is at work again
+      const card = this.o.board.item(cardId);
+      if (card && handedOver(card)) this.takingIn(cardId, true);
     }
     const wokeText = woke ? wokeNote(woke, timeUp, owner, !!text, met) : '';
     // the owner's words let a worker about to pause go on, as they do a paused one

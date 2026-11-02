@@ -148,10 +148,10 @@ describe('the agent snoozes itself', () => {
     canvas.wakeDue(Date.parse(until) + 1000);
     expect(runtime.last.spec.resume).toBe('sess-1');
     expect(runtime.last.inbox[0]).toContain('the time you snoozed until, to: Log erneut prüfen');
-    runtime.last.emit({ type: 'tool', name: 'Bash', input: { command: 'tail stalls.log' } });
     // at work towards what it told them, the card still waits for approval
     expect(item(id)).toMatchObject({ state: 'waiting', need: 'review', answering: true });
     expect(item(id).snoozed).toBeUndefined();
+    expect(needsYou(item(id))).toBe(false);
   });
 
   test('approved while its agent snoozed on its handover: it wakes no more', async () => {
