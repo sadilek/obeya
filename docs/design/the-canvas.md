@@ -166,7 +166,9 @@ starten“ without scrolling.
 
 A card whose conversation stands alone is a conversation wide. A card with a conversation beside
 what it is about (an idea, a proposal, a task with a result) is a wide split, the conversation a
-third, as tall as its taller column, centred left of a docked sheet and keeping at least a conversation's width beside it. Each
+third, as tall as its taller column. An open card sits in the middle of the canvas; where the canvas
+is too narrow for it, it reaches over the docked sheet, which lies dimmed under it anyway, but not
+over the pinned navigation, which stays usable beside it. Each
 column scrolls on its own, the panel never. A Question card is its conversation alone at a card's
 width, growing with it up to the room above the microphone before it scrolls, like a split's column:
 a looked-up answer is long, and a box of fixed height left most of the window unused. A proposal's
@@ -331,7 +333,8 @@ code, a generic one otherwise.
 - **An unfolded card is as large as its content, up to the room it has** (2026-10-08, 2026-10-21).
   Rejected: filling the room (empty space, stray scrollbars), a fixed size (small on a large
   screen), and a proposal sized by its text alone (a long conversation scrolled in a small box). It may reach over the bar (2026-10-09), as keeping the bar free cost moderate windows much
-  room.
+  room, and over a docked sheet (owner, 2026-11-02): the sheet is dimmed and out of use while a card
+  is open, and keeping beside it squeezed a split into the canvas's width.
 - **The sheets are a docked sidebar** (2026-10-06, 2026-10-09). Rejected: panels floating over a
   full-window canvas, which cut off cards and covered the microphone. Obeya's button becomes the
   sidebar's corner (the owner's wish) rather than sliding with the bar.

@@ -1874,8 +1874,9 @@ function Canvas({
 }
 
 /**
- * Where the unfolded card sits: in the middle of the canvas between the panels `side`, as tall as
- * its content needs up to a limit, beyond which it scrolls. Lays the content out at the final width
+ * Where the unfolded card sits: in the middle of the canvas between the panels `side`, reaching over
+ * the sheet where the canvas is too narrow for it, as tall as its content needs up to a limit, beyond
+ * which it scrolls. Lays the content out at the final width
  * to measure it, so call it with the content rendered.
  */
 function panelRect(i: Item, inner: HTMLElement, side: Sides) {
@@ -1884,8 +1885,11 @@ function panelRect(i: Item, inner: HTMLElement, side: Sides) {
   const wide = split(i);
   // a task an agent works on without a result yet is its conversation alone, and only as wide
   const want = wide ? 1600 : talkAlone(i) ? TALK_W : tall ? 980 : 900;
-  // beside a sheet dragged wide a card keeps at least the width of a conversation and reaches over the sheet
-  const W = Math.min(want, Math.max(innerWidth - side.left - side.right - 80, Math.min(TALK_W, innerWidth - 80)));
+  // the sheet lies dimmed under an open card, so a card wider than the canvas reaches over it; the
+  // pinned navigation, which stays usable beside it, limits it unless the window leaves less than a
+  // conversation's width beside the navigation
+  const room = innerWidth - side.left - 80;
+  const W = Math.min(want, Math.max(room, Math.min(TALK_W, innerWidth - 80)));
   inner.style.width = `${W}px`;
   inner.style.removeProperty('--pb');
   inner.style.overflowY = '';
@@ -1926,8 +1930,9 @@ function panelRect(i: Item, inner: HTMLElement, side: Sides) {
   const extra = under(H);
   // through --pb, which the card's sticky row of decisions reaches down over too (styles.css)
   if (extra) inner.style.setProperty('--pb', `${base + extra}px`);
-  // a card wider than the room beside the pinned navigation reaches over it, as it does over a sheet, but stays in the window
-  return { left: `${Math.max(40, Math.min(midX(side) - W / 2, innerWidth - W - 40))}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
+  // in the middle of the canvas where it fits there, else as near to it as the window allows
+  const lo = W <= room ? side.left + 40 : 40;
+  return { left: `${Math.max(lo, Math.min(midX(side) - W / 2, innerWidth - W - 40))}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
 }
 
 /** A panel holding a conversation alone: its column at its widest (560 px, styles.css) and the panel's padding. */
