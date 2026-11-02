@@ -251,7 +251,7 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
 export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
 /**
- * What of a canvas „Für dich“ lists (the phone's, and the navigation on every other canvas's page):
+ * What of a canvas „Braucht dich“ lists (the phone's, and the navigation on every other canvas's page):
  * the cards that need the owner and those snoozed while they did, and the Koordinator's answers that
  * wait unread.
  */
@@ -432,7 +432,7 @@ export interface Item {
    * the Koordinator naming or checking it) waits for the account's usage limit: it goes on by itself then (ISO time).
    */
   limitedUntil?: string;
-  /** Since when it waits for the owner (`needsYou`), for the phone view's „Für dich“. */
+  /** Since when it waits for the owner (`needsYou`), for the phone view's „Braucht dich“. */
   waitingSince?: string;
   /**
    * The owner paused the card's agent (its worker, the idea's agent, the Question card's agent):

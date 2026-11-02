@@ -1,5 +1,5 @@
 // The phone view: on a phone the page shows, instead of the canvas, what waits for the owner across
-// every canvas („Für dich“), what runs („Läuft“) and, folded away until opened, what is done but not
+// every canvas („Braucht dich“), what runs („Läuft“) and, folded away until opened, what is done but not
 // archived yet („Erledigt“); Obeya's conversation is a panel of its own that
 // comes up from below. A card opens full screen with the canvas's own detail view (answer options,
 // demo, approve buttons), its conversation in the same panel, and Back returns to the list. The microphone is held by touch; Enter breaks the line, only Send sends;
@@ -260,7 +260,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     setOpenState(null);
     setTalk(false);
   };
-  // a tapped push: its card (or „Für dich“ for several) in the app that is open already
+  // a tapped push: its card (or „Braucht dich“ for several) in the app that is open already
   useEffect(() => {
     registerWorker();
     const sw = navigator.serviceWorker;

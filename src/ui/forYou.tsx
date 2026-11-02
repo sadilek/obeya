@@ -1,4 +1,4 @@
-// „Für dich“: what waits for the owner on a canvas, as the phone view lists it and the canvas's
+// „Braucht dich“: what waits for the owner on a canvas, as the phone view lists it and the canvas's
 // navigation does on every page. Built once for both: the same entries, in the same order; the phone
 // shows them as the canvas's cards, the navigation as light rows (everything in it waits for the
 // owner, so a waiting card's orange frame would say nothing there). An entry only opens its card (or

@@ -257,7 +257,7 @@ The answer comes 10–30 s later: its start above the microphone (as plain text 
 Markdown stripped), in full in the open card's log, else
 in the Koordinator's sheet; meanwhile the open card shows what the agent reads. An answer in the
 sheet stays unread until the owner has the sheet in view (open, the page not hidden): until then
-Obeya's button counts it in orange, it counts once in the navigation and stands in its „Für dich“ as one entry, and Tab
+Obeya's button counts it in orange, it counts once in the navigation and stands in its „Braucht dich“ as one entry, and Tab
 goes there after the cards that need the owner; such answers keep an orange edge until the sheet
 closes. An answer that arrives while the sheet is in view, or in a card's log, is read where it
 arrives. The quick turn's own reply waits the same way when it only answers, since a long one takes

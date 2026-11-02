@@ -1078,7 +1078,7 @@ const de = {
   },
   /** The phone view (src/ui/phone.tsx). */
   phone: {
-    forYou: 'Für dich',
+    forYou: 'Braucht dich',
     running: 'Läuft',
     nothingWaits: 'Nichts wartet auf dich.',
     nothingRuns: 'Gerade arbeitet kein Agent.',
@@ -2969,7 +2969,7 @@ const en: Strings = {
     toSection: 'Devices and settings',
   },
   phone: {
-    forYou: 'For you',
+    forYou: 'Needs you',
     running: 'Running',
     nothingWaits: 'Nothing waits for you.',
     nothingRuns: 'No agent is at work right now.',

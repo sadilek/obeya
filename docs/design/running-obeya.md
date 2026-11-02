@@ -134,14 +134,14 @@ a tablet and a narrow window at the desk keep the canvas. `?view=phone` or `?vie
 instead. The view is settled at load; turning the phone does not switch it. It uses each canvas's
 own WebSocket. It shows four lists:
 
-- **„Für dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
+- **„Braucht dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then „Obeya hat geantwortet“ where an answer waits unread. Each card says what it waits
   for (its state line: „Demo bereit“, „Frage an dich“ …) and since when (the server keeps that across
   restarts). Snoozed cards stand at the end (see Snoozing a card). The canvas's navigation shows the
   same entries in the same order, built once for both, as light rows (see The navigation).
 - **„Läuft“**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
-  at the end. Every card that leaves „Für dich“ without being done stands here.
+  at the end. Every card that leaves „Braucht dich“ without being done stands here.
 - **„Geplant“**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
   what it does on the canvas („Agent starten“, „Später …“), so a task can be started from the phone.
@@ -280,7 +280,7 @@ phone's choice (Android held Chrome's messages until unlock on the owner's Pixel
 *Several at once:* the first goes out at once; what starts waiting within the minute after goes out
 as one push at its end („3 Karten warten auf dich“, the titles as text, leaving out what no longer
 waits), and a further minute starts. *Tapping a push* opens its card in the phone view
-(`/?card=<id>`), „Für dich“ for several, in the open app if there is one; a later push for the same
+(`/?card=<id>`), „Braucht dich“ for several, in the open app if there is one; a later push for the same
 card replaces the earlier.
 
 *The web app.* The page names a manifest (standalone, icons `/icons/180.png`, `/icons/512.png`), and

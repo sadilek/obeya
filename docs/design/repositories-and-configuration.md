@@ -24,7 +24,7 @@ otherwise inherits its card's: a worker in one repository often notices what nee
 another (one drafting posts about the app sees what the app lacks), and a proposal filed under the
 wrong repository would start its worker in the wrong place unless the owner noticed and switched it.
 That repository may be on another canvas: the proposal is then made there, at a free spot, and waits
-for the owner on that canvas (in the navigation's „Für dich“), with „Vorgeschlagen vom Agenten der Aufgabe
+for the owner on that canvas (in the navigation's „Braucht dich“), with „Vorgeschlagen vom Agenten der Aufgabe
 „…“ auf der Leinwand „…““ and a link to that card; the proposing card's conversation names the canvas.
 Its agent can take it back or replace it there as on its own canvas, and the worker that takes it on
 reads the card it came from as with any follow-up.

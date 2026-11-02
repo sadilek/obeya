@@ -238,7 +238,7 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 
 /* ---------- chrome ---------- */
 /* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the panels docked at the window's edges */
-#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
+#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1), padding-left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
 .pill { background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 0; white-space: nowrap; }
@@ -266,7 +266,7 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.restart .tip.risk { border-left: 3px solid var(--waiting); }
 .pill.restart:hover:not(:has(button:hover)) > .tip.why, .pill.restart button:hover > .tip.risk { display: block; }
 /* the navigation at the bar's left (src/ui/nav.tsx): the canvas's name, and under it the canvases
-   with what waits for the owner on each, as the phone's „Für dich“ shows it */
+   with what waits for the owner on each, as the phone's „Braucht dich“ shows it */
 .nav-pill { position: relative; }
 .nav-pill .switch { cursor: pointer; }
 .nav-pill .switch.on { background: var(--chip); }
@@ -287,6 +287,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .nav-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .nav-head h2 { margin: 0; font: 600 21px/1.15 var(--serif); }
 .nav-sheet .nav-head { height: 30px; margin: 0 0 12px; }
+/* in the app on a Mac the window's traffic lights sit in its head, as tall as the bar; it stays put as the list scrolls under it
+   (a sticky box keeps clear of its scroller's padding, hence the negative top) */
+.nav-sheet.titlebar .nav-head { position: sticky; top: -14px; z-index: 1; height: 58px; margin: -14px -14px 0; padding: 0 14px 0 92px; background: var(--panel); }
 .nav-pin { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px;
   background: var(--chip); color: var(--muted); cursor: pointer; }
 .nav-pin:hover, .nav-pin.on { color: var(--ink); }
@@ -395,8 +398,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.workspaces .ws-menu .hint { font-size: 12px; line-height: 1.4; }
 #bar > svg { flex: none; margin-right: 4px; }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
-/* the traffic lights of the app's window on a Mac sit at the bar's left */
+/* the traffic lights of the app's window on a Mac sit at the bar's left, or in the pinned navigation's head */
 #bar.titlebar { padding-left: 92px; }
+#bar.titlebar.beside-nav { padding-left: 14px; }
 .kpill .n { background: var(--planned); color: var(--on-ink); border-radius: 3px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .kpill.on { background: var(--ink); color: var(--bg); }
 /* the bar's buttons always fit (src/ui/barFit.ts): narrower than its contents, the bar gives up in steps the
@@ -1989,7 +1993,7 @@ button.link:hover { text-decoration: underline; }
 .ph-card .state::after { margin-left: 7px; }
 .ph-card .state .state-text { display: contents; }
 .ph-card .state .since { color: var(--muted); font-weight: 500; white-space: pre; }
-/* everything in „Für dich“ waits for the owner: the heading says so, no pin on each card */
+/* everything in „Braucht dich“ waits for the owner: the heading says so, no pin on each card */
 .ph-card .badge { display: none; }
 .ph-none { margin: 0; color: var(--muted); font-size: 14.5px; }
 /* „Geplant“ and „Erledigt“ below the lists, closed until their head is tapped; opened, the head stands under the bar */

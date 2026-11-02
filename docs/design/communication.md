@@ -172,7 +172,7 @@ next Monday 08:00, or a date and time. One menu serves every kind of card. It is
 work, cards waiting for the owner, and planned tasks not yet with the Koordinator:
 
 - A card at work stops as on a pause and goes on where it stopped at the time.
-- A card waiting for the owner leaves the count of what waits and Tab, moves to the end of „Für dich“, and comes back
+- A card waiting for the owner leaves the count of what waits and Tab, moves to the end of „Braucht dich“, and comes back
   at the time like a snoozed mail, with a push to the phone. Nothing goes to its agent; background
   work runs on. Answering it anyway (or parking the idea, reworking the proposal) ends the
   snooze.
