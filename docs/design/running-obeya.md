@@ -451,6 +451,13 @@ where a detached process opens a console window for every program it starts, the
 ignore Ctrl-C instead, and the agents stay in the console (a stop through the app still waits for
 them).
 
+On Windows every program Obeya starts runs without a window (git above all, many times a minute;
+the narration voice's installer and samples too), except one meant to be seen (Explorer, a terminal
+for a login). An Obeya without a console of its own (a scratch Obeya, one started without a
+terminal) would otherwise give each a window: with Windows Terminal as the default terminal, one
+flashes up per call and takes the focus from what the owner is typing in, several a second while
+workers are busy.
+
 ### Decisions
 
 - **Other devices over the owner's private network, paired by a QR code** (2026-10-16, plan „Obeya
@@ -512,6 +519,9 @@ them).
   changes (the event comes after a commit made just before the start); a cap on git processes
   running at once (a fetch or clone taking minutes would hold a place, and the trust check of an
   agent start would queue behind it).
+- **Programs run without a window on Windows by default, not by an option at each call**
+  (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
+  for its window.
 - **What reacts to a change on the canvas hears of it once the code that changed it is through, once
   for all it changed** (2026-10-31): a landing or a card moving on changes the canvas dozens of
   times in a row, and each reaction asks for the canvas as the page sees it, which took a few
