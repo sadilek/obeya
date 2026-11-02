@@ -1014,9 +1014,13 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   );
 }
 
-/** The length of the arrow head at the end of a wait's line, in canvas pixels: highlighted, faint. */
-const DEP_HEAD = 15;
-const FAINT_HEAD = 9;
+/**
+ * The width of a wait's line in canvas pixels at zoom `s`, the same faint or highlighted, so that
+ * the pointer on a card only changes its colour; never thinner on screen than a hair when zoomed out.
+ */
+export const depWidth = (s: number) => Math.max(2, 1.6 / s);
+/** The length of the arrow head at the end of a wait's line, in canvas pixels: six widths of its line. */
+export const depHead = (s: number) => 6 * depWidth(s);
 
 /**
  * Every direct wait between cards on the canvas as a faint line, from the card waited for to the
@@ -1029,12 +1033,14 @@ export function DepLinks({
   waits,
   lit,
   standsFor,
+  s,
   children,
 }: {
   placed: { item: Item; b: Bounds }[];
   waits: [string, string][];
   lit: [string, string][];
   standsFor: (id: string) => string;
+  s: number;
   children?: ReactNode;
 }) {
   const byId = new Map(placed.map((p) => [p.item.id, p.b]));
@@ -1048,24 +1054,22 @@ export function DepLinks({
     );
   const hot = shown(lit);
   const faint = [...shown(waits)].filter(([k]) => !hot.has(k));
-  const path = (cls: string, head: number) => ([k, [from, to]]: [string, [string, string]]) => (
-    <path key={`${cls} ${k}`} className={cls} d={linkPath(byId.get(from)!, byId.get(to)!, head)} markerEnd={`url(#${cls}-arrow)`} />
+  const path = (cls: string) => ([k, [from, to]]: [string, [string, string]]) => (
+    <path key={`${cls} ${k}`} className={cls} d={linkPath(byId.get(from)!, byId.get(to)!, depHead(s))} strokeWidth={depWidth(s)} markerEnd={`url(#${cls}-arrow)`} />
   );
   return (
     <svg id="deps" width="1" height="1">
       <defs>
-        {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points on to the card. */}
-        <marker id="lit-arrow" className="lit" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="userSpaceOnUse" markerWidth={DEP_HEAD} markerHeight={(DEP_HEAD * 8) / 9} orient="auto">
-          <path d="M0,0 L9,4 L0,8 z" />
-        </marker>
-        {/* measured in the line's width, which grows as the view zooms out; a head longer than the room
-            left for it ends under the card */}
-        <marker id="faint-arrow" className="faint" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={FAINT_HEAD / 1.5} markerHeight={(FAINT_HEAD * 8) / 9 / 1.5} orient="auto">
-          <path d="M0,0 L9,4 L0,8 z" />
-        </marker>
+        {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points
+            on to the card; measured in the line's width, as `depHead` is. */}
+        {['lit', 'faint'].map((cls) => (
+          <marker key={cls} id={`${cls}-arrow`} className={cls} viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={6} markerHeight={(6 * 8) / 9} orient="auto">
+            <path d="M0,0 L9,4 L0,8 z" />
+          </marker>
+        ))}
       </defs>
-      {faint.map(path('faint', FAINT_HEAD))}
-      {[...hot].map(path('lit', DEP_HEAD))}
+      {faint.map(path('faint'))}
+      {[...hot].map(path('lit'))}
       {children}
     </svg>
   );

@@ -112,7 +112,8 @@ those it builds on, a card snoozed until another, an arrow the owner drew); a wa
 waited for is finished, so finished cards keep no lines. A workstream of a collapsed project shows
 its waits at the project's head. The lines stay thin on screen however far the view zooms out.
 Under the pointer a card shows the waits around it over every step instead, in the waiting colour
-(see Scheduling); a wait shows once, never as both.
+(see Scheduling); a wait shows once, never as both. Only the colour changes: line, head and course
+stay as they were, so that moving the pointer over the cards leaves the picture calm.
 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
@@ -122,7 +123,9 @@ be clicked, and once one is under the pointer, that it starts only once the othe
 points from the prerequisite to the card that waits for it and stays on the canvas, as every wait
 does, under the cards: a card it crosses stays clickable and draggable all over. Under the pointer
 it shows a trash button that removes it at once, with „Rückgängig“; the button sits on the arrow's
-middle, or the nearest point along it no card covers. While the arrow holds a queued card, the
+middle, or the nearest point along it no card covers. It is grey like the canvas's other remove
+buttons, darker under the pointer, and keeps its size on screen at every zoom, as does the band
+along the arrow that shows it. While the arrow holds a queued card, the
 removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
 started. Projects and their workstreams get no dots, since the plan doc decides their order, and
 inferred waits have no trash button. An arrow that would close a cycle with other arrows or waits is

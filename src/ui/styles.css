@@ -1764,10 +1764,10 @@ button.link:hover { text-decoration: underline; }
 
 /* while the pointer is on a card with waits: the cards it waits for and those waiting for it, over every step */
 #deps { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
-/* every wait as a faint line under the cards; those around the card under the pointer in the waiting colour */
-/* never thinner on screen than a hair when zoomed out, its head growing with it */
-#deps .faint { fill: none; stroke: var(--dep-line); stroke-width: max(1.5px, calc(1.2px / var(--s))); }
-#deps .lit { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+/* every wait as a faint line under the cards; those around the card under the pointer in the waiting
+   colour, as wide as the faint one (the width comes with the path) */
+#deps .faint { fill: none; stroke: var(--dep-line); }
+#deps .lit { fill: none; stroke: var(--waiting); }
 #deps marker.faint path { fill: var(--dep-line); }
 #deps marker.lit path { fill: var(--waiting); }
 .card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
@@ -2209,13 +2209,19 @@ button.link:hover { text-decoration: underline; }
 
 /* Owner-drawn dependencies and their edge handles. */
 .manual-deps { position: absolute; left: 0; top: 0; overflow: visible; z-index: 3; pointer-events: none; }
-.manual-deps .manual-ghost { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+.manual-deps .manual-ghost { fill: none; stroke: var(--waiting); }
 .manual-deps marker path { fill: var(--waiting); }
 .manual-deps .manual-ghost { opacity: .55; stroke-dasharray: 7 5; }
-#deps .manual-hit { fill: none; stroke: transparent; stroke-width: 22; pointer-events: stroke; }
+#deps .manual-hit { fill: none; stroke: transparent; pointer-events: stroke; }
 .manual-edge foreignObject { overflow: visible; opacity: 0; pointer-events: none; }
 .manual-edge:hover foreignObject, .manual-edge:focus-within foreignObject { opacity: 1; pointer-events: auto; }
-.manual-edge button { width: 28px; height: 28px; border: 1px solid var(--waiting); border-radius: 50%; background: var(--card); color: var(--waiting); cursor: pointer; }
+/* faint like the other remove buttons, darker under the pointer; sized by its foreignObject, which
+   keeps it the same on screen at every zoom */
+.manual-edge button { display: grid; place-items: center; box-sizing: border-box; width: 100%; height: 100%; padding: 0;
+  border: calc(1px / var(--s)) solid var(--line); border-radius: 50%; background: var(--card); color: var(--muted); cursor: pointer;
+  transition: color .12s, border-color .12s; }
+.manual-edge button svg { width: 54%; height: 54%; }
+.manual-edge button:hover, .manual-edge button:focus-visible { color: var(--ink); border-color: var(--muted); }
 .connection-handles { position: absolute; z-index: 4; pointer-events: none; }
 .connection-handles.target { pointer-events: auto; outline: 3px solid var(--waiting); outline-offset: 3px; border-radius: 4px; }
 .connection-dot { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid var(--c); border-radius: 50%; background: var(--card); opacity: 0; pointer-events: none; cursor: pointer; transform: translate(-50%, -50%); }

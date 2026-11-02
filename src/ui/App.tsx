@@ -35,7 +35,7 @@ import { attachTo, imageFiles } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
-import { CardView, cardClass, shownState, DepLinks, linkPath, linkSpot, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
+import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath, linkSpot, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
@@ -1620,21 +1620,23 @@ function Canvas({
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} />
-            <DepLinks placed={placed} waits={waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))} lit={deps?.edges ?? []} standsFor={(id) => (byId(id) ? standsFor(byId(id)!).id : id)}>
-              {/* an arrow the owner drew: under the pointer, a trash button that removes it, where no card covers it */}
+            <DepLinks placed={placed} waits={waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))} lit={deps?.edges ?? []} standsFor={(id) => (byId(id) ? standsFor(byId(id)!).id : id)} s={cam.s}>
+              {/* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
+                  covers it; the button and the band that shows it keep their size on screen at every zoom */}
               {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
                 const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
                 if (!a) return [];
-                const { x, y } = linkSpot(a, b, 15, cardBoxes, 14);
+                const r = 13 / cam.s;
+                const { x, y } = linkSpot(a, b, depHead(cam.s), cardBoxes, r);
                 return [<g className="manual-edge" key={`${from}:${item.id}`}>
-                  <path className="manual-hit" d={linkPath(a, b, 15)} />
-                  <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
+                  <path className="manual-hit" d={linkPath(a, b, depHead(cam.s))} strokeWidth={22 / cam.s} />
+                  <foreignObject x={x - r} y={y - r} width={2 * r} height={2 * r}><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
                 </g>];
               }))}
             </DepLinks>
             <svg className="manual-deps" width="1" height="1">
-              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
-              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = handleAt(a, connection.side); const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, 15) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
+              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
+              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = handleAt(a, connection.side); const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, depHead(cam.s)) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} strokeWidth={depWidth(cam.s)} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
             </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
