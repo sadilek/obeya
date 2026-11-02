@@ -22,7 +22,10 @@ do with them; 2026-11-02).
 A branch's change is measured from where it left the nearest branch that is not a card's
 (`obeya/…`): the main branch, or a long-lived branch the card was built on; from the main branch if
 it was merged into the card's branch since. So a card built on another card's branch keeps that work
-as its own. git reads the changes of all cards in progress at once, without blocking the server.
+as its own. Commits the branch starts with whose change the main branch holds as other commits are not
+the card's: a pull after a merge on the forge rebases the local main's unpushed commits onto
+`origin`, and the branches cards made before it keep those commits as they were. Counted, a card that
+changed nothing showed their files and „Approve“ (2026-11-02). git reads the changes of all cards in progress at once, without blocking the server.
 
 In a folder without git (see Folders without git) the judgement is whether the card gets in the way
 of one in progress: the same files changed, moved or deleted, or a directory reorganised that the

@@ -4316,8 +4316,18 @@ export class Workers {
           const handOverWork = (d: Demo | undefined, named: CardFile[] | undefined, shows: boolean): Promise<string> =>
             review
               ? this.ownCommits(cardId, review).then((mine) => (typeof mine === 'string' ? mine : handOverNow(d, named, shows, true, undefined, mine)))
-              : Promise.all([this.o.workspaces.hasWork(cardId), this.landingOf(cardId)]).then(([work, { own }]) => handOverNow(d, named, shows, work, own));
-          const handOverNow = (d: Demo | undefined, named: CardFile[] | undefined, shows: boolean, work: boolean, own: CardLanding | undefined, mine?: OwnCommits): string => {
+              : Promise.all([this.o.workspaces.hasWork(cardId), this.landingOf(cardId)]).then(async ([work, { own }]) =>
+                  handOverNow(d, named, shows, work, own, undefined, work && !this.folder ? await this.o.workspaces.changedFiles(cardId) : undefined),
+                );
+          const handOverNow = (
+            d: Demo | undefined,
+            named: CardFile[] | undefined,
+            shows: boolean,
+            work: boolean,
+            own: CardLanding | undefined,
+            mine?: OwnCommits,
+            changed?: string[],
+          ): string => {
             // reading what the change shows takes a while, in which the owner may stop or replace the session
             if (this.live.get(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
             const s = clip(String(summary), 6000);
@@ -4415,7 +4425,16 @@ export class Workers {
                 'Recorded: once your turn has ended, Obeya lands your work on main.',
                 'a change to the work is to be committed by then',
               );
-            return ending(END_TURN, "Recorded: your handover waits for the owner's approval.", 'if they change what you handed over, hand it over again');
+            // what the owner's button does, as Obeya sees the branch: the worker may know of no commit on it but its own
+            const lands =
+              review || this.folder
+                ? ''
+                : !work
+                  ? ' Obeya sees no change on your branch: approving closes the card, and nothing lands.'
+                  : changed?.length
+                    ? ` Approving lands your branch's change to ${changed.length === 1 ? '1 file' : `${changed.length} files`}: ${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}.`
+                    : '';
+            return ending(`${END_TURN}${lands}`, `Recorded: your handover waits for the owner's approval.${lands}`, 'if they change what you handed over, hand it over again');
           };
           // a demo made on another machine is served and shared from its copy here
           const handOverWith = (named?: CardFile[]): string | Promise<string> => {

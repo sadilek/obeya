@@ -191,7 +191,8 @@ async function squashOnto(ws: string, upstream: string): Promise<boolean> {
     return false;
   }
   const trailers: string[] = [];
-  const bodies = (await gitAsync(ws, 'log', '--reverse', '--format=%B%x00', `${upstream}..HEAD`))
+  // without the commits the rebase drops, whose change is upstream already
+  const bodies = (await gitAsync(ws, 'log', '--reverse', '--cherry-pick', '--right-only', '--format=%B%x00', `${upstream}...HEAD`))
     .split('\0')
     .map((m) =>
       m
@@ -1017,7 +1018,10 @@ export class Workspaces implements CardWorkspaces {
     try {
       if (!(await existsAsync(ws))) return false;
       if (await gitAsync(ws, 'status', '--porcelain')) return true;
-      return (await gitAsync(ws, 'rev-list', '--count', `${await this.upstreamAsync(ws)}..HEAD`)) !== '0';
+      const up = await this.upstreamAsync(ws);
+      if ((await gitAsync(ws, 'rev-list', '--count', `${up}..HEAD`)) === '0') return false;
+      // commits main holds as copies of its own (its unpushed commits rebased by a pull) are not the card's: a landing drops them
+      return (await gitAsync(ws, 'rev-list', '--count', '--cherry-pick', '--right-only', `${up}...HEAD`)) !== '0';
     } catch {
       return true;
     }
@@ -1149,12 +1153,12 @@ export class Workspaces implements CardWorkspaces {
     }
   }
 
-  /** The files under `dir` that the card's branch adds, against the branch it lands on. */
+  /** The files under `dir` that the card's branch adds, against where its own work starts (`base`). */
   async addedFiles(cardId: string, dir: string): Promise<string[]> {
     const ws = this.leasedBy(cardId);
     if (!ws) return [];
     try {
-      return (await gitAsync(ws, 'diff', '--name-only', '--diff-filter=A', `${await this.upstreamAsync(ws)}...HEAD`, '--', dir)).split('\n').filter(Boolean);
+      return (await gitAsync(ws, 'diff', '--name-only', '--diff-filter=A', await this.base(ws), 'HEAD', '--', dir)).split('\n').filter(Boolean);
     } catch {
       return [];
     }
@@ -1600,10 +1604,13 @@ export class Workspaces implements CardWorkspaces {
    * a card's, which is the main branch or a long-lived branch the card was built on. Measured
    * against the main branch alone, a card on a branch hundreds of commits ahead of it counted all
    * of them as its own. Branches of other cards do not count: a card's branch that another card
-   * was built on still holds the first card's work.
+   * was built on still holds the first card's work. Nor do the commits it starts with that the main
+   * branch holds as copies: a pull that rebased the local main's unpushed commits onto `origin` left
+   * the branches made before it on the commits as they were, whose change is on main all the same.
    */
   private async base(ws: string): Promise<string> {
-    const [main, at] = await Promise.all([this.upstreamAsync(ws).then((up) => gitAsync(ws, 'merge-base', 'HEAD', up)), gitAsync(ws, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD')]);
+    const up = await this.upstreamAsync(ws);
+    const [main, at] = await Promise.all([gitAsync(ws, 'merge-base', 'HEAD', up), gitAsync(ws, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD')]);
     const [head, branch] = at.split('\n');
     // the card's branch here and in remotes, whatever its name
     const cards = [`${CARD_BRANCH}*`, ...(branch && branch !== 'HEAD' ? [branch] : [])];
@@ -1612,6 +1619,15 @@ export class Workspaces implements CardWorkspaces {
     )
       .split('\n')
       .filter(Boolean);
+    if (own.length) {
+      const copies = new Set(
+        (await gitAsync(ws, 'rev-list', '--cherry-mark', '--right-only', '--no-merges', `${up}...HEAD`))
+          .split('\n')
+          .filter((l) => l.startsWith('='))
+          .map((l) => l.slice(1)),
+      );
+      while (own.length && copies.has(own.at(-1)!.split(' ')[0]!)) own.pop();
+    }
     if (!own.length) return head!;
     const fork = own.at(-1)!.split(' ')[1];
     if (!fork || fork === main) return main;
