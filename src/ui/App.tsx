@@ -1403,11 +1403,11 @@ function Canvas({
   const unread = kOn ? 0 : unreadAnswers(snapshot.talk);
   // what waits on each canvas, for the navigation: this one's as this page sees it, without what the
   // owner just acted on and without answers in Obeya's sheet while it is open
-  const waits = { ...waiting, [snapshot.canvas.id]: waitingIn({ items: items.filter((i) => !underway[i.id]), talk: kOn ? [] : snapshot.talk }) };
+  const navWaiting = { ...waiting, [snapshot.canvas.id]: waitingIn({ items: items.filter((i) => !underway[i.id]), talk: kOn ? [] : snapshot.talk }) };
   const nav = {
     canvas: snapshot.canvas,
     canvases,
-    waiting: waits,
+    waiting: navWaiting,
     underway: (id: string) => !!underway[id],
     open: openId ?? undefined,
     pinned,
