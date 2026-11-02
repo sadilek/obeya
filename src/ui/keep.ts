@@ -22,8 +22,8 @@ export interface Kept {
   video?: { time: number; playing: boolean };
 }
 
-/** Where the open things are: the panel of the open card, the sheets, the archive's list and the configuration's dialog. */
-export const ROOTS = ['panel', 'sheet', 'ksheet', 'amenu', 'config'];
+/** Where the open things are: the panel of the open card, the sheets, the pinned navigation, the archive's list and the configuration's dialog. */
+export const ROOTS = ['panel', 'sheet', 'ksheet', 'nav', 'amenu', 'config'];
 
 /** How old what was kept may be to come back: a restart takes seconds, a page reloaded much later starts afresh. */
 const FRESH_MS = 5 * 60_000;

@@ -7,10 +7,10 @@ edge indicators, minimap, and a frosted top bar the canvas slides under.
 
 ### The bar
 
-Left, after the canvas switcher: the archive's button (see Card lifecycle), the queue's and "Neue
+Left, after the navigation's button (see The navigation): the archive's button (see Card lifecycle), the queue's and "Neue
 Aufgabe". The queue's button counts the waiting cards; a click lists them in turn, each with what it
 waits for, buttons to move it and a × that takes it out of the queue at once, as „Aus der Warteschlange nehmen“ on the card does (back to planned; no
-undo, starting it again is the way back); a row opens its card. The switcher's, the archive's and
+undo, starting it again is the way back); a row opens its card. The navigation's, the archive's and
 the queue's lists close on a click beside them and on Esc. Obeya's button is the rightmost (see
 Sheets).
 
@@ -36,12 +36,39 @@ browser).
 
 The buttons always fit: when the contents outgrow the bar (a wide sheet, a narrow window), it gives
 up in steps the wordmark and branch, then labels a few at a time, then the workspace pool, the usage limits and `?`,
-then all but the sheets' buttons. The step is measured from the actual contents, since the same
+then all but the sheets' buttons and the navigation's, which keeps its count and loses the canvas's name. The step is measured from the actual contents, since the same
 width may hold a short or a long branch, one clone or three.
 
 The logo (three cards in the inks of working, waiting and approved, "obeya" in Newsreader) opens
 the bar, stands alone while the page loads (above "offline" when the server is gone), and is the
 favicon and the app icon's source (`scripts/logo.tsx`).
+
+### The navigation
+
+One element at the bar's left holds the canvases and what waits for the owner on all of them, in
+place of a canvas switcher, a count of this canvas's cards that need the owner, and an inbox. Its
+button names the canvas and its home branch (or its count of repositories) and counts, in the
+orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
+them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Für dich“, the
+phone's list (see The phone view), built once for both: the same entries in the same order, with
+the same card faces and since when each waits. With several canvases, each canvas in the
+configuration's order heads what waits on it, the open one marked; a click on it switches there,
+and its row carries its agents' pause (see Pausing a canvas's agents). With one canvas the list has
+no such heads. A click on an entry opens its card, on this canvas or by switching to its own, and
+closes the list; Obeya's answers open Obeya's sheet on their canvas. Nothing waiting says so, and
+the canvases are still listed.
+
+The entries only open cards: no button on them approves, accepts, answers or dismisses anything.
+Tab still goes through the cards of this canvas that need the owner and Obeya's answers (see the
+legend).
+
+The list's head has a button that pins it as a sidebar docked to the window's left edge, full
+height, as the sheets are on the right (see Sheets); the same button, pressed, unpins it. Pinned,
+the bar's button is gone (the sidebar is its place now), a click on an entry leaves it open, and
+pinning holds per browser, on every canvas. A narrow window, or one that would leave the canvas
+less than about a column of cards beside the sidebar and an open sheet, folds it back into the
+bar's button until there is room again: the two sidebars never stack, neither over each other nor
+side by side on one edge.
 
 ### Creating cards
 
@@ -146,9 +173,10 @@ text box grows until the reason below it would leave view.
 ### Sheets
 
 The sheets (Obeya's, a project's, a plan doc being read) are a sidebar docked to the window's right
-edge, full height. The canvas is the rest: the top bar, the microphone and its confirmations, the
-edge indicators, the minimap and an unfolding card all keep to it. Opening, closing or resizing a
-sheet shifts the view so its middle stays in the middle of the rest. A card opened beside a sheet
+edge, full height; the pinned navigation is one on the left edge. The canvas is the rest between
+them: the top bar, the microphone and its confirmations, the edge indicators, the minimap and an
+unfolding card all keep to it. Opening, closing or resizing a sheet, or pinning the navigation,
+shifts the view so its middle stays in the middle of the rest. A card opened beside a sheet
 returns beside whatever sheet is open when it closes; a project's sheet stays, dimmed, while one of
 its cards is open. A narrow window lays the sheet over the canvas.
 
@@ -240,6 +268,15 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **One navigation on the left for canvases and what waits** (owner, 2026-11-02): what waits for the
+  owner was split between „brauchen dich“ (this canvas), the switcher's counts (the others) and the
+  cards themselves; an inbox would have been a fourth place. Its list is the phone's „Für dich“, so
+  the two never drift apart. A click on an entry always leads to another context, so the list is a
+  popover that closes, pinned only by choice on a large screen. Rejected: one-click actions on the
+  entries (approve, accept, dismiss, keep or remove, an answer option), since a click there is made
+  blind to the card's demo, open questions and remarks, and a decision the owner can make blind is
+  one the agent should not have asked for; and an inbox as a sheet on the right, which competes
+  with Obeya's sheet for the same edge.
 - **Waits are always on the canvas, as faint lines** (owner, 2026-11-02): with waits shown only
   under the pointer, the overall picture was missing, and one forgot that Obeya tracks them at all.
   There is no switch to hide them. Rejected: stubs at the cards' edges only (they say there is a

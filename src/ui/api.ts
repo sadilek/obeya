@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
+import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
 import type { Wish } from '../core/wish';
 import { noteMessage, watchPageStalls } from './stalls';
 
@@ -532,7 +532,8 @@ export function useCanvas(id = canvasId): {
   source: SourceUpdate | null;
   /** The plan's usage limits, while the bar shows them. */
   usage: Usage | null;
-  waiting: Record<string, number>;
+  /** What waits for the owner on each canvas, by canvas id. */
+  waiting: Record<string, Waiting>;
   oldBun: string | null;
   /** The canvases as they changed while the page is open (one started, stopped or renamed); null until they do. */
   canvases: CanvasInfo[] | null;
@@ -545,7 +546,7 @@ export function useCanvas(id = canvasId): {
   const [update, setUpdate] = useState<AppUpdate | null>(null);
   const [source, setSource] = useState<SourceUpdate | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
-  const [waiting, setWaiting] = useState<Record<string, number>>({});
+  const [waiting, setWaiting] = useState<Record<string, Waiting>>({});
   const [oldBun, setOldBun] = useState<string | null>(null);
   const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
   useEffect(() => {

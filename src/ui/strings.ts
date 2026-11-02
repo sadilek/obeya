@@ -53,7 +53,6 @@ const de = {
   followingUpLong: 'Der Agent ist für deine Nachfrage zurück und antwortet hier; danach endet seine Sitzung wieder.',
   proposalMark: '✦ Vorschlag',
   progress: (live: number, all: number) => `${live} von ${all} live`,
-  needsYou: 'brauchen dich',
   newCard: 'Neue Aufgabe',
   /** What the button for a new task says until the owner has double-clicked a task into being once. */
   newCardHint: { text: 'Eine neue Aufgabe legst du mit einem Doppelklick auf die Fläche an, an der Stelle, wo sie hin soll. Nach dem ersten Mal verschwindet dieser Button.', ok: 'Verstanden' },
@@ -223,14 +222,18 @@ const de = {
   offline: 'Keine Verbindung zum Server',
   noneRuns: 'Keine Leinwand läuft',
   repos: (n: number) => `${n} Repositories`,
-  switchCanvas: 'Leinwand wechseln',
   /** The pause and resume of a canvas's agents, on its row in the canvas switcher. */
   canvasPause: {
     pause: (n: number) => (n === 1 ? '1 laufenden Agenten pausieren' : `${n} laufende Agenten pausieren`),
     resume: (n: number) => (n === 1 ? '1 pausierten Agenten fortsetzen' : `${n} pausierte Agenten fortsetzen`),
   },
-  waitingThere: (n: number) => (n === 1 ? '1 Aufgabe braucht dich dort' : `${n} Aufgaben brauchen dich dort`),
-  waitingElsewhere: (n: number) => (n === 1 ? '1 Aufgabe auf einer anderen Leinwand braucht dich' : `${n} Aufgaben auf anderen Leinwänden brauchen dich`),
+  /** The navigation at the bar's left: the canvases and what waits for the owner on each, as a list under it or pinned as a sidebar on the left. */
+  nav: {
+    button: 'Leinwände und was auf dich wartet',
+    waiting: (n: number) => (n === 1 ? '1 Sache wartet auf dich' : `${n} Sachen warten auf dich`),
+    pin: 'Links als Seitenleiste anheften',
+    unpin: 'Seitenleiste lösen',
+  },
   start: 'Agent starten',
   startHint: 'Ein Agent beginnt auf eigenem Branch und zeigt am Ende eine Demo.',
   /** The state of a task the owner stopped, in place of „Geplant“. */
@@ -2017,7 +2020,6 @@ const en: Strings = {
   followingUpLong: 'The agent is back for your follow-up question and answers here; then its session ends again.',
   proposalMark: '✦ Proposal',
   progress: (live: number, all: number) => `${live} of ${all} live`,
-  needsYou: 'need you',
   newCard: 'New task',
   newCardHint: { text: 'To create a task, double-click on the canvas where it should go. After the first time, this button goes away.', ok: 'Got it' },
   wish: {
@@ -2176,13 +2178,16 @@ const en: Strings = {
   offline: 'No connection to the server',
   noneRuns: 'No canvas is running',
   repos: (n: number) => `${n} repositories`,
-  switchCanvas: 'Switch canvas',
   canvasPause: {
     pause: (n: number) => (n === 1 ? 'Pause 1 running agent' : `Pause ${n} running agents`),
     resume: (n: number) => (n === 1 ? 'Resume 1 paused agent' : `Resume ${n} paused agents`),
   },
-  waitingThere: (n: number) => (n === 1 ? '1 task needs you there' : `${n} tasks need you there`),
-  waitingElsewhere: (n: number) => (n === 1 ? '1 task on another canvas needs you' : `${n} tasks on other canvases need you`),
+  nav: {
+    button: 'Canvases and what waits for you',
+    waiting: (n: number) => (n === 1 ? '1 thing waits for you' : `${n} things wait for you`),
+    pin: 'Pin as a sidebar on the left',
+    unpin: 'Unpin the sidebar',
+  },
   start: 'Start agent',
   startHint: 'An agent starts on a branch of its own and shows a demo at the end.',
   stoppedState: 'Stopped',

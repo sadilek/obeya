@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
 import { api, ApiError, beforeReload, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
-import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, MIN_ZOOM, overviewCam, placeIn, shows, stopFlight, TOP, toWorld } from './camera';
+import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
 import { type ActDone, Detail, type Pending } from './detail';
 import { Cards } from './message';
@@ -34,9 +34,10 @@ import { attachTo, imageFiles } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
-import { CanvasPill, CardView, cardClass, shownState, DepLinks, linkPath, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
+import { CardView, cardClass, shownState, DepLinks, linkPath, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
+import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
 import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 
@@ -133,8 +134,8 @@ function Live({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} source={source} usage={usage} canvases={canvases ?? loaded} waiting={waiting} oldBun={oldBun} />;
 }
 
-/** What is open, and the view to go back to: `prevCam` laid out beside a sheet `prevSide` wide. */
-type Focus = { type: 'project'; id: string; prevCam: Cam; prevSide: number } | { type: 'card'; id: string; prevCam: Cam; prevSide: number; project: Focus | null };
+/** What is open, and the view to go back to: `prevCam` laid out beside the panels `prevSide`. */
+type Focus = { type: 'project'; id: string; prevCam: Cam; prevSide: Sides } | { type: 'card'; id: string; prevCam: Cam; prevSide: Sides; project: Focus | null };
 type Pos = { x: number; y: number };
 
 // opening a card takes FLY_MS + UNFOLD_MS (300 ms) and closing the same: fast, yet still a visible move
@@ -174,7 +175,7 @@ function Canvas({
   /** The plan's usage limits, while the bar shows them. */
   usage: Usage | null;
   canvases: CanvasInfo[];
-  waiting: Record<string, number>;
+  waiting: Record<string, Waiting>;
   /** The Bun the server runs on, when it is too old for it (docs/design/distribution.md, Builds). */
   oldBun: string | null;
 }) {
@@ -274,9 +275,9 @@ function Canvas({
     } catch {}
     return centreOn(all, 1);
   });
-  // the width of the sheet docked on the right that the camera is laid out for: a sheet that opens,
+  // the panels docked at the window's edges that the camera is laid out for: a sheet that opens,
   // closes or is dragged wider moves the view by half the difference, so its middle stays the middle
-  const camSide = useRef(0);
+  const camSide = useRef<Sides>(NO_SIDES);
   /** Flies to `to`, laid out for the sheets as they are now. */
   const fly = (to: Cam, ms?: number) => {
     camSide.current = sideNow();
@@ -290,7 +291,7 @@ function Canvas({
     if (focusRef.current) return;
     const h = setTimeout(() => {
       try {
-        localStorage.setItem(camKey(snapshot.canvas.id), JSON.stringify(besideSheet(cam, camSide.current, 0)));
+        localStorage.setItem(camKey(snapshot.canvas.id), JSON.stringify(besideSheet(cam, camSide.current, NO_SIDES)));
       } catch {}
     }, 300);
     return () => clearTimeout(h);
@@ -318,16 +319,23 @@ function Canvas({
   const [kOn, setKOn, kOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
   const [cOn, setCOn, cOnRef] = useLive(false);
+  // the navigation pinned as a sidebar on the left (src/ui/nav.tsx)
+  const [pinned, setPinned, pinnedRef] = useLive(loadPinned);
+  const pin = (on: boolean) => {
+    setPinned(on);
+    savePinned(on);
+  };
   /**
-   * How wide the sheet docked on the right is, as just set: the canvas is what remains to its left.
-   * A narrow window lays the sheet over the canvas instead (styles.css).
+   * What the panels docked at the window's edges take of it, as just set: the sheet on the right and
+   * the pinned navigation on the left; the canvas is what remains between them. A narrow window lays
+   * the sheet over the canvas instead (styles.css), and the navigation stays under its button, as it
+   * does where it would leave the canvas too little room beside the sheet: the two never stack.
    */
-  const sideNow = () =>
-    matchMedia(NARROW).matches || !(kOnRef.current || sheetOnRef.current)
-      ? 0
-      : sheetOnRef.current && readingRef.current
-        ? sheetWRef.current.read
-        : sheetWRef.current.sheet;
+  const sideNow = (): Sides => {
+    const narrow = matchMedia(NARROW).matches;
+    const right = narrow || !(kOnRef.current || sheetOnRef.current) ? 0 : sheetOnRef.current && readingRef.current ? sheetWRef.current.read : sheetWRef.current.sheet;
+    return { left: !narrow && pinnedRef.current && innerWidth - NAV_W - right >= NAV_CANVAS_MIN ? NAV_W : 0, right };
+  };
   /** Opens Obeya's sheet or closes it; an open project closes. */
   const toggleKoordinator = () => {
     setKOn(!kOn);
@@ -625,7 +633,7 @@ function Canvas({
     });
     await open(card);
   }
-  const createAtCentre = () => createAt(toWorld(camRef.current, (innerWidth - sideNow()) / 2, innerHeight / 2));
+  const createAtCentre = () => createAt(toWorld(camRef.current, midX(sideNow()), innerHeight / 2));
 
   // ---------------------------------------------------------------- kept across a restart
   // a restart reloads the page: what was open comes back as it was, without the flights
@@ -662,13 +670,23 @@ function Canvas({
     }
     openFromAddress().catch(console.error);
   }, []);
-  /** A card the address names (`?card=`, from another canvas's Workspaces list): the canvas flies to it and opens it, once. */
+  /**
+   * A card the address names (`?card=`, from another canvas's navigation or Workspaces list): the
+   * canvas flies to it and opens it, once; or Obeya's sheet (`?talk`, its answer in the navigation).
+   */
   async function openFromAddress() {
     const q = new URLSearchParams(location.search);
     const id = q.get('card');
-    if (!id) return;
+    const talk = q.has('talk');
+    if (!id && !talk) return;
     q.delete('card');
+    q.delete('talk');
     history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}`);
+    if (talk) {
+      quickSide.current = Date.now() + 2000;
+      setKOn(true);
+    }
+    if (!id) return;
     const i = await soon(() => byId(id));
     if (i) await open(i);
   }
@@ -824,7 +842,10 @@ function Canvas({
     };
   }, []);
   /** The canvas on the screen: beside the sheets, below the top bar and above the microphone. */
-  const viewNow = () => ({ left: 0, top: TOP, right: innerWidth - sideNow(), bottom: innerHeight - BOTTOM });
+  const viewNow = () => {
+    const side = sideNow();
+    return { left: side.left, top: TOP, right: innerWidth - side.right, bottom: innerHeight - BOTTOM };
+  };
   /**
    * Where a card a command makes goes: under the pointer on the canvas, else in the middle of the
    * view (`pointer` false: always there); with a card or project open, in the view it goes back to.
@@ -1041,7 +1062,8 @@ function Canvas({
     const top = c.y + b.y * c.s;
     const below = top < TOP + MARKED_ROOM;
     const y = below ? c.y + (b.y + b.h) * c.s : top;
-    return { at: { x: Math.min(innerWidth - sideNow() - 12, Math.max(MARKED_W, c.x + (b.x + b.w) * c.s)), y: Math.min(innerHeight - MARKED_ROOM, Math.max(TOP + MARKED_ROOM, y)) }, below };
+    const side = sideNow();
+    return { at: { x: Math.min(innerWidth - side.right - 12, Math.max(side.left + MARKED_W, c.x + (b.x + b.w) * c.s)), y: Math.min(innerHeight - MARKED_ROOM, Math.max(TOP + MARKED_ROOM, y)) }, below };
   };
   async function assignGroup(to: { group: string | null } | { name: string }) {
     const r = ring!;
@@ -1106,12 +1128,12 @@ function Canvas({
     e.preventDefault();
     setRing({ at: { x: e.clientX, y: e.clientY }, ids: marked.includes(i.id) ? marked : [i.id] });
   }
-  // the sheet docked on the right; the canvas, its edge indicators, the bar and the microphone keep to its left
+  // the panels docked at the window's edges; the canvas, its edge indicators, the bar and the microphone keep between them
   const side = sideNow();
   const quickSide = useRef(0);
   useEffect(() => {
     const from = camSide.current;
-    if (side === from) return;
+    if (side.left === from.left && side.right === from.right) return;
     camSide.current = side;
     // the open card's view goes back to where it was opened from, beside whatever sheet is open then
     if (focusRef.current?.type === 'card') return;
@@ -1120,7 +1142,7 @@ function Canvas({
       stopFlight();
       setCam(to);
     } else fly(to, 450);
-  }, [side]);
+  }, [side.left, side.right]);
 
   // the grip at the open sheet's left edge widens or narrows it; reading a plan doc has its own width
   const gripOn = kOn || sheetOn;
@@ -1150,7 +1172,7 @@ function Canvas({
   /** `c`, moved just far enough that the view outside the sheet shows some content. */
   const kept = (c: Cam) => keepInView(c, contentRef.current, viewNow());
   /** The view at the current zoom with a world point in the middle, as far as content stays in sight. */
-  const viewOn = (wx: number, wy: number) => kept({ s: camRef.current.s, x: (innerWidth - sideNow()) / 2 - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s });
+  const viewOn = (wx: number, wy: number) => kept({ s: camRef.current.s, x: midX(sideNow()) - wx * camRef.current.s, y: innerHeight / 2 - wy * camRef.current.s });
   /** When no content is in view any more (cards went, the window shrank), flies to the nearest. */
   const recover = () => {
     if (focusRef.current?.type === 'card' || dragRef.current || panRef.current || flying()) return;
@@ -1234,7 +1256,8 @@ function Canvas({
     const ms = d.last ? Math.min(50, now - d.last) : 0;
     d.last = now;
     const c = camRef.current;
-    const view = { left: 0, top: TOP, right: innerWidth - sideNow(), bottom: innerHeight };
+    const side = sideNow();
+    const view = { left: side.left, top: TOP, right: innerWidth - side.right, bottom: innerHeight };
     const next = edgeScroll(c, { x: d.px, y: d.py }, { x: d.x, y: d.y }, view, d.limit, ms);
     if (next.x !== c.x || next.y !== c.y) {
       setCam(next);
@@ -1376,10 +1399,22 @@ function Canvas({
   const underwayRef = useRef(underway);
   underwayRef.current = underway;
   const yours = (i: Item) => needsYou(i) && !underwayRef.current[i.id];
-  const attention = items.filter(yours);
   // answers in Obeya's sheet the owner has not seen: Obeya waits for them like a card
   const unread = kOn ? 0 : unreadAnswers(snapshot.talk);
-  const attentionCount = attention.length + (unread ? 1 : 0);
+  // what waits on each canvas, for the navigation: this one's as this page sees it, without what the
+  // owner just acted on and without answers in Obeya's sheet while it is open
+  const waits = { ...waiting, [snapshot.canvas.id]: waitingIn({ items: items.filter((i) => !underway[i.id]), talk: kOn ? [] : snapshot.talk }) };
+  const nav = {
+    canvas: snapshot.canvas,
+    canvases,
+    waiting: waits,
+    underway: (id: string) => !!underway[id],
+    pinned,
+    pinnable: !matchMedia(NARROW).matches && innerWidth - NAV_W - side.right >= NAV_CANVAS_MIN,
+    onPin: pin,
+    onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : location.assign(`?c=${encodeURIComponent(c)}&card=${encodeURIComponent(i.id)}`)),
+    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : location.assign(`?c=${encodeURIComponent(c)}&talk`)),
+  };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
   const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
   async function archiveDone() {
@@ -1459,8 +1494,8 @@ function Canvas({
     }
     if (e.key === 'Escape' && connection) { setConnection(null); return; }
     if (e.key === 'Escape') {
-      // a screenshot or demo shown large closes first, a card's diff, the queue's list and the canvas switcher's; the card stays open
-      if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .canvas-menu, .diff-view')) return;
+      // a screenshot or demo shown large closes first, a card's diff, the queue's list and the navigation's; the card stays open
+      if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .nav-menu, .diff-view')) return;
       // so does the quote of a message the owner was replying to: in the field with the cursor, the open card's, the sidebar's
       const quoting = [focusedDraft(), f?.type === 'card' || f?.type === 'project' ? cardDraft(f.id) : null, kOnRef.current ? OBEYA_DRAFT : null].find((k) => k && fieldOn(k) && replyOn(k));
       if (quoting) return setReply(quoting, null);
@@ -1539,7 +1574,8 @@ function Canvas({
           {
             '--sheet-w': `${sheetW.sheet}px`,
             '--read-w': `${sheetW.read}px`,
-            '--side': `${side}px`,
+            '--side': `${side.right}px`,
+            '--left': `${side.left}px`,
           } as React.CSSProperties
         }
       >
@@ -1652,14 +1688,14 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} rightReserve={side} onOpen={open} />}
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs) */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
           <span className="bar-sign">
             <Sign size={24} />
           </span>
-          <CanvasPill canvas={snapshot.canvas} canvases={canvases} waiting={waiting} />
+          {!side.left && <NavPill {...nav} />}
           <ArchivePill
             on={aOn}
             onToggle={toggleArchive}
@@ -1704,11 +1740,6 @@ function Canvas({
                 </span>
               )}
             </button>
-            {attentionCount > 0 && (
-              <button className="pill" id="attention" onClick={nextAttention}>
-                <span className="n">{attentionCount}</span> <span className="lbl">{t.needsYou}</span>
-              </button>
-            )}
             {!kOn && (
               <div className="talk-room" aria-hidden>
                 {talkButton}
@@ -1716,9 +1747,10 @@ function Canvas({
             )}
           </div>
         </header>
+        <NavSheet on={side.left > 0} {...nav} />
         <Minimap
           cam={cam}
-          viewW={innerWidth - side}
+          side={side}
           all={all}
           placed={placed}
           territories={territories.shapes}
@@ -1841,18 +1873,18 @@ function Canvas({
 }
 
 /**
- * Where the unfolded card sits: in the middle of the canvas left of a sheet `side` wide, as tall as
+ * Where the unfolded card sits: in the middle of the canvas between the panels `side`, as tall as
  * its content needs up to a limit, beyond which it scrolls. Lays the content out at the final width
  * to measure it, so call it with the content rendered.
  */
-function panelRect(i: Item, inner: HTMLElement, side: number) {
+function panelRect(i: Item, inner: HTMLElement, side: Sides) {
   const tall = i.state !== 'planned' && i.state !== 'proposal';
   // a card with a conversation beside what it is about (an idea, a proposal, a task an agent worked on) gets the room of the mock's demo panel
   const wide = split(i);
   // a task an agent works on without a result yet is its conversation alone, and only as wide
   const want = wide ? 1600 : talkAlone(i) ? TALK_W : tall ? 980 : 900;
   // beside a sheet dragged wide a card keeps at least the width of a conversation and reaches over the sheet
-  const W = Math.min(want, Math.max(innerWidth - side - 80, Math.min(TALK_W, innerWidth - 80)));
+  const W = Math.min(want, Math.max(innerWidth - side.left - side.right - 80, Math.min(TALK_W, innerWidth - 80)));
   inner.style.width = `${W}px`;
   inner.style.removeProperty('--pb');
   inner.style.overflowY = '';
@@ -1893,7 +1925,8 @@ function panelRect(i: Item, inner: HTMLElement, side: number) {
   const extra = under(H);
   // through --pb, which the card's sticky row of decisions reaches down over too (styles.css)
   if (extra) inner.style.setProperty('--pb', `${base + extra}px`);
-  return { left: `${Math.max(40, (innerWidth - side - W) / 2)}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
+  // a card wider than the room beside the pinned navigation reaches over it, as it does over a sheet, but stays in the window
+  return { left: `${Math.max(40, Math.min(midX(side) - W / 2, innerWidth - W - 40))}px`, top: `${top(H)}px`, width: `${W}px`, height: `${H}px` };
 }
 
 /** A panel holding a conversation alone: its column at its widest (560 px, styles.css) and the panel's padding. */
@@ -1915,8 +1948,8 @@ const MIC_GAP = 12;
 
 const rect = (r: DOMRect) => ({ left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
 
-/** Camera centred on the middle of `b` at scale `s` left of a sheet `side` wide, ignoring the top bar (the unfold is centred there too). */
-const centreOnPoint = (b: Bounds, s: number, side: number): Cam => ({ s, x: (innerWidth - side) / 2 - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s });
+/** Camera centred on the middle of `b` at scale `s` between the panels `side`, ignoring the top bar (the unfold is centred there too). */
+const centreOnPoint = (b: Bounds, s: number, side: Sides): Cam => ({ s, x: midX(side) - (b.x + b.w / 2) * s, y: innerHeight / 2 - (b.y + b.h / 2) * s });
 
 /** State with a ref that holds the value set last, for what reads it before the next render. */
 function useLive<T>(init: T | (() => T)): [T, (v: T) => void, { readonly current: T }] {

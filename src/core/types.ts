@@ -250,6 +250,17 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
 /** What on a canvas waits for the owner: the cards that need them, and the Koordinator while an answer waits unread. */
 export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
+/**
+ * What of a canvas „Für dich“ lists (the phone's, and the navigation on every other canvas's page):
+ * the cards that need the owner and those snoozed while they did, and the Koordinator's answers that
+ * wait unread.
+ */
+export type Waiting = Pick<CanvasSnapshot, 'items' | 'talk'>;
+export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting => ({
+  items: s.items.filter((i) => needsYou(i) || !!i.snoozed?.waiting),
+  talk: s.talk.filter((x) => x.unread),
+});
+
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**
  * Who wrote a card's task: the owner (also through the Koordinator, from their words), the plan doc
@@ -2676,8 +2687,8 @@ export type ServerMessage =
   | { type: 'source'; source: SourceUpdate | null }
   /** On connect and whenever it changes: how much of its usage limits the account Claude Code runs with here has used, while the bar shows it. */
   | { type: 'usage'; usage: Usage | null }
-  /** On connect and whenever it changes: how many cards on each canvas need the owner, by canvas id. */
-  | { type: 'waiting'; waiting: Record<string, number> }
+  /** On connect and whenever it changes: what waits for the owner on each canvas, by canvas id. */
+  | { type: 'waiting'; waiting: Record<string, Waiting> }
   /** Whenever a canvas starts, stops, or changes its name or repositories while Obeya runs. */
   | { type: 'canvases'; canvases: CanvasInfo[] }
   /** A line for the owner above the microphone, wherever they are. */

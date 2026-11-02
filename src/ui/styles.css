@@ -237,8 +237,8 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .z-far .card.chip { opacity: .45; }
 
 /* ---------- chrome ---------- */
-/* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the sheet docked on the right */
-#bar { position: fixed; top: 0; left: 0; right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
+/* a frosted strip the canvas slides under, so cards never run into the pills; it ends at the panels docked at the window's edges */
+#bar { position: fixed; top: 0; left: var(--left, 0px); right: var(--side, 0px); transition: right .45s cubic-bezier(.3,.9,.3,1), left .45s cubic-bezier(.3,.9,.3,1); height: 58px; padding: 0 14px; display: flex; align-items: center; gap: 10px; z-index: 20;
   background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line); box-shadow: 0 6px 18px -12px rgba(30,25,15,.18); }
 .pill { background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 7px 14px; display: flex; align-items: center; gap: 8px; font-size: 14px; border: 0; white-space: nowrap; }
@@ -265,29 +265,51 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.restart .tip ul { margin: 0 0 6px; padding-left: 18px; }
 .pill.restart .tip.risk { border-left: 3px solid var(--waiting); }
 .pill.restart:hover:not(:has(button:hover)) > .tip.why, .pill.restart button:hover > .tip.risk { display: block; }
-.canvas-pill { position: relative; }
-.canvas-pill .switch { cursor: pointer; }
-.canvas-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 240px; list-style: none; margin: 0; padding: 6px; background: var(--panel);
-  border-radius: 3px; box-shadow: var(--lift); z-index: 30; }
-.canvas-menu a { display: flex; flex-direction: column; padding: 7px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; }
-.canvas-menu a:hover, .canvas-menu li.on a { background: var(--chip); }
-/* cards on another canvas that need the owner: their count at its menu entry, the sum at the closed pill */
+/* the navigation at the bar's left (src/ui/nav.tsx): the canvas's name, and under it the canvases
+   with what waits for the owner on each, as the phone's „Für dich“ shows it */
+.nav-pill { position: relative; }
+.nav-pill .switch { cursor: pointer; }
+.nav-pill .switch.on { background: var(--chip); }
 /* counts of what waits for the owner look like the pin on such a card */
 .waits { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.4), transparent 50%), var(--waiting); color: var(--on-ink); font-size: 12px; font-weight: 700;
   display: grid; place-items: center; box-sizing: border-box; }
-.canvas-pill .switch .waits.pulse { animation: pulse-in 1.8s ease-out infinite; }
+.nav-pill .switch .waits.pulse { animation: pulse-in 1.8s ease-out infinite; }
 @keyframes pulse-in { 0% { box-shadow: 0 0 0 0 rgba(var(--waiting-rgb),.55); } 70%, 100% { box-shadow: 0 0 0 10px rgba(var(--waiting-rgb),0); } }
-.canvas-menu a { position: relative; padding-right: 40px; }
-.canvas-menu a .waits { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); }
+.nav-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(360px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto; box-sizing: border-box;
+  padding: 14px 14px 16px; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); z-index: 30; }
+/* pinned: a sidebar docked to the window's left edge, from top to bottom, as the sheets are on the right */
+.nav-sheet { position: fixed; top: 0; left: 0; bottom: 0; width: 340px; box-sizing: border-box; background: var(--panel); border-right: 1px solid var(--line);
+  z-index: 25; transform: translateX(calc(-100% - 1px)); visibility: hidden; transition: transform .45s cubic-bezier(.3,.9,.3,1), visibility 0s .45s;
+  overflow: auto; padding: 14px 14px 30px; }
+.nav-sheet.on { transform: none; visibility: visible; transition-delay: 0s; }
+.nav-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.nav-head h2 { margin: 0; font: 600 21px/1.15 var(--serif); }
+.nav-sheet .nav-head { height: 30px; margin: 0 0 12px; }
+.nav-pin { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px;
+  background: var(--chip); color: var(--muted); cursor: pointer; }
+.nav-pin:hover, .nav-pin.on { color: var(--ink); }
+.nav-canvas + .nav-canvas { margin-top: 12px; }
+.nav-canvas > .ph-list { margin-top: 8px; gap: 10px; }
+.nav-menu > .ph-list, .nav-sheet > .ph-list, .ph-none + .nav-canvas { margin-top: 12px; }
+.nav-row { position: relative; }
+.nav-row a { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; color: var(--ink); }
+.nav-row a svg { flex: none; color: var(--muted); }
+.nav-row a .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-row a:hover, .nav-canvas.on > .nav-row a { background: var(--chip); }
+.nav-row:has(.canvas-agents) a { padding-right: 46px; }
+/* the cards in it are the phone's, at the size of a card on the canvas */
+:is(.nav-menu, .nav-sheet) .ph-card { padding: 12px 13px 10px; }
+:is(.nav-menu, .nav-sheet) .ph-card .kind { font-size: 11.5px; }
+:is(.nav-menu, .nav-sheet) .ph-card .ttl { font-size: 16px; }
+:is(.nav-menu, .nav-sheet) .ph-card .meta { font-size: 13px; }
+:is(.nav-menu, .nav-sheet) .ph-card .state { font-size: 12px; padding-top: 6px; }
+:is(.nav-menu, .nav-sheet) .ph-card:hover { box-shadow: var(--lift); }
+:is(.nav-menu, .nav-sheet) .ph-none { font-size: 13.5px; }
 /* a canvas's agents on its row: the moving line while one works there, which turns into a pause for
    all of them while the pointer is on the row; with only paused ones, a play on the same hover */
-.canvas-menu li { position: relative; }
-.canvas-menu li:has(.canvas-agents) a { padding-right: 46px; }
-.canvas-menu li:has(.waits):has(.canvas-agents) a { padding-right: 74px; }
 .canvas-agents { position: absolute; top: 50%; right: 10px; transform: translateY(-50%); width: 26px; height: 20px;
   display: flex; align-items: center; justify-content: center; --c: var(--working); }
-.canvas-menu li:has(.waits) .canvas-agents { right: 38px; }
 .canvas-agents.running::before { content: ""; width: 26px; height: 2px;
   background: linear-gradient(90deg, var(--c) 0 50%, transparent 50%) 0 0 / 200% 100% no-repeat, color-mix(in srgb, var(--c) 22%, transparent);
   animation: draw 1.6s cubic-bezier(.5,0,.3,1) infinite; }
@@ -301,8 +323,8 @@ button.pill:hover { box-shadow: var(--lift); }
 .agents-turn .tip { display: none; position: absolute; left: calc(100% + 16px); top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 3px;
   background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: nowrap; font-size: 13px; font-weight: 400; pointer-events: none; z-index: 31; }
 .agents-turn:is(:hover, :focus-visible) .tip { display: block; }
-.canvas-menu li:is(:hover, :focus-within) .agents-turn { display: grid; }
-.canvas-menu li:is(:hover, :focus-within) .canvas-agents::before { display: none; }
+.nav-row:is(:hover, :focus-within) .agents-turn { display: grid; }
+.nav-row:is(:hover, :focus-within) .canvas-agents::before { display: none; }
 @media (hover: none) {
   .agents-turn { display: grid; }
   .canvas-agents::before { display: none; }
@@ -377,14 +399,14 @@ button.pill:hover { box-shadow: var(--lift); }
    then all but the sheets' buttons and the restart's text */
 #bar > *, #bar .right > * { flex: none; }
 .bar-sign, .bar-icon { display: none; }
-#bar[data-fit~="1"] > svg, #bar[data-fit~="1"] .canvas-pill .lbl, #bar[data-fit~="1"] .pill.restart .hint { display: none; }
+#bar[data-fit~="1"] > svg, #bar[data-fit~="1"] .nav-pill .lbl, #bar[data-fit~="1"] .pill.restart .hint { display: none; }
 #bar[data-fit~="1"] .bar-sign { display: block; line-height: 0; }
 #bar[data-fit~="2"] :is(#workspaces, #usage, .config) .lbl, #bar[data-fit~="3"] :is(.archive, .new-card) .lbl,
-  #bar[data-fit~="4"] :is(.queue, #attention) .lbl { display: none; }
+  #bar[data-fit~="4"] .queue .lbl { display: none; }
 #bar[data-fit~="2"] .config .bar-icon, #bar[data-fit~="3"] .archive .bar-icon, #bar[data-fit~="4"] .queue .bar-icon { display: block; }
 #bar[data-fit~="2"] .config, #bar[data-fit~="3"] :is(.archive .kpill, .new-card), #bar[data-fit~="4"] .queue .kpill { padding-inline: 10px; }
 #bar[data-fit~="5"] :is(#workspaces, #usage), #bar[data-fit~="5"] .help { display: none; }
-#bar[data-fit~="6"] .canvas-pill, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
+#bar[data-fit~="6"] .nav-pill .switch b, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
 /* the bar's buttons are one height, whatever they hold: text, an icon, a count */
 #bar .pill, .pill.talk-pill { height: 34px; box-sizing: border-box; padding-block: 0; }
 #bar button.pill.help { width: 34px; height: 34px; }
@@ -440,7 +462,6 @@ button.pill:hover { box-shadow: var(--lift); }
 .pref-new { gap: 6px 10px; }
 .pref-new textarea { min-height: 38px; font-size: 13px; }
 .pref-new .filed, .pref-new .p-error { flex-basis: 100%; }
-#attention .n { background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.4), transparent 50%), var(--waiting); color: var(--on-ink); border-radius: 10px; padding: 0 7px; font-weight: 700; font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; }
 button.pill.help { width: 32px; height: 32px; padding: 0; justify-content: center; font-weight: 700; font-size: 15px; color: var(--muted); }
 button.pill.help:hover, button.pill.help.on { color: var(--ink); }
@@ -500,7 +521,7 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 .wish-link:hover { color: var(--ink); }
 .wish-link:hover .w-text { border-color: var(--muted); }
 .wish-link.on-reply { display: flex; margin-top: 6px; }
-.empty { position: fixed; left: calc(50% - var(--side, 0px) / 2); top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; text-align: center; white-space: nowrap; }
+.empty { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); top: 50%; transform: translate(-50%, -50%); color: var(--muted); pointer-events: none; text-align: center; white-space: nowrap; }
 .empty p { margin: 0; }
 .empty p + p { margin-top: 4px; }
 .empty .none { margin-bottom: 8px; }
@@ -517,7 +538,7 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
   transform: translate(-50%, -50%); white-space: nowrap; border: 0; }
 .edge .arr { width: 20px; height: 20px; border-radius: 50%; background: var(--c); color: var(--on-ink); display: grid; place-items: center; font-size: 12px; }
 
-#minimap { position: fixed; left: 14px; bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 3px;
+#minimap { position: fixed; left: calc(var(--left, 0px) + 14px); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 14px; width: 210px; height: 130px; background: var(--card); border-radius: 3px;
   box-shadow: var(--shadow); z-index: 20; cursor: pointer; overflow: hidden; }
 #minimap svg { width: 100%; height: 100%; display: block; }
 
@@ -1619,14 +1640,14 @@ button.link:hover { text-decoration: underline; }
 
 /* ---------- push to talk (from the mock) ---------- */
 /* in the middle of the canvas, left of a sheet docked on the right */
-#ptt { position: fixed; left: calc(50% - var(--side, 0px) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#ptt { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 22px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #mic { width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--card); box-shadow: var(--lift); cursor: pointer; display: grid; place-items: center; position: relative; touch-action: none; }
 #mic svg { width: 24px; height: 24px; }
 #mic .ring { position: absolute; inset: -6px; border-radius: 50%; border: 3px solid var(--waiting); opacity: 0; transform: scale(var(--lvl, 1)); transition: transform .08s linear, opacity .2s; }
 #ptt.listening #mic { background: var(--waiting); color: var(--on-ink); }
 #ptt.listening #mic .ring { opacity: .8; }
 @keyframes spin { to { transform: rotate(360deg); } }
-#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 4px 12px; white-space: nowrap; max-width: calc((100vw - var(--side, 0px)) * .6); overflow: hidden; text-overflow: ellipsis; }
+#target { font-size: 12px; color: var(--muted); background: var(--card); box-shadow: var(--shadow); border-radius: 3px; padding: 4px 12px; white-space: nowrap; max-width: calc((100vw - var(--left, 0px) - var(--side, 0px)) * .6); overflow: hidden; text-overflow: ellipsis; }
 #target b { color: var(--ink); font-weight: 600; }
 #target.flat { color: var(--on-ink); background: var(--error); font-weight: 600; }
 #target.into, #target.into b { color: var(--working); }
@@ -1647,7 +1668,7 @@ button.link:hover { text-decoration: underline; }
 .c-file .remove { position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 3px; border: 1px solid var(--line);
   background: var(--card); color: var(--ink); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 #ptt.dropping #mic { outline: 2px dashed var(--working); outline-offset: 5px; }
-.ptt-error { font-size: 12px; color: var(--error); background: var(--card); box-shadow: var(--shadow); border-radius: 2px; padding: 4px 10px; max-width: calc((100vw - var(--side, 0px)) * .6); }
+.ptt-error { font-size: 12px; color: var(--error); background: var(--card); box-shadow: var(--shadow); border-radius: 2px; padding: 4px 10px; max-width: calc((100vw - var(--left, 0px) - var(--side, 0px)) * .6); }
 .tell { margin: 4px 0 6px; }
 /* the Koordinator's sheet is a column: the conversation takes the height the sheet has, the field to
    write in under it, then the sections that open and close; an open section takes from the
@@ -1672,8 +1693,8 @@ button.link:hover { text-decoration: underline; }
 .fold-body > .hint:first-child { margin-top: 0; }
 
 /* confirmations, and each command while the Koordinator reads it, stacked above the microphone, newest last */
-#acks { position: fixed; left: calc(50% - var(--side, 0px) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
-.ack { background: var(--ink); color: var(--bg); border-radius: 3px; padding: 12px 16px; max-width: min(560px, calc(100vw - var(--side, 0px) - 32px)); font-size: 14px;
+#acks { position: fixed; left: calc(50% + (var(--left, 0px) - var(--side, 0px)) / 2); transition: left .45s cubic-bezier(.3,.9,.3,1); bottom: 128px; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.ack { background: var(--ink); color: var(--bg); border-radius: 3px; padding: 12px 16px; max-width: min(560px, calc(100vw - var(--left, 0px) - var(--side, 0px) - 32px)); font-size: 14px;
   display: flex; gap: 14px; align-items: center; pointer-events: auto; animation: ack-in .25s; }
 @keyframes ack-in { from { opacity: 0; transform: translateY(12px); } }
 .ack b { font-weight: 600; }

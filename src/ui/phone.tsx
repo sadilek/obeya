@@ -6,9 +6,10 @@
 // what was typed but not sent survives a reload. It holds one WebSocket per canvas.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage, waitingOn } from '../core/types';
 import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
+import { ForYouRows, forYouOf, when } from './forYou';
 import { type ActDone, Detail, type Pending, TalkElsewhere, useEvents } from './detail';
 import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
 import { KoordinatorTalk } from './koordinator';
@@ -19,7 +20,7 @@ import { Cards } from './message';
 import { glide, type Mark, settle, speed, THROWN, thrown } from './panelHeight';
 import { CardFace, cardClass, shownState, TalkIcon } from './parts';
 import { videoOf } from './spot';
-import { clock, failText, forTouch, shortDay, t } from './strings';
+import { failText, forTouch, t } from './strings';
 import { UsagePill } from './usage';
 import { agentWorks, cardTalk, koordinatorReads, obeyaWorks, opensWithTalk, runs, unseen } from './talk';
 import { seenOf } from './seen';
@@ -159,7 +160,6 @@ function tapOpensKeyboard() {
 }
 
 /** When something began: the time today, else the day. */
-const when = (iso: string | number) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
 
 export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   keepDrafts(sessionStorage, DRAFTS);
@@ -687,43 +687,19 @@ function ForYou({
   onOpen: (i: Item) => void;
   onObeya: (canvas: string) => void;
 }) {
-  const rows = canvases.flatMap((c) => {
-    const s = snaps[c.id]!;
-    // cards snoozed while they waited for the owner stand at the end, until they come back
-    const cards = [...s.items.filter((i) => needsYou(i) && !underway(i.id)), ...s.items.filter((i) => i.snoozed?.waiting)];
-    const unread = unreadAnswers(s.talk) ? s.talk.filter((x) => x.unread) : [];
-    return [
-      ...cards.map((i) => (
-        <li key={i.id}>
-          <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
-            <CardFace item={i} where={several ? c.name : undefined} since={i.waitingSince ? t.phone.since(when(i.waitingSince)) : undefined} />
-          </button>
-        </li>
-      )),
-      ...(unread.length
-        ? [
-            <li key={`obeya:${c.id}`}>
-              <button className="card s-working ph-card" onClick={() => onObeya(c.id)}>
-                <div className="kind">
-                  <span>{[several && c.name, t.koordinator.title].filter(Boolean).join(' · ')}</span>
-                </div>
-                <div className="ttl">{plain(unread.at(-1)!.question ?? unread.at(-1)!.said)}</div>
-                <div className="state">
-                  {t.phone.obeyaAnswered}
-                  <span className="since"> · {t.phone.since(when(unread.at(-1)!.at))}</span>
-                </div>
-              </button>
-            </li>,
-          ]
-        : []),
-    ];
-  });
   if (!canvases.length) return null;
-  const waits = canvases.some((c) => snaps[c.id]!.items.some(needsYou) || unreadAnswers(snaps[c.id]!.talk) > 0);
+  const waits = canvases.some((c) => waitingOn(snaps[c.id]!) > 0);
+  const rows = canvases.filter((c) => forYouOf(snaps[c.id]!, underway).cards.length || unreadAnswers(snaps[c.id]!.talk));
   return (
     <>
       {!waits && <p className="ph-none">{t.phone.nothingWaits}</p>}
-      {rows.length > 0 && <ul className="ph-list">{rows}</ul>}
+      {rows.length > 0 && (
+        <ul className="ph-list">
+          {rows.map((c) => (
+            <ForYouRows key={c.id} waiting={snaps[c.id]!} canvas={c.id} where={several ? c.name : undefined} underway={underway} onOpen={onOpen} onObeya={onObeya} />
+          ))}
+        </ul>
+      )}
     </>
   );
 }

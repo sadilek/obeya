@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { besideSheet, type Cam, CHASE_MS, chaseStep, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView, placeIn, shows } from './camera';
+import { besideSheet, type Cam, NO_SIDES, CHASE_MS, chaseStep, DROP_ROOM, dragLimit, EDGE_ZONE, edgeScroll, KEEP, keepInView, placeIn, shows } from './camera';
 
 const view = { left: 0, top: 70, right: 1000, bottom: 800 };
 const cam: Cam = { x: 0, y: 0, s: 1 };
@@ -115,12 +115,19 @@ test('a chased camera closes most of the way each frame and arrives without over
 
 test('a sheet docked on the right moves the view by half its width, so the middle stays the middle', () => {
   const c: Cam = { x: 100, y: 50, s: 1.5 };
+  const right = (w: number) => ({ left: 0, right: w });
   // opening a sheet 380 wide: the content moves left by 190
-  expect(besideSheet(c, 0, 380)).toEqual({ x: -90, y: 50, s: 1.5 });
+  expect(besideSheet(c, NO_SIDES, right(380))).toEqual({ x: -90, y: 50, s: 1.5 });
   // closing it, or dragging it wider, moves it back by as much
-  expect(besideSheet(besideSheet(c, 0, 380), 380, 0)).toEqual(c);
-  expect(besideSheet(c, 380, 500)).toEqual({ x: 40, y: 50, s: 1.5 });
-  expect(besideSheet(c, 380, 380)).toBe(c);
+  expect(besideSheet(besideSheet(c, NO_SIDES, right(380)), right(380), NO_SIDES)).toEqual(c);
+  expect(besideSheet(c, right(380), right(500))).toEqual({ x: 40, y: 50, s: 1.5 });
+  expect(besideSheet(c, right(380), right(380))).toBe(c);
+});
+
+test('the navigation pinned on the left moves the view the other way, and as wide a sheet on the right cancels it out', () => {
+  const c: Cam = { x: 100, y: 50, s: 1.5 };
+  expect(besideSheet(c, NO_SIDES, { left: 340, right: 0 })).toEqual({ x: 270, y: 50, s: 1.5 });
+  expect(besideSheet(c, NO_SIDES, { left: 380, right: 380 })).toBe(c);
 });
 
 test('a new card goes under the pointer over the canvas, else to the middle of the view', () => {

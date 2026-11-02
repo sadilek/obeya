@@ -6,11 +6,11 @@ import { clip } from '../core/text';
 import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
 import { ProjectTalk } from './koordinator';
 import { api } from './api';
-import type { Cam } from './camera';
+import type { Cam, Sides } from './camera';
 import type { Shape } from './groups';
 import { Doc, excerpt, Inline, plain } from './markdown';
 import { Body } from './message';
-import { useMenuClose, waitedOn } from './queue';
+import { waitedOn } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
 
@@ -282,56 +282,6 @@ export const CardView = memo(
   (a, b) =>
     a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
 );
-
-/**
- * The canvas's name and home branch; with several canvases, a switcher. Other canvases with cards
- * that need the owner carry their count in the menu, and while it is closed the pill carries the sum.
- */
-export function CanvasPill({ canvas, canvases, waiting }: { canvas: CanvasInfo; canvases: CanvasInfo[]; waiting: Record<string, number> }) {
-  const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useMenuClose(open, box, () => setOpen(false), true);
-  const home = canvas.repos[0];
-  const many = canvases.length > 1;
-  const elsewhere = canvases.reduce((n, c) => n + (c.id === canvas.id ? 0 : (waiting[c.id] ?? 0)), 0);
-  return (
-    <div className="canvas-pill" ref={box}>
-      <button
-        className={many ? 'pill switch' : 'pill'}
-        title={many ? (elsewhere ? `${t.switchCanvas} · ${t.waitingElsewhere(elsewhere)}` : t.switchCanvas) : undefined}
-        onClick={() => many && setOpen(!open)}
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="6" cy="6" r="2.5" />
-          <circle cx="6" cy="18" r="2.5" />
-          <circle cx="18" cy="8" r="2.5" />
-          <path d="M6 8.5v7M18 10.5c0 4-6 3-10 6" />
-        </svg>
-        <b>{canvas.name}</b>
-        <span className="hint lbl">{canvas.repos.length > 1 ? t.repos(canvas.repos.length) : home?.branch}</span>
-        {many && <span className="hint">▾</span>}
-        {!open && elsewhere > 0 && <span className="waits pulse">{elsewhere}</span>}
-      </button>
-      {open && (
-        <ul className="canvas-menu">
-          {canvases.map((c) => {
-            const n = c.id === canvas.id ? 0 : (waiting[c.id] ?? 0);
-            return (
-              <li key={c.id} className={c.id === canvas.id ? 'on' : ''}>
-                <a href={`?c=${encodeURIComponent(c.id)}`} title={n ? t.waitingThere(n) : undefined}>
-                  <b>{c.name}</b>
-                  <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
-                  {n > 0 && <span className="waits">{n}</span>}
-                </a>
-                <CanvasAgents canvas={c} />
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 /**
  * A canvas's agents on its row in the switcher (design: Pausing a canvas's agents): while one works
@@ -1285,12 +1235,12 @@ export function Sheet({
 
 // ------------------------------------------------------------------ overlays
 
-/** Chips at the edge of the canvas pointing at off-screen cards that need the owner; `rightReserve`: the sheet docked on the right. */
-export function Edges({ cam, targets, rightReserve, onOpen }: { cam: Cam; targets: { item: Item; b: Bounds }[]; rightReserve: number; onOpen: (i: Item) => void }) {
-  const m = 30;
+/** Chips at the edge of the canvas pointing at off-screen cards that need the owner; `side`: the panels docked at the window's edges. */
+export function Edges({ cam, targets, side, onOpen }: { cam: Cam; targets: { item: Item; b: Bounds }[]; side: Sides; onOpen: (i: Item) => void }) {
   const top = 64;
   const bottom = innerHeight - 60;
-  const right = innerWidth - rightReserve - m;
+  const m = side.left + 30;
+  const right = innerWidth - side.right - 30;
   return (
     <div id="edges">
       {targets.map(({ item, b }) => {
@@ -1318,7 +1268,7 @@ export function Edges({ cam, targets, rightReserve, onOpen }: { cam: Cam; target
 
 export function Minimap({
   cam,
-  viewW,
+  side,
   all,
   placed,
   territories,
@@ -1326,8 +1276,8 @@ export function Minimap({
   onFollow,
 }: {
   cam: Cam;
-  /** How wide the canvas shows, left of the sheet docked on the right. */
-  viewW: number;
+  /** The panels docked at the window's edges: the canvas shows between them. */
+  side: Sides;
   all: Bounds;
   placed: { item: Item; b: Bounds }[];
   territories: Shape[];
@@ -1387,9 +1337,9 @@ export function Minimap({
           />
         ))}
         <rect
-          x={ox + (-cam.x / cam.s) * k}
+          x={ox + ((side.left - cam.x) / cam.s) * k}
           y={oy + (-cam.y / cam.s) * k}
-          width={(viewW / cam.s) * k}
+          width={((innerWidth - side.left - side.right) / cam.s) * k}
           height={(innerHeight / cam.s) * k}
           fill="none"
           style={{ stroke: 'var(--ink)' }}

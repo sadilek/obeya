@@ -137,7 +137,8 @@ own WebSocket. It shows four lists:
 - **„Für dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then „Obeya hat geantwortet“ where an answer waits unread. Each card says what it waits
   for (its state line: „Demo bereit“, „Frage an dich“ …) and since when (the server keeps that across
-  restarts). Snoozed cards stand at the end (see Snoozing a card).
+  restarts). Snoozed cards stand at the end (see Snoozing a card). The canvas's navigation shows the
+  same list, built once for both (see The navigation).
 - **„Läuft“**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
   at the end. Every card that leaves „Für dich“ without being done stands here.
