@@ -1463,7 +1463,7 @@ function queued(q: Queue, items: Item[]): string {
   const titles = q.behind
     .map((id) => {
       const i = items.find((x) => x.id === id);
-      return `"${i?.title ?? id}"${i && notStarted(i) ? ' (not started yet)' : ''}${q.buildsOn?.includes(id) ? ' (builds on it)' : ''}`;
+      return `"${i?.title ?? id}"${i && notStarted(i) ? ' (not started yet)' : ''}${q.buildsOn?.includes(id) ? ' (builds on it)' : ''}${q.manualWait?.includes(id) ? ' (the owner drew an arrow from it to this card)' : ''}`;
     })
     .join(', ');
   return `queued behind ${titles}`;

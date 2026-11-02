@@ -806,7 +806,11 @@ export const PUSH_HOLD_MS = 8000;
  * leased or none set up; `dirty`: every free one has uncommitted changes); it starts once one is.
  * `behind`: the cards it waits for; `buildsOn`: those of them it builds on (workstreams of its
  * project), which hold it until they have landed, also while not started or stopped.
+ * `manualWait`: those of `behind` that only an arrow the owner drew holds it for, not a wait the
+ * Koordinator inferred; `buildsOn` names inferred waits alone.
  * `paused`: the Koordinator let it start, but the owner paused its canvas's agents; it starts once they resume them.
+ * `begun`, on a card waiting for a workspace or a paused canvas: the owner started it anyway, or it
+ * was at work before (its workspace taken from it); the owner's arrows no longer hold it.
  */
 export type Queue = Wait & { since: string };
 
@@ -814,7 +818,7 @@ export type Queue = Wait & { since: string };
  * What a card in the queue waits for (`Queue`). `together`: judged in one turn with the cards of the
  * same key, a project's workstreams started at once (the project's id) or cards freed at once (`freed:…`).
  */
-export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] } | { workspace: WorkspaceShortage } | { paused: true };
+export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] } | { workspace: WorkspaceShortage; begun?: true } | { paused: true; begun?: true };
 
 /** Why a card waits to start: no clone free (`none`), the free ones dirty, or every machine with a clean free one busy to its slots (`slots`). */
 export type WorkspaceShortage = 'none' | 'dirty' | 'slots';

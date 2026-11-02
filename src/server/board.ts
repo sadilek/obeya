@@ -2220,7 +2220,10 @@ export class Board {
       const w = r.id === keep ? undefined : waitOf(r);
       if (w?.behind.some((id) => gone.has(id))) {
         const to = (ids: string[]) => [...new Set(ids.map((id) => (gone.has(id) ? keep : id)))];
-        this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }) }) });
+        // a card it waited for by an inferred wait stays waited for so, also where an arrow named another merged into it
+        const inferred = to(w.behind.filter((id) => !w.manualWait?.includes(id)));
+        const manualWait = to(w.manualWait ?? []).filter((id) => !inferred.includes(id));
+        this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }), manualWait: manualWait.length ? manualWait : undefined }) });
       }
       const c = contributionOf(r);
       if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: JSON.stringify({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) } satisfies StoredContribution) });

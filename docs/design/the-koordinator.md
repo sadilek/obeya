@@ -28,7 +28,8 @@ other works in; working side by side in one directory is fine. No paths are soft
 
 Cards queued before it count too: a card likely to conflict with one waits behind it rather than
 overtaking it, and once that one has started, until it has landed. A card judged again sees only the
-cards queued before it, and a card waiting for another (directly or through others) is never among
+cards queued before it, and a card waiting for another (directly or through others, an arrow the
+owner drew counting as a wait) is never among
 the cards that one sees as ahead or to build on, so no two cards wait for each other.
 
 A waiting card shows the reason (one that starts says which files it shares and why that is fine).
@@ -50,9 +51,19 @@ not free the card. The card says so („Wartet auf W2 „…“ (noch nicht gest
 queue's list and the project's sheet), so the owner sees which to start first. Even with nothing in
 progress or queued, it skips this judgement only when no workstream of its project is left unlanded.
 
-A dependency drawn by the owner holds a card started afterwards until the prerequisite has finished,
-including while that prerequisite is not started or stopped. Removing the arrow releases that wait;
-an already running card continues. The owner may still start a queued card anyway.
+A dependency drawn by the owner (see Cards on the canvas) holds the card until the prerequisite has
+finished, including while that prerequisite is not started or stopped: a card started afterwards
+queues behind it once judged, and one in the queue when the arrow is drawn waits for it from then on,
+also one waiting only for a workspace or for the canvas's agents to resume. An arrow counts as a
+wait wherever the queue reads waits: a card held by one is never ahead of its prerequisite or
+among the cards that one may build on, a card does not pass it in the queue, and the arrows that
+would close a cycle with other arrows or waits are refused. An arrow holds a card only until it
+starts: one running or stopped by the owner afterwards (planned again, held anew once started
+again), one the owner started anyway („Trotzdem starten“) and one whose workspace was taken from it
+go on once a workspace is free, whatever arrows are drawn. An arrow is kept apart from the waits the
+Koordinator inferred: removing it leaves exactly those (a likely conflict still holds only while
+the other card is in progress), and where both name the same card, the arrow holds on once the
+inferred wait has ended.
 
 #### Follow-up tasks of a review
 

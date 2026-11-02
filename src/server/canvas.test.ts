@@ -1662,3 +1662,115 @@ test('removing a manual dependency leaves an independently inferred wait intact'
   expect(item(b.id).queue).toMatchObject({ behind: [a.id], buildsOn: [a.id] });
   expect(item(b.id).state).toBe('planned');
 });
+
+describe('owner-drawn dependencies in the queue', () => {
+  const estimate = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'scope')).at(-1)!;
+  /** Answers the latest estimate once its brief is written, with a likely conflict with each card it lists, or none. */
+  async function judge(conflict: boolean) {
+    await until(() => estimate()?.inbox[0]);
+    const s = estimate();
+    s.call('scope', { files: ['src/index.ts'], conflicts_with: conflict ? [...new Set(s.inbox[0]!.match(/\bK\d+\b/g) ?? [])] : [], reason: '' });
+    s.emit({ type: 'idle' });
+    await settle();
+  }
+  /** A card at work in "web", holding its only clone. */
+  async function atWork(title: string) {
+    const x = canvas.board.create({ title, x: 0, y: 0 });
+    await canvas.repoOf(x.id).workers.start(x.id);
+    await settle();
+    return x;
+  }
+
+  test('a card waiting for a workspace that an arrow then holds is not ahead of its prerequisite, so the two never wait for each other', async () => {
+    await atWork('Running');
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    canvas.board.work(a.id, { queue: JSON.stringify({ workspace: 'none', since: new Date(Date.now() - 1000).toISOString() }) });
+    await settle();
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.board.connect(b.id, a.id);
+    await settle();
+    expect(item(a.id).queue).toMatchObject({ behind: [b.id], manualWait: [b.id] });
+    canvas.act(b.id, { action: 'start' });
+    // whatever B's estimate says, it cannot come to wait for A
+    await judge(true);
+    expect(estimate().inbox[0]).not.toContain('"A"');
+    expect(item(b.id).queue).toMatchObject({ behind: [expect.not.stringMatching(a.id)] });
+    expect(item(a.id).queue).toMatchObject({ behind: [b.id] });
+  });
+
+  test('an arrow drawn over a wait the Koordinator inferred leaves that wait as it was once removed', async () => {
+    const a = await atWork('A');
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.act(b.id, { action: 'start' });
+    await judge(true);
+    expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+    const p = canvas.board.create({ title: 'Prerequisite', x: 0, y: 400 });
+    canvas.board.connect(a.id, b.id);
+    canvas.board.connect(p.id, b.id);
+    await settle();
+    expect(item(b.id).queue).toMatchObject({ behind: [a.id, p.id], manualWait: [p.id] });
+    canvas.board.connect(a.id, b.id, true);
+    await settle();
+    // a likely conflict holds only while A is in progress; the other arrow holds on
+    await canvas.repoOf(a.id).workers.stop(a.id);
+    await settle();
+    expect(item(b.id).queue).toEqual(expect.objectContaining({ behind: [p.id], manualWait: [p.id] }));
+    expect(item(b.id).queue).not.toHaveProperty('buildsOn');
+    canvas.board.connect(p.id, b.id, true);
+    await until(() => item(b.id).state === 'working');
+  });
+
+  test('an arrow holds on where the wait the Koordinator inferred ended, and its removal frees the card', async () => {
+    const a = await atWork('A');
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.act(b.id, { action: 'start' });
+    await judge(true);
+    canvas.board.connect(a.id, b.id);
+    await canvas.repoOf(a.id).workers.stop(a.id);
+    await settle();
+    // A stopped has not landed: the arrow still holds B
+    expect(item(b.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id], manualWait: [a.id] } });
+    canvas.board.connect(a.id, b.id, true);
+    await until(() => item(b.id).state === 'working');
+  });
+
+  test('an arrow drawn while a card is judged keeps it from waiting for the card the arrow holds', async () => {
+    await atWork('Running');
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    canvas.board.work(a.id, { queue: JSON.stringify({ workspace: 'none', since: new Date(Date.now() - 1000).toISOString() }) });
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
+    canvas.act(b.id, { action: 'start' });
+    await until(() => estimate()?.inbox[0]);
+    expect(estimate().inbox[0]).toContain('K2: "A"');
+    canvas.board.connect(b.id, a.id);
+    await judge(true);
+    expect(item(b.id).queue).toMatchObject({ behind: [expect.not.stringMatching(a.id)] });
+    expect(item(a.id).queue).toMatchObject({ behind: [b.id] });
+  });
+
+  test('a merged card waited for by an inferred wait stays so waited for where an arrow named another merged into it', async () => {
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0 });
+    const b = canvas.board.create({ title: 'B', x: 0, y: 200 });
+    const c = canvas.board.create({ title: 'C', x: 400, y: 0 });
+    const since = new Date().toISOString();
+    for (const x of [a, b]) canvas.board.work(x.id, { queue: JSON.stringify({ workspace: 'none', since }) });
+    canvas.board.work(c.id, { queue: JSON.stringify({ behind: [a.id, b.id], reason: 'R', manualWait: [b.id], since }) });
+    canvas.board.merge(a.id, [b.id], 'A and B');
+    expect(canvas.board.row(c.id).queue).toBe(JSON.stringify({ behind: [a.id], reason: 'R', since }));
+  });
+
+  test('a card started anyway waits for a workspace without an arrow holding it again', async () => {
+    const x = await atWork('Running');
+    const p = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
+    const a = canvas.board.create({ title: 'A', x: 400, y: 0 });
+    canvas.board.connect(p.id, a.id);
+    canvas.act(a.id, { action: 'start' });
+    await judge(false);
+    expect(item(a.id).queue).toMatchObject({ behind: [p.id], manualWait: [p.id] });
+    canvas.act(a.id, { action: 'force' });
+    await settle();
+    expect(item(a.id).queue).toMatchObject({ workspace: 'none', begun: true });
+    await canvas.repoOf(x.id).workers.stop(x.id);
+    await until(() => item(a.id).state === 'working');
+  });
+});
