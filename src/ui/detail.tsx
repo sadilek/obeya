@@ -2138,18 +2138,17 @@ function useZoom(video: RefObject<HTMLVideoElement | null>) {
     const r = player.current!.getBoundingClientRect();
     const back = { left: r.left, top: r.top, width: r.width, height: cur.from.height * (r.width / cur.from.width) };
     setBox({ ...cur, closing: true });
-    el.animate([{ transform: 'none' }, { transform: onto(back, cur.to) }], { duration: ZOOM_MS, easing: ZOOM_EASE, fill: 'forwards' }).onfinish = () => {
-      setBox(null);
-      el.getAnimations().forEach((a) => a.cancel());
-    };
+    el.animate([{ transform: 'none' }, { transform: onto(back, cur.to) }], { duration: ZOOM_MS, easing: ZOOM_EASE, fill: 'forwards' }).onfinish = () => setBox(null);
   };
   const toggleRef = useRef(toggle);
   toggleRef.current = toggle;
-  // grows out of where it stood
+  // grows out of where it stood; back in its place, it lets go of the shrinking's last frame only
+  // once it no longer stands zoomed, so the large video does not show for a frame in between
   const zoomed = !!box;
   useLayoutEffect(() => {
     const cur = boxRef.current;
-    if (!cur || !screen.current) return;
+    if (!screen.current) return;
+    if (!cur) return screen.current.getAnimations().forEach((a) => a.cancel());
     screen.current.animate([{ transform: onto(cur.from, cur.to) }, { transform: 'none' }], { duration: ZOOM_MS, easing: ZOOM_EASE });
   }, [zoomed]);
   useEffect(() => {
