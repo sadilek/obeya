@@ -247,6 +247,36 @@ describe('watching', () => {
     expect(state(id)).toBe('live');
   });
 
+  test('a request for changes that mentions nobody reaches the worker, and its plain reply is not merged before the reviewer answers', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.checks = [{ name: 'CI', state: 'success' }];
+    status.comments = [{ id: 'cLEAD', author: 'lead', body: 'Please rename the export to invoices.csv.', at: '2026-11-02T12:20:00Z' }];
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain('Please rename the export to invoices.csv.');
+    expect(merges).toEqual([]);
+    // the worker answers without a push and without mentioning the reviewer
+    status.comments.push({ id: 'cWHY', author: 'owner', body: 'Kept the name: the importer expects export.csv.', at: '2026-11-02T12:30:00Z' });
+    runtime.last.emit({ type: 'idle' });
+    await watcher.poll();
+    expect(merges).toEqual([]);
+    expect(board.item(id)!.pr!.waits).toEqual(['answer']);
+    // a review asking for changes, without words of its own, holds it too
+    status.comments.push({ id: 'rCR', author: 'lead', body: '', at: '2026-11-02T12:35:00Z', verdict: 'changes' });
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain('lead (requests changes)');
+    runtime.last.emit({ type: 'idle' });
+    await watcher.poll();
+    expect(board.item(id)!.pr!.waits).toEqual(['changes']);
+    expect(merges).toEqual([]);
+    // the reviewer approves
+    status.comments.push({ id: 'rOK', author: 'lead', body: '', at: '2026-11-02T12:40:00Z', verdict: 'approved' });
+    await watcher.poll();
+    expect(merges).toEqual(['aaa']);
+  });
+
   test('the card says what its PR waits for, and the worker hears of a branch behind its base once per commit', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });

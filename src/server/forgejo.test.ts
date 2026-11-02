@@ -81,7 +81,7 @@ test('Forgejo’s answers become a PR status: checks, conversation, reviews and 
     comments: [
       { id: 'c5', author: 'bot', body: 'Summary', at: '2026-10-02T08:00:00.000Z', edited: '2026-10-02T08:09:00.000Z', url: 'https://cb/c5' },
       { id: 'c6', author: 'owner', body: 'Typo fixed', at: '2026-10-02T08:10:00.000Z', url: 'https://cb/c6' },
-      { id: 'r90', author: 'lead', body: 'Please split this.', at: '2026-10-02T08:05:00.000Z' },
+      { id: 'r90', author: 'lead', body: 'Please split this.', at: '2026-10-02T08:05:00.000Z', verdict: 'changes' },
       { id: 'i7', author: 'lead', body: 'Null check.', at: '2026-10-02T08:01:00.000Z', path: 'src/a.ts', line: 3, url: 'https://cb/i7', round: '90', resolved: true },
       { id: 'i8', author: 'owner', body: 'Added.', at: '2026-10-02T08:03:00.000Z', path: 'src/a.ts', line: 3, url: 'https://cb/i8', round: '91', replyTo: 'i7' },
     ],

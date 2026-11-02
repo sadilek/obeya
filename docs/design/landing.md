@@ -111,9 +111,13 @@ waits.
 every check passed, every thread is resolved, the worker is not in a turn, every reviewer who wrote
 has written since the PR's newest non-merge commit (merging the base in brings changes reviewed
 there), and whoever the author last asked for another look has answered (a rewritten summary
-counts, as bots often answer that way). Asking is a conversation comment of the author's that
-mentions an account (`@greptileai review`), outside code and quotes; one that mentions nobody (a
-thank-you for a summary) asks for nothing. A review older than the changes makes the worker ask for a
+counts, as bots often answer that way), and no reviewer's request for changes stands (GitHub's
+„Request changes“ and Forgejo's counterpart, until that reviewer approves or it is dismissed).
+Asking is a conversation comment of the author's that mentions an account (`@greptileai review`),
+outside code and quotes, or that follows a reviewer's word that was no passing verdict: a request
+for changes in a plain comment names nobody, and the worker's answer to it waits for the reviewer.
+Passing is an approval or a confidence of at least 4/5; a thank-you after it that mentions nobody
+asks for nothing. A review older than the changes makes the worker ask for a
 new one the repository's way (its skill, or a comment mentioning the bot), once per commit; a PR no
 reviewer wrote on waits for nobody.
 
@@ -137,7 +141,7 @@ unless it is reported again.
 The card shows the PR link, its checks (each linked to its run), a conflict or a failed merge,
 and while it is not ready what it still waits for, in the order it is in the way: a conflict, the
 branch behind its base, a draft, branch protection (an approval, say), the forge still working out
-mergeability, checks red or running, open threads, a review of the newest commit, the reviewer's
+mergeability, checks red or running, open threads, a standing request for changes, a review of the newest commit, the reviewer's
 answer to a request for another look, the agent at work on it. Folded, „PR #42 · 1 Check rot ·
 Konflikt“, or what it waits for first („PR #42 · wartet auf Review“); a PR in another repository
 is named with it („PR docs #7“), and each of a card's open PRs has its block and its part of the
@@ -412,11 +416,14 @@ A card no agent worked on, a prototype or an archived card has no field.
   two minutes.
 - **A rewritten summary is an answer, an old review no review** (2026-10-02). Rejected: waiting for
   new comments only (cards stuck) and counting any review (a PR merged on a stale 3/5).
-- **Only a mention asks for another look** (2026-11-02, issue #45): a PR with Greptile's 5/5 and
-  no findings sat an hour unmerged because the worker's thank-you for the summary counted as a
-  request no reviewer would answer. Rejected: counting any comment of the author's (that stall) and
-  dropping the request altogether (a push committed before the last review but pushed after it
-  shows only through the request).
+- **A comment after a passing verdict asks for another look only by a mention** (2026-11-02,
+  issue #45): a PR with Greptile's 5/5 and no findings sat an hour unmerged because the worker's
+  thank-you for the summary counted as a request no reviewer would answer. After any other word of
+  a reviewer, the author's answer still waits for theirs: reviewers' requests for changes on the
+  owner's PRs name nobody, and a plain reply that keeps the code must not let the PR merge. Rejected:
+  counting any comment of the author's (that stall), only mentions (an early merge after such a
+  reply), and dropping the request altogether (a push committed before the last review but pushed
+  after it shows only through the request).
 - **The card says what its PR waits for** (2026-11-02, issue #45), from the same reasons that
   decide readiness, so the two cannot disagree. Rejected: saying it only after a long wait, which
   leaves the owner guessing until then.

@@ -710,10 +710,11 @@ export interface PullRequest {
  * What a pull request waits for before it can be merged, in the order it is in the way: a conflict,
  * a branch behind its base that the repository wants up to date, a draft, branch protection (an
  * approval, a required check), the forge not having worked out mergeability yet, checks failed or
- * running, review threads open, a review of an older commit than its newest, an answer to the
+ * running, review threads open, a reviewer's standing request for changes, a review of an older
+ * commit than its newest, an answer to the
  * author's request for another look, and the worker at work on something passed to it.
  */
-export type PrWait = 'conflict' | 'behind' | 'draft' | 'protection' | 'forge' | 'checksFailed' | 'checks' | 'threads' | 'review' | 'answer' | 'agent';
+export type PrWait = 'conflict' | 'behind' | 'draft' | 'protection' | 'forge' | 'checksFailed' | 'checks' | 'threads' | 'changes' | 'review' | 'answer' | 'agent';
 
 /**
  * The pull request a review card reviews: opened by someone outside (the contributor), reviewed by

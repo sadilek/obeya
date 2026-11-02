@@ -7,11 +7,9 @@
 
 import type { RepoAdapter } from '../adapters/types';
 import { type Board, contributionOf, type PrState, type StoredContribution } from './board';
-import { confidence, lastAsked, reviewOf, reviewStale, waitsOf, type Forge, type PrStatus } from './forge';
+import { confidence, lastAsked, MIN_CONFIDENCE, reviewOf, reviewStale, waitsOf, type Forge, type PrStatus } from './forge';
 import type { PrWait } from '../core/types';
 
-/** Below this share of a reviewer's confidence (4 of 5), Obeya leaves the merge to the owner. */
-const MIN_CONFIDENCE = 0.8;
 /** How long reading a PR fails before its card says so. */
 const READ_ERROR_AFTER_MS = 10 * 60_000;
 import type { Workers } from './workers';
@@ -196,7 +194,8 @@ export class PrWatcher {
         this.save(cardId, which && this.prsOf(cardId)[0]?.url !== pr.url ? { ...next, closed: true } : next);
         return this.workers.prClosed(cardId);
       }
-      const comments = s.comments.filter((c) => !pr.seen.includes(c.id) && c.author !== s.author && !noise.includes(c.author));
+      // an approval without words asks the worker for nothing
+      const comments = s.comments.filter((c) => !pr.seen.includes(c.id) && c.author !== s.author && !noise.includes(c.author) && (c.body.trim() || c.verdict === 'changes'));
       if (comments.length) {
         next.seen = [...pr.seen, ...comments.map((c) => c.id)];
         this.workers.prEvent(
@@ -204,7 +203,7 @@ export class PrWatcher {
           this.board.t.pr.comments(comments.length, comments[0]!.author),
           [
             `New review comments on your pull request${which}. Address them the way the repository does it (its own skill for review comments, if it has one; otherwise fix each, or leave it where a change is not right, and push). Each comment on the code gets a reply in its own thread, not one comment for all: what you changed, or why not. Then resolve each thread, unless you still want the reviewer’s answer. A summary or verdict that asks for nothing (a review without findings, an approval) needs no reply. Once you pushed, ask the reviewers for a new review the way the repository does it: Obeya merges only on a review of the latest commit. A comment of yours that mentions an account counts as such a request, and Obeya waits for its answer before it merges. End your turn. Use ask if one questions a decision only the owner can make.`,
-            ...comments.map((c) => `- ${c.author}${c.path ? ` on ${c.path}${c.line ? `:${c.line}` : ''}` : ''}${c.url ? ` (${c.url})` : ''}:\n${c.body}`),
+            ...comments.map((c) => `- ${c.author}${c.verdict === 'changes' ? ' (requests changes)' : ''}${c.path ? ` on ${c.path}${c.line ? `:${c.line}` : ''}` : ''}${c.url ? ` (${c.url})` : ''}:\n${c.body}`),
           ].join('\n\n'),
         );
       }
@@ -240,7 +239,7 @@ export class PrWatcher {
       // ready only while the worker has nothing in hand: what it was told may still change the PR
       const idle = !told && !this.workers.busyCards().includes(cardId);
       // a push the reviewer has not seen, and nobody asked for another look: the worker asks, once per commit
-      if (idle && reviewStale(s, noise) && lastAsked(s) < s.changedAt! && pr.staleHead !== s.head) {
+      if (idle && reviewStale(s, noise) && lastAsked(s, noise) < s.changedAt! && pr.staleHead !== s.head) {
         next.staleHead = s.head;
         told = true;
         this.workers.prEvent(

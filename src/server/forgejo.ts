@@ -2,7 +2,7 @@
 // the login git has for the host. Tests use canned answers.
 
 import { messageOf } from '../core/text';
-import { type Forge, type PrStatus, parsePrUrl, withBodyFile } from './forge';
+import { type Forge, type PrStatus, parsePrUrl, verdictOf, withBodyFile } from './forge';
 import { spawnOutput } from './spawn';
 import { GIT } from './workspaces';
 
@@ -191,8 +191,8 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
             url: c.html_url,
           })),
           ...reviews
-            .filter((r) => r.body.trim())
-            .map((r) => ({ id: `r${r.id}`, author: login(r.user), body: r.body, ...(r.submitted_at ? { at: utc(r.submitted_at) } : {}) })),
+            .map((r) => ({ id: `r${r.id}`, author: login(r.user), body: r.body, ...(r.submitted_at ? { at: utc(r.submitted_at) } : {}), ...verdictOf(r.state) }))
+            .filter((r) => r.body.trim() || r.verdict),
           ...[...threads.values()].flatMap(([first, ...replies]) =>
             [first!, ...replies].map((c) => ({
               id: `i${c.id}`,
