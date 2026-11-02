@@ -91,8 +91,9 @@ export function onPaintTime(frames: Frame[], times: (number | null)[]): Frame[] 
 /**
  * Each frame with how long it is held in the video, from `t0` to `tEnd`: until the next frame,
  * less what a cut takes out. A frame shown only inside a cut is dropped; the last one before a
- * cut ends carries on after it. The first frame shows from t0 even when it was painted later (a
- * sharp take's first frame can take seconds), so the frames fill the whole video.
+ * cut ends carries on after it. The first frame shows from t0 even when it was painted later (a take
+ * starts once a frame has come, but its clock can place it a moment after), so the frames fill the
+ * whole video.
  */
 export function frameDurations(frames: Frame[], t0: number, tEnd: number, cuts: Cut[]) {
   const at = (t: number) => videoTime(Math.max(t, t0), t0, cuts);

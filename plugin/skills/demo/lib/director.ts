@@ -663,6 +663,8 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
   let stall: (error: Error) => void = () => {};
   const stalled = new Promise<never>((_, reject) => (stall = reject));
   stalled.catch(() => {});
+  let arrived: () => void = () => {};
+  const first = new Promise<void>((resolve) => (arrived = resolve));
   const since = now();
   const watch = setInterval(() => {
     tick();
@@ -682,6 +684,7 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
     const file = path.join(dir, `${String(frames.length).padStart(6, '0')}.jpg`);
     fs.writeFileSync(file, Buffer.from(f.data, 'base64'));
     frames.push({ file, t: f.metadata.timestamp ?? now(), width: f.metadata.deviceWidth, height: f.metadata.deviceHeight });
+    arrived();
     cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {});
   });
   const start = cdp.send('Page.startScreencast', {
@@ -694,6 +697,8 @@ async function startScreencast(ctx: BrowserContext, page: Page, dir: string, siz
   return {
     /** On the time they were painted once the screencast stops (`paintTimes`). */
     frames,
+    /** Resolves once the screencast has sent its first frame. */
+    first,
     /** Rejects once the screencast has stopped sending frames. */
     stalled,
     stop: async () => {
@@ -794,6 +799,13 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   // this take's cuts, none so far (`Director.#cut`): after the login, which may stage a playback of the take before
   fs.writeFileSync(path.join(work, 'cuts.json'), '[]');
   const cast = await startScreencast(ctx, page, framesDir, viewport, spec.sharp ? 2 : 1);
+  // The take starts once a frame has come: at twice the pixels the first one took seconds, and what
+  // the page showed until then was missing from the video.
+  try {
+    await Promise.race([cast.first, cast.stalled]);
+  } catch (error) {
+    throw await failure('the start of the take', page, work, error);
+  }
   await d.wait(500);
   const t0 = now();
   const marks: Mark[] = [];

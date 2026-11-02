@@ -371,7 +371,11 @@ frame and paints the strip over. A frame painted within a second before one alre
 left out: the screencast now and then hands one over after later ones, and held in place it showed
 the page as it was a moment before (a highlight ring seemed to blink). A clock read as hours earlier
 (a strip under the white veil) or as later than the frame was handed over is misread: its frame
-stays, timed as one whose strip cannot be read. The overlay runs in the top frame
+stays, timed as one whose strip cannot be read. A take starts only once the screencast has sent its
+first frame: at twice the pixels that took seconds (Windows, 2026-11-02), the page as it was until
+then was missing from the video, and the video came out shorter than the narration (the render then
+failed at the last scene's still). A first frame whose clock still places it a moment after the start
+is shown from the start, so the frames always fill the video. The overlay runs in the top frame
 only: Playwright runs init scripts in every frame, and each iframe would paint a strip of its own.
 The strip is read in gray before it is cut out: ffmpeg 6 cuts a 4:2:0 JPEG (as Chrome encodes its
 frames) to even heights only, and the one-pixel row failed on every frame.
