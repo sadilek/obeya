@@ -139,7 +139,10 @@ doc still holds open, what landed (with its pull request and last demo) beside t
 
 A worker still finishing after the landing keeps its card live until done. A workstream in a pull
 request whose box the main branch ticks off counts as merged even where the PR watcher missed the
-merge: its worker hears so and finishes, and its clone returns to the pool.
+merge: its worker hears so and finishes, and its clone returns to the pool. That needs a pull request
+reported and a box in the repository: a box in a plan folder outside it is ticked by the worker before
+the merge, often before the pull request is open, so there only the watcher sees the merge (GitHub
+issue #41, 2026-11-02: approved cards read as merged at once and their PRs were never merged).
 
 #### Reading a plan doc
 
