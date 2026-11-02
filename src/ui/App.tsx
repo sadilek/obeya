@@ -674,9 +674,13 @@ function Canvas({
     const code = !a.canvas || a.canvas === snapshot.canvas.id ? a.card : undefined;
     const talk = new URLSearchParams(location.search).has('talk');
     history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card', 'talk')}`);
-    // what comes back is what the address names already
+    // what comes back is what the address names already; a kept card the address left out (a
+    // restart of the app's shell, a link to the canvas) gets its address once it is open
     addressSet.current = true;
-    const done = () => void (addressSet.current = false);
+    const done = () => {
+      addressSet.current = false;
+      history.replaceState(history.state, '', pathOf(openNow()));
+    };
     if (k) return void reopen(k).catch(console.error).finally(done);
     if (sheetLeft || talk) {
       // beside the sheet at once, as the canvas comes back
@@ -696,11 +700,9 @@ function Canvas({
   }
   /** Opens the project `k.project` (its plan doc with `reading`) and the card `k.card` in it or on the canvas; an archived one from its row in the archive or the project's sheet. */
   async function openAgain(k: Pick<Kept, 'card' | 'project' | 'reading'>, quick: boolean) {
-    let gone: Item[] | undefined;
-    const find = async (id?: string) => (id ? (itemOrArchived(id) ?? (gone ??= await api.archived().catch(() => [])).find((i) => i.id === id)) : undefined);
+    const find = async (id?: string) => (id ? namedBy(id) : undefined);
+    // an archived project's sheet lists its workstreams from the archive, which this loads
     const p = await find(k.project);
-    // an archived project's sheet lists its workstreams from the archive
-    if (gone) setArchived(gone);
     // the doc opens at its top, and the kept position puts it back where it was
     if (p) await (k.reading ? readPlan(p, {}, quick) : openProject(p, quick));
     const i = await find(k.card);
@@ -719,6 +721,11 @@ function Canvas({
   const stepBack = useRef<(() => void) | null>(null);
   /** While the page opens what the address names (as it loads, on Back or Forward): the address is set already. */
   const addressSet = useRef(false);
+  /** The card or project open now. */
+  const openNow = () => {
+    const f = focusRef.current;
+    return f ? itemOrArchived(f.id) : undefined;
+  };
   const pathOf = (i: Item | undefined) => `${i ? cardPath(snapshot.canvas.id, i) : canvasPath(snapshot.canvas.id)}${location.search}`;
   /** `i` opens over `under` (the project it is opened from, else the canvas). */
   function addressOpens(i: Item, under: Item | undefined) {
@@ -736,12 +743,17 @@ function Canvas({
     address(() => {
       if (!(history.state as { step?: true } | null)?.step) return history.replaceState(history.state, '', pathOf(under));
       return new Promise<void>((done) => {
-        stepBack.current = done;
+        stepBack.current = () => {
+          // the step before may name what is no longer open (a card opened over its project, then reloaded without it)
+          const at = readAddress().card;
+          if (at && !(under && named([under], at))) history.replaceState(history.state, '', pathOf(under));
+          done();
+        };
         history.back();
       });
     });
   }
-  /** The card or project an address names, on the canvas or in the archive. */
+  /** The card or project an address (or an id) names, on the canvas or in the archive, which it loads where it has to. */
   async function namedBy(code: string) {
     const here = named(itemsRef.current, code) ?? named(archivedRef.current, code);
     if (here) return here;
@@ -772,7 +784,8 @@ function Canvas({
       if (f?.type === 'card' && f.id !== i?.id) await closeCard({ keepUntitled: true });
       const p = focusRef.current;
       if (p?.type === 'project' && p.id !== i?.id && i?.parent !== p.id) await closeProject(false);
-      if (code && focusRef.current?.id !== i?.id) await openAddress(code, false);
+      // a code no card has any longer: openAddress leaves the canvas at its address
+      if (code && (!i || focusRef.current?.id !== i.id)) await openAddress(code, false);
     } finally {
       addressSet.current = false;
     }
