@@ -25,6 +25,11 @@ describe('the video timeline', () => {
     expect(held.map((h) => h.seconds)).toEqual([1.5, 1.5]);
   });
 
+  test('a first frame painted after the start shows from the start', () => {
+    const held = frameDurations([frame(101.5), frame(102)], 100, 103, []);
+    expect(held.map((h) => h.seconds)).toEqual([2, 1]);
+  });
+
   test("a frame's clock strip says when it was painted, near its stamp", () => {
     const strip = (t: number, blur = 0) => {
       const code = Math.floor(t * 100) % 2 ** CLOCK.bits;
