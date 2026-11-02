@@ -9,7 +9,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, shapeOf, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
+import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import type { CardFile } from '../core/files';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
@@ -2526,13 +2526,13 @@ export class Board {
 
   /**
    * The card leaves its project as a card of its own, its log saying so (`why`), with the title and
-   * text of the workstream it worked on (`w`). Finished, it goes into the archive, unless the owner
-   * took it out (`shown`); otherwise it stands beside the project.
+   * text of the workstream it worked on (`w`). Finished, it goes into the archive; otherwise it
+   * stands beside the project.
    */
-  private leave(row: CardRow, project: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>, why: string, shown = false) {
+  private leave(row: CardRow, project: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>, why: string) {
     // a workstream planned again after part of it landed is done now that the doc asks no more of it
-    const state = !shown && row.state === 'planned' && row.shipped ? 'live' : (row.state ?? 'planned');
-    const done = !shown && finished(state) && !atWork(row);
+    const state = row.state === 'planned' && row.shipped ? 'live' : (row.state ?? 'planned');
+    const done = finished(state) && !atWork(row);
     const at = done ? { x: row.x, y: row.y } : this.besideProject(project);
     this.store.replan(row.id, null, null);
     this.store.update(row.id, {
@@ -2554,57 +2554,6 @@ export class Board {
     if (!p) return { x: project.x, y: project.y };
     const box = boundsOf(p, items);
     return freeSpotNear({ x: box.x + box.w + GAP, y: box.y }, CARD_SIZE.task, items.filter((i) => !i.parent).map((i) => boundsOf(i, items)));
-  }
-
-  /**
-   * The owner takes a workstream card out of its project: it stands beside the project with its
-   * log, as a card of its own, and the workstream gets a fresh card in its place. The card's title
-   * is that of the workstream its agent last started on, where that is another one. Returns the
-   * workstream's reference and the card's place in the project, for `attach` to undo it.
-   */
-  detach(id: string): { ref: string; x: number; y: number } {
-    this.own(id);
-    // the docs as the canvas reads them now: the card may have left its project already
-    this.items();
-    const row = this.own(id);
-    const project = row.parent_id ? this.store.card(row.parent_id) : null;
-    if (!row.plan_ref?.includes('#') || !project) throw new BadRequest('invalid', 'not a workstream');
-    if (atWork(row)) throw new BadRequest('notDetachable', 'an agent works on this workstream');
-    const doc = this.docs?.find((d) => d.file === project.plan_ref);
-    const now = doc?.workstreams.find((w) => w.key === keyOfRef(row.plan_ref));
-    const slug = this.startedAs(row);
-    const w = now && (!slug || named(now, slug)) ? now : this.identity(row, project.plan_ref!, doc ?? null, true);
-    const ref = row.plan_ref;
-    // the fresh card takes the place of the old one where it has its size, else a place below the others (`placeNew`)
-    const shown = this.item(id);
-    const sameSize = !!shown && shapeOf(shown) === shapeOf({ kind: 'task', parent: project.id, state: now?.done ? 'live' : now?.inReview ? 'inPr' : 'planned' });
-    this.store.db.transaction(() => {
-      this.leave(row, project, w, this.t.idea.detached(doc?.title ?? project.plan_ref!), true);
-      if (sameSize) this.store.insert([{ canvas_id: this.canvas.id, kind: 'task', parent_id: project.id, plan_ref: ref, x: row.x, y: row.y }]);
-    })();
-    this.changed();
-    this.items();
-    return { ref, x: row.x, y: row.y };
-  }
-
-  /** Undoes `detach`: the card goes back onto its workstream (`ref`) at its place there (`at`), and the fresh card goes while nobody has worked on it. */
-  attach(id: string, ref: unknown, at?: { x?: unknown; y?: unknown }) {
-    const row = this.own(id);
-    if (typeof ref !== 'string' || row.plan_ref) throw new BadRequest('invalid', 'not a card taken out of its project');
-    const fresh = this.store.cards(this.canvas.id).find((r) => r.plan_ref === ref);
-    if (!fresh?.parent_id) throw new BadRequest('invalid', 'the workstream is not on the canvas');
-    if (worked(fresh)) throw new BadRequest('notAttachable', 'the workstream’s new card has been worked on');
-    const project = this.own(fresh.parent_id);
-    this.store.db.transaction(() => {
-      // its reference stays one of no card, so that nothing reads it as a card of the owner's they deleted
-      this.store.replan(fresh.id, `${ref}#\u0000${fresh.id}`, fresh.parent_id);
-      this.store.update(fresh.id, { deleted_at: new Date().toISOString() });
-      this.store.replan(row.id, ref, fresh.parent_id);
-      const place = typeof at?.x === 'number' && typeof at.y === 'number' ? { x: at.x, y: at.y } : { x: fresh.x, y: fresh.y };
-      this.store.update(row.id, { title: null, body: null, repo: null, group_id: null, archived_at: null, ...place });
-    })();
-    this.log(id, 'state', 'obeya', this.t.idea.attached(JSON.parse(project.plan ?? '{}').title ?? project.plan_ref));
-    this.changed();
   }
 
   /**

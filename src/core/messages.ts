@@ -315,11 +315,9 @@ const de = {
     taskBecameProject: 'Das Projekt steht jetzt an der Stelle der Aufgabe; die Aufgabe liegt im Archiv.',
     /** A workstream whose part landed while its plan doc keeps it open. */
     partLanded: 'Teil gelandet, im Plan-Doc weiter offen.',
-    /** A workstream card that left its project: the doc no longer lists it, its log belongs to another workstream, or the owner took it out, and back. */
+    /** A workstream card that left its project: the doc no longer lists it, or its log belongs to another workstream. */
     leftGone: (project: string) => `Hat das Projekt „${project}“ verlassen: Das Plan-Doc führt diesen Workstream nicht mehr.`,
     leftOther: (project: string) => `Hat das Projekt „${project}“ verlassen: Dieser Verlauf gehört zu einem Workstream, den das Plan-Doc nicht mehr führt.`,
-    detached: (project: string) => `Vom Projekt „${project}“ gelöst; der Workstream hat dort eine neue Karte.`,
-    attached: (project: string) => `Wieder im Projekt „${project}“.`,
     /** How the brief and the prototype button are called on the card, for the idea's agent. */
     briefName: 'Stand der Idee',
     prototypeButton: 'Prototyp bauen lassen',
@@ -797,8 +795,6 @@ const en: Messages = {
     partLanded: 'Part landed; the plan doc keeps it open.',
     leftGone: (project: string) => `Left the project “${project}”: the plan doc no longer lists this workstream.`,
     leftOther: (project: string) => `Left the project “${project}”: this history belongs to a workstream the plan doc no longer lists.`,
-    detached: (project: string) => `Detached from the project “${project}”; the workstream has a new card there.`,
-    attached: (project: string) => `Back in the project “${project}”.`,
     briefName: 'Where the idea stands',
     prototypeButton: 'Have a prototype built',
     splitOffButton: 'Split off a task',

@@ -112,14 +112,6 @@ its text, its log saying why. Finished (live or done, or planned again after a p
 into the archive; at work or stopped, it stands beside the project. A stopped card holding a
 workspace gives the workspace back first. A card nobody worked on just goes.
 
-The owner can take a workstream card an agent worked on out of its project („Vom Projekt lösen“,
-beside the plan doc's path at the top of the card, while no agent is at work on it): it stands
-beside the project with its log, as a task of its own, and the workstream gets a fresh card where
-it stood. That begins a workstream afresh, or separates a log that belongs to another workstream;
-then the card takes that workstream's title. The fresh card takes the old one's place where both
-have the same size, else a place below the others. The confirmation offers to undo it while nobody
-has worked on the fresh card.
-
 Cards stored by an older Obeya may carry a workstream's place in the doc as its key (`#3`), which
 gave their logs and states to other workstreams once the doc dropped or added some. A doc last read
 with such keys moves its cards onto the keys above once: a card an agent worked on goes by the title its
@@ -564,7 +556,8 @@ Prompts only agents read stay English, with German examples of what the owner ma
   workstream the log and the done state of an old one. A card whose workstream leaves the doc keeps
   its log as a task of its own instead of disappearing with it. Rejected: treating a single item
   swapped at the same place as a rename (the very mix-up, once more); asking the owner for each
-  card the repair moves (they would have to know every card's history).
+  card the repair moves (they would have to know every card's history); a button to take a card
+  out of its project by hand (the owner: not wanted, and it read as a copy of the card).
 - **A stored `live` holds only until the Lesestand has what landed** (2026-10-06), so a workstream the
   doc keeps open on purpose reopens. Rejected: the worker reporting "only a part" (a second source
   against the doc); a „Wieder öffnen“ button (the problem shows only when someone asks).

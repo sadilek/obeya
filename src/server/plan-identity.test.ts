@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { placeWorkstreams } from '../core/layout';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
-import { BadRequest, Board } from './board';
+import { Board } from './board';
 import { Store } from './db';
 import { planHistory } from './repo';
 import { gitRepo } from './testing';
@@ -150,54 +150,6 @@ describe('cards of a doc read by an older Obeya, as workers left it', () => {
     expect(board.archived()).toEqual([]);
     // no card the move dropped reads as one the owner deleted
     expect(store.removed('c', since)).toEqual([]);
-  });
-});
-
-describe('taking a workstream card out of its project', () => {
-  test('undo puts back a workstream planned again after a part landed as it was', () => {
-    const [, b] = read(parse(OLD));
-    work(b!.id, 'Auth zusammenführen', { state: 'planned', shipped: JSON.stringify({ commit: 'abc1234' }) });
-    const was = board.detach(b!.id);
-    expect(board.snapshot().items.find((i) => i.id === b!.id)!.state).toBe('planned');
-    board.attach(b!.id, was.ref, was);
-    expect(kids().find((k) => k.label === '3B')).toMatchObject({ id: b!.id, state: 'planned' });
-  });
-
-  test('the card stands beside the project with its log, the workstream gets a fresh card; undo puts it back', () => {
-    const [, b] = read(parse(OLD));
-    work(b!.id, '1G Testlücken schließen', { state: 'done' });
-    history = [parse(OLD)];
-    const was = board.detach(b!.id);
-    const items = board.snapshot().items;
-    expect(items.find((i) => i.id === b!.id)).toMatchObject({ title: '1G Testlücken schließen', state: 'done', source: 'manual' });
-    expect(items.find((i) => i.id === b!.id)!.parent).toBeUndefined();
-    // done, the card was a chip: the planned workstream's fresh card goes below the others
-    const fresh = items.find((i) => i.label === '3B')!;
-    expect(fresh.state).toBe('planned');
-    expect(fresh.y).toBeGreaterThan(Math.max(...items.filter((i) => i.parent && i.id !== fresh.id).map((i) => i.y)));
-    expect(board.events(b!.id).at(-1)!.text).toBe('Vom Projekt „Audit“ gelöst; der Workstream hat dort eine neue Karte.');
-
-    board.attach(b!.id, was.ref, was);
-    const back = kids().find((k) => k.label === '3B')!;
-    expect(back).toMatchObject({ id: b!.id, x: b!.x, y: b!.y });
-    expect(board.snapshot().items.some((i) => i.id === fresh.id)).toBe(false);
-  });
-
-  test('a stopped workstream begins afresh: its fresh card takes its place', () => {
-    const [, , c] = read(parse(OLD));
-    work(c!.id, 'Gleichzeitige Bearbeitung', { state: 'planned', branch: `obeya/gleichzeitige-bearbeitung-${c!.id.slice(0, 6)}` });
-    board.detach(c!.id);
-    const items = board.snapshot().items;
-    expect(items.find((i) => i.label === '3C')).toMatchObject({ state: 'planned', x: c!.x, y: c!.y });
-    expect(items.find((i) => i.id === c!.id)).toMatchObject({ title: '3C Gleichzeitige Bearbeitung', state: 'planned', source: 'manual' });
-  });
-
-  test('a workstream an agent is at work on stays; a card that is no workstream cannot be detached', () => {
-    const [g] = read(parse(OLD));
-    store.update(g!.id, { state: 'working' });
-    expect(() => board.detach(g!.id)).toThrow(BadRequest);
-    const own = board.create({ title: 'Own', x: 0, y: 0 });
-    expect(() => board.detach(own.id)).toThrow(BadRequest);
   });
 });
 
