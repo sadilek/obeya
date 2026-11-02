@@ -1658,6 +1658,9 @@ function Canvas({
   const deps = useMemo(() => (hoverId && !panning && !dragId ? depsOf(hoverId, items) : undefined), [hoverId, panning, dragId, items]);
   const waits = useMemo(() => waitsAmong(items), [items]);
   const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
+  // the waits shown as lines: those the owner is removing go at once
+  const shownWaits = waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`));
+  const standsForId = (id: string) => (byId(id) ? standsFor(byId(id)!).id : id);
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
@@ -1713,8 +1716,8 @@ function Canvas({
         >
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
-            <Links placed={placed} />
-            <DepLinks placed={placed} waits={waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))} lit={deps?.edges ?? []} standsFor={(id) => (byId(id) ? standsFor(byId(id)!).id : id)} s={cam.s}>
+            <Links placed={placed} waits={shownWaits} standsFor={standsForId} />
+            <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} standsFor={standsForId} s={cam.s}>
               {/* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
                   covers it; the button and the band that shows it keep their size on screen at every zoom */}
               {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {

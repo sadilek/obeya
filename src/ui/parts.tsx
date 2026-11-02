@@ -1027,15 +1027,18 @@ export function linkSpot(a: Bounds, b: Bounds, head: number, cards: Bounds[], ro
 
 /**
  * A dashed line from each proposal and each follow-up not yet started to the card it came from, and
- * from each prototype to its idea, or to the project that took the idea's place.
+ * from each prototype to its idea, or to the project that took the idea's place; none where a wait
+ * between the two cards (`waits`, as `standsFor` shows them) already draws its arrow there.
  */
-export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
+export function Links({ placed, waits, standsFor }: { placed: { item: Item; b: Bounds }[]; waits: [string, string][]; standsFor: (id: string) => string }) {
   const byId = new Map(placed.map((p) => [p.item.id, p]));
   const projectOf = new Map(placed.flatMap((p) => (p.item.kind === 'project' && p.item.origin ? [[p.item.origin, p]] : [])));
+  // both ways: the arrow joins the same two cards whichever of them waits
+  const joined = new Set(waits.flatMap(([from, to]) => [`${standsFor(from)} ${standsFor(to)}`, `${standsFor(to)} ${standsFor(from)}`]));
   const paths = placed.flatMap(({ item, b }) => {
     const src =
       (item.state === 'proposal' || item.state === 'planned' || item.prototypeOf) && item.from ? (byId.get(item.from) ?? (item.prototypeOf ? projectOf.get(item.prototypeOf) : undefined)) : undefined;
-    if (!src) return [];
+    if (!src || joined.has(`${src.item.id} ${item.id}`)) return [];
     return [<path key={item.id} d={linkPath(src.b, b)} />];
   });
   return (

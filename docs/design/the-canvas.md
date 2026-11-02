@@ -98,7 +98,8 @@ agent is done. A project wraps its workstreams, which cannot be dragged out; new
 the existing ones. A proposal or follow-up goes below its card, or, when that spot is taken (for a
 workstream: by its own project), to the nearest spot clear of everything. The dashed line from a
 proposal, follow-up or prototype to its card joins the facing sides and runs above projects but
-below cards.
+below cards. Where a wait joins the same two cards (a follow-up queued behind the card it came
+from, say), only the wait's arrow shows: both lines would take the same course.
 
 The arrow before a project's title collapses it to its head („Zuklappen“, „Aufklappen“), for
 projects the owner does not work on (on a shared repository every colleague's plan docs are

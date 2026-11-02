@@ -2,10 +2,22 @@ import { expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Item } from '../core/types';
-import { CardFace, linkPath, linkSpot } from './parts';
+import { CardFace, Links, linkPath, linkSpot } from './parts';
 
 const ws: Item = { id: 'w', kind: 'task', state: 'live', title: 'Cart model', body: '', x: 0, y: 0, parent: 'p', source: 'plan', repo: 'shop', label: 'W1' };
 const face = (item: Item, chip?: boolean) => renderToStaticMarkup(createElement(CardFace, { item, chip }));
+
+test('a follow-up shows the dashed line to its card only while no wait joins the two', () => {
+  const origin: Item = { id: 'o', kind: 'task', state: 'review', title: 'Origin', body: '', x: 0, y: 0, source: 'canvas', repo: 'shop' };
+  const next: Item = { id: 'n', kind: 'task', state: 'planned', title: 'Follow-up', body: '', x: 0, y: 300, source: 'canvas', repo: 'shop', from: 'o' };
+  const placed = [origin, next].map((item) => ({ item, b: { x: item.x, y: item.y, w: 300, h: 136 } }));
+  const lines = (waits: [string, string][]) => (renderToStaticMarkup(createElement(Links, { placed, waits, standsFor: (id: string) => id })).match(/<path/g) ?? []).length;
+  expect(lines([])).toBe(1);
+  // whichever of the two waits for the other, its arrow already joins them
+  expect(lines([['o', 'n']])).toBe(0);
+  expect(lines([['n', 'o']])).toBe(0);
+  expect(lines([['x', 'n']])).toBe(1);
+});
 
 test('a delivered workstream keeps its label before its title as a chip', () => {
   expect(face(ws, true)).toContain('<div class="ttl"><span class="ws-no">W1</span>Cart model</div>');
