@@ -3,8 +3,8 @@
 import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
-import { join } from 'node:path';
-import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn } from '../core/types';
+import { join, resolve } from 'node:path';
+import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PageTags, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn } from '../core/types';
 import index from '../ui/index.html';
 import { guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
@@ -33,7 +33,10 @@ import icon180 from '../ui/logo/apple-touch-icon.png' with { type: 'file' };
 import icon512 from '../ui/logo/icon-512.png' with { type: 'file' };
 import { servePdfjs } from './pdfjs';
 import { Tailscale } from './tailscale';
-import { agentsView, languageView, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { agentsView, languageView, ownerLanguage, saveAgents, saveLanguage, saveTheme, saveUsageMeter, themeView, usageMeterView } from './settings';
+import { proposeTags, TagProposals } from './tag-proposal';
+import { parseTagLines, tagLines } from '../core/page-tags';
+import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import type { UsageMeter } from './usage';
 import { VERSION } from './resources';
 import { footerOf } from './wish';
@@ -146,6 +149,28 @@ export function serve(
         })(),
       })
     : undefined;
+  const tagProposals = new TagProposals();
+  /**
+   * Proposes the tags of a repository's site: read where it runs (its first canvas), from the cards
+   * of every canvas it is on, in the language of its demos (`language`: the dialog's, unsaved).
+   */
+  const proposeTagsFor = (home: string, input: unknown) => {
+    const { path, current, language } = (input ?? {}) as { path?: unknown; current?: unknown; language?: unknown };
+    if (typeof path !== 'string' || !path.trim()) throw new BadRequest('invalid', 'expected { path }');
+    const sources = canvases.all().flatMap((c) => c.tagSource(expandHome(path)) ?? []);
+    if (!sources.length) throw new BadRequest('invalid', 'the repository runs on no canvas');
+    const vocabulary = typeof current === 'object' && current ? parseTagLines(tagLines(current as PageTags)) : undefined;
+    return tagProposals.start(path, () =>
+      proposeTags({
+        runtime: sources[0]!.runtime,
+        cwd: sources[0]!.cwd,
+        language: language === 'de' || language === 'en' ? language : (sources[0]!.language ?? readDemoSettings(home).language),
+        owner: ownerLanguage(home),
+        ...(vocabulary ? { current: vocabulary } : {}),
+        cards: sources.flatMap((s) => s.cards),
+      }),
+    );
+  };
   const byId = new Map<string, CanvasRuntime>();
   const handOver = new HandOver();
   const started = crypto.randomUUID();
@@ -519,6 +544,15 @@ export function serve(
         GET: needs(sites, (x, req) => ({ job: x.repoJob(new URL(req.url).searchParams.get('path') ?? '') })),
         POST: needs(sites, async (x, req) => ({ job: x.setupRepo(await req.json()) })),
         DELETE: needs(sites, (x, req) => (x.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
+      },
+      // „Vorschlagen lassen“ at a demo site's tags: started, followed, and taken into the field
+      '/api/tag-proposal': {
+        GET: needs(config, (_, req) => {
+          const path = new URL(req.url).searchParams.get('path') ?? '';
+          return { job: tagProposals.job(path), available: !!path && canvases.all().some((c) => c.repos.some((r) => resolve(r.info.path) === resolve(expandHome(path)))) };
+        }),
+        POST: needs(config, async (c, req) => ({ job: proposeTagsFor(c.home, await req.json()) })),
+        DELETE: needs(config, (_, req) => (tagProposals.doneWith(new URL(req.url).searchParams.get('path') ?? ''), {})),
       },
       // what Obeya's own voice in needs here, and installing it
       '/api/voice-setup': { GET: needs(setup, (s) => s.view()) },

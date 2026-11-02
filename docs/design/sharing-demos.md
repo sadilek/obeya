@@ -36,6 +36,18 @@ the repository's settings, it is the same for everyone who shares on the site. N
 workers and the reading session choose from it, and the owner picks from it by hand. A page carries
 per dimension zero or more of its values; a dimension it has no key for has none chosen yet.
 
+The vocabulary need not be thought up by hand: under the field in the repository's settings,
+„Tags von einem Agenten vorschlagen lassen“ (shown once the repository runs on a canvas) starts a
+read-only session in the repository. It reads how the app is built (README, docs, the source tree)
+and the repository's cards on every canvas it is on, finished and open, archived ones included,
+each with its task and what its demos' pages say (or their chapters, or the handover's summary where
+there is no demo), the canvas's cards first and the archive's most recent first, up to a size. It
+keeps what of a vocabulary already in the field still fits, since pages carry those values, and
+proposes two to four dimensions, in the language of the repository's demos, with a few sentences
+why in the owner's language. The proposal goes into the field as an unsaved change for the owner to
+edit and save, with a link that brings back the tags before; it runs on in the background, so a
+dialog closed meanwhile takes it in when it opens again.
+
 Tags belong to the card's page, not to a version. Each dimension comes from the first that has it:
 the owner's choice by hand, the newest demo whose worker gave it, the reading session's. Where the
 site has a vocabulary, `ready_for_review` takes `demo.page.tags` with every page and refuses a
@@ -495,6 +507,11 @@ another machine withdrew loses its link here, with a line naming the machine.
   extra cost. Rejected: a session tagging at every share (a session per approval, knowing less than
   the worker), tagging by hand only (too much with over 100 pages; it stays the way to correct), tags
   the AI makes up (a filter with near-duplicates).
+- **The vocabulary may be proposed by an agent that reads the repository and its cards, the owner
+  deciding in the field** (owner, 2026-11-02): the dimensions that fit an app show in its structure
+  and in the changes made and planned on it, which the owner would otherwise have to survey by hand.
+  Rejected: a card whose worker writes the settings (the owner wants the proposal where the field is,
+  and a worker cannot read the canvas's cards and demos).
 - **Links are copied one by one and as the filtered list** (owner, 2026-10-28): a demo goes to one
   person, or several on one topic into a mail, release notes or to a customer.
 - **A personal site per person, beside the repositories' sites** (owner, 2026-10-28): the site is a

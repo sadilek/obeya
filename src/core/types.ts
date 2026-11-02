@@ -1779,6 +1779,14 @@ export interface SiteSetupJob {
   site?: DemoSite;
 }
 
+/** A proposal for a demo site's tags (`demo.site.tags`), as the configuration follows it: running, then the tags and why, or the error. */
+export interface TagProposalJob {
+  running: boolean;
+  tags?: PageTags;
+  why?: string;
+  error?: string;
+}
+
 /** The owner's personal demo site on this machine, as Konfiguration → Demos shows it. */
 export interface PersonalSiteView {
   site: {

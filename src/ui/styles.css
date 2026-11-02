@@ -2189,6 +2189,8 @@ button.link:hover { text-decoration: underline; }
 .personal-private { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .personal-private li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
 .site-setup { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.cfg-sub > .tag-propose { flex-direction: column; align-items: flex-start; gap: 6px; }
+.tag-propose > .hint { margin: 0; }
 .site-setup > .seg { margin-top: 0; }
 .site-setup > .hint { margin: 0; }
 .personal-actions { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; }
