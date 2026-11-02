@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
-import { needsYou } from '../core/types';
+import { needsYou, stopped } from '../core/types';
 import { artifact, identify, until } from './testing';
 import { Board } from './board';
 import { Workers } from './workers';
@@ -1023,5 +1023,32 @@ describe('a workspace its card will not work in again goes back to the pool', ()
     expect(state(w.id)).toBe('inPr');
     expect(merged).toEqual([]);
     expect(spaces.leasedBy(w.id)).toBe(clone);
+  });
+  test('a box ticked in a plan folder outside the repository leaves a stopped workstream stopped until its work lands', async () => {
+    const outside: PlanDoc = { ...doc, file: '/plans/a.md' };
+    setDocs([outside]);
+    board.docsChanged();
+    const w = board.snapshot().items.find((i) => i.label === 'W1' && board.row(i.id).plan_ref?.startsWith('/plans/'))!;
+    const clone = await stoppedWithWork(w.id);
+    // the worker ticked its box in the folder before it was stopped, which took effect at once
+    setDocs([{ ...outside, workstreams: [{ ...ws('W1'), done: true }] }]);
+    board.docsChanged();
+    await flush();
+    expect(stopped(board.item(w.id)!)).toBe(true);
+    expect(spaces.leasedBy(w.id)).toBe(clone);
+    expect(board.events(w.id).map((e) => e.text)).not.toContain('Im Plan-Doc abgehakt: Workspace freigegeben.');
+    // its project, every box ticked, stays on the canvas with it
+    expect(board.item(w.parent!)).toBeDefined();
+    // started again, its work lands, and the box counts: the project ends once its worker is done
+    await workers.start(w.id);
+    expect(board.row(w.id).workspace).toBe(clone);
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: artifact() });
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(w.id);
+    board.docsChanged();
+    expect(state(w.id)).toBe('live');
+    expect(git(main, 'log', '--format=%s')).toContain('Config');
+    runtime.last.emit({ type: 'idle' });
+    expect(board.archived().map((i) => i.id)).toEqual([w.parent!, w.id]);
   });
 });

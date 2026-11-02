@@ -1447,8 +1447,7 @@ export class Board {
    * lease outlived what it was for); it was deleted; or it is a workstream no worker is on whose box
    * the plan doc on the default branch ticks off (`ticked`; `merged` while it is in its pull request,
    * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
-   * in a plan folder outside the repository says nothing of a merge: the worker ticks it there before
-   * its pull request is even open.
+   * in a plan folder outside the repository says nothing of a landing (`tickedAhead`).
    */
   leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
@@ -1463,7 +1462,7 @@ export class Board {
     const hash = row.plan_ref?.indexOf('#') ?? -1;
     if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
-    if (row.state === 'inPr' && OUTSIDE_PATH.test(pathOfRef(row.plan_ref!))) return null;
+    if (row.state === 'inPr' && tickedAhead(row)) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();
     const doc = this.docs?.find((d) => d.file === row.plan_ref!.slice(0, hash));
@@ -1471,7 +1470,7 @@ export class Board {
     // an open pull request goes on without the doc: its watcher sees it merged or closed; a repository
     // not (yet) on the canvas has no docs read
     if (!w) return row.state === 'inPr' || !this.canvas.repos.some((r) => r.id === repoOfRef(row.plan_ref!, this.home)) ? null : 'gone';
-    if (!w.done) return null;
+    if (!w.done || tickedAhead(row)) return null;
     return row.state === 'inPr' ? 'merged' : 'ticked';
   }
 
@@ -1696,7 +1695,7 @@ export class Board {
   private openDocs(all: PlanDoc[], rows: CardRow[]): PlanDoc[] {
     const busy = new Set(
       rows
-        .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace)))
+        .filter((r) => r.plan_ref?.includes('#') && ((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace) || tickedAhead(r)))
         .map((r) => r.plan_ref!.slice(0, r.plan_ref!.indexOf('#'))),
     );
     const files = new Set(all.map((d) => d.file));
@@ -2502,6 +2501,16 @@ const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
 /** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
 const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
 
+/**
+ * A workstream card with work not landed yet that a box in a plan folder outside the repository says
+ * nothing of: the worker ticks it there at once, in no commit, so it may be ticked while the card is
+ * in its pull request (before it is even open) or stopped with its branch.
+ */
+function tickedAhead(r: Pick<CardRow, 'plan_ref' | 'state' | 'branch'>): boolean {
+  if (!r.plan_ref || !OUTSIDE_PATH.test(pathOfRef(r.plan_ref))) return false;
+  return r.state === 'inPr' || (r.state === 'planned' && !!r.branch);
+}
+
 /** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
 type Prototypes = {
   rows: PrototypeRef[];
@@ -2578,8 +2587,9 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
     const w = doc.workstreams[order];
     if (!w || !r.parent_id) continue;
     const derived = w.done ? 'live' : w.inReview ? 'inPr' : 'planned';
-    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge
-    const state = r.state && ACTIVE.includes(r.state) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
+    // work in progress wins over the doc: a ticked-off workstream may still wait for its merge, and so
+    // does a stopped one whose box a plan folder outside the repository ticked
+    const state = r.state && (ACTIVE.includes(r.state) || tickedAhead(r)) ? r.state : derived === 'live' ? 'live' : (r.state ?? derived);
     // what landed of a workstream planned again, also while a new run does the rest; once that lands, the card is live
     const shipped = (state === 'planned' || ACTIVE.includes(state)) && r.shipped ? (JSON.parse(r.shipped) as Shipped) : null;
     const buildsOn = (depsOf.get(r.parent_id)?.on?.[key] ?? []).flatMap((k) => idOfRef.get(`${doc.file}#${k}`) ?? []);
