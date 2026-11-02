@@ -158,8 +158,11 @@ title holds) with `state` `done` (default) or `waits_for_owner`, or both, waking
 first, and ends its turn. A card already there or a time already past is refused. It takes effect
 without asking the owner; the session ends, background work with it; workspace and branch stay, the
 slot frees, the app is parked, and no nudge follows. It is allowed only while the card is at work
-(started, in its PR, finishing after the landing) and the owner is not pausing it (the pause would
-end at the snooze's time); a question or handover in the same turn takes it back. Its instructions send waits longer than a background command's two hours, and waits for
+(started, in its PR, finishing after the landing) or its worker takes in the owner's words on its
+handover, and the owner is not pausing it (the pause would end at the snooze's time); a question or
+handover in the same turn takes it back. Snoozed on its handover (the owner asked it to check again
+in three days), the card leaves „brauchen dich“ as one the owner snoozed does, its handover stands
+and can be approved meanwhile, which ends the snooze; woken, the worker is at work on it again. Its instructions send waits longer than a background command's two hours, and waits for
 another card, to `snooze`; checkpoints are one snooze after another. Idea and Question cards' agents
 have no such tool.
 
@@ -321,6 +324,10 @@ as a learned preference does. Older answers agents gave in the owner's name stay
   to click (a click per checkpoint, while a snooze is undone with one); hiding only the restart
   noise; conditions besides a time or a card's state. German wording follows Gmail's
   „Zurückstellen“, which owners know.
+- **A worker can snooze its card on its handover** (2026-11-02), when the owner's words on it ask
+  for a later look („Prüfe in drei Tagen nochmal“). Rejected: refusing it (the worker made a
+  follow-up card instead, a second card for the same check); taking the handover back until the
+  worker wakes (the owner could no longer approve meanwhile, as feedback keeps the approval).
 - **A worker can snooze until another card gets somewhere** (2026-10-17): Obeya knows when that card
   lands, a guessed time means polling. The states are those another card's result shows in: done, or
   waiting for the owner. Rejected: any state change (each start, handover and approval would wake the

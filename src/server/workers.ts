@@ -1368,8 +1368,13 @@ export class Workers {
       this.takeHeld(cardId);
       return this.endPrototype(cardId, 'discarded');
     }
+    // approved, a card its worker snoozed on its handover wakes no more: the check it was to make again is done with
+    const unsnooze = () => card.snoozed && this.o.board.work(cardId, { snoozed: null });
     // in a folder without git, what it changed is in the folder already
-    if (this.folder) return void this.close(cardId, 'owner', this.approvalComments(cardId));
+    if (this.folder) {
+      unsnooze();
+      return void this.close(cardId, 'owner', this.approvalComments(cardId));
+    }
     // git tells where the work lands and whether there is any, without blocking the server; the click ends the owner's turn meanwhile,
     // and the comments held back wait for the approval
     clearTimeout(this.holding.get(cardId));
@@ -1393,6 +1398,7 @@ export class Workers {
       if (this.held(cardId).length) this.releaseLater(cardId, this.o.releaseDelay ?? RELEASE_DELAY);
       throw new BadRequest('noDirect', 'this repository lands approved work only through a pull request; its settings do not allow pushing it directly');
     }
+    unsnooze();
     const comments = this.approvalComments(cardId);
     // work that changed nothing (a demo, an analysis) has nothing to land and no pull request to open
     if (!work) return void this.close(cardId, 'owner', comments);
@@ -3046,8 +3052,12 @@ export class Workers {
     if (!card) return;
     if (closing !== undefined) this.o.board.log(cardId, 'closing', 'worker', closing);
     const row = this.o.board.row(cardId);
-    // it snoozed: its session ends (its background work with it), and Obeya resumes it at the time
-    if (snoozed && !handedOver && !more && row.snoozed) return this.end(cardId);
+    // it snoozed: its session ends (its background work with it), and Obeya resumes it at the time;
+    // on its handover the snooze answers the owner's words, so waking it is at work again
+    if (snoozed && !handedOver && !more && row.snoozed) {
+      if (answering(card)) this.answerTaken(cardId, true);
+      return this.end(cardId);
+    }
     if (row.pausing && !more) {
       // it paused at a safe point, as the owner asked: its session ends, and it goes on once they let it
       if (!background) return this.pausedAtSafePoint(cardId, card, !!row.approved_at, handedOver, spoke);
@@ -3950,7 +3960,8 @@ export class Workers {
           const card = this.o.board.item(cardId);
           if (!card) return 'Not snoozed: the card is gone.';
           if (live.handedOver) return 'Not snoozed: you asked or handed over in this turn, so the card waits for the owner.';
-          if (!(card.state === 'working' || card.state === 'inPr' || card.finishing)) return 'Not snoozed: the card waits for the owner; their answer or approval comes as your next message.';
+          // taking in the owner's words on its handover, it may snooze as they ask (check again in three days): the handover stands meanwhile
+          if (!(card.state === 'working' || card.state === 'inPr' || card.finishing || answering(card))) return 'Not snoozed: the card waits for the owner; their answer or approval comes as your next message.';
           if (card.pausing) return 'Not snoozed: the owner pauses you; end your turn, and once they let you go on, snooze then if it is still due.';
           const named = typeof until === 'string' && until.trim() !== '';
           const at = named ? Date.parse(String(until)) : NaN;
