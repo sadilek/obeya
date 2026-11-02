@@ -450,23 +450,20 @@ export class Board {
     const items = this.snapshot().items;
     if (!items.some((i) => i.id === from) || !items.some((i) => i.id === to) || from === to)
       throw new BadRequest('unknownCard', 'invalid dependency');
-    if (!remove && items.some((i) => (i.id === from || i.id === to) && (i.source === 'plan' || i.kind === 'project')))
+    if (!remove && items.some((i) => (i.id === from || i.id === to) && !connectable(i)))
       throw new BadRequest('invalid', 'project dependencies are decided from the plan');
     const edges = this.manualDependencies().filter(([a, b]) => a !== from || b !== to);
     if (!remove) {
       // A cycle would leave the cards waiting for each other forever.
-      const all = [...edges, ...items.flatMap((i): [string, string][] => [...(i.buildsOn ?? []), ...(i.queue && 'behind' in i.queue ? i.queue.behind : []), ...(i.snoozed?.on ? [i.snoozed.on.card] : [])].map((before) => [before, i.id]))];
-      const seen = new Set<string>();
-      const visit = (id: string): boolean => {
-        if (id === from) return true;
-        if (seen.has(id)) return false;
-        seen.add(id);
-        return all.some(([a, b]) => a === id && visit(b));
-      };
-      if (visit(to)) throw new BadRequest('invalid', 'dependency cycle');
+      if (closesCycle(from, to, edges, items)) throw new BadRequest('invalid', 'dependency cycle');
       edges.push([from, to]);
     }
-    this.setSetting('manual_dependencies', JSON.stringify(edges));
+    this.setManualDependencies(edges);
+  }
+
+  /** Arrows of cards that no longer exist go; those of a deleted card stay, for its restore. */
+  private setManualDependencies(edges: [string, string][]) {
+    this.setSetting('manual_dependencies', JSON.stringify(edges.filter(([a, b]) => this.store.card(a) && this.store.card(b))));
     this.changed();
   }
 
@@ -1540,7 +1537,7 @@ export class Board {
     }
     const manual = this.manualDependencies();
     if (manual.length) {
-      const eligible = new Set(items.filter((i) => i.source !== 'plan' && i.kind !== 'project').map((i) => i.id));
+      const eligible = new Set(items.filter(connectable).map((i) => i.id));
       items = items.map((i) => {
         const on = eligible.has(i.id) ? manual.filter(([from, to]) => to === i.id && eligible.has(from)).map(([from]) => from) : [];
         return on.length ? { ...i, manualDependsOn: on } : i;
@@ -2185,6 +2182,12 @@ export class Board {
     if (!row || row.canvas_id !== this.canvas.id) throw new BadRequest('unknownCard', 'unknown card');
     this.store.update(id, { deleted_at: null });
     this.changed();
+    // its arrows come back, but none that the arrows drawn meanwhile would make a cycle
+    const items = this.items();
+    const edges = this.manualDependencies();
+    const kept = edges.filter(([a, b]) => a !== id && b !== id);
+    for (const [a, b] of edges) if ((a === id || b === id) && !closesCycle(a, b, kept, items)) kept.push([a, b]);
+    if (kept.length !== edges.length) this.setManualDependencies(kept);
   }
 
   private checkImages(ids: unknown) {
@@ -2754,4 +2757,27 @@ function checkText(v: unknown, name: string, max: number) {
 
 function checkNumber(v: unknown, name: string) {
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new BadRequest('invalid', `${name} must be a finite number`);
+}
+
+/** A card the owner may draw dependencies to and from: not a project nor one of its workstreams. */
+const connectable = (i: Item) => i.source !== 'plan' && i.kind !== 'project';
+
+/**
+ * Whether an arrow from `from` to `to` would close a cycle with the arrows between the cards shown
+ * (`edges`; a deleted card's count for nothing) and the waits Obeya inferred.
+ */
+function closesCycle(from: string, to: string, edges: [string, string][], items: Item[]): boolean {
+  const shown = new Set(items.map((i) => i.id));
+  const all = [
+    ...edges.filter(([a, b]) => shown.has(a) && shown.has(b)),
+    ...items.flatMap((i): [string, string][] => [...(i.buildsOn ?? []), ...(i.queue && 'behind' in i.queue ? i.queue.behind : []), ...(i.snoozed?.on ? [i.snoozed.on.card] : [])].map((before) => [before, i.id])),
+  ];
+  const seen = new Set<string>();
+  const visit = (id: string): boolean => {
+    if (id === from) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return all.some(([a, b]) => a === id && visit(b));
+  };
+  return visit(to);
 }

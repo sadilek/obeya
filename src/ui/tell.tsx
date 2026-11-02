@@ -15,7 +15,7 @@ import { failText, t } from './strings';
 import type { useTold } from './voice';
 
 /** How long a confirmation stays, and its „Rückgängig“ unless the action waits longer. */
-const ACK_MS = 7000;
+export const ACK_MS = 7000;
 
 /**
  * The confirmation above the microphone: `showAck` with „Rückgängig“ while the action still waits,

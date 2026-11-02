@@ -38,7 +38,7 @@ import { CanvasPill, CardView, cardClass, shownState, DepLinks, linkPath, Edges,
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
 import { beingWritten, split, talkAlone } from './talk';
-import { noticeLine, tellers, useAck, voiceTarget } from './tell';
+import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -987,6 +987,9 @@ function Canvas({
   const [connection, setConnection] = useState<{ from: string; side: string; x: number; y: number; target?: string } | null>(null);
   const [handle, setHandle] = useState<{ id: string; side: string } | null>(null);
   const connectable = (item: Item) => item.source !== 'plan' && item.kind !== 'project';
+  // arrows the owner removed that the server may still have: one holding a queued card goes there only
+  // once „Rückgängig“ has run out (`sent` from then on), so that taking it back never leaves the card started
+  const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
   // Shift + drag on the canvas draws a lasso, Shift + click on a card takes it in or out: what is marked
   // moves together and goes into a group at once through the colour ring
   const lassoRef = useRef<Pos[] | null>(null);
@@ -1031,6 +1034,34 @@ function Canvas({
       fail(e);
     }
   }
+  /** The trash button on an owner-drawn arrow: it goes at once, with „Rückgängig“. */
+  function removeDependency(from: string, to: Item) {
+    const key = `${from}:${to.id}`;
+    if (!(to.queue && 'behind' in to.queue && to.queue.behind.includes(from))) {
+      api.dependency(from, to.id, true).then(
+        () => showAck(t.deps.removed, () => api.dependency(from, to.id).catch(fail)),
+        fail,
+      );
+      return;
+    }
+    setRemoving((r) => [...r, { key }]);
+    const timer = setTimeout(() => {
+      setRemoving((r) => r.map((x) => (x.key === key ? { key, sent: true } : x)));
+      api.dependency(from, to.id, true).catch((e) => {
+        setRemoving((r) => r.filter((x) => x.key !== key));
+        fail(e);
+      });
+    }, ACK_MS);
+    showAck(t.deps.removed, () => {
+      clearTimeout(timer);
+      setRemoving((r) => r.filter((x) => x.key !== key));
+    });
+  }
+  // a removal the server has done is shown by the snapshot from then on
+  useEffect(() => {
+    const drawn = new Set(placed.flatMap(({ item }) => (item.manualDependsOn ?? []).map((from) => `${from}:${item.id}`)));
+    if (removing.some((x) => x.sent && !drawn.has(x.key))) setRemoving((r) => r.filter((x) => !x.sent || drawn.has(x.key)));
+  }, [placed, removing]);
   /** The × on a group's name in the colour ring: its cards belong to none, with a moment to undo. */
   async function deleteGroup(g: Group) {
     setRing(null);
@@ -1500,14 +1531,14 @@ function Canvas({
             {deps && <DepLinks placed={placed} edges={deps.edges} />}
             <svg className="manual-deps" width="1" height="1">
               <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
-              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).flatMap((from) => {
+              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
                 const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
                 if (!a) return [];
                 const x = (a.x + a.w / 2 + b.x + b.w / 2) / 2, y = (a.y + a.h / 2 + b.y + b.h / 2) / 2;
                 return [<g className="manual-edge" key={`${from}:${item.id}`}>
                   <path className="manual-hit" d={linkPath(a, b, 15)} />
                   <path className="manual-line" d={linkPath(a, b, 15)} markerEnd="url(#manual-arrow)" />
-                  <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); if (window.confirm(t.deps.confirmRemove)) api.dependency(from, item.id, true).catch((err) => showAck(failText(err))); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
+                  <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
                 </g>];
               }))}
               {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = connection.side === 'top' ? {x:a.x+a.w/2,y:a.y} : connection.side === 'bottom' ? {x:a.x+a.w/2,y:a.y+a.h} : connection.side === 'left' ? {x:a.x,y:a.y+a.h/2} : {x:a.x+a.w,y:a.y+a.h/2}; const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, 15) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}

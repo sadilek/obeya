@@ -744,6 +744,22 @@ describe('owner-drawn dependencies', () => {
   });
 });
 
+test("a deleted card's arrows count for nothing until it is restored, and come back without closing a cycle", () => {
+  const a = board.create({ title: 'A', x: 0, y: 0 });
+  const x = board.create({ title: 'X', x: 0, y: 0 });
+  const c = board.create({ title: 'C', x: 0, y: 0 });
+  board.connect(a.id, x.id);
+  board.connect(x.id, c.id);
+  board.remove(x.id);
+  expect(board.item(c.id)?.manualDependsOn).toBeUndefined();
+  board.connect(c.id, a.id);
+  expect(board.item(a.id)?.manualDependsOn).toEqual([c.id]);
+  board.restore(x.id);
+  expect(board.item(x.id)?.manualDependsOn).toEqual([a.id]);
+  expect(board.item(c.id)?.manualDependsOn).toBeUndefined();
+  expect(board.manualDependencies()).toEqual([[c.id, a.id], [a.id, x.id]]);
+});
+
 test('owner-drawn dependencies cannot connect projects or their workstreams', () => {
   const own = board.create({ title: 'Own task', x: 0, y: 0 });
   const project = board.snapshot().items.find((i) => i.kind === 'project')!;

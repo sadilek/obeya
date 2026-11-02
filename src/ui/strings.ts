@@ -530,7 +530,7 @@ const de = {
   deps: {
     connect: 'Mit einer wartenden Karte verbinden',
     remove: 'Abhängigkeit entfernen',
-    confirmRemove: 'Diese Abhängigkeit entfernen?',
+    removed: 'Abhängigkeit entfernt.',
     before: 'kommt zuerst',
     after: 'wartet darauf',
   },
@@ -2433,7 +2433,7 @@ const en: Strings = {
   deps: {
     connect: 'Connect to a card that waits for this one',
     remove: 'Remove dependency',
-    confirmRemove: 'Remove this dependency?',
+    removed: 'Dependency removed.',
     before: 'comes first',
     after: 'waits for it',
   },
