@@ -73,12 +73,20 @@ the project. Nothing around it moves. Collapsing is stored in this Obeya, not in
 holds across reloads, devices and the archive.
 
 A planned or queued card shows a play button under the pointer that starts it without unfolding.
-Under the pointer a card also shows the waits around it (see Scheduling).
+
+Every wait between cards on the canvas shows at all times as a thin, solid, grey arrow from the card
+waited for to the card waiting, under the cards and above projects like the dashed line: only direct
+waits, not the chain. All kinds of wait look alike (a card queued behind another, a workstream and
+those it builds on, a card snoozed until another, an arrow the owner drew); a wait ends once the card
+waited for is finished, so finished cards keep no lines. A workstream of a collapsed project shows
+its waits at the project's head. The lines stay thin on screen however far the view zooms out.
+Under the pointer a card shows the waits around it over every step instead, in the waiting colour
+(see Scheduling); a wait shows once, never as both.
 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
 under it or close to it, a click there connects the two (Escape cancels). The arrow points from the
-prerequisite to the card that waits for it and stays on the canvas; under the pointer it shows a
+prerequisite to the card that waits for it and stays on the canvas, as every wait does; under the pointer it shows a
 trash button that removes it at once, with „Rückgängig“. While the arrow holds a queued card, the
 removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
 started. Projects
@@ -232,6 +240,11 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **Waits are always on the canvas, as faint lines** (owner, 2026-11-02): with waits shown only
+  under the pointer, the overall picture was missing, and one forgot that Obeya tracks them at all.
+  There is no switch to hide them. Rejected: stubs at the cards' edges only (they say there is a
+  dependency but not the picture), and a layer behind a button (it does not keep the waits in
+  mind).
 - **The owner may draw dependencies between task cards** (2026-11-02), beside the waits Obeya
   infers: single cards have no plan doc to say what comes first, and the owner sometimes knows an
   order that a conflict check cannot see, without wanting to turn the cards into a project.

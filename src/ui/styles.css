@@ -24,7 +24,7 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --planned: #a0978a; --working: #1d5fe0; --waiting: #f27405; --approved: #3d9a1f; --inPr: #08888e; --live: #b4ab98; --proposal: #7b4fd6; --idea: #dc2f5e; --question: #4f7896;
   --waiting-rgb: 242,116,5; --on-ink: #fff; --error: #c42b1c; --warn: #a3520a;
-  --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
+  --dep-line: #aaa190; --container: rgba(255,252,242,.45); --container-line: rgba(120,105,75,.22);
   --dim: rgba(40,32,18,.34); --panel: #fdfbf5; --chip: #f0ebdf;
   --s: 1;
   /* native controls, and the pages in a frame (prefers-color-scheme), take the look chosen */
@@ -37,7 +37,7 @@
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
-  --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
+  --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 } }
@@ -47,7 +47,7 @@
   --lift: inset 0 1px 0 rgba(255,250,235,.06), 0 1px 0 rgba(0,0,0,.7), 3px 7px 0 rgba(0,0,0,.45), 0 18px 30px -10px rgba(0,0,0,.7);
   --planned: #8a8274; --working: #5b95ff; --waiting: #ff8a1c; --approved: #78c448; --inPr: #27b9b6; --live: #5f594e; --proposal: #a587ff; --idea: #ff6289; --question: #8db3cf;
   --waiting-rgb: 255,138,28; --on-ink: #16140f; --error: #ff7a63; --warn: #f0a85a;
-  --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
+  --dep-line: #5c564c; --container: rgba(255,250,235,.035); --container-line: rgba(255,250,235,.10);
   --dim: rgba(0,0,0,.55); --panel: #1f1d1a; --chip: #2c2925;
   color-scheme: dark;
 }
@@ -1728,8 +1728,12 @@ button.link:hover { text-decoration: underline; }
 
 /* while the pointer is on a card with waits: the cards it waits for and those waiting for it, over every step */
 #deps { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
-#deps path { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
-#deps marker path { fill: var(--waiting); stroke: none; }
+/* every wait as a faint line under the cards; those around the card under the pointer in the waiting colour */
+/* never thinner on screen than a hair when zoomed out, its head growing with it */
+#deps .faint { fill: none; stroke: var(--dep-line); stroke-width: max(1.5px, calc(1.2px / var(--s))); }
+#deps .lit { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+#deps marker.faint path { fill: var(--dep-line); }
+#deps marker.lit path { fill: var(--waiting); }
 .card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
 /* over a snoozed card's own shadow, hovered or not, in any state (the last `:is` weighs as its heaviest selector, and `*` matches all) */
 .card.snoozed:is(.dep-self, .dep-before, .dep-after):is(:hover, .s-waiting, .s-idea.your-turn, *) { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
@@ -2164,10 +2168,10 @@ button.link:hover { text-decoration: underline; }
 
 /* Owner-drawn dependencies and their edge handles. */
 .manual-deps { position: absolute; left: 0; top: 0; overflow: visible; z-index: 3; pointer-events: none; }
-.manual-deps .manual-line, .manual-deps .manual-ghost { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+.manual-deps .manual-ghost { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
 .manual-deps marker path { fill: var(--waiting); }
 .manual-deps .manual-ghost { opacity: .55; stroke-dasharray: 7 5; }
-.manual-deps .manual-hit { fill: none; stroke: transparent; stroke-width: 22; pointer-events: stroke; }
+#deps .manual-hit { fill: none; stroke: transparent; stroke-width: 22; pointer-events: stroke; }
 .manual-edge foreignObject { overflow: visible; opacity: 0; pointer-events: none; }
 .manual-edge:hover foreignObject, .manual-edge:focus-within foreignObject { opacity: 1; pointer-events: auto; }
 .manual-edge button { width: 28px; height: 28px; border: 1px solid var(--waiting); border-radius: 50%; background: var(--card); color: var(--waiting); cursor: pointer; }

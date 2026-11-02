@@ -1034,25 +1034,59 @@ export function Links({ placed }: { placed: { item: Item; b: Bounds }[] }) {
   );
 }
 
-/** The length of the arrow head at the end of a wait's line, in canvas pixels. */
+/** The length of the arrow head at the end of a wait's line, in canvas pixels: highlighted, faint. */
 const DEP_HEAD = 15;
+const FAINT_HEAD = 9;
 
-/** While the pointer is on a card with waits: a line for each wait, from the card waited for to the card waiting. */
-export function DepLinks({ placed, edges }: { placed: { item: Item; b: Bounds }[]; edges: [string, string][] }) {
+/**
+ * Every direct wait between cards on the canvas as a faint line, from the card waited for to the
+ * card waiting; while the pointer is on a card, the waits around it (`lit`) in the waiting colour
+ * instead. A workstream of a collapsed project stands for its project (`standsFor`). `children` go on
+ * top: what the pointer can reach on a line.
+ */
+export function DepLinks({
+  placed,
+  waits,
+  lit,
+  standsFor,
+  children,
+}: {
+  placed: { item: Item; b: Bounds }[];
+  waits: [string, string][];
+  lit: [string, string][];
+  standsFor: (id: string) => string;
+  children?: ReactNode;
+}) {
   const byId = new Map(placed.map((p) => [p.item.id, p.b]));
+  // each wait once between the cards that show it, none from a project to its own workstream
+  const shown = (edges: [string, string][]) =>
+    new Map(
+      edges.flatMap(([from, to]): [string, [string, string]][] => {
+        const e: [string, string] = [standsFor(from), standsFor(to)];
+        return e[0] !== e[1] && byId.has(e[0]) && byId.has(e[1]) ? [[e.join(' '), e]] : [];
+      }),
+    );
+  const hot = shown(lit);
+  const faint = [...shown(waits)].filter(([k]) => !hot.has(k));
+  const path = (cls: string, head: number) => ([k, [from, to]]: [string, [string, string]]) => (
+    <path key={`${cls} ${k}`} className={cls} d={linkPath(byId.get(from)!, byId.get(to)!, head)} markerEnd={`url(#${cls}-arrow)`} />
+  );
   return (
     <svg id="deps" width="1" height="1">
       <defs>
         {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points on to the card. */}
-        <marker id="dep-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="userSpaceOnUse" markerWidth={DEP_HEAD} markerHeight={(DEP_HEAD * 8) / 9} orient="auto">
+        <marker id="lit-arrow" className="lit" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="userSpaceOnUse" markerWidth={DEP_HEAD} markerHeight={(DEP_HEAD * 8) / 9} orient="auto">
+          <path d="M0,0 L9,4 L0,8 z" />
+        </marker>
+        {/* measured in the line's width, which grows as the view zooms out; a head longer than the room
+            left for it ends under the card */}
+        <marker id="faint-arrow" className="faint" viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={FAINT_HEAD / 1.5} markerHeight={(FAINT_HEAD * 8) / 9 / 1.5} orient="auto">
           <path d="M0,0 L9,4 L0,8 z" />
         </marker>
       </defs>
-      {edges.flatMap(([from, to]) => {
-        const a = byId.get(from);
-        const b = byId.get(to);
-        return a && b ? [<path key={`${from} ${to}`} d={linkPath(a, b, DEP_HEAD)} markerEnd="url(#dep-arrow)" />] : [];
-      })}
+      {faint.map(path('faint', FAINT_HEAD))}
+      {[...hot].map(path('lit', DEP_HEAD))}
+      {children}
     </svg>
   );
 }

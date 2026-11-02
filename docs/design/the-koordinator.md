@@ -95,9 +95,10 @@ why when clicked. A drop moves it there in one step: it passes each
 card between, which each move up one place. The order decides who goes first once free, who gets a
 free workspace, and which cards count as ahead when one is judged again.
 
-While the pointer is on a card, its waits show both ways over every step: the cards it waits for
-(„kommt zuerst“) and those waiting for it („wartet darauf“), each with a ring and an arrow from the
-card waited for to the card waiting. A workstream not delivered yet also shows the open workstreams
+Each direct wait is a faint line on the canvas at all times (see Cards on the canvas). While the
+pointer is on a card, its waits show both ways over every step, in the waiting colour over the faint
+lines: the cards it waits for („kommt zuerst“) and those waiting for it („wartet darauf“), each with
+a ring and an arrow from the card waited for to the card waiting. A workstream not delivered yet also shows the open workstreams
 it builds on as read for its project's arrangement (see A project arranged by its dependencies), and
 a card snoozed until another card gets somewhere waits for that card (see Snoozing a card).
 

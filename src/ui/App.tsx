@@ -21,7 +21,7 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { QueuePill } from './queue';
-import { depsOf } from './deps';
+import { depsOf, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
@@ -1501,6 +1501,8 @@ function Canvas({
   const sheetProject = sheetId ? itemOrArchived(sheetId) : undefined;
   const sheetKids = !sheetProject ? [] : sheetProject.archivedAt ? archived.filter((i) => i.parent === sheetProject.id) : (kidsOf.get(sheetProject.id) ?? []);
   const deps = useMemo(() => (hoverId && !panning && !dragId ? depsOf(hoverId, items) : undefined), [hoverId, panning, dragId, items]);
+  const waits = useMemo(() => waitsAmong(items), [items]);
+  const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
@@ -1556,19 +1558,20 @@ function Canvas({
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} />
-            {deps && <DepLinks placed={placed} edges={deps.edges} />}
-            <svg className="manual-deps" width="1" height="1">
-              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
-              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
+            <DepLinks placed={placed} waits={waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))} lit={deps?.edges ?? []} standsFor={(id) => (byId(id) ? standsFor(byId(id)!).id : id)}>
+              {/* an arrow the owner drew: under the pointer, a trash button that removes it */}
+              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
                 const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
                 if (!a) return [];
                 const x = (a.x + a.w / 2 + b.x + b.w / 2) / 2, y = (a.y + a.h / 2 + b.y + b.h / 2) / 2;
                 return [<g className="manual-edge" key={`${from}:${item.id}`}>
                   <path className="manual-hit" d={linkPath(a, b, 15)} />
-                  <path className="manual-line" d={linkPath(a, b, 15)} markerEnd="url(#manual-arrow)" />
                   <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
                 </g>];
               }))}
+            </DepLinks>
+            <svg className="manual-deps" width="1" height="1">
+              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
               {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = connection.side === 'top' ? {x:a.x+a.w/2,y:a.y} : connection.side === 'bottom' ? {x:a.x+a.w/2,y:a.y+a.h} : connection.side === 'left' ? {x:a.x,y:a.y+a.h/2} : {x:a.x+a.w,y:a.y+a.h/2}; const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, 15) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
             </svg>
             {placed.map(({ item, b }) =>

@@ -110,7 +110,7 @@
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
 // into the database:
 // state, need, statusLine, summary, question, demo (`kind` defaults to video), queue (`behind` by key; `since` defaults to
-// now), scope (files), branch (a working or waiting card without one gets the branch a start would
+// now), snoozed (`{ on, state?, why? }`: its agent snoozed it until the card with key `on` gets to `state`, done by default), scope (files), branch (a working or waiting card without one gets the branch a start would
 // have given it, which every started card has), createdAgo, archivedAgo, events ([{ kind, author, text, ago?, mocks?, spot?, token? }]; an idea's reply with `mocks` needs code that has them, an error's `token` (its session signed in with a token) too;
 // with events of kind `review`, the demos in `row.demos` and then `demo` go with those handovers in order, and a `spot` (a comment's
 // place in a demo video, `{ at, chapter?, demo? }`) names its demo by its place in that order; earlier demos need code that has them),
@@ -188,6 +188,8 @@ interface StageCard {
   question?: { text: string; options?: string[]; multiple?: boolean };
   demo?: Record<string, unknown>;
   queue?: { behind?: string[]; reason?: string; since?: string; checking?: true };
+  /** Snoozed by its agent until the card with key `on` gets to `state` (default done). */
+  snoozed?: { on: string; state?: string; why?: string };
   scope?: string[];
   changes?: { kind: 'added' | 'modified' | 'deleted' | 'moved'; path: string; from?: string }[];
   branch?: string;
@@ -620,6 +622,11 @@ for (const [i, c] of stage.cards.entries()) {
       ...(c.queue.behind ? { behind: c.queue.behind.map((k) => ids[k] ?? fail(`card ${c.key ?? i}: queue names ${k}, which does not exist`)) } : {}),
       since: c.queue.since ?? new Date().toISOString(),
     };
+  if (c.snoozed !== undefined) {
+    const on = ids[c.snoozed.on] ?? fail(`card ${c.key ?? i}: snoozed names ${c.snoozed.on}, which does not exist`);
+    const title = stage.cards.find((x) => x.key === c.snoozed!.on)?.title ?? '';
+    row.snoozed = { on: { card: on, title, state: c.snoozed.state ?? 'done' }, by: 'agent', ...(c.snoozed.why ? { why: c.snoozed.why } : {}) };
+  }
   if (c.scope !== undefined) row.scope = { files: c.scope, reason: '' };
   // a card at work or waiting for the owner has the branch its start gave it, as every started card
   // has: without one the card shows neither its conversation's field nor the question it waits on
