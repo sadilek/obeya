@@ -23,7 +23,7 @@ export function depsOf(id: string, items: Item[]): Deps | undefined {
   const byId = new Map(items.map((i) => [i.id, i]));
   if (!byId.has(id)) return undefined;
   const open = (x: string | undefined) => !!x && byId.has(x) && !finished(byId.get(x)!.state);
-  const behind = (i: Item) => [...new Set([...queued(i), ...snoozedOn(i), ...(open(i.id) ? (i.buildsOn ?? []).filter(open) : [])])];
+  const behind = (i: Item) => [...new Set([...queued(i), ...snoozedOn(i), ...(open(i.id) ? (i.manualDependsOn ?? []).filter(open) : []), ...(open(i.id) ? (i.buildsOn ?? []).filter(open) : [])])];
   const waiters = new Map<string, string[]>();
   for (const i of items) for (const b of behind(i)) if (byId.has(b)) waiters.set(b, [...(waiters.get(b) ?? []), i.id]);
   const edges = new Map<string, [string, string]>();

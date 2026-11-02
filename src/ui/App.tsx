@@ -34,11 +34,11 @@ import { attachTo, imageFiles } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
-import { CanvasPill, CardView, shownState, DepLinks, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
+import { CanvasPill, CardView, cardClass, shownState, DepLinks, linkPath, Edges, Links, Minimap, OldBunPill, ProjectView, RestartPill, Sheet, SourcePill, TalkIcon, UpdatePill, WorkspacesPill } from './parts';
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
 import { beingWritten, split, talkAlone } from './talk';
-import { noticeLine, tellers, useAck, voiceTarget } from './tell';
+import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 
 export function App() {
   const [phone] = useState(phoneView);
@@ -984,6 +984,34 @@ function Canvas({
   const [dragWith, setDragWith] = useState<string[]>([]);
   // the card the pointer is on, for the waits around it
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [connection, setConnection] = useState<{ from: string; side: string; x: number; y: number; target?: string } | null>(null);
+  const [handle, setHandle] = useState<{ id: string; side: string } | null>(null);
+  const connectable = (item: Item) => item.source !== 'plan' && item.kind !== 'project';
+  // arrows the owner removed that the server may still have: one holding a queued card goes there only
+  // once „Rückgängig“ has run out (`sent` from then on), so that taking it back never leaves the card started
+  const [removing, setRemoving] = useState<{ key: string; sent?: true }[]>([]);
+  // those removals while „Rückgängig“ runs, each with its timer and what sends it
+  const pendingRemovals = useRef(new Map<string, { timer: ReturnType<typeof setTimeout>; send: (keepalive?: boolean) => void }>());
+  // what the owner removed goes to the server even when the page goes before „Rückgängig“ has run out
+  useEffect(() => {
+    const away = () => {
+      for (const p of pendingRemovals.current.values()) {
+        clearTimeout(p.timer);
+        p.send(true);
+      }
+      pendingRemovals.current.clear();
+    };
+    addEventListener('pagehide', away);
+    return () => removeEventListener('pagehide', away);
+  }, []);
+  /** A removal still waiting for „Rückgängig“ to run out is taken back: the arrow stays. */
+  function keepDependency(key: string) {
+    const p = pendingRemovals.current.get(key);
+    if (!p) return;
+    clearTimeout(p.timer);
+    pendingRemovals.current.delete(key);
+    setRemoving((r) => r.filter((x) => x.key !== key));
+  }
   // Shift + drag on the canvas draws a lasso, Shift + click on a card takes it in or out: what is marked
   // moves together and goes into a group at once through the colour ring
   const lassoRef = useRef<Pos[] | null>(null);
@@ -1028,6 +1056,36 @@ function Canvas({
       fail(e);
     }
   }
+  /** The trash button on an owner-drawn arrow: it goes at once, with „Rückgängig“. */
+  function removeDependency(from: string, to: Item) {
+    const key = `${from}:${to.id}`;
+    if (!(to.queue && 'behind' in to.queue && to.queue.behind.includes(from))) {
+      api.dependency(from, to.id, true).then(
+        () => showAck(t.deps.removed, () => api.dependency(from, to.id).catch(fail)),
+        fail,
+      );
+      return;
+    }
+    setRemoving((r) => [...r, { key }]);
+    const send = (keepalive = false) => {
+      setRemoving((r) => r.map((x) => (x.key === key ? { key, sent: true } : x)));
+      api.dependency(from, to.id, true, keepalive).catch((e) => {
+        setRemoving((r) => r.filter((x) => x.key !== key));
+        fail(e);
+      });
+    };
+    const timer = setTimeout(() => {
+      pendingRemovals.current.delete(key);
+      send();
+    }, ACK_MS);
+    pendingRemovals.current.set(key, { timer, send });
+    showAck(t.deps.removed, () => keepDependency(key));
+  }
+  // a removal the server has done is shown by the snapshot from then on
+  useEffect(() => {
+    const drawn = new Set(placed.flatMap(({ item }) => (item.manualDependsOn ?? []).map((from) => `${from}:${item.id}`)));
+    if (removing.some((x) => x.sent && !drawn.has(x.key))) setRemoving((r) => r.filter((x) => !x.sent || drawn.has(x.key)));
+  }, [placed, removing]);
   /** The × on a group's name in the colour ring: its cards belong to none, with a moment to undo. */
   async function deleteGroup(g: Group) {
     setRing(null);
@@ -1104,6 +1162,16 @@ function Canvas({
 
   function onPointerDown(e: React.PointerEvent) {
     if (focusRef.current?.type === 'card' || e.button !== 0) return;
+    if (connection) {
+      e.stopPropagation();
+      if (connection.target) {
+        // the arrow drawn again while its removal waits for „Rückgängig“ to run out: it simply stays
+        if (pendingRemovals.current.has(`${connection.from}:${connection.target}`)) keepDependency(`${connection.from}:${connection.target}`);
+        else api.dependency(connection.from, connection.target).catch((err) => showAck(failText(err)));
+      }
+      setConnection(null);
+      return;
+    }
     stopFlight();
     const el = (e.target as Element).closest<HTMLElement>('.item');
     const note = (e.target as Element).closest<HTMLElement>('.plan-dir');
@@ -1176,6 +1244,21 @@ function Canvas({
   }
 
   function onPointerMove(e: React.PointerEvent) {
+    if (connection) {
+      const p = toWorld(camRef.current, e.clientX, e.clientY);
+      const near = placed.filter(({ item }) => item.id !== connection.from && connectable(item)).map(({ item, b }) => ({ id: item.id, area: b.w * b.h, d: Math.hypot(Math.max(b.x - p.x, 0, p.x - b.x - b.w), Math.max(b.y - p.y, 0, p.y - b.y - b.h)) })).filter((x) => x.d <= 8 / camRef.current.s).sort((a, b) => a.d - b.d || a.area - b.area)[0];
+      setConnection({ ...connection, x: p.x, y: p.y, target: near?.id });
+      return;
+    }
+    const pointer = toWorld(camRef.current, e.clientX, e.clientY);
+    const handles = placed.filter(({ item }) => connectable(item)).flatMap(({ item, b }) => [
+      { id: item.id, side: 'top', x: b.x + b.w / 2, y: b.y },
+      { id: item.id, side: 'right', x: b.x + b.w, y: b.y + b.h / 2 },
+      { id: item.id, side: 'bottom', x: b.x + b.w / 2, y: b.y + b.h },
+      { id: item.id, side: 'left', x: b.x, y: b.y + b.h / 2 },
+    ]);
+    const nearest = handles.map((h) => ({ ...h, distance: Math.hypot(h.x - pointer.x, h.y - pointer.y) * camRef.current.s })).filter((h) => h.distance <= 16).sort((a, b) => a.distance - b.distance)[0];
+    setHandle(nearest ? { id: nearest.id, side: nearest.side } : null);
     if (lassoRef.current) {
       lassoRef.current = [...lassoRef.current, { x: e.clientX, y: e.clientY }];
       setLasso(lassoRef.current);
@@ -1374,6 +1457,7 @@ function Canvas({
       if (!e.repeat) press(true);
       return;
     }
+    if (e.key === 'Escape' && connection) { setConnection(null); return; }
     if (e.key === 'Escape') {
       // a screenshot or demo shown large closes first, a card's diff, the queue's list and the canvas switcher's; the card stays open
       if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .canvas-menu, .diff-view')) return;
@@ -1473,6 +1557,20 @@ function Canvas({
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} />
             {deps && <DepLinks placed={placed} edges={deps.edges} />}
+            <svg className="manual-deps" width="1" height="1">
+              <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth="15" markerHeight="13.3" markerUnits="userSpaceOnUse" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
+              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
+                const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
+                if (!a) return [];
+                const x = (a.x + a.w / 2 + b.x + b.w / 2) / 2, y = (a.y + a.h / 2 + b.y + b.h / 2) / 2;
+                return [<g className="manual-edge" key={`${from}:${item.id}`}>
+                  <path className="manual-hit" d={linkPath(a, b, 15)} />
+                  <path className="manual-line" d={linkPath(a, b, 15)} markerEnd="url(#manual-arrow)" />
+                  <foreignObject x={x - 14} y={y - 14} width="28" height="28"><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
+                </g>];
+              }))}
+              {connection && (() => { const a = placed.find((p) => p.item.id === connection.from)?.b; if (!a) return null; const start = connection.side === 'top' ? {x:a.x+a.w/2,y:a.y} : connection.side === 'bottom' ? {x:a.x+a.w/2,y:a.y+a.h} : connection.side === 'left' ? {x:a.x,y:a.y+a.h/2} : {x:a.x+a.w,y:a.y+a.h/2}; const b = placed.find((p) => p.item.id === connection.target)?.b; const path = b ? linkPath({ ...start, w: 0, h: 0 }, b, 15) : `M${start.x},${start.y} L${connection.x},${connection.y}`; return <path className="manual-ghost" d={path} markerEnd={b ? "url(#manual-arrow)" : "url(#ghost-arrow)"} />; })()}
+            </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
                 <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
@@ -1495,6 +1593,9 @@ function Canvas({
                 />
               ),
             )}
+            {placed.filter(({ item }) => connectable(item)).map(({ item, b }) => <div key={`handles:${item.id}`} data-id={item.id} className={`connection-handles ${cardClass(item, underway[item.id]).replace(/^card\s*/, '')}${depOf(item.id) ? ' dep-highlight' : ''}${connection?.target === item.id ? ' target' : ''}`} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+              {['top', 'right', 'bottom', 'left'].map((side) => <button key={side} className={`connection-dot ${side}${!connection && handle?.id === item.id && handle.side === side ? ' visible' : ''}`} title={t.deps.connect} aria-label={t.deps.connect} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const p = toWorld(camRef.current, e.clientX, e.clientY); setConnection({ from: item.id, side, ...p }); }} />)}
+            </div>)}
             {planDirs?.map((d, n) => (
               <PlanDirNote
                 key={d.repo}

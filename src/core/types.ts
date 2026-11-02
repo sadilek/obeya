@@ -283,6 +283,8 @@ export interface Item {
   arranging?: true;
   /** Workstreams only: the workstreams of its project it builds on, as the Koordinator read them from the plan doc. */
   buildsOn?: string[];
+  /** Cards connected by the owner that must finish before this card starts. */
+  manualDependsOn?: string[];
   /** The worker's latest `report`. */
   statusLine?: string;
   /**
@@ -778,7 +780,7 @@ export const EVICT_HOLD_MS = 8000;
 export type Queue = Wait & { since: string };
 
 /** What a card in the queue waits for (`Queue`). */
-export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[] } | { workspace: WorkspaceShortage } | { paused: true };
+export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] } | { workspace: WorkspaceShortage } | { paused: true };
 
 /** Why a card waits to start: no clone free (`none`), the free ones dirty, or every machine with a clean free one busy to its slots (`slots`). */
 export type WorkspaceShortage = 'none' | 'dirty' | 'slots';

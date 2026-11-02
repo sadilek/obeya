@@ -2161,3 +2161,25 @@ button.link:hover { text-decoration: underline; }
 .personal-connect { margin-top: 12px; }
 .personal-connect button.link { font-size: 13px; }
 .cfg-sub > .site-manual { justify-self: start; font-size: 13px; }
+
+/* Owner-drawn dependencies and their edge handles. */
+.manual-deps { position: absolute; left: 0; top: 0; overflow: visible; z-index: 3; pointer-events: none; }
+.manual-deps .manual-line, .manual-deps .manual-ghost { fill: none; stroke: var(--waiting); stroke-width: 2.5; }
+.manual-deps marker path { fill: var(--waiting); }
+.manual-deps .manual-ghost { opacity: .55; stroke-dasharray: 7 5; }
+.manual-deps .manual-hit { fill: none; stroke: transparent; stroke-width: 22; pointer-events: stroke; }
+.manual-edge foreignObject { overflow: visible; opacity: 0; pointer-events: none; }
+.manual-edge:hover foreignObject, .manual-edge:focus-within foreignObject { opacity: 1; pointer-events: auto; }
+.manual-edge button { width: 28px; height: 28px; border: 1px solid var(--waiting); border-radius: 50%; background: var(--card); color: var(--waiting); cursor: pointer; }
+.connection-handles { position: absolute; z-index: 4; pointer-events: none; }
+.connection-handles.target { pointer-events: auto; outline: 3px solid var(--waiting); outline-offset: 3px; border-radius: 4px; }
+.connection-dot { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid var(--c); border-radius: 50%; background: var(--card); opacity: 0; pointer-events: none; cursor: pointer; transform: translate(-50%, -50%); }
+.connection-dot.visible, .connection-dot:focus-visible { opacity: 1; pointer-events: auto; }
+.connection-dot.top { left: 50%; top: 0; } .connection-dot.right { left: 100%; top: 50%; }
+.connection-dot.bottom { left: 50%; top: 100%; } .connection-dot.left { left: 0; top: 50%; }
+
+.connection-handles.q-card { --c: var(--question); }
+.connection-handles.snoozed { --c: var(--muted); }
+.connection-handles.s-waiting.underway { --c: var(--approved); }
+.connection-handles.s-waiting.answering { --c: var(--working); }
+.connection-handles:not(.snoozed):not(.underway):not(.answering):is(.s-waiting, .s-idea.your-turn), .connection-handles.dep-highlight { --c: var(--waiting); }

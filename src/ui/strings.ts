@@ -528,6 +528,9 @@ const de = {
   },
   /** Tags on the cards around the one the pointer is on: it waits for them, or they wait for it. */
   deps: {
+    connect: 'Mit einer wartenden Karte verbinden',
+    remove: 'Abhängigkeit entfernen',
+    removed: 'Abhängigkeit entfernt.',
     before: 'kommt zuerst',
     after: 'wartet darauf',
   },
@@ -2428,6 +2431,9 @@ const en: Strings = {
     },
   },
   deps: {
+    connect: 'Connect to a card that waits for this one',
+    remove: 'Remove dependency',
+    removed: 'Dependency removed.',
     before: 'comes first',
     after: 'waits for it',
   },

@@ -75,6 +75,18 @@ holds across reloads, devices and the archive.
 A planned or queued card shows a play button under the pointer that starts it without unfolding.
 Under the pointer a card also shows the waits around it (see Scheduling).
 
+The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
+in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
+under it or close to it, a click there connects the two (Escape cancels). The arrow points from the
+prerequisite to the card that waits for it and stays on the canvas; under the pointer it shows a
+trash button that removes it at once, with „Rückgängig“. While the arrow holds a queued card, the
+removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
+started. Projects
+and their workstreams get no dots, since the plan doc decides their order, and inferred waits have
+no trash button. An arrow that would close a cycle with other arrows or waits is refused. A deleted
+or archived card's arrows are hidden and count for nothing; bringing the card back brings them back,
+except one that would now close a cycle. How an arrow holds a card's start: see Scheduling.
+
 #### A project arranged by its dependencies
 
 A project's workstreams can stand in columns by what builds on what: leftmost what can start at
@@ -220,6 +232,12 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **The owner may draw dependencies between task cards** (2026-11-02), beside the waits Obeya
+  infers: single cards have no plan doc to say what comes first, and the owner sometimes knows an
+  order that a conflict check cannot see, without wanting to turn the cards into a project.
+  Rejected: arrows to or from projects and workstreams, whose order the plan doc decides; a trash
+  button on inferred waits, which Obeya would infer again at the next start; a confirmation dialog
+  before removing an arrow, where „Rückgängig“ does the same with one click fewer.
 - **The look is the index card** (2026-10-10), prototyped beside a Swiss editorial card (black
   frame, solid state band, Schibsted Grotesk) that read better from afar but looked like a known
   designer style; a kanji seal and a kanban ticket were not pursued. Ruled lines and inks too close

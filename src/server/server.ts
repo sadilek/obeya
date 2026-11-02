@@ -610,6 +610,10 @@ export function serve(
           return c.board.group(cards, group ?? null);
         }),
       },
+      '/api/c/:canvas/dependencies': {
+        POST: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to); }),
+        DELETE: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to, true); }),
+      },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },
       '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
       '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },

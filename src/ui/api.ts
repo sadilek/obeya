@@ -15,15 +15,16 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await send(method, path, body);
+async function call<T>(method: string, path: string, body?: unknown, keepalive?: boolean): Promise<T> {
+  const res = await send(method, path, body, keepalive);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-/** The request, with `body` as JSON; throws the server's refusal. */
-async function send(method: string, path: string, body?: unknown) {
+/** The request, with `body` as JSON; throws the server's refusal. With `keepalive`, it outlasts the page. */
+async function send(method: string, path: string, body?: unknown, keepalive?: boolean) {
   const res = await fetch(path, {
     method,
+    keepalive,
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -224,6 +225,8 @@ export const api = {
   installUpdate: () => call<{ updating: boolean }>('POST', '/api/app-update/install'),
   /** Fast-forwards the checkout Obeya runs from to its upstream; Obeya then restarts with the new code once the workers paused. */
   pullSource: () => call<{ source: SourceUpdate | null }>('POST', '/api/source-update/pull'),
+  /** Draws or removes an owner-drawn arrow; `keepalive` for one sent as the page goes. */
+  dependency: (from: string, to: string, remove = false, keepalive = false) => call<void>(remove ? 'DELETE' : 'POST', at('/dependencies'), { from, to }, keepalive),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   /** The card that writes a repository's settings for everyone, on the canvas it belongs to (not necessarily the shown one). */
   adapterSetup: (canvas: string, repo: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/adapter-setup`, { repo }),
