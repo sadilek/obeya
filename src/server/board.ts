@@ -2206,7 +2206,10 @@ export class Board {
     const merged = (ids: string[]) => [...new Set(ids)].filter((id) => id !== keep && !gone.has(id));
     const behind = merged(queued.flatMap((q) => q.behind));
     const buildsOn = merged(queued.flatMap((q) => q.buildsOn ?? []));
-    const queue = behind.length ? { queue: JSON.stringify({ behind, reason: queued[0]!.reason, ...(buildsOn.length && { buildsOn }), since: queued.map((q) => q.since).sort()[0]! }) } : {};
+    const manualWait = merged(queued.flatMap((q) => q.manualWait ?? []));
+    const queue = behind.length
+      ? { queue: JSON.stringify({ behind, reason: queued[0]!.reason, ...(buildsOn.length && { buildsOn }), ...(manualWait.length && { manualWait }), since: queued.map((q) => q.since).sort()[0]! }) }
+      : {};
     this.store.update(keep, { title, body, images: images.length ? JSON.stringify(images) : null, ...(notes.length ? { unheard: JSON.stringify(notes) } : {}), ...queue });
     for (const r of this.store.cards(this.canvas.id)) {
       if (r.from_id && gone.has(r.from_id) && r.id !== keep) this.store.update(r.id, { from_id: keep });
