@@ -33,7 +33,12 @@ the cards that one sees as ahead or to build on, so no two cards wait for each o
 
 A waiting card shows the reason (one that starts says which files it shares and why that is fine).
 Once what it waits for has landed or stopped it starts, or, if other work may have started
-meanwhile, it is judged again. „Trotzdem starten“ starts it at the owner's own risk. While it waits
+meanwhile, it is judged again. Cards whose waits end at once (the follow-up tasks of a merged PR,
+say) are judged together, in one turn as a project's start is (see Starting a whole project): it
+sees them in their order in the queue, keeps that order unless a dependency or a likely conflict
+asks for another, and says which start now and which wait for which, so the first in the queue
+does not start blind to one after it that it should build on or would collide with; a card alone
+starts at once where nothing runs. „Trotzdem starten“ starts it at the owner's own risk. While it waits
 it keeps its full card and takes notes for its worker (see Card layout); spoken words there go to
 the Koordinator.
 
@@ -55,7 +60,8 @@ A follow-up task a review card's worker makes of findings (see Review cards) bui
 request by definition, so Obeya queues it behind the review card as it is made, without an estimate:
 „Wartet auf „PR #34 …“. Folgeaufgabe aus dem Review von PR #34; startet, sobald der PR gemergt
 ist.“ The wait holds like a workstream's on one it builds on: stopping the review card does not free
-it, only the merge (the card `live`); then it starts, or is judged again where other work runs. A PR
+it, only the merge (the card `live`); then it starts, or is judged again, together with the other
+follow-up tasks of the PR, where it is not alone or other work runs. A PR
 closed without a merge (the review card closed as done) leaves nothing to build on: its follow-up
 tasks go back to planned, saying why, for the owner to start or delete. One made when the review
 card is finished already is judged as any card. While it waits it is a task nobody has worked on:
@@ -413,6 +419,10 @@ passed the words on through `to_obeya` hears that the owner finds the link under
 - **A project's workstreams started together are scheduled in one turn** (2026-10-02): they often
   build on each other, which a conflict check does not see; only a turn seeing all of them and the
   plan doc can choose the order.
+- **Cards freed at once are scheduled in one turn too** (2026-11-02, the owner on the follow-up
+  tasks of a review: the first in the queue started unchecked, and only the second was checked
+  against it, so nothing asked whether the first should build on the second). Rejected: starting
+  them one by one in the queue's order.
 - **Learned rules are proposals the owner accepts first** (2026-10-02), as the owner wants to see
   every rule before it applies. Rejected: storing them silently. The Rückschau runs after about 20
   inputs, neither daily nor only on request.
