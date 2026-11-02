@@ -39,6 +39,7 @@ import { CardView, cardClass, shownState, DepLinks, depHead, depWidth, linkPath,
 import { clampWidth, loadWidths, saveWidths, SHEET_W, type SheetWidths, widthsIn } from './sheetWidth';
 import { failText, t } from './strings';
 import { loadPinned, NAV_CANVAS_MIN, NAV_W, NavPill, NavSheet, savePinned } from './nav';
+import { canvasPath, cardPath, named, queryWithout, readAddress } from './address';
 import { beingWritten, split, talkAlone } from './talk';
 import { ACK_MS, noticeLine, tellers, useAck, voiceTarget } from './tell';
 
@@ -64,7 +65,7 @@ export function App() {
   }, []);
   if (!canvases) return <Splash offline={failed} />;
   // the canvas in the address, else the first
-  const wanted = new URLSearchParams(location.search).get('c');
+  const wanted = readAddress().canvas;
   const current = canvases.find((c) => c.id === wanted) ?? canvases[0];
   if (!current) return <NoCanvas />;
   // a phone gets every canvas's waits and work, and the cards full screen, instead of the canvas
@@ -449,6 +450,7 @@ function Canvas({
     const panel = panelRef.current;
     // nothing to unfold from: the canvas stays as it was, open for the next card
     if (!el || !panel) return setFocus(f);
+    addressOpens(i, f ? itemOrArchived(f.id) : undefined);
     const r = el.getBoundingClientRect();
     flushSync(() => setOpenId(i.id));
     panel.style.setProperty('--c', `var(--${shownState(i)})`);
@@ -530,10 +532,12 @@ function Canvas({
     );
   }
 
-  async function closeCard({ keepUntitled = false } = {}) {
+  /** Folds the open card; `onward` where another opens in its place next, which takes over its address. */
+  async function closeCard({ keepUntitled = false, onward = false } = {}) {
     const f = focusRef.current;
     const panel = panelRef.current;
     if (f?.type !== 'card' || !panel) return;
+    if (!onward) addressCloses(f.project ? itemOrArchived(f.project.id) : undefined);
     const saved = flushEdit().catch(console.error);
     panel.querySelector('video')?.pause();
     const i = byId(f.id);
@@ -567,7 +571,7 @@ function Canvas({
     const f = focusRef.current;
     if (f?.type === 'card') {
       if (f.id === i.id) return;
-      await closeCard({ keepUntitled: true });
+      await closeCard({ keepUntitled: true, onward: true });
     }
     flushSync(() => {
       if (!snapshotRef.current.items.some((x) => x.id === i.id)) setPending((p) => [...p, i]);
@@ -591,6 +595,7 @@ function Canvas({
   async function projectSheet(p: Item, r: { mark?: string } | null, quick: boolean, inView: boolean) {
     const f = focusRef.current;
     setFocus(f?.type === 'project' ? { ...f, id: p.id } : { type: 'project', id: p.id, prevCam: camRef.current, prevSide: camSide.current });
+    addressOpens(p, undefined);
     setSheetId(p.id);
     setReading(r);
     setSheetOn(true);
@@ -604,6 +609,7 @@ function Canvas({
     const f = focusRef.current;
     if (f?.type !== 'project') return;
     setFocus(null);
+    addressCloses(undefined);
     setSheetOn(false);
     if (toArchive && archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
     await fly(back(f), 600);
@@ -665,52 +671,140 @@ function Canvas({
   useEffect(() => {
     const k = takeKept(sessionStorage, snapshot.canvas.id);
     const sheetLeft = takeSheetLeft(sessionStorage, snapshot.canvas.id);
-    if (k) return void reopen(k).catch(console.error);
-    if (sheetLeft) {
+    // the canvas's own address, where the page came without one or with another canvas's; `?talk`
+    // (Obeya's answer in another canvas's navigation) opens Obeya's sheet, once
+    const a = readAddress();
+    const code = !a.canvas || a.canvas === snapshot.canvas.id ? a.card : undefined;
+    const talk = new URLSearchParams(location.search).has('talk');
+    history.replaceState(history.state, '', `${code ? cardPath(snapshot.canvas.id, code) : canvasPath(snapshot.canvas.id)}${queryWithout(location.search, 'c', 'card', 'talk')}`);
+    // what comes back is what the address names already; a kept card the address left out (a
+    // restart of the app's shell, a link to the canvas) gets its address once it is open
+    addressSet.current = true;
+    const done = () => {
+      addressSet.current = false;
+      history.replaceState(history.state, '', pathOf(openNow()));
+    };
+    if (k) return void reopen(k).catch(console.error).finally(done);
+    if (sheetLeft || talk) {
       // beside the sheet at once, as the canvas comes back
       quickSide.current = Date.now() + 2000;
       setKOn(true);
     }
-    openFromAddress().catch(console.error);
+    (code ? openAddress(code, true) : Promise.resolve()).catch(console.error).finally(done);
   }, []);
-  /**
-   * A card the address names (`?card=`, from another canvas's navigation or Workspaces list): the
-   * canvas flies to it and opens it, once; or Obeya's sheet (`?talk`, its answer in the navigation).
-   */
-  async function openFromAddress() {
-    const q = new URLSearchParams(location.search);
-    const id = q.get('card');
-    const talk = q.has('talk');
-    if (!id && !talk) return;
-    q.delete('card');
-    q.delete('talk');
-    history.replaceState(history.state, '', `${location.pathname}${q.size ? `?${q}` : ''}`);
-    if (talk) {
-      quickSide.current = Date.now() + 2000;
-      setKOn(true);
-    }
-    if (!id) return;
-    const i = await soon(() => byId(id));
-    if (i) await open(i);
-  }
   async function reopen(k: Kept) {
     // the sheet that comes back sets the camera beside it at once, as the rest comes back without flights
     quickSide.current = Date.now() + 2000;
     if (k.sheet === 'koordinator') setKOn(true);
     else if (k.sheet === 'archive') setAOn(true);
     if (k.config) setCOn(true);
-    let gone: Item[] | undefined;
-    const find = async (id?: string) => (id ? (byId(id) ?? (gone ??= await api.archived().catch(() => [])).find((i) => i.id === id)) : undefined);
-    const p = await find(k.project);
-    // an archived project's sheet lists its workstreams from the archive
-    if (gone) setArchived(gone);
-    // the doc opens at its top, and the kept position puts it back where it was
-    if (p) await (k.reading ? readPlan(p, {}, true) : openProject(p, true));
-    const i = await find(k.card);
-    // an archived card unfolds from its row in the archive or the project's sheet, once that has loaded
-    if (i && (!i.archivedAt || (await soon(() => fromEl(i.id, !!p))))) await open(i, true);
+    await openAgain(k, true);
     restore(k);
   }
+  /** Opens the project `k.project` (its plan doc with `reading`) and the card `k.card` in it or on the canvas; an archived one from its row in the archive or the project's sheet. */
+  async function openAgain(k: Pick<Kept, 'card' | 'project' | 'reading'>, quick: boolean) {
+    const find = async (id?: string) => (id ? namedBy(id) : undefined);
+    // an archived project's sheet lists its workstreams from the archive, which this loads
+    const p = await find(k.project);
+    // the doc opens at its top, and the kept position puts it back where it was
+    if (p) await (k.reading ? readPlan(p, {}, quick) : openProject(p, quick));
+    const i = await find(k.card);
+    // an archived card unfolds from its row in the archive or the project's sheet, once that has loaded
+    if (i && (!i.archivedAt || (await soon(() => fromEl(i.id, !!p))))) await open(i, quick);
+  }
+
+  // ---------------------------------------------------------------- the address
+  // the address names the open card or project (`/c/<canvas>/card/<code>`). Opening one is a step in
+  // the browser's history, so Back closes it again, as on the phone; one opened in place of another
+  // (by a link in it) takes over that one's step. Changes take effect one after the other: a step
+  // back is done once the browser says so.
+  const addressChain = useRef(Promise.resolve());
+  const address = (change: () => void | Promise<void>) => void (addressChain.current = addressChain.current.then(change).catch(console.error));
+  /** The step back this page asked the browser for, until it is done. */
+  const stepBack = useRef<(() => void) | null>(null);
+  /** While the page opens what the address names (as it loads, on Back or Forward): the address is set already. */
+  const addressSet = useRef(false);
+  /** The card or project open now. */
+  const openNow = () => {
+    const f = focusRef.current;
+    return f ? itemOrArchived(f.id) : undefined;
+  };
+  const pathOf = (i: Item | undefined) => `${i ? cardPath(snapshot.canvas.id, i) : canvasPath(snapshot.canvas.id)}${location.search}`;
+  /** `i` opens over `under` (the project it is opened from, else the canvas). */
+  function addressOpens(i: Item, under: Item | undefined) {
+    if (addressSet.current) return;
+    address(() => {
+      const at = readAddress().card;
+      if (at && named([i], at)) return;
+      if (!at || (under && named([under], at))) history.pushState({ step: true }, '', pathOf(i));
+      else history.replaceState(history.state, '', pathOf(i));
+    });
+  }
+  /** What is open closes down to `under` (the project still open, else the canvas). */
+  function addressCloses(under: Item | undefined) {
+    if (addressSet.current) return;
+    address(() => {
+      if (!(history.state as { step?: true } | null)?.step) return history.replaceState(history.state, '', pathOf(under));
+      return new Promise<void>((done) => {
+        stepBack.current = () => {
+          // the step before may name what is no longer open (a card opened over its project, then reloaded without it)
+          const at = readAddress().card;
+          if (at && !(under && named([under], at))) history.replaceState(history.state, '', pathOf(under));
+          done();
+        };
+        history.back();
+      });
+    });
+  }
+  /** The card or project an address (or an id) names, on the canvas or in the archive, which it loads where it has to. */
+  async function namedBy(code: string) {
+    const here = named(itemsRef.current, code) ?? named(archivedRef.current, code);
+    if (here) return here;
+    const gone = await api.archived().catch(() => []);
+    archivedRef.current = gone;
+    setArchived(gone);
+    return named(gone, code);
+  }
+  /** Opens what the address names; a code no card has leaves the canvas, at its address. */
+  async function openAddress(code: string, quick: boolean) {
+    const i = await namedBy(code);
+    // by its short code, where it was named by its id
+    history.replaceState(history.state, '', pathOf(i));
+    if (!i) return;
+    if (i.kind === 'project') return openAgain({ project: i.id }, quick);
+    // an archived workstream unfolds from its project's sheet, any other archived card from the archive's list
+    const project = i.archivedAt ? i.parent : undefined;
+    if (i.archivedAt && !project) setAOn(true);
+    await openAgain({ card: i.id, project }, quick);
+  }
+  /** Back or Forward: what the address no longer names closes, what it names opens. */
+  async function followAddress() {
+    const code = readAddress().card;
+    const i = code ? await namedBy(code) : undefined;
+    addressSet.current = true;
+    try {
+      const f = focusRef.current;
+      if (f?.type === 'card' && f.id !== i?.id) await closeCard({ keepUntitled: true });
+      const p = focusRef.current;
+      if (p?.type === 'project' && p.id !== i?.id && i?.parent !== p.id) await closeProject(false);
+      // a code no card has any longer: openAddress leaves the canvas at its address
+      if (code && (!i || focusRef.current?.id !== i.id)) await openAddress(code, false);
+    } finally {
+      addressSet.current = false;
+    }
+  }
+  const follow = useRef(followAddress);
+  follow.current = followAddress;
+  useEffect(() => {
+    const pop = () => {
+      const done = stepBack.current;
+      stepBack.current = null;
+      if (done) done();
+      else address(() => follow.current());
+    };
+    addEventListener('popstate', pop);
+    return () => removeEventListener('popstate', pop);
+  }, []);
 
   // ---------------------------------------------------------------- acknowledgement with undo
   const { showAck, showWait, fail, line: ackLine } = useAck();
@@ -910,7 +1004,7 @@ function Canvas({
       onNotice((n) => {
         // the open card moved to another canvas (built in a new repository there): the page follows it
         const f = focusRef.current;
-        if (n.movedTo && n.cardId && f?.type === 'card' && f.id === n.cardId) return location.assign(`?c=${encodeURIComponent(n.movedTo)}&card=${encodeURIComponent(n.cardId)}`);
+        if (n.movedTo && n.cardId && f?.type === 'card' && f.id === n.cardId) return location.assign(cardPath(n.movedTo, n.cardId));
         const i = itemsRef.current.find((x) => x.id === n.cardId);
         if (n.wish) openWish(n.wish);
         // the card a review of its PR asked for, unless the owner has another one open; one just made, once it is on the canvas
@@ -1438,8 +1532,8 @@ function Canvas({
     pinned,
     pinnable: !matchMedia(NARROW).matches && innerWidth - NAV_W - side.right >= NAV_CANVAS_MIN,
     onPin: pin,
-    onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : location.assign(`?c=${encodeURIComponent(c)}&card=${encodeURIComponent(i.id)}`)),
-    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : location.assign(`?c=${encodeURIComponent(c)}&talk`)),
+    onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : location.assign(cardPath(c, i))),
+    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : location.assign(`${canvasPath(c)}?talk`)),
   };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
   const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
@@ -1763,7 +1857,7 @@ function Canvas({
             {online && update && restart?.reason !== 'update' && <UpdatePill update={update} />}
             {online && source && <SourcePill source={source} />}
             {online && usage && <UsagePill usage={usage} />}
-            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => location.assign(`?c=${encodeURIComponent(c)}&card=${encodeURIComponent(card)}`)} onTake={takeWorkspace} onKeep={keepWorkspace} />}
+            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => location.assign(cardPath(c, card))} onTake={takeWorkspace} onKeep={keepWorkspace} />}
             <button className={cOn ? 'pill kpill config on' : 'pill kpill config'} title={t.config.button} onClick={toggleConfig}>
               <BarIcon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
               <span className="lbl">{t.config.button}</span>

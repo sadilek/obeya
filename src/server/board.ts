@@ -2537,6 +2537,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
     if (!r.plan_ref) {
       manual.push({
         id: r.id,
+        short: r.short,
         kind: r.kind,
         state: r.state ?? 'planned',
         ...(r.need ? { need: r.need } : {}),
@@ -2566,6 +2567,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
     if (hash < 0) {
       projects.push({
         id: r.id,
+        short: r.short,
         kind: 'project',
         state: 'planned',
         title: doc.title,
@@ -2597,6 +2599,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       order,
       item: {
         id: r.id,
+        short: r.short,
         kind: r.kind,
         state,
         ...(r.need ? { need: r.need } : {}),

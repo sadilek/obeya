@@ -5,6 +5,7 @@
 
 import { useRef, useState } from 'react';
 import { type CanvasInfo, type Item, type Waiting, waitingOn } from '../core/types';
+import { canvasPath } from './address';
 import { forYouOf, ForYouRows } from './forYou';
 import { CanvasAgents } from './parts';
 import { useMenuClose } from './queue';
@@ -122,7 +123,7 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
           return (
             <section key={c.id} className={c.id === canvas.id ? 'nav-canvas on' : 'nav-canvas'}>
               <div className="nav-row">
-                <a href={`?c=${encodeURIComponent(c.id)}`}>
+                <a href={canvasPath(c.id)}>
                   <CanvasIcon />
                   <b>{c.name}</b>
                   <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>

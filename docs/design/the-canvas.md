@@ -185,6 +185,31 @@ width, growing with it up to the room above the microphone before it scrolls, li
 a looked-up answer is long, and a box of fixed height left most of the window unused. A proposal's
 text box grows until the reason below it would leave view.
 
+### Addresses
+
+The page's address names what it shows: `/c/<canvas>` a canvas, `/c/<canvas>/card/<code>` a card
+or project open on it (the phone view: the card full screen). The code is the card's short code, the
+first six hex digits of its id with one more digit for each card already holding those; its whole id
+works in its place, and the page then shows the short one. The short code is given once, when the
+card is made, and never changes, so a link stays good; existing cards got theirs when the database
+was migrated, each the shortest start of its id no other card shared. Opening an address (a link, a
+bookmark, a reload) opens that card at once, without the flight; an archived one unfolds from its
+row in the archive, an archived workstream from its project's sheet; a code no card has leaves the
+canvas open at its own address. Addresses of the form before paths (`/?c=<canvas>&card=<id>`) are
+rewritten to this form, so old links and bookmarks keep working. What else the page shows that is
+not a place (`?view=phone`, the phone's open conversation `?talk`; on the canvas `?talk` opens
+Obeya's sheet once, as the navigation's link to an answer on another canvas does) stays in the query.
+
+Opening a card or a project is a step in the browser's history, on the canvas as on the phone: Back
+closes it again, and closing it (Esc, the close button) goes back that step, so Back after closing
+leaves the page rather than opening the card again. A card opened from a project's sheet is a step on
+from the project's; one opened in place of another (by a link in it) takes over that one's step, so
+Back from it returns to what was open before the first. Where a card names another (what a queued
+card waits for, the card a follow-up or a proposal comes from, the card that replaced a proposal, a
+prototype's idea and project, what Obeya waits on), the name is a link to that card while it is on
+the canvas: a click opens it in place of the open one, a click with a modifier in a tab of its own.
+Card faces on the canvas link nothing, since a click there opens the card itself.
+
 ### Sheets
 
 The sheets (Obeya's, a project's, a plan doc being read) are a sidebar docked to the window's right
@@ -304,6 +329,14 @@ code, a generic one otherwise.
   Rejected: arrows to or from projects and workstreams, whose order the plan doc decides; a trash
   button on inferred waits, which Obeya would infer again at the next start; a confirmation dialog
   before removing an arrow, where „Rückgängig“ does the same with one click fewer.
+- **Path addresses with short card codes** (owner, 2026-11-01): a card's address is a permalink
+  that survives a reload and can be passed on, and paths leave room for views nested deeper. The
+  code is stored, not derived from the cards there are at the time, so a later card whose id starts
+  alike cannot make an earlier link ambiguous. Rejected: query parameters (`?c=`, `?card=`), and
+  the whole id in the address, which is long to read and pass on.
+- **Closing a card goes back a step** (owner, 2026-11-02): an open card is a view over the canvas,
+  like a dialog, and the phone already closed cards that way. Rejected: closing as a step of its own,
+  after which Back opened the card that was just closed.
 - **The look is the index card** (2026-10-10), prototyped beside a Swiss editorial card (black
   frame, solid state band, Schibsted Grotesk) that read better from afar but looked like a known
   designer style; a kanji seal and a kanban ticket were not pursued. Ruled lines and inks too close

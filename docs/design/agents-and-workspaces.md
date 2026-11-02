@@ -174,8 +174,8 @@ the card in it, „frei“ or „blockiert“; then how many cards wait for a wo
 none is free and a card waits, „⋯“ beside the cards whose clone may go to it (see Taking a card's
 workspace). The card
 is a link: a click closes the list, flies to the card and opens it; for a card on another canvas
-the page switches to that canvas (`?c=<canvas>&card=<id>`, which opens the named card once the
-canvas has loaded). A card not on any canvas (archived, say) shows by its title without a link. A
+the page switches to that canvas at the card's address (see Addresses in The canvas), which opens
+it once the canvas has loaded. A card not on any canvas (archived, say) shows by its title without a link. A
 repository in worktrees shows a dot per slot, and none without slots (no pill if all are so); its
 list names the cards' worktrees.
 

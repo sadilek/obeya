@@ -136,7 +136,7 @@ export function waitedOn(ids: string[], items: Item[], name: (id: string) => str
   });
 }
 
-type Behind = { behind: string[]; reason: string; manualWait?: string[] };
+export type Behind = { behind: string[]; reason: string; manualWait?: string[] };
 
 /** Why a card waits behind others: the reason Obeya gave, or the owner's arrows where only they hold it. */
 export const waitReason = (q: Behind) => (q.behind.some((id) => !q.manualWait?.includes(id)) ? q.reason : t.queue.drawn);
@@ -145,11 +145,11 @@ export const waitReason = (q: Behind) => (q.behind.some((id) => !q.manualWait?.i
 export const forcedText = (q: Item['queue']) => (q && 'behind' in q && q.behind.every((id) => q.manualWait?.includes(id)) ? t.queue.forcedDrawn : t.queue.forced);
 
 /** What a card waits for and why: the waits Obeya inferred with their reason, then those the owner's arrows hold it for. */
-export function waitText(q: Behind, items: Item[]): string {
+export function waitText(q: Behind, items: Item[], name?: (id: string) => string): string {
   const drawn = q.behind.filter((id) => q.manualWait?.includes(id));
   const inferred = q.behind.filter((id) => !drawn.includes(id));
-  if (!inferred.length) return `${t.queue.behind(waitedOn(drawn, items))} ${t.queue.drawn}`;
-  return `${t.queue.behind(waitedOn(inferred, items))} ${q.reason}${drawn.length ? ` ${t.queue.drawnToo(waitedOn(drawn, items))}` : ''}`;
+  if (!inferred.length) return `${t.queue.behind(waitedOn(drawn, items, name))} ${t.queue.drawn}`;
+  return `${t.queue.behind(waitedOn(inferred, items, name))} ${q.reason}${drawn.length ? ` ${t.queue.drawnToo(waitedOn(drawn, items, name))}` : ''}`;
 }
 
 type Sort = ReturnType<typeof useSortable>;

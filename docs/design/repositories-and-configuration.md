@@ -29,9 +29,10 @@ for the owner on that canvas (in the navigation's „Braucht dich“), with „V
 Its agent can take it back or replace it there as on its own canvas, and the worker that takes it on
 reads the card it came from as with any follow-up.
 
-The UI opens `?c=<canvas>` (with `&card=<id>` a card on it, with `&talk` Obeya's sheet); the
-navigation after the logo switches canvases and lists what waits for the owner on each, kept current
-on every page (see The navigation). Wherever canvases are listed (the navigation, the phone) they
+The UI opens `/c/<canvas>` (with `/card/<code>` a card on it, see Addresses in The canvas; with
+`?talk` Obeya's sheet); the navigation after the logo switches canvases and lists what waits for the
+owner on each, kept current on every page (see The navigation). Wherever canvases are listed (the
+navigation, the phone) they
 stand in the configuration's order, so the owner sets it by moving them in the Konfiguration dialog;
 the first is also where a page of a stopped canvas goes. A canvas without a name in the configuration is named after
 its first repository (the name in its `origin` URL, else its directory's), and its id follows, so all

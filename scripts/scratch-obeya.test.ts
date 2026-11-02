@@ -48,7 +48,7 @@ test('stages a scratch Obeya with its cards in the states the stage file gives',
   // a link that signs a browser in and opens the canvas
   expect(staged.url).toStartWith(`http://127.0.0.1:${port}/login?token=`);
   const signed = await fetch(staged.url, { redirect: 'manual' });
-  expect(await signed.text()).toContain('location.replace("/?c=repo")');
+  expect(await signed.text()).toContain('location.replace("/c/repo")');
   // again, in another browser
   expect((await fetch(staged.url, { redirect: 'manual' })).status).toBe(200);
   // the same from --login

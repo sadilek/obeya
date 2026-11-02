@@ -7,6 +7,8 @@ import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
 import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
+import { cardPath } from './address';
+import { Naming } from './cardLink';
 import { useCopy } from './copy';
 import { firstOpening } from './demoSeen';
 import { know, known } from './known';
@@ -15,7 +17,7 @@ import { ResultFiles } from './files';
 import { DiscardChanges, FolderBox, FolderLine, useFolderDiff } from './folder';
 import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { holdsNotes } from '../core/queue';
-import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText } from './queue';
+import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
@@ -72,6 +74,12 @@ interface Props {
   /** Opens the configuration at the owner's personal demo site. */
   onDemoSites?: () => void;
   onTell: Tell;
+}
+
+/** What a queued card waits for, each card a link that opens it in this one's place. */
+function WaitsFor({ queue, all }: { queue: Behind; all: Item[] }) {
+  const cards = queue.behind.map((id) => ({ card: all.find((x) => x.id === id), title: all.find((x) => x.id === id)?.title ?? id }));
+  return <Naming text={(...names) => waitText(queue, all, (id) => names[queue.behind.indexOf(id)]!)} cards={cards} />;
 }
 
 /** Where a waiting card stands in the queue, with the buttons that move it; unfolded, the queue around it, where it is dragged instead. */
@@ -236,6 +244,8 @@ export function Detail(p: Props) {
   const ideaTitle = plain(item.ideaTitle ?? p.from?.title ?? '');
   // once the idea has become a project, one of its workstreams is built on the prototype instead
   const project = item.prototypeOf ? all.find((i) => i.kind === 'project' && i.origin === item.prototypeOf) : undefined;
+  const ideaCard = item.prototypeOf ? all.find((i) => i.id === item.prototypeOf) : undefined;
+  const builtOn = item.builtOn ? item.prototypes?.find((x) => x.id === item.builtOn) : undefined;
   const workstreams = project ? all.filter((i) => i.parent === project.id && buildableOn(i)) : [];
   // the plan doc says which workstream builds on the prototypes; the owner picks only where it does not, or another
   const named = project && !picking ? prototypeWorkstream(all, project.id) : undefined;
@@ -389,7 +399,7 @@ export function Detail(p: Props) {
       ) : (
         <>
           <div className="q-text">
-            {waitText(item.queue, all)}
+            <WaitsFor queue={item.queue} all={all} />
           </div>
           <QueuePlace item={item} items={all} />
           <div className="actions">
@@ -459,7 +469,13 @@ export function Detail(p: Props) {
       {!waits && queueBox}
 
       {item.prototypeOf && (
-        <p className="hint">{project ? t.idea.prototypeOfProject(ideaTitle, plain(project.title)) : planning ? t.idea.prototypeOfPlanning(ideaTitle) : t.idea.prototypeOf(ideaTitle)}</p>
+        <p className="hint">
+          {project ? (
+            <Naming text={t.idea.prototypeOfProject} cards={[{ card: ideaCard, title: ideaTitle }, { card: project }]} />
+          ) : (
+            <Naming text={planning ? t.idea.prototypeOfPlanning : t.idea.prototypeOf} cards={[{ card: ideaCard, title: ideaTitle }]} />
+          )}
+        </p>
       )}
       {item.buildProposal && (
         <div className="question proposal">
@@ -472,9 +488,11 @@ export function Detail(p: Props) {
         </div>
       )}
       {item.builtOn && (
-        <p className="hint">{t.idea.builtOn(plain(item.prototypes?.find((x) => x.id === item.builtOn)?.title ?? ''))}</p>
+        <p className="hint">
+          <Naming text={t.idea.builtOn} cards={[{ card: builtOn, title: builtOn?.title ?? '' }]} />
+        </p>
       )}
-      {p.from && !item.prototypeOf && item.state !== 'proposal' && <p className="hint">{t.followUpOf(plain(p.from.title))}</p>}
+      {p.from && !item.prototypeOf && item.state !== 'proposal' && <p className="hint"><Naming text={t.followUpOf} cards={[{ card: p.from }]} /></p>}
       {!p.from && item.fromElsewhere && item.state !== 'proposal' && <FromElsewhere item={item} />}
 
       <LastFailure item={item} />
@@ -748,10 +766,10 @@ function SupersededBox({ item, all, act, onDelete }: { item: Item; all: Item[]; 
   const s = item.superseded;
   if (!s) return null;
   // the replacement under its title now, if it is still on the canvas
-  const by = s.by ? plain(all.find((x) => x.id === s.by)?.title ?? s.title ?? '') : undefined;
+  const replacement = s.by ? all.find((x) => x.id === s.by) : undefined;
   return (
     <div className="question superseded">
-      <h4>{by !== undefined ? t.superseded.by(by) : t.superseded.withdrawn}</h4>
+      <h4>{s.by ? <Naming text={t.superseded.by} cards={[{ card: replacement, title: replacement?.title ?? s.title ?? '' }]} /> : t.superseded.withdrawn}</h4>
       {s.why && <div className="q-text">{s.why}</div>}
       <div className="actions">
         <button className="btn danger" title={t.superseded.removeHint} onClick={onDelete}>
@@ -766,7 +784,7 @@ function SupersededBox({ item, all, act, onDelete }: { item: Item; all: Item[]; 
 }
 
 /** Where the card a card comes from opens on its other canvas. */
-const elsewhereHref = (item: Item) => `?c=${encodeURIComponent(item.fromElsewhere!.canvas)}&card=${encodeURIComponent(item.from!)}`;
+const elsewhereHref = (item: Item) => cardPath(item.fromElsewhere!.canvas, item.from!);
 
 /** A card that comes from a card on another canvas: which, and a link that opens it there. */
 function FromElsewhere({ item }: { item: Item }) {
@@ -1049,7 +1067,7 @@ function ProposalView({
             {/* which of the owner's screenshots go with the task, by their hand or the reviser's pick */}
             {!!item.images?.length && <p className="hint">{t.proposalShots}</p>}
             {!idea && <StartAt item={item} act={act} />}
-            {from && <p className="hint">{t.proposedBy(plain(from.title))}{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
+            {from && <p className="hint"><Naming text={t.proposedBy} cards={[{ card: from }]} />{item.proposal?.reason && <> {item.proposal.reason}</>}</p>}
             {/* proposed by the agent of a card on another canvas, whose repository this is */}
             {!from && item.fromElsewhere && (
               <p className="hint">

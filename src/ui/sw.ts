@@ -52,7 +52,8 @@ export function worker() {
     const url = new URL(req.url);
     if (req.method !== 'GET' || url.origin !== location.origin || fresh(url.pathname)) return;
     const page = req.mode === 'navigate';
-    if (page && url.pathname !== '/') return;
+    // the page is the same at each of its addresses: `/`, a canvas's, a card's
+    if (page && url.pathname !== '/' && !url.pathname.startsWith('/c/')) return;
     e.respondWith(load(req, page));
   });
 

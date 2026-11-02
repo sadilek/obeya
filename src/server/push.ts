@@ -212,9 +212,15 @@ export class Push {
     const m = MESSAGES[this.language()].push;
     if (cards.length === 1) {
       const w = cards[0]!;
-      return { title: clipped(plainTitle(w.title), 160), body: clipped([m[w.kind], w.canvas].filter(Boolean).join(' · '), 200), url: `/?card=${encodeURIComponent(w.card)}`, tag: w.card };
+      return { title: clipped(plainTitle(w.title), 160), body: clipped([m[w.kind], w.canvas].filter(Boolean).join(' · '), 200), url: this.cardUrl(w.card), tag: w.card };
     }
     return { title: m.several(cards.length), body: clipped(cards.map((w) => plainTitle(w.title)).join(' · '), 600), url: '/', tag: 'several' };
+  }
+
+  /** Where tapping the push for a card leads: the card on its canvas, by its short code. */
+  private cardUrl(id: string): string {
+    const row = this.store.card(id);
+    return row ? `/c/${encodeURIComponent(row.canvas_id)}/card/${row.short}` : `/?card=${encodeURIComponent(id)}`;
   }
 
   /** Sends `message` to every device that gets pushes; a subscription its push service no longer knows goes. */

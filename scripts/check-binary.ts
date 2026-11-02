@@ -194,8 +194,8 @@ await runDemo(
   {
     title: 'Obeya from one file',
     baseUrl: ${JSON.stringify(base)},
-    login: async (page) => { await page.goto(${JSON.stringify(await loginLink(base, home, `/?c=${canvas}`))}); },
-    open: async (d) => { await d.goto('/?c=${canvas}'); await d.page.getByText('Configuration').first().waitFor(); },
+    login: async (page) => { await page.goto(${JSON.stringify(await loginLink(base, home, `/c/${canvas}`))}); },
+    open: async (d) => { await d.goto('/c/${canvas}'); await d.page.getByText('Configuration').first().waitFor(); },
     scenes: [{ title: 'The canvas', say: 'This canvas is served by the compiled Obeya.', run: async (d) => { await d.untilSpoken(0.5); } }],
     report: { summary: 'A check render.', meta: {} },
   },
@@ -212,7 +212,7 @@ await runDemo(
       copyFileSync(shot, join(process.env.CHECK_ARTIFACTS, 'demo-failure.png'));
       copyFileSync(log, join(process.env.CHECK_ARTIFACTS, 'server.log'));
     }
-    expect(p.exitCode === 0, `exit ${p.exitCode}\n${out.slice(-3000)}\n${p.exitCode !== 0 ? pageConsole(demo, await loginLink(base, home, `/?c=${canvas}`)) : ''}`);
+    expect(p.exitCode === 0, `exit ${p.exitCode}\n${out.slice(-3000)}\n${p.exitCode !== 0 ? pageConsole(demo, await loginLink(base, home, `/c/${canvas}`)) : ''}`);
     expect(Bun.file(join(demo, 'demo.mp4')).size > 0, 'no demo.mp4');
     return out.split('\n').find((l) => /video →/.test(l))?.trim();
   });

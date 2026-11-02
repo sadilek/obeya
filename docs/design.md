@@ -46,8 +46,8 @@ touches, and keep those current in the same change.
   card layout (the files beside the demo, trying the app by hand), screenshots and marking them,
   other files by their path, skills by `/`.
 - [The canvas](design/the-canvas.md) — the UI around the cards: the bar, creating cards, cards on
-  the canvas (a project arranged by its dependencies), moving around, unfolding a card, sheets,
-  visual identity, groups on the canvas, refusals.
+  the canvas (a project arranged by its dependencies), moving around, unfolding a card, addresses
+  (a card's permalink, Back and Forward), sheets, visual identity, groups on the canvas, refusals.
 - [Agents and workspaces](design/agents-and-workspaces.md) — how agents run and where: agents,
   models and effort, workspaces (slots, the pool in the bar), folders without git, parking, hosts
   (running there, logins and files, a dropped connection).

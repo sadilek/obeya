@@ -99,6 +99,14 @@ describe('Push', () => {
     expect(sent[0]!.url).toBe('https://web.push.apple.com/abc');
   });
 
+  test('the push of a card opens it at its address on its canvas, by its short code', async () => {
+    const { store, push, shown } = await setup();
+    store.ensureCanvas('shop', 'Shop');
+    const [card] = store.insert([{ canvas_id: 'shop', kind: 'task', state: 'waiting', x: 0, y: 0 }]);
+    push.waits([waits(card!.id)]);
+    expect((await shown())[0]!.url).toBe(`/c/shop/card/${card!.short}`);
+  });
+
   test('nothing is pushed while the owner used a page at the machine in the last minutes', async () => {
     const { push, shown, tick } = await setup();
     push.here();

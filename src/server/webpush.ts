@@ -122,7 +122,7 @@ export async function vapidAuth(endpoint: string, vapid: Vapid, now = Date.now()
 export interface PushMessage {
   title: string;
   body: string;
-  /** Where tapping it leads: a card in the phone view (`/?card=…`), or „Braucht dich“ (`/`). */
+  /** Where tapping it leads: a card in the phone view (`/c/<canvas>/card/<code>`), or „Braucht dich“ (`/`). */
   url: string;
   /** A later push with the same tag replaces this one in the list of notifications. */
   tag: string;

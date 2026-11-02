@@ -290,6 +290,15 @@ describe('only the owner', () => {
     expect((await bare('/?c=main', { headers: { 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'navigate', cookie } })).status).toBe(200);
   });
 
+  test('a canvas’s and a card’s address serve the page, to the owner only', async () => {
+    const cookie = (await bare(await link())).headers.get('set-cookie')!.split(';')[0]!;
+    const page = await bare('/c/main/card/a1b2c3', { headers: { cookie } });
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain('<div id="root">');
+    expect((await bare('/c/main', { headers: { cookie } })).status).toBe(200);
+    expect((await bare('/c/main/card/a1b2c3')).status).toBe(401);
+  });
+
   test('a link leads only to a path of Obeya’s', async () => {
     for (const next of ['https://evil.example/', '//evil.example/', '/\\evil.example/'])
       expect(await onward(await bare(await link(next)))).toBe('/');
