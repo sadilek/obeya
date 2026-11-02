@@ -17,7 +17,7 @@ Sheets).
 Right, before the workspace pool: the usage limits of the Claude plan that Claude Code on this
 machine is logged in with, the session's (five hours) and the week's, each a short meter with its
 percentage, the most used limit of each group, coloured in the grade the plan's usage endpoint gives
-it (warning, critical). Hovering or a click lists every limit (the session, the week for all models,
+it (warning, critical). A click lists every limit (the session, the week for all models,
 the week for a single model) with when it starts anew, where the numbers come from and as of when,
 and „Ausblenden“, which turns the setting off; „Nutzungslimits in der Menüzeile“ under Konfiguration →
 Allgemein turns it on again (on until then). The phone view shows the same at the right of its bar.
@@ -382,6 +382,9 @@ code, a generic one otherwise.
 - **The usage limits outlast the last page by half a minute** (2026-10-29). Rejected: closing the
   session and forgetting the numbers with the last page, which left the bar without them for the
   seconds a new session takes after every switch of canvas.
+- **The usage limits' list opens on a click, not on hover** (owner, 2026-11-02), as the bar's other
+  menus do. Rejected: hovering, which spread the list over the canvas whenever the pointer crossed
+  the bar.
 - **The bar measures what fits** (2026-10-12). Rejected: container queries on the bar's width, which
   let a long branch or a large pool push buttons under the sheet.
 - **An unfolded card is as large as its content, up to the room it has** (2026-10-08, 2026-10-21).

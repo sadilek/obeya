@@ -368,11 +368,11 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
   background: var(--panel); color: var(--ink); box-shadow: var(--lift); white-space: normal; font-size: 13px; font-weight: 400; line-height: 1.45;
   text-align: left; z-index: 30; cursor: default; }
 /* the gap between the pill and the list holds the hover, so the pointer gets from one to the other */
-.pill:is(.workspaces, .usage)::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 10px; }
+.pill.workspaces::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 10px; }
 .pill:is(.workspaces, .usage) .tip p { margin: 0 0 6px; }
 .pill:is(.workspaces, .usage) .tip > :last-child, .pill.workspaces .tip > div:last-child > :last-child,
   .pill.workspaces .tip > div:last-child > div:last-child > :last-child { margin-bottom: 0; }
-.pill:is(.workspaces, .usage):not(.shut):hover .tip, .pill:is(.workspaces, .usage).open .tip { display: block; }
+.pill.workspaces:not(.shut):hover .tip, .pill:is(.workspaces, .usage).open .tip { display: block; }
 /* the plan's usage limits: a short meter per group, in the usage endpoint's grade */
 .pill.usage .tip { width: 380px; }
 .pill.usage .face { gap: 16px; }

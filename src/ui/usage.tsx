@@ -1,6 +1,6 @@
 // The plan's usage limits in the bar: the session's and the week's, each as a short meter with how
-// much of it is used, in the grade the usage endpoint gives it. Hovering (or a click, a tap on the
-// phone) lists every limit with when it starts anew, where the numbers come from, and the button
+// much of it is used, in the grade the usage endpoint gives it. A click (a tap on the phone) lists
+// every limit with when it starts anew, where the numbers come from, and the button
 // that hides them again (the setting in Konfiguration → Allgemein shows them again).
 
 import { useEffect, useRef, useState } from 'react';
@@ -37,17 +37,12 @@ function Meter({ limit }: { limit: UsageLimit }) {
 export function UsagePill({ usage }: { usage: Usage }) {
   // open by a click (a tap) until one elsewhere or Escape
   const [open, setOpen] = useState(false);
-  const [shut, setShut] = useState(false);
   const [status, setStatus] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      setOpen(false);
-      setShut(true);
-    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     addEventListener('pointerdown', away, true);
     addEventListener('keydown', esc);
     return () => {
@@ -62,7 +57,7 @@ export function UsagePill({ usage }: { usage: Usage }) {
   };
   const shown = headline(usage.limits);
   return (
-    <div ref={ref} className={['pill usage', open && 'open', shut && 'shut'].filter(Boolean).join(' ')} id="usage" onPointerLeave={() => setShut(false)}>
+    <div ref={ref} className={['pill usage', open && 'open'].filter(Boolean).join(' ')} id="usage">
       <button className="face" aria-expanded={open} aria-label={t.usage.title} onClick={() => setOpen(!open)}>
         {shown.map((l) => (
           <span key={l.group} className={`group ${l.severity}`}>
