@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, routedForge, type PrStatus } from './forge';
+import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, routedForge, waitsOf, type PrStatus } from './forge';
 import { onGitHub } from './repo';
 import { fakeGh, noContributions } from './testing';
 
@@ -330,6 +330,59 @@ test('a push since the review is not ready to merge until the reviewer has seen 
   expect(readyToMerge(s, ['cloudflare'])).toBe(true);
   // a PR no reviewer wrote on waits for nobody
   expect(reviewStale({ ...s, comments: [s.comments[0]!] }, ['cloudflare'])).toBe(false);
+});
+
+test('only a comment of the author that mentions an account asks for another look', () => {
+  const s: PrStatus = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'h', author: 'owner', checks: [], comments: [] };
+  const ask = (body: string) => lastAsked({ ...s, comments: [{ id: 'c1', author: 'owner', body, at: '2026-11-02T12:43:00Z' }] });
+  expect(ask('@greptileai review')).toBe('2026-11-02T12:43:00Z');
+  expect(ask('Could you look again, @coderabbitai?')).toBe('2026-11-02T12:43:00Z');
+  // a thank-you to a summary without findings (2026-11-02), an address, code and a quote mention nobody
+  expect(ask('Thanks for the review, nothing to change.')).toBe('');
+  expect(ask('Reported to ops@example.com')).toBe('');
+  expect(ask('See `@types/node` and\n```\n@decorator\n```')).toBe('');
+  expect(ask('> @greptile said this\n\nAgreed.')).toBe('');
+  expect(ask('  > @greptile review\n\nAgreed.')).toBe('');
+  expect(ask('~~~\n@greptile review\n~~~\nDone.')).toBe('');
+  expect(ask('Output:\n\n    @greptile review\n\nDone.')).toBe('');
+  expect(ask('```\ncode\n```\n@greptileai review')).toBe('2026-11-02T12:43:00Z');
+  // a reply in a thread on the code is no request either
+  expect(lastAsked({ ...s, comments: [{ id: 'i1', author: 'owner', body: '@greptile fixed', at: '2026-11-02T12:43:00Z', replyTo: 'i0' }] })).toBe('');
+});
+
+test('what a pull request waits for, in the order it is in the way', () => {
+  const s: PrStatus = {
+    state: 'OPEN',
+    mergeable: 'MERGEABLE',
+    mergeState: 'CLEAN',
+    head: 'h',
+    changedAt: '2026-11-02T12:40:00Z',
+    author: 'owner',
+    checks: [{ name: 'CI', state: 'success' }],
+    comments: [{ id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: '2026-11-02T12:42:00Z' }],
+  };
+  const waits = (f: (c: PrStatus) => void) => {
+    const c = structuredClone(s);
+    f(c);
+    return waitsOf(c);
+  };
+  expect(waitsOf(s)).toEqual([]);
+  expect(readyToMerge(s)).toBe(true);
+  expect(waits((c) => (c.mergeable = 'CONFLICTING'))).toEqual(['conflict']);
+  expect(waits((c) => (c.mergeState = 'BEHIND'))).toEqual(['behind']);
+  expect(waits((c) => (c.mergeState = 'DRAFT'))).toEqual(['draft']);
+  expect(waits((c) => (c.mergeState = 'BLOCKED'))).toEqual(['protection']);
+  expect(waits((c) => (c.mergeable = 'UNKNOWN'))).toEqual(['forge']);
+  // GitHub's UNSTABLE is a check not passed, which the checks name
+  expect(waits((c) => ((c.mergeState = 'UNSTABLE'), (c.checks[0]!.state = 'failure')))).toEqual(['checksFailed']);
+  expect(waits((c) => (c.mergeState = 'UNSTABLE'))).toEqual(['forge']);
+  expect(waits((c) => (c.checks[0]!.state = 'pending'))).toEqual(['checks']);
+  expect(waits((c) => c.comments.push({ id: 'i1', author: 'greptile-apps', body: 'P1', at: '2026-11-02T12:42:00Z', round: 'A', resolved: false }))).toEqual(['threads']);
+  expect(waits((c) => (c.changedAt = '2026-11-02T12:45:00Z'))).toEqual(['review']);
+  expect(waits((c) => c.comments.push({ id: 'cPING', author: 'owner', body: '@greptileai review', at: '2026-11-02T12:45:00Z' }))).toEqual(['answer']);
+  // a PR merged or closed waits for nothing
+  expect(waits((c) => ((c.state = 'MERGED'), (c.mergeable = 'UNKNOWN')))).toEqual([]);
+  expect(readyToMerge({ ...s, state: 'CLOSED' })).toBe(false);
 });
 
 test('the confidence a reviewer gave last', () => {

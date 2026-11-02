@@ -4,7 +4,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PrReviewEntry, PrThread } from '../core/types';
+import type { PrReviewEntry, PrThread, PrWait } from '../core/types';
 import { enterpriseServer, ghHosts, onGitHub, remoteHost } from './repo';
 import { spawnOutput } from './spawn';
 
@@ -552,21 +552,38 @@ export function reviewOf(s: PrStatus, skip: string[] = [], self = s.author): PrR
 }
 
 /**
- * Whether the pull request only waits for the merge: GitHub sees nothing in the way, every
- * check has passed, every review thread is resolved, a reviewer who wrote has seen the PR's own
- * latest changes, and whoever was asked for another look has answered since the author last asked (a
- * review bot answers a re-review by rewriting its summary, often without a new comment). Comments
- * by `skip` do not count as an answer.
+ * What the pull request waits for before it can be merged, in the order it is in the way: what the
+ * forge sees (a conflict, a branch behind its base, a draft, branch protection, mergeability not
+ * worked out yet), checks failed or running, review threads open, a reviewer who has not seen the
+ * PR's own latest changes, and whoever was asked for another look not having answered since the
+ * author last asked (a review bot answers a re-review by rewriting its summary, often without a new
+ * comment). Comments by `skip` do not count as an answer. Nothing for a PR no longer open.
  */
-export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
-  if (s.state !== 'OPEN' || s.mergeable !== 'MERGEABLE') return false;
-  if (s.mergeState !== 'CLEAN' && s.mergeState !== 'HAS_HOOKS') return false;
-  if (s.checks.some((c) => c.state !== 'success')) return false;
+export function waitsOf(s: PrStatus, skip: string[] = []): PrWait[] {
+  if (s.state !== 'OPEN') return [];
+  const waits: PrWait[] = [];
+  if (s.mergeable === 'CONFLICTING' || s.mergeState === 'DIRTY') waits.push('conflict');
+  else if (s.mergeState === 'BEHIND') waits.push('behind');
+  else if (s.mergeState === 'DRAFT') waits.push('draft');
+  else if (s.mergeState === 'BLOCKED') waits.push('protection');
+  // UNSTABLE: a check not passed, which the checks below name where they hold it
+  else if (s.mergeable !== 'MERGEABLE' || (s.mergeState !== 'CLEAN' && s.mergeState !== 'HAS_HOOKS' && !(s.mergeState === 'UNSTABLE' && s.checks.some((c) => c.state !== 'success'))))
+    waits.push('forge');
+  if (s.checks.some((c) => c.state === 'failure')) waits.push('checksFailed');
+  else if (s.checks.some((c) => c.state !== 'success')) waits.push('checks');
   const others = reviewers(s, skip);
-  if (others.some((c) => c.id.startsWith('i') && !c.replyTo && !c.resolved)) return false;
-  if (reviewStale(s, skip)) return false;
-  const asked = lastAsked(s);
-  return !asked || others.some((c) => (c.edited ?? c.at ?? '') > asked);
+  if (others.some((c) => c.id.startsWith('i') && !c.replyTo && !c.resolved)) waits.push('threads');
+  if (reviewStale(s, skip)) waits.push('review');
+  else {
+    const asked = lastAsked(s);
+    if (asked && !others.some((c) => (c.edited ?? c.at ?? '') > asked)) waits.push('answer');
+  }
+  return waits;
+}
+
+/** Whether the pull request only waits for the merge: open, and nothing of `waitsOf` in the way. */
+export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
+  return s.state === 'OPEN' && !waitsOf(s, skip).length;
 }
 
 /**
@@ -580,10 +597,25 @@ export function reviewStale(s: PrStatus, skip: string[] = []): boolean {
   return !!last && last < s.changedAt;
 }
 
-/** When the author last asked for another look (a conversation comment of theirs). */
+/**
+ * When the author last asked for another look: a conversation comment of theirs that mentions an
+ * account, as review bots are asked (`@greptile review`). One that mentions nobody (a thank-you
+ * to a summary with no findings) asks for nothing: waiting for its answer stalled a PR whose review
+ * was through (2026-11-02).
+ */
 export function lastAsked(s: PrStatus): string {
-  return s.comments.filter((c) => c.author === s.author && c.id.startsWith('c')).reduce((a, c) => latest(a, c.at), '');
+  return s.comments.filter((c) => c.author === s.author && c.id.startsWith('c') && mentions(c.body)).reduce((a, c) => latest(a, c.at), '');
 }
+
+/** Whether a comment mentions an account (`@name`), outside code (fenced, indented or inline) and quoted lines. */
+const mentions = (body: string) =>
+  /(^|[^\w`@/.-])@[a-z0-9][a-z0-9-]*/i.test(
+    body
+      .replace(/^ {0,3}(```|~~~)[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, '')
+      .replace(/`[^`\n]*`/g, '')
+      .replace(/^ {0,3}>.*$/gm, '')
+      .replace(/^(?: {4}|\t).*$/gm, ''),
+  );
 
 /**
  * The confidence a reviewer gave last, in a comment rewritten or written latest (Greptile's

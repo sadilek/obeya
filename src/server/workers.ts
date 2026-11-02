@@ -18,7 +18,7 @@ import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
-import { outsidePlanDir } from './repo';
+import { outsidePlanDir, remoteHost } from './repo';
 import type { InputContext } from './koordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
@@ -1486,7 +1486,7 @@ export class Workers {
       [
         `The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it (its own skills and conventions): from now on you may push this branch. Whoever reads the pull request has not seen Obeya, the card or the plan doc. Do not merge it: ${this.o.adapter.autoMerge === false ? 'the people on the forge merge it' : 'Obeya merges it'} once its checks have passed and its review is through.`,
         shared ? `Your demo video is shared with the team on a page of its own: ${shared}. Link it in the pull request's description.` : '',
-        'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask).',
+        'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask). Where the work also needs a pull request in another repository, report that one with pr_opened too: Obeya watches each, and the card is live once all are merged.',
         comments?.text ?? '',
       ]
         .filter(Boolean)
@@ -4240,7 +4240,8 @@ export class Workers {
         : []),
       {
         name: 'pr_opened',
-        description: 'After the owner approved: report the pull request you opened for this card (its URL). Then end your turn; Obeya watches it.',
+        description:
+          'After the owner approved: report the pull request you opened for this card (its URL); where the work also needed one in another repository, report that one too, a call for each. Then end your turn; Obeya watches them, and the card is live once all are merged.',
         schema: { url: z.string() },
         run: ({ url }) => {
           const row = this.o.board.row(cardId);
@@ -4248,9 +4249,21 @@ export class Workers {
           const ref = parsePrUrl(String(url));
           if (!ref) return 'Not recorded: that is not the URL of a pull request (on GitHub or GitHub Enterprise https://<host>/<owner>/<repo>/pull/<number>, on Forgejo or Gitea such as Codeberg https://<host>/<owner>/<repo>/pulls/<number>).';
           handOver();
-          const pr = { ...(JSON.parse(row.pr) as PrState), url: ref.url, number: ref.number };
+          const root = JSON.parse(row.pr) as PrState;
+          // the card's own is the one in its repository, which the landing is about; one in another
+          // repository is watched beside it, and reported again (opened again after it was closed) as before
+          const host = this.o.remote && remoteHost(this.o.remote)?.toLowerCase().replace(/^ssh\.github\.com$/, 'github.com');
+          const elsewhere = !!this.o.remote && (!sameRepo(this.o.remote, ref.owner, ref.repo) || (!!host && host !== ref.host.toLowerCase()));
+          const known = elsewhere ? root.more?.find((m) => parsePrUrl(m.url ?? '')?.url === ref.url) : undefined;
+          let pr: PrState;
+          // the card's own reported again keeps what was told of it; another in its place starts afresh
+          if (!elsewhere) pr = parsePrUrl(root.url ?? '')?.url === ref.url || !root.url ? { ...root, url: ref.url, number: ref.number } : { url: ref.url, number: ref.number, seen: [], reported: [], ...(root.more ? { more: root.more } : {}) };
+          else if (known) {
+            const { closed: _, ...open } = known;
+            pr = { ...root, more: root.more!.map((m) => (m === known ? { ...open, url: ref.url } : m)) };
+          } else pr = { ...root, more: [...(root.more ?? []), { url: ref.url, number: ref.number, repo: `${ref.owner}/${ref.repo}`, seen: [], reported: [] }] };
           this.o.board.work(cardId, { pr: JSON.stringify(pr) });
-          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(ref.number));
+          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(elsewhere ? `${ref.repo} #${ref.number}` : `#${ref.number}`));
           this.o.onPrOpened?.(cardId);
           return ending('Recorded. End your turn now; Obeya watches the pull request.', 'Recorded: Obeya watches the pull request.', 'a change to the work goes onto the pull request');
         },

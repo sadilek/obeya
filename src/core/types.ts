@@ -195,7 +195,7 @@ export function openQuestions(i: Pick<Item, 'archivedAt' | 'state' | 'need' | 'q
  */
 export const needsYou = (i: Item) =>
   !i.snoozed &&
-  ((i.state === 'waiting' && !answering(i) && !i.landing) || (i.state === 'proposal' && !i.proposal?.revising) || !!i.superseded || (i.state === 'inPr' && !!i.pr?.ready) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking));
+  ((i.state === 'waiting' && !answering(i) && !i.landing) || (i.state === 'proposal' && !i.proposal?.revising) || !!i.superseded || (i.state === 'inPr' && [i.pr, ...(i.morePrs ?? [])].some((p) => p?.ready && !p.merged && !p.closed)) || (!!i.idea && i.idea.status === 'open' && i.idea.yourTurn && !i.idea.thinking));
 
 /**
  * What a worker can wait for another card to reach: `done`, its work on main (or the card closed
@@ -386,6 +386,11 @@ export interface Item {
   queue?: Queue;
   /** The pull request, once the worker opened it after approval; on a review card, the one it reviews. */
   pr?: PullRequest;
+  /**
+   * Further pull requests the worker opened for the card's work, in other repositories (or a second
+   * one in its own): the card is live once all of them and `pr` are merged.
+   */
+  morePrs?: PullRequest[];
   /** A review card: the pull request of someone outside that the card reviews and, once approved, merges. */
   contribution?: Contribution;
   /**
@@ -676,6 +681,14 @@ export interface NextStep {
 export interface PullRequest {
   url: string;
   number: number;
+  /** `owner/name` of its repository, where that is another than the card's. */
+  repo?: string;
+  /** Merged already, while the card waits for its other pull requests. */
+  merged?: boolean;
+  /** Closed without a merge. */
+  closed?: boolean;
+  /** What it waits for before it is merged, as last polled (`PrWait`); none once it is ready. */
+  waits?: PrWait[];
   /** Checks on the PR's latest commit, as last seen. */
   checks: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   conflict: boolean;
@@ -692,6 +705,15 @@ export interface PullRequest {
   /** The review as last seen, oldest first (`reviewOf` in the server's forge). */
   review?: PrReviewEntry[];
 }
+
+/**
+ * What a pull request waits for before it can be merged, in the order it is in the way: a conflict,
+ * a branch behind its base that the repository wants up to date, a draft, branch protection (an
+ * approval, a required check), the forge not having worked out mergeability yet, checks failed or
+ * running, review threads open, a review of an older commit than its newest, an answer to the
+ * author's request for another look, and the worker at work on something passed to it.
+ */
+export type PrWait = 'conflict' | 'behind' | 'draft' | 'protection' | 'forge' | 'checksFailed' | 'checks' | 'threads' | 'review' | 'answer' | 'agent';
 
 /**
  * The pull request a review card reviews: opened by someone outside (the contributor), reviewed by

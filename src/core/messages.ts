@@ -231,7 +231,7 @@ const de = {
     /** On the accepted proposal it withdrew or replaced: who did and why. */
     superseded: (by?: string, why?: string) =>
       by ? `Der vorschlagende Agent hat diese Karte ersetzt durch „${by}“${why ? `: ${why}` : '.'}` : `Der vorschlagende Agent hat diese Karte zurückgezogen${why ? `: ${why}` : '.'}`,
-    prOpened: (n: number) => `Pull Request #${n} geöffnet.`,
+    prOpened: (pr: string) => `Pull Request ${pr} geöffnet.`,
     landing: 'Landet auf main',
     waitsForRestart: 'Wartet auf den Neustart von Obeya mit der neuen Version',
     needsClone: 'Braucht für die Antwort einen vollen Klon',
@@ -261,6 +261,9 @@ const de = {
     readyManual: 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. In diesem Repository mergt Obeya nicht selbst: bitte selbst mergen.',
     mergeFailed: (reason: string) => `Obeya konnte nicht mergen: ${reason}`,
     unreadable: (reason: string) => `Obeya kann den Pull Request nicht lesen: ${reason}`,
+    behind: 'Der Branch ist hinter dem Zielbranch, und das Repository mergt nur einen aktuellen. Der Agent bringt ihn auf Stand.',
+    mergedOne: (pr: string, left: (string | null)[]) =>
+      `Pull Request ${pr} gemergt. Live, sobald auch ${left.map((l) => (l ? `Pull Request ${l}` : 'der Pull Request dieses Repositorys')).join(' und ')} gemergt ist.`,
   },
   idea: {
     buildAfterReply: 'So bauen, sobald die Antwort da ist; fragt der Agent noch etwas, wird nicht gebaut.',
@@ -710,7 +713,7 @@ const en: Messages = {
       by ? `Replaces the proposal “${title}” by “${by}”${why ? `: ${why}` : '.'}` : `Withdraws the proposal “${title}”${why ? `: ${why}` : '.'}`,
     superseded: (by?: string, why?: string) =>
       by ? `The agent that proposed this card replaced it by “${by}”${why ? `: ${why}` : '.'}` : `The agent that proposed this card withdrew it${why ? `: ${why}` : '.'}`,
-    prOpened: (n: number) => `Pull request #${n} opened.`,
+    prOpened: (pr: string) => `Pull request ${pr} opened.`,
     landing: 'Landing on main',
     waitsForRestart: 'Waits for Obeya to restart with the new version',
     needsClone: 'Needs a full clone to answer',
@@ -739,6 +742,9 @@ const en: Messages = {
     readyManual: 'Ready to merge: checks green, all comments resolved, the review is through. In this repository Obeya does not merge by itself: please merge it yourself.',
     mergeFailed: (reason: string) => `Obeya could not merge: ${reason}`,
     unreadable: (reason: string) => `Obeya cannot read the pull request: ${reason}`,
+    behind: 'The branch is behind the base branch, and the repository merges only an up-to-date one. The agent brings it up to date.',
+    mergedOne: (pr: string, left: (string | null)[]) =>
+      `Pull request ${pr} merged. Live once ${left.map((l) => (l ? `pull request ${l}` : 'the pull request of this repository')).join(' and ')} ${left.length > 1 ? 'are' : 'is'} merged too.`,
   },
   idea: {
     buildAfterReply: 'Build it once the reply is there; if the agent still asks something, it is not built.',
