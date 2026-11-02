@@ -58,6 +58,8 @@ let workers: Workers;
 let watcher: PrWatcher;
 let fake: ReturnType<typeof fakeForge>;
 let approvals: string[];
+/** The follow-up tasks made, each with its review card, as the Koordinator hears of them. */
+let followed: [string, string][];
 let prHead: string;
 
 /** A commit on the contributor's side, published as the PR's head in `origin`. */
@@ -85,8 +87,9 @@ beforeEach(() => {
   runtime = new FakeRuntime();
   fake = fakeForge(() => prHead);
   approvals = [];
+  followed = [];
   const settings: RepoAdapter = { ...generic, land: 'main', workspaces: 'clones', checks: ['bun test'] };
-  workers = new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, onApproval: (id) => (approvals.push(id), null) });
+  workers = new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, onApproval: (id) => (approvals.push(id), null), onFollowUpTask: (task, review) => followed.push([task, review]) });
   watcher = new PrWatcher(board, workers, fake.forge, () => main, () => settings);
 });
 afterEach(() => {
@@ -258,6 +261,8 @@ describe('a review card', () => {
     expect(task).toMatchObject({ title: 'Re-login button: when and where', state: 'planned', from: id });
     expect(task.body).toBe(`The button shows on the wrong messages, and twice on a failed start. See src/ui/login.tsx.\n\nAus dem Review von PR #5: ${URL_}`);
     expect(board.events(task.id).at(-1)!.text).toBe('Als Folgeaufgabe aus dem Review von PR #5 angelegt.');
+    // it goes to the Koordinator at once, to wait in the queue for the PR's merge
+    expect(followed).toEqual([[task.id, id]]);
     // a finding settled already makes none
     expect(runtime.last.call('follow_up_task', { findings: [1, 2], title: 'X', task: 'Y' })).toContain('finding 2 is later (a follow-up task already)');
     runtime.last.call('follow_up_task', { findings: [1], title: 'Re-login on remote machines', task: `Re-login runs on the wrong machine: ${URL_}` });

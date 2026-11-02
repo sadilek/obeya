@@ -68,6 +68,8 @@ export interface WorkerOptions {
   onApproval?: (cardId: string) => string | null;
   /** The default branch has moved: the card's pull request was merged, or its work pushed there directly. */
   onMerged?: (cardId: string) => void;
+  /** A review card's worker made a follow-up task (`followUpTask`): it goes to the Koordinator, to wait for the PR's merge. */
+  onFollowUpTask?: (taskId: string, reviewId: string) => void;
   /** The card's work landed on the default branch without a pull request (`shipped` says where): its shared page links the commit. */
   onLanded?: (cardId: string) => void;
   /** A prototype was handed over: the idea's agent hears the summary. */
@@ -828,7 +830,7 @@ export class Workers {
         of('contributor').length ? `- To ${c.author}: ${of('contributor').map((p) => name(p.f)).join(', ')}. Write them as one review asking for changes (request_changes, with their numbers).` : '',
         of('self').length ? `- Yourself: ${of('self').map((p) => name(p.f)).join(', ')}. Make the change, push it onto the PR's branch, comment on the PR what you changed and why (comment_on_pr), mark them fixed (findings), and hand over again with a new demo.` : '',
         later.length
-          ? `- As follow-up tasks: ${later.map((p) => name(p.f)).join(', ')}. Make them planned tasks of their own with follow_up_task, outside this PR, before anything else ends your turn. Findings that belong together become one task: as the owner's words below say first („2 and 3 together“, „combine them as you see fit“, „all separate“); without a word on it, ${bundles.length ? `as you bundled them (${bundles.map((b) => `findings ${b}`).join('; ')}), the others one each` : 'one task each'}. Write each task from what your review knows (the files concerned, the cause, the PR's link). They go neither to ${c.author} nor into your changes.`
+          ? `- As follow-up tasks: ${later.map((p) => name(p.f)).join(', ')}. Make them tasks of their own with follow_up_task, outside this PR, before anything else ends your turn. Findings that belong together become one task: as the owner's words below say first („2 and 3 together“, „combine them as you see fit“, „all separate“); without a word on it, ${bundles.length ? `as you bundled them (${bundles.map((b) => `findings ${b}`).join('; ')}), the others one each` : 'one task each'}. Write each task from what your review knows (the files concerned, the cause, the PR's link). They go neither to ${c.author} nor into your changes.`
           : '',
       ]
         .filter(Boolean)
@@ -838,9 +840,10 @@ export class Workers {
   }
 
   /**
-   * A follow-up task the worker of a review card makes of findings, on the owner's word: planned
-   * beside the card, following up on it, with the worker's text and the PR's link. The findings are
-   * settled for the PR and link it; several may link one task.
+   * A follow-up task the worker of a review card makes of findings, on the owner's word: beside the
+   * card, following up on it, with the worker's text and the PR's link, and started at once, waiting
+   * in the queue for the PR's merge. The findings are settled for the PR and link it; several may
+   * link one task.
    */
   private followUpTask(cardId: string, title: string, task: string, ids: number[]): string {
     const c = contributionOf(this.o.board.row(cardId));
@@ -863,8 +866,9 @@ export class Workers {
       return { ...rest, status: 'later', card: card.id };
     });
     this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings } satisfies StoredContribution) });
+    this.o.onFollowUpTask?.(card.id, cardId);
     const owed = this.owedTasks(cardId);
-    return `Made: „${card.title}“, planned beside your card, linked from ${named.length === 1 ? `finding ${named[0]}` : `findings ${named.join(', ')}`}.${owed ? ` Still to make: ${owed}.` : ''}`;
+    return `Made: „${card.title}“, beside your card and queued behind it until the PR is merged, linked from ${named.length === 1 ? `finding ${named[0]}` : `findings ${named.join(', ')}`}.${owed ? ` Still to make: ${owed}.` : ''}`;
   }
 
   /** The findings of a review card the owner chose as follow-up tasks that have none yet, as the worker reads them; none: undefined. */
@@ -3676,7 +3680,7 @@ export class Workers {
             },
             {
               name: 'follow_up_task',
-              description: `Make findings the owner chose as follow-up tasks (or asked for in words) a planned task of its own, beside your card and following up on it, outside this PR; nobody starts it until the owner does. findings: the numbers of the findings it is made of, one or several that belong together; title: short and precise, in ${language}; task: what is to be done, in ${language}, written for the agent who will take it on and has seen neither this PR nor your review: what is wrong and why, the files concerned, what done looks like, and the PR's link (${review.url}). Obeya marks those findings later, linking the task.`,
+              description: `Make findings the owner chose as follow-up tasks (or asked for in words) a task of its own, beside your card and following up on it, outside this PR; it waits in the queue behind your card and starts once the PR is merged. findings: the numbers of the findings it is made of, one or several that belong together; title: short and precise, in ${language}; task: what is to be done, in ${language}, written for the agent who will take it on and has seen neither this PR nor your review: what is wrong and why, the files concerned, what done looks like, and the PR's link (${review.url}). Obeya marks those findings later, linking the task.`,
               schema: { findings: z.array(z.number().int()), title: z.string(), task: z.string() },
               run: ({ findings, title, task }) => this.followUpTask(cardId, String(title).trim(), String(task).trim(), (findings as number[]) ?? []),
             },
@@ -4358,7 +4362,7 @@ ${idea.idea.brief}` : '',
         c.canModify
           ? `- Yourself: make the change on your branch, run the checks, push it onto the PR's branch (${pushTo(c) ?? 'its repository and branch: the forge shows them (gh pr view on GitHub)'}; ${c.author} allows maintainers' edits), write a short comment on the PR saying what you changed and why (comment_on_pr), mark the finding fixed, and hand over again with a new demo. In the squash merge ${c.author} stays its author.`
           : `- ${c.author} does not allow maintainers' edits, so findings go to them or become follow-up tasks.`,
-        '- As a follow-up task: you make it a planned task of its own beside your card, outside this PR (follow_up_task), which marks it later in your findings. Findings that belong together become one task: as the owner\'s words say first, else as you bundled them in your findings (with), so bundle there only what one worker would sensibly do in one go.',
+        '- As a follow-up task: you make it a task of its own beside your card, outside this PR (follow_up_task), which marks it later in your findings. Findings that belong together become one task: as the owner\'s words say first, else as you bundled them in your findings (with), so bundle there only what one worker would sensibly do in one go.',
         'Words of the owner\'s that ask the same in so many words („send them finding 1“, „fix that yourself“) count the same. Anything else they say (a question, more to look at) you answer or do on the card, and nothing goes to the PR.',
       ].join('\n'),
     ];

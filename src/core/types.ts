@@ -101,9 +101,11 @@ export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i
 
 /**
  * A planned task nobody has worked on yet, which the Koordinator may merge with others or delete:
- * no branch, no workspace, not with the Koordinator, and no prototype nor becoming a project.
+ * no branch, no workspace, not with the Koordinator unless it waits there behind other cards (a
+ * review's follow-up task waiting for the PR's merge, say), and no prototype nor becoming a project.
  */
-export const untouched = (i: Item) => i.kind === 'task' && i.source === 'manual' && i.state === 'planned' && !i.branch && !i.workspace && !i.queue && !i.prototypeOf && !i.becomesProject;
+export const untouched = (i: Item) =>
+  i.kind === 'task' && i.source === 'manual' && i.state === 'planned' && !i.branch && !i.workspace && (!i.queue || 'behind' in i.queue) && !i.prototypeOf && !i.becomesProject;
 
 /**
  * A task of the owner's that can still be planned as a project, as an idea can: planned, nobody has

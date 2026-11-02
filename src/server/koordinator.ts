@@ -6,7 +6,7 @@ import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
 import { type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
-import { ACTIVE, BadRequest, type Board } from './board';
+import { ACTIVE, BadRequest, type Board, contributionOf } from './board';
 import type { Utterance } from './db';
 import { type AgentRuntime, type AgentTool, waitQuietly } from './runtime';
 import type { Workers } from './workers';
@@ -189,6 +189,21 @@ export class Koordinator {
     if (card.queue) throw new BadRequest('queued', 'the card is already with Obeya');
     this.setQueue(cardId, { checking: true });
     this.serial(() => this.decide(cardId));
+  }
+
+  /**
+   * A follow-up task a review card's worker made of findings: it builds on the pull request, so it
+   * queues behind the review card at once, and once the PR is merged starts (or is judged again
+   * against the work in progress, as any card whose wait ended). A review card already finished
+   * leaves nothing to wait for: the task is judged as any card.
+   */
+  followUp(taskId: string, reviewId: string): void {
+    const review = this.o.board.item(reviewId);
+    if (!review || !unlanded(review)) return this.request(taskId);
+    const t = this.o.board.t.koordinator;
+    const reason = t.followsReview(contributionOf(this.o.board.row(reviewId))?.number ?? 0);
+    this.setQueue(taskId, { behind: [reviewId], reason, buildsOn: [reviewId] });
+    this.o.board.log(taskId, 'state', 'obeya', t.waitsFor(this.o.board.t.quote(review.title), reason));
   }
 
   /**
@@ -827,6 +842,14 @@ export class Koordinator {
         continue;
       }
       const q = w.queue as { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] };
+      // a review card whose PR was closed without a merge leaves nothing to build on: what followed
+      // up on it goes back to planned, for the owner to decide on
+      const unmerged = items.find((i) => q.buildsOn?.includes(i.id) && i.state === 'done' && contributionOf(this.o.board.row(i.id))?.closed);
+      if (unmerged) {
+        this.setQueue(w.id, null);
+        this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.reviewClosed(this.o.board.t.quote(unmerged.title)));
+        continue;
+      }
       const manual = (w.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
       const inferred = q.behind.filter((id) => !q.manualWait?.includes(id));
       const manualOnly = manual.filter((id) => !inferred.includes(id));

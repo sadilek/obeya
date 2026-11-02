@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
-import { BadRequest, Board } from './board';
+import { BadRequest, Board, type StoredContribution } from './board';
 import { Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
 import { move, queueOrder, reach } from '../core/queue';
@@ -437,6 +437,53 @@ describe('Koordinator', () => {
     await settle();
     expect(item(b.id).state).toBe('working');
     expect(board.events(b.id).some((e) => e.kind === 'error' && e.text.includes('nicht schätzen'))).toBe(true);
+  });
+});
+
+describe("Koordinator queues a review's follow-up tasks", () => {
+  /** A review card of PR #34 that is under way, without an agent of its own. */
+  function review(state: 'working' | 'waiting' | 'live' = 'working') {
+    const r = card('PR #34: Manual dependencies');
+    const c: StoredContribution = { url: 'https://github.com/acme/app/pull/34', number: 34, author: 'amerlander', title: 'Manual dependencies', canModify: true };
+    board.work(r.id, { contribution: JSON.stringify(c), state });
+    return r;
+  }
+
+  test('a follow-up task waits behind its review card at once, without an estimate, and starts once the PR is merged', async () => {
+    const r = review('waiting');
+    const f = board.create({ title: 'Explain the arrows', from: r.id });
+    k.followUp(f.id, r.id);
+    expect(item(f.id)).toMatchObject({ state: 'planned', queue: { behind: [r.id], buildsOn: [r.id] } });
+    expect(board.events(f.id).at(-1)!.text).toBe('Obeya: wartet auf „PR #34: Manual dependencies“. Folgeaufgabe aus dem Review von PR #34; startet, sobald der PR gemergt ist.');
+    await settle();
+    expect(estimates()).toEqual([]);
+    // the owner stopping the review does not free it: the PR is not merged
+    board.work(r.id, { state: 'planned' });
+    await settle();
+    expect(item(f.id).state).toBe('planned');
+    board.work(r.id, { state: 'live' });
+    await settle();
+    expect(item(f.id).state).toBe('working');
+  });
+
+  test('a review closed without a merge takes its follow-up tasks back to planned, for the owner to decide on', async () => {
+    const r = review();
+    const f = board.create({ title: 'Explain the arrows', from: r.id });
+    k.followUp(f.id, r.id);
+    const c = JSON.parse(board.row(r.id).contribution!) as StoredContribution;
+    board.work(r.id, { contribution: JSON.stringify({ ...c, closed: true } satisfies StoredContribution), state: 'done' });
+    await settle();
+    expect(item(f.id).state).toBe('planned');
+    expect(item(f.id).queue).toBeUndefined();
+    expect(board.events(f.id).at(-1)!.text).toContain('ohne Merge geschlossen');
+  });
+
+  test('of a review already merged, a follow-up task is judged as any card', async () => {
+    const r = review('live');
+    const f = board.create({ title: 'Explain the arrows', from: r.id });
+    k.followUp(f.id, r.id);
+    await settle();
+    expect(item(f.id).state).toBe('working');
   });
 });
 

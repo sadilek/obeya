@@ -187,9 +187,10 @@ same; anything else the owner says (a question, more to look at) stays on the ca
   PR's branch in the contributor's fork, writes a short comment on the PR saying what and why, marks
   the finding fixed and hands over with a new demo. The squash merge keeps the contributor as author.
 - As a follow-up task: for what is worth doing but no reason to hold the PR up (the same gap in
-  files the PR does not touch, say). The worker makes the tasks with a tool of its own, as planned
-  tasks (not proposals) beside the review card, following up on it, which nobody starts until the
-  owner does. Findings that belong together become one task: as the owner's words with the Send say
+  files the PR does not touch, say). The worker makes the tasks with a tool of its own, as tasks
+  (not proposals) beside the review card, following up on it, each started at once and waiting in
+  the queue behind the review card until the PR is merged (see Follow-up tasks of a review).
+  Findings that belong together become one task: as the owner's words with the Send say
   first („2 und 3 zusammen“, „fasst zusammen, wie ihr wollt“, „alle einzeln“), else as the worker
   bundled them, a bundle counting only among the findings chosen. It writes each task from what its
   review knows (the files concerned, the cause), for an agent who has seen neither; Obeya adds the
@@ -327,10 +328,16 @@ A card no agent worked on, a prototype or an archived card has no field.
   into a stranger's fork); a click on a choice acting at once, or a button of its own under the list
   (two Sends where every card has one).
 - **„Als Folgeaufgabe“ is a third choice per finding** (2026-10-29, the owner: reviews often find
-  something worth fixing that should not hold the PR up). The task is planned, not started: the
-  owner decides when, often after the merge it builds on. Rejected: the worker proposing the card (a
+  something worth fixing that should not hold the PR up). Rejected: the worker proposing the card (a
   second decision for one already made); only asking Obeya for a follow-up in words (it works, but
   is not found beside the other two choices).
+- **A follow-up task starts at once and waits for the PR's merge** (2026-11-02, the review of PR
+  #34: its three follow-up tasks stood planned, and the owner did not dare start them, unsure
+  whether Obeya would see that they build on the PR). Choosing „Als Folgeaufgabe“ is the decision to
+  do it; what it waits for is known for certain, so Obeya sets it rather than estimating it.
+  Rejected: planned tasks the owner starts after the merge (a second decision, and a wait the owner
+  has to remember); starting them through the Koordinator's estimate (it may miss that a task builds
+  on a PR not merged yet).
 - **The worker bundles findings in its list and makes the follow-up tasks after the Send**
   (2026-10-31, the review of PR #33: four findings chosen as follow-ups became four tasks at once,
   and the owner's „fasst zusammen, wie ihr wollt“ reached the worker only after that). The owner

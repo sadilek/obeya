@@ -750,6 +750,7 @@ export class CanvasRuntime {
       onApproval: (cardId) => this.sharing.approved(cardId),
       onLanded: (cardId) => void this.sharing.landed(cardId),
       onMerged: () => void read.refresh(),
+      onFollowUpTask: (taskId, reviewId) => this.koordinator.followUp(taskId, reviewId),
       onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
       onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
       // where work lands on the local main, the Lesestand is the checkout and moves with the landing;

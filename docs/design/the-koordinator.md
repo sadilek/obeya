@@ -49,6 +49,19 @@ A dependency drawn by the owner holds a card started afterwards until the prereq
 including while that prerequisite is not started or stopped. Removing the arrow releases that wait;
 an already running card continues. The owner may still start a queued card anyway.
 
+#### Follow-up tasks of a review
+
+A follow-up task a review card's worker makes of findings (see Review cards) builds on the pull
+request by definition, so Obeya queues it behind the review card as it is made, without an estimate:
+„Wartet auf „PR #34 …“. Folgeaufgabe aus dem Review von PR #34; startet, sobald der PR gemergt
+ist.“ The wait holds like a workstream's on one it builds on: stopping the review card does not free
+it, only the merge (the card `live`); then it starts, or is judged again where other work runs. A PR
+closed without a merge (the review card closed as done) leaves nothing to build on: its follow-up
+tasks go back to planned, saying why, for the owner to start or delete. One made when the review
+card is finished already is judged as any card. While it waits it is a task nobody has worked on:
+the Koordinator may merge it with others (the merged task waits for what any of them waited for, in
+the place of the first queued) or delete it.
+
 #### Waiting for a workspace
 
 A card let start while no workspace is free (all clones leased, or every free one dirty) waits in

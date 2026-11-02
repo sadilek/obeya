@@ -53,6 +53,7 @@ import {
   type PlannedPrototype,
   type SettledPart,
   type Question,
+  type Queue,
   type PlanDir,
   type Reshare,
   type TalkQuote,
@@ -102,6 +103,12 @@ export interface PrState {
   /** The review as last seen, for the card. */
   review?: PrReviewEntry[];
 }
+
+/** A card's place in the queue where it waits behind other cards; none otherwise. */
+const waitOf = (r: Pick<CardRow, 'queue'>) => {
+  const q = r.queue ? (JSON.parse(r.queue) as Queue) : null;
+  return q && 'behind' in q ? q : null;
+};
 
 /** What is stored of a review card's pull request (`CardRow.contribution`): what the card shows, and what only the server needs. */
 export interface StoredContribution extends Contribution {
@@ -2193,10 +2200,22 @@ export class Board {
     const list = (r: CardRow) => (r.images ? (JSON.parse(r.images) as string[]) : []);
     const images = [...new Set([first, ...rest].flatMap(list))];
     const notes = [first, ...rest].flatMap((r) => (r.unheard ? (JSON.parse(r.unheard) as unknown[]) : []));
-    this.store.update(keep, { title, body, images: images.length ? JSON.stringify(images) : null, ...(notes.length ? { unheard: JSON.stringify(notes) } : {}) });
     const gone = new Set(others);
+    // started ones waiting in the queue: the merged task waits for what any of them waited for, in the place of the one queued first
+    const queued = [first, ...rest].map(waitOf).filter((q) => !!q);
+    const merged = (ids: string[]) => [...new Set(ids)].filter((id) => id !== keep && !gone.has(id));
+    const behind = merged(queued.flatMap((q) => q.behind));
+    const buildsOn = merged(queued.flatMap((q) => q.buildsOn ?? []));
+    const queue = behind.length ? { queue: JSON.stringify({ behind, reason: queued[0]!.reason, ...(buildsOn.length && { buildsOn }), since: queued.map((q) => q.since).sort()[0]! }) } : {};
+    this.store.update(keep, { title, body, images: images.length ? JSON.stringify(images) : null, ...(notes.length ? { unheard: JSON.stringify(notes) } : {}), ...queue });
     for (const r of this.store.cards(this.canvas.id)) {
       if (r.from_id && gone.has(r.from_id) && r.id !== keep) this.store.update(r.id, { from_id: keep });
+      // a card that waited for one that goes waits for the merged task instead
+      const w = r.id === keep ? undefined : waitOf(r);
+      if (w?.behind.some((id) => gone.has(id))) {
+        const to = (ids: string[]) => [...new Set(ids.map((id) => (gone.has(id) ? keep : id)))];
+        this.store.update(r.id, { queue: JSON.stringify({ ...w, behind: to(w.behind), ...(w.buildsOn && { buildsOn: to(w.buildsOn) }) }) });
+      }
       const c = contributionOf(r);
       if (c?.findings?.some((f) => f.card && gone.has(f.card))) this.store.update(r.id, { contribution: JSON.stringify({ ...c, findings: c.findings.map((f) => (f.card && gone.has(f.card) ? { ...f, card: keep } : f)) } satisfies StoredContribution) });
     }
