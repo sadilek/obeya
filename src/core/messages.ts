@@ -84,6 +84,23 @@ const de = {
     /** Where work lands on the local main: the merge on the forge was pulled into it. */
     pulledMain: (commit: string) => `main aus dem Remote geholt (${commit}).`,
     pullFailed: (reason: string) => `main ließ sich nach dem Merge nicht holen: ${reason}. Bitte selbst holen (git pull).`,
+    /** Before a review card's merge: the local main's unpushed commits collide with the PR, which the owner had not been shown yet. */
+    clashFound: (n: number, subject: string, card?: string) =>
+      `Nicht gemergt: PR #${n} kollidiert mit einem ungepushten Commit auf main („${subject}“${card ? ` von „${card}“` : ''}). Erst main pushen, oder trotzdem mergen: Dann löst ein Agent den Konflikt auf main.`,
+    /** After the merge, pulling it into the local main stopped on a conflict, and a card's agent resolves it. */
+    pullStopped: (subject: string, card: string | null) =>
+      `main ließ sich nach dem Merge nicht holen: Konflikt mit dem ungepushten Commit „${subject}“. Main ist unverändert. ${card ? `Der Agent von „${card}“ löst den Konflikt auf.` : 'Der Agent dieser Karte löst den Konflikt auf.'}`,
+    /** On the card whose agent resolves the conflict. */
+    resolvingPull: (n: number, subject: string) => `Der Merge von PR #${n} kollidiert mit dem ungepushten Commit „${subject}“ auf main. Der Agent setzt main neu auf und löst den Konflikt.`,
+    resolvingStatus: (n: number) => `Löst den Konflikt mit PR #${n} auf main`,
+    resolvedPull: (n: number, commit: string) => `Konflikt mit PR #${n} gelöst: main neu aufgesetzt (${commit}).`,
+    /** The pull stopped on a conflict, and no agent resolves it (none could take it, or it gave up). */
+    pullUnresolved: (subject: string, files: string, why: string) =>
+      `main ließ sich nach dem Merge nicht holen: Konflikt mit dem ungepushten Commit „${subject}“ in ${files}. ${why} Bitte selbst holen (git pull) und den Konflikt lösen.`,
+    noResolver: 'Kein Agent konnte ihn übernehmen.',
+    pushedMain: (commit: string, n: number) => `main gepusht (${commit}). Der Agent dieser Karte bringt PR #${n} auf den neuen Stand.`,
+    pushFailed: (reason: string) => `main ließ sich nicht pushen: ${reason}`,
+    resolverGaveUp: 'Der Agent hat ihn nicht gelöst.',
     contributionClosedQuestion: 'Der Pull Request wurde ohne Merge geschlossen. Kann die Karte weg?',
     closeCard: 'Ja, Karte schließen',
     /** What the owner decided for a finding of a review card, as their message shows it. */
@@ -560,6 +577,19 @@ const en: Messages = {
     mergeRefused: (reason: string) => `Not merged: ${reason}`,
     pulledMain: (commit: string) => `Pulled main from the remote (${commit}).`,
     pullFailed: (reason: string) => `Could not pull main after the merge: ${reason}. Please pull it yourself (git pull).`,
+    clashFound: (n: number, subject: string, card?: string) =>
+      `Not merged: PR #${n} collides with an unpushed commit on main (“${subject}”${card ? ` of “${card}”` : ''}). Push main first, or merge anyway: then an agent resolves the conflict on main.`,
+    pullStopped: (subject: string, card: string | null) =>
+      `Could not pull main after the merge: it conflicts with the unpushed commit “${subject}”. Main is unchanged. ${card ? `The agent of “${card}” resolves the conflict.` : 'This card’s agent resolves the conflict.'}`,
+    resolvingPull: (n: number, subject: string) => `Merging PR #${n} conflicts with the unpushed commit “${subject}” on main. The agent rebases main and resolves the conflict.`,
+    resolvingStatus: (n: number) => `Resolving the conflict with PR #${n} on main`,
+    resolvedPull: (n: number, commit: string) => `Conflict with PR #${n} resolved: main rebased (${commit}).`,
+    pullUnresolved: (subject: string, files: string, why: string) =>
+      `Could not pull main after the merge: it conflicts with the unpushed commit “${subject}” in ${files}. ${why} Please pull it yourself (git pull) and resolve the conflict.`,
+    noResolver: 'No agent could take it.',
+    pushedMain: (commit: string, n: number) => `Pushed main (${commit}). This card’s agent brings PR #${n} up to date with it.`,
+    pushFailed: (reason: string) => `Could not push main: ${reason}`,
+    resolverGaveUp: 'The agent did not resolve it.',
     contributionClosedQuestion: 'The pull request was closed without a merge. Can the card go?',
     closeCard: 'Yes, close the card',
     findingDecided: (id: number, title: string, what: string) => `Finding ${id} “${title}”: ${what}`,

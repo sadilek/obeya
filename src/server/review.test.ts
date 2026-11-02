@@ -3,7 +3,7 @@
 // Obeya on approval, pinned to the head the worker reviewed.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
@@ -13,7 +13,7 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, gitRepo, until } from './testing';
+import { artifact, FakeRuntime, gitRepo, identify, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -43,7 +43,10 @@ function fakeForge(head: () => string) {
       if (said.refuse) throw new Error(`gh pr merge ${URL_}: ${said.refuse}`);
       said.merges.push(h);
       status.state = 'MERGED';
-      return 'merged0';
+      // squashed onto the remote's main, as GitHub does
+      git(origin, 'merge', '--quiet', '--squash', h);
+      git(origin, 'commit', '--quiet', '-m', 'Watcher polls gh in the background (#5)');
+      return git(origin, 'rev-parse', 'HEAD').trim();
     },
   };
   return { forge, said, status, info };
@@ -89,7 +92,7 @@ beforeEach(() => {
   approvals = [];
   followed = [];
   const settings: RepoAdapter = { ...generic, land: 'main', workspaces: 'clones', checks: ['bun test'] };
-  workers = new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, onApproval: (id) => (approvals.push(id), null), onFollowUpTask: (task, review) => followed.push([task, review]) });
+  workers = new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, pulls: workspaces, pushHold: 10, onApproval: (id) => (approvals.push(id), null), onFollowUpTask: (task, review) => followed.push([task, review]) });
   watcher = new PrWatcher(board, workers, fake.forge, () => main, () => settings);
 });
 afterEach(() => {
@@ -121,6 +124,24 @@ const FINDINGS = [
   { title: 'No shortcut', text: 'The menu entry has no keyboard shortcut.' },
 ];
 const contribution = (id: string) => JSON.parse(board.row(id).contribution!) as StoredContribution;
+
+/**
+ * A card whose work landed on the local main and was never pushed: a commit of `file` there, the
+ * card done and its agent's session over.
+ */
+function landedLocally(file: string, subject: string) {
+  identify(main);
+  const base = git(main, 'rev-parse', 'HEAD').trim();
+  writeFileSync(join(main, file), `${subject}\n`);
+  git(main, 'add', '.');
+  git(main, 'commit', '--quiet', '-m', subject);
+  const card = board.create({ title: 'Poll more often', x: 400, y: 0 });
+  board.work(card.id, { state: 'live', branch: 'obeya/poll-more-often', session_id: 'session-x', shipped: JSON.stringify({ commit: git(main, 'rev-parse', 'HEAD').trim(), base }) });
+  return card.id;
+}
+
+/** Once the probes of the card's PR against the local main started so far are through. */
+const probed = (id: string) => (workers as unknown as { probeClash(id: string): Promise<unknown> }).probeClash(id);
 
 describe('a review card', () => {
   test('starts on the PR head, its worker told to read the diff before running any of it', async () => {
@@ -334,6 +355,109 @@ describe('a review card', () => {
     expect(fake.said.merges).toEqual([prHead]);
     expect(board.item(id)!.state).toBe('live');
     expect(runtime.last.inbox.at(-1)).toContain('Obeya merged the pull request');
+  });
+
+  test('where the PR collides with unpushed commits on the local main, the card says so before the merge, naming the card that landed them', async () => {
+    const x = landedLocally('poll.ts', 'Polls every minute');
+    const id = await reviewCard();
+    await handOver();
+    await until(() => !!board.item(id)!.contribution!.clash);
+    expect(board.item(id)!.contribution!.clash).toMatchObject({ subject: 'Polls every minute', files: ['poll.ts'], unpushed: 1, card: { id: x, title: 'Poll more often' } });
+    // shown already: the owner merges anyway
+    await workers.approve(id);
+    expect(fake.said.merges).toEqual([prHead]);
+  });
+
+  test('a collision the card does not show yet holds the merge back once, and shows it', async () => {
+    const id = await reviewCard();
+    await handOver();
+    await probed(id);
+    expect(board.item(id)!.contribution!.clash).toBeUndefined();
+    landedLocally('poll.ts', 'Polls every minute');
+    await expect(workers.approve(id)).rejects.toMatchObject({ code: 'pullClash' });
+    expect(fake.said.merges).toEqual([]);
+    expect(approvals).toEqual([]);
+    expect(board.item(id)!.state).toBe('waiting');
+    expect(board.item(id)!.contribution!.clash).toMatchObject({ subject: 'Polls every minute' });
+    await workers.approve(id);
+    expect(fake.said.merges).toEqual([prHead]);
+  });
+
+  test('a pull that stops on the conflict goes to the agent of the card whose commit conflicts, which rebases main and lands it', async () => {
+    const x = landedLocally('poll.ts', 'Polls every minute');
+    const id = await reviewCard();
+    const review = runtime.last;
+    await handOver();
+    await until(() => !!board.item(id)!.contribution!.clash);
+    const before = git(main, 'rev-parse', 'HEAD').trim();
+    await workers.approve(id);
+    await until(() => runtime.sessions.length === 2);
+    const resolver = runtime.last;
+    expect(resolver).not.toBe(review);
+    const told = resolver.inbox[0]!;
+    expect(told).toContain('pull request #5');
+    expect(told).toContain('“Polls every minute”');
+    expect(told).toContain('rewrites no published history');
+    // the local main is as it was
+    expect(git(main, 'rev-parse', 'HEAD').trim()).toBe(before);
+    expect(board.events(id).some((e) => e.text === board.t.worker.pullStopped('Polls every minute', 'Poll more often'))).toBe(true);
+    expect(board.item(x)!.statusLine).toBe(board.t.worker.resolvingStatus(5));
+    // the worker rebases the unpushed commit onto origin's main with the merge, the conflict resolved
+    const ws = board.row(x).workspace!;
+    const upstream = git(origin, 'rev-parse', 'main').trim();
+    git(ws, 'fetch', '--quiet', main, before, upstream);
+    git(ws, 'checkout', '--quiet', '-B', 'resolve', before);
+    expect(() => git(ws, 'rebase', '--quiet', upstream)).toThrow();
+    writeFileSync(join(ws, 'poll.ts'), 'both\n');
+    git(ws, 'add', 'poll.ts');
+    git(ws, '-c', 'core.editor=true', 'rebase', '--continue');
+    expect(await resolver.call('ready_for_review', { summary: 'Kept both.' })).toContain('Landed');
+    expect(git(main, 'rev-parse', 'HEAD~1').trim()).toBe(upstream);
+    expect(git(main, 'log', '-1', '--format=%s').trim()).toBe('Polls every minute');
+    expect(board.events(id).some((e) => e.text.startsWith(board.t.worker.pulledMain('').slice(0, 10)))).toBe(true);
+    expect(board.item(x)!.statusLine).toBeUndefined();
+    // its session ends with its turn
+    resolver.emit({ type: 'idle' });
+    await until(() => !board.row(x).workspace && !existsSync(ws));
+  });
+
+  test('„main pushen“ puts the unpushed commits on the remote after its undo window, and the agent brings the PR up to date', async () => {
+    landedLocally('poll.ts', 'Polls every minute');
+    const id = await reviewCard();
+    const review = runtime.last;
+    await handOver();
+    await until(() => !!board.item(id)!.contribution!.clash);
+    git(origin, 'config', 'receive.denyCurrentBranch', 'updateInstead');
+    workers.pushMainFor(id);
+    // taken back within the window: nothing happens
+    workers.keepMainFor(id);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(git(origin, 'log', '-1', '--format=%s', 'main').trim()).not.toBe('Polls every minute');
+    workers.pushMainFor(id);
+    await until(() => board.item(id)!.state === 'working');
+    expect(git(origin, 'log', '-1', '--format=%s', 'main').trim()).toBe('Polls every minute');
+    expect(board.item(id)!.contribution!.clash).toBeUndefined();
+    const told = review.inbox.at(-1)!;
+    expect(told).toContain('push the local main to origin');
+    expect(told).toContain('amerlander allows maintainers');
+    expect(told).toContain('poll.ts');
+  });
+
+  test('an agent that ends its turn twice without resolving the pull leaves it to the owner', async () => {
+    const x = landedLocally('poll.ts', 'Polls every minute');
+    const id = await reviewCard();
+    await handOver();
+    await until(() => !!board.item(id)!.contribution!.clash);
+    await workers.approve(id);
+    await until(() => runtime.sessions.length === 2);
+    const resolver = runtime.last;
+    const ws = board.row(x).workspace!;
+    resolver.call('report', { status: 'Looking' });
+    resolver.emit({ type: 'idle' });
+    expect(resolver.inbox.at(-1)).toContain('still stopped');
+    resolver.emit({ type: 'idle' });
+    expect(board.events(id).at(-1)!.text).toBe(board.t.worker.pullUnresolved('Polls every minute', 'poll.ts', board.t.worker.resolverGaveUp));
+    await until(() => !board.row(x).workspace && !existsSync(ws));
   });
 
   test('a head pushed after the handover is not merged: the worker reviews it', async () => {

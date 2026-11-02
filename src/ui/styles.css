@@ -2119,6 +2119,11 @@ button.link:hover { text-decoration: underline; }
 /* a review card: the checks and merge probe, and its findings, each to decide on */
 .findings { margin: 10px 0 12px; font-size: 13px; }
 .findings .rr-checks { font-size: 12.5px; margin-bottom: 6px; }
+.findings .rr-clash { border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--card); line-height: 1.4; }
+.findings .rr-clash b { color: var(--warn); }
+.findings .rr-clash .rr-clash-push { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
+.findings .rr-clash .rr-clash-push span { color: var(--ink); font-size: 12.5px; }
+.findings .rr-clash .rr-clash-what { margin-top: 6px; color: var(--muted); font-size: 12.5px; }
 .findings .ok { color: var(--approved); }
 .findings .bad { color: var(--error); }
 .findings .p-h { margin: 8px 0 6px; }

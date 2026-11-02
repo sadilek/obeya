@@ -698,6 +698,21 @@ export interface Contribution {
   findings?: Finding[];
   /** The worker's change request on the PR, while the card waits for the contributor. */
   requested?: { url?: string; at: string };
+  /** Where work lands on the local main: its unpushed commits collide with the PR, as Obeya found before the merge. */
+  clash?: Clash;
+}
+
+/**
+ * Commits on the local main nobody pushed yet that a pull request collides with: once it is merged,
+ * pulling it into the local main stops at `commit` (`subject`, and the card that landed it, where
+ * one did), in `files`; `unpushed` is how many such commits the local main has.
+ */
+export interface Clash {
+  commit: string;
+  subject: string;
+  files: string[];
+  unpushed: number;
+  card?: { id: string; title: string };
 }
 
 /**
@@ -769,6 +784,9 @@ export const START_ALL_HOLD_MS = 8000;
 
 /** How long taking a card's workspace from it (the Workspaces list) waits for the owner's „Rückgängig“. */
 export const EVICT_HOLD_MS = 8000;
+
+/** How long pushing main for a review card whose PR collides with unpushed commits waits for the owner's „Rückgängig“. */
+export const PUSH_HOLD_MS = 8000;
 
 /**
  * `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting
@@ -1388,6 +1406,13 @@ export type CardAction =
   | { action: 'release'; now?: boolean }
   /** Deletes a comment on a place in the demo video that Obeya still holds back (`Item.held`). */
   | { action: 'unsay'; id: number }
+  /**
+   * A review card whose PR collides with unpushed commits on the local main: main is pushed, once
+   * the undo window (PUSH_HOLD_MS) is through, and the card's agent brings the PR up to date with it;
+   * `keepMain` takes it back within the window.
+   */
+  | { action: 'pushMain' }
+  | { action: 'keepMain' }
   /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
   | { action: 'approve'; direct?: boolean }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */
@@ -1525,6 +1550,10 @@ export type ErrorCode =
   | 'noFinding'
   /** Approving a review card: its PR moved since the handover, was closed, or the forge refused the merge (the detail says why). */
   | 'prMoved'
+  /** „main pushen“ on a review card whose PR collides with nothing unpushed (any more), or taking back a push that is not waiting. */
+  | 'noClash'
+  /** „Mergen“ on a review card whose PR collides with unpushed commits on the local main, which the card had not shown yet: it shows them now. */
+  | 'pullClash'
   | 'prClosed'
   | 'mergeRefused'
   /** „Review PR #5“: no such pull request, or none Obeya can read. */

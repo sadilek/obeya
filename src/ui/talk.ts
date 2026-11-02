@@ -57,7 +57,7 @@ export interface Talk {
 
 /** Obeya's lines that mark where the work stands (the demo linked on the pull request among them), or why an idea clicked to build was not; its other notes (restarts, sessions, what happens on the pull request) fold away. */
 const MILESTONE =
-  /^(Agent gestartet|Agent started|Pull Request gemergt|Pull request merged|Nach der Freigabe auf main gelandet|Landed on main after the approval|Pull Request ohne Merge geschlossen|Pull request closed without a merge|Das Projekt steht jetzt|The project now stands|Nicht gebaut|Not built|Teil gelandet|Part landed|Der Obeya-Checkout stand auf|The Obeya checkout was on|Im Plan-Doc|Ticked off in the plan doc|Den Link zur Demo (als Kommentar|in die Beschreibung)|Commented the demo’s link|Added the demo’s link)/;
+  /^(Agent gestartet|Agent started|Pull Request gemergt|Pull request merged|Nach der Freigabe auf main gelandet|Landed on main after the approval|Pull Request ohne Merge geschlossen|Pull request closed without a merge|Das Projekt steht jetzt|The project now stands|Nicht gebaut|Not built|Teil gelandet|Part landed|Der Obeya-Checkout stand auf|The Obeya checkout was on|Im Plan-Doc|Ticked off in the plan doc|Den Link zur Demo (als Kommentar|in die Beschreibung)|Commented the demo’s link|Added the demo’s link|main ließ sich nach dem Merge nicht holen: Konflikt|Could not pull main after the merge: it conflicts|Der Merge von PR #\d+ kollidiert|Merging PR #\d+ conflicts|Konflikt mit PR #\d+ gelöst|Conflict with PR #\d+ resolved|main aus dem Remote geholt|Pulled main from the remote|main gepusht|Pushed main)/;
 
 /** The agent that works on the card or thinks the idea through. */
 const agentAuthor = (e: CardEvent) => e.author === 'worker' || e.author === 'explorer';

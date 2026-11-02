@@ -162,8 +162,9 @@ that task; several findings may link one). With each the worker names the findin
 follow-up task with, only what one worker would sensibly do in one go; such a bundle stands in a
 bracket of its own on the card („Befunde 2 + 4: eine Folgeaufgabe“) while its findings are open or
 made one, and picks nothing for the others: the choice stays per finding. Above them stand the
-checks on the head and the merge probe („✓ bun test · ✓ konfliktfrei“); on the canvas the card
-shows both on one line („Review: 2 Befunde offen (1 Sicherheit)“). The handover brings the checks'
+checks on the head and the merge probe („✓ bun test · ✓ konfliktfrei“), and a collision with
+unpushed commits on the local `main` where there is one (see Unpushed commits the PR collides
+with); on the canvas the card shows them on one line („Review: 2 Befunde offen (1 Sicherheit)“). The handover brings the checks'
 results and the merge probe; a handover without findings recorded (an empty list where there are
 none) is refused. The findings are for the owner: nothing of them reaches the contributor unless the
 owner sends it. Obeya records the head the worker handed over.
@@ -208,8 +209,50 @@ Merged, the card is `live`, and where work lands on `main` the checkout pulls th
 does it there. Where neither the repository nor the global git configuration sets a way of pulling
 and the local `main` has commits of its own, it pulls with a rebase, as Obeya brings its own work
 onto `main`; without commits of its own it fast-forwards, uncommitted changes outside the merge
-kept. A pull that stops on a conflict is undone, and the card says so. A PR closed without
-a merge asks the owner whether the card can go; „Ja“ closes it as done.
+kept. A PR closed without a merge asks the owner whether the card can go; „Ja“ closes it as done.
+
+#### Unpushed commits the PR collides with
+
+Where work lands on `main` without being pushed, the local `main` collects landings nobody pushed
+while others build on the remote's. Obeya tells, without touching the checkout, whether the pull
+after the merge would stop on a conflict with them: it fetches the remote's `main`, merges the
+reviewed head onto it and replays the unpushed commits onto the result one by one as the rebase
+would (as a whole where the owner's git configuration pulls by a merge), all in git's object store
+(`git merge-tree`). It does so when the review is handed over, whenever the local `main` moves
+while the card waits for the owner, at each round of the watcher (the remote's `main` moves with
+others' pushes) and once more on „Mergen“. Commits the remote has already (cherry-picked there) are
+skipped, as the rebase skips them. Where the PR conflicts with the
+remote's `main` itself, that is the forge's to show, and this check says nothing.
+
+A collision shows on the card above the findings: the commit the pull would stop at, the card
+that landed it (a link to it), the files, and the two ways out, each naming whose agent does the
+work. The recommended one is „main pushen und PR anpassen“: after an undo window Obeya pushes the
+local `main` to the remote, never forced (what the remote has of its own pulled first, as above;
+where that would conflict, nothing is pushed and the card says why), and the review card's agent
+brings the PR up to date with it: itself on the PR's branch where the contributor allows
+maintainers' edits, else by a change request to them; then it hands over again. The other is to
+merge anyway, which leaves `main` unpushed (below). The approve button then reads „Trotzdem
+mergen (PR #5)“, and the card on the canvas says „⚠ kollidiert mit lokalem main“. A collision the card did
+not show yet when the owner clicks („Mergen“ while a landing just moved `main`) holds the merge
+back once and shows itself; a second click merges.
+
+After the merge, a pull that would stop is not made, and a worker resolves it instead: the worker
+of the card whose landing holds the commit it stops at, else the review card's own, while its
+session can go on (finishing after its landing, or resumed in a fresh workspace as for a question
+after the work). It hears the pull request, the commit, the files and where the local `main` and
+the remote's stood; it rebases the unpushed commits onto the remote's `main` in its workspace,
+resolves the conflict, runs the checks and hands over with `ready_for_review`, without a demo.
+Obeya then puts the local `main` at the worker's `HEAD` with whatever landed on it meanwhile on top,
+without the owner (`git reset --keep`, so uncommitted changes in the checkout survive or stop it);
+those commits were never pushed, so no published history is rewritten. The cards that landed them
+name the rebased commits from then on. Both cards' conversations
+say what happened, and the resolving card's status line names the PR. What is wrong in the
+worker's workspace (its `HEAD` not on the merge, the commits landed meanwhile conflicting with its
+own) goes back to it; what blocks the checkout goes to the owner. A worker that ends its turn
+without handing over is reminded once, then the pull goes to the owner, as it does where no worker
+can take it: the review card says which commit conflicts, in which files, and asks them to pull by
+hand. A pull that fails for another reason (the checkout off `main`, a merge of the owner's under
+way) is undone, and the card says so.
 
 The watcher follows review cards in every repository, also one that lands on `main`. For them the
 PR's author is the contributor: their comments count, and only the owner's (the account Obeya acts
@@ -351,6 +394,20 @@ A card no agent worked on, a prototype or an archived card has no field.
   `branch.<name>.rebase`) still decides. Rejected: rebasing whatever is set (overrides the owner's
   choice); rebasing also where nothing diverged (git then refuses beside uncommitted changes, which a
   fast-forward keeps); merging (a merge commit on `main` where Obeya otherwise keeps it linear).
+- **A collision with unpushed commits is told before the merge and resolved by a worker after it**
+  (2026-11-02), as an ordinary landing's conflict goes back to its worker. The check runs in git's
+  object store so that it can run at any time beside the owner's checkout. The conflict goes to the
+  agent that made the conflicting commit, which knows what it meant, and lands without a new
+  approval, as any landing fixed after its approval does. Pushing `main` and adapting the PR is
+  the recommended way, offered as a button (the owner, after the first demo): several commits on
+  `main` may collide with one PR, which is cleaner to adapt once than to rebase them all, and a
+  push from the command line does not fit Obeya. Rejected: taking the pull back with a line in the
+  review card's log only (the owner found out late, and had to rebase by hand); naming the push
+  without doing it (the owner would have to leave Obeya for git); refusing the merge while the
+  collision stands (keeping `main` unpushed is the owner's choice); pushing the local `main` before
+  the merge without asking (publishes what the owner has not pushed); the review
+  card's agent alone (it knows the PR, not the change it collides with); a question to the owner
+  for every stopped pull (the agents can do it, and the owner works at the level of requirements).
 - **Landing on main rebases onto the checkout's `main`, not the clone's `origin`** (2026-10-29,
   GitHub issue 23): a clone of the remote rebased onto the remote's `main`, which lacked the
   unpushed landings of other cards, and the fast-forward failed with a raw git error at every

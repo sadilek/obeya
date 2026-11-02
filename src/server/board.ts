@@ -2613,12 +2613,12 @@ function work(r: CardRow): Partial<Item> {
   const share = shareOf(r);
   const notOnApproval = r.share ? (JSON.parse(r.share) as StoredShare).notOnApproval : undefined;
   const tags = demo && !r.prototype_of ? pageTagsOf(r) : {};
-  const landed = r.landed ? (JSON.parse(r.landed) as { followUp?: boolean; needsClone?: boolean }) : null;
+  const landed = r.landed ? (JSON.parse(r.landed) as { followUp?: boolean; needsClone?: boolean; resolve?: object }) : null;
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
     ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
-    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}) } } : {}),
+    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice
@@ -2640,7 +2640,7 @@ function work(r: CardRow): Partial<Item> {
     // a workspace on another machine as ssh and scp write it
     ...(r.workspace ? { workspace: r.workspace.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
     ...(r.kept_in ? { keptIn: r.kept_in.replace(/^ssh:\/\/([^/]+)/, '$1:') } : {}),
-    ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
+    ...(landed && (r.workspace || landed.needsClone) ? { finishing: true, ...(landed.followUp && !landed.resolve ? { followUp: true } : {}), ...(landed.needsClone && !r.workspace ? { waitsForClone: true } : {}) } : {}),
     ...(detail.noChange && handed ? { noChange: true } : {}),
     ...(detail.lands && handed ? { lands: detail.lands } : {}),
     ...(r.paused ? { paused: true } : {}),

@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
@@ -293,10 +293,10 @@ export function Detail(p: Props) {
   const approveButton = item.contribution ? (
     <button
       className="btn primary"
-      title={t.review.mergeHint}
+      title={item.contribution.clash ? t.review.mergeClashHint : t.review.mergeHint}
       onClick={() => act({ action: 'approve' }, { close: true, ack: t.review.merged(item.contribution!.number), pending: t.review.merging })}
     >
-      {t.review.merge(item.contribution.number)}
+      {item.contribution.clash ? t.review.mergeAnyway(item.contribution.number) : t.review.merge(item.contribution.number)}
     </button>
   ) : inFolder ? (
     <>
@@ -552,7 +552,11 @@ export function Detail(p: Props) {
                   </p>
                 )}
                 {/* what a review card's agent found comes first, at a glance above its demo */}
-                {item.contribution && (item.contribution.results || item.contribution.findings) && <Findings item={item} decides={!!ownerField(item) && !finished(item.state)} />}
+                {item.contribution && (item.contribution.results || item.contribution.findings || item.contribution.clash) && <Findings
+                    item={item}
+                    decides={!!ownerField(item) && !finished(item.state)}
+                    onPush={() => act({ action: 'pushMain' }, { close: true, ack: t.review.pushing(item.contribution!.number), undo: () => api.act(item.id, { action: 'keepMain' }) })}
+                  />}
                 {/* the last handover's demo stays while the agent works on the card again; a new handover replaces it. Beside it, the files the work made or changed */}
                 <ResultFiles
                   item={item}
@@ -2174,7 +2178,7 @@ function useZoom(video: RefObject<HTMLVideoElement | null>) {
  * no edits by maintainers. A finding something came of says what; one made a follow-up task links
  * that task.
  */
-function Findings({ item, decides }: { item: Item; decides: boolean }) {
+function Findings({ item, decides, onPush }: { item: Item; decides: boolean; onPush?: () => void }) {
   const c = item.contribution!;
   const cards = useContext(Cards);
   const draft = cardDraft(item.id);
@@ -2257,12 +2261,52 @@ function Findings({ item, decides }: { item: Item; decides: boolean }) {
   return (
     <section className="findings">
       {c.results && <div className={ok ? 'rr-checks ok' : 'rr-checks bad'}>{t.review.checks(c.results)}</div>}
+      {c.clash && !finished(item.state) && <Clash clash={c.clash} {...(decides && onPush ? { onPush } : {})} />}
       {c.findings && (
         <h4 className="p-h">{t.review.findings(findings.length, open.length, open.filter((f) => f.security).length)}</h4>
       )}
       {blocks}
       {decides && open.some((f) => !f.decided) && <p className="hint">{t.review.decideHint}</p>}
     </section>
+  );
+}
+
+/**
+ * Unpushed commits on the local main that a review card's PR collides with, as Obeya found before
+ * the merge: which commit the pull after it would stop at, the card that landed it (to open), and
+ * what the owner can do about it.
+ */
+function Clash({ clash, onPush }: { clash: ClashFound; onPush?: () => void }) {
+  const cards = useContext(Cards);
+  const card = clash.card && cards.items.find((x) => x.id === clash.card!.id);
+  // a commit named as its card is named once, as the card
+  const same = !!clash.card && plain(clash.card.title).trim().toLowerCase() === clash.subject.trim().toLowerCase();
+  const named = clash.card && (same ? t.review.clashCommit(clash.subject) : t.review.clashCard(plain(clash.card.title)));
+  return (
+    <div className="rr-clash">
+      <b>{t.review.clashHead(clash.unpushed)}</b>
+      <div>
+        {!same && <>{t.review.clashCommit(clash.subject)} </>}
+        {named &&
+          (card ? (
+            <a href="#" onClick={(e) => (e.preventDefault(), cards.open(card))}>
+              {named}
+            </a>
+          ) : (
+            named
+          ))}{' '}
+        {t.review.clashFiles(clash.files)}
+      </div>
+      {onPush && (
+        <div className="rr-clash-push">
+          <button className="btn" onClick={onPush}>
+            {t.review.pushMain}
+          </button>
+          <span>{t.review.pushHint}</span>
+        </div>
+      )}
+      <div className="rr-clash-what">{t.review.mergeInstead(clash.card ? plain(clash.card.title) : null)}</div>
+    </div>
   );
 }
 

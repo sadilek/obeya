@@ -46,15 +46,23 @@ export function fileForge(path: string): Forge {
     write(f);
     return `${url}#${id}`;
   };
+  // a push onto the PR's branch in the forge's repository moves its head (and `refs/pull/<n>/head`), as on the forge
+  const headOf = async (f: ForgeFile, p: FilePr) => {
+    const pushed = p.headRef && (await gitAsync(f.repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${p.headRef}`).catch(() => ''));
+    if (!pushed) return p.head;
+    await gitAsync(f.repo, 'update-ref', `refs/pull/${p.number}/head`, pushed).catch(() => {});
+    return pushed;
+  };
   return {
     async status(_cwd, url) {
       const f = read();
       const p = pr(f, url);
+      const head = await headOf(f, p);
       return {
         state: p.state ?? 'OPEN',
         mergeable: p.mergeable ?? 'MERGEABLE',
         mergeState: 'CLEAN',
-        head: p.head,
+        head,
         checks: p.checks ?? [],
         comments: p.comments ?? [],
         author: p.author,
@@ -79,12 +87,13 @@ export function fileForge(path: string): Forge {
       return p.url;
     },
     async contribution(_cwd, url): Promise<ContributionInfo> {
-      const p = pr(read(), url);
+      const f = read();
+      const p = pr(f, url);
       return {
         title: p.title,
         author: p.author,
         state: p.state ?? 'OPEN',
-        head: p.head,
+        head: await headOf(f, p),
         canModify: !!p.canModify,
         ...(p.headRepo ? { headRepo: p.headRepo } : {}),
         ...(p.headRef ? { headRef: p.headRef } : {}),
@@ -99,7 +108,7 @@ export function fileForge(path: string): Forge {
     async merge(_cwd, url, head) {
       const f = read();
       const p = pr(f, url);
-      if (p.head !== head) throw new Error('Head branch was modified. Review and try the merge again.');
+      if ((await headOf(f, p)) !== head) throw new Error('Head branch was modified. Review and try the merge again.');
       if ((p.state ?? 'OPEN') !== 'OPEN') throw new Error('Pull request is not open');
       await gitAsync(f.repo, 'merge', '--squash', '--quiet', head);
       await gitAsync(f.repo, '-c', `user.name=${p.author}`, '-c', `user.email=${p.author}@users.noreply`, 'commit', '--quiet', '-m', `${p.title} (#${p.number})`);

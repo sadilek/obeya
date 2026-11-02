@@ -165,7 +165,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
   const findings = item.contribution?.findings ?? [];
   const open = findings.filter((f) => f.status === 'open');
   const status = results
-    ? `${t.review.checks(results)} · ${t.review.findings(findings.length, open.length, open.filter((f) => f.security).length)}`
+    ? [t.review.checks(results), ...(item.contribution?.clash ? [t.review.clashShort] : []), t.review.findings(findings.length, open.length, open.filter((f) => f.security).length)].join(' · ')
     : item.state === 'working' || item.finishing || answering(item) || (item.state === 'inPr' && (!item.pr || item.contribution))
       ? item.statusLine && excerpt(item.statusLine)
       : item.state === 'inPr' && item.pr
