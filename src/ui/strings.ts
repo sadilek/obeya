@@ -1589,7 +1589,7 @@ const de = {
         http: 'Eigener HTTP-Dienst',
       } satisfies Record<VoiceKind, string>,
       about: {
-        none: 'Stumme Videos: Die Untertitel erzählen, was sonst die Stimme sagt, und sind von Anfang an eingeschaltet. Jede Szene dauert so lange, wie sich ihr Text lesen lässt. Es muss keine Stimme installiert sein.',
+        none: 'Stumme Videos: Die Untertitel erzählen, was sonst die Stimme sagt, und sind von Anfang an eingeschaltet.',
         piper: 'Läuft auf jedem Rechner, schnell auch ohne Grafikkarte. Obeya installiert Piper und die Stimme auf Wunsch.',
         qwen3: 'Natürlicher als Piper, braucht aber viel Speicher; auf einem Mac mit MLX, sonst praktisch nur mit Grafikkarte. Mit einer Stimmprobe klont es eine Stimme.',
         say: 'Kostenlos und sofort da, klingt aber deutlich synthetischer.',
@@ -3612,7 +3612,7 @@ const en: Strings = {
         http: 'Your own HTTP service',
       },
       about: {
-        none: 'Silent videos: the subtitles tell what the voice would say, and are on from the start. Each scene lasts as long as its text takes to read. No voice needs to be installed.',
+        none: 'Silent videos: the subtitles tell what the voice would say, and are on from the start.',
         piper: 'Runs on any machine, fast even without a graphics card. Obeya installs Piper and the voice on request.',
         qwen3: 'More natural than Piper, but needs a lot of memory; on a Mac with MLX, elsewhere practically only with a graphics card. With a voice sample it clones a voice.',
         say: 'Free and there at once, but sounds clearly more synthetic.',

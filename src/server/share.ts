@@ -811,6 +811,8 @@ export class Sharing {
       return path ? new Uint8Array(readFileSync(path)) : null;
     };
     const poster = file('poster.jpg');
+    // the narration's text, whether or not it is a track: what a player outside Obeya reads where it knows one file only
+    const narration = file('captions.vtt');
     const language = this.languageOf(demo.dir, card);
     // every caption track goes with it; one from before the tracks is in the demo's language
     const tracks = captionTracks(demo.dir).flatMap((t) => {
@@ -846,6 +848,7 @@ export class Sharing {
         { name: `${slug}/demo.mp4`, data: new Uint8Array(readFileSync(video)) },
         ...(poster ? [{ name: `${slug}/poster.jpg`, data: poster }] : []),
         ...tracks.map((t) => ({ name: `${slug}/${t.file}`, data: t.data })),
+        ...(narration && !tracks.some((t) => t.file === 'captions.vtt') ? [{ name: `${slug}/captions.vtt`, data: narration }] : []),
       ];
       out = { name: `${slug}.zip`, type: 'application/zip', data: zip(entries) };
     }

@@ -182,11 +182,15 @@ export function writeDemoSettings(settings: DemoSettings, home = obeyaHome()) {
 
 /**
  * The settings with the voice of one render: `DEMO_VOICE` names a provider (its other settings
- * as saved) or a `.wav` to clone with Qwen3-TTS.
+ * as saved) or a `.wav` to clone with Qwen3-TTS. What is not the voice's (the subtitles, the
+ * directory, how long frames are kept) stays as saved.
  */
 export function withVoice(s: DemoSettings, voice: string | undefined): DemoSettings {
   if (!voice || voice === s.voice) return s;
-  if (voice.endsWith('.wav')) return { language: s.language, voice: 'qwen3', references: { [s.language]: voice } };
+  if (voice.endsWith('.wav')) {
+    const { directory, keepFrames, subtitles } = s;
+    return { language: s.language, voice: 'qwen3', references: { [s.language]: voice }, ...(directory ? { directory } : {}), ...(keepFrames ? { keepFrames } : {}), ...(subtitles ? { subtitles } : {}) };
+  }
   const kind = VOICES.find((v) => v === voice);
   if (!kind) throw new Error(`unknown voice "${voice}"; use ${VOICES.join(', ')} or a .wav`);
   // another provider is not the owner's own voice just because the saved one is

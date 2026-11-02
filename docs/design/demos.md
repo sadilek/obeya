@@ -113,8 +113,9 @@ track only where it is listed. An empty list means no subtitles, except in a sil
 then show nothing of its narration: its one track is the narration's. Whether a voice speaks does not
 depend on the list: a voiced demo with listed languages has both. Each track is a file of its own,
 `captions.<language>.vtt`, a cue per sentence of the narration. A sentence ends at `.`, `!`, `?` or
-`…` before a space and a capital, not after a single letter, a number (a German ordinal) or a common
-abbreviation.
+`…` before a space and a capital, not after a single letter or a common abbreviation, nor in German
+narration after a number an article or preposition comes before (an ordinal: „am 1. November“);
+anywhere else a number ends its sentence („There are 3. Then save.“).
 
 `captions.vtt` holds the narration's cues in every demo, track or not: Obeya reads there what the
 narration says at a place a comment refers to, and the chapters of a demo without `chapters.vtt`.

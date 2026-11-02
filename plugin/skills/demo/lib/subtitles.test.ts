@@ -13,10 +13,17 @@ describe('sentences', () => {
   });
 
   test('a period after an abbreviation, an initial or an ordinal ends no sentence, nor one before a lower-case word', () => {
-    expect(sentencesOf('Zum Beispiel z. B. eine Karte. Am 1. November geht es los.')).toEqual(['Zum Beispiel z. B. eine Karte.', 'Am 1. November geht es los.']);
+    expect(sentencesOf('Zum Beispiel z. B. eine Karte. Am 1. November geht es los.', 'de')).toEqual(['Zum Beispiel z. B. eine Karte.', 'Am 1. November geht es los.']);
     expect(sentencesOf('Some tools, e.g. Piper, run here. Version 2.5 does too.')).toEqual(['Some tools, e.g. Piper, run here.', 'Version 2.5 does too.']);
     expect(sentencesOf('It says ... and then stops.')).toEqual(['It says ... and then stops.']);
     expect(sentencesOf('[short pause]')).toEqual([]);
+  });
+
+  test('a number ends its sentence, but for a German ordinal after an article or preposition', () => {
+    expect(sentencesOf('There are 3. Then save.', 'en')).toEqual(['There are 3.', 'Then save.']);
+    expect(sentencesOf('Es sind 3. Dann speichern.', 'de')).toEqual(['Es sind 3.', 'Dann speichern.']);
+    expect(sentencesOf('Die 3. Option fehlt. Am 1. November geht es los.', 'de')).toEqual(['Die 3. Option fehlt.', 'Am 1. November geht es los.']);
+    expect(sentencesOf('Am 1. November geht es los.', 'en')).toEqual(['Am 1.', 'November geht es los.']);
   });
 });
 

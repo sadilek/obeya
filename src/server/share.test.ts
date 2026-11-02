@@ -1322,6 +1322,20 @@ describe('exporting a demo, where the repository has no demo site', () => {
     writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00.000 --> 00:02.500\nDer Export </script> beginnt.\n');
   }
 
+  test("as a ZIP, a demo with language tracks keeps the narration's captions.vtt beside them", async () => {
+    const c = card('Ohne Ziel');
+    files(c);
+    const d = join(dir, `demo-${c.id}`);
+    writeFileSync(join(d, 'captions.vtt'), 'WEBVTT - subtitles: fr\n\n00:00.000 --> 00:02.500\nThe export starts.\n');
+    writeFileSync(join(d, 'captions.fr.vtt'), 'WEBVTT\n\n00:00.000 --> 00:02.500\nL’export commence.\n');
+    const out = await sharing.export(c.id, 'zip');
+    writeFileSync(join(dir, out.name), out.data);
+    expect(Bun.spawnSync(['unzip', '-o', '-d', join(dir, 'unzipped'), join(dir, out.name)]).exitCode).toBe(0);
+    const at = join(dir, 'unzipped', out.name.replace(/\.zip$/, ''));
+    expect(readFileSync(join(at, 'captions.fr.vtt'), 'utf8')).toContain('L’export commence.');
+    expect(readFileSync(join(at, 'captions.vtt'), 'utf8')).toContain('The export starts.');
+  });
+
   test('the version shown goes into the file: an earlier one by its handover', async () => {
     const c = card('Ohne Ziel', { handover: 1 });
     files(c, 'FIRST');
@@ -1363,6 +1377,7 @@ describe('exporting a demo, where the repository has no demo site', () => {
     expect(html).toContain('<html lang="de">');
     expect(html).toContain('<div class="when">Demo vom ');
     expect(html).toContain('<script type="text/vtt" class="captions" data-lang="de" data-label="Deutsch">');
+    expect(readFileSync(join(at, 'captions.vtt'), 'utf8')).toContain('Der Export');
     expect(log(c.id).at(-1)).toBe(`Exportiert als ZIP: ${slug}.zip`);
     // exporting publishes nothing
     expect(calls()).toEqual([]);

@@ -85,6 +85,15 @@ describe('demo settings', () => {
     expect(withVoice(saved, undefined)).toBe(saved);
     expect(withVoice(saved, 'gemini')).toEqual({ language: 'en', voice: 'gemini', command: 'speak' });
     expect(withVoice(saved, '/tmp/someone.wav')).toEqual({ language: 'en', voice: 'qwen3', references: { en: '/tmp/someone.wav' } });
+    // what is not the voice's stays
+    expect(withVoice({ ...saved, subtitles: ['de', 'fr'], directory: '~/d', keepFrames: 3 }, '/tmp/someone.wav')).toEqual({
+      language: 'en',
+      voice: 'qwen3',
+      references: { en: '/tmp/someone.wav' },
+      directory: '~/d',
+      keepFrames: 3,
+      subtitles: ['de', 'fr'],
+    });
     expect(() => withVoice(saved, 'robot')).toThrow('unknown voice');
   });
 

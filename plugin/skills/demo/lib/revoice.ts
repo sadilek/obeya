@@ -149,8 +149,9 @@ export function reportOf(html: string): { language?: Language; title: string; re
 /** The audio tags of a narration, in order (`[short pause]`): a translation keeps them where they stand. */
 const tagsOf = (say: string) => [...say.matchAll(/\[[^\]]*\]/g)].map((m) => m[0].toLowerCase());
 
-/** What is wrong with a translation of `source`; empty when nothing is. */
-export function translationProblems(source: Words, t: Partial<Words>): string[] {
+/** What is wrong with a translation of `source` (in `from`) into `to`; empty when nothing is. */
+export function translationProblems(source: Words, t: Partial<Words>, from?: string, to?: string): string[] {
+  const count = (say: string, language?: string) => sentencesOf(say, language).length;
   const problems: string[] = [];
   if (!t.title?.trim()) problems.push('title is empty');
   if (!Array.isArray(t.scenes) || t.scenes.length !== source.scenes.length) return [...problems, `scenes: ${source.scenes.length} expected, ${t.scenes?.length ?? 0} given`];
@@ -159,8 +160,8 @@ export function translationProblems(source: Words, t: Partial<Words>): string[] 
     if (!s?.say?.trim()) problems.push(`scene ${i + 1}: say is empty`);
     else if (tagsOf(s.say).join(' ') !== tagsOf(source.scenes[i]!.say).join(' '))
       problems.push(`scene ${i + 1}: the audio tags differ from the source's (${tagsOf(source.scenes[i]!.say).join(' ') || 'none'})`);
-    else if (sentencesOf(s.say).length !== sentencesOf(source.scenes[i]!.say).length)
-      problems.push(`scene ${i + 1}: ${sentencesOf(source.scenes[i]!.say).length} sentences expected, ${sentencesOf(s.say).length} given (one per sentence of the source: each is a caption, shown at the same time as in the other languages)`);
+    else if (count(s.say, to) !== count(source.scenes[i]!.say, from))
+      problems.push(`scene ${i + 1}: ${count(source.scenes[i]!.say, from)} sentences expected, ${count(s.say, to)} given (one per sentence of the source: each is a caption, shown at the same time as in the other languages)`);
   });
   const r = t.report;
   if (!r?.summary?.trim()) problems.push('report.summary is empty');
@@ -185,10 +186,10 @@ const read = (f: string) => fs.readFileSync(f, 'utf8');
 
 /**
  * The caption cues of each scene, from `captions` (one per sentence of each scene's narration,
- * `says`), or, of a demo rendered before captions came a sentence at a time, one per scene.
+ * `says`, in `language`), or, of a demo rendered before captions came a sentence at a time, one per scene.
  */
-export function cuesByScene<T>(captions: T[], says: string[]): T[][] {
-  const counts = says.map((s) => sentencesOf(s).length);
+export function cuesByScene<T>(captions: T[], says: string[], language?: string): T[][] {
+  const counts = says.map((s) => sentencesOf(s, language).length);
   if (captions.length === counts.reduce((a, b) => a + b, 0)) {
     let at = 0;
     return counts.map((n) => captions.slice(at, (at += n)));
@@ -224,7 +225,7 @@ export async function revoice(dir: string, language: string | undefined) {
   const jobs = JSON.parse(read(path.join(work, 'jobs.json'))) as { text: string }[];
   if (chapters.length !== jobs.length) throw new Error(`the render does not add up: ${jobs.length} scenes in .work/jobs.json, ${chapters.length} chapters`);
   const says = jobs.map((j) => j.text);
-  const sceneCues = cuesByScene(cuesOf(read(path.join(original, 'captions.vtt'))), says);
+  const sceneCues = cuesByScene(cuesOf(read(path.join(original, 'captions.vtt'))), says, page.language);
   // each scene's narrated stretch: from its first sentence's cue to its last's
   const captions = sceneCues.map((c, i) => (c.length ? { start: c[0]!.start, end: c.at(-1)!.end } : { start: chapters[i]!.start, end: chapters[i]!.start }));
   const source: Words = { title: page.title, scenes: jobs.map((j, i) => ({ title: chapters[i]!.text, say: j.text })), report: page.report };
@@ -237,7 +238,7 @@ export async function revoice(dir: string, language: string | undefined) {
     return;
   }
   const words = JSON.parse(read(file)) as Words;
-  const problems = translationProblems(source, words);
+  const problems = translationProblems(source, words, page.language, to);
   if (problems.length) throw new Error(`${file} is no translation of source.json yet:\n${problems.map((p) => `  ${p}`).join('\n')}`);
 
   const settings = withVoice(inLanguage(readDemoSettings(), to), process.env.DEMO_VOICE);
@@ -254,7 +255,7 @@ export async function revoice(dir: string, language: string | undefined) {
   const newList = path.join(here, 'frames.txt');
   fs.writeFileSync(newList, frameListText(retimed(frames, at), work, here));
   // the new narration's sentences share its clips; every track keeps a cue per sentence on the same times
-  const narration: Track = { language: to, scenes: words.scenes.map((s) => sentencesOf(s.say)) };
+  const narration: Track = { language: to, scenes: words.scenes.map((s) => sentencesOf(s.say, to)) };
   const marks: Mark[] = captions.map((c, i) => ({
     title: words.scenes[i]!.title,
     start: at(chapters[i]!.start),
@@ -284,8 +285,8 @@ export function keptTracks(original: string, from: string | undefined, says: str
   if (!listed) return [narration];
   return listed.map((language) => {
     if (language === narration.language) return narration;
-    if (language === from) return { language, scenes: says.map(sentencesOf) };
-    return { language, scenes: cuesByScene(cuesOf(read(path.join(original, trackFile(language)))), says).map((cues) => cues.map((c) => c.text)) };
+    if (language === from) return { language, scenes: says.map((say) => sentencesOf(say, from)) };
+    return { language, scenes: cuesByScene(cuesOf(read(path.join(original, trackFile(language)))), says, from).map((cues) => cues.map((c) => c.text)) };
   });
 }
 

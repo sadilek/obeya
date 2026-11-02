@@ -783,10 +783,6 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   // Everything the render needs is there before it starts, or it stops with the whole list.
   const setup = await checkSetup(SETTINGS, { narrationOnly: process.argv.includes('--narration') });
   if (setup.items.some((i) => i.state === 'missing')) throw new Error(`cannot render yet:\n${describeSetup(setup)}`);
-  const framesDir = path.join(work, 'frames');
-  fs.rmSync(framesDir, { recursive: true, force: true });
-  fs.mkdirSync(framesDir, { recursive: true });
-
   const says = spec.scenes.map((s) => s.say);
   if (process.argv.includes('--narration')) {
     if (SILENT) return console.log('narration only: no voice, so nothing to synthesise');
@@ -798,13 +794,17 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
     return;
   }
   // the subtitles' translations before anything is recorded: a silent scene lasts as long as its slowest language takes to read
-  const source = { language: LANGUAGE, scenes: spec.scenes.map((s) => ({ title: s.title, sentences: sentencesOf(s.say) })) };
+  const source = { language: LANGUAGE, scenes: spec.scenes.map((s) => ({ title: s.title, sentences: sentencesOf(s.say, LANGUAGE) })) };
   const subtitles = subtitleTracks(work, source, subtitleLanguages(SETTINGS));
   if ('brief' in subtitles) {
     console.log(subtitles.brief);
     process.exitCode = 2;
     return;
   }
+  // the frames of the take before go only now: a render that stops before recording keeps them for re-voicing
+  const framesDir = path.join(work, 'frames');
+  fs.rmSync(framesDir, { recursive: true, force: true });
+  fs.mkdirSync(framesDir, { recursive: true });
   const { tracks } = subtitles;
   const narration = narrationTrack(source);
   let clips: Clip[] | undefined;
@@ -1046,7 +1046,7 @@ ${summary}
 <div class="player">
   <video id="v" controls preload="metadata" poster="poster.jpg">
     <source src="demo.mp4" type="video/mp4">
-    ${tracks.map((l, i) => `<track kind="captions" src="${trackFile(l)}" srclang="${l}" label="${esc(languageName(l, language))}"${silentVideo && i === 0 ? ' default' : ''}>`).join('\n    ')}
+    ${tracks.map((l, i) => `<track kind="captions" src="${esc(trackFile(l))}" srclang="${esc(l)}" label="${esc(languageName(l, language))}"${silentVideo && i === 0 ? ' default' : ''}>`).join('\n    ')}
   </video>
   <ol class="chapters">${chapters}</ol>
 </div>
