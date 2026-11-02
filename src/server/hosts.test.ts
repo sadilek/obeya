@@ -437,7 +437,8 @@ describe('the app of a card on a host', () => {
     apps.push(a);
     return `http://localhost:${a.port}/`;
   };
-  const forwards = () => (existsSync(join(dir, 'net', 'forwards')) ? readFileSync(join(dir, 'net', 'forwards'), 'utf8').trim().split('\n').map(Number) : []);
+  const pids = (file: string) => (existsSync(join(dir, 'net', file)) ? readFileSync(join(dir, 'net', file), 'utf8').trim().split('\n').map(Number) : []);
+  const forwards = () => pids('forwards');
   const answers = (url: string) => fetch(url, { signal: AbortSignal.timeout(1000) }).then((r) => r.text(), () => null);
   const closed = (url: string) => until(async () => (await answers(url)) === null);
 
@@ -501,6 +502,11 @@ describe('the app of a card on a host', () => {
     writeFileSync(join(dir, 'net', 'down'), '');
     expect(await workers.appUp(card.id)).toBe(false);
     rmSync(join(dir, 'net', 'down'));
+    expect(await workers.openApp(card.id)).toBe(opened);
+    expect(await answers(opened)).toBe('da');
+    // its port gone before Obeya hears that its connection ended (which comes a while later)
+    process.kill(pids('proxies').at(-1)!, 'SIGTERM');
+    await closed(opened);
     expect(await workers.openApp(card.id)).toBe(opened);
     expect(await answers(opened)).toBe('da');
     // Obeya stops, and the forward with it

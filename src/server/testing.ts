@@ -160,7 +160,8 @@ export const until = async (done: () => unknown, ms = 3000) => {
  * host counts as unreachable (exit 255, as ssh's own) while `<dir>/down` exists. Its home is
  * `<dir>/home`. Each command it ran is appended to `<dir>/log`, with the target first; each
  * connection it tried, reachable or not, adds a line to `<dir>/tries`. A forward from here (`-L`)
- * is a proxy on this machine for as long as the command runs; its pid goes to `<dir>/forwards`.
+ * is a proxy on this machine for as long as the command runs; its pid goes to `<dir>/forwards`,
+ * the proxy's to `<dir>/proxies`.
  */
 export function fakeSsh(dir: string): string {
   mkdirSync(dir, { recursive: true });
@@ -193,6 +194,7 @@ HOME=${JSON.stringify(join(dir, 'home'))}; export HOME; mkdir -p "$HOME"
 [ -z "$fwd" ] && exec sh -c "$*"
 echo $$ >> ${JSON.stringify(join(dir, 'forwards'))}
 ${JSON.stringify(process.execPath)} ${JSON.stringify(proxy)} "$fwd" & proxy=$!
+echo $proxy >> ${JSON.stringify(join(dir, 'proxies'))}
 # a command in the background reads /dev/null in dash, even with <&0: stdin goes by another fd
 exec 3<&0
 sh -c "$*" <&3 3<&- & command=$!

@@ -3845,14 +3845,15 @@ export class Workers {
    * Where the owner's browser reaches the app the card's worker said runs: its address, or for a
    * workspace on another machine that address's port forwarded here (only that port: a page that
    * talks to another port there finds nothing here). The forward is made when first asked for and
-   * made again when its connection dropped, on the port it had if that is still free.
+   * made again when its connection dropped, on the port it had if that is still free (`prefer`).
    */
-  private async appAt(cardId: string): Promise<string | null> {
+  private async appAt(cardId: string, prefer?: number): Promise<string | null> {
     const app = this.o.board.item(cardId)?.app;
     const workspace = this.o.board.row(cardId).workspace;
     if (!app || !workspace) return null;
     const there = remote(workspace);
     if (!there) return app;
+    if (this.shut) return null;
     let url: URL;
     try {
       url = new URL(app);
@@ -3860,11 +3861,11 @@ export class Workers {
       return null;
     }
     let f = this.forwards.get(cardId);
-    let prefer: number | undefined;
-    if (f && !f.forward.alive) {
-      prefer = f.port;
-      this.unforward(cardId);
-      f = undefined;
+    if (f && !(await f.forward.live())) {
+      // unless another call made it anew meanwhile; the card may no longer offer that app either
+      const port = f.port;
+      if (this.forwards.get(cardId) === f) this.unforward(cardId);
+      return this.appAt(cardId, port);
     }
     if (!f) {
       const host = url.hostname.replace(/^\[(.*)\]$/, '$1');

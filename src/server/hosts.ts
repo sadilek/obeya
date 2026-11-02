@@ -373,11 +373,13 @@ export class SshHost {
       }
       return null;
     };
+    const ready = listen();
+    let listening: number | null | undefined;
+    void ready.then((local) => (listening = local));
     const forward: Forward = {
-      ready: listen(),
-      get alive() {
-        return alive && !closed;
-      },
+      ready,
+      // Bun hears of ssh's exit a while after its port closed: the port tells at once
+      live: async () => alive && !closed && (listening === undefined || (!!listening && (await accepts(listening)))),
       close: () => {
         closed = true;
         child?.kill();
@@ -441,8 +443,8 @@ export class SshHost {
 export interface Forward {
   /** The port here once it takes connections; null when the forward failed or was closed first. */
   ready: Promise<number | null>;
-  /** False once the forward ended: closed, failed, or gone with its connection. */
-  readonly alive: boolean;
+  /** False once the forward ended (closed, failed, or gone with its connection) or its port no longer takes connections; true while it is being made. */
+  live(): Promise<boolean>;
   close(): void;
 }
 

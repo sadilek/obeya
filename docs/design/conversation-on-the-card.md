@@ -261,7 +261,9 @@ For a workspace on another machine (see Hosts) the probe and link go through an 
 that one port to a system-picked free port here (never the same number, which a local clone's stack
 may need), made at the first probe, ended when the app is no longer offered or Obeya stops; its
 remote command waits on stdin so it dies with Obeya. A dropped forward is remade on the same port,
-so an open tab keeps working. A page calling an API on another port finds nothing (the worker's
+so an open tab keeps working. Whether it dropped, its port tells (no longer taking connections),
+not only the exit of its `ssh`, which Obeya hears of a while later: in between, the link would lead
+to a dead port. A page calling an API on another port finds nothing (the worker's
 brief says so).
 
 ### Screenshots
