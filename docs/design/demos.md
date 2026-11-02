@@ -27,8 +27,8 @@ The report page (`index.html` beside the video, for use without Obeya) holds the
 (what the change does, then what the owner needs to know beyond the video: a behaviour left out and
 why, what is open or unverified, a defect found in someone else's change; a few short paragraphs),
 the video with its chapters, the open question if any, and the provenance (branch, commits, stack).
-Under Obeya the card shows the video and the handover summary instead, and a problem outside the
-change is a proposal.
+Under Obeya the card shows the video and the handover summary instead, a problem outside the
+change is a proposal, and a defect in a contributor's pull request is a finding of its review card.
 
 Obeya loads the plugin into every worker session (the Agent SDK's `plugins` option), so a worker has
 `obeya:demo`, which its brief names, and `obeya:settings` (see Writing the settings). The skill also

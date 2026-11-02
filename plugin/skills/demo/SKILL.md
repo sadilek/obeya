@@ -95,8 +95,9 @@ take `.first()`. Pick seeded data that makes each behaviour visible; create what
 Defects the demo uncovers:
 - In own work, they are part of the session's work: fix the change (with its test), demo the
   fixed state, and say in the chat report what the demo caught.
-- In an existing change, do not touch the code: say in the summary what the defect is and how
-  to reproduce it, and let the owner decide.
+- In an existing change, do not touch the code: say what the defect is and how to reproduce it,
+  and let the owner decide: in the summary, or, on a review card under Obeya, as a finding, which
+  carries its own choices.
 
 A decision that is the owner's (a product or wording question, a trade-off) is the report's
 `question`. A problem outside the change that is worth a task of its own goes, under Obeya, into a

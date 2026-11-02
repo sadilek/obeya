@@ -4348,7 +4348,7 @@ export class Workers {
                 })
                 .optional()
                 .describe(
-                  `only when something needs the owner beyond approve or feedback; the owner can answer it on the card before approving. As with ask: up to four short answer options when they exist, which the owner picks with a click (several when multiple is true) or answers in their own words; pick and pick_why: the options you would choose and why, in one short sentence in ${language}`,
+                  `only when something needs the owner beyond approve or feedback${review ? ' or the choice on each finding, which the card offers beside it' : ''}; the owner can answer it on the card before approving. As with ask: up to four short answer options when they exist, which the owner picks with a click (several when multiple is true) or answers in their own words; pick and pick_why: the options you would choose and why, in one short sentence in ${language}`,
                 ),
               ...(shares
                 ? {

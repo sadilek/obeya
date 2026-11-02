@@ -194,7 +194,9 @@ checks on the head and the merge probe („✓ bun test · ✓ konfliktfrei“),
 unpushed commits on the local `main` where there is one (see Unpushed commits the PR collides
 with); on the canvas the card shows them on one line („Review: 2 Befunde offen (1 Sicherheit)“). The handover brings the checks'
 results and the merge probe; a handover without findings recorded (an empty list where there are
-none) is refused. The findings are for the owner: nothing of them reaches the contributor unless the
+none) is refused. Its demo report asks a question only beyond what the findings' choices cover
+(whether to wait for the contributor's reasons first, say): what to do about a finding is that
+finding's choice. The findings are for the owner: nothing of them reaches the contributor unless the
 owner sends it. Obeya records the head the worker handed over.
 
 On each open finding the owner decides „An Beitragenden“, „Selbst ändern“ or „Als Folgeaufgabe“ (a
@@ -473,6 +475,13 @@ A card no agent worked on, a prototype or an archived card has no field.
   the agent); choosing in the conversation alone (a misunderstanding is a public comment or a push
   into a stranger's fork); a click on a choice acting at once, or a button of its own under the list
   (two Sends where every card has one).
+- **What to do about the findings is decided on each finding, not in the demo report's question**
+  (2026-11-02, the review of PR #37: the report asked „Wie soll es mit den offenen Befunden
+  weitergehen?“ with options for all open findings at once, beside each finding's own choice, and
+  too coarse to answer with them). The worker's instructions name the findings as the place where
+  the owner decides on a defect in the PR, so its question is left for what lies beyond them.
+  Rejected: Obeya refusing any question at a review card's handover (one beyond the findings, such
+  as whether to wait for the contributor's reasons first, is the owner's to answer too).
 - **„Als Folgeaufgabe“ is a third choice per finding** (2026-10-29, the owner: reviews often find
   something worth fixing that should not hold the PR up). Rejected: the worker proposing the card (a
   second decision for one already made); only asking Obeya for a follow-up in words (it works, but
