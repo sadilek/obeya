@@ -1,6 +1,7 @@
 // Presentational pieces of the canvas. State and camera live in App.tsx.
 
 import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
 import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
@@ -291,6 +292,14 @@ export const CardView = memo(
  */
 export function CanvasAgents({ canvas }: { canvas: CanvasInfo }) {
   const [asked, setAsked] = useState(false);
+  const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
+  // a scroll moves the button from under the tip
+  useEffect(() => {
+    if (!tip) return;
+    const hide = () => setTip(null);
+    document.addEventListener('scroll', hide, true);
+    return () => document.removeEventListener('scroll', hide, true);
+  }, [tip]);
   const a = canvas.agents;
   if (!a) return null;
   const pause = a.running > 0;
@@ -299,14 +308,26 @@ export function CanvasAgents({ canvas }: { canvas: CanvasInfo }) {
     e.preventDefault();
     e.stopPropagation();
     setAsked(true);
+    setTip(null);
     (pause ? api.pauseAgents(canvas.id) : api.resumeAgents(canvas.id)).catch(console.error).finally(() => setAsked(false));
   };
+  const show = (e: { currentTarget: Element }) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setTip({ x: r.right + 10, y: r.top + r.height / 2 });
+  };
+  const hide = () => setTip(null);
   return (
     <span className={pause ? 'canvas-agents running' : 'canvas-agents'}>
-      <button type="button" className="agents-turn" aria-label={`${label}: ${canvas.name}`} disabled={asked} onClick={click}>
+      <button type="button" className="agents-turn" aria-label={`${label}: ${canvas.name}`} disabled={asked} onClick={click} onPointerEnter={show} onPointerLeave={hide} onFocus={(e) => e.currentTarget.matches(':focus-visible') && show(e)} onBlur={hide}>
         {pause ? <PauseMark /> : <PlayMark />}
-        <span className="tip">{label}</span>
       </button>
+      {tip &&
+        createPortal(
+          <span className="agents-tip" style={{ left: tip.x, top: tip.y }}>
+            {label}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
