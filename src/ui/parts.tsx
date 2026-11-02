@@ -948,6 +948,14 @@ export const ProjectView = memo(
  * its last direction goes, so the head ends on `b`'s side however sharply the curve bends.
  */
 export function linkPath(a: Bounds, b: Bounds, head = 0): string {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+  return `M${p0.x},${p0.y} C${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
+}
+
+type Pt = { x: number; y: number };
+
+/** The cubic Bézier curve `linkPath` draws: its start, its two control points and its end. */
+function linkCurve(a: Bounds, b: Bounds, head: number): [Pt, Pt, Pt, Pt] {
   const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
   const gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
   const across = gapX > gapY;
@@ -961,7 +969,29 @@ export function linkPath(a: Bounds, b: Bounds, head = 0): string {
   const along = across ? x2 - x1 : y2 - y1;
   const aside = across ? y2 - y1 : x2 - x1;
   const reach = dir * Math.max(dir * along / 2, Math.min(Math.abs(aside) / 2, head));
-  return across ? `M${x1},${y1} C${x1 + reach},${y1} ${x2 - reach},${y2} ${x2},${y2}` : `M${x1},${y1} C${x1},${y1 + reach} ${x2},${y2 - reach} ${x2},${y2}`;
+  const [c1, c2] = across ? [{ x: x1 + reach, y: y1 }, { x: x2 - reach, y: y2 }] : [{ x: x1, y: y1 + reach }, { x: x2, y: y2 - reach }];
+  return [{ x: x1, y: y1 }, c1, c2, { x: x2, y: y2 }];
+}
+
+/**
+ * Where on the link from `a` to `b` its button goes: the middle, or the point nearest the middle that
+ * keeps `room` clear of every card in `cards`, so that a card the link passes under never covers it.
+ */
+export function linkSpot(a: Bounds, b: Bounds, head: number, cards: Bounds[], room: number): Pt {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+  const at = (t: number) => {
+    const u = 1 - t;
+    const [k0, k1, k2, k3] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+    return { x: k0 * p0.x + k1 * p1.x + k2 * p2.x + k3 * p3.x, y: k0 * p0.y + k1 * p1.y + k2 * p2.y + k3 * p3.y };
+  };
+  const clear = (p: Pt) => !cards.some((c) => p.x > c.x - room && p.x < c.x + c.w + room && p.y > c.y - room && p.y < c.y + c.h + room);
+  for (let step = 0; step <= 20; step++) {
+    for (const t of step ? [0.5 - step * 0.02, 0.5 + step * 0.02] : [0.5]) {
+      const p = at(t);
+      if (clear(p)) return p;
+    }
+  }
+  return at(0.5);
 }
 
 /**

@@ -2222,3 +2222,6 @@ button.link:hover { text-decoration: underline; }
 .connection-handles.s-waiting.underway { --c: var(--approved); }
 .connection-handles.s-waiting.answering { --c: var(--working); }
 .connection-handles:not(.snoozed):not(.underway):not(.answering):is(.s-waiting, .s-idea.your-turn), .connection-handles.dep-highlight { --c: var(--waiting); }
+/* what an arrow does, beside the pointer while the owner draws their first */
+#dephint { position: fixed; z-index: 40; pointer-events: none; transform: translate(16px, 16px); max-width: 300px; margin: 0; padding: 6px 10px; border-radius: 3px;
+  background: var(--ink); color: var(--bg); font: 13px/1.35 var(--cond); text-align: left; animation: fade .15s ease-out; }

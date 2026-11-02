@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Item } from '../core/types';
-import { CardFace, linkPath } from './parts';
+import { CardFace, linkPath, linkSpot } from './parts';
 
 const ws: Item = { id: 'w', kind: 'task', state: 'live', title: 'Cart model', body: '', x: 0, y: 0, parent: 'p', source: 'plan', repo: 'shop', label: 'W1' };
 const face = (item: Item, chip?: boolean) => renderToStaticMarkup(createElement(CardFace, { item, chip }));
@@ -35,4 +35,16 @@ test('a link with a head stops at its base and runs into it square to the card, 
   expect(end).toEqual([-50, -34 + 15]);
   expect(c2[0]).toBe(end[0]);
   expect(c2[1]).toBeGreaterThan(end[1]);
+});
+
+test("an arrow's button sits in its middle, or beside a card the arrow passes under", () => {
+  const a = { x: 0, y: 0, w: 300, h: 136 };
+  const b = { x: 680, y: 340, w: 300, h: 136 };
+  const mid = linkSpot(a, b, 15, [a, b], 14);
+  expect(mid.x).toBeCloseTo((300 + 680) / 2 - 7.5, 0);
+  expect(mid.y).toBeCloseTo((68 + 408) / 2, 0);
+  // a third card right on the middle: the button moves along the arrow until it is clear of it
+  const c = { x: 340, y: 170, w: 300, h: 136 };
+  const p = linkSpot(a, b, 15, [a, b, c], 14);
+  expect(p.x < c.x - 14 || p.x > c.x + c.w + 14 || p.y < c.y - 14 || p.y > c.y + c.h + 14).toBe(true);
 });

@@ -536,6 +536,9 @@ const de = {
     removed: 'Abhängigkeit entfernt.',
     before: 'kommt zuerst',
     after: 'wartet darauf',
+    /** While the owner draws their first arrow: what it will do. */
+    pick: (from: string) => `Klick auf die Karte, die warten soll: Sie beginnt erst, wenn „${from}“ erledigt ist. Esc bricht ab.`,
+    waits: (from: string, to: string) => `„${to}“ beginnt erst, wenn „${from}“ erledigt ist.`,
   },
   /** A card whose repository does not run on the canvas (`Item.repoDown`): on the card, and in its panel. */
   repoDown: {
@@ -2455,6 +2458,8 @@ const en: Strings = {
     removed: 'Dependency removed.',
     before: 'comes first',
     after: 'waits for it',
+    pick: (from: string) => `Click the card that is to wait: it starts only once “${from}” is done. Esc cancels.`,
+    waits: (from: string, to: string) => `“${to}” starts only once “${from}” is done.`,
   },
   repoDown: {
     short: 'Repository not running',

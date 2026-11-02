@@ -116,15 +116,19 @@ Under the pointer a card shows the waits around it over every step instead, in t
 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
-under it or close to it, a click there connects the two (Escape cancels). The arrow points from the
-prerequisite to the card that waits for it and stays on the canvas, as every wait does; under the pointer it shows a
-trash button that removes it at once, with „Rückgängig“. While the arrow holds a queued card, the
+under it or close to it, a click there connects the two (Escape cancels). Until the owner has drawn
+their first arrow, a line beside the pointer says what it will do while they draw: which card is to
+be clicked, and once one is under the pointer, that it starts only once the other is done. The arrow
+points from the prerequisite to the card that waits for it and stays on the canvas, as every wait
+does, under the cards: a card it crosses stays clickable and draggable all over. Under the pointer
+it shows a trash button that removes it at once, with „Rückgängig“; the button sits on the arrow's
+middle, or the nearest point along it no card covers. While the arrow holds a queued card, the
 removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
-started. Projects
-and their workstreams get no dots, since the plan doc decides their order, and inferred waits have
-no trash button. An arrow that would close a cycle with other arrows or waits is refused. A deleted
-or archived card's arrows are hidden and count for nothing; bringing the card back brings them back,
-except one that would now close a cycle. How an arrow holds a card's start: see Scheduling.
+started. Projects and their workstreams get no dots, since the plan doc decides their order, and
+inferred waits have no trash button. An arrow that would close a cycle with other arrows or waits is
+refused. A deleted or archived card's arrows are hidden and count for nothing; bringing the card
+back brings them back, except one that would now close a cycle. How an arrow holds a card's start:
+see Scheduling.
 
 #### A project arranged by its dependencies
 
