@@ -1428,7 +1428,9 @@ export class Board {
    * card does not name it as its workspace, or its work is over and its worker done (`stale`: the
    * lease outlived what it was for); it was deleted; or it is a workstream no worker is on whose box
    * the plan doc on the default branch ticks off (`ticked`; `merged` while it is in its pull request,
-   * which the doc says has been merged), or that the doc there no longer has (`gone`).
+   * which the doc says has been merged), or that the doc there no longer has (`gone`). A box ticked
+   * in a plan folder outside the repository says nothing of a merge: the worker ticks it there before
+   * its pull request is even open.
    */
   leaseEnded(cardId: string, path: string): 'stale' | 'deleted' | 'ticked' | 'merged' | 'gone' | null {
     const row = this.store.card(cardId);
@@ -1443,6 +1445,7 @@ export class Board {
     const hash = row.plan_ref?.indexOf('#') ?? -1;
     if (hash < 0 || row.state === 'working' || row.state === 'waiting' || row.state === 'approved') return null;
     if (row.state === 'inPr' && !row.pr) return null;
+    if (row.state === 'inPr' && OUTSIDE_PATH.test(pathOfRef(row.plan_ref!))) return null;
     // the docs are read the way the canvas reads them, which plans again a workstream only a part of which landed
     this.items();
     const doc = this.docs?.find((d) => d.file === row.plan_ref!.slice(0, hash));
@@ -2471,6 +2474,8 @@ export function pathOfRef(ref: string): string {
 }
 
 const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
+/** A plan reference's path in a plan folder outside the repository: absolute, `/…` or `C:/…`. */
+const OUTSIDE_PATH = /^(\/|[A-Za-z]:\/)/;
 
 /** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
 type Prototypes = {
