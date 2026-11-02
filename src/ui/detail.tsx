@@ -342,12 +342,12 @@ export function Detail(p: Props) {
   // a workstream card an agent worked on leaves its project with its log, while no agent is at work on it
   const detachable = !!parent?.plan && !parent.archivedAt && worked && !item.finishing && !['working', 'waiting', 'inPr', 'approved'].includes(item.state);
   const detach = () => {
-    let ref = '';
+    let was = { ref: '', x: item.x, y: item.y };
     return run(
       async () => {
-        ref = (await api.detach(item.id)).ref;
+        was = await api.detach(item.id);
       },
-      { close: true, ack: t.plan.detached, undo: () => api.attach(item.id, ref) },
+      { close: true, ack: t.plan.detached, undo: () => api.attach(item.id, was) },
     );
   };
   // a workstream names its plan doc at the top in every state, an agent's work its branch beside it

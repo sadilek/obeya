@@ -32,8 +32,13 @@ export interface Workstream {
 const GOAL_HEADING = /^(goals?|ziele?)\b/i;
 const WORKSTREAMS_HEADING = /^(workstreams?|arbeitspakete)\b/i;
 const ITEM = /^- \[([ xX])\]\s+(.*)$/;
-// `W3`, `W3a`, `W1.2`, `WP`, and the short codes other docs use (`A1`, `WS3`, `1G`, `12B`) before a space or colon
-const LABEL = /^((?:W\d+[a-z]?(?:\.\d+)?|W[A-Z]{1,3})\b|(?:[A-Z]{1,3}\d+[a-z]?(?:\.\d+)?|\d+[A-Z])(?=$|[\s:—–(]|\.(?:\s|$)))\s*(?:\(([^)]*)\))?\s*[:.—–-]?\s*(.*)$/;
+// `W3`, `W3a`, `W1.2`, `WP`, and the short codes other docs use (`S1:`, `A1 —`, `1G.`)
+const CODE = String.raw`(?:[A-Z]{1,3}\d+[a-z]?(?:\.\d+)?|\d+[A-Z])`;
+const AFTER_LABEL = String.raw`\s*(?:\(([^)]*)\))?\s*[:.—–-]?\s*(.*)$`;
+const LABEL = new RegExp(String.raw`^((?:W\d+[a-z]?(?:\.\d+)?|W[A-Z]{1,3})\b|${CODE}(?=$|\s*[:—–(]|\.(?:\s|$)))${AFTER_LABEL}`);
+// a code before a space alone (`4A Title`) is a label where the doc's items use codes, not in a title of its own (`K8s Cluster`)
+const SPACED_LABEL = new RegExp(String.raw`^(${CODE})(?=\s)${AFTER_LABEL}`);
+const SPACED_CODE = new RegExp(String.raw`^\*\*${CODE}\s`);
 
 /** Why a doc in the plan directory is not a project: no `## Workstreams` section, or one without a checklist. */
 export type NotAProject = 'noWorkstreams' | 'noChecklist';
@@ -100,8 +105,8 @@ function parseWorkstreams(lines: string[]): Workstream[] {
     else if (line.trim()) cur = null;
   }
 
-  const seen = new Set<string>();
-  return raw.map((r, i) => {
+  const spaced = raw.filter((r) => SPACED_CODE.test(r.lines[0]!)).length >= 2;
+  const items = raw.map((r) => {
     // the first paragraph is the item's own text; indented sub-items follow on their own lines
     const firstSub = r.lines.findIndex((l, j) => j > 0 && /^\s+([-*+]|\d+\.)\s/.test(l));
     const own = (firstSub < 0 ? r.lines : r.lines.slice(0, firstSub)).map((l) => l.trim()).join(' ');
@@ -112,8 +117,14 @@ function parseWorkstreams(lines: string[]): Workstream[] {
       if (!subs.length || /^\s*([-*+]|\d+\.)\s/.test(line)) subs.push(line);
       else subs[subs.length - 1] += ' ' + line.trim();
     }
-    const { label, note, title, rest } = splitItem(own);
-    const base = label ?? (titleKey(title) || `#${i + 1}`);
+    const { label, note, title, rest } = splitItem(own, spaced);
+    return { r, label, note, title, rest, subs };
+  });
+  // a label the doc gives twice tells its items apart by their titles, not by their order
+  const twice = new Set(items.flatMap((x, i) => (x.label && items.findIndex((y) => y.label === x.label) !== i ? [x.label] : [])));
+  const seen = new Set<string>();
+  return items.map(({ r, label, note, title, rest, subs }, i) => {
+    const base = label ? (twice.has(label) ? `${label}~${titleKey(title)}` : label) : titleKey(title) || `#${i + 1}`;
     let key = base;
     for (let n = 2; seen.has(key); n++) key = `${base}~${n}`;
     seen.add(key);
@@ -128,7 +139,7 @@ function parseWorkstreams(lines: string[]): Workstream[] {
   });
 }
 
-function splitItem(text: string): { label?: string; note?: string; title: string; rest: string } {
+function splitItem(text: string, spaced: boolean): { label?: string; note?: string; title: string; rest: string } {
   let bold: string | null = null;
   let after = text;
   if (text.startsWith('**')) {
@@ -139,7 +150,7 @@ function splitItem(text: string): { label?: string; note?: string; title: string
     }
   }
   if (bold !== null) {
-    const m = LABEL.exec(bold);
+    const m = LABEL.exec(bold) ?? (spaced ? SPACED_LABEL.exec(bold) : null);
     const label = m?.[1];
     const inBold = trimPunct(m ? m[3]! : bold);
     // a pull request's number alone is no title: the text after it goes with it
@@ -189,13 +200,16 @@ function isAbbreviation(before: string): boolean {
 const isReference = (text: string): boolean =>
   /^\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?$/i.test(text.trim());
 
+/** The title without the pull request's number a worker may put before it (`#12. Title` → `Title`). */
+export const withoutReference = (title: string): string =>
+  title.replace(/^\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?[\s.:;,—–-]*/i, '');
+
 /**
  * An unlabelled workstream's key: its title in lower-case words joined by `-`, without a pull
  * request's number a worker may put before it when ticking it off.
  */
 export function titleKey(title: string): string {
-  return title
-    .replace(/^\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?[\s.:;,—–-]*/i, '')
+  return withoutReference(title)
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()

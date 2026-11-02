@@ -664,7 +664,7 @@ export function serve(
       '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },
       // a workstream card out of its project, and back
       '/api/c/:canvas/cards/:id/detach': { POST: on((c, req) => c.board.detach(req.params.id!)) },
-      '/api/c/:canvas/cards/:id/attach': { POST: on(async (c, req) => c.board.attach(req.params.id!, (((await req.json()) ?? {}) as { ref?: unknown }).ref)) },
+      '/api/c/:canvas/cards/:id/attach': { POST: on(async (c, req) => { const b = ((await req.json()) ?? {}) as { ref?: unknown; x?: unknown; y?: unknown }; c.board.attach(req.params.id!, b.ref, b); }) },
       // the archive, newest first; posting archives every finished card of the owner's
       '/api/c/:canvas/archive': { GET: on((c) => c.board.archived()), POST: on((c) => ({ ids: c.board.archiveDone() })) },
       '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.press(req.params.id!, (await req.json()) as CardAction)) },

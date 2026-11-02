@@ -85,9 +85,9 @@ thing to read meanwhile, may be on a card's branch.
 
 A doc in the repository's plan directory (`planDocs`) is a project when its `## Workstreams` section
 has a checklist; each top-level item is a workstream (`**W3:** Title. Details`). A short code at the
-start of the bold text is its label: `W3`, `WP`, and the codes other docs use (`S1:`, `A1 —`, `4A
-Title`), a code followed by a space, colon, dash or full stop (`2FA einführen` and `3D-Ansicht` are
-titles). A pull request's
+start of the bold text is its label: `W3`, `WP`, and the codes other docs use, before a colon, dash
+or full stop (`S1:`, `A1 —`, `1G.`). A code before a space (`4A Title`) is a label where at least two
+of the doc's items start with one; alone, it is part of a title (`K8s Cluster`, `2FA einführen`). A pull request's
 number before the text (`**W3:** #27. Title. Details`, as a worker may tick it off) stays part of the
 title instead of becoming all of it, so the tile and the sheet still say what the workstream is
 (issue #12, 2026-10-26). Checked means
@@ -103,7 +103,8 @@ A card belongs to its workstream by the workstream's label, or, for an item with
 (lower-case words; a pull request's number a worker puts before it does not count). Reordering the
 doc, adding or dropping other workstreams, or rewording a labelled one leaves every card on its own
 workstream; rewording an unlabelled title makes it another workstream, with a card of its own. Two
-items with the same label or title are told apart by their order.
+items with the same label are told apart by their titles; two with the same title too, by their
+order.
 
 A card whose workstream the doc no longer lists, while the doc is there, leaves the project once an
 agent worked on it: as a task of its own, with its log, under the workstream's label and title and
@@ -115,16 +116,19 @@ The owner can take a workstream card an agent worked on out of its project („V
 beside the plan doc's path at the top of the card, while no agent is at work on it): it stands
 beside the project with its log, as a task of its own, and the workstream gets a fresh card where
 it stood. That begins a workstream afresh, or separates a log that belongs to another workstream;
-then the card takes that workstream's title. The confirmation offers to undo it while nobody has
-worked on the fresh card.
+then the card takes that workstream's title. The fresh card takes the old one's place where both
+have the same size, else a place below the others. The confirmation offers to undo it while nobody
+has worked on the fresh card.
 
 Cards stored by an older Obeya may carry a workstream's place in the doc as its key (`#3`), which
 gave their logs and states to other workstreams once the doc dropped or added some. A doc last read
 with such keys moves its cards onto the keys above once: a card an agent worked on goes by the title its
 branch was named after (`obeya/<title>-<id>`, from the card or its log), any other by its place in
-the doc as last read. A card whose workstream the doc no longer has leaves the project as above, its
-title and text from the doc's history in git (every item a commit added), and the workstream there
-now gets a fresh card in its place.
+the doc as last read. A title the doc reworded since still finds its workstream by the label the
+doc's history gave it, and a pull request's number before it does not count. A card whose
+workstream the doc no longer has leaves the project as above, its title and text from the doc's
+history in git (every item a commit added); the project then lays out afresh in the doc's order,
+with fresh cards for the workstreams left without one.
 
 #### A plan folder outside the repository
 
