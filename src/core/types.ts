@@ -1446,6 +1446,8 @@ export type CardAction =
   | { action: 'keepMain' }
   /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging („Nur pushen“). */
   | { action: 'pushChanges' }
+  /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
+  | { action: 'editHeld'; body: string }
   /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
   | { action: 'approve'; direct?: boolean }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */

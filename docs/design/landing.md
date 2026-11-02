@@ -225,7 +225,12 @@ head (the contributor pushed, and the worker had not fetched it) cannot be hande
 of its own, the handover brings the text that goes onto the PR with them, and the card shows it in
 the PR's block under „Geht mit der Freigabe an PR #5“ with the number of commits; the owner's words
 to the worker change it, and it hands over the new text, the demo standing where nothing else
-changed. Findings decided for the contributor in the same Send as „Selbst ändern“, or while the
+changed. The owner may also rewrite the text themselves („Bearbeiten“ on it): the text becomes a
+field in its place, and „Speichern“, or the approval with the field still open, makes their wording
+the text that goes out; what they typed survives closing the card and a reload until then. The
+worker hears the owner's text with its next message or tool step (only the latest edit), so that a
+later handover starts from it; a handover with a new text the worker gave before it heard of the
+edit is refused with the owner's text, and one without a new text keeps theirs. Findings decided for the contributor in the same Send as „Selbst ändern“, or while the
 worker's own changes are under way or held, go in the same text as one message, and read „Geht mit
 deinen Änderungen an amerlander“ until the approval; the owner's choice for them is not asked again.
 Follow-up tasks are made at once, as always: they are the owner's, not the contributor's.

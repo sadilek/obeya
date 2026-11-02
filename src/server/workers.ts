@@ -260,6 +260,10 @@ const TASK_BY: Record<Exclude<TaskAuthor, 'owner'>, string> = {
 export const proposalTask = (unseen: string) =>
   `task: the card's text, written for the agent who will take it on, which has seen neither ${unseen}: what is wrong or wanted, where (files, names), what done looks like. Write it as the owner would write a card: no "I", no "my question", no "your card"; name other cards by their title.`;
 
+/** How the worker hears that the owner rewrote the text that goes onto the PR with its own changes. */
+const HELD_EDITED = 'While your handover waits, the owner edited the text that goes onto the pull request with the approval.';
+const heldEdited = (body: string) => `${HELD_EDITED} It reads now:\n\n${body}\n\nThat is the text that goes out with your commits. Should you hand over again with pr_draft, start from it and keep the owner's wording where nothing calls for a change.`;
+
 /** How the worker hears that its approved work could not land for something that is not its own to fix. */
 const NOT_LANDED = 'Since you handed over, the owner approved your work, but Obeya could not land it on main:';
 
@@ -1575,6 +1579,26 @@ export class Workers {
   }
 
   /**
+   * The owner's own wording of the text that goes onto the PR with the worker's held changes: it is
+   * the held text from now on, posted with the approval and kept by a handover without pr_draft. The
+   * worker hears it with its next message or step, an earlier edit's news replaced, so that a
+   * pr_draft it gives later starts from the owner's words.
+   */
+  editHeld(cardId: string, body: unknown) {
+    const card = this.card(cardId);
+    const c = contributionOf(this.o.board.row(cardId));
+    if (!c?.held || !handedOver(card) || this.approving.has(cardId)) throw new BadRequest('notReady', 'no text waits for the approval on this card');
+    const text = typeof body === 'string' ? clip(body.trim(), 20000) : '';
+    if (!text) throw new BadRequest('emptyText', 'the text for the pull request is empty');
+    if (text === c.held.body) return;
+    this.o.board.work(cardId, {
+      contribution: JSON.stringify({ ...c, held: { ...c.held, body: text } } satisfies StoredContribution),
+      unheard: JSON.stringify([...this.unheardBut(cardId, HELD_EDITED), { said: [], text: heldEdited(text), images: [] }] satisfies Unheard[]),
+    });
+    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.heldEdited(c.number));
+  }
+
+  /**
    * The approval of a review card met a pull request at another head than the one handed over (the
    * contributor pushed since): Obeya pushes, posts and merges nothing, and the worker reviews the PR
    * as it is now, its own commits not pushed yet put on top. Returns the refusal to throw.
@@ -1669,6 +1693,8 @@ export class Workers {
     });
     const sent = asks && !failed;
     this.o.board.work(cardId, {
+      // the owner's edit went out as they wrote it: nothing of it is news to the worker any more
+      ...(failed ? {} : { unheard: JSON.stringify(this.unheardBut(cardId, HELD_EDITED)) }),
       contribution: JSON.stringify({
         ...rest,
         ...(findings ? { findings } : {}),
@@ -1815,6 +1841,12 @@ export class Workers {
     }
     if (!c.canModify)
       return `Not handed over: your branch holds ${mine.commits === 1 ? 'a commit' : `${mine.commits} commits`} beyond the pull request's head ${mine.base.slice(0, 7)}, and ${c.author} does not allow maintainers' edits, so nothing can go onto the PR's branch. Put your branch back on the PR's head (git reset --hard ${mine.base.slice(0, 7)}), then hand over again.`;
+    // a draft written before the worker heard of the owner's edit would put back what they rewrote
+    const edited = draft?.trim() && this.unheard(cardId).find((u) => u.text.startsWith(HELD_EDITED));
+    if (edited) {
+      this.o.board.work(cardId, { unheard: JSON.stringify(this.unheardBut(cardId, HELD_EDITED)) });
+      return `Not handed over: ${edited.text.replace(HELD_EDITED, 'the owner edited the text that goes onto the pull request with the approval.')}\n\nThen call ready_for_review again.`;
+    }
     const body = clip((draft ?? '').trim() || c.held?.body || '', 20000);
     if (!body)
       return `Not handed over: your branch holds ${mine.commits === 1 ? 'a commit' : `${mine.commits} commits`} of your own that ${mine.commits === 1 ? 'is' : 'are'} not on the pull request yet. Give pr_draft: the text Obeya posts on the PR once the owner approves, after pushing them (what you changed and why${asks.length ? `, and the request for ${asks.map((f) => `#${f.id}`).join(', ')} to ${c.author}` : ''}). Then call ready_for_review again.`;
@@ -4292,7 +4324,7 @@ export class Workers {
                   .string()
                   .optional()
                   .describe(
-                    "when your branch holds commits of your own that are not on the PR yet: the text Obeya posts on the PR once the owner approves, after pushing them onto its branch. What you changed and why, in the PR's language, as the owner's words to the contributor, without mentioning Obeya or agents; with findings the owner sends the contributor along with your changes, the request for them in the same text. The card shows it to the owner first. Without it, the text of your last handover stands.",
+                    "when your branch holds commits of your own that are not on the PR yet: the text Obeya posts on the PR once the owner approves, after pushing them onto its branch. What you changed and why, in the PR's language, as the owner's words to the contributor, without mentioning Obeya or agents; with findings the owner sends the contributor along with your changes, the request for them in the same text. The card shows it to the owner first, who may edit it there. Without it, the text on the card stands.",
                   ),
               }
             : {}),

@@ -1647,6 +1647,8 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.keepMainFor(cardId);
       case 'pushChanges':
         return this.repoOf(cardId).workers.pushContribution(cardId);
+      case 'editHeld':
+        return this.repoOf(cardId).workers.editHeld(cardId, a.body);
       case 'accept':
         return this.accept(cardId, a.picks, a.start !== false, a.idea);
       case 'unaccept':
