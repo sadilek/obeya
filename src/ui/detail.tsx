@@ -432,7 +432,7 @@ export function Detail(p: Props) {
     <>
       {kind && <div className="p-kind">{kind}</div>}
       {editable ? <ManualTitle item={item} onEdit={p.onEdit} /> : <div className="p-title">{shownTitle(item)}</div>}
-      <div className={['p-state', finishingUp(item) && 'finishing', (item.paused || item.snoozed) && 'paused'].filter(Boolean).join(' ')}>
+      <div className={['p-state', finishingUp(item) && 'finishing', (item.paused || item.restartPaused || item.snoozed) && 'paused'].filter(Boolean).join(' ')}>
         ● {stateLabel(item)}
         {item.snoozed ? (
           <span className="p-status"> · {snoozeWho(item.snoozed)}</span>
@@ -612,7 +612,7 @@ export function Detail(p: Props) {
                 )}
                 {(item.state === 'inPr' || item.state === 'waiting') && item.morePrs?.map((pr) => <PrBox key={pr.url} pr={pr} />)}
                 {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
-                {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
+                {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.restartPaused ? (item.state === 'done' ? t.restartPause.doneLong : t.restartPause.liveLong) : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
                 {brief}
               </>
             )

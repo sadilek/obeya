@@ -3105,9 +3105,21 @@ export class Workers {
     return [...new Set([...[...this.live].filter(([, l]) => l.busy).map(([id]) => id), ...this.preparing.keys()])];
   }
 
-  /** The cards whose worker is in a turn, each with its background work that runs and whether the turn waits only for that work. */
+  /**
+   * The cards whose worker is in a turn, each with its background work that runs and whether the turn
+   * waits only for that work, and those whose worker paused for the restart that is due, in a turn or not.
+   */
   private turnsShown(): Map<string, WorkerTurn> {
-    return new Map([...this.live].filter(([, l]) => l.busy).map(([id, l]) => [id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: !!l.waiting }]));
+    return new Map(
+      [...this.live]
+        .filter(([, l]) => l.busy || this.pausedForDue(l))
+        .map(([id, l]) => [id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: !!l.waiting, ...(this.pausedForDue(l) ? { restart: true as const } : {}) }]),
+    );
+  }
+
+  /** Whether the worker ended its turn for the restart that is due and waits for it. */
+  private pausedForDue(l: Live): boolean {
+    return !!this.restart && !!l.restartPaused;
   }
 
   /** How many of these workers are in a turn on a machine (null: the one Obeya runs on). */
@@ -3137,6 +3149,10 @@ export class Workers {
   restartDue(due: DueRestart | null) {
     this.restart = due;
     if (!due) {
+      // a card whose worker paused for it showed so while it was due
+      const paused = [...this.live.values()].filter((l) => l.restartPaused);
+      for (const live of paused) live.restartPaused = false;
+      if (paused.length) this.o.board.changed();
       // a worker that paused for it goes on with the owner's words that waited meanwhile
       for (const cardId of this.live.keys()) if (!this.takesLater(cardId) && this.unheard(cardId).length) this.deliver(cardId, '');
       return;
@@ -3412,6 +3428,7 @@ export class Workers {
   private restartStillDue(cardId: string, live: Live): string | undefined {
     if (!this.restart || !live.restartPaused) return;
     live.restartPaused = false;
+    this.o.board.changed();
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.restartStillDue(pauseOf(this.restart)));
     return stillDue(this.restart);
   }
@@ -3565,7 +3582,10 @@ export class Workers {
     live.held = undefined;
     live.acted = false;
     // a turn that took in the restart pauses for it, whatever else keeps the worker busy
-    if (this.restart && live.toldRestart && !more) live.restartPaused = true;
+    if (this.restart && live.toldRestart && !more) {
+      live.restartPaused = true;
+      this.o.board.changed();
+    }
     const card = this.o.board.item(cardId);
     if (!card) return;
     if (closing !== undefined) this.o.board.log(cardId, 'closing', 'worker', closing);

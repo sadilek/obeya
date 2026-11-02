@@ -151,7 +151,7 @@ export const cardClass = (item: Item, underway?: string) =>
     underway && 'underway',
     answering(item) && 'answering',
     finishingUp(item) && 'finishing',
-    item.paused && 'paused',
+    (item.paused || item.restartPaused) && 'paused',
     item.snoozed && 'snoozed',
     item.queue && 'queued',
   ]

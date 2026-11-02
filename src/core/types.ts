@@ -60,6 +60,8 @@ export interface BackgroundTask {
 export interface WorkerTurn {
   tasks: BackgroundTask[];
   over: boolean;
+  /** The worker ended its turn for the restart that is due and goes on once Obeya runs again; at most its background work runs meanwhile. */
+  restart?: true;
 }
 
 /** The card's agent is snoozed (by itself or the owner, „Später …“): it stops until its time, and neither pauses nor resumes meanwhile. */
@@ -432,6 +434,8 @@ export interface Item {
    * itself has ended and only its background work runs (the app served after the handover).
    */
   inTurn?: true;
+  /** Its worker ended its turn for the restart that is due (another card's code landed, say) and goes on once Obeya runs again: no agent works on it meanwhile. */
+  restartPaused?: true;
   /** The worker's background work that runs (a test run, a render, a watcher), the oldest first: while `inTurn`, or after the turn on a card that waits for the owner. */
   background?: BackgroundTask[];
   /**

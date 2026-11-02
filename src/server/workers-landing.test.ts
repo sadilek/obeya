@@ -67,6 +67,31 @@ describe('landing through a pull request', () => {
     expect(board.item(c.id)).toBeUndefined();
   });
 
+  test('work approved without a change while a restart is due shows its agent waiting for the restart, not at work, until the restart resumes it', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const s = runtime.last;
+    await s.call('ready_for_review', { summary: 'Repo angelegt, nichts in der Ablage geändert.', demo: artifact() });
+    s.emit({ type: 'idle' });
+    workers.restartDue({ reason: 'code', deadline: Date.now() + 15 * 60_000 });
+    await workers.approve(c.id);
+    expect(state(c.id)).toBe('done');
+    expect(s.inbox.at(-1)).toContain('leave the work it asks for until Obeya resumes you');
+    // while it takes in the approval, it is at work
+    expect(board.item(c.id)).toMatchObject({ finishing: true, inTurn: true });
+    expect(board.item(c.id)!.restartPaused).toBeUndefined();
+    s.emit({ type: 'text', text: 'Danke, es bleibt nichts zu tun.' });
+    s.emit({ type: 'idle' });
+    // it paused for the restart: its session stays for it, but nobody is at work on the card
+    expect(s.closed).toBe(false);
+    expect(board.item(c.id)).toMatchObject({ finishing: true, restartPaused: true });
+    expect(board.item(c.id)!.inTurn).toBeUndefined();
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
+    // a restart called off leaves nothing to wait for
+    workers.restartDue(null);
+    expect(board.item(c.id)!.restartPaused).toBeUndefined();
+  });
+
   test('a worker whose approved work turns out to change nothing closes the card itself instead of opening a pull request', async () => {
     const c = manual();
     await workers.start(c.id);

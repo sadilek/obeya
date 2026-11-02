@@ -1658,6 +1658,8 @@ export class Board {
       const turn = inTurn.get(i.id);
       if (!turn) return i;
       const background = turn.tasks.length ? { background: turn.tasks } : {};
+      // a worker that paused for the due restart is at work no more: at most its background work runs until then
+      if (turn.restart) return needsYou(i) ? { ...i, ...background } : { ...i, restartPaused: true, ...background };
       // a turn that ended while its background work runs (the app served, say) holds the worker's slot,
       // but a card that waits for the owner then has nobody at work on it: only that work runs
       return turn.over && needsYou(i) ? { ...i, ...background } : { ...i, inTurn: true, ...background };

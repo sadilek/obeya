@@ -363,6 +363,8 @@ usage limit stopped waits for the reset (see Turns that end without a handover).
 A finishing card looks awake: live stock and „Live“, not faded, its state line in working ink with
 the moving line („Live · Agent arbeitet“, „Erledigt · Agent arbeitet“, „Live · Agent antwortet“ for
 a follow-up), its status line shown, and a workstream keeps task size instead of becoming a chip.
+While its worker has paused for a due restart, the line says so („Erledigt · Agent wartet auf
+Neustart“) in muted ink (see Waiting for the workers).
 
 #### Questions after the work
 

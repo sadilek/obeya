@@ -274,6 +274,17 @@ const de = {
     waiting: (need: string) => `${need} · Agent pausiert`,
     compose: 'Hinweis an den Agenten – er macht damit weiter',
   },
+  /** The card's state while its agent paused for the restart that is due (another card's code landed, say). */
+  restartPause: {
+    working: 'Agent wartet auf Neustart',
+    inPr: 'Im PR · Agent wartet auf Neustart',
+    live: 'Live · Agent wartet auf Neustart',
+    done: 'Erledigt · Agent wartet auf Neustart',
+    waiting: (need: string) => `${need} · Agent wartet auf Neustart`,
+    /** On a card whose work landed (`live`) or closed without a change (`done`), for its agent that finishes after the restart. */
+    liveLong: 'Auf main. Obeya startet gleich neu, und der Agent hat dafür angehalten; danach erledigt er, was noch ansteht, und seine Sitzung endet.',
+    doneLong: 'Ohne Änderung am Code gibt es nichts zu landen. Obeya startet gleich neu, und der Agent hat dafür angehalten; danach erledigt er, was noch ansteht, und seine Sitzung endet.',
+  },
   snooze: {
     button: 'Später …',
     hint: 'Zurückstellen bis zu einem Zeitpunkt: Eine Karte in Arbeit hält bis dahin an, eine, die auf dich wartet, verlässt „brauchen dich“ bis dahin, eine eingeplante startet erst dann. Dann ist sie von selbst wieder da.',
@@ -2301,6 +2312,15 @@ const en: Strings = {
     waiting: (need: string) => `${need} · agent paused`,
     compose: 'A note to the agent – it goes on with it',
   },
+  restartPause: {
+    working: 'Agent waits for restart',
+    inPr: 'In PR · agent waits for restart',
+    live: 'Live · agent waits for restart',
+    done: 'Done · agent waits for restart',
+    waiting: (need: string) => `${need} · agent waits for restart`,
+    liveLong: 'On main. Obeya is about to restart, and the agent paused for it; afterwards it does what is left, and its session ends.',
+    doneLong: 'Nothing changed in the code, so there is nothing to land. Obeya is about to restart, and the agent paused for it; afterwards it does what is left, and its session ends.',
+  },
   snooze: {
     button: 'Later …',
     hint: 'Snooze until a point in time: a card at work stops until then, one waiting for you leaves “need you” until then, a planned one starts only then. Then it comes back by itself.',
@@ -4053,7 +4073,7 @@ const longDay = (d: Date, today: Date) =>
 /** A number, with `digits` decimals at most. */
 const number = (n: number, digits = 0) => n.toLocaleString(locale, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 
-export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: unknown; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
+export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; state: CardState; need?: Need; pr?: unknown; contribution?: unknown; queue?: Queue; idea?: Idea; question?: unknown; answering?: true; answered?: true; finishing?: boolean; followUp?: boolean; paused?: true; restartPaused?: true; pausing?: true; snoozed?: Snooze; prototypeEnd?: 'discarded' | 'built'; retro?: string; proposal?: { setup?: true }; branch?: string }) =>
   i.snoozed
     ? i.snoozed.on
       ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))
@@ -4076,6 +4096,12 @@ export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; 
       : i.finishing
       ? i.state === 'done' ? t.pause.done : t.pause.live
       : i.state === 'inPr' ? t.pause.inPr : t.pause.working
+    : i.restartPaused
+    ? i.state === 'waiting' && i.need
+      ? t.restartPause.waiting(t.need[i.need])
+      : i.state === 'live' || i.state === 'done'
+      ? t.restartPause[i.state]
+      : i.state === 'inPr' ? t.restartPause.inPr : t.restartPause.working
     : i.finishing && (i.state === 'live' || i.state === 'done')
     ? i.followUp
       ? i.state === 'done' ? t.followingUpDone : t.followingUp

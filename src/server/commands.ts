@@ -1303,6 +1303,8 @@ export class Commander {
         ? '; its agent is paused by the owner: nothing of it runs until resume or what the owner says to it, which it goes on with'
         : i.pausing
         ? '; the owner asked its agent to pause at a safe point: it ends its turn once the step it is in is done, and is paused then; resume or what the owner says to it lets it work on instead'
+        : i.restartPaused
+        ? "; its agent paused for Obeya's restart that is due and goes on once Obeya runs again"
         : i.inTurn && i.state !== 'working'
           ? '; its agent is working on something right now'
           : i.background?.length

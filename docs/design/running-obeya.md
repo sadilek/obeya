@@ -401,6 +401,10 @@ finished background work) hears that it keeps Obeya waiting: the worker takes th
 the work until it is resumed and ends the turn at once. A resumed worker hears that what ran was
 stopped (exit code 137). A worker waiting for its landed work's restart is not in a turn.
 
+While the restart is due, a card whose worker paused for it says so in place of „Agent arbeitet“
+(„Agent wartet auf Neustart“, „Erledigt · Agent wartet auf Neustart“), in muted ink without the
+moving line, and offers no pause; a turn that starts before the restart shows it at work again.
+
 #### Waiting for the owner
 
 The restart also waits, past the 15 minutes, while the owner watches a demo video or dictates (from
@@ -561,6 +565,11 @@ workers are busy.
 - **A turn that starts while a restart is due ends at once** (2026-10-14). Rejected: letting it finish
   its step: a worker sent back for a conflict landed its work before pausing, and one woken by its
   render went on rendering, holding the restart all along.
+- **A worker paused for a due restart shows as waiting for it, not at work** (2026-11-02): a card
+  approved while a restart waited for other workers read „Erledigt · Agent arbeitet“ for minutes
+  while its agent had long said there was nothing left. Rejected: ending a finished card's session
+  at its paused turn (the worker may have left real work for after the restart, which the message
+  told it to).
 - **A restart waits for the owner only where it would destroy what they do** (2026-10-02): a playing
   video, a dictation until its words are in, a command in its undo window. Everything else is kept
   across the reload, so a page merely open does not hold new code back. The server, not the page,

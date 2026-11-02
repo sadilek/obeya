@@ -126,6 +126,9 @@ describe('workers', () => {
     expect(busy.inbox.length).toBe(told);
     expect(state(c.id)).toBe('working');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
+    // the card shows its agent waiting for the restart, not at work
+    expect(board.item(c.id)!.restartPaused).toBe(true);
+    expect(pausable(board.item(c.id)!)).toBe(false);
   });
 
   test('a worker that paused for the restart with its render still running hears, when the render wakes it, that Obeya still waits', async () => {
