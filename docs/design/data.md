@@ -9,7 +9,7 @@ Persistent (SQLite):
 
 - canvases, their per-canvas settings (home repository, whether the owner paused its agents, the card collecting each repository's
   CLAUDE.md rules, the Rückschau's and Arbeitsrückschau's counts and when they last ran), groups
-  and each card's group;
+  and each card's group; owner-drawn dependencies between cards;
 - cards with everything shown on them or needed to resume them: kind, state, position, parent, the
   card they came from; the agent session, workspace, branch and status line; the open question or
   handover (with the reason when there is no demo); queue, scope, snooze (until when, by whom,

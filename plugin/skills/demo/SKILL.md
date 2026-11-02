@@ -159,7 +159,12 @@ is presented without "I" or "we".
   are fine. Avoid abbreviations the voice would spell out.
 - A foreign term that is not in the narration language's lexicon (`lib/lexicon.de.json`) gets
   its spoken form in a mark, `{Canvas|Kännwes}`: the captions show "Canvas", Piper and
-  `say` (which read every word by the narration language's rules) speak "Kännwes".
+  `say` (which read every word by the narration language's rules) speak "Kännwes". Qwen3 gets
+  no marks; a word it cannot read goes into its own lexicon (`lib/lexicon.qwen3.<language>.json`).
+  The render names the words Qwen3 was heard saying differently (section 6). Add a respelling for
+  one only where the voice plausibly said it wrong, not where the speech recognition mishears a
+  name, a file name or an English term in German narration, and only once `--narration` heard the
+  respelling come back right.
 - Audio tags in square brackets (`[short pause]`, `[long pause]`) go to ElevenLabs v4 (its default
   model) and v3, which read them. Every other voice speaks the text between two pause tags on its
   own and puts silence where they stand (half a second for a short one, a second and a half for a
@@ -209,7 +214,8 @@ same demo while one runs is refused with the PID of the first.
 Narration is synthesised first by `lib/tts.py`, in the voice of the demo settings: Piper (the
 default) or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
 (Gemini, OpenAI, ElevenLabs, Azure, an own endpoint) with its key from its environment variable or
-a key file. The settings live in `demo.json` in Obeya's home (`OBEYA_HOME`, else `~/.obeya`);
+a key file. Qwen3 hears each sentence back with Parakeet, the speech recognition that came with
+it, and makes one it stumbled over again. The settings live in `demo.json` in Obeya's home (`OBEYA_HOME`, else `~/.obeya`);
 Obeya's configuration dialog edits them, installs Piper and Qwen3-TTS, and plays a sample. A voice that
 is not installed stops the render with how to install it: from the configuration dialog, or
 `node ${CLAUDE_SKILL_DIR}/lib/voices.ts install`; so does anything else the render needs
@@ -231,6 +237,11 @@ the locator it waited for.
 - The render ends with a review table: per scene its chapter time and title. A scene flagged
   with seconds "without narration" shows a stretch where nothing is said: if it only waits, wrap
   the wait in `d.skip`; otherwise let the narration say what happens there.
+- With Qwen3, a sentence under a scene that "stumbled in every take" was kept as the best of five:
+  reword it or respell the word it stumbles over, then render the narration again. Below the
+  table, "heard differently" lists each word heard as another, with its scenes: a lexicon
+  candidate (section 4), mostly the recognition's own noise on names. `.work/tts.json` holds each
+  sentence as heard. "narration not heard back" says why the recognition did not run.
 - `review/NN-mid.jpg` and `review/NN.jpg`: a still from the middle and from the end of each
   scene. Look at all of them: is the thing being talked about on screen, ringed, legible, and
   does nothing show that the narration leaves out? Pull

@@ -1319,6 +1319,24 @@ describe('merging and deleting planned tasks by voice', () => {
     expect(canvas.board.events(a.id).at(-1)!.text).toContain('„Sign in again“');
   });
 
+  test("follow-up tasks waiting in the queue merge into one that waits for what they waited for, in the place of the first queued", async () => {
+    const review = canvas.board.create({ title: 'PR #5', x: 0, y: 900, repo: 'web' });
+    const ahead = canvas.board.create({ title: 'Ahead', x: 0, y: 1400, repo: 'web' });
+    const a = canvas.board.create({ title: 'A', x: 0, y: 0, repo: 'web' });
+    const b = canvas.board.create({ title: 'B', x: 400, y: 0, repo: 'web' });
+    const behindB = canvas.board.create({ title: 'Behind B', x: 800, y: 0, repo: 'web' });
+    const wait = (behind: string[], since: string, buildsOn?: string[]) => JSON.stringify({ behind, reason: 'Folgeaufgabe.', ...(buildsOn && { buildsOn }), since });
+    canvas.board.work(ahead.id, { state: 'working' });
+    canvas.board.work(a.id, { queue: wait([review.id], '2026-11-02T10:00:01.000Z', [review.id]) });
+    canvas.board.work(b.id, { queue: wait([review.id, ahead.id], '2026-11-02T10:00:00.000Z', [review.id]) });
+    canvas.board.work(behindB.id, { queue: wait([b.id], '2026-11-02T10:00:02.000Z') });
+    await canvas.run({ do: 'merge', card: a.id, others: [b.id], title: 'A and B' });
+    expect(item(a.id).queue).toEqual({ behind: [review.id, ahead.id], reason: 'Folgeaufgabe.', buildsOn: [review.id], since: '2026-11-02T10:00:00.000Z' });
+    expect(item(behindB.id).queue).toMatchObject({ behind: [a.id] });
+    await canvas.run({ do: 'delete', card: a.id });
+    expect(canvas.board.item(a.id)).toBeUndefined();
+  });
+
   test('both only on planned tasks nobody has worked on, a merge only within one repository', async () => {
     const a = canvas.board.create({ title: 'A', x: 0, y: 0, repo: 'web' });
     const b = canvas.board.create({ title: 'B', x: 400, y: 0, repo: 'web' });
@@ -1618,4 +1636,29 @@ describe("the skills of a card's agent", () => {
       c.shutdown();
     }
   });
+});
+
+test('a manual dependency holds a requested card until removed', async () => {
+  const a = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
+  const b = canvas.board.create({ title: 'Dependent', x: 400, y: 0 });
+  canvas.board.connect(a.id, b.id);
+  canvas.act(b.id, { action: 'start' });
+  await until(() => !!item(b.id).queue && 'behind' in item(b.id).queue!);
+  expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
+  expect(item(b.id).state).toBe('planned');
+  canvas.board.connect(a.id, b.id, true);
+  await until(() => item(b.id).state === 'working');
+  await settle();
+});
+
+test('removing a manual dependency leaves an independently inferred wait intact', async () => {
+  const a = canvas.board.create({ title: 'Prerequisite', x: 0, y: 0 });
+  const b = canvas.board.create({ title: 'Dependent', x: 400, y: 0 });
+  canvas.board.work(b.id, { queue: JSON.stringify({ behind: [a.id], buildsOn: [a.id], reason: 'plan', since: new Date().toISOString() }) });
+  canvas.board.connect(a.id, b.id);
+  await settle();
+  canvas.board.connect(a.id, b.id, true);
+  await settle();
+  expect(item(b.id).queue).toMatchObject({ behind: [a.id], buildsOn: [a.id] });
+  expect(item(b.id).state).toBe('planned');
 });

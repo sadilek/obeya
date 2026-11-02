@@ -51,6 +51,23 @@ export interface Landed {
 }
 
 /**
+ * Where pulling the remote's default branch into the checkout stops on a conflict: at `commit`
+ * (with its `subject`) of the local default branch's `unpushed` commits, in `files`.
+ */
+export interface PullClash {
+  commit: string;
+  subject: string;
+  files: string[];
+  unpushed: number;
+}
+
+/** A pull that stopped on a conflict, taken back: where the local default branch stood (`main`) and the remote's commit it was to go onto (`upstream`). */
+export interface PullStopped extends PullClash {
+  main: string;
+  upstream: string;
+}
+
+/**
  * The git binary. On macOS `/usr/bin/git` is a shim that asks xcrun for the real one on every
  * call, which more than doubles what a call costs; Obeya calls git often, so it asks once.
  */
@@ -270,13 +287,76 @@ async function backOnBase(repo: string, base: string, on: string): Promise<LandP
  * local `base` has commits of its own, as Obeya brings its own work onto `main`: git would refuse
  * to pick a way there.
  */
-async function pullMode(repo: string, base: string): Promise<string[]> {
-  const set = async (key: string) => (await gitRun(repo, ['config', '--get', key])).code === 0;
-  if ((await Promise.all(['pull.rebase', 'pull.ff', `branch.${base}.rebase`].map(set))).some(Boolean)) return [];
-  await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
-  const contains = async (a: string, b: string) => (await gitRun(repo, ['merge-base', '--is-ancestor', a, b])).code === 0;
-  const [behind, ahead] = await Promise.all([contains('HEAD', 'FETCH_HEAD'), contains('FETCH_HEAD', 'HEAD')]);
-  return behind || ahead ? [] : ['--rebase'];
+async function pullMode(repo: string, base: string, upstream: string): Promise<string[]> {
+  if (await pullSet(repo, base)) return [];
+  return (await diverged(repo, `refs/heads/${base}`, upstream)) ? ['--rebase'] : [];
+}
+
+/** How the owner's git configuration pulls `base`, where it says: by a merge or by a rebase; null where it sets no way. */
+async function pullSet(repo: string, base: string): Promise<'merge' | 'rebase' | null> {
+  const get = async (key: string) => {
+    const r = await gitRun(repo, ['config', '--get', key]);
+    return r.code === 0 ? r.stdout.trim() : null;
+  };
+  const [own, rebase, ff] = await Promise.all([get(`branch.${base}.rebase`), get('pull.rebase'), get('pull.ff')]);
+  const set = own ?? rebase;
+  if (set !== null) return set === 'false' ? 'merge' : 'rebase';
+  return ff !== null ? 'merge' : null;
+}
+
+/** Whether `a` and `b` each have commits the other lacks. */
+async function diverged(repo: string, a: string, b: string): Promise<boolean> {
+  const contains = async (x: string, y: string) => (await gitRun(repo, ['merge-base', '--is-ancestor', x, y])).code === 0;
+  const [behind, ahead] = await Promise.all([contains(a, b), contains(b, a)]);
+  return !behind && !ahead;
+}
+
+/**
+ * After the local main's unpushed commits (those of `old` that `upstream` lacks) were rebased onto
+ * `upstream` as `tip`: each of them, and the commit they stood on, by the commit that took its
+ * place, so that what a card landed is found again. Paired in order, where the commits are as many
+ * and their subjects alike; none otherwise (a commit dropped or split while resolving).
+ */
+async function rewrites(repo: string, old: string, upstream: string, tip: string): Promise<Record<string, string>> {
+  const under = await gitAsync(repo, 'merge-base', old, upstream);
+  const list = async (range: string) => (await gitAsync(repo, 'log', '--reverse', '--no-merges', '--format=%H %s', range)).split('\n').filter(Boolean).map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)] as const);
+  const [before, after] = await Promise.all([list(`${under}..${old}`), list(`${upstream}..${tip}`)]);
+  if (before.length !== after.length || before.some(([, s], i) => s !== after[i]![1])) return {};
+  return Object.fromEntries([[under, upstream], ...before.map(([c], i) => [c, after[i]![0]])]);
+}
+
+/**
+ * Where a pull into the checkout's `base` would stop on a conflict: its commits that `upstream`
+ * lacks (those nobody pushed yet) replayed one by one onto the tree `onto` as a rebase does, or
+ * merged with it as a whole where the owner's git configuration pulls by a merge. All of it in
+ * git's object store (`git merge-tree`): the checkout, its index and its refs stay as they are.
+ */
+async function replayClash(repo: string, base: string, upstream: string, onto: string): Promise<PullClash | null> {
+  const local = `refs/heads/${base}`;
+  // as the rebase does, without the commits whose change is upstream already (cherry-picked there)
+  const own = (await gitAsync(repo, 'rev-list', '--reverse', '--no-merges', '--cherry-pick', '--right-only', `${upstream}...${local}`)).split('\n').filter(Boolean);
+  if (!own.length) return null;
+  const merge = async (args: string[]) => {
+    const r = await gitRun(repo, ['merge-tree', '--write-tree', '--name-only', '--no-messages', ...args]);
+    if (r.code > 1) throw new WorkspaceError(`git merge-tree in ${repo}: ${r.stderr.trim()}`);
+    const [tree, ...files] = r.stdout.trim().split('\n');
+    return { tree: tree!, files: r.code === 1 ? files.filter(Boolean) : null };
+  };
+  const clash = async (commit: string, files: string[]): Promise<PullClash> => ({ commit, subject: await gitAsync(repo, 'log', '-1', '--format=%s', commit), files, unpushed: own.length });
+  if ((await pullSet(repo, base)) === 'merge') {
+    const { files } = await merge([`--merge-base=${await gitAsync(repo, 'merge-base', local, upstream)}`, local, onto]);
+    if (!files) return null;
+    // the first of them to touch what conflicts
+    const first = (await gitAsync(repo, 'log', '--reverse', '--no-merges', '--cherry-pick', '--right-only', '--format=%H', `${upstream}...${local}`, '--', ...files)).split('\n')[0];
+    return clash(first || own[0]!, files);
+  }
+  let tree = onto;
+  for (const commit of own) {
+    const r = await merge([`--merge-base=${commit}^`, tree, commit]);
+    if (r.files) return clash(commit, r.files);
+    tree = r.tree;
+  }
+  return null;
 }
 
 /**
@@ -1139,31 +1219,166 @@ export class Workspaces implements CardWorkspaces {
   /**
    * After a pull request was merged on the forge where work lands on the local main (a review
    * card's): the checkout gets the merge from `origin` as `git pull` does, the owner's own way of
-   * pulling (rebase or merge) kept, else rebased (`pullMode`), one landing at a time. A pull that
-   * fails is undone and says why.
+   * pulling (rebase or merge) kept, else rebased (`pullMode`), one landing at a time. Where the
+   * local main's unpushed commits would stop the pull on a conflict (`replayClash`), nothing is
+   * pulled, and it says where (`stopped`); a pull that fails all the same is undone and says why.
    */
-  pullMain(): Promise<Landed | { problem: string }> {
+  pullMain(): Promise<Landed | { problem: string } | { stopped: PullStopped }> {
+    return oneAtATime(landings, this.o.repoPath, () => this.pull());
+  }
+
+  private async pull(): Promise<Landed | { problem: string } | { stopped: PullStopped }> {
+    const repo = this.o.repoPath;
+    try {
+      const base = await this.checkoutBase();
+      if ((await gitAsync(repo, 'branch', '--show-current')) !== base) return { problem: `the checkout is not on ${base}` };
+      const from = await gitAsync(repo, 'rev-parse', 'HEAD');
+      // a merge or rebase of the owner's under way is theirs: nothing is pulled into it, nor undone
+      const busy = await underway(repo);
+      if (busy) return { problem: `the checkout is in the middle of a ${busy}` };
+      await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
+      const upstream = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
+      if (await diverged(repo, `refs/heads/${base}`, upstream)) {
+        const clash = await replayClash(repo, base, upstream, `${upstream}^{tree}`);
+        if (clash) return { stopped: { ...clash, main: from, upstream } };
+      }
+      try {
+        await gitAsync(repo, '-c', 'core.editor=true', 'pull', '--quiet', '--no-edit', ...(await pullMode(repo, base, upstream)), 'origin', base);
+      } catch (e) {
+        // a rebase or merge that stopped on a conflict is taken back: the checkout stays as it was
+        await gitAsync(repo, 'rebase', '--abort').catch(() => gitAsync(repo, 'merge', '--abort')).catch(() => {});
+        return { problem: messageOf(e) };
+      }
+      return { from, to: await gitAsync(repo, 'rev-parse', 'HEAD') };
+    } catch (e) {
+      return { problem: messageOf(e) };
+    }
+  }
+
+  /**
+   * Pushes the checkout's main to `origin`, never forced: what landed on it and nobody pushed goes
+   * out. Where `origin`'s main has commits the local one lacks, they are pulled first as `pullMain`
+   * pulls them; where that would stop on a conflict, nothing is pushed and it says why. Returns
+   * where `origin`'s main stood before and stands now.
+   */
+  pushMain(): Promise<{ from: string; to: string } | { problem: string }> {
     return oneAtATime(landings, this.o.repoPath, async () => {
       const repo = this.o.repoPath;
       try {
-        const base = branchSetting(repo) || (await gitSteps(repo, detectingBranch()));
-        if ((await gitAsync(repo, 'branch', '--show-current')) !== base) return { problem: `the checkout is not on ${base}` };
-        const from = await gitAsync(repo, 'rev-parse', 'HEAD');
-        // a merge or rebase of the owner's under way is theirs: nothing is pulled into it, nor undone
-        const busy = await underway(repo);
-        if (busy) return { problem: `the checkout is in the middle of a ${busy}` };
-        try {
-          await gitAsync(repo, '-c', 'core.editor=true', 'pull', '--quiet', '--no-edit', ...(await pullMode(repo, base)), 'origin', base);
-        } catch (e) {
-          // a rebase or merge that stopped on a conflict is taken back: the checkout stays as it was
-          await gitAsync(repo, 'rebase', '--abort').catch(() => gitAsync(repo, 'merge', '--abort')).catch(() => {});
-          return { problem: messageOf(e) };
+        const base = await this.checkoutBase();
+        await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
+        const from = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
+        if ((await gitRun(repo, ['merge-base', '--is-ancestor', from, `refs/heads/${base}`])).code !== 0) {
+          const pulled = await this.pull();
+          if ('stopped' in pulled) return { problem: `origin's ${base} has commits of its own that conflict with the local ${base}'s (${pulled.stopped.commit.slice(0, 7)} “${pulled.stopped.subject}” in ${pulled.stopped.files.join(', ')})` };
+          if ('problem' in pulled) return pulled;
         }
-        return { from, to: await gitAsync(repo, 'rev-parse', 'HEAD') };
+        const to = await gitAsync(repo, 'rev-parse', `refs/heads/${base}`);
+        await gitAsync(repo, 'push', '--quiet', 'origin', `refs/heads/${base}:refs/heads/${base}`);
+        return { from, to };
       } catch (e) {
         return { problem: messageOf(e) };
       }
     });
+  }
+
+  /**
+   * Whether pulling the pull request at `head` into the checkout once it is merged would stop on a
+   * conflict with the local main's commits nobody pushed yet (`replayClash`), told before the merge
+   * without touching the checkout: the merge onto `origin`'s main and the pull's replay are made in
+   * git's object store alone. Null where nothing would stop, or where it cannot tell: the PR
+   * conflicts with `origin`'s main itself (which the forge shows), or its head is nowhere to fetch.
+   */
+  clashBeforeMerge(cardId: string, head: string): Promise<PullClash | null> {
+    return oneAtATime(landings, this.o.repoPath, async () => {
+      const repo = this.o.repoPath;
+      const base = await this.checkoutBase();
+      const known = async () => (await gitRun(repo, ['cat-file', '-e', `${head}^{commit}`])).code === 0;
+      // a clone's commits are not the checkout's: the review card's workspace holds the head it reviewed
+      const ws = this.leasedBy(cardId);
+      if (!(await known()) && ws) await gitRun(repo, ['fetch', '--quiet', '--no-write-fetch-head', ws, head]);
+      if (!(await known())) return null;
+      await gitAsync(repo, 'fetch', '--quiet', 'origin', base);
+      const upstream = await gitAsync(repo, 'rev-parse', 'FETCH_HEAD');
+      const merged = await gitRun(repo, ['merge-tree', '--write-tree', '--no-messages', upstream, head]);
+      if (merged.code !== 0) return null;
+      return replayClash(repo, base, upstream, merged.stdout.trim().split('\n')[0]!);
+    });
+  }
+
+  /**
+   * After `pullMain` stopped (`at`), a card's worker rebased the local main's unpushed commits
+   * onto `origin`'s main in its workspace `ws` and resolved the conflict there: the checkout's main goes
+   * to the workspace's `HEAD`, with whatever landed on it since `at.main` put on top. Those commits
+   * were never pushed, so this rewrites no published history. What is wrong with the workspace is
+   * the worker's (`main` where the local main moved on meanwhile and those commits do not go on
+   * top by themselves); what blocks the checkout the owner's. `already` where the checkout has the
+   * merge by now (the owner pulled it). `rewritten`: each unpushed commit's new one (`rewrites`).
+   */
+  landResolution(ws: string, at: { main: string; upstream: string }): Promise<(Landed & { rewritten: Record<string, string> }) | { already: string } | (LandProblem & { main?: string })> {
+    return oneAtATime(landings, this.o.repoPath, async () => {
+      if (!ws) return { code: 'land', worker: false, detail: 'the card has no workspace' };
+      const repo = this.o.repoPath;
+      try {
+        if (await gitAsync(ws, 'status', '--porcelain')) return { code: 'landDirty', worker: true, detail: 'uncommitted changes in the workspace, or a rebase not finished there' };
+        if (!(await gitAsync(ws, 'branch', '--show-current'))) return { code: 'landConflict', worker: true, detail: 'the workspace is on no branch: finish the rebase (git rebase --continue) so that HEAD stands on a branch' };
+        const base = await this.checkoutBase();
+        const on = await gitAsync(repo, 'branch', '--show-current');
+        if (on !== base) {
+          const back = await backOnBase(repo, base, on);
+          if ('code' in back) return { ...back, worker: false };
+        }
+        const now = await gitAsync(repo, 'rev-parse', `refs/heads/${base}`);
+        const contains = async (cwd: string, a: string, b: string) => (await gitRun(cwd, ['merge-base', '--is-ancestor', a, b])).code === 0;
+        if (await contains(repo, at.upstream, now)) return { already: now };
+        if (!(await contains(repo, at.main, now))) return { code: 'land', worker: false, detail: `the local ${base} no longer holds ${at.main.slice(0, 7)}, where it stood when the pull stopped: it was changed by hand` };
+        const cloned = this.cloned(ws);
+        const own = (await gitAsync(ws, 'rev-parse', 'HEAD')) as string;
+        if (cloned) await gitAsync(ws, 'fetch', '--quiet', repo, at.upstream, now);
+        if (!(await contains(ws, at.upstream, own)))
+          return { code: 'landConflict', worker: true, detail: `your HEAD (${own.slice(0, 7)}) does not build on ${at.upstream.slice(0, 7)}, origin's ${base} with the merge: rebase the local ${base}'s commits onto it` };
+        if (now !== at.main) {
+          // what landed on the local main while the worker resolved goes on top of its work
+          try {
+            await gitAsync(ws, 'cherry-pick', '--quiet', '--allow-empty', `${at.main}..${now}`);
+          } catch (e) {
+            await gitAsync(ws, 'cherry-pick', '--abort').catch(() => {});
+            return { code: 'landConflict', worker: true, main: now, detail: `the local ${base} moved on to ${now.slice(0, 7)} meanwhile, and its new commits (${at.main.slice(0, 7)}..${now.slice(0, 7)}) conflict with your branch: put them on top of it (git cherry-pick ${at.main.slice(0, 7)}..${now.slice(0, 7)}) and resolve that too. ${messageOf(e)}` };
+          }
+        }
+        const tip = await gitAsync(ws, 'rev-parse', 'HEAD');
+        if (cloned) await gitAsync(repo, 'fetch', '--quiet', '--no-write-fetch-head', ws, tip);
+        // a commit made in the checkout by hand meanwhile would be lost with the reset: it goes on top first, at the next handover
+        if ((await gitAsync(repo, 'rev-parse', 'HEAD')) !== now || (await gitAsync(repo, 'branch', '--show-current')) !== base)
+          return { code: 'landConflict', worker: true, main: now, detail: `the local ${base} moved on once more while Obeya landed your branch, which holds what landed on it up to ${now.slice(0, 7)} now: call ready_for_review again` };
+        try {
+          // never pushed, so moving the local main there rewrites no published history; the owner's uncommitted changes are kept, or it stops
+          await gitAsync(repo, 'reset', '--quiet', '--keep', tip);
+        } catch (e) {
+          return { code: 'landMerge', worker: false, detail: messageOf(e) };
+        }
+        return { from: now, to: tip, rewritten: await rewrites(repo, now, at.upstream, tip) };
+      } catch (e) {
+        return { code: 'land', worker: false, detail: messageOf(e) };
+      }
+    });
+  }
+
+  /** The default branch of the Obeya checkout. */
+  private async checkoutBase(): Promise<string> {
+    const repo = this.o.repoPath;
+    return branchSetting(repo) || (await gitSteps(repo, detectingBranch()));
+  }
+
+  /**
+   * Which of the landings `ranges` (each the commits `base..commit` put on the default branch) holds
+   * `commit`: its index, or -1 where none does (a commit made by hand, or one rewritten since).
+   */
+  async landingOf(commit: string, ranges: { base: string; commit: string }[]): Promise<number> {
+    const repo = this.o.repoPath;
+    const contains = async (a: string, b: string) => (await gitRun(repo, ['merge-base', '--is-ancestor', a, b])).code === 0;
+    for (const [i, r] of ranges.entries()) if ((await contains(commit, r.commit)) && !(await contains(commit, r.base))) return i;
+    return -1;
   }
 
   /**

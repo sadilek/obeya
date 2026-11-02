@@ -18,27 +18,42 @@ export const TOP = 70;
 
 export const toWorld = (cam: Cam, sx: number, sy: number) => ({ x: (sx - cam.x) / cam.s, y: (sy - cam.y) / cam.s });
 
-/** Fits `b`, with a margin, into the viewport left of a sheet `side` wide and above a strip at the bottom. */
-export function camFor(b: Bounds, side = 0): Cam {
+/**
+ * What the panels docked at the window's edges take of it: the navigation pinned on the left, a
+ * sheet on the right. The canvas is the rest between them.
+ */
+export interface Sides {
+  left: number;
+  right: number;
+}
+export const NO_SIDES: Sides = { left: 0, right: 0 };
+/** Where the middle of the canvas is on the screen, between the panels at its sides. */
+export const midX = (side: Sides) => side.left + (innerWidth - side.left - side.right) / 2;
+
+/** Fits `b`, with a margin, into the viewport between the panels at its sides and above a strip at the bottom. */
+export function camFor(b: Bounds, side = NO_SIDES): Cam {
   const pad = 40;
-  const vw = innerWidth - side;
+  const vw = innerWidth - side.left - side.right;
   const vh = innerHeight - TOP - 60;
   const s = Math.min(1.6, (vw - 2 * pad) / b.w, (vh - 2 * pad) / b.h);
-  return { s, x: (vw - b.w * s) / 2 - b.x * s, y: TOP + (vh - b.h * s) / 2 - b.y * s };
+  return { s, x: side.left + (vw - b.w * s) / 2 - b.x * s, y: TOP + (vh - b.h * s) / 2 - b.y * s };
 }
 
-/** Everything if it fits at a readable size; otherwise the middle of it at that size; beside a sheet `side` wide. */
-export function overviewCam(all: Bounds, side = 0): Cam {
+/** Everything if it fits at a readable size; otherwise the middle of it at that size; between the panels at its sides. */
+export function overviewCam(all: Bounds, side = NO_SIDES): Cam {
   return centreOn(all, Math.max(MIN_ZOOM, camFor(all, side).s), side);
 }
 
-/** `b` in the middle of the canvas left of a sheet `side` wide, at scale `s`. */
-export function centreOn(b: Bounds, s: number, side = 0): Cam {
-  return { s, x: (innerWidth - side) / 2 - (b.x + b.w / 2) * s, y: TOP + (innerHeight - TOP) / 2 - (b.y + b.h / 2) * s };
+/** `b` in the middle of the canvas between the panels at its sides, at scale `s`. */
+export function centreOn(b: Bounds, s: number, side = NO_SIDES): Cam {
+  return { s, x: midX(side) - (b.x + b.w / 2) * s, y: TOP + (innerHeight - TOP) / 2 - (b.y + b.h / 2) * s };
 }
 
-/** `c` laid out for a sheet `to` wide instead of `from`: the middle of the canvas stays its middle. */
-export const besideSheet = (c: Cam, from: number, to: number): Cam => (from === to ? c : { ...c, x: c.x - (to - from) / 2 });
+/** `c` laid out for the panels `to` instead of `from`: the middle of the canvas stays its middle. */
+export const besideSheet = (c: Cam, from: Sides, to: Sides): Cam => {
+  const d = to.right - to.left - (from.right - from.left);
+  return d === 0 ? c : { ...c, x: c.x - d / 2 };
+};
 
 /** How near an edge of the view, in screen pixels, a dragged card starts it scrolling. */
 export const EDGE_ZONE = 60;

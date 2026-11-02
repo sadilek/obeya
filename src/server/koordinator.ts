@@ -2,11 +2,12 @@
 // merge with work in progress. It judges that from what each card will change (estimated before
 // the start) and has changed so far (files and the places in them); sharing a file is not enough.
 
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
 import { inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
 import { type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
-import { ACTIVE, BadRequest, type Board } from './board';
+import { ACTIVE, BadRequest, type Board, contributionOf } from './board';
 import type { Utterance } from './db';
 import { type AgentRuntime, type AgentTool, waitQuietly } from './runtime';
 import type { Workers } from './workers';
@@ -192,6 +193,21 @@ export class Koordinator {
   }
 
   /**
+   * A follow-up task a review card's worker made of findings: it builds on the pull request, so it
+   * queues behind the review card at once, and once the PR is merged starts (or is judged again
+   * against the work in progress, as any card whose wait ended). A review card already finished
+   * leaves nothing to wait for: the task is judged as any card.
+   */
+  followUp(taskId: string, reviewId: string): void {
+    const review = this.o.board.item(reviewId);
+    if (!review || !unlanded(review)) return this.request(taskId);
+    const t = this.o.board.t.koordinator;
+    const reason = t.followsReview(contributionOf(this.o.board.row(reviewId))?.number ?? 0);
+    this.setQueue(taskId, { behind: [reviewId], reason, buildsOn: [reviewId] });
+    this.o.board.log(taskId, 'state', 'obeya', t.waitsFor(this.o.board.t.quote(review.title), reason));
+  }
+
+  /**
    * All planned workstreams of the project go to the Koordinator together (those snoozed to start later too: the owner starts them now): one turn sees them all
    * with the plan doc and decides which start now and which wait, for a dependency or a likely
    * conflict, and in which order. They queue in the plan's order until it has, and the turn waits a
@@ -300,11 +316,11 @@ export class Koordinator {
     return on;
   }
 
-  /** The workstreams of a project's start that the Koordinator has not planned yet. */
-  private unplanned(projectId: string): Item[] {
+  /** The cards to be judged together under `key` (a project's start, or cards freed at once) that the Koordinator has not planned yet. */
+  private unplanned(key: string): Item[] {
     return this.o.board
       .snapshot()
-      .items.filter((i) => i.parent === projectId && i.state === 'planned' && i.queue && 'checking' in i.queue && i.queue.together === projectId)
+      .items.filter((i) => i.state === 'planned' && i.queue && 'checking' in i.queue && i.queue.together === key)
       .sort((a, b) => a.queue!.since.localeCompare(b.queue!.since));
   }
 
@@ -666,10 +682,15 @@ export class Koordinator {
     this.o.board.log(cardId, 'state', 'obeya', t.waitsFor(names, reason));
   }
 
-  /** Decides on the workstreams of a project that came to the Koordinator together. */
-  private async decideAll(projectId: string) {
+  /**
+   * Decides on the cards that came to the Koordinator together under `key`: the workstreams of a
+   * project started at once (`key` its id), or cards whose waits ended at once (`freed:…`).
+   */
+  private async decideAll(key: string) {
     const items = this.o.board.items();
-    const batch = this.unplanned(projectId);
+    const batch = this.unplanned(key);
+    const project = this.o.board.item(key);
+    const t = this.o.board.t.koordinator;
     if (!batch.length) return;
     if (batch[0]!.repoDown) return batch.forEach((w) => this.repoGone(w));
     if (batch.length === 1) {
@@ -680,50 +701,53 @@ export class Koordinator {
     const ids = new Set(batch.map((w) => w.id));
     const repo = batch[0]!.repo;
     const active = this.inProgress(repo);
-    // what waits already came first, as for a single card, unless it waits for one of them
+    // what waits already came first, as for a single card, unless it waits for one of them; freed
+    // cards keep their places, so what was queued after the last of them is not ahead
+    const last = batch.map((w) => w.queue!.since).sort().at(-1)!;
     const ahead = items
-      .filter((i) => i.repo === repo && !ids.has(i.id) && inQueue(i) && !batch.some((w) => waitsOn(i, w.id, items)))
+      .filter((i) => i.repo === repo && !ids.has(i.id) && inQueue(i) && (project || i.queue!.since < last) && !batch.some((w) => waitsOn(i, w.id, items)))
       .sort((a, b) => a.queue!.since.localeCompare(b.queue!.since));
     let plan: Planned[];
     try {
-      plan = await this.schedule(this.o.board.item(projectId)!, batch, active, ahead);
+      plan = await this.schedule(project, batch, active, ahead);
     } catch (e) {
       // judged one by one instead, each seeing the others it may build on
-      this.o.board.log(projectId, 'error', 'obeya', this.o.board.t.koordinator.togetherFailed(messageOf(e)));
+      if (project) this.o.board.log(key, 'error', 'obeya', t.togetherFailed(messageOf(e)));
+      else for (const w of batch) this.o.board.log(w.id, 'error', 'obeya', t.freedFailed(messageOf(e)));
       for (const w of batch) {
         this.setQueue(w.id, { checking: true });
         this.serial(() => this.decide(w.id));
       }
       return;
     }
-    if (this.o.board.item(projectId)?.repoDown) return this.unplanned(projectId).forEach((w) => this.repoGone(w));
+    if (this.o.board.item(batch[0]!.id)?.repoDown) return this.unplanned(key).forEach((w) => this.repoGone(w));
     // taken out of the queue or started anyway meanwhile
     const still = (id: string) => {
       const q = this.o.board.item(id)?.queue;
-      return !!q && 'checking' in q && q.together === projectId;
+      return !!q && 'checking' in q && q.together === key;
     };
-    // the turn's order becomes the queue's: a workstream waits only for what comes before it, so
-    // none wait for each other
+    // the turn's order becomes the queue's: a card waits only for what comes before it, so none
+    // wait for each other
     const times = batch.map((w) => w.queue!.since!);
     const before = new Set([...active, ...ahead].map((i) => i.id));
-    const names = new Map([...active, ...ahead, ...batch].map((i) => [i.id, i.parent === projectId && i.label ? `${i.label} ${this.o.board.t.quote(i.title)}` : this.o.board.t.quote(i.title)]));
+    const names = new Map([...active, ...ahead, ...batch].map((i) => [i.id, i.parent && i.label && (!project || i.parent === key) ? `${i.label} ${this.o.board.t.quote(i.title)}` : this.o.board.t.quote(i.title)]));
     let started = 0;
     plan.forEach((p, n) => {
       const id = p.card;
       if (!still(id)) return before.add(id);
       const behind = p.waitsFor.filter((b) => before.has(b) && this.blocks(b));
       before.add(id);
-      this.o.board.work(id, { scope: JSON.stringify({ files: p.files, reason: p.reason }), queue: JSON.stringify({ checking: true, together: projectId, since: times[n] }) });
+      this.o.board.work(id, { scope: JSON.stringify({ files: p.files, reason: p.reason }), queue: JSON.stringify({ checking: true, together: key, since: times[n] }) });
       if (!behind.length) {
         started++;
-        return this.startNow(id, `${this.o.board.t.koordinator.togetherStarts}${p.reason ? ` ${p.reason}` : ''}`);
+        return this.startNow(id, `${project ? t.togetherStarts : t.freedStarts}${p.reason ? ` ${p.reason}` : ''}`);
       }
       const buildsOn = behind.filter((b) => p.buildsOn.includes(b));
-      const reason = p.reason || (buildsOn.length ? this.o.board.t.koordinator.buildsOn : this.o.board.t.koordinator.likelyConflict);
+      const reason = p.reason || (buildsOn.length ? t.buildsOn : t.likelyConflict);
       this.setQueue(id, { behind, reason, ...(buildsOn.length && { buildsOn }) });
-      this.o.board.log(id, 'state', 'obeya', this.o.board.t.koordinator.waitsFor(behind.map((b) => names.get(b) ?? b).join(', '), reason));
+      this.o.board.log(id, 'state', 'obeya', t.waitsFor(behind.map((b) => names.get(b) ?? b).join(', '), reason));
     });
-    this.o.board.log(projectId, 'state', 'koordinator', this.o.board.t.koordinator.planned(started, plan.length));
+    if (project) this.o.board.log(key, 'state', 'koordinator', t.planned(started, plan.length));
   }
 
   /** Whether a card still holds others back: in progress, or waiting itself. */
@@ -733,7 +757,14 @@ export class Koordinator {
   }
 
   private startNow(cardId: string, why: string) {
-    const since = this.o.board.item(cardId)?.queue?.since;
+    const card = this.o.board.item(cardId);
+    const since = card?.queue?.since;
+    const items = this.o.board.snapshot().items;
+    const manual = (card?.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
+    if (manual.length) {
+      this.setQueue(cardId, { behind: manual, buildsOn: manual, manualWait: manual, reason: this.o.board.t.koordinator.buildsOn }, since);
+      return;
+    }
     this.setQueue(cardId, null);
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.koordinator.says(why));
     this.launch(cardId, since);
@@ -788,6 +819,8 @@ export class Koordinator {
     // cards waiting for a clone on one machine (`near`) that has none: asked again after a while, as for a full repository
     let again = false;
     const paused = !!this.o.paused?.();
+    // cards whose waits ended in this pass
+    const freed: Item[] = [];
     // the owner's question to a finished card whose agent needs a full clone goes before queued cards
     for (const f of items.filter((i) => i.waitsForClone && !i.repoDown)) {
       const hands = this.o.repoFor(f);
@@ -819,20 +852,45 @@ export class Koordinator {
         if (this.o.board.item(w.id)?.queue) full.add(w.repo);
         continue;
       }
-      const q = w.queue as { behind: string[]; reason: string; buildsOn?: string[] };
-      // what it builds on holds it until it has landed, also while not started or stopped
-      const still = q.behind.filter((id) => active.has(id) || (q.buildsOn?.includes(id) && unlanded(items.find((i) => i.id === id))));
-      if (still.length === q.behind.length) continue;
-      if (still.length) {
-        const buildsOn = q.buildsOn?.filter((id) => still.includes(id));
-        this.setQueue(w.id, { behind: still, reason: q.reason, ...(buildsOn?.length && { buildsOn }) });
+      const q = w.queue as { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] };
+      // a review card whose PR was closed without a merge leaves nothing to build on: what followed
+      // up on it goes back to planned, for the owner to decide on
+      const unmerged = items.find((i) => q.buildsOn?.includes(i.id) && i.state === 'done' && contributionOf(this.o.board.row(i.id))?.closed);
+      if (unmerged) {
+        this.setQueue(w.id, null);
+        this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.reviewClosed(this.o.board.t.quote(unmerged.title)));
         continue;
       }
-      // what it waited for is done; with nothing else running it starts, else it is judged again
-      // against what runs now, which may have started after it was judged
+      const manual = (w.manualDependsOn ?? []).filter((id) => unlanded(items.find((i) => i.id === id)));
+      const inferred = q.behind.filter((id) => !q.manualWait?.includes(id));
+      const manualOnly = manual.filter((id) => !inferred.includes(id));
+      const still = [...new Set([...inferred.filter((id) => active.has(id) || (q.buildsOn?.includes(id) && unlanded(items.find((i) => i.id === id)))), ...manual])];
+      if (still.length === q.behind.length && still.every((id) => q.behind.includes(id)) && manualOnly.length === (q.manualWait?.length ?? 0) && manualOnly.every((id) => q.manualWait?.includes(id))) continue;
+      if (still.length) {
+        const buildsOn = [...new Set([...(q.buildsOn ?? []).filter((id) => still.includes(id) && !q.manualWait?.includes(id)), ...manual])];
+        this.setQueue(w.id, { behind: still, reason: q.reason, ...(buildsOn.length && { buildsOn }), ...(manualOnly.length && { manualWait: manualOnly }) });
+        continue;
+      }
+      freed.push(w);
+    }
+    // what it waited for is done; with nothing else running it starts, else it is judged again
+    // against what runs now, which may have started after it was judged. Cards freed at once (the
+    // follow-up tasks of a merged PR, say) are judged together: one may build on another, or
+    // collide with it, whichever came first in the queue.
+    for (const repo of new Set(freed.map((w) => w.repo))) {
+      const group = freed.filter((w) => w.repo === repo);
+      if (group.length > 1) {
+        const key = `freed:${randomUUID()}`;
+        for (const w of group) {
+          this.setQueue(w.id, { checking: true, together: key });
+          this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.waitedDoneTogether);
+        }
+        this.serial(() => this.decideAll(key));
+        continue;
+      }
+      const w = group[0]!;
       if (!this.inProgress(w.repo).length) {
         this.startNow(w.id, this.o.board.t.koordinator.waitedDone);
-        active.add(w.id);
       } else {
         this.setQueue(w.id, { checking: true });
         this.o.board.log(w.id, 'state', 'obeya', this.o.board.t.koordinator.waitedDoneRecheck);
@@ -936,22 +994,27 @@ export class Koordinator {
     return scope;
   }
 
-  /** One turn over all the workstreams: in which order they go, and which wait for what. */
-  private async schedule(project: Item, batch: Item[], active: Item[], ahead: Item[]): Promise<Planned[]> {
+  /**
+   * One turn over all the cards of a batch, a project's workstreams (`project`) or cards freed at
+   * once: in which order they go, and which wait for what.
+   */
+  private async schedule(project: Item | undefined, batch: Item[], active: Item[], ahead: Item[]): Promise<Planned[]> {
     let plan: Planned[] | undefined;
     const tags = new Map([...active, ...ahead, ...batch].map((a, n) => [`K${n + 1}`, a.id]));
+    const hands = this.o.repoFor(batch[0]!);
+    const noun = project ? 'workstream' : 'card';
     const error = await readSession(this.o.runtime, {
-      cwd: this.o.repoFor(project).path,
+      cwd: hands.path,
       role: 'koordinator',
-      // the workstreams the owner started wait with it
+      // the cards the owner started wait with it
       onLimit: (until) => {
         for (const w of batch) this.o.board.waitsForLimit({ card: w.id }, until);
       },
-      system: this.o.repoFor(project).folder ? FOLDER_SCHEDULE_SYSTEM(this.language) : SCHEDULE_SYSTEM(this.language),
+      system: (hands.folder ? FOLDER_SCHEDULE_SYSTEM : SCHEDULE_SYSTEM)(this.language, !project),
       tools: (finish) => [
         {
           name: 'schedule',
-          description: `Report every workstream once, in the order they should go: its tag, the files it will change, the tags of the workstreams it builds on and of the cards it would likely conflict with (both empty to start now), and a one-sentence reason in ${this.language}.`,
+          description: `Report every ${noun} once, in the order they should go: its tag, the files it will change, the tags of the ${noun}s it builds on and of the cards it would likely conflict with (both empty to start now), and a one-sentence reason in ${this.language}.`,
           schema: {
             workstreams: z.array(
               z.object({ card: z.string(), files: z.array(z.string()), builds_on: z.array(z.string()), conflicts_with: z.array(z.string()), reason: z.string() }),
@@ -977,19 +1040,31 @@ export class Koordinator {
               });
             }
             const missing = batch.filter((w) => !seen.has(w.id));
-            if (missing.length) return `Every workstream once, please: missing ${missing.map((w) => tagOf(tags, w.id)).join(', ')}. Call schedule again with all of them.`;
+            if (missing.length) return `Every ${noun} once, please: missing ${missing.map((w) => tagOf(tags, w.id)).join(', ')}. Call schedule again with all of them.`;
             plan = order;
             return finish('Recorded. End your turn now.');
           },
         },
       ],
       brief: [
-        `The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`,
-        project.plan?.goal ? `Goal: ${project.plan.goal}` : '',
-        `Its workstreams to schedule, in the plan's order:\n${batch
-          .map((w) => `- ${tagOf(tags, w.id)}: ${w.label ? `${w.label} ` : ''}"${w.title}"${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 600)}` : ''}`)
-          .join('\n')}`,
-        ...(await this.others(project, active, ahead, tags)),
+        ...(project
+          ? [
+              `The project: "${project.title}"${project.plan ? `; plan doc ${project.plan.file}` : ''}.`,
+              project.plan?.goal ? `Goal: ${project.plan.goal}` : '',
+              `Its workstreams to schedule, in the plan's order:\n${batch
+                .map((w) => `- ${tagOf(tags, w.id)}: ${w.label ? `${w.label} ` : ''}"${w.title}"${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 600)}` : ''}`)
+                .join('\n')}`,
+            ]
+          : [
+              `The cards to schedule, freed at once, in their order in the queue, which the owner may have set: keep it where neither a dependency nor a likely conflict asks for another:\n${batch
+                .map((w) => {
+                  const of = w.parent ? this.o.board.item(w.parent) : undefined;
+                  const where = of?.plan ? ` (workstream ${w.label ?? ''} of the project "${of.title}", plan doc ${of.plan.file})` : '';
+                  return `- ${tagOf(tags, w.id)}: ${w.kind} "${w.title}"${where}${w.body ? ` — ${w.body.replace(/\s+/g, ' ').slice(0, 1500)}` : ''}`;
+                })
+                .join('\n')}`,
+            ]),
+        ...(await this.others(batch[0]!, active, ahead, tags)),
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -1125,39 +1200,64 @@ A workstream builds on another when it needs code, an API, data, a document or a
 Call dependencies exactly once, with every open workstream once.
 `.trim();
 
-const FOLDER_SCHEDULE_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs agents; the owner knows you simply as Obeya. Several workers work at the same time, all directly in one folder that is not a git repository: what one changes is there at once for the others, and nothing is merged afterwards. The owner started all open workstreams of a project at once; you decide how they go. Read the plan doc and what you need in the folder (you cannot change files).
+/**
+ * What a joint turn decides on: the workstreams of a project the owner started at once, or cards
+ * whose waits ended at once (`freed`).
+ */
+const batchOf = (freed: boolean, folder: boolean) =>
+  freed
+    ? {
+        situation: `Several cards waited in the queue, and what they waited for ${folder ? 'is done' : 'has landed'} now, so they are free to start at the same time; you decide together how they go, so that none starts without regard to the others. Read their tasks and what you need in the ${folder ? 'folder' : 'repository'} (you cannot change files).`,
+        noun: 'card',
+        dependsOn: folder ? 'it builds on files, an overview, data or a decision that the other one makes' : 'it builds on code, an API, data or a decision that the other one introduces',
+      }
+    : {
+        situation: `The owner started all open workstreams of a project at once; you decide how they go. Read the plan doc and what you need in the ${folder ? 'folder' : 'repository'} (you cannot change files).`,
+        noun: 'workstream',
+        dependsOn: folder
+          ? 'it builds on files, an overview, data or a decision that the other one makes, or the plan says it comes after it'
+          : 'it builds on code, an API, data or a decision that the other one introduces, or the plan says it comes after it',
+      };
 
-A workstream waits for another when:
-- it depends on it: it builds on files, an overview, data or a decision that the other one makes, or the plan says it comes after it. It then waits until that one is done.
+const FOLDER_SCHEDULE_SYSTEM = (language: string, freed: boolean) => {
+  const b = batchOf(freed, true);
+  return `
+You are the Koordinator of Obeya, a canvas on which the owner directs agents; the owner knows you simply as Obeya. Several workers work at the same time, all directly in one folder that is not a git repository: what one changes is there at once for the others, and nothing is merged afterwards. ${b.situation}
+
+A ${b.noun} waits for another when:
+- it depends on it: ${b.dependsOn}. It then waits until that one is done.
 - running both at once likely collides: both change, move, rename or delete the same files, one reorganises a directory the other works in, or one sorts or rewrites files the other creates or reads. Working in the same directory is not a collision.
-Everything else starts now and runs in parallel; parallel work is the point. Cards in progress and queued ahead count as for any start: a workstream likely to collide with one of them waits for it.
+Everything else starts now and runs in parallel; parallel work is the point. Cards in progress and queued ahead count as for any start: a ${b.noun} likely to collide with one of them waits for it.
 
-Call schedule exactly once, with every workstream once, in the order they should go (what starts now first, then each one after what it waits for):
+Call schedule exactly once, with every ${b.noun} once, in the order they should go (what starts now first, then each one after what it waits for):
 - card: its tag.
 - files: paths relative to the folder it will most likely touch; a path ending in "/" stands for a directory.
-- builds_on: the tags of the workstreams it depends on (in progress, queued ahead, or earlier in your order).
-- conflicts_with: the tags of cards it would likely collide with: cards in progress, queued ahead, or workstreams earlier in your order.
-Both empty: it starts now. A workstream that waits starts by itself once what it waits for is done.
+- builds_on: the tags of the ${b.noun}s it depends on (in progress, queued ahead, or earlier in your order).
+- conflicts_with: the tags of cards it would likely collide with: cards in progress, queued ahead, or ${b.noun}s earlier in your order.
+Both empty: it starts now. A ${b.noun} that waits starts by itself once what it waits for is done.
 - reason: one sentence in ${language} for the owner: why it waits (the dependency, or where the changes collide), or, starting now, why it can run beside the others. The owner does not know the tags: name cards by their label or title.
 `.trim();
+};
 
-const SCHEDULE_SYSTEM = (language: string) => `
-You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. The owner started all open workstreams of a project at once; you decide how they go. Read the plan doc and what you need in the repository (you cannot change files).
+const SCHEDULE_SYSTEM = (language: string, freed: boolean) => {
+  const b = batchOf(freed, false);
+  return `
+You are the Koordinator of Obeya, a canvas on which the owner directs coding agents; the owner knows you simply as Obeya. Several workers work at the same time, each in its own workspace, and their branches are rebased onto the main branch one after the other. ${b.situation}
 
-A workstream waits for another when:
-- it depends on it: it builds on code, an API, data or a decision that the other one introduces, or the plan says it comes after it. It then waits until that one has landed.
+A ${b.noun} waits for another when:
+- it depends on it: ${b.dependsOn}. It then waits until that one has landed.
 - running both at once likely ends in merge conflicts: both change the same lines or the same function or block, one rewrites, moves, renames or reformats code the other one edits, or both change the same small, tightly packed section. Sharing a file is not a conflict: changes in different places of a file merge cleanly.
-Everything else starts now and runs in parallel; parallel work is the point. When in doubt about a conflict, let it run: a conflict that happens anyway goes back to its worker. Cards in progress and queued ahead count as for any start: a workstream likely to conflict with one of them waits for it.
+Everything else starts now and runs in parallel; parallel work is the point. When in doubt about a conflict, let it run: a conflict that happens anyway goes back to its worker. Cards in progress and queued ahead count as for any start: a ${b.noun} likely to conflict with one of them waits for it.
 
-Call schedule exactly once, with every workstream once, in the order they should go (what starts now first, then each one after what it waits for):
+Call schedule exactly once, with every ${b.noun} once, in the order they should go (what starts now first, then each one after what it waits for):
 - card: its tag.
 - files: repository-relative paths it will most likely change; a path ending in "/" stands for a directory.
-- builds_on: the tags of the workstreams it depends on (in progress, queued ahead, or earlier in your order).
-- conflicts_with: the tags of cards it would likely conflict with: cards in progress, queued ahead, or workstreams earlier in your order.
-Both empty: it starts now. A workstream that waits starts by itself once what it waits for has landed.
+- builds_on: the tags of the ${b.noun}s it depends on (in progress, queued ahead, or earlier in your order).
+- conflicts_with: the tags of cards it would likely conflict with: cards in progress, queued ahead, or ${b.noun}s earlier in your order.
+Both empty: it starts now. A ${b.noun} that waits starts by itself once what it waits for has landed.
 - reason: one sentence in ${language} for the owner: why it waits (the dependency, or where the changes collide), or, starting now, why it can run beside the others. The owner does not know the tags: name cards by their label or title.
 `.trim();
+};
 
 /**
  * Where a rule goes: the preference memory, for how agents work with the owner through Obeya, or a

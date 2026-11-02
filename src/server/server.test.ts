@@ -1130,7 +1130,7 @@ describe('a restart that waits', () => {
 });
 
 describe('cards that need the owner', () => {
-  test('are counted per canvas on every canvas, so the switcher points to the others', async () => {
+  test('reach every canvas\'s pages, so each page lists those of the others too', async () => {
     const other = join(dir, 'other');
     gitRepo(other);
     const second = new CanvasRuntime({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
@@ -1141,19 +1141,23 @@ describe('cards that need the owner', () => {
     const messages: ServerMessage[] = [];
     const ws = new WebSocket(new URL(api('/ws'), server.url.href.replace('http', 'ws')));
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
-    const counts = () => messages.flatMap((m) => (m.type === 'waiting' ? [m.waiting] : []));
-    await until(() => counts().length === 1);
-    expect(counts()[0]).toEqual({ main: 0, other: 1 });
+    const sent = () => messages.flatMap((m) => (m.type === 'waiting' ? [m.waiting] : []));
+    const titles = (n: number) => Object.fromEntries(Object.entries(sent()[n]!).map(([id, w]) => [id, w.items.map((i) => i.title)]));
+    await until(() => sent().length === 1);
+    expect(titles(0)).toEqual({ main: [], other: ['B'] });
 
-    // a change on the other canvas reaches this one; one that leaves the counts alone does not
+    // a change to a waiting card on the other canvas reaches this one; one to a card that does not wait does not
     second.board.patch(waiting.id, { title: 'B2' });
+    await until(() => sent().length === 2);
+    expect(titles(1)).toEqual({ main: [], other: ['B2'] });
     const c = second.board.create({ title: 'C', x: 0, y: 0 });
+    second.board.patch(c.id, { title: 'C1' });
     second.board.work(c.id, { state: 'waiting', need: 'review' });
-    await until(() => counts().length === 2);
-    expect(counts()[1]).toEqual({ main: 0, other: 2 });
+    await until(() => sent().length === 3);
+    expect(titles(2)).toEqual({ main: [], other: ['B2', 'C1'] });
     second.board.work(waiting.id, { state: 'working' });
-    await until(() => counts().length === 3);
-    expect(counts()[2]).toEqual({ main: 0, other: 1 });
+    await until(() => sent().length === 4);
+    expect(titles(3)).toEqual({ main: [], other: ['C1'] });
     ws.close();
   });
 });

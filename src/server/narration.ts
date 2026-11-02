@@ -21,6 +21,8 @@ import { messageOf } from '../core/text';
 export interface ClipRequest {
   voice: HeldVoice;
   text: string;
+  /** The text as written, where `text` has words respelt for the voice: what the voice hears its clip against. */
+  script?: string;
   /** The WAV the voice writes. */
   out: string;
   language: 'de' | 'en';
@@ -31,7 +33,13 @@ export interface ClipRequest {
   inline?: boolean;
 }
 
-export type ClipReply = { ok: true; seconds: number; wav?: string } | { error: string };
+/**
+ * What the voice heard of its clip (`qwen3.py`), passed on as it says it: a line per sentence, or
+ * why it heard none.
+ */
+export type Hearing = { heard?: unknown[]; unheard?: string };
+
+export type ClipReply = ({ ok: true; seconds: number; wav?: string } & Hearing) | { error: string };
 
 /** How long the voice stays loaded after the last clip: the next render within it skips loading the model. */
 export const NARRATION_IDLE_MS = 5 * 60_000;
@@ -117,7 +125,8 @@ export class NarrationHost {
     }
     const voice = this.voice!;
     try {
-      voice.child.stdin.write(`${JSON.stringify({ text: request.text, out: request.out, language: request.language })}\n`);
+      const { text, script, out, language } = request;
+      voice.child.stdin.write(`${JSON.stringify({ text, ...(script ? { script } : {}), out, language })}\n`);
       voice.child.stdin.flush();
     } catch {
       return this.died(voice);
@@ -126,7 +135,8 @@ export class NarrationHost {
     if (reply === 'stuck') return this.stuck(voice, 'making a clip', this.o.sentenceMs ?? NARRATION_SENTENCE_MS);
     if (!reply) return this.died(voice);
     if (typeof reply.error === 'string') return { error: reply.error };
-    return { ok: true, seconds: typeof reply.seconds === 'number' ? reply.seconds : 0 };
+    const hearing: Hearing = Array.isArray(reply.heard) ? { heard: reply.heard } : typeof reply.unheard === 'string' ? { unheard: reply.unheard } : {};
+    return { ok: true, seconds: typeof reply.seconds === 'number' ? reply.seconds : 0, ...hearing };
   }
 
   private async start(key: string, argv: string[]): Promise<{ ok: true } | { error: string }> {
@@ -224,13 +234,14 @@ export class NarrationHost {
  */
 export function parseClipRequest(input: unknown): ClipRequest | string {
   if (!input || typeof input !== 'object') return 'a JSON object is expected';
-  const { voice, text, language, inline } = input as Record<string, unknown>;
+  const { voice, text, script, language, inline } = input as Record<string, unknown>;
   let { out } = input as Record<string, unknown>;
   if (typeof text !== 'string' || !text.trim()) return 'text is missing';
+  if (script !== undefined && typeof script !== 'string') return 'script must be a string when given';
   if (inline === true) out = join(tmpdir(), `obeya-clip-${crypto.randomUUID()}.wav`);
   else if (inline !== undefined) return 'inline must be true when given';
   if (typeof out !== 'string' || !isAbsolute(out) || !out.toLowerCase().endsWith('.wav')) return 'out must be an absolute path to a .wav';
-  const back = inline === true ? { inline: true } : {};
+  const back = { ...(inline === true ? { inline: true } : {}), ...(script ? { script } : {}) };
   if (language !== 'de' && language !== 'en') return 'language must be de or en';
   if (!voice || typeof voice !== 'object') return 'voice is missing';
   const { reference, speaker } = voice as Record<string, unknown>;

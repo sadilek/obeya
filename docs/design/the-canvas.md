@@ -7,10 +7,10 @@ edge indicators, minimap, and a frosted top bar the canvas slides under.
 
 ### The bar
 
-Left, after the canvas switcher: the archive's button (see Card lifecycle), the queue's and "Neue
+Left, after the navigation's button (see The navigation): the archive's button (see Card lifecycle), the queue's and "Neue
 Aufgabe". The queue's button counts the waiting cards; a click lists them in turn, each with what it
 waits for, buttons to move it and a × that takes it out of the queue at once, as „Aus der Warteschlange nehmen“ on the card does (back to planned; no
-undo, starting it again is the way back); a row opens its card. The switcher's, the archive's and
+undo, starting it again is the way back); a row opens its card. The navigation's, the archive's and
 the queue's lists close on a click beside them and on Esc. Obeya's button is the rightmost (see
 Sheets).
 
@@ -29,24 +29,6 @@ the page anew, finds the numbers there and shows them in the bar from its first 
 too old to answer, or numbers that could not be fetched again for five minutes. The workers on other
 machines may use other logins; the bar shows this machine's.
 
-„brauchen dich“ counts what waits for the owner on every canvas, and its click slides out the
-inbox from the right instead of jumping to a card. The inbox is a sheet like Obeya's and a project's
-(see Sheets): docked to the edge from top to bottom, the canvas moved aside, one sheet open at a
-time, the same width and grip; the button's second click, the sheet's ✕ and Esc close it. The inbox lists every entry across canvases, the one that has waited the shortest
-time first. An entry shows its canvas small on top (name and icon, with since when it waits), the
-card's title large and, lighter, what the card waits for (the question, the summary, the proposal's
-text). Buttons answer an entry in one click, and exactly one of them, the default, is primary:
-„Freigeben“ on a handover („Mergen“ on a contributor's pull request, „Beenden“ where nothing
-changed), „Übernehmen und starten“ with „Verwerfen“ on a proposal that asks nothing, „Behalten“ with
-„Entfernen“ on a card its agent withdrew, and on a single-choice question of up to four options one
-button per option, primary only for the option its agent would pick. Anything the card alone can
-settle (an idea's reply, a multiple-choice question, a pull request waiting for a merge) has no quick
-reply. „Zur Karte“ is always there, last and never primary, even alone; it opens the card on this
-canvas or switches to the other canvas and opens it there. Obeya's own unread answers stand in it as
-an entry that leads to Obeya's sheet. A quick reply takes its entry out of the list at once and puts
-it back with the reason if the server refuses it. Tab still goes through the cards of this canvas
-that need the owner.
-
 The bar has no hint line. `?` (or the round `?` button) shows the legend of mouse and keys, ending
 with the link „Wunsch oder Fehler melden“ (see Wishes for Obeya's makers). The button only teaches
 the key: the legend says so, and once the key has been used the button is gone for good (per
@@ -54,12 +36,41 @@ browser).
 
 The buttons always fit: when the contents outgrow the bar (a wide sheet, a narrow window), it gives
 up in steps the wordmark and branch, then labels a few at a time, then the workspace pool, the usage limits and `?`,
-then all but the sheets' buttons. The step is measured from the actual contents, since the same
+then all but the sheets' buttons and the navigation's, which keeps its count and loses the canvas's name. The step is measured from the actual contents, since the same
 width may hold a short or a long branch, one clone or three.
 
 The logo (three cards in the inks of working, waiting and approved, "obeya" in Newsreader) opens
 the bar, stands alone while the page loads (above "offline" when the server is gone), and is the
 favicon and the app icon's source (`scripts/logo.tsx`).
+
+### The navigation
+
+One element at the bar's left holds the canvases and what waits for the owner on all of them, in
+place of a canvas switcher, a count of this canvas's cards that need the owner, and an inbox. Its
+button names the canvas and its home branch (or its count of repositories) and counts, in the
+orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
+them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Für dich“, the
+phone's list (see The phone view), built once for both: the same entries in the same order. Here
+each is a light row, its title and what it waits for since when, without the waiting card's orange
+frame, and the card open now is marked in it. With several canvases, each canvas in the
+configuration's order heads what waits on it, the open one in full ink; a click on it switches there,
+and its row carries its agents' pause (see Pausing a canvas's agents). With one canvas the list has
+no such heads. A click on an entry opens its card, on this canvas or by switching to its own, and
+closes the list; Obeya's answers open Obeya's sheet on their canvas. Nothing waiting says so, and
+the canvases are still listed.
+
+The entries only open cards: no button on them approves, accepts, answers or dismisses anything.
+Tab still goes through the cards of this canvas that need the owner and Obeya's answers (see the
+legend).
+
+The list's head has a button that pins it as a sidebar docked to the window's left edge, full
+height, as the sheets are on the right (see Sheets); the same button, pressed, unpins it. Pinned,
+the bar's button is gone (the sidebar is its place now), a click on an entry leaves it open, and
+pinning holds per browser, on every canvas. Unlike a sheet it is not dimmed while a card is open:
+the open card is marked in it, and a click on another entry opens that one in its place. A narrow window, or one that would leave the canvas
+less than about a column of cards beside the sidebar and an open sheet, folds it back into the
+bar's button until there is room again: the two sidebars never stack, neither over each other nor
+side by side on one edge.
 
 ### Creating cards
 
@@ -91,7 +102,27 @@ the project. Nothing around it moves. Collapsing is stored in this Obeya, not in
 holds across reloads, devices and the archive.
 
 A planned or queued card shows a play button under the pointer that starts it without unfolding.
-Under the pointer a card also shows the waits around it (see Scheduling).
+
+Every wait between cards on the canvas shows at all times as a thin, solid, grey arrow from the card
+waited for to the card waiting, under the cards and above projects like the dashed line: only direct
+waits, not the chain. All kinds of wait look alike (a card queued behind another, a workstream and
+those it builds on, a card snoozed until another, an arrow the owner drew); a wait ends once the card
+waited for is finished, so finished cards keep no lines. A workstream of a collapsed project shows
+its waits at the project's head. The lines stay thin on screen however far the view zooms out.
+Under the pointer a card shows the waits around it over every step instead, in the waiting colour
+(see Scheduling); a wait shows once, never as both.
+
+The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
+in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
+under it or close to it, a click there connects the two (Escape cancels). The arrow points from the
+prerequisite to the card that waits for it and stays on the canvas, as every wait does; under the pointer it shows a
+trash button that removes it at once, with „Rückgängig“. While the arrow holds a queued card, the
+removal waits until the undo has run out (or the page closes), so taking it back never leaves a card
+started. Projects
+and their workstreams get no dots, since the plan doc decides their order, and inferred waits have
+no trash button. An arrow that would close a cycle with other arrows or waits is refused. A deleted
+or archived card's arrows are hidden and count for nothing; bringing the card back brings them back,
+except one that would now close a cycle. How an arrow holds a card's start: see Scheduling.
 
 #### A project arranged by its dependencies
 
@@ -164,10 +195,11 @@ Card faces on the canvas link nothing, since a click there opens the card itself
 
 ### Sheets
 
-The sheets (Obeya's, a project's, a plan doc being read, the inbox) are a sidebar docked to the window's right
-edge, full height. The canvas is the rest: the top bar, the microphone and its confirmations, the
-edge indicators, the minimap and an unfolding card all keep to it. Opening, closing or resizing a
-sheet shifts the view so its middle stays in the middle of the rest. A card opened beside a sheet
+The sheets (Obeya's, a project's, a plan doc being read) are a sidebar docked to the window's right
+edge, full height; the pinned navigation is one on the left edge. The canvas is the rest between
+them: the top bar, the microphone and its confirmations, the edge indicators, the minimap and an
+unfolding card all keep to it. Opening, closing or resizing a sheet, or pinning the navigation,
+shifts the view so its middle stays in the middle of the rest. A card opened beside a sheet
 returns beside whatever sheet is open when it closes; a project's sheet stays, dimmed, while one of
 its cards is open. A narrow window lays the sheet over the canvas.
 
@@ -259,14 +291,32 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **One navigation on the left for canvases and what waits** (owner, 2026-11-02): what waits for the
+  owner was split between „brauchen dich“ (this canvas), the switcher's counts (the others) and the
+  cards themselves; an inbox would have been a fourth place. Its list is the phone's „Für dich“, so
+  the two never drift apart. A click on an entry always leads to another context, so the list is a
+  popover that closes, pinned only by choice on a large screen. Rejected: one-click actions on the
+  entries (approve, accept, dismiss, keep or remove, an answer option), since a click there is made
+  blind to the card's demo, open questions and remarks, and a decision the owner can make blind is
+  one the agent should not have asked for; an inbox as a sheet on the right, which competes
+  with Obeya's sheet for the same edge; and the phone's card faces in the list, whose orange frames
+  say nothing where every entry waits for the owner and make the list loud.
+- **Waits are always on the canvas, as faint lines** (owner, 2026-11-02): with waits shown only
+  under the pointer, the overall picture was missing, and one forgot that Obeya tracks them at all.
+  There is no switch to hide them. Rejected: stubs at the cards' edges only (they say there is a
+  dependency but not the picture), and a layer behind a button (it does not keep the waits in
+  mind).
+- **The owner may draw dependencies between task cards** (2026-11-02), beside the waits Obeya
+  infers: single cards have no plan doc to say what comes first, and the owner sometimes knows an
+  order that a conflict check cannot see, without wanting to turn the cards into a project.
+  Rejected: arrows to or from projects and workstreams, whose order the plan doc decides; a trash
+  button on inferred waits, which Obeya would infer again at the next start; a confirmation dialog
+  before removing an arrow, where „Rückgängig“ does the same with one click fewer.
 - **Path addresses with short card codes** (owner, 2026-11-01): a card's address is a permalink
   that survives a reload and can be passed on, and paths leave room for views nested deeper. The
   code is stored, not derived from the cards there are at the time, so a later card whose id starts
   alike cannot make an earlier link ambiguous. Rejected: query parameters (`?c=`, `?card=`), and
   the whole id in the address, which is long to read and pass on.
-- **„brauchen dich“ opens an inbox instead of jumping to the next card** (owner, 2026-11-01): with
-  several things waiting, a jump hides what the others are and cannot answer anything. Entries are
-  newest first, as in a mail inbox. Rejected: keeping the jump on the button (Tab keeps it).
 - **The look is the index card** (2026-10-10), prototyped beside a Swiss editorial card (black
   frame, solid state band, Schibsted Grotesk) that read better from afar but looked like a known
   designer style; a kanji seal and a kanban ticket were not pursued. Ruled lines and inks too close

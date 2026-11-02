@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { PlanDoc } from '../core/plan-doc';
-import { BadRequest, Board } from './board';
+import { BadRequest, Board, type StoredContribution } from './board';
 import { Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
 import { move, queueOrder, reach } from '../core/queue';
@@ -60,6 +60,18 @@ async function scope(files: string[], conflicts: string[] = [], reason = 'Grund.
   s.call('scope', { files, conflicts_with: conflicts, builds_on: buildsOn, reason });
   s.emit({ type: 'idle' });
   await settle();
+}
+
+const schedules = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'schedule'));
+
+/** Answers the latest open joint turn: one entry per card, [tag, files, builds on, conflicts with, reason]. */
+async function schedule(entries: [string, string[], string[], string[], string][]) {
+  await settle();
+  const s = schedules().at(-1)!;
+  const r = s.call('schedule', { workstreams: entries.map(([card, files, builds_on, conflicts_with, reason]) => ({ card, files, builds_on, conflicts_with, reason })) });
+  s.emit({ type: 'idle' });
+  await settle();
+  return r;
 }
 
 describe('Koordinator', () => {
@@ -202,7 +214,7 @@ describe('Koordinator', () => {
     expect(item(d.id).state).toBe('working');
   });
 
-  test('of the cards free to start, the one waiting longest goes first, and keeps its place while judged again', async () => {
+  test('cards freed at once are judged together, in their order in the queue, and keep their places', async () => {
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -219,10 +231,19 @@ describe('Koordinator', () => {
 
     await workers.stop(a.id);
     await settle();
-    expect(item(first.id).state).toBe('working');
+    // neither starts before the joint turn has seen both
+    expect(item(first.id).queue).toMatchObject({ checking: true });
     expect(item(later.id).queue).toMatchObject({ checking: true, since });
-    expect(estimates().at(-1)!.inbox[0]).toContain('"Zuerst"');
-    await scope(['src/a.ts'], ['K1'], 'Beide ändern dieselbe Funktion.');
+    expect(board.events(first.id).at(-1)!.text).toContain('zusammen mit den anderen Aufgaben');
+    const brief = schedules().at(-1)!.inbox[0]!;
+    expect(brief.indexOf('"Zuerst"')).toBeLessThan(brief.indexOf('"Später"'));
+    expect(schedules().at(-1)!.spec.system).toContain('what they waited for has landed now');
+    await schedule([
+      ['K1', ['src/a.ts'], [], [], 'Kann sofort laufen.'],
+      ['K2', ['src/a.ts'], [], ['K1'], 'Beide ändern dieselbe Funktion.'],
+    ]);
+    expect(item(first.id).state).toBe('working');
+    expect(board.events(first.id).some((e) => e.text.includes('Zusammen mit den anderen frei gewordenen Aufgaben geprüft'))).toBe(true);
     expect(item(later.id).queue).toEqual({ behind: [first.id], reason: 'Beide ändern dieselbe Funktion.', since });
 
     await workers.stop(first.id);
@@ -356,11 +377,17 @@ describe('Koordinator', () => {
     expect(item(e.id).state).toBe('working');
     await workers.stop(e.id);
 
-    // C now goes first: B is judged again against it
+    // C now comes first: it and B are judged together in that order
     await workers.stop(a.id);
     await settle();
+    const brief = schedules().at(-1)!.inbox[0]!;
+    expect(brief.indexOf('"C"')).toBeLessThan(brief.indexOf('"B"'));
+    await schedule([
+      ['K1', ['src/a.ts'], [], [], 'Kann sofort laufen.'],
+      ['K2', ['src/a.ts'], [], ['K1'], 'Beide ändern src/a.ts.'],
+    ]);
     expect(item(c.id).state).toBe('working');
-    expect(item(b.id).queue).toMatchObject({ checking: true });
+    expect(item(b.id).queue).toMatchObject({ behind: [c.id] });
     expect(item(d.id).queue).toMatchObject({ behind: [c.id] });
   });
 
@@ -437,6 +464,75 @@ describe('Koordinator', () => {
     await settle();
     expect(item(b.id).state).toBe('working');
     expect(board.events(b.id).some((e) => e.kind === 'error' && e.text.includes('nicht schätzen'))).toBe(true);
+  });
+});
+
+describe("Koordinator queues a review's follow-up tasks", () => {
+  /** A review card of PR #34 that is under way, without an agent of its own. */
+  function review(state: 'working' | 'waiting' | 'live' = 'working') {
+    const r = card('PR #34: Manual dependencies');
+    const c: StoredContribution = { url: 'https://github.com/acme/app/pull/34', number: 34, author: 'amerlander', title: 'Manual dependencies', canModify: true };
+    board.work(r.id, { contribution: JSON.stringify(c), state });
+    return r;
+  }
+
+  test('a follow-up task waits behind its review card at once, without an estimate, and starts once the PR is merged', async () => {
+    const r = review('waiting');
+    const f = board.create({ title: 'Explain the arrows', from: r.id });
+    k.followUp(f.id, r.id);
+    expect(item(f.id)).toMatchObject({ state: 'planned', queue: { behind: [r.id], buildsOn: [r.id] } });
+    expect(board.events(f.id).at(-1)!.text).toBe('Obeya: wartet auf „PR #34: Manual dependencies“. Folgeaufgabe aus dem Review von PR #34; startet, sobald der PR gemergt ist.');
+    await settle();
+    expect(estimates()).toEqual([]);
+    // the owner stopping the review does not free it: the PR is not merged
+    board.work(r.id, { state: 'planned' });
+    await settle();
+    expect(item(f.id).state).toBe('planned');
+    board.work(r.id, { state: 'live' });
+    await settle();
+    expect(item(f.id).state).toBe('working');
+  });
+
+  test('follow-up tasks freed by the merge are judged together: one may wait for another that came later in the queue', async () => {
+    const r = review();
+    const f1 = board.create({ title: 'Explain the arrows', body: 'Tooltips on the arrows.', from: r.id });
+    const f2 = board.create({ title: 'Say why a link is refused', body: 'A message beside the arrow.', from: r.id });
+    k.followUp(f1.id, r.id);
+    k.followUp(f2.id, r.id);
+    board.work(r.id, { state: 'live' });
+    await settle();
+    // the first does not start before the turn has seen the second
+    expect(item(f1.id).queue).toMatchObject({ checking: true });
+    const brief = schedules().at(-1)!.inbox[0]!;
+    expect(brief).toContain('K1: task "Explain the arrows" — Tooltips on the arrows.');
+    expect(brief).toContain('K2: task "Say why a link is refused"');
+    await schedule([
+      ['K2', ['src/ui/arrow.tsx'], [], [], 'Bringt die Meldung neben dem Pfeil.'],
+      ['K1', ['src/ui/arrow.tsx'], ['K2'], [], 'Die Tooltips bauen auf der Meldung auf.'],
+    ]);
+    expect(item(f2.id).state).toBe('working');
+    expect(item(f1.id).queue).toMatchObject({ behind: [f2.id], buildsOn: [f2.id], reason: 'Die Tooltips bauen auf der Meldung auf.' });
+    expect(board.events(f1.id).at(-1)!.text).toBe('Obeya: wartet auf „Say why a link is refused“. Die Tooltips bauen auf der Meldung auf.');
+  });
+
+  test('a review closed without a merge takes its follow-up tasks back to planned, for the owner to decide on', async () => {
+    const r = review();
+    const f = board.create({ title: 'Explain the arrows', from: r.id });
+    k.followUp(f.id, r.id);
+    const c = JSON.parse(board.row(r.id).contribution!) as StoredContribution;
+    board.work(r.id, { contribution: JSON.stringify({ ...c, closed: true } satisfies StoredContribution), state: 'done' });
+    await settle();
+    expect(item(f.id).state).toBe('planned');
+    expect(item(f.id).queue).toBeUndefined();
+    expect(board.events(f.id).at(-1)!.text).toContain('ohne Merge geschlossen');
+  });
+
+  test('of a review already merged, a follow-up task is judged as any card', async () => {
+    const r = review('live');
+    const f = board.create({ title: 'Explain the arrows', from: r.id });
+    k.followUp(f.id, r.id);
+    await settle();
+    expect(item(f.id).state).toBe('working');
   });
 });
 
@@ -760,22 +856,12 @@ describe('Koordinator waits for a free workspace', () => {
 
 describe('Koordinator starts all workstreams of a project', () => {
   const ws = (key: string, done = false) => ({ key, label: key, title: `Titel ${key}`, body: `Text ${key}`, done, inReview: false });
-  const schedules = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'schedule'));
   /** A project with W1 live and W2 to W4 planned. */
   function project() {
     docs = [{ file: 'docs/plan/p.md', title: 'P', goal: 'Ziel P', workstreams: [ws('W1', true), ws('W2'), ws('W3'), ws('W4')], markdown: '' }];
     board.docsChanged();
     const [p, , w2, w3, w4] = board.snapshot().items;
     return { p: p!, w2: w2!, w3: w3!, w4: w4! };
-  }
-  /** Answers the latest open schedule: one entry per workstream, [card, files, builds on, conflicts with, reason]. */
-  async function schedule(entries: [string, string[], string[], string[], string][]) {
-    await settle();
-    const s = schedules().at(-1)!;
-    const r = s.call('schedule', { workstreams: entries.map(([card, files, builds_on, conflicts_with, reason]) => ({ card, files, builds_on, conflicts_with, reason })) });
-    s.emit({ type: 'idle' });
-    await settle();
-    return r;
   }
 
   test('one turn sees them all with the plan doc and decides which start and which wait for what', async () => {

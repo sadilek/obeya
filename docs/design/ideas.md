@@ -50,7 +50,7 @@ on them), so it never recommends a click for what the click does not do. „Mach
 vorschlägst“, to the Koordinator or the agent, takes that step.
 
 Once the agent has replied, the open idea needs the owner like a waiting card („Idee · du bist
-dran“, counted in „brauchen dich“) until they answer, park, drop or decide it.
+dran“, counted in the navigation) until they answer, park, drop or decide it.
 
 ### The brief
 

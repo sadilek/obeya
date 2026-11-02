@@ -27,9 +27,17 @@ voice + the text as spoken, so re-rendering a demo after a visual fix costs no s
 A voice whose spec has `respell` (Piper, `say`) reads every word by the rules of the narration
 language, so English terms in German narration get respelt first: from the language's lexicon
 beside this file (`lexicon.<language>.json`, term to spoken form), and from marks in the script,
-`{Canvas|Kännwes}`, which win over the lexicon. Other voices get the written form ("Canvas").
-The cache key is the spoken text, so a change to the lexicon re-synthesises only the clips it touches. Results land in
-`<out_dir>/tts.json`: `{"clips": [{"id", "file", "seconds"}]}`.
+`{Canvas|Kännwes}`, which win over the lexicon. Other voices get the written form ("Canvas"),
+respelt only where the voice has a lexicon of its own for the narration language (`lexicon` in the
+spec: `lexicon.qwen3.en.json` for the words Qwen3 cannot read in English narration). The cache key
+is the spoken text, so a change to a lexicon re-synthesises only the clips it touches.
+
+Qwen3 hears each sentence back and makes one it stumbled over again (`qwen3.py`); it is asked with
+the script as written beside the text as respelt, and says what it heard, sentence by sentence,
+which is kept beside the clip (`<hash>.heard.json`) for the next render that finds it cached.
+Results land in `<out_dir>/tts.json`: `{"clips": [{"id", "file", "seconds"}]}`, a clip of a
+voice that hears with `"heard": [{"script", "heard", "stumbled"?, "misheard"?}]` or `"unheard":
+"why"` as well.
 
 `--lock <file>` takes that file's lock before this process loads a large model and holds it to
 the end, for voices that load one: one such render at a time on the machine, the others wait. A
@@ -127,9 +135,10 @@ def key(term: str) -> str:
     return " ".join(re.split(r"[\s-]+", term.lower().strip()))
 
 
-def lexicon(language: str) -> dict[str, str]:
-    """The narration language's lexicon, keyed by the term in lower case; empty without one."""
-    file = Path(__file__).with_name(f"lexicon.{language}.json")
+def lexicon(name: str) -> dict[str, str]:
+    """The lexicon of a narration language (`de`) or of a voice in it (`qwen3.de`), keyed by the term in
+    lower case; empty without one."""
+    file = Path(__file__).with_name(f"lexicon.{name}.json")
     if not file.exists():
         return {}
     return {key(term): spoken for term, spoken in json.loads(file.read_text(encoding="utf-8")).items()}
@@ -155,7 +164,9 @@ def respelt(text: str, words: dict[str, str]) -> str:
 
 def spoken(spec: dict, language: str, text: str) -> str:
     """What the voice of `spec` is given to say for `text`."""
-    return respelt(text, lexicon(language)) if spec.get("respell") else written(text)
+    if spec.get("respell"):
+        return respelt(text, lexicon(language))
+    return respelt(written(text), lexicon(f"{spec['lexicon']}.{language}")) if spec.get("lexicon") else written(text)
 
 
 def untagged(text: str) -> str:
@@ -178,7 +189,7 @@ class CommandVoice:
         self._language = language
         self.tag = spec["tag"]
 
-    def synthesize(self, text: str, target: Path) -> None:
+    def synthesize(self, text: str, target: Path, script: str | None = None) -> dict | None:
         raw = target.with_name(f"{target.stem}.raw.wav")
         raw.unlink(missing_ok=True)
         # The text goes in as UTF-8. A Python voice (Piper) would read stdin in the Windows code
@@ -197,6 +208,12 @@ class CommandVoice:
                 sys.exit(f"the voice command wrote no WAV: neither $DEMO_WAV ({raw}) nor a path on its last line")
         to_wav(produced, target)
         raw.unlink(missing_ok=True)
+        return None
+
+
+def hearing(reply: dict) -> dict | None:
+    """What a voice that hears its clips back said of one, or None from one that does not."""
+    return {k: reply[k] for k in ("heard", "unheard") if k in reply} or None
 
 
 #: How long a voice that stays loaded may say nothing, in seconds: while it loads its model (a cold
@@ -269,13 +286,14 @@ class ServedVoice:
             # Not the protocol: something printed where it should not have. Shown, not fatal.
             print(f"voice: {line.rstrip()}", file=sys.stderr)
 
-    def synthesize(self, text: str, target: Path) -> None:
+    def synthesize(self, text: str, target: Path, script: str | None = None) -> dict | None:
         if self._process is None:
             self._start()
         raw = target.with_name(f"{target.stem}.raw.wav")
         raw.unlink(missing_ok=True)
+        request = {"text": text, "out": str(raw), "language": self._language} | ({"script": script} if script else {})
         try:
-            self._process.stdin.write(json.dumps({"text": text, "out": str(raw), "language": self._language}) + "\n")
+            self._process.stdin.write(json.dumps(request) + "\n")
             self._process.stdin.flush()
         except (BrokenPipeError, OSError):
             self._died()
@@ -285,6 +303,7 @@ class ServedVoice:
         print(f"narration: synthesised in {reply.get('seconds', '?')} s", file=sys.stderr, flush=True)
         to_wav(raw, target)
         raw.unlink(missing_ok=True)
+        return hearing(reply)
 
     def close(self) -> None:
         """Its stdin ends, and with it the voice."""
@@ -310,10 +329,10 @@ class HeldVoice:
         # Obeya is on this machine: no proxy in between.
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
-    def _ask(self, text: str, raw: Path) -> dict | None:
+    def _ask(self, text: str, script: str | None) -> dict | None:
         """Obeya's reply, or None when Obeya cannot be reached or does not hold voices."""
         # the WAV comes back in the reply: Obeya may run on another machine than this render
-        body = json.dumps({"voice": self._host, "text": text, "inline": True, "language": self._language}).encode()
+        body = json.dumps({"voice": self._host, "text": text, "inline": True, "language": self._language} | ({"script": script} if script else {})).encode()
         request = urllib.request.Request(self._url, data=body, headers={"Content-Type": "application/json"})
         try:
             with self._opener.open(request, timeout=3600) as response:
@@ -328,11 +347,11 @@ class HeldVoice:
         print(f"narration: Obeya does not hold the voice, {why}; loading it here", file=sys.stderr, flush=True)
         return None
 
-    def synthesize(self, text: str, target: Path) -> None:
+    def synthesize(self, text: str, target: Path, script: str | None = None) -> dict | None:
         if not self._here:
             raw = target.with_name(f"{target.stem}.raw.wav")
             raw.unlink(missing_ok=True)
-            reply = self._ask(text, raw)
+            reply = self._ask(text, script)
             if reply is not None:
                 if "error" in reply or not reply.get("wav"):
                     sys.exit(f"the voice failed: {reply.get('error') or 'it sent no WAV'}")
@@ -340,9 +359,9 @@ class HeldVoice:
                 print(f"narration: synthesised by Obeya in {reply.get('seconds', '?')} s", file=sys.stderr, flush=True)
                 to_wav(raw, target)
                 raw.unlink(missing_ok=True)
-                return
+                return hearing(reply)
             self._here = True
-        self._local.synthesize(text, target)
+        return self._local.synthesize(text, target, script)
 
     def close(self) -> None:
         self._local.close()
@@ -395,7 +414,7 @@ class HttpVoice:
                 sys.exit(f"{self._service} TTS unreachable at {url}: {error.reason}")
         raise AssertionError("unreachable")
 
-    def synthesize(self, text: str, target: Path) -> None:
+    def synthesize(self, text: str, target: Path, script: str | None = None) -> dict | None:
         raw = target.with_name(f"{target.stem}.raw")
         if self._service == "gemini":
             body = {
@@ -510,21 +529,38 @@ def close(voice) -> None:
         voice.close()
 
 
-def with_pauses(voice, text: str, target: Path) -> None:
+def joined(hearings: list[dict | None]) -> dict | None:
+    """What was heard of a clip made in parts: every part's sentences, or why one was not heard."""
+    if all(h is None for h in hearings):
+        return None
+    for h in hearings:
+        if h is None or "unheard" in h:
+            return {"unheard": (h or {}).get("unheard") or "a part was not heard back"}
+    return {"heard": [s for h in hearings for s in h["heard"]]}
+
+
+def with_pauses(voice, text: str, target: Path, script: str | None = None) -> dict | None:
     """`text` spoken by a voice that does not read tags: the parts between its pause tags one by
     one, joined by the silence each tag stands for, so the pauses the script asks for are there in
-    every voice, not only in those that read them."""
-    parts = PAUSE_TAG.split(text)
-    spoken = [(untagged(parts[i]), PAUSES[parts[i + 1]] if i + 1 < len(parts) else 0.0) for i in range(0, len(parts), 2)]
-    spoken = [(t, pause) for t, pause in spoken if t]
+    every voice, not only in those that read them. `script`, the text as written, goes along part
+    by part to a voice that hears its clips back; what it heard comes back."""
+    def between_pauses(text: str) -> list[tuple[str, float]]:
+        parts = PAUSE_TAG.split(text)
+        spoken = [(untagged(parts[i]), PAUSES[parts[i + 1]] if i + 1 < len(parts) else 0.0) for i in range(0, len(parts), 2)]
+        return [(t, pause) for t, pause in spoken if t]
+
+    spoken = between_pauses(text)
+    written = [t for t, _ in between_pauses(script)] if script else []
+    if len(written) != len(spoken):
+        written = [None] * len(spoken)
     if len(spoken) < 2:
-        voice.synthesize(untagged(text), target)
-        return
+        return voice.synthesize(untagged(text), target, untagged(script) if script else None)
     frames: list[bytes] = []
     shape = None
-    for n, (part, pause) in enumerate(spoken):
+    hearings = []
+    for n, ((part, pause), part_script) in enumerate(zip(spoken, written)):
         piece = target.with_name(f"{target.stem}.part{n}.wav")
-        voice.synthesize(part, piece)
+        hearings.append(voice.synthesize(part, piece, part_script))
         with wave.open(str(piece)) as fh:
             params = (fh.getnchannels(), fh.getsampwidth(), fh.getframerate())
             if shape is None:
@@ -540,6 +576,7 @@ def with_pauses(voice, text: str, target: Path) -> None:
         fh.setsampwidth(shape[1])
         fh.setframerate(shape[2])
         fh.writeframes(b"".join(frames))
+    return joined(hearings)
 
 
 def narrate(voice, jobs: list[dict], out: Path) -> None:
@@ -553,19 +590,25 @@ def narrate(voice, jobs: list[dict], out: Path) -> None:
     results = []
     for job in jobs:
         wav = out / f"{key_of(job)}.wav"
+        heard_file = wav.with_suffix(".heard.json")
         if not wav.exists():
             partial = wav.with_suffix(".partial.wav")
+            script = job.get("script")
             try:
                 if reads_tags:
-                    voice.synthesize(job["text"], partial)
+                    heard = voice.synthesize(job["text"], partial, script)
                 else:
-                    with_pauses(voice, job["text"], partial)
+                    heard = with_pauses(voice, job["text"], partial, script)
             except QuotaExhausted as exhausted:
                 sys.exit(f"{exhausted}; choose another voice (or DEMO_GEMINI_MODEL) or wait a day")
+            heard_file.unlink(missing_ok=True)
+            if heard is not None:
+                heard_file.write_text(json.dumps(heard, ensure_ascii=False), encoding="utf-8")
             partial.rename(wav)
         with wave.open(str(wav)) as fh:
             seconds = fh.getnframes() / fh.getframerate()
-        results.append({"id": job["id"], "file": str(wav), "seconds": seconds})
+        heard = json.loads(heard_file.read_text(encoding="utf-8")) if heard_file.exists() else {}
+        results.append({"id": job["id"], "file": str(wav), "seconds": seconds, **heard})
 
     (out / "tts.json").write_text(json.dumps({"clips": results}, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -595,7 +638,13 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     if language not in LANGUAGE_NAMES:
         sys.exit(f"unknown narration language {language!r}; known: {', '.join(LANGUAGE_NAMES)}")
-    jobs = [{**job, "text": spoken(spec, language, job["text"])} for job in jobs]
+    def said(job: dict) -> dict:
+        # the script as written goes along where the voice is given it respelt: a voice that hears
+        # its clips back compares with what was meant
+        text, script = spoken(spec, language, job["text"]), written(job["text"])
+        return {**job, "text": text} | ({"script": script} if script != text else {})
+
+    jobs = [said(job) for job in jobs]
     voice = make_voice(spec, language)
     if isinstance(voice, CommandVoice):
         hold_lock()

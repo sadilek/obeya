@@ -25,7 +25,8 @@ const python = (args: string[], env: Record<string, string> = {}, input?: string
 /**
  * A voice that serves until its stdin ends, writing a short silent WAV per request. Given a second
  * argument, it is loaded only once that file exists. `FAKE_HANG_AT` gives no answer to that
- * request, as a stuck Qwen3 voice did; it reports a sentence done first.
+ * request, as a stuck Qwen3 voice did; it reports a sentence done first. Given the script as
+ * written, it says it heard the text as said.
  */
 const FAKE_VOICE = String.raw`
 import json, os, sys, time, wave
@@ -52,7 +53,8 @@ while line := sys.stdin.readline():
     with wave.open(request["out"], "wb") as fh:
         fh.setnchannels(1); fh.setsampwidth(2); fh.setframerate(24000); fh.writeframes(b"\0\0" * 2400)
     open(log, "a").write(request["language"] + ":" + request["text"] + "\n")
-    answer({"ok": True, "seconds": 0.01})
+    heard = {"heard": [{"script": request["script"], "heard": request["text"]}]} if "script" in request else {}
+    answer({"ok": True, "seconds": 0.01, **heard})
 open(log, "a").write("end\n")
 `;
 
@@ -154,6 +156,28 @@ describe('English terms in German narration', () => {
       'Ein Brantsch auf dem Leinwand.',
       'Fertig.',
     ]);
+  }, 30_000);
+
+  test('a voice with a lexicon of its own (Qwen3) gets the words it cannot read respelt from it, the rest as written', () => {
+    expect(voiceSpec({ language: 'de', voice: 'qwen3' })).toMatchObject({ lexicon: 'qwen3' });
+    const own = JSON.parse(readFileSync(join(LIB, 'lexicon.qwen3.de.json'), 'utf8')) as Record<string, string>;
+    const s = JSON.parse(readFileSync(join(dir, 'spec.json'), 'utf8'));
+    writeFileSync(join(dir, 'spec.json'), JSON.stringify({ ...s, lexicon: 'qwen3' }));
+    jobs('Der Button Reauthenticate auf dem {Canvas|Kännwes}. [short pause] Reauthenticate!', 'Ohne Lexikon.');
+    expect(narrate().status).toBe(0);
+    expect(said()).toEqual([`Der Button ${own.Reauthenticate} auf dem Canvas.`, `${own.Reauthenticate}!`, 'Ohne Lexikon.']);
+    // it hears each part against the script as written, and what it heard stays with the clip, cached too
+    const heard = [
+      { script: 'Der Button Reauthenticate auf dem Canvas.', heard: `Der Button ${own.Reauthenticate} auf dem Canvas.` },
+      { script: 'Reauthenticate!', heard: `${own.Reauthenticate}!` },
+    ];
+    const clips = () => JSON.parse(readFileSync(join(dir, 'out', 'tts.json'), 'utf8')).clips;
+    expect(clips()[0]).toMatchObject({ heard });
+    expect(clips()[1]).not.toHaveProperty('heard');
+    rmSync(join(dir, 'log'));
+    expect(narrate().status).toBe(0);
+    expect(existsSync(join(dir, 'log'))).toBe(false);
+    expect(clips()[0]).toMatchObject({ heard });
   }, 30_000);
 
   test('a voice that reads English terms (Qwen3, the hosted ones) gets them as written, without marks', () => {
@@ -302,16 +326,189 @@ def load_model(repo):
       { ready: true },
       { id: 1, sentence: 1, of: 2 },
       { id: 1, sentence: 2, of: 2 },
-      { id: 1, ok: true, seconds: expect.any(Number) },
+      { id: 1, ok: true, seconds: expect.any(Number), unheard: expect.stringContaining('Parakeet did not load') },
       { id: 2, error: 'ValueError: nothing to say' },
       { sentence: 1, of: 1 },
-      { ok: true, seconds: expect.any(Number) },
+      { ok: true, seconds: expect.any(Number), unheard: expect.any(String) },
     ]);
     expect(r.stderr).toContain('raw bytes on fd 1');
     expect(log()).toEqual(['load', 'german', 'german', 'english']);
     expect(existsSync(join(dir, 'a.wav')) && existsSync(join(dir, 'c.wav'))).toBe(true);
     expect(existsSync(join(dir, 'b.wav'))).toBe(false);
   });
+  test('makes a sentence again that ran on to its last frame, and fails the clip when it keeps doing so', () => {
+    // A fake mlx-audio that, for its first FAKE_RUNON calls, never ends the sentence: it fills every frame it may.
+    const pkg = join(dir, 'fake', 'mlx_audio', 'tts');
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(dir, 'fake', 'mlx_audio', '__init__.py'), '');
+    writeFileSync(join(pkg, '__init__.py'), '');
+    writeFileSync(
+      join(pkg, 'utils.py'),
+      String.raw`
+import os, numpy
+class Segment:
+    def __init__(self, n): self.audio = numpy.zeros(n, dtype=numpy.float32)
+class Model:
+    sample_rate = 24000
+    calls = 0
+    def generate(self, text, **kwargs):
+        Model.calls += 1
+        open(os.environ["FAKE_LOG"], "a").write(f"{text} {kwargs['max_tokens']}\n")
+        yield Segment(kwargs["max_tokens"] * 1920 if Model.calls <= int(os.environ["FAKE_RUNON"]) else 2400)
+def load_model(repo):
+    return Model()
+`,
+    );
+    writeFileSync(join(dir, 'ref.wav'), '');
+    writeFileSync(join(dir, 'ref.txt'), 'Das ist meine Stimme.');
+    const serve = (runOn: number) =>
+      python(
+        [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'en', '--reference', join(dir, 'ref.wav'), '--serve'],
+        { PYTHONPATH: join(dir, 'fake'), FAKE_LOG: join(dir, 'log'), FAKE_RUNON: String(runOn) },
+        `${JSON.stringify({ text: 'Click Reauthenticate.', out: join(dir, 'a.wav'), id: 1 })}\n`,
+      );
+    const once = serve(1);
+    expect(once.status).toBe(0);
+    expect(once.stdout).toContain('"ok": true');
+    // frames for a slow reading of 21 characters and 3 s more, asked twice
+    expect(log()).toEqual(['Click Reauthenticate. 70', 'Click Reauthenticate. 70']);
+    expect(once.stderr).toContain('qwen3: ran on to 6 s in attempt 1: Click Reauthenticate.');
+    rmSync(join(dir, 'log'));
+    rmSync(join(dir, 'a.wav'));
+    const always = serve(99);
+    expect(log()).toHaveLength(5);
+    expect(always.stdout).toContain('the voice ran on 5 times in a row');
+    expect(existsSync(join(dir, 'a.wav'))).toBe(false);
+  });
+
+  test('hears each sentence back and makes one it stumbled over again; the take that differs least is kept', () => {
+    // A fake mlx-audio that runs on for its first FAKE_RUNON calls, and a fake Parakeet that hears
+    // what FAKE_HEARD lists, one transcript per take: the transcripts are Parakeet's of real takes.
+    const pkg = join(dir, 'fake', 'mlx_audio', 'tts');
+    mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(dir, 'fake', 'mlx_audio', '__init__.py'), '');
+    writeFileSync(join(pkg, '__init__.py'), '');
+    writeFileSync(
+      join(pkg, 'utils.py'),
+      String.raw`
+import os, numpy
+class Segment:
+    def __init__(self, n): self.audio = numpy.zeros(n, dtype=numpy.float32)
+class Model:
+    sample_rate = 24000
+    calls = 0
+    def generate(self, text, **kwargs):
+        Model.calls += 1
+        open(os.environ["FAKE_LOG"], "a").write(text + "\n")
+        yield Segment(kwargs["max_tokens"] * 1920 if Model.calls <= int(os.environ.get("FAKE_RUNON", "0")) else 2400)
+def load_model(repo):
+    return Model()
+`,
+    );
+    writeFileSync(join(dir, 'fake', 'onnxruntime.py'), 'class SessionOptions:\n    intra_op_num_threads = 0\n');
+    writeFileSync(
+      join(dir, 'fake', 'onnx_asr.py'),
+      String.raw`
+import json, os
+class Model:
+    heard = json.loads(os.environ["FAKE_HEARD"])
+    def recognize(self, samples, sample_rate):
+        assert sample_rate == 24000
+        heard = Model.heard.pop(0)
+        if heard is None:
+            raise RuntimeError("out of memory")
+        return heard
+def load_model(name, quantization, sess_options, providers):
+    assert name == "nemo-parakeet-tdt-0.6b-v3" and quantization == "int8"
+    return Model()
+`,
+    );
+    writeFileSync(join(dir, 'ref.wav'), '');
+    writeFileSync(join(dir, 'ref.txt'), 'Das ist meine Stimme.');
+    const script = 'Before the fix, the error showed in the Last failed box with a Reauthenticate button.';
+    const serve = (heard: (string | null)[], env: Record<string, string> = {}, fake = join(dir, 'fake')) => {
+      rmSync(join(dir, 'log'), { force: true });
+      const r = python(
+        [join(LIB, 'qwen3.py'), '--model', 'm', '--language', 'en', '--reference', join(dir, 'ref.wav'), '--serve'],
+        { PYTHONPATH: fake, FAKE_LOG: join(dir, 'log'), FAKE_HEARD: JSON.stringify(heard), ...env },
+        `${JSON.stringify({ text: script.replace('Reauthenticate', 'Reauthentikayt'), script, out: join(dir, 'a.wav') })}\n`,
+      );
+      expect(r.status).toBe(0);
+      return { reply: JSON.parse(r.stdout.trim().split('\n').at(-1)!), takes: log().length, stderr: r.stderr };
+    };
+    const stumbled = 'Before the fix, the error showed in the last failed box with a reauthentip uh reauthentipite button.';
+    const wrongSound = 'Before the fix, the error showed in the last failed box with a reauthentipate button.';
+    const clean = 'Before the fix the error show in the last failed box with a reauthenticate button.';
+    // a stumble is made again; Parakeet's own "show" for "showed" is no reason to
+    const again = serve([stumbled, clean]);
+    expect(again.takes).toBe(2);
+    expect(again.reply).toMatchObject({ ok: true, heard: [{ script, heard: clean }] });
+    expect(again.reply.heard[0]).not.toHaveProperty('misheard');
+    expect(again.stderr).toContain('qwen3: stumbled in attempt 1');
+    // a single wrong sound is not a stumble: kept at once, the word named
+    const once = serve([wrongSound]);
+    expect(once.takes).toBe(1);
+    expect(once.reply.heard).toEqual([{ script, heard: wrongSound, misheard: [['Reauthenticate', 'reauthentipate']] }]);
+    // a stumble in every take keeps the least of them and says so, without failing the clip
+    const babble = 'Before the fix, the error show in the last failed box with a reauthentip re auth a re a reauthentia reauth reauthentio button.';
+    const always = serve([babble, stumbled, babble, babble, babble]);
+    expect(always.takes).toBe(5);
+    expect(always.reply).toMatchObject({ ok: true, heard: [{ script, heard: stumbled, stumbled: true }] });
+    expect(existsSync(join(dir, 'a.wav'))).toBe(true);
+    // runs on and stumbles share the attempts; a take that ran on is never kept
+    const mixed = serve([stumbled], { FAKE_RUNON: '4' });
+    expect(mixed.takes).toBe(5);
+    expect(mixed.reply).toMatchObject({ ok: true, heard: [{ heard: stumbled, stumbled: true }] });
+    // a take the recognition fails on is not kept over one it heard
+    const failing = serve([stumbled, null]);
+    expect(failing.takes).toBe(2);
+    expect(failing.reply).toMatchObject({ ok: true, heard: [{ heard: stumbled, stumbled: true }] });
+    // without Parakeet the sentences go unheard, and the reply says why
+    rmSync(join(dir, 'fake', 'onnx_asr.py'));
+    const deaf = serve([]);
+    expect(deaf.takes).toBe(1);
+    expect(deaf.reply).toMatchObject({ ok: true, unheard: expect.stringContaining('Parakeet did not load') });
+  });
+
+  test('compares letters: numbers said as the other text has them, spaces, punctuation and audio tags left out', () => {
+    // Parakeet's transcripts of real takes beside their scripts
+    const cases: [string, string, string][] = [
+      ['de', 'Es kostet 15.200 Euro [short pause] im Jahr.', 'Es kostet fünfzehntausendzweihundert Euro im Jahr'],
+      ['de', 'Höchstens elfhundert Pixel breit, am zwölften November.', 'Höchstens 1100 Pixel breit, am 12. November.'],
+      ['en', 'It took two thousand five hundred runs, on the twenty-first day.', 'It took 2,500 runs, on the 21st day.'],
+      // Parakeet's own noise: a compound heard together, an English word in German narration, a dropped word
+      ['de', 'Vorher stand der Fehler im Kasten Last failed.', 'Vorher stand der Fehler im Kastenlast, Fällt.'],
+      ['de', 'Eine neue Aufgabe startet sofort, außer ich sage ausdrücklich, dass sie warten soll.', 'Eine neue Aufgabe startet sofort, außer ausdrücklich, dass sie warten soll.'],
+      // a wrong sound, a garbled word, a stumble
+      ['en', 'Click the Reauthenticate button.', 'Click the reauthentipate button.'],
+      ['de', 'Mit einem Button Reauthenticate.', 'Mit einem ButtonRare Templet.'],
+      ['en', 'Click the Reauthenticate button.', 'Click the reauthentip uh reauthentipite button.'],
+      // a short sentence not said at all
+      ['en', 'Click save.', ''],
+    ];
+    const r = python(
+      [
+        '-c',
+        `import sys, json; sys.path.insert(0, ${JSON.stringify(LIB)}); import qwen3
+print(json.dumps([[qwen3.differing(s, h, l), qwen3.misheard(s, h, l)] for l, s, h in json.loads(sys.argv[1])]))`,
+        JSON.stringify(cases),
+      ],
+      {},
+    );
+    expect(r.stderr).toBe('');
+    expect(JSON.parse(r.stdout)).toEqual([
+      [0, []],
+      [0, []],
+      [0, []],
+      [2, [['failed', 'Fällt']]],
+      [0, []],
+      [1, [['Reauthenticate', 'reauthentipate']]],
+      [5, [['Button Reauthenticate', 'ButtonRare Templet']]],
+      [9, [['Reauthenticate', 'reauthentip uh reauthentipite']]],
+      [9, []],
+    ]);
+  });
+
   test('ends quietly when whoever asked is gone before the clip is done', async () => {
     const pkg = join(dir, 'fake', 'mlx_audio', 'tts');
     mkdirSync(pkg, { recursive: true });

@@ -137,7 +137,8 @@ own WebSocket. It shows four lists:
 - **„Für dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then „Obeya hat geantwortet“ where an answer waits unread. Each card says what it waits
   for (its state line: „Demo bereit“, „Frage an dich“ …) and since when (the server keeps that across
-  restarts). Snoozed cards stand at the end (see Snoozing a card).
+  restarts). Snoozed cards stand at the end (see Snoozing a card). The canvas's navigation shows the
+  same entries in the same order, built once for both, as light rows (see The navigation).
 - **„Läuft“**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
   at the end. Every card that leaves „Für dich“ without being done stands here.
@@ -518,8 +519,11 @@ them).
   landed one after another, the server stood still for half a second at a time. The cards alone
   (what code reads back between its writes) are built apart from the rest of that view (the sheet's
   outdated pages, the workspaces, the notes on the plan directories), and one archived card is built
-  without the whole archive. The owner's settings file, asked for the language with every text the
-  server writes, is read again only once it changed. Rejected: reacting to each change at once and
+  without the whole archive. Which cards are prototypes (an idea lists its own, archived ones too)
+  is read once per change, and each is made into a card when one first needs it, once per change
+  too, not again for every card looked up: a pass of sharing looks up every shared card, hundreds of
+  them, and stood still for half a second doing so. The owner's settings file, asked for the
+  language with every text the server writes, is read again only once it changed. Rejected: reacting to each change at once and
   only making the view cheaper (the reactions still build it once per change).
 - **A page's freezes are found by a worker's heartbeat, not by its own timer running late**
   (2026-10-30): the app's webview on macOS runs a page's timers about once a second when its window

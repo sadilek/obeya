@@ -3,7 +3,6 @@
 import type { DemoSettings, NarrationLanguage, VoiceKind } from '../../plugin/skills/demo/lib/settings.ts';
 import type { SetupId, SetupItem } from '../../plugin/skills/demo/lib/setup.ts';
 import type { CardFile } from './files';
-import type { InboxEntry } from './inbox';
 import type { Language } from './locale';
 import { MESSAGES } from './messages';
 import type { PageChangeId } from './page-changes';
@@ -102,9 +101,11 @@ export const buildableOn = (i: Item) => i.state === 'planned' && !i.branch && !i
 
 /**
  * A planned task nobody has worked on yet, which the Koordinator may merge with others or delete:
- * no branch, no workspace, not with the Koordinator, and no prototype nor becoming a project.
+ * no branch, no workspace, not with the Koordinator unless it waits there behind other cards (a
+ * review's follow-up task waiting for the PR's merge, say), and no prototype nor becoming a project.
  */
-export const untouched = (i: Item) => i.kind === 'task' && i.source === 'manual' && i.state === 'planned' && !i.branch && !i.workspace && !i.queue && !i.prototypeOf && !i.becomesProject;
+export const untouched = (i: Item) =>
+  i.kind === 'task' && i.source === 'manual' && i.state === 'planned' && !i.branch && !i.workspace && (!i.queue || 'behind' in i.queue) && !i.prototypeOf && !i.becomesProject;
 
 /**
  * A task of the owner's that can still be planned as a project, as an idea can: planned, nobody has
@@ -249,6 +250,17 @@ export function unreadPerProject(talk: Talk[]): Map<string, number> {
 /** What on a canvas waits for the owner: the cards that need them, and the Koordinator while an answer waits unread. */
 export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.filter(needsYou).length + (unreadAnswers(s.talk) ? 1 : 0);
 
+/**
+ * What of a canvas „Für dich“ lists (the phone's, and the navigation on every other canvas's page):
+ * the cards that need the owner and those snoozed while they did, and the Koordinator's answers that
+ * wait unread.
+ */
+export type Waiting = Pick<CanvasSnapshot, 'items' | 'talk'>;
+export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting => ({
+  items: s.items.filter((i) => needsYou(i) || !!i.snoozed?.waiting),
+  talk: s.talk.filter((x) => x.unread),
+});
+
 /** One item on the canvas as the UI sees it: a stored card merged with what its plan doc says. */
 /**
  * Who wrote a card's task: the owner (also through the Koordinator, from their words), the plan doc
@@ -286,6 +298,8 @@ export interface Item {
   arranging?: true;
   /** Workstreams only: the workstreams of its project it builds on, as the Koordinator read them from the plan doc. */
   buildsOn?: string[];
+  /** Cards connected by the owner that must finish before this card starts. */
+  manualDependsOn?: string[];
   /** The worker's latest `report`. */
   statusLine?: string;
   /**
@@ -697,6 +711,21 @@ export interface Contribution {
   findings?: Finding[];
   /** The worker's change request on the PR, while the card waits for the contributor. */
   requested?: { url?: string; at: string };
+  /** Where work lands on the local main: its unpushed commits collide with the PR, as Obeya found before the merge. */
+  clash?: Clash;
+}
+
+/**
+ * Commits on the local main nobody pushed yet that a pull request collides with: once it is merged,
+ * pulling it into the local main stops at `commit` (`subject`, and the card that landed it, where
+ * one did), in `files`; `unpushed` is how many such commits the local main has.
+ */
+export interface Clash {
+  commit: string;
+  subject: string;
+  files: string[];
+  unpushed: number;
+  card?: { id: string; title: string };
 }
 
 /**
@@ -769,6 +798,9 @@ export const START_ALL_HOLD_MS = 8000;
 /** How long taking a card's workspace from it (the Workspaces list) waits for the owner's „Rückgängig“. */
 export const EVICT_HOLD_MS = 8000;
 
+/** How long pushing main for a review card whose PR collides with unpushed commits waits for the owner's „Rückgängig“. */
+export const PUSH_HOLD_MS = 8000;
+
 /**
  * `since`: when the card came to the Koordinator; of the cards whose turn comes, the one waiting
  * longest goes first. `together`: the project whose workstreams the Koordinator judges all at once.
@@ -780,8 +812,11 @@ export const EVICT_HOLD_MS = 8000;
  */
 export type Queue = Wait & { since: string };
 
-/** What a card in the queue waits for (`Queue`). */
-export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[] } | { workspace: WorkspaceShortage } | { paused: true };
+/**
+ * What a card in the queue waits for (`Queue`). `together`: judged in one turn with the cards of the
+ * same key, a project's workstreams started at once (the project's id) or cards freed at once (`freed:…`).
+ */
+export type Wait = { checking: true; together?: string } | { behind: string[]; reason: string; buildsOn?: string[]; manualWait?: string[] } | { workspace: WorkspaceShortage } | { paused: true };
 
 /** Why a card waits to start: no clone free (`none`), the free ones dirty, or every machine with a clean free one busy to its slots (`slots`). */
 export type WorkspaceShortage = 'none' | 'dirty' | 'slots';
@@ -1384,6 +1419,13 @@ export type CardAction =
   | { action: 'release'; now?: boolean }
   /** Deletes a comment on a place in the demo video that Obeya still holds back (`Item.held`). */
   | { action: 'unsay'; id: number }
+  /**
+   * A review card whose PR collides with unpushed commits on the local main: main is pushed, once
+   * the undo window (PUSH_HOLD_MS) is through, and the card's agent brings the PR up to date with it;
+   * `keepMain` takes it back within the window.
+   */
+  | { action: 'pushMain' }
+  | { action: 'keepMain' }
   /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
   | { action: 'approve'; direct?: boolean }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */
@@ -1521,6 +1563,10 @@ export type ErrorCode =
   | 'noFinding'
   /** Approving a review card: its PR moved since the handover, was closed, or the forge refused the merge (the detail says why). */
   | 'prMoved'
+  /** „main pushen“ on a review card whose PR collides with nothing unpushed (any more), or taking back a push that is not waiting. */
+  | 'noClash'
+  /** „Mergen“ on a review card whose PR collides with unpushed commits on the local main, which the card had not shown yet: it shows them now. */
+  | 'pullClash'
   | 'prClosed'
   | 'mergeRefused'
   /** „Review PR #5“: no such pull request, or none Obeya can read. */
@@ -2643,10 +2689,8 @@ export type ServerMessage =
   | { type: 'source'; source: SourceUpdate | null }
   /** On connect and whenever it changes: how much of its usage limits the account Claude Code runs with here has used, while the bar shows it. */
   | { type: 'usage'; usage: Usage | null }
-  /** On connect and whenever it changes: how many cards on each canvas need the owner, by canvas id. */
-  | { type: 'waiting'; waiting: Record<string, number> }
-  /** On connect and whenever it changes: everything that waits for the owner on every canvas, the newest first (the inbox). */
-  | { type: 'inbox'; inbox: InboxEntry[] }
+  /** On connect and whenever it changes: what waits for the owner on each canvas, by canvas id. */
+  | { type: 'waiting'; waiting: Record<string, Waiting> }
   /** Whenever a canvas starts, stops, or changes its name or repositories while Obeya runs. */
   | { type: 'canvases'; canvases: CanvasInfo[] }
   /** A line for the owner above the microphone, wherever they are. */

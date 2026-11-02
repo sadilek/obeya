@@ -4,8 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
-import { type InboxEntry, inboxOf, inboxOrder } from '../core/inbox';
-import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, waitingOn } from '../core/types';
+import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn } from '../core/types';
 import index from '../ui/index.html';
 import { guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
@@ -177,21 +176,19 @@ export function serve(
       owner: due.owner,
     };
   };
-  /** How many things on each canvas need the owner: each canvas's switcher points to the others. */
-  const counted = (c: CanvasRuntime, snapshot = c.board.snapshot()) => waitingOn(snapshot);
-  const waiting: Record<string, number> = {};
+  /** What waits for the owner on each canvas: every page lists it in its navigation, the other canvases' too. */
+  const waiting: Record<string, Waiting> = {};
+  /** Each canvas's part of it as last sent, to send it again only when it changed. */
+  const waitingSent: Record<string, string> = {};
   const waitingMessage = () => JSON.stringify({ type: 'waiting', waiting } satisfies ServerMessage);
-  /** What waits for the owner on each canvas, kept for the inbox every page shows. */
-  const inboxes = new Map<string, InboxEntry[]>();
-  const inboxMessage = () => JSON.stringify({ type: 'inbox', inbox: inboxOrder([...inboxes.values()].flat()) } satisfies ServerMessage);
-  let inboxSent = '';
-  /** Reads the canvas's entries anew and sends the inbox to every page if it changed. */
-  const refreshInbox = (c: CanvasRuntime, snapshot = c.board.snapshot()) => {
-    inboxes.set(c.id, inboxOf(c.board.canvas, snapshot));
-    const text = inboxMessage();
-    if (text === inboxSent) return;
-    inboxSent = text;
-    everyone(text);
+  /** Takes in what waits on `c` now; whether that changed. */
+  const counted = (c: CanvasRuntime, snapshot = c.board.snapshot()) => {
+    const w = waitingIn(snapshot);
+    const text = JSON.stringify(w);
+    if (text === waitingSent[c.id]) return false;
+    waiting[c.id] = w;
+    waitingSent[c.id] = text;
+    return true;
   };
   const everyone = (text: string) => {
     for (const set of sockets.values()) for (const ws of set) ws.send(text);
@@ -213,8 +210,7 @@ export function serve(
   const attach = (c: CanvasRuntime) => {
     byId.set(c.id, c);
     if (!sockets.has(c.id)) sockets.set(c.id, new Set());
-    waiting[c.id] = counted(c);
-    refreshInbox(c);
+    counted(c);
     const send = (msg: ServerMessage) => sendTo(c.id, msg);
     /** The cards as last sent: what starts to wait for the owner after is pushed to their phone. */
     let seen = new Map(c.board.items().map((i) => [i.id, i]));
@@ -238,13 +234,9 @@ export function serve(
         );
         const snapshot = c.board.snapshot();
         send({ type: 'snapshot', snapshot });
-        refreshInbox(c, snapshot);
         // what the switchers show of it (its repositories, whether they run as configured) may have changed
         relist();
-        const n = counted(c, snapshot);
-        if (n === waiting[c.id]) return;
-        waiting[c.id] = n;
-        everyone(waitingMessage());
+        if (counted(c, snapshot)) everyone(waitingMessage());
       }),
       c.board.onEvent((event) => send({ type: 'event', event })),
       c.board.onEventGone((cardId, id) => send({ type: 'eventGone', cardId, id })),
@@ -269,8 +261,6 @@ export function serve(
     if (first) return;
     everyone(JSON.stringify({ type: 'canvases', canvases: now } satisfies ServerMessage));
     everyone(waitingMessage());
-    // a canvas renamed is named so in the inbox
-    for (const c of byId.values()) refreshInbox(c);
   };
   for (const c of canvases.all()) attach(c);
   relist();
@@ -283,14 +273,13 @@ export function serve(
         detach.delete(id);
         byId.delete(id);
         delete waiting[id];
-        inboxes.delete(id);
+        delete waitingSent[id];
         // the page asks for the canvases, and goes to the first there is
         for (const ws of sockets.get(id) ?? []) ws.close();
         sockets.delete(id);
       }
     for (const c of now) if (byId.get(c.id) !== c) attach(c);
     relist();
-    for (const c of now) refreshInbox(c);
   });
 
   /** A click the Rückschau counts (a card deleted, a command taken back, a rule proposal decided on), once it went through. */
@@ -631,6 +620,10 @@ export function serve(
           const { cards, group } = ((await req.json()) ?? {}) as { cards?: string[]; group?: string | null };
           return c.board.group(cards, group ?? null);
         }),
+      },
+      '/api/c/:canvas/dependencies': {
+        POST: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to); }),
+        DELETE: on(async (c, req) => { const { from, to } = await req.json() as { from: string; to: string }; c.board.connect(from, to, true); }),
       },
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },
       '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
@@ -987,7 +980,6 @@ export function serve(
         if (usage) unwatch.set(ws.data.page, usage.watch());
         ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
         ws.send(waitingMessage());
-        ws.send(inboxMessage());
         // a page that reloads within a command's undo window offers "Rückgängig" again
         for (const n of c.commander.undoable()) ws.send(JSON.stringify({ type: 'notice', ...n } satisfies ServerMessage));
       },

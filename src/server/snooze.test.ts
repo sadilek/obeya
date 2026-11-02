@@ -131,6 +131,40 @@ describe('the agent snoozes itself', () => {
     expect(s.call('snooze', { until: later(HOUR * 5), why: 'x' })).toContain('Not snoozed');
   });
 
+  test('on its handover, as the owner asks: the handover stands, the card leaves them until then, and the agent goes on then', async () => {
+    const { id, s } = await atWork();
+    s.emit({ type: 'idle' });
+    board().work(id, { state: 'waiting', need: 'review' });
+    workers().message(id, 'Prüfe in drei Tagen nochmal.');
+    const until = later(72 * HOUR);
+    expect(s.call('snooze', { until, why: 'Log erneut prüfen' })).toContain('Snoozed until');
+    s.emit({ type: 'idle' });
+    expect(s.closed).toBe(true);
+    expect(item(id)).toMatchObject({ state: 'waiting', need: 'review', snoozed: { by: 'agent' } });
+    expect(item(id).answering).toBeUndefined();
+    expect(needsYou(item(id))).toBe(false);
+    expect(board().events(id).some((e) => e.text.startsWith('Der Agent hat aufgehört'))).toBe(false);
+
+    canvas.wakeDue(Date.parse(until) + 1000);
+    expect(runtime.last.spec.resume).toBe('sess-1');
+    expect(runtime.last.inbox[0]).toContain('the time you snoozed until, to: Log erneut prüfen');
+    // at work towards what it told them, the card still waits for approval
+    expect(item(id)).toMatchObject({ state: 'waiting', need: 'review', answering: true });
+    expect(item(id).snoozed).toBeUndefined();
+    expect(needsYou(item(id))).toBe(false);
+  });
+
+  test('approved while its agent snoozed on its handover: it wakes no more', async () => {
+    const { id, s } = await atWork();
+    s.emit({ type: 'idle' });
+    board().work(id, { state: 'waiting', need: 'review' });
+    workers().message(id, 'Prüfe in drei Tagen nochmal.');
+    s.call('snooze', { until: later(72 * HOUR), why: 'x' });
+    s.emit({ type: 'idle' });
+    await workers().approve(id);
+    expect(item(id).snoozed).toBeUndefined();
+  });
+
   test('stopping a snoozed card plans it again, not snoozed', async () => {
     const { id, s } = await atWork();
     s.call('snooze', { until: later(HOUR * 5), why: 'x' });

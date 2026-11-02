@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CardDiff } from '../core/diff';
-import type { InboxEntry } from '../core/inbox';
 import { type Place, placeParam } from '../core/layout';
-import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView } from '../core/types';
+import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
 import type { Wish } from '../core/wish';
 import { noteMessage, watchPageStalls } from './stalls';
 
@@ -16,15 +15,16 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await send(method, path, body);
+async function call<T>(method: string, path: string, body?: unknown, keepalive?: boolean): Promise<T> {
+  const res = await send(method, path, body, keepalive);
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-/** The request, with `body` as JSON; throws the server's refusal. */
-async function send(method: string, path: string, body?: unknown) {
+/** The request, with `body` as JSON; throws the server's refusal. With `keepalive`, it outlasts the page. */
+async function send(method: string, path: string, body?: unknown, keepalive?: boolean) {
   const res = await fetch(path, {
     method,
+    keepalive,
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -227,6 +227,8 @@ export const api = {
   installUpdate: () => call<{ updating: boolean }>('POST', '/api/app-update/install'),
   /** Fast-forwards the checkout Obeya runs from to its upstream; Obeya then restarts with the new code once the workers paused. */
   pullSource: () => call<{ source: SourceUpdate | null }>('POST', '/api/source-update/pull'),
+  /** Draws or removes an owner-drawn arrow; `keepalive` for one sent as the page goes. */
+  dependency: (from: string, to: string, remove = false, keepalive = false) => call<void>(remove ? 'DELETE' : 'POST', at('/dependencies'), { from, to }, keepalive),
   create: (c: NewCard) => call<Item>('POST', at('/cards'), c),
   /** The card that writes a repository's settings for everyone, on the canvas it belongs to (not necessarily the shown one). */
   adapterSetup: (canvas: string, repo: string) => call<Item>('POST', `/api/c/${encodeURIComponent(canvas)}/adapter-setup`, { repo }),
@@ -532,9 +534,8 @@ export function useCanvas(id = canvasId): {
   source: SourceUpdate | null;
   /** The plan's usage limits, while the bar shows them. */
   usage: Usage | null;
-  waiting: Record<string, number>;
-  /** Everything that waits for the owner, on every canvas, the newest first. */
-  inbox: InboxEntry[];
+  /** What waits for the owner on each canvas, by canvas id. */
+  waiting: Record<string, Waiting>;
   oldBun: string | null;
   /** The canvases as they changed while the page is open (one started, stopped or renamed); null until they do. */
   canvases: CanvasInfo[] | null;
@@ -547,8 +548,7 @@ export function useCanvas(id = canvasId): {
   const [update, setUpdate] = useState<AppUpdate | null>(null);
   const [source, setSource] = useState<SourceUpdate | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
-  const [waiting, setWaiting] = useState<Record<string, number>>({});
-  const [inbox, setInbox] = useState<InboxEntry[]>([]);
+  const [waiting, setWaiting] = useState<Record<string, Waiting>>({});
   const [oldBun, setOldBun] = useState<string | null>(null);
   const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
   useEffect(() => {
@@ -598,7 +598,6 @@ export function useCanvas(id = canvasId): {
         else if (msg.type === 'source') setSource(msg.source);
         else if (msg.type === 'usage') setUsage(msg.usage);
         else if (msg.type === 'waiting') setWaiting(msg.waiting);
-        else if (msg.type === 'inbox') setInbox(msg.inbox);
         else if (msg.type === 'canvases') setCanvases(msg.canvases);
         else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
         else if (msg.type === 'eventGone') for (const fn of goneListeners) fn(msg.cardId, msg.id);
@@ -651,5 +650,5 @@ export function useCanvas(id = canvasId): {
       ws.close();
     };
   }, [id]);
-  return { snapshot, online, offlineSince, restart, update, source, usage, waiting, inbox, oldBun, canvases };
+  return { snapshot, online, offlineSince, restart, update, source, usage, waiting, oldBun, canvases };
 }

@@ -25,6 +25,11 @@ export const PIPER_VOICES: Record<NarrationLanguage, string> = { de: 'de_DE-thor
 const PIPER_BASE = 'https://huggingface.co/rhasspy/piper-voices/resolve/main';
 /** Qwen3-TTS: a stock speaker from the CustomVoice model, or a clone of a clip with the Base model. */
 export const QWEN3_SPEAKER = 'ryan';
+/**
+ * Qwen3-TTS hears each sentence back with Parakeet, as Obeya's voice input does (`qwen3.py`): onnx-asr
+ * on the CPU, its model in the Hugging Face cache, fetched there on the voice's first start.
+ */
+const QWEN3_EAR = 'onnx-asr[cpu,hub]';
 /** Apple Silicon runs Qwen3-TTS on MLX; elsewhere it is PyTorch, in practice only with a GPU. */
 export const onMlx = () => process.platform === 'darwin' && process.arch === 'arm64';
 const qwen3Model = (clone: boolean) =>
@@ -56,6 +61,11 @@ export type VoiceSpec =
        * `tts.py` gives it English terms respelt, from the language's lexicon and the script's marks.
        */
       respell?: boolean;
+      /**
+       * The voice's own lexicons (`lexicon.<name>.<language>.json`) for words it cannot read as
+       * written: `tts.py` gives it those respelt. Marks stay for the voices that respell.
+       */
+      lexicon?: string;
       /**
        * The voice can stay loaded: this command starts once per render and answers clip by clip
        * over its stdin and stdout (the protocol is in `qwen3.py`). Without it, `argv` or `shell`
@@ -142,12 +152,16 @@ function exec(cmd: string, args: string[], log: (line: string) => void, env?: Re
   });
 }
 
-/** A Python environment of its own, made by uv, with `packages` in it. */
+/**
+ * A Python environment of its own, made by uv, with `packages` in it. One installed with fewer
+ * packages than these is not installed: installing it again adds the ones it lacks.
+ */
 function pythonEnv(dir: string, packages: string[], label: string, mb: number): Component {
+  const marker = path.join(dir, 'env', INSTALLED);
   return {
     label,
     mb,
-    installed: () => fs.existsSync(path.join(dir, 'env', INSTALLED)),
+    installed: () => fs.existsSync(marker) && packages.every((p) => fs.readFileSync(marker, 'utf8').split(/\s+/).includes(p)),
     install: async (log) => {
       fs.mkdirSync(dir, { recursive: true });
       await exec('uv', ['venv', '--quiet', '--allow-existing', '--python', '3.12', path.join(dir, 'env')], log);
@@ -195,7 +209,7 @@ export function components(s: DemoSettings, home = obeyaHome()): Component[] {
     const dir = path.join(voicesHome(home), 'qwen3');
     const repo = qwen3Model(!!referenceOf(s));
     return [
-      onMlx() ? pythonEnv(dir, ['mlx-audio'], 'Qwen3-TTS (MLX)', 450) : pythonEnv(dir, ['qwen-tts'], 'Qwen3-TTS (PyTorch)', 4000),
+      onMlx() ? pythonEnv(dir, ['mlx-audio', QWEN3_EAR], 'Qwen3-TTS (MLX)', 520) : pythonEnv(dir, ['qwen-tts', QWEN3_EAR], 'Qwen3-TTS (PyTorch)', 4070),
       {
         label: PART_WORDS[s.language].model(repo),
         mb: 4300,
@@ -252,6 +266,7 @@ export function voiceSpec(s: DemoSettings, home = obeyaHome()): VoiceSpec {
         host: voice,
         tag: `qwen3|${qwen3Model(!!reference)}|${reference ?? s.voiceName ?? QWEN3_SPEAKER}`,
         heavy: true,
+        lexicon: 'qwen3',
       };
     }
     case 'say': {

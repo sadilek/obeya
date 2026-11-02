@@ -283,6 +283,8 @@ export class PrWatcher {
       }
     }
     this.save(cardId, next);
+    // the remote's main moves with others' pushes, the local one with landings: what the merge would collide with, looked at afresh
+    if (state === 'waiting') this.workers.recheckClash(cardId);
   }
 
   private save(cardId: string, pr: PrState) {

@@ -41,7 +41,10 @@ The voice is chosen in Obeya's settings ("Demos"); "Anhören" plays a sentence i
   plugin/skills/demo/lib/voices.ts install`.
 - **Qwen3-TTS**: more natural, and it can clone a voice from a clip. It is a large download: on a
   Mac with Apple Silicon through MLX (about 5 GB), elsewhere through PyTorch, in practice only
-  with a GPU (about 8 GB); while it speaks it holds several GB of memory. Obeya installs it on request too.
+  with a GPU (about 8 GB); while it speaks it holds several GB of memory. It hears each sentence
+  back with Parakeet, the speech recognition of voice input (about 700 MB more, fetched on its first
+  start if voice input has not fetched it already), and makes one it stumbled over again. Obeya
+  installs it on request too.
 - **macOS `say`**: on a Mac only, nothing to install, clearly more synthetic.
 - **A hosted service**: Gemini, OpenAI, ElevenLabs or Azure, with the API key in its environment
   variable (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `AZURE_SPEECH_KEY`) or in a

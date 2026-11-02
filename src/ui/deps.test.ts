@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { depsOf } from './deps';
+import { depsOf, waitsAmong } from './deps';
 
 const card = (id: string, ...behind: string[]) =>
   ({ id, kind: 'task', state: behind.length ? 'planned' : 'working', title: id, body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...(behind.length && { queue: { behind, reason: '' } }) }) as Item;
@@ -61,4 +61,12 @@ test('a card snoozed until another card gets somewhere waits for that card', () 
   expect([...d.after]).toEqual(['S']);
   expect(depsOf('F', all)!.edges.sort()).toEqual([['F', 'R'], ['R', 'S']]);
   expect(depsOf('R', [snoozed])).toBeUndefined();
+});
+
+test('every direct wait on the canvas, of all kinds, not the chain; a finished card is waited for no longer', () => {
+  const snoozed = { ...card('R'), snoozed: { on: { card: 'A', title: 'A', state: 'done' }, by: 'agent' } } as Item;
+  const drawn = { ...card('M'), manualDependsOn: ['B'] } as Item;
+  const done = { ...card('F'), state: 'done' } as Item;
+  const all = [...items, snoozed, drawn, done, card('G', 'F'), { ...card('H'), state: 'live', manualDependsOn: ['A'] } as Item];
+  expect(waitsAmong(all).sort()).toEqual([['A', 'B'], ['A', 'D'], ['A', 'R'], ['B', 'C'], ['B', 'D'], ['B', 'M']]);
 });

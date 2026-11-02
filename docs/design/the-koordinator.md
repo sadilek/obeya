@@ -33,7 +33,12 @@ the cards that one sees as ahead or to build on, so no two cards wait for each o
 
 A waiting card shows the reason (one that starts says which files it shares and why that is fine).
 Once what it waits for has landed or stopped it starts, or, if other work may have started
-meanwhile, it is judged again. „Trotzdem starten“ starts it at the owner's own risk. While it waits
+meanwhile, it is judged again. Cards whose waits end at once (the follow-up tasks of a merged PR,
+say) are judged together, in one turn as a project's start is (see Starting a whole project): it
+sees them in their order in the queue, keeps that order unless a dependency or a likely conflict
+asks for another, and says which start now and which wait for which, so the first in the queue
+does not start blind to one after it that it should build on or would collide with; a card alone
+starts at once where nothing runs. „Trotzdem starten“ starts it at the owner's own risk. While it waits
 it keeps its full card and takes notes for its worker (see Card layout); spoken words there go to
 the Koordinator.
 
@@ -44,6 +49,24 @@ Such a wait holds until that workstream has landed; stopping it or taking it out
 not free the card. The card says so („Wartet auf W2 „…“ (noch nicht gestartet)“, in its log, the
 queue's list and the project's sheet), so the owner sees which to start first. Even with nothing in
 progress or queued, it skips this judgement only when no workstream of its project is left unlanded.
+
+A dependency drawn by the owner holds a card started afterwards until the prerequisite has finished,
+including while that prerequisite is not started or stopped. Removing the arrow releases that wait;
+an already running card continues. The owner may still start a queued card anyway.
+
+#### Follow-up tasks of a review
+
+A follow-up task a review card's worker makes of findings (see Review cards) builds on the pull
+request by definition, so Obeya queues it behind the review card as it is made, without an estimate:
+„Wartet auf „PR #34 …“. Folgeaufgabe aus dem Review von PR #34; startet, sobald der PR gemergt
+ist.“ The wait holds like a workstream's on one it builds on: stopping the review card does not free
+it, only the merge (the card `live`); then it starts, or is judged again, together with the other
+follow-up tasks of the PR, where it is not alone or other work runs. A PR
+closed without a merge (the review card closed as done) leaves nothing to build on: its follow-up
+tasks go back to planned, saying why, for the owner to start or delete. One made when the review
+card is finished already is judged as any card. While it waits it is a task nobody has worked on:
+the Koordinator may merge it with others (the merged task waits for what any of them waited for, in
+the place of the first queued) or delete it.
 
 #### Waiting for a workspace
 
@@ -72,9 +95,10 @@ why when clicked. A drop moves it there in one step: it passes each
 card between, which each move up one place. The order decides who goes first once free, who gets a
 free workspace, and which cards count as ahead when one is judged again.
 
-While the pointer is on a card, its waits show both ways over every step: the cards it waits for
-(„kommt zuerst“) and those waiting for it („wartet darauf“), each with a ring and an arrow from the
-card waited for to the card waiting. A workstream not delivered yet also shows the open workstreams
+Each direct wait is a faint line on the canvas at all times (see Cards on the canvas). While the
+pointer is on a card, its waits show both ways over every step, in the waiting colour over the faint
+lines: the cards it waits for („kommt zuerst“) and those waiting for it („wartet darauf“), each with
+a ring and an arrow from the card waited for to the card waiting. A workstream not delivered yet also shows the open workstreams
 it builds on as read for its project's arrangement (see A project arranged by its dependencies), and
 a card snoozed until another card gets somewhere waits for that card (see Snoozing a card).
 
@@ -233,7 +257,7 @@ The answer comes 10–30 s later: its start above the microphone (as plain text 
 Markdown stripped), in full in the open card's log, else
 in the Koordinator's sheet; meanwhile the open card shows what the agent reads. An answer in the
 sheet stays unread until the owner has the sheet in view (open, the page not hidden): until then
-Obeya's button counts it in orange, it counts once in „brauchen dich“ and in the switcher, and Tab
+Obeya's button counts it in orange, it counts once in the navigation and stands in its „Für dich“ as one entry, and Tab
 goes there after the cards that need the owner; such answers keep an orange edge until the sheet
 closes. An answer that arrives while the sheet is in view, or in a card's log, is read where it
 arrives. The quick turn's own reply waits the same way when it only answers, since a long one takes
@@ -396,6 +420,10 @@ passed the words on through `to_obeya` hears that the owner finds the link under
 - **A project's workstreams started together are scheduled in one turn** (2026-10-02): they often
   build on each other, which a conflict check does not see; only a turn seeing all of them and the
   plan doc can choose the order.
+- **Cards freed at once are scheduled in one turn too** (2026-11-02, the owner on the follow-up
+  tasks of a review: the first in the queue started unchecked, and only the second was checked
+  against it, so nothing asked whether the first should build on the second). Rejected: starting
+  them one by one in the queue's order.
 - **Learned rules are proposals the owner accepts first** (2026-10-02), as the owner wants to see
   every rule before it applies. Rejected: storing them silently. The Rückschau runs after about 20
   inputs, neither daily nor only on request.

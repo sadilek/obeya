@@ -725,3 +725,60 @@ describe('a plan reference', () => {
     ]);
   });
 });
+
+
+describe('owner-drawn dependencies', () => {
+  test('connections survive a new board, reject cycles, and can be removed independently', () => {
+    const a = board.create({ title: 'A', x: 0, y: 0 });
+    const b = board.create({ title: 'B', x: 0, y: 0 });
+    const c = board.create({ title: 'C', x: 0, y: 0 });
+    board.connect(a.id, b.id);
+    board.connect(b.id, c.id);
+    expect(board.item(b.id)?.manualDependsOn).toEqual([a.id]);
+    expect(() => board.connect(c.id, a.id)).toThrow(BadRequest);
+    const reopened = new Board(store, board.canvas, () => ({ docs, dirs }));
+    expect(reopened.item(c.id)?.manualDependsOn).toEqual([b.id]);
+    reopened.connect(a.id, b.id, true);
+    expect(reopened.item(b.id)?.manualDependsOn).toBeUndefined();
+    expect(reopened.item(c.id)?.manualDependsOn).toEqual([b.id]);
+  });
+});
+
+test("a deleted card's arrows count for nothing until it is restored, and come back without closing a cycle", () => {
+  const a = board.create({ title: 'A', x: 0, y: 0 });
+  const x = board.create({ title: 'X', x: 0, y: 0 });
+  const c = board.create({ title: 'C', x: 0, y: 0 });
+  board.connect(a.id, x.id);
+  board.connect(x.id, c.id);
+  board.remove(x.id);
+  expect(board.item(c.id)?.manualDependsOn).toBeUndefined();
+  board.connect(c.id, a.id);
+  expect(board.item(a.id)?.manualDependsOn).toEqual([c.id]);
+  board.restore(x.id);
+  expect(board.item(x.id)?.manualDependsOn).toEqual([a.id]);
+  expect(board.item(c.id)?.manualDependsOn).toBeUndefined();
+  expect(board.manualDependencies()).toEqual([[c.id, a.id], [a.id, x.id]]);
+});
+
+test("an archived card's arrows come back with it, without closing a cycle", () => {
+  const a = board.create({ title: 'A', x: 0, y: 0 });
+  const x = board.create({ title: 'X', x: 0, y: 0 });
+  const c = board.create({ title: 'C', x: 0, y: 0 });
+  board.connect(a.id, x.id);
+  board.connect(x.id, c.id);
+  board.patch(x.id, { state: 'live' });
+  board.archive([x.id]);
+  board.connect(c.id, a.id);
+  board.unarchive(x.id);
+  expect(board.manualDependencies()).toEqual([[c.id, a.id], [a.id, x.id]]);
+});
+
+test('owner-drawn dependencies cannot connect projects or their workstreams', () => {
+  const own = board.create({ title: 'Own task', x: 0, y: 0 });
+  const project = board.snapshot().items.find((i) => i.kind === 'project')!;
+  const workstream = board.snapshot().items.find((i) => i.parent === project.id)!;
+  for (const plan of [project, workstream]) {
+    expect(() => board.connect(own.id, plan.id)).toThrow(BadRequest);
+    expect(() => board.connect(plan.id, own.id)).toThrow(BadRequest);
+  }
+});

@@ -750,6 +750,7 @@ export class CanvasRuntime {
       onApproval: (cardId) => this.sharing.approved(cardId),
       onLanded: (cardId) => void this.sharing.landed(cardId),
       onMerged: () => void read.refresh(),
+      onFollowUpTask: (taskId, reviewId) => this.koordinator.followUp(taskId, reviewId),
       onPrototype: (prototype, summary, demo) => this.prototypeReady(prototype, summary, demo),
       onPrototypeAnswer: (prototype, question, answer) => this.prototypeAnswered(prototype, question, answer),
       // where work lands on the local main, the Lesestand is the checkout and moves with the landing;
@@ -767,7 +768,7 @@ export class CanvasRuntime {
       forge: deps.forge,
       repoPath: info.path,
       remote: originUrl(info),
-      ...(workspaces instanceof Workspaces ? { pullMain: () => (workspaces as Workspaces).pullMain() } : {}),
+      ...(workspaces instanceof Workspaces ? { pulls: workspaces } : {}),
       ...(deps.permissionMode ? { permissionMode: deps.permissionMode } : {}),
       ...(deps.workerEnv ? { env: deps.workerEnv } : {}),
       demoLanguage: () => readDemoSettings(deps.home).language,
@@ -1615,6 +1616,10 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
+      case 'pushMain':
+        return this.repoOf(cardId).workers.pushMainFor(cardId);
+      case 'keepMain':
+        return this.repoOf(cardId).workers.keepMainFor(cardId);
       case 'accept':
         return this.accept(cardId, a.picks, a.start !== false, a.idea);
       case 'unaccept':
