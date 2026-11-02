@@ -1620,6 +1620,8 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.pushMainFor(cardId);
       case 'keepMain':
         return this.repoOf(cardId).workers.keepMainFor(cardId);
+      case 'pushChanges':
+        return this.repoOf(cardId).workers.pushContribution(cardId);
       case 'accept':
         return this.accept(cardId, a.picks, a.start !== false, a.idea);
       case 'unaccept':

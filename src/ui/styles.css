@@ -1057,6 +1057,12 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .talk .msg .demo-q.answered b { color: var(--muted); }
 .question.pr { border-color: var(--inPr); background: color-mix(in srgb, var(--inPr) 7%, transparent); }
 .question.pr h4 a { color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
+/* on a review card: what goes onto the PR with the approval, the agent's text as the contributor will read it */
+.pr-held { margin-top: 10px; }
+.pr-held h5 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.pr-held-text { padding: 6px 10px; border-radius: 6px; background: var(--card); border: 1px solid color-mix(in srgb, var(--inPr) 25%, transparent); font-size: 13px; }
+.pr-held-text .p-lead { margin: 4px 0; }
+.pr-held-asks { margin-top: 6px; font-size: 13px; color: var(--waiting); }
 .checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .checks li::before { margin-right: 5px; font-weight: 700; }
 .checks li.success::before { content: "✓"; color: var(--approved); }

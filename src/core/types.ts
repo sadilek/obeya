@@ -709,8 +709,21 @@ export interface Contribution {
   findings?: Finding[];
   /** The worker's change request on the PR, while the card waits for the contributor. */
   requested?: { url?: string; at: string };
+  /** The worker's own commits for the PR, held on the card until the owner approves (`HeldChanges`). */
+  held?: HeldChanges;
   /** Where work lands on the local main: its unpushed commits collide with the PR, as Obeya found before the merge. */
   clash?: Clash;
+}
+
+/**
+ * What a review card's worker changed itself on the PR, held on the card: on the owner's approval
+ * Obeya pushes its `commits` onto the PR's branch and posts `body` there, as a comment, or with
+ * requests to the contributor (the findings `asks`) as one review asking for changes.
+ */
+export interface HeldChanges {
+  body: string;
+  commits: number;
+  asks: number[];
 }
 
 /**
@@ -728,7 +741,8 @@ export interface Clash {
 
 /**
  * What the owner decides for a finding of a review card: it goes to the contributor as a change
- * request, (`self`) the worker makes the change and pushes it onto the PR's branch, or (`later`)
+ * request, (`self`) the worker makes the change, which Obeya pushes onto the PR's branch on the
+ * owner's approval, or (`later`)
  * it becomes a follow-up task of its own, outside the PR.
  */
 export type ChangeRoute = 'contributor' | 'self' | 'later';
@@ -742,7 +756,7 @@ export interface Finding {
   security?: boolean;
   /**
    * `open` until something came of it: `sent` to the contributor (`url`, the review it went in),
-   * `fixed` by the worker on the PR's branch, `resolved` (the contributor's push fixed it, or it no
+   * `fixed` by the worker (`url`, the post its push went out with, once Obeya pushed it), `resolved` (the contributor's push fixed it, or it no
    * longer applies), `dropped` (the owner does not pursue it), `later` (a follow-up task, `card`,
    * which the worker makes once the owner chose it).
    */
@@ -752,6 +766,8 @@ export interface Finding {
   card?: string;
   /** What the owner decided for it, while the worker carries it out. */
   decided?: ChangeRoute;
+  /** Decided for the contributor while the worker's own changes are under way or held: the request goes with them, as one message. */
+  withChanges?: true;
   /** The other findings its worker would make one follow-up task with it (their ids), in both directions. */
   with?: number[];
 }
@@ -1428,6 +1444,8 @@ export type CardAction =
    */
   | { action: 'pushMain' }
   | { action: 'keepMain' }
+  /** A review card whose worker's own changes are held (`HeldChanges`): Obeya pushes them and posts their text, without merging („Nur pushen“). */
+  | { action: 'pushChanges' }
   /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
   | { action: 'approve'; direct?: boolean }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */
@@ -1571,6 +1589,8 @@ export type ErrorCode =
   | 'pullClash'
   | 'prClosed'
   | 'mergeRefused'
+  /** Approving a review card: the worker's own commits could not go onto the PR's branch (the detail says why). */
+  | 'pushRefused'
   /** „Review PR #5“: no such pull request, or none Obeya can read. */
   | 'noPr'
   /** Deleting a comment on the demo video: it is no longer held back, the worker has it. */

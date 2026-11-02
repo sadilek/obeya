@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answerText, toggle } from './answer';
@@ -291,13 +291,7 @@ export function Detail(p: Props) {
   const pr = !inFolder && !item.noChange && (item.lands?.land ?? (repoRef?.pullRequests ? 'pr' : 'main')) === 'pr';
   const direct = pr && (item.lands?.direct ?? !!repoRef?.direct);
   const approveButton = item.contribution ? (
-    <button
-      className="btn primary"
-      title={item.contribution.clash ? t.review.mergeClashHint : t.review.mergeHint}
-      onClick={() => act({ action: 'approve' }, { close: true, ack: t.review.merged(item.contribution!.number), pending: t.review.merging })}
-    >
-      {item.contribution.clash ? t.review.mergeAnyway(item.contribution.number) : t.review.merge(item.contribution.number)}
-    </button>
+    <ApproveReview c={item.contribution} act={act} />
   ) : inFolder ? (
     <>
       <button className="btn primary" title={item.noChange ? undefined : t.folder.approveHint} onClick={() => act({ action: 'approve' }, item.noChange ? { close: true, ack: t.approvedNoChange } : { close: true, ack: t.folder.approved })}>
@@ -583,7 +577,7 @@ export function Detail(p: Props) {
                     )
                   }
                 />
-                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} />}
+                {item.pr && (item.state === 'inPr' || item.state === 'waiting') && <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author } : {})} />}
                 {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
                 {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
                 {brief}
@@ -677,7 +671,7 @@ export function Detail(p: Props) {
             </button>
           )}
           {review ? prototypeActions || approveButton : (running || (halted && !item.archivedAt)) && prototypeActions}
-          <Later item={item} act={act} />
+          <Later item={item} act={act} {...(review && item.contribution?.held && !item.contribution.held.asks.length ? { pushOnly: item.contribution.number } : {})} />
           {running && (
             <button className="btn" title={t.stopHint} onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
               {t.stop}
@@ -704,10 +698,37 @@ const Limited = ({ item }: { item: Item }) => (item.limitedUntil ? <span classNa
 /** When the card went into the archive, after its state. */
 const archivedOn = (i: Item) => i.archivedAt && <span className="p-status"> · {t.archive.when(new Date(i.archivedAt))}</span>;
 
-/** „Später …“ in a card's action row, on any card the owner can snooze that is not snoozed yet (a snoozed one changes its time on its line in the conversation). */
-function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
-  if (!snoozable(item) || item.snoozed) return null;
-  return <SnoozeMenu label={t.snooze.button} onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })} />;
+/**
+ * „Später …“ in a card's action row, on any card the owner can snooze that is not snoozed yet (a
+ * snoozed one changes its time on its line in the conversation). On a review card whose agent's own
+ * changes wait for the approval (`pushOnly`, its PR's number), it also holds „Nur pushen“: the
+ * changes go onto the PR now, the merge later.
+ */
+function Later({ item, act, pushOnly }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; pushOnly?: number }) {
+  const extra = pushOnly !== undefined ? { label: t.review.pushOnly, hint: t.review.pushOnlyHint, onClick: () => void act({ action: 'pushChanges' }, { close: true, ack: t.review.pushed(pushOnly), pending: t.review.pushingHeld }) } : undefined;
+  if ((!snoozable(item) || item.snoozed) && !extra) return null;
+  return <SnoozeMenu label={t.snooze.button} onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })} {...(extra ? { extra } : {})} />;
+}
+
+/**
+ * Approving a review card: „Mergen (PR #5)“, or where its agent's own changes wait for the approval,
+ * „Pushen und mergen“, and with requests to the contributor beside them „Pushen und an … schicken“,
+ * which merges nothing and leaves the card waiting for them.
+ */
+function ApproveReview({ c, act }: { c: Contribution; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+  const go = (ack: string, pending: string) => act({ action: 'approve' }, { close: true, ack, pending });
+  if (c.held?.asks.length)
+    return (
+      <button className="btn primary" title={t.review.pushSendHint(c.author)} onClick={() => go(t.review.pushedSent(c.author), t.review.pushingHeld)}>
+        {t.review.pushSend(c.author)}
+      </button>
+    );
+  const label = c.held ? (c.clash ? t.review.pushMergeAnyway(c.number) : t.review.pushMerge(c.number)) : c.clash ? t.review.mergeAnyway(c.number) : t.review.merge(c.number);
+  return (
+    <button className="btn primary" title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
+      {label}
+    </button>
+  );
 }
 
 // ------------------------------------------------------------------ ideas
@@ -2213,12 +2234,16 @@ function Findings({ item, decides, onPush }: { item: Item; decides: boolean; onP
               <a href={f.url} target="_blank" rel="noreferrer">
                 {t.review.status[f.status](c.author)} ↗
               </a>
+            ) : f.status === 'fixed' && c.held ? (
+              t.review.fixedHeld
             ) : (
               t.review.status[f.status](c.author)
             )}
           </div>
         ) : f.decided ? (
-          <div className="f-status pending">{f.decided === 'self' ? t.review.goingSelf : f.decided === 'later' ? t.review.goingLater : t.review.goingTo(c.author)}</div>
+          <div className="f-status pending">
+            {f.decided === 'self' ? t.review.goingSelf : f.decided === 'later' ? t.review.goingLater : f.withChanges ? t.review.goingWithChanges(c.author) : t.review.goingTo(c.author)}
+          </div>
         ) : (
           decides && (
             <div className="choices single f-choices" role="group">
@@ -2340,8 +2365,12 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
   );
 }
 
-/** A card's pull request: its checks, whether it is ready, and its review. */
-function PrBox({ pr }: { pr: PullRequest }) {
+/**
+ * A card's pull request: its checks, whether it is ready, and its review. On a review card whose
+ * agent's own changes wait for the approval (`held`), first what goes onto the PR with it: how many
+ * commits, the text posted with them, and the findings it asks the contributor for.
+ */
+function PrBox({ pr, held, author }: { pr: PullRequest; held?: HeldChanges; author?: string }) {
   return (
     <div className="question pr">
       <h4>
@@ -2349,6 +2378,17 @@ function PrBox({ pr }: { pr: PullRequest }) {
           {t.pr.title(pr.number)} ↗
         </a>
       </h4>
+      {held && (
+        <div className="pr-held">
+          <h5>
+            {t.review.heldHead(pr.number)} · {t.review.heldCommits(held.commits)}
+          </h5>
+          <div className="pr-held-text">
+            <Body md={held.body} />
+          </div>
+          {held.asks.length > 0 && author && <div className="pr-held-asks">{t.review.heldAsks(held.asks, author)}</div>}
+        </div>
+      )}
       {pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
       {pr.ready && <div className="q-text">{pr.held ? t.pr.held(pr.held.score, pr.held.by) : pr.manual ? t.pr.manual : t.pr.ready(pr.mergeError ?? '')}</div>}
       {pr.checks.length > 0 ? (

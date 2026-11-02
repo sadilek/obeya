@@ -24,6 +24,7 @@ import {
   type CardPatch,
   type ClonePool,
   type Contribution,
+  type HeldChanges,
   type Decision,
   type Demo,
   type DemoKind,
@@ -112,6 +113,10 @@ const waitOf = (r: Pick<CardRow, 'queue'>) => {
 
 /** What is stored of a review card's pull request (`CardRow.contribution`): what the card shows, and what only the server needs. */
 export interface StoredContribution extends Contribution {
+  /** `base`: the PR's head the held commits go on top of, as it stood at the handover. */
+  held?: HeldChanges & { base: string };
+  /** The owner chose „Selbst ändern“, and the worker's changes have not gone out yet: requests to the contributor wait for them. */
+  changing?: true;
   /** The PR's head commit the worker reviewed at its latest handover: only that one is merged. */
   reviewed?: string;
   /** Where the PR's branch is, for a worker that pushes onto it: its repository's URL and branch. */
@@ -2626,7 +2631,7 @@ function work(r: CardRow): Partial<Item> {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
     ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
-    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
+    ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
     // a demo's question is as open as a worker's: the owner answers it on the card or by voice
