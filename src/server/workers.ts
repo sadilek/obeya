@@ -3105,21 +3105,22 @@ export class Workers {
     return [...new Set([...[...this.live].filter(([, l]) => l.busy).map(([id]) => id), ...this.preparing.keys()])];
   }
 
-  /**
-   * The cards whose worker is in a turn, each with its background work that runs and whether the turn
-   * waits only for that work, and those whose worker paused for the restart that is due, in a turn or not.
-   */
+  /** The cards whose worker is in a turn, each with its background work that runs and whether the turn waits only for that work, and those whose worker paused for the restart that is due. */
   private turnsShown(): Map<string, WorkerTurn> {
-    return new Map(
-      [...this.live]
-        .filter(([, l]) => l.busy || this.pausedForDue(l))
-        .map(([id, l]) => [id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: !!l.waiting, ...(this.pausedForDue(l) ? { restart: true as const } : {}) }]),
-    );
+    const turns = new Map<string, WorkerTurn>();
+    for (const [id, l] of this.live) {
+      if (l.busy) turns.set(id, { tasks: [...l.tasks.values()].map(({ description, since }) => ({ description, since })), over: !!l.waiting });
+      else if (this.pausedForDue(l)) turns.set(id, { tasks: [], over: true, restart: true });
+    }
+    return turns;
   }
 
-  /** Whether the worker ended its turn for the restart that is due and waits for it. */
+  /**
+   * Whether the worker ended its turn for the restart that is due and waits for it: not while its
+   * background work still runs, which the restart waits for in turn.
+   */
   private pausedForDue(l: Live): boolean {
-    return !!this.restart && !!l.restartPaused;
+    return !!this.restart && !!l.restartPaused && !l.busy;
   }
 
   /** How many of these workers are in a turn on a machine (null: the one Obeya runs on). */

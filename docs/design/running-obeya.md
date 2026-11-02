@@ -401,9 +401,10 @@ finished background work) hears that it keeps Obeya waiting: the worker takes th
 the work until it is resumed and ends the turn at once. A resumed worker hears that what ran was
 stopped (exit code 137). A worker waiting for its landed work's restart is not in a turn.
 
-While the restart is due, a card whose worker paused for it says so in place of „Agent arbeitet“
-(„Agent wartet auf Neustart“, „Erledigt · Agent wartet auf Neustart“), in muted ink without the
-moving line, and offers no pause; a turn that starts before the restart shows it at work again.
+While the restart is due, a card whose worker paused for it, with no background work left that the
+restart waits for, says so in place of „Agent arbeitet“ („Agent wartet auf Neustart“, „Erledigt ·
+Agent wartet auf Neustart“), in muted ink without the moving line, and offers no pause; a turn that
+starts before the restart shows it at work again.
 
 #### Waiting for the owner
 

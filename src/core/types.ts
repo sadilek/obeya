@@ -60,7 +60,7 @@ export interface BackgroundTask {
 export interface WorkerTurn {
   tasks: BackgroundTask[];
   over: boolean;
-  /** The worker ended its turn for the restart that is due and goes on once Obeya runs again; at most its background work runs meanwhile. */
+  /** The worker ended its turn for the restart that is due, nothing of it runs any more, and it goes on once Obeya runs again. */
   restart?: true;
 }
 

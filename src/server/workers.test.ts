@@ -143,6 +143,8 @@ describe('workers', () => {
     busy.emit({ type: 'text', text: 'Pausiert; das Rendern läuft weiter.' });
     busy.emit({ type: 'idle', background: 1 });
     expect(workers.busyCards().length).toBeGreaterThan(0);
+    // the restart waits for its render: the card does not show it waiting for the restart yet
+    expect(board.item(c.id)!.restartPaused).toBeUndefined();
     // the render finishes and wakes the worker, which would go on from there
     const told = busy.inbox.length;
     busy.emit({ type: 'tool', name: 'Bash', input: { command: 'tail -2 render.log' } });
@@ -155,6 +157,7 @@ describe('workers', () => {
     expect(workers.busyCards()).toEqual([]);
     expect(state(c.id)).toBe('working');
     expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'state', text: 'Pausiert bis zum Neustart von Obeya.' });
+    expect(board.item(c.id)!.restartPaused).toBe(true);
     // a note from the owner before the restart says so with the note
     workers.message(c.id, 'Nimm die dunkle Variante.');
     expect(busy.inbox.at(-1)).toContain('Nimm die dunkle Variante.');
