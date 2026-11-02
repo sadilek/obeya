@@ -384,6 +384,37 @@ test('a plain reply to a reviewer who asked for changes waits for the reviewer, 
   expect(waitsOf(approved)).toEqual([]);
 });
 
+test('a request waits for the reviewer who made it, whatever other reviewers write', () => {
+  const base: PrStatus = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'h', author: 'owner', checks: [], comments: [] };
+  const at = (m: number) => `2026-11-02T12:${String(m).padStart(2, '0')}:00Z`;
+  // the lead asks for a rename, a bot then gives 5/5, the worker explains why it kept the name
+  const s: PrStatus = {
+    ...base,
+    comments: [
+      { id: 'cLEAD', author: 'lead', body: 'Please rename the export.', at: at(10) },
+      { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: at(15) },
+      { id: 'cWHY', author: 'owner', body: 'Kept the name: the importer expects it.', at: at(20) },
+    ],
+  };
+  expect(waitsOf(s)).toEqual(['answer']);
+  // the bot rewriting its summary is no answer of the lead's
+  s.comments[1]!.edited = at(25);
+  expect(waitsOf(s)).toEqual(['answer']);
+  s.comments.push({ id: 'cOK', author: 'lead', body: 'Fine.', at: at(30) });
+  expect(waitsOf(s)).toEqual([]);
+  // a reviewer's word in a resolved thread after a 5/5 does not turn a thank-you into a request
+  const thread: PrStatus = {
+    ...base,
+    comments: [
+      { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: at(10) },
+      { id: 'i1', author: 'greptile-apps', body: 'P2: null check', at: at(10), round: 'A', resolved: true },
+      { id: 'i2', author: 'greptile-apps', body: 'Verified, this is fixed.', at: at(15), replyTo: 'i1' },
+      { id: 'cTHX', author: 'owner', body: 'Thanks.', at: at(20) },
+    ],
+  };
+  expect(waitsOf(thread)).toEqual([]);
+});
+
 test('a standing request for changes holds the merge until the reviewer approves or it is dismissed', () => {
   const s: PrStatus = {
     state: 'OPEN',

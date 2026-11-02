@@ -89,7 +89,8 @@ no other card.
   which a push over https with it stores). Quirks: no review threads, so the inline comments on one line
   form one, resolved when any of them is; mergeability is false while a new push is checked, so a
   conflict counts only if it holds at the next look; times are compared in UTC; checks are the head
-  commit's statuses, all pages.
+  commit's statuses and the conversation its comments, all pages; a dismissed request for changes
+  keeps its state and says so in a field of its own.
 
 A PR unreadable for ten minutes says why on its card, once.
 
@@ -113,11 +114,14 @@ has written since the PR's newest non-merge commit (merging the base in brings c
 there), and whoever the author last asked for another look has answered (a rewritten summary
 counts, as bots often answer that way), and no reviewer's request for changes stands (GitHub's
 „Request changes“ and Forgejo's counterpart, until that reviewer approves or it is dismissed).
-Asking is a conversation comment of the author's that mentions an account (`@greptileai review`),
-outside code and quotes, or that follows a reviewer's word that was no passing verdict: a request
-for changes in a plain comment names nobody, and the worker's answer to it waits for the reviewer.
-Passing is an approval or a confidence of at least 4/5; a thank-you after it that mentions nobody
-asks for nothing. A review older than the changes makes the worker ask for a
+Asking is a conversation comment of the author's that answers a reviewer whose latest word in the
+conversation before it was no passing verdict (a request for changes in a plain comment names
+nobody; the answer waits for that reviewer, another reviewer's word does not stand in for theirs),
+or that mentions an account (`@greptileai review`, outside code and quotes; then any reviewer's
+word answers). Passing is an approval or a confidence of at least 4/5; a thank-you that mentions
+nobody while every reviewer's latest word passes asks for nothing. A reviewer's words in a thread on
+the code count for the thread, not for the conversation. A comment a reviewer rewrites into
+anything but a passing verdict reaches the worker again. A review older than the changes makes the worker ask for a
 new one the repository's way (its skill, or a comment mentioning the bot), once per commit; a PR no
 reviewer wrote on waits for nobody.
 

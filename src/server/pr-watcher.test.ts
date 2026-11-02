@@ -277,6 +277,30 @@ describe('watching', () => {
     expect(merges).toEqual(['aaa']);
   });
 
+  test('a seen comment rewritten into a request reaches the worker again; a summary rewritten to a passing verdict does not', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.checks = [{ name: 'CI', state: 'pending' }];
+    status.comments = [{ id: 'cSUM', author: 'greptile', body: 'Confidence Score: 5/5', at: '2026-11-02T12:10:00Z' }];
+    await watcher.poll();
+    runtime.last.emit({ type: 'idle' });
+    const n = runtime.last.inbox.length;
+    status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 5/5, after another look.', edited: '2026-11-02T12:20:00Z' };
+    await watcher.poll();
+    expect(runtime.last.inbox.length).toBe(n);
+    status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 2/5. Please fix the missing authentication check.', edited: '2026-11-02T12:30:00Z' };
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain('missing authentication check');
+    // once only
+    runtime.last.emit({ type: 'idle' });
+    const m = runtime.last.inbox.length;
+    await watcher.poll();
+    expect(runtime.last.inbox.length).toBe(m);
+    expect(state(id)).toBe('inPr');
+  });
+
   test('the card says what its PR waits for, and the worker hears of a branch behind its base once per commit', async () => {
     const id = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });

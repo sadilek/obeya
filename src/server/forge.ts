@@ -584,8 +584,9 @@ export function waitsOf(s: PrStatus, skip: string[] = []): PrWait[] {
   if (changesRequested(s, skip).length) waits.push('changes');
   if (reviewStale(s, skip)) waits.push('review');
   else {
-    const asked = lastAsked(s, skip);
-    if (asked && !others.some((c) => (c.edited ?? c.at ?? '') > asked)) waits.push('answer');
+    const asked = requestOf(s, skip);
+    const after = (who?: string) => others.some((c) => (!who || c.author === who) && (c.edited ?? c.at ?? '') > asked!.at);
+    if (asked && !(asked.awaits.length ? asked.awaits.every(after) : after())) waits.push('answer');
   }
   return waits;
 }
@@ -607,30 +608,39 @@ export function reviewStale(s: PrStatus, skip: string[] = []): boolean {
 }
 
 /**
- * When the author last asked for another look: a conversation comment of theirs that mentions an
- * account, as review bots are asked (`@greptile review`), or that answers a reviewer whose last word
- * before it was no passing verdict (a request for changes in a plain comment, which names nobody, is
- * answered so). A comment after a passing verdict that mentions nobody (a thank-you for a 5/5 summary
- * without findings) asks for nothing: waiting for its answer stalled a PR whose review was through
- * (2026-11-02). Passing: an approval, or a confidence of at least 4/5. Comments by `skip` are no
- * reviewer's word.
+ * The author's latest request for another look, and whose answer it waits for: a conversation
+ * comment of theirs that answers a reviewer whose latest word in the conversation before it was no
+ * passing verdict (a request for changes in a plain comment, which names nobody, is answered so;
+ * that reviewer's answer is awaited, another's does not stand in for it), or that mentions an
+ * account, as review bots are asked (`@greptile review`; then any reviewer's word answers). A
+ * comment that mentions nobody while every reviewer's latest word is a passing verdict (a thank-you
+ * for a 5/5 summary without findings) asks for nothing: waiting for its answer stalled a PR whose
+ * review was through (2026-11-02). Passing: an approval, or a confidence of at least 4/5. A
+ * reviewer's word in a thread on the code is the thread's business, not the conversation's.
+ * Comments by `skip` are no reviewer's word.
  */
-export function lastAsked(s: PrStatus, skip: string[] = []): string {
-  const others = reviewers(s, skip);
-  const asks = (c: PrStatus['comments'][number]) => {
-    if (mentions(c.body)) return true;
-    const at = c.at ?? '';
-    const before = others.filter((o) => (o.edited ?? o.at ?? '') <= at).sort((a, b) => (a.edited ?? a.at ?? '').localeCompare(b.edited ?? b.at ?? '')).at(-1);
-    return !!before && !passing(before);
-  };
-  return s.comments.filter((c) => c.author === s.author && c.id.startsWith('c') && asks(c)).reduce((a, c) => latest(a, c.at), '');
+export function requestOf(s: PrStatus, skip: string[] = []): { at: string; awaits: string[] } | null {
+  const said = reviewers(s, skip).filter((c) => !c.id.startsWith('i'));
+  const when = (c: PrStatus['comments'][number]) => c.edited ?? c.at ?? '';
+  let found: { at: string; awaits: string[] } | null = null;
+  for (const c of s.comments) {
+    if (c.author !== s.author || !c.id.startsWith('c') || !c.at || (found && c.at < found.at)) continue;
+    const latestOf = new Map<string, PrStatus['comments'][number]>();
+    for (const o of said) if (when(o) <= c.at && (!latestOf.has(o.author) || when(o) >= when(latestOf.get(o.author)!))) latestOf.set(o.author, o);
+    const awaits = [...latestOf].filter(([, o]) => !passing(o)).map(([who]) => who);
+    if (awaits.length || mentions(c.body)) found = { at: c.at, awaits };
+  }
+  return found;
 }
+
+/** When the author last asked for another look (`requestOf`); empty where they never did. */
+export const lastAsked = (s: PrStatus, skip: string[] = []) => requestOf(s, skip)?.at ?? '';
 
 /** Below this share of a reviewer's confidence (4 of 5), Obeya leaves the merge to the owner. */
 export const MIN_CONFIDENCE = 0.8;
 
 /** Whether a reviewer's comment is a verdict that lets the PR go: an approval, or a confidence of at least 4/5. */
-const passing = (c: PrStatus['comments'][number]) => {
+export const passing = (c: PrStatus['comments'][number]) => {
   if (c.verdict === 'approved') return true;
   const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(c.body);
   return !!m && Number(m[1]) / Number(m[2]) >= MIN_CONFIDENCE;

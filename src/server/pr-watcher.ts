@@ -7,7 +7,7 @@
 
 import type { RepoAdapter } from '../adapters/types';
 import { type Board, contributionOf, type PrState, type StoredContribution } from './board';
-import { confidence, lastAsked, MIN_CONFIDENCE, reviewOf, reviewStale, waitsOf, type Forge, type PrStatus } from './forge';
+import { confidence, lastAsked, MIN_CONFIDENCE, passing, reviewOf, reviewStale, waitsOf, type Forge, type PrStatus } from './forge';
 import type { PrWait } from '../core/types';
 
 /** How long reading a PR fails before its card says so. */
@@ -195,9 +195,11 @@ export class PrWatcher {
         return this.workers.prClosed(cardId);
       }
       // an approval without words asks the worker for nothing
-      const comments = s.comments.filter((c) => !pr.seen.includes(c.id) && c.author !== s.author && !noise.includes(c.author) && (c.body.trim() || c.verdict === 'changes'));
+      // a comment rewritten into something other than a passing verdict is news again (a summary that now asks for a fix)
+      const key = (c: PrStatus['comments'][number]) => (c.edited && !passing(c) ? `${c.id}@${c.edited}` : c.id);
+      const comments = s.comments.filter((c) => !pr.seen.includes(key(c)) && c.author !== s.author && !noise.includes(c.author) && (c.body.trim() || c.verdict === 'changes'));
       if (comments.length) {
-        next.seen = [...pr.seen, ...comments.map((c) => c.id)];
+        next.seen = [...new Set([...pr.seen, ...comments.flatMap((c) => [c.id, key(c)])])];
         this.workers.prEvent(
           cardId,
           this.board.t.pr.comments(comments.length, comments[0]!.author),
