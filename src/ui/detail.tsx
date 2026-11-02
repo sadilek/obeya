@@ -339,6 +339,17 @@ export function Detail(p: Props) {
   const rest = item.state === 'planned' && !!item.landedPart && !item.branch && !item.queue;
   // an archived project's doc is gone
   const readPlan = parent && !parent.archivedAt && p.onReadPlan;
+  // a workstream card an agent worked on leaves its project with its log, while no agent is at work on it
+  const detachable = !!parent?.plan && !parent.archivedAt && worked && !item.finishing && !['working', 'waiting', 'inPr', 'approved'].includes(item.state);
+  const detach = () => {
+    let ref = '';
+    return run(
+      async () => {
+        ref = (await api.detach(item.id)).ref;
+      },
+      { close: true, ack: t.plan.detached, undo: () => api.attach(item.id, ref) },
+    );
+  };
   // a workstream names its plan doc at the top in every state, an agent's work its branch beside it
   const where = (worked || parent?.plan || item.contribution) && (
     <p className="p-src">
@@ -359,6 +370,14 @@ export function Detail(p: Props) {
             <button className="link" onClick={() => readPlan(parent, item.label)}>
               {t.plan.readAt}
             </button>
+          )}
+          {detachable && (
+            <>
+              {' · '}
+              <button className="link" title={t.plan.detachHint} onClick={detach}>
+                {t.plan.detach}
+              </button>
+            </>
           )}
         </>
       )}

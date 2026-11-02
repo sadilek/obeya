@@ -15,7 +15,7 @@ import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
 import { type KnownChange, missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { pageTags, untagged } from '../core/page-tags';
-import { allTicked, type OtherDoc, type PlanDoc } from '../core/plan-doc';
+import { allTicked, type OtherDoc, type PlanDoc, parsePlanDoc, type Workstream } from '../core/plan-doc';
 import {
   type AnswerFile,
   type CanvasInfo,
@@ -72,6 +72,7 @@ import {
 } from '../core/types';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
 import type { Images } from './images';
+import { branchName, CARD_BRANCH } from './workspaces';
 import { clip, messageOf, oneLine } from '../core/text';
 import type { Wish } from '../core/wish';
 
@@ -1550,6 +1551,7 @@ export class Board {
       this.docsOf = repos;
     }
     const all = this.docs;
+    this.follow(all, read);
     let rows = this.store.cards(this.canvas.id);
     const docs = this.openDocs(all, rows);
     const open = docs.map((d) => d.file).join('\n');
@@ -2373,6 +2375,212 @@ export class Board {
     this.changed();
   }
 
+  /** Every workstream a plan doc has had, from its history in git, the newest first (`readPlanHistory`); none for a doc outside git. */
+  private planHistory?: (ref: string) => Workstream[];
+  /** What `planHistory` said of each doc during one `follow`, which may ask for several cards. */
+  private pastOf = new Map<string, Workstream[]>();
+
+  /** Who reads a plan doc's history: a card whose workstream left the doc gets its title from there. */
+  readPlanHistory(fn: (ref: string) => Workstream[]) {
+    this.planHistory = fn;
+  }
+
+  /**
+   * Keeps each workstream card with its own workstream. A card whose workstream the doc no longer
+   * lists, while the doc is there, leaves the project once an agent worked on it, with its log, as a
+   * card of its own (`leave`); one nobody worked on just goes from view. With `read` (the docs were
+   * read again), a project read before workstreams had keys of their own (`#n`, their place in the
+   * doc) moves its cards onto those keys first (`rekey`).
+   */
+  private follow(all: PlanDoc[], read: boolean) {
+    this.pastOf.clear();
+    const byFile = new Map(all.map((d) => [d.file, d]));
+    for (const p of this.store.projects(this.canvas.id)) {
+      const doc = byFile.get(p.plan_ref!);
+      if (!doc) continue;
+      const before = p.plan ? (JSON.parse(p.plan) as PlanDoc) : null;
+      if (read && before) this.rekey(p, before, doc);
+      const keys = new Set(doc.workstreams.map((w) => w.key));
+      for (const k of this.store.children([p.id])) {
+        const key = keyOfRef(k.plan_ref);
+        if (key === null || keys.has(key) || !worked(k)) continue;
+        // a stopped card gives its workspace back first, as a workstream no longer in the doc does (`leaseEnded`)
+        if (k.workspace && !atWork(k)) continue;
+        this.leave(k, p, this.identity(k, doc.file, before, false), this.t.idea.leftGone(doc.title));
+      }
+    }
+  }
+
+  /**
+   * Moves the project's cards from the keys an older Obeya gave its workstreams (their place in
+   * the doc, `#n`) onto the keys they have now. A card an agent worked on goes by the title its
+   * branch was named after, since the doc may have changed under its old key, so that its log stays
+   * with its own workstream; one whose workstream the doc no longer has leaves the project, and its
+   * place goes to a fresh card of the workstream there now. The others keep their place.
+   */
+  private rekey(project: CardRow, before: PlanDoc, doc: PlanDoc) {
+    const again = parsePlanDoc(before.file, before.markdown);
+    if ('reason' in again || again.workstreams.length !== before.workstreams.length) return;
+    const renamed = new Map(before.workstreams.flatMap((w, i) => (w.key !== again.workstreams[i]!.key ? [[w.key, again.workstreams[i]!.key] as const] : [])));
+    if (!renamed.size) return;
+    const kids = this.store.children([project.id]);
+    const keys = new Set(doc.workstreams.map((w) => w.key));
+    // positional keys of a doc read before this one, whose cards are out of view now
+    const positional = (k: string) => renamed.has(k) || (/^#\d+$/.test(k) && !before.workstreams.some((w) => w.key === k));
+    const moving = kids.filter((k) => positional(keyOfRef(k.plan_ref) ?? ''));
+    if (!moving.length) return;
+    const claimed = new Set(kids.filter((k) => !moving.includes(k)).flatMap((k) => keyOfRef(k.plan_ref) ?? []));
+    const to = new Map<string, string>();
+    const leaving: CardRow[] = [];
+    const started = new Map(moving.map((k) => [k.id, this.startedAs(k)]));
+    // first the cards an agent worked on, the most recent first, by the workstream they were started on
+    const order = [...moving].sort((a, b) => Number(!started.get(a.id)) - Number(!started.get(b.id)) || b.updated_at.localeCompare(a.updated_at));
+    for (const k of order) {
+      const slug = started.get(k.id);
+      const key = slug ? doc.workstreams.find((w) => named(w, slug))?.key : renamed.get(keyOfRef(k.plan_ref)!);
+      if (key && keys.has(key) && !claimed.has(key)) {
+        to.set(k.id, key);
+        claimed.add(key);
+      } else if (worked(k)) leaving.push(k);
+    }
+    const ref = (key: string) => `${doc.file}#${key}`;
+    this.store.db.transaction(() => {
+      // out of each other's way first: two cards may swap keys
+      for (const k of moving) this.store.replan(k.id, `${project.plan_ref}#\u0000${k.id}`, project.id);
+      for (const k of moving) {
+        const key = to.get(k.id);
+        if (key) this.store.replan(k.id, ref(key), project.id);
+        // nobody worked on it: it goes, and the workstream gets a card of its own
+        else if (!leaving.includes(k)) {
+          this.store.replan(k.id, null, null);
+          this.store.update(k.id, { deleted_at: new Date().toISOString() });
+        }
+      }
+      for (const k of leaving) {
+        // the place of the card that leaves goes to the workstream there now
+        const there = renamed.get(keyOfRef(k.plan_ref)!);
+        if (there && keys.has(there) && !claimed.has(there)) {
+          claimed.add(there);
+          this.store.insert([{ canvas_id: this.canvas.id, kind: 'task', parent_id: project.id, plan_ref: ref(there), x: k.x, y: k.y }]);
+        }
+        const w = this.identity(k, doc.file, before, true);
+        if (atWork(k) || !k.workspace) this.leave(k, project, w, this.t.idea.leftOther(doc.title));
+        // a stopped card gives its workspace back first, then leaves (`follow`)
+        else this.store.replan(k.id, `${project.plan_ref}#~${k.id.slice(0, 6)}`, project.id);
+      }
+      // what the Koordinator read of which workstream builds on which goes with the cards
+      const deps = project.deps ? (JSON.parse(project.deps) as StoredDeps) : null;
+      if (deps?.on) {
+        const keyOf = new Map(moving.flatMap((k) => (to.has(k.id) ? [[keyOfRef(k.plan_ref)!, to.get(k.id)!] as const] : [])));
+        const on = Object.fromEntries(
+          Object.entries(deps.on).flatMap(([k, by]) => {
+            const key = keyOf.get(k) ?? (positional(k) ? undefined : k);
+            return key ? [[key, by.flatMap((b) => keyOf.get(b) ?? (positional(b) ? [] : [b]))]] : [];
+          }),
+        );
+        this.store.update(project.id, { deps: JSON.stringify({ ...deps, on } satisfies StoredDeps) });
+      }
+    })();
+  }
+
+  /** The title of the card the agent last started on, as its branch has it (`branchName`); none for a card never started. */
+  private startedAs(row: CardRow): string | null {
+    const short = row.id.slice(0, 6);
+    const at = new RegExp(`${CARD_BRANCH}([a-z0-9-]+)-${short}`);
+    return at.exec(row.branch ?? '')?.[1] ?? at.exec(this.store.branchMention(row.id) ?? '')?.[1] ?? null;
+  }
+
+  /**
+   * The workstream a card worked on, from the doc as last read (`before`) or the doc's history: by
+   * its key, or, for a card whose key was its place in the doc (`positional`), by the title its
+   * branch was named after.
+   */
+  private identity(row: CardRow, file: string, before: PlanDoc | null, positional: boolean): Pick<Workstream, 'label' | 'title' | 'body'> {
+    const key = keyOfRef(row.plan_ref) ?? '';
+    const slug = this.startedAs(row);
+    const past = () => this.pastOf.get(file) ?? this.pastOf.set(file, this.planHistory?.(file) ?? []).get(file)!;
+    const byKey = () => (positional ? undefined : (before?.workstreams.find((w) => w.key === key) ?? past().find((w) => w.key === key)));
+    const bySlug = () => (slug ? (before?.workstreams.find((w) => named(w, slug)) ?? past().find((w) => named(w, slug))) : undefined);
+    const byPlace = () => (positional && !slug ? before?.workstreams.find((w) => w.key === key) : undefined);
+    return byKey() ?? bySlug() ?? byPlace() ?? { title: slug ? slug.replace(/-/g, ' ') : key, body: '' };
+  }
+
+  /**
+   * The card leaves its project as a card of its own, its log saying so (`why`), with the title and
+   * text of the workstream it worked on (`w`). Finished, it goes into the archive, unless the owner
+   * took it out (`shown`); otherwise it stands beside the project.
+   */
+  private leave(row: CardRow, project: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>, why: string, shown = false) {
+    // a workstream planned again after part of it landed is done now that the doc asks no more of it
+    const state = row.state === 'planned' && row.shipped ? 'live' : (row.state ?? 'planned');
+    const done = !shown && finished(state) && !atWork(row);
+    const at = done ? { x: row.x, y: row.y } : this.besideProject(project);
+    this.store.replan(row.id, null, null);
+    this.store.update(row.id, {
+      title: w.label ? `${w.label} ${w.title}` : w.title,
+      body: w.body,
+      state,
+      repo: repoOfRef(project.plan_ref!, this.home),
+      group_id: project.group_id,
+      ...at,
+      ...(done ? { archived_at: new Date().toISOString() } : {}),
+    });
+    this.log(row.id, 'state', 'obeya', why);
+  }
+
+  /** A free spot for a card at the right of the project, near its top. */
+  private besideProject(project: CardRow): { x: number; y: number } {
+    const items = toItems(this.store.cards(this.canvas.id), this.docs ?? [], this.home);
+    const p = items.find((i) => i.id === project.id);
+    if (!p) return { x: project.x, y: project.y };
+    const box = boundsOf(p, items);
+    return freeSpotNear({ x: box.x + box.w + GAP, y: box.y }, CARD_SIZE.task, items.filter((i) => !i.parent).map((i) => boundsOf(i, items)));
+  }
+
+  /**
+   * The owner takes a workstream card out of its project: it stands beside the project with its
+   * log, as a card of its own, and the workstream gets a fresh card in its place. The card's title
+   * is that of the workstream its agent last started on, where that is another one. Returns the
+   * workstream's reference, for `attach` to undo it.
+   */
+  detach(id: string): { ref: string } {
+    const row = this.own(id);
+    const project = row.parent_id ? this.store.card(row.parent_id) : null;
+    if (!row.plan_ref?.includes('#') || !project) throw new BadRequest('invalid', 'not a workstream');
+    if (atWork(row)) throw new BadRequest('notDetachable', 'an agent works on this workstream');
+    this.items();
+    const doc = this.docs?.find((d) => d.file === project.plan_ref);
+    const now = doc?.workstreams.find((w) => w.key === keyOfRef(row.plan_ref));
+    const slug = this.startedAs(row);
+    const w = now && (!slug || named(now, slug)) ? now : this.identity(row, project.plan_ref!, doc ?? null, true);
+    const ref = row.plan_ref;
+    this.store.db.transaction(() => {
+      const fresh = { canvas_id: this.canvas.id, kind: 'task' as const, parent_id: project.id, plan_ref: ref, x: row.x, y: row.y };
+      this.leave(row, project, w, this.t.idea.detached(doc?.title ?? project.plan_ref!), true);
+      this.store.insert([fresh]);
+    })();
+    this.changed();
+    return { ref };
+  }
+
+  /** Undoes `detach`: the card goes back onto its workstream (`ref`), whose fresh card goes while nobody has worked on it. */
+  attach(id: string, ref: unknown) {
+    const row = this.own(id);
+    if (typeof ref !== 'string' || row.plan_ref) throw new BadRequest('invalid', 'not a card taken out of its project');
+    const fresh = this.store.cards(this.canvas.id).find((r) => r.plan_ref === ref);
+    if (!fresh?.parent_id) throw new BadRequest('invalid', 'the workstream is not on the canvas');
+    if (worked(fresh)) throw new BadRequest('notAttachable', 'the workstream’s new card has been worked on');
+    const project = this.own(fresh.parent_id);
+    this.store.db.transaction(() => {
+      this.store.replan(fresh.id, null, null);
+      this.store.update(fresh.id, { deleted_at: new Date().toISOString() });
+      this.store.replan(row.id, ref, fresh.parent_id);
+      this.store.update(row.id, { title: null, body: null, repo: null, group_id: null, archived_at: null, x: fresh.x, y: fresh.y });
+    })();
+    this.log(id, 'state', 'obeya', this.t.idea.attached(JSON.parse(project.plan ?? '{}').title ?? project.plan_ref));
+    this.changed();
+  }
+
   /**
    * Stores a row for every project and workstream seen for the first time. A doc whose work was
    * done before Obeya first saw it (among `all`, not `docs`) gets its rows too, placed after the
@@ -2629,6 +2837,19 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
   );
   return [...projects, ...ordered, ...manual];
 }
+
+/** The workstream key of a plan reference (`<doc>#<key>`); null for a project's or a card's without one. */
+const keyOfRef = (ref: string | null): string | null => (ref?.includes('#') ? ref.slice(ref.indexOf('#') + 1) : null);
+
+/** Whether an agent worked on the card: it was started, or its work landed or ended. */
+const worked = (r: CardRow) => !!(r.session_id || r.branch || r.shipped || r.landed || (r.state && r.state !== 'planned'));
+
+/** Whether an agent is at work on the card: in progress, or finishing after the landing. */
+const atWork = (r: CardRow) => !!((r.state && ACTIVE.includes(r.state)) || (r.landed && r.workspace));
+
+/** Whether a branch named after a title (`branchName`, its `slug`) was named after the workstream's, with or without its label before it. */
+const named = (w: Pick<Workstream, 'label' | 'title'>, slug: string) =>
+  [w.title, ...(w.label ? [`${w.label} ${w.title}`] : [])].some((t) => branchName(t, '000000').slice(CARD_BRANCH.length, -7) === slug);
 
 /** Where a card goes below the card with bounds `b`: the `n`th of those there, each beside the one before. */
 const below = (b: Bounds, n = 0) => ({ x: b.x + 35 + n * (CARD_SIZE.task[0] + GAP), y: b.y + b.h + 60 });

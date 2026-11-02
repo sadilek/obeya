@@ -16,7 +16,10 @@ export interface PlanDoc {
 }
 
 export interface Workstream {
-  /** Stable within the doc: the label, or `#n` for an unlabelled item. */
+  /**
+   * Who the workstream is, whatever its place in the doc: the label, else its title as a slug (a
+   * pull request's number before it aside); `#n` only for an item whose title has no letter or digit.
+   */
   key: string;
   label?: string;
   title: string;
@@ -29,7 +32,8 @@ export interface Workstream {
 const GOAL_HEADING = /^(goals?|ziele?)\b/i;
 const WORKSTREAMS_HEADING = /^(workstreams?|arbeitspakete)\b/i;
 const ITEM = /^- \[([ xX])\]\s+(.*)$/;
-const LABEL = /^(W\d+[a-z]?(?:\.\d+)?|W[A-Z]{1,3})\b\s*(?:\(([^)]*)\))?\s*[:—–-]?\s*(.*)$/;
+// `W3`, `W3a`, `W1.2`, `WP`, and the short codes other docs use (`A1`, `WS3`, `1G`, `12B`) before a space or colon
+const LABEL = /^((?:W\d+[a-z]?(?:\.\d+)?|W[A-Z]{1,3})\b|(?:[A-Z]{1,3}\d+[a-z]?(?:\.\d+)?|\d+[A-Z])(?=$|[\s:—–(]|\.(?:\s|$)))\s*(?:\(([^)]*)\))?\s*[:.—–-]?\s*(.*)$/;
 
 /** Why a doc in the plan directory is not a project: no `## Workstreams` section, or one without a checklist. */
 export type NotAProject = 'noWorkstreams' | 'noChecklist';
@@ -109,8 +113,9 @@ function parseWorkstreams(lines: string[]): Workstream[] {
       else subs[subs.length - 1] += ' ' + line.trim();
     }
     const { label, note, title, rest } = splitItem(own);
-    let key = label ?? `#${i + 1}`;
-    for (let n = 2; seen.has(key); n++) key = `${label ?? `#${i + 1}`}~${n}`;
+    const base = label ?? (titleKey(title) || `#${i + 1}`);
+    let key = base;
+    for (let n = 2; seen.has(key); n++) key = `${base}~${n}`;
     seen.add(key);
     return {
       key,
@@ -183,6 +188,21 @@ function isAbbreviation(before: string): boolean {
 /** A pull request or issue by its number (`#12`, `PR #12`, `(#12)`, `!12`, a link on one), as an agent puts it before what it did. */
 const isReference = (text: string): boolean =>
   /^\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?$/i.test(text.trim());
+
+/**
+ * An unlabelled workstream's key: its title in lower-case words joined by `-`, without a pull
+ * request's number a worker may put before it when ticking it off.
+ */
+export function titleKey(title: string): string {
+  return title
+    .replace(/^\(?(?:(?:PR|MR|pull request|issue)\s+)?(?:[#!]\d+|\[(?:(?:PR|MR)\s+)?[#!]\d+\]\([^)\s]+\))\)?[\s.:;,—–-]*/i, '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
 const trimPunct = (s: string) => s.trim().replace(/[\s:.;,—–-]+$/, '').trim();
 const stripLead = (s: string) => s.replace(/^[\s:.;,—–-]+/, '').trim();

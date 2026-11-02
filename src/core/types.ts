@@ -1612,6 +1612,9 @@ export type ErrorCode =
   | 'notSuperseded'
   | 'revising'
   | 'planCard'
+  /** Taking a workstream card out of its project while an agent works on it, or putting it back once the workstream's new card has been worked on. */
+  | 'notDetachable'
+  | 'notAttachable'
   | 'noWorkspace'
   | 'dirtyWorkspaces'
   /** Taking a card's workspace from it: it holds no clone that may be taken (worktrees, its work landed, a prototype's), or one is being taken already. */

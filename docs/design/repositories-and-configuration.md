@@ -84,7 +84,10 @@ thing to read meanwhile, may be on a card's branch.
 ### Plan docs
 
 A doc in the repository's plan directory (`planDocs`) is a project when its `## Workstreams` section
-has a checklist; each top-level item is a workstream (`**W3:** Title. Details`). A pull request's
+has a checklist; each top-level item is a workstream (`**W3:** Title. Details`). A short code at the
+start of the bold text is its label: `W3`, `WP`, and the codes other docs use (`S1:`, `A1 —`, `4A
+Title`), a code followed by a space, colon, dash or full stop (`2FA einführen` and `3D-Ansicht` are
+titles). A pull request's
 number before the text (`**W3:** #27. Title. Details`, as a worker may tick it off) stays part of the
 title instead of becoming all of it, so the tile and the sheet still say what the workstream is
 (issue #12, 2026-10-26). Checked means
@@ -93,6 +96,35 @@ paragraph under `## Goal` / `## Ziel`. Obeya reads plan docs and never writes th
 their workstream in the doc as part of their change. A plan card is stored when first seen, so the
 owner's placement persists; its title, text and state always come from the doc. Each read keeps the
 doc's last state on the project.
+
+#### A workstream's identity
+
+A card belongs to its workstream by the workstream's label, or, for an item without one, by its title
+(lower-case words; a pull request's number a worker puts before it does not count). Reordering the
+doc, adding or dropping other workstreams, or rewording a labelled one leaves every card on its own
+workstream; rewording an unlabelled title makes it another workstream, with a card of its own. Two
+items with the same label or title are told apart by their order.
+
+A card whose workstream the doc no longer lists, while the doc is there, leaves the project once an
+agent worked on it: as a task of its own, with its log, under the workstream's label and title and
+its text, its log saying why. Finished (live or done, or planned again after a part landed), it goes
+into the archive; at work or stopped, it stands beside the project. A stopped card holding a
+workspace gives the workspace back first. A card nobody worked on just goes.
+
+The owner can take a workstream card an agent worked on out of its project („Vom Projekt lösen“,
+beside the plan doc's path at the top of the card, while no agent is at work on it): it stands
+beside the project with its log, as a task of its own, and the workstream gets a fresh card where
+it stood. That begins a workstream afresh, or separates a log that belongs to another workstream;
+then the card takes that workstream's title. The confirmation offers to undo it while nobody has
+worked on the fresh card.
+
+Cards stored by an older Obeya may carry a workstream's place in the doc as its key (`#3`), which
+gave their logs and states to other workstreams once the doc dropped or added some. A doc last read
+with such keys moves its cards onto the keys above once: a card an agent worked on goes by the title its
+branch was named after (`obeya/<title>-<id>`, from the card or its log), any other by its place in
+the doc as last read. A card whose workstream the doc no longer has leaves the project as above, its
+title and text from the doc's history in git (every item a commit added), and the workstream there
+now gets a fresh card in its place.
 
 #### A plan folder outside the repository
 
@@ -523,6 +555,12 @@ Prompts only agents read stay English, with German examples of what the owner ma
 - **The plan-directory note moves freely, its place stored on the server** (2026-10-21, a colleague):
   pinned above the projects, it jumped with each new one. Rejected: localStorage (a place is layout,
   not a reading state like hiding).
+- **A workstream is known by its label, else its title, never by its place** (2026-11-02, the
+  owner): keyed by place, a doc that dropped finished workstreams and added new ones gave a new
+  workstream the log and the done state of an old one. A card whose workstream leaves the doc keeps
+  its log as a task of its own instead of disappearing with it. Rejected: treating a single item
+  swapped at the same place as a rename (the very mix-up, once more); asking the owner for each
+  card the repair moves (they would have to know every card's history).
 - **A stored `live` holds only until the Lesestand has what landed** (2026-10-06), so a workstream the
   doc keeps open on purpose reopens. Rejected: the worker reporting "only a part" (a second source
   against the doc); a „Wieder öffnen“ button (the problem shows only when someone asks).

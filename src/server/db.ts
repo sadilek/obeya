@@ -710,6 +710,19 @@ export class Store {
     this.db.query(`UPDATE cards SET ${set}, updated_at = $now WHERE id = $id`).run({ ...fields, id, now: now() });
   }
 
+  /** Puts the card on another workstream (`planRef`, in project `parentId`), or takes it out of its project (both null). */
+  replan(id: string, planRef: string | null, parentId: string | null) {
+    this.db.query('UPDATE cards SET plan_ref = $ref, parent_id = $parent, updated_at = $now WHERE id = $id').run({ id, ref: planRef, parent: parentId, now: now() });
+  }
+
+  /** The last line of the card's log that names a branch of its own (`obeya/<slug>-<id>…`). */
+  branchMention(cardId: string): string | null {
+    const row = this.db
+      .query("SELECT text FROM events WHERE card_id = $id AND text LIKE '%obeya/%' || $short || '%' ORDER BY id DESC LIMIT 1")
+      .get({ id: cardId, short: cardId.slice(0, 6) }) as { text: string } | null;
+    return row?.text ?? null;
+  }
+
   // ---------------------------------------------------------------- groups
 
   /** The canvas's groups, the oldest first. */

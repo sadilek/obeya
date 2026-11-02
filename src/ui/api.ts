@@ -254,6 +254,9 @@ export const api = {
   /** Takes a finished card off the canvas into the archive. */
   archive: (id: string) => call<void>('POST', cardAt(id, '/archive')),
   unarchive: (id: string) => call<void>('POST', cardAt(id, '/unarchive')),
+  /** Takes a workstream card out of its project, its workstream getting a fresh card; `attach` with the `ref` it returns undoes it. */
+  detach: (id: string) => call<{ ref: string }>('POST', cardAt(id, '/detach')),
+  attach: (id: string, ref: string) => call<void>('POST', cardAt(id, '/attach'), { ref }),
   /** The archive, the most recently archived first. */
   archived: () => call<Item[]>('GET', at('/archive')),
   /** Archives every finished card of the owner's on the canvas. */

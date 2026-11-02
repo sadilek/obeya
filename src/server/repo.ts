@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync, watch } from 'node:fs'
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
-import { type OtherDoc, type PlanDoc, parsePlanDoc } from '../core/plan-doc';
+import { type OtherDoc, type PlanDoc, parsePlanDoc, type Workstream } from '../core/plan-doc';
 import { defaultBranch, gitOrNull } from './workspaces';
 
 export function repoInfo(path: string): RepoInfo {
@@ -112,6 +112,22 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): { docs: Pl
     else docs.push(doc);
   }
   return { docs, others };
+}
+
+/**
+ * Every workstream the plan doc at `path` in the repository at `repoPath` was given in a commit, the
+ * newest first, as its checklist items read where they were added; none where git has no history of
+ * it. A card whose workstream the doc no longer lists takes its title from here.
+ */
+export function planHistory(repoPath: string, path: string): Workstream[] {
+  const log = gitOrNull(repoPath, 'log', '-p', '--unified=0', '--no-color', '--no-ext-diff', '--format=', '--', path);
+  if (!log) return [];
+  return log.split(/^@@.*$/m).flatMap((hunk) => {
+    // checklist items and their indented lines; a whole doc added at once brings its headings too
+    const added = hunk.split('\n').flatMap((l) => (l.startsWith('+') && !l.startsWith('+++') && /^(- \[[ xX]\]\s|\s+\S)/.test(l.slice(1)) ? [l.slice(1)] : []));
+    const doc = parsePlanDoc(path, `## Workstreams\n\n${added.join('\n')}\n`);
+    return 'reason' in doc ? [] : doc.workstreams;
+  });
 }
 
 /**
