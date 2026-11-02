@@ -376,6 +376,8 @@ export class Board {
   private itemsCache: Item[] | null = null;
   /** The archive as `archived` built it; gone with `cache`, since it changes with the same writes. */
   private archiveItems: Item[] | null = null;
+  /** The canvas's prototypes, and those `withPrototypes` handed out so far; gone with `cache`. */
+  private prototypeItems: Prototypes | null = null;
   private eventListeners = new Set<(e: CardEvent) => void>();
   private goneListeners = new Set<(cardId: string, id: number) => void>();
   private noticeListeners = new Set<(n: Notice) => void>();
@@ -476,6 +478,7 @@ export class Board {
     this.cache = null;
     this.itemsCache = null;
     this.archiveItems = null;
+    this.prototypeItems = null;
     this.tell();
   }
 
@@ -1511,6 +1514,7 @@ export class Board {
       this.cache = null;
       this.itemsCache = null;
       this.archiveItems = null;
+      this.prototypeItems = null;
     }
     if (this.itemsCache) return this.itemsCache;
     const read = !this.docs;
@@ -1816,17 +1820,46 @@ export class Board {
    * title, also once the idea is in the archive.
    */
   private withPrototypes(items: Item[]): Item[] {
-    const rows = this.store.prototypes(this.canvas.id);
-    if (!rows.length) return items;
-    const titles = new Map<string, string>();
-    const ideaTitle = (id: string) => titles.get(id) ?? (titles.set(id, this.store.card(id)?.title ?? ''), titles.get(id)!);
-    const named = (p: Item): Item => ({ ...p, ideaTitle: ideaTitle(p.prototypeOf!) });
-    const prototypes = toItems(rows, [], this.home).map((p, n) => named(rows[n]!.archived_at ? { ...p, archivedAt: rows[n]!.archived_at! } : p));
+    const p = this.prototypes();
+    if (!p.rows.length) return items;
+    // a prototype among these items is not read again
+    const given = new Map(items.flatMap((i) => (i.prototypeOf ? [[i.id, i]] : [])));
     return items.map((i) => {
-      const own = prototypes.filter((p) => p.prototypeOf === i.id || (i.parent && p.id === i.builtOn));
-      const me = i.prototypeOf ? named(i) : i;
-      return own.length ? { ...me, prototypes: own } : me;
+      const ofIdea = p.ofIdea.get(i.id) ?? [];
+      const built = i.parent && i.builtOn ? p.byId.get(i.builtOn) : undefined;
+      const rows = built && !ofIdea.includes(built) ? p.rows.filter((r) => r.prototype_of === i.id || r === built) : ofIdea;
+      const me = i.prototypeOf ? { ...i, ideaTitle: this.ideaTitle(p, i.prototypeOf) } : i;
+      return rows.length ? { ...me, prototypes: rows.flatMap((r) => this.prototypeItem(p, r, given.get(r.id)) ?? []) } : me;
     });
+  }
+
+  /**
+   * Which cards of the canvas are prototypes, read once per change; each is made into an item when a
+   * card first needs it, once per change too: the canvas, the archive and every archived card looked
+   * up on its own (sharing looks up hundreds in a row) need them.
+   */
+  private prototypes(): Prototypes {
+    if (this.prototypeItems) return this.prototypeItems;
+    const rows = this.store.prototypes(this.canvas.id);
+    this.prototypeItems = { rows, ofIdea: Map.groupBy(rows, (r) => r.prototype_of!), byId: new Map(rows.map((r) => [r.id, r])), items: new Map(), titles: new Map() };
+    return this.prototypeItems;
+  }
+
+  private prototypeItem(p: Prototypes, ref: PrototypeRef, given?: Item): Item | undefined {
+    const made = p.items.get(ref.id);
+    if (made) return made;
+    const row = given ? null : this.store.card(ref.id);
+    const item = given ?? (row && toItems([row], [], this.home)[0]);
+    if (!item) return undefined;
+    const prototype = { ...item, ...(ref.archived_at ? { archivedAt: ref.archived_at } : {}), ideaTitle: this.ideaTitle(p, ref.prototype_of!) };
+    p.items.set(ref.id, prototype);
+    return prototype;
+  }
+
+  private ideaTitle(p: Prototypes, ideaId: string): string {
+    const title = p.titles.get(ideaId) ?? this.store.card(ideaId)?.title ?? '';
+    p.titles.set(ideaId, title);
+    return title;
   }
 
   /** The project an idea became, while it is on the canvas. */
@@ -2416,6 +2449,16 @@ export function pathOfRef(ref: string): string {
 }
 
 const REPO_PREFIX = /^(?![A-Za-z]:\/)([\w.-]+):/;
+
+/** The canvas's prototypes for one change of the board: which cards they are, the items made of them so far, their ideas' titles. */
+type Prototypes = {
+  rows: PrototypeRef[];
+  ofIdea: Map<string, PrototypeRef[]>;
+  byId: Map<string, PrototypeRef>;
+  items: Map<string, Item>;
+  titles: Map<string, string>;
+};
+type PrototypeRef = Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>;
 
 /** Visible items: projects first, their workstreams in doc order, then manual cards. */
 export function toItems(rows: CardRow[], docs: PlanDoc[], home: string): Item[] {

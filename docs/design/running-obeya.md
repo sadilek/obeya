@@ -517,8 +517,11 @@ them).
   landed one after another, the server stood still for half a second at a time. The cards alone
   (what code reads back between its writes) are built apart from the rest of that view (the sheet's
   outdated pages, the workspaces, the notes on the plan directories), and one archived card is built
-  without the whole archive. The owner's settings file, asked for the language with every text the
-  server writes, is read again only once it changed. Rejected: reacting to each change at once and
+  without the whole archive. Which cards are prototypes (an idea lists its own, archived ones too)
+  is read once per change, and each is made into a card when one first needs it, once per change
+  too, not again for every card looked up: a pass of sharing looks up every shared card, hundreds of
+  them, and stood still for half a second doing so. The owner's settings file, asked for the
+  language with every text the server writes, is read again only once it changed. Rejected: reacting to each change at once and
   only making the view cheaper (the reactions still build it once per change).
 - **A page's freezes are found by a worker's heartbeat, not by its own timer running late**
   (2026-10-30): the app's webview on macOS runs a page's timers about once a second when its window

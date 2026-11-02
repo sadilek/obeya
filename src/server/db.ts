@@ -587,9 +587,11 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND plan_docs IS NOT NULL').all({ c: canvasId }) as CardRow[];
   }
 
-  /** The canvas's prototypes, on the canvas or archived, the oldest first. */
-  prototypes(canvasId: string): CardRow[] {
-    return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND prototype_of IS NOT NULL ORDER BY created_at, rowid').all({ c: canvasId }) as CardRow[];
+  /** The canvas's prototypes, on the canvas or archived, the oldest first: which they are, without the rest of their rows. */
+  prototypes(canvasId: string): Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>[] {
+    return this.db
+      .query('SELECT id, prototype_of, archived_at FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND prototype_of IS NOT NULL ORDER BY created_at, rowid')
+      .all({ c: canvasId }) as Pick<CardRow, 'id' | 'prototype_of' | 'archived_at'>[];
   }
 
   /** The workstreams of the given projects. */
