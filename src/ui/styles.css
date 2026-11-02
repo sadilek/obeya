@@ -667,9 +667,6 @@ textarea.p-body:focus { border-color: var(--muted); }
 .p-status { color: var(--muted); font-weight: 500; }
 .p-h { margin: 22px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .p-error { color: var(--error); margin: 12px 0 0; font-size: 13.5px; }
-.p-task { margin-top: 14px; font-size: 13.5px; }
-.p-task summary { cursor: pointer; color: var(--muted); }
-.p-task .p-lead { font-size: 14px; }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }
 .demo-view video { width: 100%; border-radius: 3px; background: #000; display: block; }
@@ -1134,7 +1131,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .qlist.on-card li.own .hint { font-weight: 400; }
 .qlist.on-card li.own[data-sorting=dragged] { box-shadow: var(--lift); }
 .sorting, .sorting * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
-.p-files { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
 .card.queued .state { font-style: italic; }
 .card.queued::before { background: repeating-linear-gradient(90deg, var(--c) 0 8px, transparent 8px 13px); }
 .question h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -1214,7 +1210,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .shot img { height: 88px; max-width: 240px; object-fit: cover; border-radius: 2px; display: block; }
 .talk .msg.by-owner .shots { justify-content: flex-end; }
 /* where a conversation starts, long ones folded to about eight lines */
-.talk .msg.seed .p-task { margin-top: 6px; font-size: 13px; }
 .talk .msg.by-plan .who, .talk .msg.by-proposal .who { color: var(--muted); }
 .fold { font-size: 14px; }
 .fold.folded { max-height: calc(var(--fold-lines, 8) * 1lh + 2px); overflow: hidden; }

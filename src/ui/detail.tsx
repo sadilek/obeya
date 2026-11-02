@@ -487,8 +487,6 @@ export function Detail(p: Props) {
         </>
       )}
 
-      {item.state === 'planned' && !worked && !waits && <Scope files={item.scope} />}
-
       {/* what the card changed in a folder without git stays in view: in its left column, or above its conversation where it has none */}
       {worked && inFolder && talkAlone(item) && <FolderBox item={item} diff={changes.diff} />}
       {waits ? (
@@ -504,7 +502,6 @@ export function Detail(p: Props) {
                   <Shots ids={item.images} />
                 </>
               )}
-              <Scope files={item.scope} />
             </>
           }
           talk={<TaskTalk item={item} act={act} tell={tell} />}
@@ -529,7 +526,6 @@ export function Detail(p: Props) {
                     ) : (
                       <Body md={item.body} />
                     )}
-                    <Scope files={item.scope} />
                   </div>
                 )}
                 {/* what landed of a workstream the plan doc keeps open comes first: the demo below shows it */}
@@ -1304,9 +1300,7 @@ function Conversation({
   // a workstream's task is its text in the plan doc, which stands beside the conversation
   const task = (isWorked(item) || !!item.prototypeEnd) && item.brief === undefined && item.source !== 'plan' && (!!item.body.trim() || !!item.images?.length);
   const seed = task ? (
-    <Seed item={item} by={taskAuthor(item)} who={`${t.talk.opening[taskAuthor(item)]} · ${t.task}`}>
-      <Scope files={item.scope} />
-    </Seed>
+    <Seed item={item} by={taskAuthor(item)} who={`${t.talk.opening[taskAuthor(item)]} · ${t.task}`} />
   ) : (
     idea && !past && item.body.trim() && !opened(events, item.body) && <Seed item={item} by="owner" who={t.idea.seed} />
   );
@@ -1452,14 +1446,13 @@ const takeBack = (cardId: string, e: CardEvent) =>
 /** Who wrote the task an agent started on: the owner, a plan doc, the Arbeitsrückschau, an agent's proposal, or a prototype's idea. */
 
 /** Where a conversation starts, as its first message: what was said to an idea, the task an agent started on; long ones folded. */
-function Seed({ item, by, who, children }: { item: Item; by: string; who: string; children?: ReactNode }) {
+function Seed({ item, by, who }: { item: Item; by: string; who: string }) {
   return (
     <Msg by={by} className="seed" who={who}>
       <Fold>
         <Body md={item.body} />
       </Fold>
       <Shots ids={item.images} />
-      {children}
     </Msg>
   );
 }
@@ -1489,25 +1482,6 @@ function Fold({ children, lines }: { children: ReactNode; lines?: number }) {
         </button>
       )}
     </>
-  );
-}
-
-/** The files the Koordinator expects a card to change, folded. */
-function Scope({ files }: { files?: string[] }) {
-  if (!files?.length) return null;
-  return (
-    <details className="p-task">
-      <summary>
-        {t.scope} ({files.length})
-      </summary>
-      <ul className="p-files">
-        {files.map((f) => (
-          <li key={f}>
-            <code>{f}</code>
-          </li>
-        ))}
-      </ul>
-    </details>
   );
 }
 

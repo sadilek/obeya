@@ -663,7 +663,6 @@ const de = {
     invalid: 'Das hat nicht geklappt. Der Server hat die Aktion abgelehnt.',
   } satisfies Record<ErrorCode, string>,
   offlineError: 'Der Server ist nicht erreichbar.',
-  scope: 'Voraussichtlich betroffen',
   voice: {
     hold: 'Halten zum Sprechen (Leertaste)',
     koordinator: 'Obeya',
@@ -2606,7 +2605,6 @@ const en: Strings = {
     invalid: 'That did not work. The server refused the action.',
   },
   offlineError: 'The server cannot be reached.',
-  scope: 'Likely affected',
   voice: {
     hold: 'Hold to speak (space)',
     koordinator: 'Obeya',

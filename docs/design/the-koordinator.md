@@ -15,7 +15,9 @@ the estimated files and what the branch has changed so far (each file with its c
 and git's function context). Sharing a file is fine (additions in different places merge cleanly);
 touching the same lines or function, or code one card moves, renames or reformats while the other
 edits it, is not. Soft paths (`softPaths`, docs) do not count. In doubt the card runs: a conflict
-that happens anyway goes back to its worker on landing.
+that happens anyway goes back to its worker on landing. The estimated files stay internal: a card does not show
+them (they read as a guess beside the files the card actually changed, and the owner has nothing to
+do with them; 2026-11-02).
 
 A branch's change is measured from where it left the nearest branch that is not a card's
 (`obeya/…`): the main branch, or a long-lived branch the card was built on; from the main branch if
