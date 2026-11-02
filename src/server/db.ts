@@ -450,6 +450,12 @@ export const MIGRATIONS = [
   'ALTER TABLE talk ADD COLUMN then_step TEXT; ALTER TABLE talk ADD COLUMN after_answer INTEGER;',
   // an error of a session that signed in with a token rather than this machine's account
   'ALTER TABLE events ADD COLUMN token INTEGER;',
+  // the cards each change of a canvas reads, without going through its archive
+  `CREATE INDEX cards_open ON cards (canvas_id) WHERE deleted_at IS NULL AND archived_at IS NULL;
+   CREATE INDEX cards_plan_docs ON cards (canvas_id) WHERE deleted_at IS NULL AND plan_docs IS NOT NULL;
+   CREATE INDEX cards_prototypes ON cards (canvas_id, created_at) WHERE deleted_at IS NULL AND prototype_of IS NOT NULL;
+   CREATE INDEX cards_waiting ON cards (canvas_id) WHERE waiting_since IS NOT NULL;
+   CREATE INDEX cards_shared ON cards (canvas_id) WHERE deleted_at IS NULL AND share IS NOT NULL;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -617,6 +623,17 @@ export class Store {
   /** The proposals an agent made from a card, deleted and archived ones too, oldest first. */
   proposalsFrom(canvasId: string, fromId: string): CardRow[] {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND from_id = $f AND proposal IS NOT NULL ORDER BY created_at, rowid').all({ c: canvasId, f: fromId }) as CardRow[];
+  }
+
+  /** Of the given cards, those on another canvas than `canvasId` and not deleted: with their canvas, its name and their title. */
+  elsewhere(ids: string[], canvasId: string): { id: string; canvas: string; canvasName: string | null; title: string | null }[] {
+    if (!ids.length) return [];
+    return this.db
+      .query(
+        `SELECT c.id, c.canvas_id AS canvas, v.name AS canvasName, c.title FROM cards c LEFT JOIN canvases v ON v.id = c.canvas_id
+         WHERE c.id IN (SELECT value FROM json_each($ids)) AND c.canvas_id != $c AND c.deleted_at IS NULL`,
+      )
+      .all({ ids: JSON.stringify(ids), c: canvasId }) as { id: string; canvas: string; canvasName: string | null; title: string | null }[];
   }
 
   card(id: string): CardRow | null {
