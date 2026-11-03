@@ -492,16 +492,17 @@ export function run(cmd: string, args: string[], opts: { cwd?: string } = {}) {
   return r.stdout;
 }
 
-/** Keeps the scenes' narration in `dir` (`jobs.json`), which re-voicing reads; returns the file. */
-function writeJobs(says: string[], dir: string) {
-  const jobsFile = path.join(dir, 'jobs.json');
+/** Keeps the scenes' narration in `dir` (`jobs.json`: that of the take whose frames lie beside it, which re-voicing reads); returns the file. */
+function writeJobs(says: string[], dir: string, name = 'jobs.json') {
+  const jobsFile = path.join(dir, name);
   fs.writeFileSync(jobsFile, JSON.stringify(says.map((say, i) => ({ id: `s${i + 1}`, text: say }))));
   return jobsFile;
 }
 
 /** The scenes' narration (`says`), one clip each, in the voice and language of `settings`; cached in `dir` by voice and text. */
 export function synthesize(says: string[], dir: string, settings: DemoSettings = SETTINGS): Clip[] {
-  const jobsFile = writeJobs(says, dir);
+  // not `jobs.json`: the narration alone (`--narration`) records no take, and the frames kept are another's
+  const jobsFile = writeJobs(says, dir, 'tts-jobs.json');
   const spec = voiceSpec(settings);
   const specFile = path.join(dir, 'voice.json');
   fs.writeFileSync(specFile, JSON.stringify(spec));
@@ -808,8 +809,8 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   const { tracks } = subtitles;
   const narration = narrationTrack(source);
   let clips: Clip[] | undefined;
-  if (SILENT) writeJobs(says, work);
-  else clips = synthesize(says, work);
+  writeJobs(says, work);
+  if (!SILENT) clips = synthesize(says, work);
   // each sentence's time: its share of the scene's clip, or as long as it takes to read in the slowest of the subtitles' languages
   const shown = tracks.length ? tracks : [narration];
   const timings = spec.scenes.map((_, i) => (clips ? sharedOut(clips[i]!.seconds, narration.scenes[i]!) : readingTimes(shown.map((t) => t.scenes[i]!))));

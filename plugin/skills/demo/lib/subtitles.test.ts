@@ -19,11 +19,12 @@ describe('sentences', () => {
     expect(sentencesOf('[short pause]')).toEqual([]);
   });
 
-  test('a number ends its sentence, but for a German ordinal after an article or preposition', () => {
+  test('a number ends its sentence, but for a German ordinal after an article or preposition or before a month', () => {
     expect(sentencesOf('There are 3. Then save.', 'en')).toEqual(['There are 3.', 'Then save.']);
     expect(sentencesOf('Es sind 3. Dann speichern.', 'de')).toEqual(['Es sind 3.', 'Dann speichern.']);
     expect(sentencesOf('Die 3. Option fehlt. Am 1. November geht es los.', 'de')).toEqual(['Die 3. Option fehlt.', 'Am 1. November geht es los.']);
     expect(sentencesOf('Am 1. November geht es los.', 'en')).toEqual(['Am 1.', 'November geht es los.']);
+    expect(sentencesOf('Wir treffen uns Freitag, 1. November. Danach speichern.', 'de')).toEqual(['Wir treffen uns Freitag, 1. November.', 'Danach speichern.']);
   });
 });
 

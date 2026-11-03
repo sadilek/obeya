@@ -31,12 +31,16 @@ const ABBREVIATIONS = new Set(['bzw', 'usw', 'etc', 'ca', 'vgl', 'nr', 'dr', 'vs
 /** German words an ordinal follows (lower case): „am 1. November“, „die 3. Option“, „zum 2. Mal“. */
 const BEFORE_ORDINAL = new Set(['am', 'an', 'im', 'in', 'vom', 'zum', 'zur', 'bis', 'ab', 'seit', 'nach', 'vor', 'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einen', 'einem', 'einer', 'jeder', 'jede', 'jedes', 'jeden', 'jedem']);
 
+/** German months (lower case): a number before one is a day, an ordinal, whatever comes before it („Freitag, 1. November“). */
+const MONTHS = new Set(['januar', 'jänner', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'dezember']);
+
 /**
  * The sentences of a narration in `language` as captions show them (`untagged`): split after a
  * full stop, question or exclamation mark, or an ellipsis, followed by a space and not by a
  * lower-case letter. A period after a single letter or a common abbreviation ends no sentence, nor,
- * in German, one after a number that an article or preposition comes before: an ordinal („am 1.
- * November“). Elsewhere a number ends its sentence („There are 3. Then save.“).
+ * in German, one after a number that an article or preposition comes before or a month follows: an
+ * ordinal („am 1. November“, „Freitag, 1. November“). Elsewhere a number ends its sentence („There
+ * are 3. Then save.“).
  */
 export function sentencesOf(say: string, language = 'en'): string[] {
   const german = /^de(-|$)/i.test(language);
@@ -48,7 +52,8 @@ export function sentencesOf(say: string, language = 'en'): string[] {
     const next = text.slice(end).trimStart()[0];
     if (next !== undefined) {
       const [before = '', word = ''] = (/(?:([^\s("'„“«»]+)\s+)?([^\s("'„“«»]+)$/.exec(text.slice(from, m.index)) ?? []).slice(1).map((w) => (w ?? '').toLowerCase());
-      const ordinal = german && /^\d+$/.test(word) && BEFORE_ORDINAL.has(before);
+      const month = /^\p{L}+/u.exec(text.slice(end).trimStart())?.[0].toLowerCase() ?? '';
+      const ordinal = german && /^\d+$/.test(word) && (BEFORE_ORDINAL.has(before) || MONTHS.has(month));
       const abbreviation = m[0] === '.' && (/^\p{L}$/u.test(word) || ordinal || ABBREVIATIONS.has(word));
       if (abbreviation || /\p{Ll}/u.test(next)) continue;
     }

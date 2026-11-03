@@ -114,8 +114,8 @@ then show nothing of its narration: its one track is the narration's. Whether a 
 depend on the list: a voiced demo with listed languages has both. Each track is a file of its own,
 `captions.<language>.vtt`, a cue per sentence of the narration. A sentence ends at `.`, `!`, `?` or
 `…` before a space and a capital, not after a single letter or a common abbreviation, nor in German
-narration after a number an article or preposition comes before (an ordinal: „am 1. November“);
-anywhere else a number ends its sentence („There are 3. Then save.“).
+narration after a number an article or preposition comes before or a month follows (an ordinal:
+„am 1. November“, „Freitag, 1. November“); anywhere else a number ends its sentence („There are 3. Then save.“).
 
 `captions.vtt` holds the narration's cues in every demo, track or not: Obeya reads there what the
 narration says at a place a comment refers to, and the chapters of a demo without `chapters.vtt`.
@@ -391,6 +391,8 @@ A demo that kept its frames (`.work/`) can be narrated anew in another language 
 again (`node demo.ts --revoice en`, or `node lib/revoice.ts <dir> en` when its script no longer
 runs). It reads only what the render left in the directory (narration, chapters, caption timings,
 report, whether it was sharp), so it works on a demo of any director version, a silent one included.
+The narration and the frames it reads are those of one take: a render that stops before recording
+(for missing translations, or with only the narration, `--narration`) leaves both as they were.
 
 1. The first run writes the words to translate (`.work/revoice/source.json`: title, per scene its
    chapter title and narration, the report) and asks the agent running the skill for them in the
