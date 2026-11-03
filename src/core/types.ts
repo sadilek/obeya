@@ -2274,6 +2274,8 @@ export interface ConfigChecked {
 export type SettingsShared =
   /** Committed `.obeya/settings.json` on the main branch (pushed onto `origin`'s, where it went there directly): the settings now come from the repository. */
   | { committed: string; branch: string }
+  /** The main branch's `.obeya/settings.json` (`origin`'s, where it would have gone there) held them already: nothing committed, pushed or opened; the settings come from the repository. */
+  | { unchanged: true; branch: string }
   /** Opened a pull request with it: once it is merged, the settings come from the repository. */
   | { pr: string };
 

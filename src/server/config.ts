@@ -112,6 +112,7 @@ function tidySite(s: DemoSite | undefined): DemoSite | undefined {
     ...(headers.length ? { headers: Object.fromEntries(headers.map(([k, v]) => [k.trim(), v.trim()])) } : {}),
     ...(s.maxFile ? { maxFile: s.maxFile } : {}),
     ...(s.publish ? { publish: s.publish } : {}),
+    ...(s.tags && Object.keys(s.tags).length ? { tags: s.tags } : {}),
   };
   return out.title || out.url || out.deploy || Object.keys(out).length > 3 ? out : undefined;
 }
@@ -417,7 +418,7 @@ export class Config {
     }
     const to = (await this.check(canvases)).resolved[at.canvas]?.repos[at.repo]?.shareTo ?? 'main';
     const done = await this.share(path, patch, to, field);
-    if (to === 'pr') {
+    if ('pr' in done) {
       await onMachine();
       return done;
     }
@@ -451,30 +452,36 @@ export class Config {
     if (to === 'pr' && parsed.data.direct) {
       if (!resolved?.repos[at.repo]?.shareDirect) throw new BadRequest('noDirect', `${repoPath}: work goes to main only through pull requests`);
       const { after, ...done } = await pushShared(repoPath, mine);
-      console.log(`Obeya: settings of ${repoPath} for everyone, pushed onto origin's ${'branch' in done ? done.branch : ''}`);
+      console.log(`Obeya: settings of ${repoPath} for everyone, ${'unchanged' in done ? 'which origin\'s ' + done.branch + ' had already' : `pushed onto origin's ${done.branch}`}`);
       this.takenOver(repoPath, undefined, after);
       this.o.onSettings?.();
       return done;
     }
     const done = await this.share(repoPath, mine, to, 'settings');
-    if (to === 'main') this.o.onSettings?.();
+    if (!('pr' in done)) this.o.onSettings?.();
     return done;
   }
 
   /**
    * `patch` goes into the `.obeya/settings.json` of the repository at `path` for everyone: as a pull
    * request, or committed on the main branch, after which all of it comes from the repository, here
-   * too. The caller follows.
+   * too; where the file there holds it already, neither, and it comes from the repository at once.
+   * The caller follows.
    */
   private async share(path: string, patch: SharedSettings, to: 'main' | 'pr', what: string): Promise<SettingsShared> {
     if (to === 'pr') {
       if (!this.o.forge) throw new BadRequest('settingsShare', 'no forge to open a pull request with');
-      const done = await proposeShared(path, patch, this.o.forge);
-      console.log(`Obeya: ${what} of ${path} for everyone, as a pull request: ${'pr' in done ? done.pr : ''}`);
+      const { after, ...done } = await proposeShared(path, patch, this.o.forge);
+      if ('pr' in done) {
+        console.log(`Obeya: ${what} of ${path} for everyone, as a pull request: ${done.pr}`);
+        return done;
+      }
+      console.log(`Obeya: ${what} of ${path} for everyone, which origin's ${'branch' in done ? done.branch : ''} had already`);
+      this.takenOver(path, undefined, after);
       return done;
     }
     const { before: _, after, ...done } = await commitShared(path, patch);
-    console.log(`Obeya: ${what} of ${path} for everyone, committed on ${'branch' in done ? done.branch : ''}`);
+    console.log(`Obeya: ${what} of ${path} for everyone, ${'unchanged' in done ? 'which ' + done.branch + ' had already' : `committed on ${'branch' in done ? done.branch : ''}`}`);
     // all of it is in the file now, also what it held already
     this.takenOver(path, undefined, after);
     return done;

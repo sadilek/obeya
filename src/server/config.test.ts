@@ -427,6 +427,32 @@ describe("Obeya's configuration", async () => {
     await expect(c.shareSettings({ path: web })).rejects.toMatchObject({ code: 'noSettings' });
   });
 
+  test("„Für alle ins Repository übernehmen“ of a demo site's tags: saved with the site, committed with it; once the file has them, nothing is committed", async () => {
+    mkdirSync(join(dir, 'home'));
+    const site = { title: 'Demos', url: 'https://demos.example.com', deploy: 'deploy {dir}' };
+    mkdirSync(join(web, '.obeya'));
+    writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'main', demo: { language: 'en', site } }, null, 2));
+    git(web, 'add', '.obeya/settings.json');
+    git(web, 'commit', '--quiet', '-m', 'settings');
+    const c = config('file', []);
+    // saved with the site, as the dialog has them
+    const tags = { Area: ['Billing', 'Reports'], Kind: ['Fix'] };
+    await c.save([{ repos: [{ path: web, settings: { demo: { site: { ...site, tags } } } }] }]);
+    expect(readConfigFile(file)).toEqual([{ repos: [{ path: web, settings: { demo: { site: { ...site, tags } } } }] }]);
+
+    const done = await c.shareSettings({ path: web });
+    expect(done).toEqual({ committed: git(web, 'rev-parse', 'main').trim(), branch: 'main' });
+    expect(JSON.parse(git(web, 'show', 'main:.obeya/settings.json'))).toEqual({ land: 'main', demo: { language: 'en', site: { ...site, tags } } });
+    expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }] }]);
+
+    // this machine sets what the file holds already (in another order): no empty commit, and its values go
+    const head = git(web, 'rev-parse', 'main').trim();
+    await c.save([{ repos: [{ path: web, settings: { demo: { site: { tags, ...site } }, land: 'main' } }] }]);
+    expect(await c.shareSettings({ path: web })).toEqual({ unchanged: true, branch: 'main' });
+    expect(git(web, 'rev-parse', 'main').trim()).toBe(head);
+    expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }] }]);
+  });
+
   test("„Für alle ins Repository übernehmen“ where work goes out as pull requests: one is opened, this machine keeps its values until it is merged", async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');

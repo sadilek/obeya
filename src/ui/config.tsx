@@ -2364,7 +2364,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
       const r = await api.shareSettings(repo.path, direct);
       setDone(r);
       setConfirming(false);
-      if ('committed' in r) await onReload();
+      if (!('pr' in r)) await onReload();
     } catch (e) {
       setError(failText(e, { detail: ['settingsShare'] }));
     }
@@ -2375,6 +2375,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
       <div className="cfg-label">{c.label}</div>
       <div className="cfg-control">
         {done && 'committed' in done && <p className="hint ok">{c.committed(done.branch, done.committed.slice(0, 7))}</p>}
+        {done && 'unchanged' in done && <p className="hint ok">{c.unchanged(done.branch)}</p>}
         {done && 'pr' in done && (
           <p className="hint ok">
             {c.opened}{' '}

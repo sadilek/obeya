@@ -270,7 +270,9 @@ file there without touching the checkout's other changes, staged or not (a commi
 checkout: temporary index, `commit-tree`, `update-ref`); a checkout on main gets the file as committed, and one with its own
 changes to the file refuses. Where work goes through pull requests, the commit goes to a branch `obeya-settings-<time>`
 and a pull request, linked in the dialog; with `direct`, the dialog also offers to push it onto
-`origin`'s main (never forced, so a protected branch refuses). Once the file holds the values (at
+`origin`'s main (never forced, so a protected branch refuses). Where the file there holds every
+value already (in whatever order of fields), nothing is committed, pushed or opened, and the dialog
+says so: an empty commit would only clutter the history. Once the file holds the values (at
 once, or when the merge reaches the Lesestand), they go from this machine's settings and show as from
 the repository. The Arbeitsrückschau proposes single values too (see Setting proposals).
 

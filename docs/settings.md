@@ -271,7 +271,8 @@ goes out as pull requests, Obeya pushes the commit to a branch of its own (`obey
 opens a pull request against the main branch; this machine keeps its values until the pull
 request is merged, then they come from the repository. Where work may also go straight to main
 (`direct`), it offers to push the commit straight onto `origin`'s main branch instead (never
-forced; a protected branch refuses it). What the file holds beside them stays.
+forced; a protected branch refuses it). What the file holds beside them stays. Where the file
+holds all of them already, nothing is committed, and they come from the repository at once.
 
 ## Mistakes
 
