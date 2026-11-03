@@ -585,8 +585,7 @@ export function OldBunPill({ version }: { version: string }) {
 /**
  * Each repository's pool by machine: a dot per clone (solid while its card's worker is at work,
  * pale while the card holds it otherwise, orange while free but blocked), or per slot of a
- * repository in worktrees, and how many new cards could start now. Hovering or clicking it drops
- * down each machine's slots and each of its workspaces by path with the card in it, which opens
+ * repository in worktrees, and how many new cards could start now. A click (a tap) drops down each machine's slots and each of its workspaces by path with the card in it, which opens
  * the card (`onOpen`; `onElsewhere` one on another canvas), and why a blocked clone goes to no card
  * and what to do about it. While every clone is taken and a card waits for one, a faint „⋯“ beside
  * a card opens what gives its clone to the one waiting longest (`onTake`); during the undo window
@@ -602,19 +601,13 @@ export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsew
   onTake: (i: Item) => void;
   onKeep: (i: Item) => void;
 }) {
-  // open by a click (a tap) until one elsewhere or Escape; shut after a card is opened from it, until the pointer leaves
+  // open by a click (a tap) until one elsewhere, Escape or a card opened from it
   const [open, setOpen] = useState(false);
-  const [shut, setShut] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => ref.current?.contains(e.target as Node) || setOpen(false);
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // the pointer may still be over it: shut, not just unpinned
-      setOpen(false);
-      setShut(true);
-    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     addEventListener('pointerdown', away, true);
     addEventListener('keydown', esc);
     return () => {
@@ -640,15 +633,13 @@ export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsew
   const named = (p: ClonePool) => p.hosts.filter((h) => h.total > 0 || !h.here || h.kept?.length);
   const opened = (go: () => void) => {
     setOpen(false);
-    setShut(true);
     go();
   };
   return (
     <div
       ref={ref}
-      className={['pill workspaces', full && 'full', open && 'open', shut && 'shut'].filter(Boolean).join(' ')}
+      className={['pill workspaces', full && 'full', open && 'open'].filter(Boolean).join(' ')}
       id="workspaces"
-      onPointerLeave={() => setShut(false)}
     >
       <button className="face" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="lbl">{t.workspaces.label}</span>
@@ -672,7 +663,6 @@ export function WorkspacesPill({ pools, canvas, canvases, items, onOpen, onElsew
             </span>
           );
         })}
-        <span className="hint drop">▾</span>
       </button>
       <div className="tip" role="dialog" aria-label={t.workspaces.label}>
         {pools.map((p) => (

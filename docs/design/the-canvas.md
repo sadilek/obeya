@@ -382,9 +382,10 @@ code, a generic one otherwise.
 - **The usage limits outlast the last page by half a minute** (2026-10-29). Rejected: closing the
   session and forgetting the numbers with the last page, which left the bar without them for the
   seconds a new session takes after every switch of canvas.
-- **The usage limits' list opens on a click, not on hover** (owner, 2026-11-02), as the bar's other
-  menus do. Rejected: hovering, which spread the list over the canvas whenever the pointer crossed
-  the bar.
+- **The bar's lists open on a click, not on hover** (owner, 2026-11-02 for the usage limits,
+  2026-11-03 for the workspace pool), as its other menus do; the pool's pill, like the usage limits,
+  shows no „▾“. Rejected: hovering, which spread the list over the canvas whenever the pointer crossed the
+  bar.
 - **The bar measures what fits** (2026-10-12). Rejected: container queries on the bar's width, which
   let a long branch or a large pool push buttons under the sheet.
 - **An unfolded card is as large as its content, up to the room it has** (2026-10-08, 2026-10-21).

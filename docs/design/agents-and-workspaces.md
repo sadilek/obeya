@@ -167,8 +167,8 @@ meanwhile waits for it.
 For each repository in clones the top bar shows the pool („Workspaces“): per machine (named once
 there is more than one) a dot per clone, solid while its card's worker is at work, pale while merely
 held, orange while free but blocked, and how many new cards could start („2 frei“, „alle belegt“,
-„keiner frei · 1 blockiert“). Hovering or clicking it drops down a list: per machine its slots at
-work and clones taken, then each workspace on a line of its own, free ones included, with its path
+„keiner frei · 1 blockiert“). A click (a tap) drops down a list, closed again by a click beside it,
+Escape or another click on the pill: per machine its slots at work and clones taken, then each workspace on a line of its own, free ones included, with its path
 (cut at the front where too long, so its end stays readable), the dot the pill shows for it, and
 the card in it, „frei“ or „blockiert“; then how many cards wait for a workspace or a slot. While
 none is free and a card waits, „⋯“ beside the cards whose clone may go to it (see Taking a card's
@@ -364,9 +364,9 @@ a container say, reuses pids). A host needs git, Claude Code and what the reposi
   neither the clone nor the files.
 - **The pool lists each workspace with its path and card** (2026-10-26, GitHub issue #10): a summary
   of counts and titles did not say which folder a card works in, nor which clone is free, and gave
-  no way to the card. A click opens the list as well as hovering, so its links can be reached and it
-  works by touch. Rejected: a path cut at its end (the clone's number and the repository are at the
-  end); the list on the phone (owner, 2026-10-27: the phone view stays simple).
+  no way to the card. It opens on a click, so its links can be reached and it works by touch (and
+  only on a click, see The bar's lists open on a click in The canvas). Rejected: a path cut at its
+  end (the clone's number and the repository are at the end); the list on the phone (owner, 2026-10-27: the phone view stays simple).
 - **The owner can take a card's clone for a card waiting for one** (2026-10-27, GitHub issue #11):
   a card in review, or stopped with work, held its clone for days while a more urgent card waited.
   Its uncommitted work goes into a commit on its branch, taken apart again when the card goes on,
