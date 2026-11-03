@@ -396,9 +396,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.workspaces .ws-menu .btn.ws-take { margin-left: 0; background: var(--panel); }
 .pill.workspaces .ws-menu .hint { font-size: 12px; line-height: 1.4; }
 #bar > svg { flex: none; margin-right: 4px; }
-/* the open canvas's name, heading the bar beside the pinned navigation */
+/* the open canvas's name, heading the bar beside the pinned navigation; set lower than the buttons' baseline so its capitals sit centred in the bar */
 .bar-canvas { margin: 0 6px 0 0; padding-left: 14px; border-left: 1px solid var(--line); max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font: 600 21px/34px var(--serif); position: relative; top: 1px; }
+  box-sizing: border-box; height: 34px; padding-top: 5px; font: 600 21px/29px var(--serif); }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 /* the traffic lights of the app's window on a Mac sit at the bar's left, or in the pinned navigation's head */
 #bar.titlebar { padding-left: 92px; }
