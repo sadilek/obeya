@@ -1172,6 +1172,13 @@ const de = {
     orType: 'Oder öffne auf dem Telefon die Adresse und gib diesen Code ein:',
     validUntil: (time: string) => `gültig bis ${time}`,
     connected: (name: string) => `${name} ist verbunden.`,
+    /** A device's app on the home screen keeps the address it was added at, and Obeya's has changed since. */
+    moved: {
+      title: 'Die Adresse hat sich geändert',
+      app: (name: string, old: string) => `Die App von ${name} auf dem Home-Bildschirm öffnet noch \`${old}\` und erreicht Obeya dort nicht mehr.`,
+      step: 'Eine App auf dem Home-Bildschirm behält ihre Adresse. Lösche sie auf dem Telefon, scanne den Code und lege Obeya dann neu auf den Home-Bildschirm.',
+      again: (old: string) => `Lege Obeya jetzt neu auf den Home-Bildschirm. Die alte App öffnet noch \`${old}\`: Lösche sie, falls noch nicht geschehen.`,
+    },
     another: 'Noch ein Gerät verbinden',
     first: 'Damit dein Telefon Obeya erreicht:',
     toSection: 'Geräte und Einstellungen',
@@ -1200,7 +1207,7 @@ const de = {
     closeTalk: 'Schließen',
     canvas: 'Leinwand',
     notAnswering: (since: string) => `Obeya antwortet nicht · seit ${since}`,
-    notAnsweringWhy: 'Vielleicht schläft der Rechner, oder Obeya läuft dort nicht. Sobald es wieder antwortet, ist die Seite wieder verbunden.',
+    notAnsweringWhy: 'Vielleicht schläft der Rechner, oder Obeya läuft dort nicht, oder seine Adresse hat sich geändert: Dann sagt „Telefon verbinden“ auf dem Rechner, was zu tun ist. Sobald es wieder antwortet, ist die Seite wieder verbunden.',
     gone: 'Diese Karte gibt es nicht mehr.',
     /** Pushes: how to put Obeya on the home screen (iOS allows them only there), and turning them on. */
     notify: {
@@ -3187,6 +3194,12 @@ const en: Strings = {
     orType: 'Or open the address on the phone and type this code:',
     validUntil: (time: string) => `valid until ${time}`,
     connected: (name: string) => `${name} is connected.`,
+    moved: {
+      title: 'The address has changed',
+      app: (name: string, old: string) => `The app of ${name} on its home screen still opens \`${old}\` and no longer reaches Obeya there.`,
+      step: 'An app on the home screen keeps its address. Delete it on the phone, scan the code, then add Obeya to the home screen again.',
+      again: (old: string) => `Now add Obeya to the home screen again. The old app still opens \`${old}\`: delete it if you have not yet.`,
+    },
     another: 'Connect another device',
     first: 'For your phone to reach Obeya:',
     toSection: 'Devices and settings',
@@ -3208,7 +3221,7 @@ const en: Strings = {
     closeTalk: 'Close',
     canvas: 'Canvas',
     notAnswering: (since: string) => `Obeya is not answering · since ${since}`,
-    notAnsweringWhy: 'The computer may be asleep, or Obeya is not running there. The page connects again as soon as it answers.',
+    notAnsweringWhy: 'The computer may be asleep, Obeya may not be running there, or its address has changed: then “Connect a phone” on the computer says what to do. The page connects again as soon as it answers.',
     gone: 'This card no longer exists.',
     notify: {
       install: 'For Obeya to tell you when something waits for you: tap “Share” below, then “Add to Home Screen”, and open Obeya from there.',

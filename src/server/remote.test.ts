@@ -60,9 +60,9 @@ const turnOn = async (remote: unknown = { via: 'tailscale' }) =>
   (await (await local('/api/access', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ remote }) })).json()) as AccessView;
 const pairing = async () => (await (await local('/api/access/pair', { method: 'POST' })).json()) as Pairing;
 const cookieOf = (res: Response) => res.headers.get('set-cookie')!.split(';')[0]!;
-const opens = (headers: Record<string, string>) =>
+const opens = (headers: Record<string, string>, path = '/api/c/main/ws') =>
   new Promise<WebSocket | null>((done) => {
-    const ws = new WebSocket(new URL('/api/c/main/ws', server.url.href.replace('http', 'ws')), { headers } as unknown as string[]);
+    const ws = new WebSocket(new URL(path, server.url.href.replace('http', 'ws')), { headers } as unknown as string[]);
     ws.onopen = () => done(ws);
     ws.onerror = () => done(null);
   });
@@ -277,7 +277,46 @@ describe('pairing', () => {
     expect((await viaTailnet('/', { cookie })).status).toBe(401);
   });
 
-  test('a paired phone may not pair others, remove devices or change the setting', async () => {
+  test("the app on the home screen keeps its address: once Obeya's changes, the section shows the old one, and the phone pairing anew replaces its entry", async () => {
+    await turnOn();
+    const cookie = cookieOf(await viaTailnet(`/pair?code=${(await pairing()).code}`));
+    const at = (name: string) => ({ host: name, 'x-forwarded-for': '100.64.0.7', 'x-forwarded-host': name, 'x-forwarded-proto': 'https', origin: `https://${name}` });
+    // in the browser the device keeps no address; its app on the home screen says so as it connects
+    (await opens({ ...at(NAME), cookie }))!.close();
+    expect((await view()).devices[0]!.app).toBeUndefined();
+    (await opens({ ...at(NAME), cookie }, '/api/c/main/ws?app'))!.close();
+    let v = await view();
+    expect(v.devices[0]!.app).toBe(`https://${NAME}`);
+    expect(v.address).toBe(v.devices[0]!.app!);
+
+    // the machine renamed in the tailnet: Obeya is served at the new name, the app still opens the old one
+    const RENAMED = 'studio.tail1234.ts.net';
+    tailscaleStatus(ts, { state: 'Running', name: RENAMED, https: true });
+    v = await view();
+    // (the entry under the old name still holds 443, so the new one is served at 8443)
+    expect(v.address).toBe(`https://${RENAMED}:8443`);
+    expect(v.devices[0]!.app).toBe(`https://${NAME}`);
+    const there = (name: string) => ({ ...at(name), host: `${name}:8443`, 'x-forwarded-host': `${name}:8443`, origin: `https://${name}:8443` });
+
+    // its browser has no cookie for the new name: it pairs anew, and that entry replaces the old one
+    const p = await pairing();
+    expect(p.url).toBe(`https://${RENAMED}:8443/pair?code=${p.code}`);
+    const again = await viaTailnet(`/pair?code=${p.code}`, there(RENAMED));
+    expect(again.status).toBe(303);
+    v = await view();
+    expect(v.devices.map((d) => [d.name, d.app])).toEqual([['iPhone · Safari', undefined]]);
+    expect(v.pairing?.replaced).toBe(`https://${NAME}`);
+    (await opens({ ...there(RENAMED), cookie: cookieOf(again) }, '/api/c/main/ws?app'))!.close();
+    expect((await view()).devices[0]!.app).toBe(`https://${RENAMED}:8443`);
+    // a phone that only shares the name, its app at the current address, is left alone
+    const other = await viaTailnet(`/pair?code=${(await pairing()).code}`, there(RENAMED));
+    v = await view();
+    expect(v.devices).toHaveLength(2);
+    expect(v.pairing?.replaced).toBeUndefined();
+    expect(other.status).toBe(303);
+  });
+
+    test('a paired phone may not pair others, remove devices or change the setting', async () => {
     await turnOn();
     const cookie = cookieOf(await viaTailnet(`/pair?code=${(await pairing()).code}`));
     const own = { cookie, origin: `https://${NAME}`, 'content-type': 'application/json' };

@@ -122,6 +122,20 @@ connect. A device stays paired until removed or unused for 90 days. Pairing, dev
 are managed only on this machine (`/api/access…` answers another device 403 `onlyHere`, and the
 section shows it only its heading and hint).
 
+*The app on the home screen keeps its address.* Added to a phone's home screen, Obeya opens the
+address it was added at, which Obeya cannot change afterwards; once Obeya's address changes (the
+machine renamed in the tailnet, another port, another address picked), that app gets no answer. Its
+page says, whenever it connects, that it runs as that app (`?app` on its WebSocket), and Obeya keeps
+per device the address it came under (`X-Forwarded-Proto`/`-Host` behind `tailscale serve`). While
+that address is not the one other devices reach Obeya at now, the dialog „Telefon verbinden“ and the
+section say so above all else: „Die Adresse hat sich geändert“, which device's app still opens which
+address, and to delete it, scan the code and add Obeya to the home screen anew. A browser keeps its
+cookie per name, so a new name means pairing anew: the new pairing replaces the entry of the same
+device name whose app keeps another address (the most recently seen one), and the dialog then says to
+add Obeya to the home screen anew and delete the old app. A new port keeps the cookie and the entry;
+the notice goes once the new app has connected. The phone's own „Obeya antwortet nicht“ names a
+changed address as one of the reasons and points to „Telefon verbinden“.
+
 *Keeping the machine awake.* While the setting is on, Obeya keeps its machine from idle sleep per the
 switch „Rechner wach halten“: *Solange ein Agent arbeitet* (default), while a worker is in a turn,
 waits for its background work or lands, until two minutes after the last; or *Immer*, so the phone
@@ -492,6 +506,12 @@ workers are busy.
   owner): always awake is too much as a default (a laptop on battery), but the owner wants to give
   tasks from the phone while no agent works. Rejected: a hint how to keep it awake by hand (the switch does it
   without leaving Obeya).
+- **A changed address is shown on the machine, from where each device's app last connected**
+  (2026-11-03, the owner): a web app on the home screen keeps the address it was added at, and
+  nothing Obeya serves elsewhere can reach it. Only the app's own page knows it runs as one, so it
+  reports that; the address a device last used in its browser would not do, since with a new port the
+  browser follows the new address while the app does not. Devices paired before this record no
+  address until their app connects once.
 - **„Telefon verbinden“ only in the configuration** (2026-10-16): a phone is connected once, so it
   takes no place in the bar. Rejected: a phone icon in the bar.
 - **The phone view is a view of its own in the same page, not the canvas made touch-capable**

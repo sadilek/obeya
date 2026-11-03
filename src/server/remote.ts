@@ -62,6 +62,18 @@ export function machineAddresses(): string[] {
   return [...all.filter((a) => a!.family === 'IPv4'), ...all.filter((a) => a!.family === 'IPv6')].map((a) => a!.address);
 }
 
+/** Where a remote request reached Obeya, as the device's browser has it: behind `tailscale serve`, from the headers it forwards. */
+function originOf(req: Request): string | null {
+  const proto = req.headers.get('x-forwarded-proto') ?? new URL(req.url).protocol.slice(0, -1);
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  if (!host) return null;
+  try {
+    return new URL(`${proto}://${host}`).origin;
+  } catch {
+    return null;
+  }
+}
+
 /** An address as it stands in a URL and a `Host` header: IPv6 in brackets. */
 const inUrl = (address: string) => (address.includes(':') ? `[${address}]` : address);
 
@@ -98,7 +110,7 @@ export class Access implements Gate {
   private problem: RemoteProblem | undefined;
   private port = 0;
   private listen: Listen = () => {};
-  private pairing: { code: string; expires: number; tries: number; paired?: DeviceView } | null = null;
+  private pairing: { code: string; expires: number; tries: number; paired?: DeviceView; replaced?: string } | null = null;
   /** The device each admitted remote request came from: its WebSocket closes when the device is removed. */
   private readonly from = new WeakMap<Request, string>();
   private readonly removedFns = new Set<(id: string) => void>();
@@ -291,6 +303,8 @@ export class Access implements Gate {
     const device = this.device(req);
     if (device) {
       this.from.set(req, device.id);
+      // the app on the device's home screen says so as it connects (`?app`): the address it keeps
+      if (new URL(req.url).searchParams.has('app')) this.appAt(device, originOf(req));
       if (route.startsWith('/api/access') && !(route === '/api/access' && req.method === 'GET'))
         return Response.json({ code: 'onlyHere', error: 'only on the machine Obeya runs on' }, { status: 403 });
       return null;
@@ -330,6 +344,11 @@ export class Access implements Gate {
     return d;
   }
 
+  /** The device's app on the home screen opened Obeya at `origin`. */
+  private appAt(device: DeviceView, origin: string | null) {
+    if (origin && device.app !== origin) this.store.setDeviceApp(device.id, origin);
+  }
+
   devices(): DeviceView[] {
     const now = this.now();
     return this.store.devices().filter((d) => now - Date.parse(d.lastSeen) <= UNUSED_MS);
@@ -353,7 +372,7 @@ export class Access implements Gate {
     const p = this.pairing;
     const address = this.address();
     if (!p || !address || p.expires <= this.now()) return null;
-    return { code: p.code, url: `${address}/pair?code=${p.code}`, expires: new Date(p.expires).toISOString(), ...(p.paired ? { paired: p.paired } : {}) };
+    return { code: p.code, url: `${address}/pair?code=${p.code}`, expires: new Date(p.expires).toISOString(), ...(p.paired ? { paired: p.paired } : {}), ...(p.replaced ? { replaced: p.replaced } : {}) };
   }
 
   /** A new one-time code, valid for `PAIRING_MS`; the one before no longer pairs. */
@@ -377,8 +396,16 @@ export class Access implements Gate {
     const token = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
     const at = new Date(this.now()).toISOString();
     const device: DeviceView = { id: crypto.randomUUID(), name: deviceName(userAgent), pairedAt: at, lastSeen: at };
+    // the same phone again, after Obeya's address changed: the browser keeps a cookie per name, so
+    // it pairs anew, and its entry under the old address goes (one per pairing, for two such phones)
+    const address = this.address();
+    const old = this.devices()
+      .filter((d) => d.name === device.name && d.app && d.app !== address)
+      .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))[0];
+    if (old) this.remove(old.id);
     this.store.addDevice({ ...device, tokenHash: sha256(token) });
     p.paired = device;
+    if (old) p.replaced = old.app;
     console.log(`Obeya: ${device.name} paired`);
     return { token, device };
   }

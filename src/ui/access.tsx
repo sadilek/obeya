@@ -5,7 +5,7 @@
 
 import { Fragment, type ReactNode, useEffect, useState } from 'react';
 import { encode } from 'uqr';
-import type { AccessView, RemoteSetting } from '../core/types';
+import type { AccessView, DeviceView, RemoteSetting } from '../core/types';
 import { api } from './api';
 import { Field, Head } from './config';
 import { clock, failText, shortDay, t } from './strings';
@@ -35,6 +35,9 @@ function useAccess(on: boolean): [AccessView | null, (v: AccessView) => void] {
   }, [on]);
   return [view, setView];
 }
+
+/** The devices whose app on the home screen keeps an address other devices no longer reach Obeya at. */
+const moved = (view: AccessView): DeviceView[] => (view.address ? view.devices.filter((d) => d.app && d.app !== view.address) : []);
 
 /** A moment as the device list says it: the time today, else the day. */
 const when = (iso: string) => (new Date(iso).toDateString() === new Date().toDateString() ? clock(iso) : shortDay(iso));
@@ -194,6 +197,7 @@ export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () =>
       <Head title={t.config.sections.devices} hint={a.hint} file={view.file} />
       <Reach view={view} onView={setView} />
       <Head sub title={a.devices} hint={a.devicesHint} />
+      <Moved devices={moved(view)} />
       {view.devices.length ? (
         <ul className="acc-devices">
           {view.devices.map((d) => (
@@ -221,6 +225,23 @@ export function AccessSection({ on, onConnect }: { on: boolean; onConnect: () =>
       {status && <p className="hint c-status">{status}</p>}
       <p className="hint acc-note">{a.whileRunning}</p>
     </>
+  );
+}
+
+/** That a device's app on the home screen opens an address Obeya no longer answers at, and what to do. */
+function Moved({ devices }: { devices: DeviceView[] }) {
+  const a = t.access.moved;
+  if (!devices.length) return null;
+  return (
+    <div className="acc-moved" role="alert">
+      <p className="acc-moved-title">{a.title}</p>
+      {devices.map((d) => (
+        <p key={d.id}>
+          <Coded text={a.app(d.name, d.app!)} />
+        </p>
+      ))}
+      <p>{a.step}</p>
+    </div>
   );
 }
 
@@ -256,6 +277,11 @@ export function PhoneDialog({ onClose, onSection }: { onClose: () => void; onSec
     body = (
       <div className="acc-done">
         <p className="acc-connected">{a.connected(pairing.paired.name)}</p>
+        {pairing.replaced && (
+          <p className="acc-again">
+            <Coded text={a.moved.again(pairing.replaced)} />
+          </p>
+        )}
         <button className="btn small" onClick={() => void another()}>
           {a.another}
         </button>
@@ -288,6 +314,7 @@ export function PhoneDialog({ onClose, onSection }: { onClose: () => void; onSec
           ✕
         </button>
         <h2>{a.connect}</h2>
+        {view && <Moved devices={moved(view)} />}
         {body}
         <div className="acc-foot">
           <button className="btn small" onClick={onSection}>

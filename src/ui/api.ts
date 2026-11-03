@@ -66,6 +66,9 @@ export function setCanvas(id: string) {
   canvasId = id;
 }
 /** A path in the shown canvas's API. */
+/** The page runs as the app on a phone's home screen, not in its browser. */
+export const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+
 export const at = (path: string) => `/api/c/${encodeURIComponent(canvasId)}${path}`;
 /**
  * The canvas each card is on, where the page shows the cards of several (the phone view). A call
@@ -571,7 +574,8 @@ export function useCanvas(id = canvasId, start?: Partial<CanvasFeed>): CanvasFee
     /** The socket was open before: one that opens now opens again. */
     let opened = false;
     const connect = () => {
-      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/c/${encodeURIComponent(id)}/ws`);
+      // the app on the home screen says so: Obeya notes the address it keeps, to tell when Obeya's has moved
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/c/${encodeURIComponent(id)}/ws${standalone() ? '?app' : ''}`);
       sockets.set(id, ws);
       // a sleeping machine answers nothing, not even a refusal: the page says so meanwhile, and tries anew
       const since = Date.now();

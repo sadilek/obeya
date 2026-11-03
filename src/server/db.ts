@@ -479,6 +479,8 @@ export const MIGRATIONS = [
    INSERT OR IGNORE INTO settings (canvas_id, key, value) SELECT id, 'card_numbers_since', strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM canvases;`,
   // the archive, read a page at a time, and its revision, read with every change of the canvas
   'CREATE INDEX cards_archived ON cards (canvas_id, archived_at) WHERE archived_at IS NOT NULL;',
+  // where a paired device's app on the home screen opens Obeya, as it last connected
+  'ALTER TABLE devices ADD COLUMN app TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -1391,8 +1393,8 @@ export class Store {
   // ---------------------------------------------------------------- devices
 
   devices(): DeviceView[] {
-    const rows = this.db.query('SELECT id, name, paired_at AS pairedAt, last_seen AS lastSeen, push IS NOT NULL AS push FROM devices ORDER BY paired_at').all() as (Omit<DeviceView, 'push'> & { push: number })[];
-    return rows.map(({ push, ...d }) => (push ? { ...d, push: true } : d));
+    const rows = this.db.query('SELECT id, name, paired_at AS pairedAt, last_seen AS lastSeen, push IS NOT NULL AS push, app FROM devices ORDER BY paired_at').all() as (Omit<DeviceView, 'push' | 'app'> & { push: number; app: string | null })[];
+    return rows.map(({ push, app, ...d }) => ({ ...d, ...(push ? { push: true as const } : {}), ...(app ? { app } : {}) }));
   }
 
   /** The devices that get pushes, each with its subscription (JSON). */
@@ -1406,11 +1408,19 @@ export class Store {
   }
 
   deviceByToken(hash: string): DeviceView | null {
-    return this.db.query('SELECT id, name, paired_at AS pairedAt, last_seen AS lastSeen FROM devices WHERE token_hash = $hash').get({ hash }) as DeviceView | null;
+    const d = this.db.query('SELECT id, name, paired_at AS pairedAt, last_seen AS lastSeen, app FROM devices WHERE token_hash = $hash').get({ hash }) as (Omit<DeviceView, 'app'> & { app: string | null }) | null;
+    if (!d) return null;
+    const { app, ...rest } = d;
+    return app ? { ...rest, app } : rest;
   }
 
   addDevice(d: DeviceView & { tokenHash: string }) {
     this.db.query('INSERT INTO devices (id, token_hash, name, paired_at, last_seen) VALUES ($id, $hash, $name, $paired, $seen)').run({ id: d.id, hash: d.tokenHash, name: d.name, paired: d.pairedAt, seen: d.lastSeen });
+  }
+
+  /** Where the device's app on the home screen opens Obeya. */
+  setDeviceApp(id: string, app: string) {
+    this.db.query('UPDATE devices SET app = $app WHERE id = $id').run({ id, app });
   }
 
   deviceSeen(id: string, at: string) {

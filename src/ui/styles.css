@@ -1995,6 +1995,11 @@ button.link:hover { text-decoration: underline; }
 .acc-state.ok::before { content: "✓ "; color: var(--approved); }
 .acc-step { margin: 4px 0 0 !important; }
 .acc-alone { color: var(--warn) !important; font-weight: 600; }
+.acc-moved { border-left: 3px solid var(--warn); padding: 2px 0 2px 14px; margin: 0 0 18px; max-width: 76ch; }
+.acc-moved p { margin: 0 0 6px; line-height: 1.45; }
+.acc-moved p:last-child { margin-bottom: 0; }
+.acc-moved-title { color: var(--warn); font-weight: 600; }
+.acc-again { margin: 0 0 12px; line-height: 1.45; }
 .acc-devices { list-style: none; margin: 0; padding: 0; max-width: 720px; }
 .acc-devices li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 18px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
 .acc-devices .btn.small { margin-top: 0; }

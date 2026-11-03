@@ -5,13 +5,12 @@
 // at every load, so a new key or a subscription the push service renewed reaches it.
 
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, standalone } from './api';
 import { failText, t } from './strings';
 
 type State = 'none' | 'install' | 'ask' | 'on';
 
 const ios = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1);
-const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
 function stateNow(): State {
   // a phone's browser allows pushes only over HTTPS: on another VPN's address there are none

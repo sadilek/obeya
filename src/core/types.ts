@@ -2467,6 +2467,11 @@ export interface DeviceView {
   lastSeen: string;
   /** It turned notifications on: Obeya pushes to it. */
   push?: true;
+  /**
+   * Where its app on the home screen opens Obeya, as that app last connected: the app keeps the
+   * address it was added at, so another address of Obeya's leaves it without an answer.
+   */
+  app?: string;
 }
 
 /** A one-time code that pairs a device: in the QR code with the address, and to type in. */
@@ -2477,6 +2482,8 @@ export interface Pairing {
   expires: string;
   /** The device it paired, once one did. */
   paired?: DeviceView;
+  /** The address the app on its home screen kept, from the entry of the same device it replaced: that app needs adding anew. */
+  replaced?: string;
 }
 
 /** The section „Von anderen Geräten“ and „Telefon verbinden“ (`/api/access`), for a page on this machine. */
