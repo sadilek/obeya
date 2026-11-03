@@ -305,8 +305,9 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .nav-canvas.folded .nav-fold svg { transform: none; }
 .nav-row a { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 6px 10px 6px 4px; border-radius: 2px; text-decoration: none; font-size: 13.5px; color: var(--muted); }
 .nav-row a svg { flex: none; }
-.nav-row a b { white-space: nowrap; }
-.nav-row a .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a long name and its repositories shorten rather than push the count out, the repositories first */
+.nav-row a b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-row a .hint { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-row a .waits { flex: none; margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; border-radius: 9px; }
 .nav-row a:hover { background: color-mix(in srgb, var(--ink) 6%, var(--chip)); }
 .nav-canvas.on > .nav-row a { color: var(--ink); }

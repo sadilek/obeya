@@ -178,7 +178,7 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
                 )}
                 <a href={canvasPath(c.id)}>
                   <CanvasIcon />
-                  <b>{c.name}</b>
+                  <b title={c.name}>{c.name}</b>
                   <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
                   {count > 0 && (
                     <span className="waits" title={t.nav.waiting(count)}>
