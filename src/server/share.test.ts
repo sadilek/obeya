@@ -109,7 +109,7 @@ function make(repo = dir) {
     home: join(dir, 'home'),
     forge,
     // a repository with a theme and without a site still has its theme for the export
-    sourceFor: (card) => (card.title.startsWith('Ohne') ? (theme ? { site: null, repo, theme } : null) : { site: site(), repo, ...(theme ? { theme } : {}) }),
+    sourceFor: (card) => (card.title.startsWith('Ohne') ? (theme ? { site: null, repo, theme: () => theme } : null) : { site: site(), repo, theme: () => theme }),
     // the repository names English for its demos (`demo.language`) on cards so titled
     languageFor: (card) => (card.title.startsWith('In English') ? 'en' : undefined),
     onPage: (id, r) => void settled.push([id, r]),
@@ -1430,7 +1430,6 @@ describe('a repository’s theme', () => {
     expect(html.indexOf(`<style>${THEME.css}</style>`)).toBeGreaterThan(html.indexOf('</style>'));
     // nothing the theme names loads from elsewhere
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:;`);
-    expect(meta(c.id)).toMatchObject({ theme: THEME.hash });
     expect(readFileSync(join(dir, 'deployed', 'index.html'), 'utf8')).toContain(`<style>${THEME.css}</style>`);
     expect(share(c.id)!.outdated).toBeUndefined();
 
@@ -1460,7 +1459,47 @@ describe('a repository’s theme', () => {
     sharing.share(c.id);
     await until(() => share(c.id)?.state === 'shared' && !share(c.id)!.outdated);
     expect(pageOf(c.id)).not.toContain('Content-Security-Policy');
-    expect(meta(c.id)).not.toHaveProperty('theme');
+  });
+
+  test('"Ausblenden" hides a page until its theme or its repository’s changes: a theme gone back to the hidden one leaves a page shared since outdated', async () => {
+    const A = THEME;
+    const B = { css: ':root { --accent: #b91c1c; }', hash: 'bbbbbbbbbbbbbbbb' };
+    const C = { css: ':root { --accent: #15803d; }', hash: 'cccccccccccccccc' };
+    theme = A;
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    theme = B;
+    board.changed();
+    sharing.dismissResharing();
+    expect(board.snapshot().reshare).toBeUndefined();
+    // shared again with a new theme, which then goes back to the one it was hidden at
+    theme = C;
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared' && !share(c.id)!.outdated);
+    theme = B;
+    board.changed();
+    expect(share(c.id)!.outdated).toEqual(['theme']);
+    expect(board.snapshot().reshare).toEqual({ outdated: 1, changes: [{ id: 'theme', pages: 1 }] });
+  });
+
+  test('is asked for of shared pages alone, not of every card the canvas shows', async () => {
+    theme = THEME;
+    const asked: string[] = [];
+    board.showThemes((repo) => (asked.push(repo), theme?.hash ?? null));
+    for (let i = 0; i < 5; i++) board.create({ title: `Karte ${i}`, x: 0, y: 0 });
+    card();
+    asked.length = 0;
+    board.changed();
+    board.snapshot();
+    expect(asked).toEqual([]);
+    const c = card();
+    sharing.share(c.id);
+    await until(() => share(c.id)?.state === 'shared');
+    asked.length = 0;
+    board.changed();
+    board.snapshot();
+    expect(asked.length).toBeGreaterThan(0);
   });
 
   test('a page without a theme stays as it was, and a repository with none marks no page', async () => {

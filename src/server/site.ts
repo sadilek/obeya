@@ -30,8 +30,8 @@
 // copies on the site, which carry what Obeya adds to an artifact (artifact-copy.ts).
 //
 // A repository's theme (theme.ts) goes into each page of its cards, and into the overview of a listed
-// site whose target names it (the repository publishing), after Obeya's style; `meta.json` keeps its
-// hash, so a changed theme shows as outdated. Without one, the pages are what they were.
+// site whose target names it (the repository publishing), after Obeya's style. Without one, the
+// pages are what they were.
 //
 // A host may serve no byte ranges (Cloudflare Pages does not): the video page then loads the video
 // whole, so a browser can seek in it (`demo-page.ts`).
@@ -91,8 +91,6 @@ interface Meta {
   more?: MoreMeta[];
   /** The page's tags from the site's vocabulary (`demo.site.tags`), by dimension; absent on pages without. */
   tags?: PageTags;
-  /** The hash of the theme of the card's repository the page was written with (theme.ts); absent on pages without one. */
-  theme?: string;
 }
 
 /** A later demo version on a page: what its section shows, and when it was handed over (`handed`, its heading). */
@@ -214,7 +212,7 @@ export interface SiteOptions {
    */
   unlisted?: { secret: string };
   /** The theme of the repository publishing (theme.ts), for the overview: a listed site's overview carries the theme of the repository that published last. */
-  theme?: Theme | null;
+  theme?: () => Theme | null;
 }
 
 /** git's name in the repository (its own `user.name`, else the global one); undefined where it has none. */
@@ -452,7 +450,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       return;
     }
     const pages = readPages(dir);
-    writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), opts.theme?.css));
+    writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), opts.theme?.()?.css));
     writeFileSync(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
     writeFileSync(join(dir, HEADERS), artifactHeaders(site));
   };
@@ -640,7 +638,6 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               language: p.language,
               ...(by ? { by } : {}),
               ...(p.tags && Object.values(p.tags).some((v) => v.length) ? { tags: p.tags } : {}),
-              ...(p.theme ? { theme: p.theme.hash } : {}),
               ...(later.length
                 ? {
                     more: later.map(({ d, html, source, at }) => ({

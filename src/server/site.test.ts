@@ -124,7 +124,7 @@ const page = (slug: string, extra: Partial<SharePage> = {}): SharePage => ({
   shared: [],
   ...extra,
 });
-const meta = (slug: string) => JSON.parse(readFileSync(join(siteDir(), slug, 'meta.json'), 'utf8')) as { at: string; first: string; kind?: string; language?: string; tags?: Record<string, string[]>; theme?: string };
+const meta = (slug: string) => JSON.parse(readFileSync(join(siteDir(), slug, 'meta.json'), 'utf8')) as { at: string; first: string; kind?: string; language?: string; tags?: Record<string, string[]> };
 const overview = () => readFileSync(join(siteDir(), 'index.html'), 'utf8');
 const CREDIT_DE = '<footer class="credit">Aufgenommen mit <a href="https://obeya.si">Obeya</a></footer>\n';
 const CREDIT_EN = '<footer class="credit">Recorded with <a href="https://obeya.si">Obeya</a></footer>\n';
@@ -439,11 +439,10 @@ describe('a site Obeya keeps', () => {
     // nothing in it ends its element early
     expect(html).toContain(String.raw`<style>h1 { color: navy; } /* <\/style><script>alert(1)</script> */</style></head>`);
     expect(html).toContain('<meta http-equiv="Content-Security-Policy"');
-    expect(meta('mit-theme-def456')).toMatchObject({ theme: theme.hash });
     expect(readFileSync(join(siteDir(), 'ohne-theme-abc123/index.html'), 'utf8')).not.toContain('navy');
     expect(overview()).not.toContain('navy');
     expect(overview()).not.toContain('Content-Security-Policy');
-    target = siteTarget({ ...SITE(), deploy: SITE().deploy.replace('__OUT__', dir) }, repo, home, MESSAGES.en.share, { machine: 'a', checkWaits: [0, 10, 10], by: 'Ada Lovelace', theme });
+    target = siteTarget({ ...SITE(), deploy: SITE().deploy.replace('__OUT__', dir) }, repo, home, MESSAGES.en.share, { machine: 'a', checkWaits: [0, 10, 10], by: 'Ada Lovelace', theme: () => theme });
     await target.publish(page('noch-eine-ghi789', { shared: ['ohne-theme-abc123', 'mit-theme-def456'] }));
     expect(overview()).toContain('<style>h1 { color: navy; }');
     expect(overview()).toContain('<meta http-equiv="Content-Security-Policy"');

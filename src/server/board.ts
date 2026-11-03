@@ -274,8 +274,15 @@ export interface StoredReshare {
 const RESHARE_SETTING = 'reshare';
 /** The newest page change when the owner put the notice of outdated pages away: it shows again for pages a newer one leaves outdated. */
 const RESHARE_DISMISSED = 'reshare_dismissed';
-/** Each repository's theme (its hash, null for none) when the owner put the notice away: it shows again for its pages once the theme changes anew. */
+/**
+ * The pages a theme left outdated when the owner put the notice away, by card: the theme each was
+ * published with and the one its repository had then (hashes, null for none). Such a page shows
+ * again once either differs: its repository's theme changed anew, or it was shared again since.
+ */
 const RESHARE_DISMISSED_THEMES = 'reshare_dismissed_themes';
+
+/** A page's theme and its repository's, as `RESHARE_DISMISSED_THEMES` keeps them. */
+type ThemePair = [published: string | null, now: string | null];
 
 /** The current theme's hash of a card's repository (theme.ts): null where it has none, undefined while that is not known (the repository does not run). */
 export type ThemeNow = (r: CardRow) => string | null | undefined;
@@ -1005,10 +1012,13 @@ export class Board {
     const at = (id: string | null) => PAGE_CHANGES.findIndex((c) => c.id === id);
     const dismissed = at(this.setting(RESHARE_DISMISSED));
     const themes = this.dismissedThemes();
-    const repo = (r: CardRow) => repoOfRow(r, this.home);
+    const hidden = (r: CardRow) => {
+      const was = themes[r.id];
+      return !!was && JSON.stringify(was) === JSON.stringify(this.themePair(r));
+    };
     return shared
       .map((r) => ({ r, missed: this.outdatedBy(r) }))
-      .filter(({ r, missed }) => missed.some((id) => (id === THEME_CHANGED ? !(repo(r) in themes) || themes[repo(r)] !== this.themeNow(r) : at(id) > dismissed)));
+      .filter(({ r, missed }) => missed.some((id) => (id === THEME_CHANGED ? !hidden(r) : at(id) > dismissed)));
   }
 
   /** What leaves the card's page outdated (`reshareable`), its repository's theme included. */
@@ -1027,10 +1037,15 @@ export class Board {
   /** The current theme's hash of the card's repository (`ThemeNow`). */
   private themeNow: ThemeNow = (r) => this.themeOf?.(repoOfRow(r, this.home));
 
-  /** Each repository's theme when the owner put the notice of outdated pages away. */
-  private dismissedThemes(): Record<string, string | null> {
+  /** The pages a theme left outdated when the owner put the notice away (`RESHARE_DISMISSED_THEMES`). */
+  private dismissedThemes(): Record<string, ThemePair> {
     const v = this.setting(RESHARE_DISMISSED_THEMES);
-    return v ? (JSON.parse(v) as Record<string, string | null>) : {};
+    return v ? (JSON.parse(v) as Record<string, ThemePair>) : {};
+  }
+
+  /** The theme the card's page was published with, and its repository's now. */
+  private themePair(r: CardRow): ThemePair {
+    return [(JSON.parse(r.share!) as StoredShare).theme ?? null, this.themeNow(r) ?? null];
   }
 
   /**
@@ -1059,11 +1074,9 @@ export class Board {
   /** "Ausblenden": the notice of outdated pages goes until a newer change, and the result of a run that finished with it. */
   dismissOutdated() {
     this.setSetting(RESHARE_DISMISSED, pagesVersion());
-    const themes = this.dismissedThemes();
-    for (const r of this.sharedRows()) {
-      const now = this.themeNow(r);
-      if (now !== undefined && this.outdatedBy(r).includes(THEME_CHANGED)) themes[repoOfRow(r, this.home)] = now;
-    }
+    // the pages outdated by a theme now; one no longer is needs no entry
+    const themes: Record<string, ThemePair> = {};
+    for (const r of this.sharedRows()) if (this.outdatedBy(r).includes(THEME_CHANGED)) themes[r.id] = this.themePair(r);
     this.setSetting(RESHARE_DISMISSED_THEMES, JSON.stringify(themes));
     this.setReshareRun(null);
   }
@@ -2747,7 +2760,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   const scope = r.scope ? (JSON.parse(r.scope) as { files: string[] }).files : undefined;
   const pr = r.pr ? (JSON.parse(r.pr) as PrState) : undefined;
   const contribution = contributionOf(r);
-  const share = shareOf(r, themeNow?.(r));
+  const share = shareOf(r, themeNow);
   const notOnApproval = r.share ? (JSON.parse(r.share) as StoredShare).notOnApproval : undefined;
   const tags = demo && !r.prototype_of ? pageTagsOf(r) : {};
   const landed = r.landed ? (JSON.parse(r.landed) as { followUp?: boolean; needsClone?: boolean; resolve?: object }) : null;
@@ -2789,9 +2802,11 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
 }
 
 /** The card's shared page as the UI sees it: none when it is not shared and not about to be. */
-function shareOf(r: CardRow, theme: string | null | undefined): Item['share'] {
+function shareOf(r: CardRow, themeNow?: ThemeNow): Item['share'] {
   const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
   if (!s || (!s.state && !s.url)) return undefined;
+  // asked of a page at rest alone, so the cards never shared ask nothing
+  const theme = s.url && !s.state ? themeNow?.(r) : undefined;
   // the newest demo of a handover: drafts shown with a question since are not what the page lacks
   const latest = r.demo ? [...storedDemos(r), JSON.parse(r.demo) as StoredDemo].findLast((d) => !d.asked) : undefined;
   const shared = s.url ? sharedDemos(s) : [];

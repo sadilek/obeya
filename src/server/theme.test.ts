@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readShared } from '../adapters';
-import { readTheme } from './theme';
+import { readingTheme, readTheme } from './theme';
 import { gitRepo } from './testing';
 import { GIT, markFolder } from './workspaces';
 
@@ -59,6 +59,60 @@ describe('a repository’s theme', () => {
     const now = themeOf(repo)!;
     expect(now.css).toContain(`url(data:image/svg+xml;base64,${b64('<svg/>')})`);
     expect(now.hash).not.toBe(theme.hash);
+  }, 30_000);
+
+  test('read without the server waiting for git, the same as with it', async () => {
+    const files = {
+      '.obeya/theme.css': CSS,
+      '.obeya/fonts.css': '@font-face { font-family: Acme; src: url(acme.woff2); }',
+      '.obeya/acme.woff2': 'font',
+      '.obeya/logo.svg': LOGO,
+    };
+    const waited = themeOf(gitRepo(join(root, 'waited'), files));
+    const repo = gitRepo(join(root, 'not-waited'), files);
+    expect(await readingTheme(repo, readShared(repo).obeyaTree)).toEqual(waited);
+    expect(await readingTheme(gitRepo(join(root, 'not-waited-plain')), undefined)).toBeNull();
+  }, 30_000);
+
+  test('no way of writing a reference brings in what lies elsewhere', () => {
+    const tricks = [
+      // an escape in the function's name, upper case, white space inside
+      String.raw`a { background: \75 rl(https://x.example/a.png); }`,
+      String.raw`b { background: U\52L( "https://x.example/b.png" ); }`,
+      // strings that name images
+      `c { background: image-set("https://x.example/c.png" 1x, "logo.svg" 2x); }`,
+      `d { background: -webkit-image-set('https://x.example/d.png' 1x); }`,
+      `@import /* first */ "https://x.example/e.css" screen;`,
+      String.raw`@\69mport url(https://x.example/f.css);`,
+      // escapes inside the address
+      String.raw`g { background: url(https\3a //x.example/g.png); }`,
+      // an `@import` that goes, its neighbours then joined into a `url(`
+      `i { background: u@import "x";rl("/outside.png"); }`,
+      `u@import "https://x.example/j.css";rl("/outside.png") {}`,
+      // a value put in where the page is drawn, and a stylesheet in a data: URL
+      `k { --x: "/outside.png"; background: image-set(var(--x, "/outside.png") 1x); }`,
+      `@import "data:text/css,l%7Bbackground:url(https://x.example/l.png)%7D";`,
+      // the `#` part of a file that goes in, ending its string early
+      String.raw`h { background: url("logo.svg#\22 ) url(https://x.example/h.png) \22"); }`,
+    ].join('\n');
+    const repo = gitRepo(join(root, 'tricks'), { '.obeya/theme.css': tricks, '.obeya/logo.svg': LOGO });
+    const css = themeOf(repo)!.css;
+    // the `#` part stays inside its URL, its quote and parentheses encoded
+    const part = '#%22%29%20url%28https://x.example/h.png%29%20%22"';
+    expect(css).toContain(part);
+    expect(css.replace(part, '')).not.toContain('x.example');
+    expect(css).toContain(`"data:image/svg+xml;base64,${b64(LOGO)}" 2x`);
+    // no rule imports anything (one inside a block is none, and stays as it is)
+    expect(css).not.toMatch(/^\s*@import/m);
+    // none of them a reference any more: no `url(` with it, no `image-set()` taking it
+    expect(css).not.toMatch(/url\(\s*["']?\/outside/);
+    expect(css).toContain('image-set("" 1x)');
+    expect(css).toContain(' rl("/outside.png") {}');
+    // a character beyond the basic plane in the `#` part
+    expect(themeOf(gitRepo(join(root, 'astral'), { '.obeya/theme.css': 'a { background: url("logo.svg#😀"); }', '.obeya/logo.svg': LOGO }))!.css).toContain('#%F0%9F%98%80');
+    // what is no reference stays as it was
+    const plain = 'h1::before { content: "url(https://x.example/h.png)"; } /* url(https://x.example/i.png) */ .p { width: 2em; }';
+    expect(themeOf(gitRepo(join(root, 'plain-strings'), { '.obeya/theme.css': plain }))!.css).toBe(plain);
   }, 30_000);
 
   test('none without .obeya/theme.css', () => {

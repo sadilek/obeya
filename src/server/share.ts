@@ -83,8 +83,8 @@ export interface ShareSource {
   site: DemoSite | null;
   repo: string;
   isPublic?: boolean;
-  /** Its theme for the pages (`.obeya/theme.css`, theme.ts); none where it has none. */
-  theme?: Theme | null;
+  /** Its theme for the pages (`.obeya/theme.css`, theme.ts), asked for once a page goes out; none where it has none. */
+  theme?: () => Theme | null;
 }
 
 /**
@@ -610,7 +610,7 @@ export class Sharing {
     const tags = tagsOf(pageTagsOf(this.o.board.row(cardId)), vocabulary);
     const pr = this.prOf(cardId);
     const commit = pr ? null : await this.commitOf(card);
-    const theme = this.o.sourceFor(card)?.theme;
+    const theme = this.o.sourceFor(card)?.theme?.();
     const input: SharePage = {
       slug: pathOf(s),
       ...first.shown,
@@ -785,7 +785,7 @@ export class Sharing {
 
   /** The theme of the card's repository for an exported page, as the page's parts take it. */
   private themeOf(card: Item): { theme?: string } {
-    const theme = this.o.sourceFor(card)?.theme;
+    const theme = this.o.sourceFor(card)?.theme?.();
     return theme ? { theme: theme.css } : {};
   }
 

@@ -158,8 +158,10 @@ nothing is lost by leaving them.
 A page is outdated by its repository's theme too (see A repository's theme): the share keeps the
 theme's hash, and once the repository's current one differs (a new theme, a changed one, one taken
 away), the card lists „Theme geändert“ without a day beside the page changes, and the Koordinator's
-entry counts its pages with them. „Ausblenden“ hides them until that repository's theme changes
-again.
+entry counts its pages with them. „Ausblenden“ hides each of them until its repository's theme
+changes again or the page is shared again. The theme is read with the repository's settings, when
+its default branch moves (in a folder without git, when Obeya next reads the settings), not each
+time the canvas is drawn.
 
 A page published again with the same video keeps its date („Geteilt am“), so the overview keeps its
 order; a new video dates it anew.
@@ -268,17 +270,19 @@ https://obeya.si, without a setting to turn it off; `?alone` leaves it out.
 A repository gives its shared pages a look of its own with one file, `.obeya/theme.css`, without a
 setting or anything in Obeya's UI: Obeya manages nothing of it. Like the settings, it is read from
 the default branch, not from a card's branch. Every page of the repository carries it, on its own
-site and on the personal site alike, and so does an export (ZIP and HTML file); the overview and the
-feed of a repository's site carry the theme of the repository publishing, as with the site's title,
-while the overview of a listed personal site keeps Obeya's look, as it belongs to no repository. An
-artifact in its frame stays untouched.
+site and on the personal site alike, and so does an export (ZIP and HTML file); the overview of a
+repository's site carries the theme of the repository publishing, as with the site's title (the feed
+has no styling), while the overview of a listed personal site keeps Obeya's look, as it belongs to
+no repository. An artifact in its frame stays untouched.
 
 The file goes into the page's head after Obeya's own style, so its rules win. Files it names with
 `url()` or `@import` (a logo, a font, another stylesheet, which may name more in turn) go in as
 `data:` URLs where their real path lies inside `.obeya/` (a link to a file elsewhere does not
-count); every other reference, a file elsewhere or an address on the internet, is dropped, and a
-page with a theme carries the policy of a shared artifact's page, so nothing it names loads from
-another server. Without the file, pages are byte for byte what they are without the feature.
+count); every other reference, a file elsewhere or an address on the internet, is dropped. The
+theme is read as a browser tokenizes CSS, so no way of writing a reference gets past that (an
+escape in a function's name, a string in `image-set()`). On top, a page with a theme carries the
+policy of a shared artifact's page, so nothing it names loads from another server. Without the
+file, pages are byte for byte what they are without the feature.
 
 What a theme styles is the pages' markup, which is its interface and changes only on purpose:
 
@@ -328,7 +332,7 @@ Pages, Netlify, Vercel, `aws s3 sync`, `rsync`, a Pages branch, a script.
 The site lives in `sites/<key>/` under Obeya's home, the key from the URL's host and path, shared by
 all repositories naming it. `site/` holds a directory per page (demo files, `index.html`,
 `meta.json`: kind, title, text, chapters, PR (or without one the commit: its address, and whether it is a comparison over several), first shared, last changed, a hash of the demo's own
-files, language, who shared it, its tags, the hash of the repository's theme it carries, and under `more` the later versions, their files in `2/`, `3/` …),
+files, language, who shared it, its tags, and under `more` the later versions, their files in `2/`, `3/` …),
 the overview, dated by each page's newest version, and an Atom feed (`feed.xml`, linked from the
 overview as „Feed abonnieren“ and by `<link rel="alternate">`) with one entry per page in the overview's order (title,
 first sentence as summary, the whole text as content, the page's address as link and id, the
