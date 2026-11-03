@@ -296,6 +296,8 @@ describe('pairing', () => {
     // (the entry under the old name still holds 443, so the new one is served at 8443)
     expect(v.address).toBe(`https://${RENAMED}:8443`);
     expect(v.devices[0]!.app).toBe(`https://${NAME}`);
+    // the code the phone paired with at the old address no longer says it is connected
+    expect(v.pairing).toBeNull();
     const there = (name: string) => ({ ...at(name), host: `${name}:8443`, 'x-forwarded-host': `${name}:8443`, origin: `https://${name}:8443` });
 
     // its browser has no cookie for the new name: it pairs anew, and that entry replaces the old one

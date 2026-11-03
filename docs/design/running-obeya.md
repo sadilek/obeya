@@ -109,7 +109,8 @@ the page is „Dieses Gerät ist nicht mit Obeya verbunden“ with how to connec
 
 *Pairing.* „Telefon verbinden“, below the paired devices in the section, opens a dialog with a QR
 code of `<address>/pair?code=<code>`, the address and the code in large digits. The code has six
-digits, holds five minutes (renewed while the dialog is open) and pairs one device; five wrong tries
+digits, holds five minutes (renewed while the dialog is open) and only while the address stays the
+one it was made at, and pairs one device; five wrong tries
 spend it (counted only from Obeya's own page or without `Sec-Fetch-Site: cross-site`, so another site
 cannot spend them). The phone gets the device cookie `obeya-device` (32 random bytes; the database
 keeps its SHA-256, a name from the user agent such as „iPhone · Safari“, and when it was paired and

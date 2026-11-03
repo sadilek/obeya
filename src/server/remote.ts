@@ -110,7 +110,8 @@ export class Access implements Gate {
   private problem: RemoteProblem | undefined;
   private port = 0;
   private listen: Listen = () => {};
-  private pairing: { code: string; expires: number; tries: number; paired?: DeviceView; replaced?: string } | null = null;
+  /** The current one-time code, for the address it was made at: another address makes a new one. */
+  private pairing: { code: string; address: string; expires: number; tries: number; paired?: DeviceView; replaced?: string } | null = null;
   /** The device each admitted remote request came from: its WebSocket closes when the device is removed. */
   private readonly from = new WeakMap<Request, string>();
   private readonly removedFns = new Set<(id: string) => void>();
@@ -371,15 +372,16 @@ export class Access implements Gate {
   private livePairing(): Pairing | null {
     const p = this.pairing;
     const address = this.address();
-    if (!p || !address || p.expires <= this.now()) return null;
+    if (!p || !address || p.address !== address || p.expires <= this.now()) return null;
     return { code: p.code, url: `${address}/pair?code=${p.code}`, expires: new Date(p.expires).toISOString(), ...(p.paired ? { paired: p.paired } : {}), ...(p.replaced ? { replaced: p.replaced } : {}) };
   }
 
   /** A new one-time code, valid for `PAIRING_MS`; the one before no longer pairs. */
   pair(): Pairing {
-    if (!this.address()) throw new BadRequest('notReachable', 'other devices do not reach Obeya yet');
+    const address = this.address();
+    if (!address) throw new BadRequest('notReachable', 'other devices do not reach Obeya yet');
     const n = crypto.getRandomValues(new Uint32Array(1))[0]! % 1_000_000;
-    this.pairing = { code: String(n).padStart(6, '0'), expires: this.now() + PAIRING_MS, tries: 0 };
+    this.pairing = { code: String(n).padStart(6, '0'), address, expires: this.now() + PAIRING_MS, tries: 0 };
     return this.livePairing()!;
   }
 
@@ -387,7 +389,7 @@ export class Access implements Gate {
   /** `counts`: a wrong code spends one of the tries; one another site sent the browser here with spends none. */
   redeem(code: string, userAgent: string, counts = true): { token: string; device: DeviceView } | null {
     const p = this.pairing;
-    if (!p || p.paired || p.expires <= this.now()) return null;
+    if (!p || p.paired || p.address !== this.address() || p.expires <= this.now()) return null;
     if (code.replace(/\D/g, '') !== p.code) {
       // guessing gets five tries at a code, then it is spent
       if (counts && ++p.tries >= PAIRING_TRIES) this.pairing = null;
