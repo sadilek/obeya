@@ -1822,7 +1822,14 @@ function Canvas({
           <span className="bar-sign">
             <Sign size={24} />
           </span>
-          {!side.left && <NavPill {...nav} />}
+          {/* beside the pinned navigation the bar heads the canvas with its name, which the navigation's button gave before */}
+          {side.left ? (
+            <h1 className="bar-canvas" title={snapshot.canvas.name} {...(window.obeyaApp?.platform === 'macos' ? { 'data-tauri-drag-region': '' } : {})}>
+              {snapshot.canvas.name}
+            </h1>
+          ) : (
+            <NavPill {...nav} />
+          )}
           <ArchivePill
             on={aOn}
             onToggle={toggleArchive}

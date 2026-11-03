@@ -396,6 +396,9 @@ button.pill:hover { box-shadow: var(--lift); }
 .pill.workspaces .ws-menu .btn.ws-take { margin-left: 0; background: var(--panel); }
 .pill.workspaces .ws-menu .hint { font-size: 12px; line-height: 1.4; }
 #bar > svg { flex: none; margin-right: 4px; }
+/* the open canvas's name, heading the bar beside the pinned navigation */
+.bar-canvas { margin: 0 6px 0 0; padding-left: 14px; border-left: 1px solid var(--line); max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 21px/34px var(--serif); position: relative; top: 1px; }
 #bar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 /* the traffic lights of the app's window on a Mac sit at the bar's left, or in the pinned navigation's head */
 #bar.titlebar { padding-left: 92px; }
@@ -414,7 +417,7 @@ button.pill:hover { box-shadow: var(--lift); }
 #bar[data-fit~="2"] .config .bar-icon, #bar[data-fit~="3"] .archive .bar-icon, #bar[data-fit~="4"] .queue .bar-icon { display: block; }
 #bar[data-fit~="2"] .config, #bar[data-fit~="3"] :is(.archive .kpill, .new-card), #bar[data-fit~="4"] .queue .kpill { padding-inline: 10px; }
 #bar[data-fit~="5"] :is(#workspaces, #usage), #bar[data-fit~="5"] .help { display: none; }
-#bar[data-fit~="6"] .nav-pill .switch b, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
+#bar[data-fit~="6"] .nav-pill .switch b, #bar[data-fit~="6"] .bar-canvas, #bar[data-fit~="6"] .new-card, #bar[data-fit~="6"] .pill.restart .say { display: none; }
 /* the bar's buttons are one height, whatever they hold: text, an icon, a count */
 #bar .pill, .pill.talk-pill { height: 34px; box-sizing: border-box; padding-block: 0; }
 #bar button.pill.help { width: 34px; height: 34px; }
