@@ -41,7 +41,7 @@ its agent reads the diff before anything of it runs, reviews it, records a demo 
 and your approval merges it.
 
 You talk to Obeya itself, spoken or typed: it takes your instructions, queues cards whose changes
-would collide, cuts large ones into parallel packages and learns your preferences. An idea is
+would collide (an arrow you draw from one card to another makes the second wait for the first), cuts large ones into parallel packages and learns your preferences. An idea is
 thought through on its card with an agent of its own, which keeps a brief of variants and open
 questions and can have throwaway prototypes built; deciding builds it, in your repository or in a
 new one Obeya creates for it, or plans it as a project,
@@ -97,7 +97,7 @@ the agents have paused, then the app restarts with it (a .deb is updated by inst
 one).
 
 On the canvas, double-click to write a task, then start its agent ("Start agent"). The card
-shows what the agent is doing; when it waits for you ("need you" in the top bar), open it to
+shows what the agent is doing; when it waits for you (counted in orange at the bar's left, listed under "Needs you"), open it to
 answer a question or watch the demo and approve it ("Approve"). Hold Space to say what to do
 instead of typing; `?` lists every key.
 
@@ -210,7 +210,7 @@ after a change only once you have trusted them again.
 It's a big word for a short list, but here are some extensions that would be nice to have and that
 are too large to simply build with a single card in Obeya.
 
-- Support more coding subs (Codex, Grok, Gemini).
+- Support more coding subs (Grok, Gemini).
 - Support more coding harnesses (OpenCode, Pi) – not sure how much value that would bring, maybe for local models?
 - I personally let Codex (and sometimes Grok) review all Opus-made changes, but that's happening at my user-level prompt, so it's not built into Obeya. That could be a good built-in feature though because at least at the moment still, I find it makes a big difference in the quality of the result.
 - App in the App/Play stores. The phone app is just a web app that you need to "install" to your home screen for the best experience.

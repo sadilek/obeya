@@ -145,7 +145,7 @@
         <h2>Parallel where it can, in order where it must.</h2>
         <p>Start ten tasks or a whole project at once. Before a card starts, Obeya looks at what it will change and at what is already running.
           Independent work starts right away; a card that builds on another or would collide with it waits until that one has landed.
-          Point at a card to see what it waits for.</p>
+          Point at a card to see what it waits for, or draw an arrow from one card to another to make the second wait for the first.</p>
       </div>
       <img class="shot" src="img/order.png" width="728" height="376" loading="lazy" alt="A queued workstream waiting for the one it builds on, linked by an arrow">
     </article>
@@ -258,7 +258,7 @@
   <section class="start" id="start">
     <div class="head">
       <h2>Get started</h2>
-      <p>Obeya is an app for macOS, Windows and Linux and runs locally. The agents use the official Claude Code installation on your machine, with your own subscription.</p>
+      <p>Obeya is an app for macOS, Windows and Linux and runs locally. The agents use the official Claude Code or Codex installation on your machine, with your own subscription.</p>
     </div>
     <div class="cols">
       <div>
@@ -269,13 +269,13 @@
           <li><b>Linux</b> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage">AppImage x64</a> <a href="https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage">arm64</a>
             <a href="https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb">.deb x64</a> <a href="https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb">arm64</a></li>
         </ul>
-        <p class="small">On its first start Obeya checks for Claude Code, git and gh, installs what it can and opens your first canvas.
+        <p class="small">On its first start Obeya checks for Claude Code or Codex, git and gh, installs what it can and opens your first canvas.
           The Windows installer is not signed yet (applied for at the SignPath Foundation): when SmartScreen warns, choose “More info”, then “Run anyway”.
           <a href="code-signing/">Code signing policy</a></p>
       </div>
       <div>
         <h3>From source</h3>
-<pre><code><span class="c"># needs Bun, Claude Code (logged in), git and gh</span>
+<pre><code><span class="c"># needs Bun, Claude Code or Codex (logged in), git and gh</span>
 git clone https://github.com/sadilek/obeya && cd obeya
 <span class="c"># the same setup, then your first canvas</span>
 bun install && bun start</code></pre>

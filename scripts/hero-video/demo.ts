@@ -388,7 +388,7 @@ const scenes: Scene[] = [
     title: 'Obeya’s sidebar',
     say: narration.sidebar,
     run: async (d) => {
-      await d.click(d.page.getByRole('button', { name: 'Obeya' }));
+      await d.click(d.page.getByRole('button', { name: 'Obeya', exact: true }));
       await d.wait(900);
       await d.highlight(d.page.locator('.talk.conv').first(), 'what you said');
       const say = narration.sidebar;
@@ -447,7 +447,7 @@ const scenes: Scene[] = [
     title: 'The agents at work',
     say: narration.working,
     run: async (d) => {
-      await d.click(d.page.getByRole('button', { name: 'Obeya' }));
+      await d.click(d.page.getByRole('button', { name: 'Obeya', exact: true }));
       await d.wait(900);
       await bringIntoView(d, split(d));
       await d.click(split(d));
