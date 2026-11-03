@@ -1244,14 +1244,19 @@ function Canvas({
   // the panels docked at the window's edges; the canvas, its edge indicators, the bar and the microphone keep between them
   const side = sideNow();
   const quickSide = useRef(0);
+  // the panels the page loads with (the pinned navigation, on every switch of canvas) take their
+  // room at once: the camera comes back beside them, not saved without them and then flown over
+  const sideLaidOut = useRef(false);
   useEffect(() => {
+    const first = !sideLaidOut.current;
+    sideLaidOut.current = true;
     const from = camSide.current;
     if (side.left === from.left && side.right === from.right) return;
     camSide.current = side;
     // the open card's view goes back to where it was opened from, beside whatever sheet is open then
     if (focusRef.current?.type === 'card') return;
     const to = kept(besideSheet(camRef.current, from, side));
-    if (resizing || Date.now() < quickSide.current) {
+    if (first || resizing || Date.now() < quickSide.current) {
       stopFlight();
       setCam(to);
     } else fly(to, 450);
