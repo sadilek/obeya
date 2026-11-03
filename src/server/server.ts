@@ -670,8 +670,14 @@ export function serve(
       '/api/c/:canvas/cards/:id/restore': { POST: on((c, req) => c.restore(req.params.id!)) },
       '/api/c/:canvas/cards/:id/archive': { POST: on((c, req) => c.board.archive([req.params.id!])) },
       '/api/c/:canvas/cards/:id/unarchive': { POST: on((c, req) => c.board.unarchive(req.params.id!)) },
-      // the archive, newest first; posting archives every finished card of the owner's
-      '/api/c/:canvas/archive': { GET: on((c) => c.board.archived()), POST: on((c) => ({ ids: c.board.archiveDone() })) },
+      // the archive, newest first (`?first=<n>`: the newest n, each project with its workstreams); posting archives every finished card of the owner's
+      '/api/c/:canvas/archive': {
+        GET: on((c, req) => {
+          const first = new URL(req.url).searchParams.get('first');
+          return c.board.archived(first ? Math.max(1, Number(first) || 1) : undefined);
+        }),
+        POST: on((c) => ({ ids: c.board.archiveDone() })),
+      },
       '/api/c/:canvas/cards/:id/act': { POST: on(async (c, req) => c.press(req.params.id!, (await req.json()) as CardAction)) },
       // a script acting as the card's agent, in a scratch Obeya whose workers are idle (scripts/scratch-obeya.ts --say)
       '/api/c/:canvas/cards/:id/stand-in': { POST: on(async (c, req) => ({ result: await c.standIn(req.params.id!, (await req.json()) as Parameters<typeof c.standIn>[1]) })) },

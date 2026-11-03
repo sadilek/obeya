@@ -211,6 +211,8 @@ const MARKED_ROOM = 90;
 const MARKED_W = 270;
 const UNFOLD_MS = 170;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** How many of the newest archived cards come first, before the whole archive: more than a tall screen shows. */
+const ARCHIVE_FIRST = 40;
 /** What `get` returns once it returns something, within `ms`. */
 async function soon<T>(get: () => T | undefined, ms = 3000): Promise<T | undefined> {
   for (const until = Date.now() + ms; Date.now() < until; await sleep(100)) {
@@ -452,12 +454,25 @@ function Canvas({
     els.get(id) ?? (inProject ? (sheetEls.get(id) ?? archiveEls.get(id)) : (archiveEls.get(id) ?? sheetEls.get(id)));
   // an archived card opened from a project's sheet, which the archive list may not hold
   const [opened, setOpened] = useState<Item | null>(null);
+  // the archived card about to unfold from its row in the archive's list, which brings the row into view first
+  const [archiveKeep, setArchiveKeep] = useState<string | undefined>(undefined);
+  // read again only when the archive changed since (`snapshot.archive`); read the first time, its
+  // newest cards come first, for the list to show at once while the rest loads
+  const archiveRead = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!aOn) return;
+    if (!aOn || (archiveRead.current !== undefined && archiveRead.current === snapshot.archive)) return;
     let current = true;
-    api.archived().then((a) => current && setArchived(a), console.error);
+    let all = false;
+    const rev = snapshot.archive;
+    if (!archivedRef.current.length) api.archived(ARCHIVE_FIRST).then((a) => current && !all && setArchived(a), console.error);
+    api.archived().then((a) => {
+      if (!current) return;
+      all = true;
+      archiveRead.current = rev;
+      setArchived(a);
+    }, console.error);
     return () => void (current = false);
-  }, [aOn, snapshot]);
+  }, [aOn, snapshot.archive]);
   const [popId, setPopId] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>()).current;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -790,7 +805,13 @@ function Canvas({
     if (p) await (k.reading ? readPlan(p, {}, quick) : openProject(p, quick));
     const i = await find(k.card);
     // an archived card unfolds from its row in the archive or the project's sheet, once that has loaded
-    if (i && (!i.archivedAt || (await soon(() => fromEl(i.id, !!p))))) await open(i, quick);
+    // and the archive's list has brought it into view
+    if (i?.archivedAt && !p) setArchiveKeep(i.id);
+    try {
+      if (i && (!i.archivedAt || (await soon(() => fromEl(i.id, !!p))))) await open(i, quick);
+    } finally {
+      setArchiveKeep(undefined);
+    }
   }
 
   // ---------------------------------------------------------------- the address
@@ -1936,6 +1957,7 @@ function Canvas({
             onOpen={open}
             onArchiveDone={() => archiveDone().catch(console.error)}
             els={archiveEls}
+            keep={focus?.type === 'card' ? focus.id : archiveKeep}
             icon={<BarIcon d="M3 4h18v4H3zM5 8v12h14V8M10 12h4" />}
           />
           <QueuePill items={items} onOpen={open} />

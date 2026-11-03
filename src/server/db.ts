@@ -477,6 +477,8 @@ export const MIGRATIONS = [
    UPDATE cards SET number = (SELECT n FROM (SELECT id, row_number() OVER (ORDER BY created_at, rowid) AS n FROM cards) o WHERE o.id = cards.id);
    CREATE UNIQUE INDEX cards_number ON cards (number);
    INSERT OR IGNORE INTO settings (canvas_id, key, value) SELECT id, 'card_numbers_since', strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM canvases;`,
+  // the archive, read a page at a time, and its revision, read with every change of the canvas
+  'CREATE INDEX cards_archived ON cards (canvas_id, archived_at) WHERE archived_at IS NOT NULL;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -597,11 +599,28 @@ export class Store {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND share IS NOT NULL').all({ c: canvasId }) as CardRow[];
   }
 
-  /** The canvas's archive, the most recently archived first. */
-  archived(canvasId: string): CardRow[] {
+  /** The canvas's archive, the most recently archived first; `first`: only that many. */
+  archived(canvasId: string, first = -1): CardRow[] {
     return this.db
-      .query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC, created_at DESC')
-      .all({ c: canvasId }) as CardRow[];
+      .query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL ORDER BY archived_at DESC, created_at DESC LIMIT $n')
+      .all({ c: canvasId, n: first }) as CardRow[];
+  }
+
+  /**
+   * A mark of the canvas's archive that changes whenever a row its items are made of does: an
+   * archived card, a workstream of an archived project, a prototype of an archived idea; one
+   * leaving the archive (taken back, deleted) too.
+   */
+  archiveRev(canvasId: string): string {
+    const r = this.db
+      .query(
+        `WITH a AS (SELECT id, deleted_at, updated_at FROM cards WHERE canvas_id = $c AND archived_at IS NOT NULL)
+         SELECT count(*) AS n, sum(deleted_at IS NULL) AS live, max(updated_at) AS at FROM (
+           SELECT deleted_at, updated_at FROM a
+           UNION ALL SELECT deleted_at, updated_at FROM cards WHERE parent_id IN (SELECT id FROM a) OR prototype_of IN (SELECT id FROM a))`,
+      )
+      .get({ c: canvasId }) as { n: number; live: number | null; at: string | null };
+    return `${r.n}:${r.live ?? 0}:${r.at ?? ''}`;
   }
 
   /** The canvas's projects, on the canvas or archived. */

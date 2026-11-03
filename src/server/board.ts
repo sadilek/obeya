@@ -1497,12 +1497,15 @@ export class Board {
    * The archive, the most recently archived first. A project comes as its plan doc last stood,
    * followed by its workstreams (with `parent`), which the archive lists under it, not on their own.
    */
-  archived(): Item[] {
+  archived(first?: number): Item[] {
     // the docs as they are now decide what is archived
     this.items();
-    if (this.archiveItems) return this.archiveItems;
-    this.archiveItems = this.archiveOf(this.store.archived(this.canvas.id));
-    return this.archiveItems;
+    // the newest cards alone, for the list to show at once while the rest comes: each with its workstreams
+    if (first !== undefined && !this.archiveItems) return this.archiveOf(this.store.archived(this.canvas.id, first));
+    this.archiveItems ??= this.archiveOf(this.store.archived(this.canvas.id));
+    if (first === undefined) return this.archiveItems;
+    let n = 0;
+    return this.archiveItems.filter((i) => i.parent || ++n <= first);
   }
 
   /** The archive's items for these of its cards, each project followed by its workstreams. */
@@ -1639,6 +1642,7 @@ export class Board {
       ...(pools.length ? { workspaces: pools } : {}),
       ...(reshare ? { reshare } : {}),
       ...(planDirs.length ? { planDirs } : {}),
+      archive: this.store.archiveRev(this.canvas.id),
     };
     return this.cache;
   }

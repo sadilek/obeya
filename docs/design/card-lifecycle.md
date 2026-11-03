@@ -180,7 +180,16 @@ by day, newest first, labelled with their kind or state unless plain tasks. One 
 back to its place; an ended prototype only shows, read-only, how it ended. A search field, focused on
 opening and kept between openings, filters by every typed word (case and accents aside) in title,
 text, summary, last status or label, and a project's goal and workstreams, marking the words in the
-titles. The list stays under the dim while a card from it is open, so the card folds back into it.
+titles. The list stays under the dim while a card from it is open, so the card folds back into it;
+a card opened from its address scrolls its row into view first.
+
+The archive grows to hundreds of cards and stays quick: the list scrolls through all of them, but
+only the rows in view and a margin around them are on the page, the rest held as space of their
+height (measured once shown, estimated from the title before), with the row at the top kept in
+place as rows above it get measured. Opened the first time, the newest cards come first on their
+own and the whole archive right after. The page reads it again only when the snapshot's mark of the
+archive changed (any row it is made of: an archived card, a workstream of an archived project, a
+prototype of an archived idea), not with every change on the canvas.
 
 ### Projects end
 
@@ -246,6 +255,12 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
   idea's result may have been used outside Obeya, 2026-10-15), and stopped tasks (2026-10-15).
   "All finished ones at once" leaves ideas alone; a workstream goes with its project. Archiving
   keeps the card's position, demo and log.
+- **The archive's list keeps only the rows in view on the page** (2026-11-03): with 800 archived
+  cards it held about 4,700 elements, and every change on the canvas (an agent's status line) read
+  the whole archive again (2 MB) and drew every row anew, about 150 ms each while the list was open.
+  Rejected: pages loaded from the server as the owner scrolls, which would move the search to the
+  server and leave the cards that open from the archive or by their address without their full
+  data.
 - **No card goes into the archive while its worker finishes after the landing** (2026-10-16):
   workers are looked up among the cards on the canvas, so the worker of an archived card never ended
   its turn and held its clone out of the owner's sight.

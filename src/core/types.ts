@@ -1192,6 +1192,8 @@ export interface CanvasSnapshot {
   reshare?: Reshare;
   /** The plan directories the canvas has a note about (`PlanDir`); none when it has none. */
   planDirs?: PlanDir[];
+  /** A mark of the archive that changes with anything it lists: the page reads the archive again only then. */
+  archive?: string;
 }
 
 /**

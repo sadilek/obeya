@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { matches, searchWords } from './archive';
+import { matches, offsets, searchWords, visible } from './archive';
 
 const card = (title: string, more: Partial<Item> = {}) => ({ id: title, kind: 'task', state: 'done', title, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
 
@@ -15,4 +15,16 @@ test("a project is found by its workstreams' titles", () => {
   const p = card('Voice', { kind: 'project' });
   expect(matches(p, searchWords('whisper'), [card('Local Whisper model', { parent: 'Voice' })])).toBe(true);
   expect(matches(p, searchWords('whisper'))).toBe(false);
+});
+
+test('of a long list, only the rows reaching into the stretch in view are on the page', () => {
+  const starts = offsets([25, 60, 60, 80, 25, 60]);
+  expect(starts).toEqual([0, 25, 85, 145, 225, 250, 310]);
+  expect(visible(starts, 0, 100)).toEqual([0, 3]);
+  expect(visible(starts, 90, 150)).toEqual([2, 4]);
+  expect(visible(starts, 145, 146)).toEqual([3, 4]);
+  // beyond either end: at least the row there, for the list to measure
+  expect(visible(starts, -500, -100)).toEqual([0, 1]);
+  expect(visible(starts, 900, 1000)).toEqual([5, 6]);
+  expect(visible(offsets([]), 0, 100)).toEqual([0, 0]);
 });

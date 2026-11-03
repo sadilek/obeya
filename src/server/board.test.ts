@@ -457,6 +457,44 @@ describe('archive', () => {
     expect(board.archived().map((i) => i.title)).toEqual(['A']);
   });
 
+  test("the archive's mark changes with what it lists, not with the cards on the canvas", async () => {
+    const a = done('A');
+    const open = board.create({ title: 'Open', x: 0, y: 0 });
+    const empty = board.snapshot().archive;
+    board.archive([a.id]);
+    const one = board.snapshot().archive;
+    expect(one).not.toBe(empty);
+    await Bun.sleep(2);
+    board.patch(open.id, { title: 'Still open' });
+    expect(board.snapshot().archive).toBe(one);
+    board.patch(a.id, { title: 'A, renamed in the archive' });
+    expect(board.snapshot().archive).not.toBe(one);
+    await Bun.sleep(2);
+    const renamed = board.snapshot().archive;
+    board.unarchive(a.id);
+    expect(board.snapshot().archive).not.toBe(renamed);
+  });
+
+  test('the newest cards of the archive come on their own, a project with its workstreams', async () => {
+    const task = done('Task');
+    board.archive([task.id]);
+    await Bun.sleep(2);
+    const p = board.snapshot().items[0]!;
+    docs = [];
+    board.docsChanged();
+    const newest = [
+      ['A', null],
+      ['Title W1', p.id],
+      ['Title W2', p.id],
+      ['Title W3', p.id],
+    ];
+    // before the whole archive was read, and after
+    expect(board.archived(1).map((i) => [i.title, i.parent ?? null])).toEqual(newest);
+    expect(board.archived().map((i) => [i.title, i.parent ?? null])).toEqual([...newest, ['Task', null]]);
+    expect(board.archived(1).map((i) => [i.title, i.parent ?? null])).toEqual(newest);
+    expect(board.archived(2)).toEqual(board.archived());
+  });
+
   test('only finished cards of the owner go into the archive', () => {
     const open = board.create({ title: 'Open', x: 0, y: 0 });
     const w1 = board.snapshot().items.find((i) => i.label === 'W1')!;

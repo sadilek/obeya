@@ -256,8 +256,8 @@ export const api = {
   /** Takes a finished card off the canvas into the archive. */
   archive: (id: string) => call<void>('POST', cardAt(id, '/archive')),
   unarchive: (id: string) => call<void>('POST', cardAt(id, '/unarchive')),
-  /** The archive, the most recently archived first. */
-  archived: () => call<Item[]>('GET', at('/archive')),
+  /** The archive, the most recently archived first; `first`: only the newest so many, each project with its workstreams. */
+  archived: (first?: number) => call<Item[]>('GET', at(first ? `/archive?first=${first}` : '/archive')),
   /** Archives every finished card of the owner's on the canvas. */
   archiveDone: () => call<{ ids: string[] }>('POST', at('/archive')),
   act: (id: string, a: CardAction) => call<void>('POST', cardAt(id, '/act'), a),

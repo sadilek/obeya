@@ -1375,13 +1375,14 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
   color: var(--muted); background: none; border: 0; cursor: pointer; }
 .a-search .x:hover { color: var(--ink); }
 .timeline .a-ttl mark { background: var(--chip); color: inherit; border-radius: 2px; box-shadow: 0 0 0 1px var(--chip); }
-.archive-menu h4 { margin: 6px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
-.timeline li { position: relative; display: grid; grid-template-columns: 38px 12px 1fr; column-gap: 8px; align-items: start; padding-bottom: 8px; }
-.timeline li::before { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; width: 2px; background: var(--line); }
-.timeline li:first-child::before { top: 15px; }
-.timeline li:last-child::before { bottom: auto; height: 15px; }
-.timeline li:only-child::before { display: none; }
+.archive-menu { overflow-anchor: none; }
+.archive-menu h4 { margin: 0; padding: 6px 0; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.timeline .a-row { position: relative; display: grid; grid-template-columns: 38px 12px 1fr; column-gap: 8px; align-items: start; padding-bottom: 8px; }
+.timeline .a-row.last { padding-bottom: 12px; }
+.timeline .a-row::before { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+.timeline .a-row.first::before { top: 15px; }
+.timeline .a-row.last::before { bottom: auto; height: 15px; }
+.timeline .a-row.first.last::before { display: none; }
 .timeline time { padding-top: 9px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 .timeline .tick { position: relative; width: 12px; height: 12px; margin-top: 10px; border-radius: 50%; background: var(--panel); border: 2px solid var(--live); box-sizing: border-box; }
 .timeline .a-card { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 9px 12px; text-align: left; font: inherit; color: var(--ink);
