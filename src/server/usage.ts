@@ -1,13 +1,14 @@
-// The usage limits of the Claude plan Claude Code is logged in with on this machine (the five-hour
+// The usage limits of the plans the harnesses are logged in with on this machine (the five-hour
 // session, the week, a model's week), for the bar while the owner has it show them (the settings'
-// `usageMeter`) and a page of Obeya's is open. They come from the data behind Claude Code's
-// `/usage`, which asks the plan's usage endpoint: one idle Claude Code session is asked about every
-// minute and sends no prompt, so it uses none of what it reports. The session keeps an answer for a
-// minute, so the rounds are a little longer apart and each gets a fresh one. A login without plan
-// limits (an API key, a cloud provider) and a Claude Code too old to answer show nothing.
+// `usageMeter`) and a page of Obeya's is open: one meter per harness with a login. Claude Code's come
+// from the data behind its `/usage`, which asks the plan's usage endpoint: one idle Claude Code
+// session is asked about every minute and sends no prompt, so it uses none of what it reports. The
+// session keeps an answer for a minute, so the rounds are a little longer apart and each gets a fresh
+// one. Codex's come from an idle app server's `account/rateLimits/read` (codex.ts). A login without
+// plan limits (an API key, a cloud provider) and a harness too old to answer show nothing.
 
 import { query, type SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk';
-import type { Usage, UsageLimit } from '../core/types';
+import type { Harness, Usage, UsageLimit } from '../core/types';
 import { claudeExecutable, cleanEnv, spawnHere } from './runtime';
 
 /** How often the limits are fetched while the bar shows them: just over the minute Claude Code keeps an answer. */
@@ -21,10 +22,17 @@ const STALE_MS = 5 * 60_000;
 /** How long the session and its numbers outlast the last page: a reload or a switch to another canvas opens the next one sooner. */
 export const USAGE_LINGER_MS = 30_000;
 
+/** One plan's limits as fetched. */
+export interface PlanLimits {
+  limits: UsageLimit[];
+  /** When they were fetched (ISO time). */
+  at: string;
+}
+
 /** Where the limits come from: asked again each round, closed once the bar no longer shows them. */
 export interface UsageSource {
   /** The limits now; `null` where the login has none. Throws when it could not ask. */
-  fetch(): Promise<Usage | null>;
+  fetch(): Promise<PlanLimits | null>;
   close(): void;
 }
 
@@ -37,7 +45,7 @@ export interface UsageSource {
  * what it fetched last stands meanwhile, for a few minutes.
  */
 export class UsageMeter {
-  private last: Usage | null = null;
+  private last: PlanLimits | null = null;
   private listeners = new Set<() => void>();
   private watchers = 0;
   private on: boolean;
@@ -86,7 +94,7 @@ export class UsageMeter {
   }
 
   /** The limits as last fetched, while the bar shows them. */
-  current(): Usage | null {
+  current(): PlanLimits | null {
     return this.last;
   }
 
@@ -145,10 +153,70 @@ export class UsageMeter {
     this.set(null);
   }
 
-  private set(usage: Usage | null) {
+  private set(usage: PlanLimits | null) {
     if (JSON.stringify(usage) === JSON.stringify(this.last)) return;
     this.last = usage;
     for (const fn of this.listeners) fn();
+  }
+}
+
+/**
+ * The meters of the harnesses, as one for the bar: each runs while the bar shows the limits and its
+ * harness has a login (`ready`), and the bar shows the plans of the harnesses agents run on (`inUse`),
+ * the list all of them.
+ */
+export class UsageMeters {
+  private on: boolean;
+  private listeners = new Set<() => void>();
+
+  constructor(
+    private meters: { harness: Harness; meter: UsageMeter }[],
+    private o: { on?: boolean; ready: (h: Harness) => boolean; inUse: () => Harness[] },
+  ) {
+    this.on = !!o.on;
+    for (const { meter } of meters) meter.onChange(() => this.changed());
+    this.update();
+  }
+
+  /** Whether the owner has the bar show the limits. */
+  setOn(on: boolean) {
+    this.on = on;
+    this.update();
+  }
+
+  /** The harnesses' logins changed: a meter starts or stops with its harness. */
+  update() {
+    for (const { harness, meter } of this.meters) meter.setOn(this.on && this.o.ready(harness));
+  }
+
+  /** A page is open; returns what tells the meters it closed. */
+  watch(): () => void {
+    const done = this.meters.map(({ meter }) => meter.watch());
+    return () => done.forEach((d) => d());
+  }
+
+  /** Each plan's limits as last fetched; null while none has any. */
+  current(): Usage | null {
+    const used = new Set(this.o.inUse());
+    const plans = this.meters.flatMap(({ harness, meter }) => {
+      const limits = meter.current();
+      return limits ? [{ harness, ...limits, inUse: used.has(harness) }] : [];
+    });
+    return plans.length ? { plans } : null;
+  }
+
+  onChange(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  /** What the bar shows changed without new numbers: the groups' harnesses. */
+  changed() {
+    for (const fn of this.listeners) fn();
+  }
+
+  stop() {
+    for (const { meter } of this.meters) meter.stop();
   }
 }
 
@@ -205,7 +273,7 @@ type Row = { kind?: unknown; group?: unknown; percent?: unknown; resets_at?: unk
  * and grade are its own), or from a Claude Code that does not pass those on yet, its five-hour,
  * weekly and per-model windows. `null` where the login has no plan limits.
  */
-export function usageOf(r: SDKControlGetUsageResponse, now = new Date()): Usage | null {
+export function usageOf(r: SDKControlGetUsageResponse, now = new Date()): PlanLimits | null {
   const plan = r.rate_limits;
   if (!r.rate_limits_available || !plan) return null;
   const at = now.toISOString();

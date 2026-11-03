@@ -37,7 +37,8 @@ import { agentsView, languageView, ownerLanguage, saveAgents, saveLanguage, save
 import { proposeTags, TagProposals } from './tag-proposal';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { expandHome, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import type { UsageMeter } from './usage';
+import type { UsageMeters } from './usage';
+import type { Harnesses } from './harnesses';
 import { VERSION } from './resources';
 import { footerOf } from './wish';
 import { serving } from './owner';
@@ -129,10 +130,12 @@ export function serve(
   push = new Push({ store: access.store }),
   /** New commits on the upstream of the checkout Obeya runs from; none for the app or the compiled binary. */
   sources?: SourceUpdates,
-  /** The plan's usage limits for the bar, fetched while the owner has it show them and a page is open. */
-  usage?: UsageMeter,
+  /** The plans' usage limits for the bar, fetched while the owner has it show them and a page is open. */
+  usage?: UsageMeters,
   /** Where the stalls of the pages go, beside the server's own. */
   stalls?: Stalls,
+  /** Claude Code and Codex on this machine, for the Konfiguration's harnesses and models. */
+  harnesses?: Harnesses,
 ) {
   const canvases = Array.isArray(served) ? { all: () => served } : served;
   const sites = config
@@ -525,10 +528,15 @@ export function serve(
           return view;
         }),
       },
-      // the model and effort of each group of agents, read whenever one starts
+      // the harness, model and effort of each group of agents, read whenever one starts
       '/api/agents': {
-        GET: needs(config, (c) => agentsView(c.home)),
-        PUT: needs(config, async (c, req) => saveAgents(c.home, await req.json())),
+        GET: needs(config, async (c) => agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred())),
+        PUT: needs(config, async (c, req) => {
+          const view = saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
+          // the bar shows the plans of the harnesses the groups run on
+          usage?.changed();
+          return view;
+        }),
       },
       // the owner's personal demo site: set up at a host, connected with another machine's code, removed
       // from this machine; the private repositories ticked for it, and those that share there with the approval

@@ -48,8 +48,8 @@ touches, and keep those current in the same change.
 - [The canvas](design/the-canvas.md) — the UI around the cards: the bar, creating cards, cards on
   the canvas (a project arranged by its dependencies), moving around, unfolding a card, addresses
   (a card's permalink, Back and Forward), card numbers (`K42`), sheets, visual identity, groups on the canvas, refusals.
-- [Agents and workspaces](design/agents-and-workspaces.md) — how agents run and where: agents,
-  models and effort, workspaces (slots, the pool in the bar), folders without git, parking, hosts
+- [Agents and workspaces](design/agents-and-workspaces.md) — how agents run and where: agents
+  (Claude Code, Codex), harnesses, models and effort, workspaces (slots, the pool in the bar), folders without git, parking, hosts
   (running there, logins and files, a dropped connection).
 - [Landing](design/landing.md) — how approved work reaches `main`: how work lands, the PR loop
   (watching the PR, ready to merge, the PR on the card), review cards for a contributor's pull
@@ -180,8 +180,9 @@ on the walls and decisions are made in front of the wall.
   repositories). Its social preview (the wordmark and the site's headline beside the screenshot of
   the canvas) is made by `bun scripts/social-preview.ts`; GitHub's API cannot set it, so the owner
   uploads it when the canvas has changed enough.
-- **Agents run only through the user's own installation of Claude Code and its login**: Obeya starts
-  that installation and never uses the subscription's token itself. Tools that used the token
+- **Agents run only through the user's own installation of a harness and its login** (Claude Code,
+  and since 2026-11-03 Codex): Obeya starts that installation and never uses the subscription's
+  token itself. Tools that used the token
   against the API themselves were blocked; tools that start the official installation appear to be
   tolerated (T3 Code, Conductor).
 - **No business and no cloud service for now** (2026-10-06): being known comes first. Considered and

@@ -8,6 +8,7 @@ import type { CanvasRuntime } from './canvas';
 import { Config } from './config';
 import { Store } from './db';
 import { claudeToken } from './hosts';
+import { Harnesses } from './harnesses';
 import { cloneName, machineHint, MachineSetup, runnable, WELCOME_FILE, welcome } from './machine';
 import { gitRepo } from './testing';
 import { VoiceSetup } from './voice-setup';
@@ -92,6 +93,9 @@ describe('what Obeya needs on this machine', () => {
     expect(section(v, 'needed').items).toEqual([
       { id: 'claude', state: 'ok', found: '2.1.300' },
       { id: 'claudeLogin', state: 'missing', install: { commands: ['claude auth login'] }, act: 'login' },
+      // Codex could stand in for Claude Code: neither is ready, so Claude Code is the one asked for
+      { id: 'codex', state: 'missing', install: { commands: ['npm install -g @openai/codex'], url: 'https://developers.openai.com/codex/cli' }, or: true },
+      { id: 'codexLogin', state: 'missing', or: true },
       { id: 'git', state: 'ok', found: '2.45.0' },
       expect.objectContaining({ id: 'gitUser', state: 'missing', act: 'identity' }),
     ]);
@@ -113,11 +117,34 @@ describe('what Obeya needs on this machine', () => {
     const needed = section(v, 'needed').items;
     expect(needed[0]).toMatchObject({ id: 'claude', state: 'missing', install: { commands: ['curl -fsSL https://claude.ai/install.sh | bash'] }, act: 'install' });
     expect(needed[1]).toEqual({ id: 'claudeLogin', state: 'missing' });
-    expect(needed[3]).toEqual({ id: 'gitUser', state: 'ok', found: 'Ada <Ada>' });
+    expect(needed[5]).toEqual({ id: 'gitUser', state: 'ok', found: 'Ada <Ada>' });
     expect(section(v, 'pr').items).toEqual([
       { id: 'gh', state: 'ok', found: '2.60.0' },
       { id: 'ghLogin', state: 'ok', found: 'ada' },
     ]);
+  });
+
+  test("Codex with its login is enough without Claude Code; its login opens a terminal like Claude's", async () => {
+    fake('codex', 'case "$1" in --version) echo "codex-cli 0.159.2";; login) echo "Logged in using ChatGPT" >&2;; esac');
+    fake('git', 'case "$1" in --version) echo "git version 2.45.0";; config) echo "Ada";; esac');
+    const harnesses = new Harnesses({ cwd: home });
+    const machine = new MachineSetup({ home, config: config(), env: { PATH: bin, OBEYA_CLAUDE: join(dir, 'none', 'claude') }, platform: 'linux', arch: 'x64', compiled: true, harnesses });
+    const needed = section(await machine.view(), 'needed').items;
+    expect(needed.slice(0, 4)).toEqual([
+      expect.objectContaining({ id: 'claude', state: 'missing', or: true }),
+      { id: 'claudeLogin', state: 'missing', or: true },
+      { id: 'codex', state: 'ok', found: '0.159.2' },
+      { id: 'codexLogin', state: 'ok', found: 'ChatGPT' },
+    ]);
+    // what the agents run on when the owner chose nothing
+    expect(harnesses.ready('codex')).toBe(true);
+    expect(harnesses.ready('claude')).toBe(false);
+    expect(harnesses.preferred()).toBe('codex');
+    fake('codex', 'case "$1" in --version) echo "codex-cli 0.159.2";; login) echo "Not logged in" >&2; exit 1;; esac');
+    const out = section(await machine.view(), 'needed').items;
+    expect(out.find((i) => i.id === 'codexLogin')).toEqual({ id: 'codexLogin', state: 'missing', install: { commands: ['codex login'] }, act: 'login', or: true });
+    expect(await machine.login({ section: 'needed', id: 'codexLogin' })).toEqual({ opened: false, command: `${bin}/codex login` });
+    expect(harnesses.preferred()).toBe('claude');
   });
 
   test("from the checkout, the agents' Claude Code is the Agent SDK's", async () => {

@@ -4,8 +4,10 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 
 ### Agents
 
-Agents are Claude through the Agent SDK on the machine's Claude Code login (the owner's
-subscription, no API key). The checkout runs the Claude Code binary the SDK brings; the compiled app
+Agents run on one of two harnesses, each the machine's own installation on its own login (the
+owner's subscription, no API key): Claude Code through the Agent SDK, or Codex through
+`codex app-server` (see Codex). Each group of agents runs on the harness the owner chose for it (see
+Harnesses, models and effort). The rest of this section describes Claude Code. The checkout runs the Claude Code binary the SDK brings; the compiled app
 runs the machine's own (`claude` on the `PATH`, else `~/.local/bin`, or `OBEYA_CLAUDE`). Agents get
 Obeya's environment without the marks of a Claude Code session that may have started Obeya
 (`CLAUDE_CODE_*`, `CLAUDECODE`, `CLAUDE_PID`) or of what started it (`OBEYA_SUPERVISED`, `OBEYA_FROM_APP`,
@@ -28,15 +30,51 @@ workstream's worker also its project's new decisions and the owner's notes that 
 (see Reading order). A call the settings want confirmed becomes the question the card waits on (see
 Refused and confirmed tool calls); Obeya's own tools are allowed by a `PreToolUse` hook.
 
-### Models and effort
+#### Codex
+
+A Codex session is one `codex app-server` process (JSON-RPC over stdio, its experimental API on),
+with one thread: started with the instructions as developer instructions and Obeya's tools as
+dynamic tools of the namespace `obeya` (the model sees them as `obeya__<name>`), or resumed by the
+thread's id after a restart, since Codex keeps a thread's tools with it. A message to an idle session
+starts a turn with the effort of its group; one during a turn steers it (`turn/steer`); one that comes
+as the turn ends starts the next. Codex's items reach the card as Claude Code's tool calls would: a
+command as `Bash`, a file added as `Write` and changed as `Edit`, Obeya's tools as `mcp__obeya__…`.
+What changed since the instructions were built goes with the result of Obeya's next tool, or after
+any other step as a message that steers the turn. A repository with a CLAUDE.md and no AGENTS.md is
+read as Claude Code reads it (Codex's fallback file names); where its settings wait for the owner's
+trust, Codex reads none of its instructions and they come with the system prompt, as for Claude
+Code. Obeya's plugin's skills are an extra skill root.
+
+Codex works in its own sandbox: writable are the workspace, the git directory a worktree commits
+into, the agent's extra directories and the temporary directory, with the network open; what goes
+beyond, Codex's automatic reviewer allows or refuses (a refusal shows on the card as auto mode's
+does), and a request it leaves to a person becomes the question the card waits on. Codex's own
+question tool gets no answer: the agent asks through Obeya's. Read-only agents run in the read-only
+sandbox and are never asked. A turn that fails for Codex's usage limit waits for its reset as Claude
+Code's does (the reset of the window used up, from the rate limits Codex reports during the turn); a
+missing login says to run `codex login`.
+
+What Codex does not give Obeya: a long foreground wait is not refused before it runs (Codex workers
+are told to wait in short commands and snooze for longer, there being no background task that wakes
+the session); a folder without git hears of a Codex change when Codex reports it, not before it
+runs; the Arbeitsrückschau reads only Claude Code's transcripts. Workers on SSH hosts run on Claude
+Code.
+
+### Harnesses, models and effort
 
 Every agent belongs to one of four groups: the Koordinator (voice commands, estimates and schedules,
 look-ups, project agents, learner, Rückschau, proposal rewrites), workers, ideas' exploration agents,
 and small jobs (the Arbeitsrückschau's notes and proposals, a shared demo page's text, a card's
-title). The Konfiguration dialog sets each group's model (Claude Code's default or an alias: Fable,
-Opus, Sonnet, Haiku) and effort (low to max) and marks the presets: Opus throughout, high effort for
-workers and exploration agents, medium otherwise. Stored in `settings.json` under `agents`, only
-where it differs from the preset. Saving restarts nothing; agents starting afterwards take it, a
+title). The Konfiguration dialog's „Agenten und Modelle“ sets for each group, in this order, the
+harness (column „Läuft auf“: Claude Code or Codex; one not installed or not logged in is shown, not offered), the model
+(for Claude Code its default or an alias: Fable, Opus, Sonnet, Haiku; for Codex its default or a
+model it lists for the login, by name) and the effort (low to max, for a Codex model those it
+takes), and marks the presets: Claude Code with Opus throughout, high effort for workers and
+exploration agents, medium otherwise. Another harness starts from its own default model and keeps the
+effort. A group the owner chose no harness for runs on Claude Code, unless only Codex is ready on this
+machine; there the presets are Codex with its default model, and the dialog's hint says so. Stored in `settings.json` under `agents` (`{ "worker": { "harness": "codex", "model":
+"gpt-6.1-sol" } }`), only where it differs from the preset; a model belongs to the harness stored
+beside it, Claude Code's where none is. Saving restarts nothing; agents starting afterwards take it, a
 running session keeps its own, except the voice commands' session, which reopens when the
 Koordinator's setting changes (as for another language).
 
@@ -316,6 +354,18 @@ a container say, reuses pids). A host needs git, Claude Code and what the reposi
 
 ### Decisions
 
+- **Codex through its app server** (2026-11-03, GitHub issue #52): one `codex app-server` per
+  session, Obeya's tools as dynamic tools. Rejected: `codex exec` per turn (no tool calls back into
+  Obeya, no steering, a process per message); the Codex SDK, which wraps `codex exec`; Obeya's tools
+  as an MCP server over HTTP that Codex connects to, which needs a port, a token per session and
+  resuming the connection after a restart, where dynamic tools come with the thread.
+- **The harness column is called „Läuft auf“** (owner, 2026-11-03), under the title „Agenten und
+  Modelle“, which names the rows. Rejected: „Harness“, jargon beside that title; „Werkzeug“ or
+  „Tool“, which agents' commands are called already, and which undersells a coding agent.
+- **Codex in its sandbox with its automatic reviewer** (2026-11-03): the counterpart of Claude Code's
+  auto mode, and what Codex's own users get by default. Rejected: full access without approvals,
+  which drops every check; the owner answering every escalation, which would ask about each
+  `bun install`.
 - **The installed app runs the machine's own Claude Code**, not the SDK's binary (2026-10-07): that
   would add 224 MB to every download, put Anthropic's proprietary binary into an MIT app and pin its
   version to Obeya's releases. Their protocols may drift; it held with every version tried, on macOS,

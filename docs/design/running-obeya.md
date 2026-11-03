@@ -328,18 +328,24 @@ on, so that such a page cannot push the server's own stalls out of `stalls.log`.
 
 ### Setup assistant
 
-One list of what Obeya needs on this machine, in four parts: *Agenten* (Claude Code, its login, git,
-and git's name and e-mail, without which an agent's commit fails); *Pull Requests* (gh and its login,
+One list of what Obeya needs on this machine, in four parts: *Agenten* (Claude Code and its login,
+Codex and its login, git, and git's name and e-mail, without which an agent's commit fails; either
+harness with its login is enough, the other one's pieces then marked as not needed, and while
+neither is ready Claude Code is the one asked for, Codex offered instead); *Pull Requests* (gh and its login,
 needed at the first approval in a repository on GitHub); *Sprachbefehle* and *Demos* (the
 configuration dialog's checks, each with the size still to download; uv above the speech recognition,
 whose "Installieren" waits for it; see The Spracheingabe settings). Where agents run on the
 machine's own Claude Code (see Agents), the list names the version Obeya was checked with when that
-differs. Logins come from `claude auth status` and `gh auth status`.
+differs. Logins come from `claude auth status`, `codex login status` and `gh auth status`. What a
+check finds of the harnesses also decides which one a group the owner chose none for runs on (see
+Harnesses, models and effort); Obeya looks once as it starts.
 
 "Installieren" installs what needs no admin rights: Claude Code and uv with their official installers,
 the speech recognition, a demo's voice. System software (git, gh, ffmpeg, Node, a browser) comes with
 the command for this platform and a copy button, installed at a click where that needs no password
-(Homebrew, winget). A login opens a terminal with `claude auth login` or `gh auth login` (none found:
+(Homebrew, winget). Codex has no installer of its own: Homebrew's cask on a Mac, else npm's package,
+at a click where npm needs no admin rights (not on Linux). A login opens a terminal with
+`claude auth login`, `codex login` or `gh auth login` (none found:
 the command to run by hand); git's name and e-mail are two fields. The list checks again when the
 window gets the focus back. Obeya puts `~/.local/bin` and on a Mac Homebrew's directories on its
 `PATH`, so what was installed is found from a process the desktop started; on Windows every check

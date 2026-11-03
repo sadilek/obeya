@@ -24,7 +24,7 @@ See every feature in action: each change to Obeya comes with the demo its agent 
 
 ## How it works
 
-Each card gets its own agent (Claude Code) in its own clone or worktree of your repository, on
+Each card gets its own agent (Claude Code or Codex) in its own clone or worktree of your repository, on
 this machine or on another one reached over SSH. The agent asks on the card when it needs a
 decision and hands over with a demo: a narrated screen recording of the change, or a page to look
 at when the result is a layout or variants side by side. You approve it or say what to change, also
@@ -50,7 +50,9 @@ in plan docs, in the repository or in a folder of your own beside it, which show
 a card per workstream and a project agent to ask about the plan. Each product you build gets a canvas of its own, over one repository or
 several, and one Obeya runs them all. A card's agent, or all of a canvas's from the canvas list,
 can be paused and resumed: each finishes its step first. Typing "/" in a card's field offers the
-skills its agent knows. The bar shows how much of your Claude plan's session and week is used.
+skills its agent knows. The bar shows how much of your plans' session and week is used: Claude's,
+ChatGPT's for Codex, or both. Which group of agents runs on which harness and model you choose in
+"Agents and models".
 
 ![An Obeya canvas: a project with its workstreams, one at work and one in the queue; beside it a demo and a question waiting for you, a task at work, an approved and a live one, and an idea](site/img/canvas.png)
 
@@ -83,7 +85,8 @@ software. It speaks English and German. How it works and why is in
 | Linux | AppImage for [x64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-x86_64.AppImage) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/Obeya-Linux-aarch64.AppImage), .deb for [x64](https://github.com/sadilek/obeya/releases/latest/download/obeya_amd64.deb) · [arm64](https://github.com/sadilek/obeya/releases/latest/download/obeya_arm64.deb) |
 
 The app needs neither Bun nor a checkout. On its first start it checks the machine: what Obeya
-needs ([Claude Code](https://claude.com/claude-code) with your login, git), what can wait (the
+needs ([Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli)
+with your login, git), what can wait (the
 [GitHub CLI](https://cli.github.com) for pull requests, voice, demos). It installs what it can
 without admin rights and shows the command for the rest, then opens your first canvas on one of
 your repositories. The Windows installer is not signed yet (applied for at the SignPath
@@ -122,8 +125,9 @@ Obeya is developed this way: started from a checkout, it updates itself whenever
 moves to new code. When `origin` has new commits, the bar says so and offers to `git pull` them.
 
 - [Bun](https://bun.sh) 1.3.14 or newer (on Linux, older 1.3 releases can hang the canvas).
-- [Claude Code](https://claude.com/claude-code), installed and logged in. Obeya starts it for every agent;
-  the agents run on your own login.
+- [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli), installed
+  and logged in (either is enough, both work side by side). Obeya starts it for every agent; the agents
+  run on your own login.
 - git, and the [GitHub CLI](https://cli.github.com) (`gh`, logged in) for repositories whose work
   lands through pull requests.
 - For demos: Node.js 22.18 or newer, a Chromium browser, ffmpeg and uv. "Configuration" →
@@ -160,8 +164,8 @@ the app and a checkout, so canvases, settings, voices, models and paired phones 
 them. One Obeya runs per home: starting the app while a checkout's Obeya runs opens a window on
 it, and `bun start` while the app runs says where it runs, with a new link that signs another
 browser in. An Obeya older than the one that last ran on the home (an app not yet updated after a
-newer checkout) leaves the database alone and says to update. Workers run on the Claude Code login
-of the machine. The canvases and their repositories can be seen and changed in the app
+newer checkout) leaves the database alone and says to update. Workers run on the Claude Code or
+Codex login of the machine. The canvases and their repositories can be seen and changed in the app
 ("Configuration") or by telling Obeya; saving writes `canvases.json`, and the running canvases take
 it over at once (started with repositories on the command line, Obeya restarts with the file).
 

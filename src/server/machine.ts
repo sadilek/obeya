@@ -28,6 +28,8 @@ import { saveClaudeToken } from './hosts';
 import { repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable } from './runtime';
+import { codexExecutable, spawnOptions, startArgv } from './codex';
+import { findCodex, type HarnessFound, type Harnesses } from './harnesses';
 import { extendPath, freshPath, which } from './path';
 import { ownerLanguage } from './settings';
 import type { VoiceSetup } from './voice-setup';
@@ -44,8 +46,10 @@ const INSTALLERS = {
 };
 
 /** How to install what the needed parts and pull requests need, on this platform. */
-export function machineHint(id: 'claude' | 'uv' | 'git' | 'gh', platform: string, family: LinuxFamily, brew: boolean): NonNullable<MachineItem['install']> {
+export function machineHint(id: 'claude' | 'codex' | 'uv' | 'git' | 'gh', platform: string, family: LinuxFamily, brew: boolean): NonNullable<MachineItem['install']> {
   const win = platform === 'win32';
+  // Codex has no installer of its own: Homebrew's cask on a Mac, else npm's package
+  if (id === 'codex') return { commands: [platform === 'darwin' && brew ? 'brew install --cask codex' : 'npm install -g @openai/codex'], url: 'https://developers.openai.com/codex/cli' };
   if (id === 'claude' || id === 'uv') {
     const i = INSTALLERS[id];
     return { commands: [win ? i.win : i.unix], url: i.url };
@@ -78,6 +82,8 @@ export function runnable(command: string, env: Env, platform: string = process.p
   if (!at) return null;
   if (program === 'brew') return [at, ...args];
   if (program === 'winget') return [at, ...args, '--accept-source-agreements', '--accept-package-agreements'];
+  // npm's global packages go where the owner may write on a Mac and on Windows, not on Linux's system Node
+  if (program === 'npm' && platform !== 'linux') return startArgv(at, args);
   // the Command Line Tools' own dialog
   if (command === 'xcode-select --install') return [at, ...args];
   return null;
@@ -94,6 +100,42 @@ function sdkClaude(platform: string, arch: string): string | null {
     } catch {}
   }
   return null;
+}
+
+/** Claude Code on this machine, as the agents run it, and its login. */
+export interface ClaudeFound {
+  /** The program that logs in; null where there is none. */
+  bin: string | null;
+  /** The agents run on the binary the Agent SDK brings (the checkout). */
+  sdk: boolean;
+  /** The login command runs as `claude` from the PATH. */
+  own: boolean;
+  version?: string;
+  loggedIn: boolean;
+  /** The account's e-mail, or how it logs in. */
+  account?: string;
+}
+
+/** Looks at Claude Code: the checkout's agents run on the SDK's own binary, the compiled one's on the machine's. */
+export async function findClaude(env: Env, compiled: boolean, platform: string, arch: string): Promise<ClaudeFound> {
+  const agents = claudeExecutable(env, compiled, platform);
+  const own = which('claude', env);
+  let bin: string | null;
+  let version: string | undefined;
+  if (!agents) {
+    bin = own ?? sdkClaude(platform, arch);
+    version = CHECKED_CLAUDE;
+  } else {
+    version = (await output(agents, ['--version'], env))?.match(/^(\d+\.\d+\.\d+)/)?.[1];
+    bin = version ? agents : null;
+  }
+  const status = bin ? await output(bin, ['auth', 'status'], env) : null;
+  let account: { loggedIn?: boolean; email?: string; authMethod?: string } = {};
+  try {
+    account = JSON.parse(status ?? '{}');
+  } catch {}
+  const who = account.email ?? account.authMethod;
+  return { bin, sdk: !agents, own: !!bin && bin === own, ...(version ? { version } : {}), loggedIn: !!account.loggedIn, ...(who ? { account: who } : {}) };
 }
 
 /** A command as a shell shows it, its program quoted when its path has spaces. */
@@ -216,6 +258,10 @@ export interface MachineOptions {
   arch?: string;
   /** Whether this is the compiled binary, which runs the machine's Claude Code rather than the SDK's. */
   compiled?: boolean;
+  /** Told what each check finds of the harnesses. */
+  harnesses?: Harnesses;
+  /** Looks at Codex; tests give their own. */
+  findCodex?: (env: Env) => Promise<HarnessFound | null>;
 }
 
 /** What the check found, with how Obeya acts on each piece. */
@@ -260,7 +306,7 @@ export class MachineSetup {
     const arch = this.o.arch ?? process.arch;
     const family = platform === 'linux' ? linuxFamily() : null;
     const brew = platform === 'darwin' && !!which('brew', env);
-    const hint = (id: 'claude' | 'uv' | 'git' | 'gh') => machineHint(id, platform, family, brew);
+    const hint = (id: 'claude' | 'codex' | 'uv' | 'git' | 'gh') => machineHint(id, platform, family, brew);
     /** A missing piece, offered at a click where its first command runs without a password. */
     const missing = (item: Omit<MachineItem, 'state'>): MachineItem => {
       const command = item.install?.commands[0];
@@ -269,31 +315,29 @@ export class MachineSetup {
     const logins: Found['logins'] = {};
 
     const agentsPart = async (): Promise<MachineItem[]> => {
-      // Claude Code: the checkout's agents run on the SDK's own binary, the compiled one's on the machine's
-      const agents = claudeExecutable(env, this.o.compiled ?? COMPILED, platform);
-      const own = which('claude', env);
-      const items: MachineItem[] = [];
-      let claude: string | null;
-      if (!agents) {
-        claude = own ?? sdkClaude(platform, arch);
-        items.push({ id: 'claude', state: 'ok', found: `${CHECKED_CLAUDE} (Agent SDK)` });
-      } else {
-        const version = (await output(agents, ['--version'], env))?.match(/^(\d+\.\d+\.\d+)/)?.[1];
-        claude = version ? agents : null;
-        items.push(version ? { id: 'claude', state: 'ok', found: version } : missing({ id: 'claude', install: hint('claude') }));
-      }
-      const status = claude ? await output(claude, ['auth', 'status'], env) : null;
-      let account: { loggedIn?: boolean; email?: string; authMethod?: string } = {};
-      try {
-        account = JSON.parse(status ?? '{}');
-      } catch {}
+      const [claude, codex] = await Promise.all([findClaude(env, this.o.compiled ?? COMPILED, platform, arch), (this.o.findCodex ?? findCodex)(env)]);
+      this.o.harnesses?.set({ claude: claude.version ? { version: claude.version, loggedIn: claude.loggedIn } : null, codex });
+      const claudeItems: MachineItem[] = [];
+      if (claude.sdk) claudeItems.push({ id: 'claude', state: 'ok', found: `${CHECKED_CLAUDE} (Agent SDK)` });
+      else claudeItems.push(claude.version ? { id: 'claude', state: 'ok', found: claude.version } : missing({ id: 'claude', install: hint('claude') }));
       // A session may have failed to refresh while auth status still reports a login.
-      if (claude) logins.claudeLogin = [claude, 'auth', 'login'];
-      if (account.loggedIn) items.push({ id: 'claudeLogin', state: 'ok', found: account.email ?? account.authMethod ?? '' });
-      else if (claude) {
-        items.push(missing({ id: 'claudeLogin', install: { commands: [shown([claude === own ? 'claude' : claude, 'auth', 'login'])] }, act: 'login' }));
-      } else items.push({ id: 'claudeLogin', state: 'missing' });
-      return items;
+      if (claude.bin) logins.claudeLogin = [claude.bin, 'auth', 'login'];
+      if (claude.loggedIn) claudeItems.push({ id: 'claudeLogin', state: 'ok', found: claude.account ?? '' });
+      else if (claude.bin) claudeItems.push(missing({ id: 'claudeLogin', install: { commands: [shown([claude.own ? 'claude' : claude.bin, 'auth', 'login'])] }, act: 'login' }));
+      else claudeItems.push({ id: 'claudeLogin', state: 'missing' });
+      const codexBin = codexExecutable(env);
+      const codexItems: MachineItem[] = [codex ? { id: 'codex', state: 'ok', found: codex.version! } : missing({ id: 'codex', install: hint('codex') })];
+      // a terminal's shell starts npm's codex.cmd itself
+      if (codex && codexBin) logins.codexLogin = [codexBin, 'login'];
+      if (codex?.loggedIn) codexItems.push({ id: 'codexLogin', state: 'ok', ...(codex.how ? { found: codex.how } : {}) });
+      else if (codex) codexItems.push(missing({ id: 'codexLogin', install: { commands: ['codex login'] }, act: 'login' }));
+      else codexItems.push({ id: 'codexLogin', state: 'missing' });
+      // either harness with its login is enough: the other one's pieces are then not needed, nor Codex's while neither is ready
+      const ready = (items: MachineItem[]) => items.every((i) => i.state === 'ok');
+      const either = (items: MachineItem[]) => items.map((i): MachineItem => (i.state === 'ok' ? i : { ...i, or: true }));
+      if (ready(claudeItems)) return [...claudeItems, ...either(codexItems)];
+      if (ready(codexItems)) return [...either(claudeItems), ...codexItems];
+      return [...claudeItems, ...either(codexItems)];
     };
 
     const gitPart = async (): Promise<MachineItem[]> => {
@@ -402,7 +446,7 @@ export class MachineSetup {
   /** Runs a program for a job, its output's last line shown as it goes. */
   private run(argv: string[], log: (line: string) => void): Promise<void> {
     return new Promise((done, fail) => {
-      const p = spawn(argv[0]!, argv.slice(1), { env: this.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+      const p = spawn(argv[0]!, argv.slice(1), { env: this.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], ...spawnOptions(argv) });
       let last = '';
       const take = (d: Buffer) => {
         // progress comes with carriage returns; the line is what it shows last

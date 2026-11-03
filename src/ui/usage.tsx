@@ -1,10 +1,11 @@
-// The plan's usage limits in the bar: the session's and the week's, each as a short meter with how
-// much of it is used, in the grade the usage endpoint gives it. A click (a tap on the phone) lists
-// every limit with when it starts anew, where the numbers come from, and the button
-// that hides them again (the setting in Konfiguration → Allgemein shows them again).
+// The plans' usage limits in the bar: the session's and the week's, each as a short meter with how
+// much of it is used, in the grade the usage endpoint gives it, for each plan whose harness agents
+// run on, under the harness's name once the bar shows two. A click (a tap on the phone) lists every
+// limit of every plan with a login with when it starts anew, where the numbers come from, and the
+// button that hides them again (the setting in Konfiguration → Allgemein shows them again).
 
 import { useEffect, useRef, useState } from 'react';
-import type { Usage, UsageLimit } from '../core/types';
+import type { PlanUsage, Usage, UsageLimit } from '../core/types';
 import { api } from './api';
 import { clock, failText, snoozeWhen, t } from './strings';
 
@@ -50,38 +51,36 @@ export function UsagePill({ usage }: { usage: Usage }) {
       removeEventListener('keydown', esc);
     };
   }, [open]);
-  if (!usage.limits.length) return null;
+  const plans = usage.plans.filter((p) => p.limits.length);
+  // the bar shows the plans agents run on; the list all with a login
+  const faced = plans.filter((p) => p.inUse);
+  if (!faced.length) return null;
   const hide = () => {
     setStatus('');
     api.saveUsageMeter(false).catch((e) => setStatus(failText(e)));
   };
-  const shown = headline(usage.limits);
+  // the bar names a plan only beside another; the list names each
+  const named = faced.length > 1;
   return (
     <div ref={ref} className={['pill usage', open && 'open'].filter(Boolean).join(' ')} id="usage">
       <button className="face" aria-expanded={open} aria-label={t.usage.title} onClick={() => setOpen(!open)}>
-        {shown.map((l) => (
-          <span key={l.group} className={`group ${l.severity}`}>
-            <span className="lbl">{t.usage.groups[l.group] ?? limitName(l)}</span>
-            <Meter limit={l} />
-            <b>{percent(l.percent)}</b>
+        {faced.map((p) => (
+          <span key={p.harness} className="plan">
+            {named && <span className="harness">{t.usage.short[p.harness]}</span>}
+            {headline(p.limits).map((l) => (
+              <span key={l.group} className={`group ${l.severity}`}>
+                <span className="lbl">{t.usage.groups[l.group] ?? limitName(l)}</span>
+                <Meter limit={l} />
+                <b>{percent(l.percent)}</b>
+              </span>
+            ))}
           </span>
         ))}
       </button>
       <div className="tip" role="tooltip">
-        <p>
-          <b>{t.usage.title}</b>
-        </p>
-        <ul className="usage-list">
-          {usage.limits.map((l, i) => (
-            <li key={i} className={l.severity}>
-              <span className="name">{limitName(l)}</span>
-              <Meter limit={l} />
-              <b>{percent(l.percent)}</b>
-              {l.resetsAt && <span className="hint when">{t.usage.resets(snoozeWhen(l.resetsAt))}</span>}
-            </li>
-          ))}
-        </ul>
-        <p className="hint">{t.usage.source(clock(usage.at))}</p>
+        {plans.map((p) => (
+          <PlanList key={p.harness} plan={p} />
+        ))}
         <p className="hint">
           <button className="btn" onClick={hide}>
             {t.usage.hide}
@@ -91,5 +90,28 @@ export function UsagePill({ usage }: { usage: Usage }) {
         {status && <p className="warn">{status}</p>}
       </div>
     </div>
+  );
+}
+
+/** One plan's limits in the list, under its name. */
+function PlanList({ plan }: { plan: PlanUsage }) {
+  return (
+    <>
+      <p>
+        <b>{t.usage.plans[plan.harness]}</b>
+        {!plan.inUse && <span className="hint"> · {t.usage.unused}</span>}
+      </p>
+      <ul className="usage-list">
+        {plan.limits.map((l, i) => (
+          <li key={i} className={l.severity}>
+            <span className="name">{limitName(l)}</span>
+            <Meter limit={l} />
+            <b>{percent(l.percent)}</b>
+            {l.resetsAt && <span className="hint when">{t.usage.resets(snoozeWhen(l.resetsAt))}</span>}
+          </li>
+        ))}
+      </ul>
+      <p className="hint">{t.usage.source(t.harnesses[plan.harness], clock(plan.at))}</p>
+    </>
   );
 }

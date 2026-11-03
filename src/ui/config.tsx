@@ -4,7 +4,7 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type Harness, type HarnessModel, HARNESSES, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { LANGUAGES } from '../core/locale';
@@ -838,7 +838,11 @@ function UsageBlock({ on }: { on: boolean }) {
   );
 }
 
-/** The model and effort of each group of agents: saved on each change, taken by the next agent that starts. */
+/**
+ * The harness, model and effort of each group of agents, chosen in that order: saved on each change,
+ * taken by the next agent that starts. A harness not set up on this machine is shown but not offered;
+ * the models and efforts are those of the chosen harness.
+ */
 function AgentsBlock({ on }: { on: boolean }) {
   const [view, setView] = useState<AgentsView | null>(null);
   const [status, setStatus] = useState('');
@@ -858,30 +862,48 @@ function AgentsBlock({ on }: { on: boolean }) {
     }
     setBusy(false);
   };
+  const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
+  const modelName = (h: Harness, m: HarnessModel) => (h === 'claude' ? a.models[m.id as AgentModel] : m.id === 'default' ? (m.name ? `${a.codexDefault} (${m.name})` : a.codexDefault) : (m.name ?? m.id));
+  const unready = view.harnesses.filter((h) => !h.ready);
   return (
     <>
-      <Head title={a.title} hint={a.hint} file={view.file} />
+      <Head title={a.title} hint={a.hint(view.preset)} file={view.file} />
       <div className="cfg-agents">
         <span />
+        <span className="hint">{a.harness}</span>
         <span className="hint">{a.model}</span>
         <span className="hint">{a.effort}</span>
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
+          const models = harness(setting.harness)?.models ?? [];
+          // a model chosen that the harness no longer lists stays shown
+          const listed = models.some((m) => m.id === setting.model) ? models : [...models, { id: setting.model }];
+          const efforts = listed.find((m) => m.id === setting.model)?.efforts ?? AGENT_EFFORTS;
           return (
             <Fragment key={role}>
               <div className="cfg-agent">
                 {a.roles[role].name}
                 <span className="hint">{a.roles[role].hint}</span>
               </div>
-              <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value as AgentModel })}>
-                {AGENT_MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {a.models[m]}
+              <select aria-label={`${a.roles[role].name}: ${a.harness}`} value={setting.harness} disabled={busy} onChange={(e) => choose(role, { harness: e.target.value as Harness })}>
+                {HARNESSES.map((h) => {
+                  const ready = !!harness(h)?.ready;
+                  return (
+                    <option key={h} value={h} disabled={!ready && h !== setting.harness}>
+                      {ready ? t.harnesses[h] : a.notReady(t.harnesses[h])}
+                    </option>
+                  );
+                })}
+              </select>
+              <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value })}>
+                {listed.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {modelName(setting.harness, m)}
                   </option>
                 ))}
               </select>
               <select aria-label={`${a.roles[role].name}: ${a.effort}`} value={setting.effort} disabled={busy} onChange={(e) => choose(role, { effort: e.target.value as AgentEffort })}>
-                {AGENT_EFFORTS.map((x) => (
+                {(efforts.includes(setting.effort) ? efforts : [...efforts, setting.effort]).map((x) => (
                   <option key={x} value={x}>
                     {a.efforts[x]}
                   </option>
@@ -891,6 +913,7 @@ function AgentsBlock({ on }: { on: boolean }) {
           );
         })}
       </div>
+      {unready.length > 0 && <p className="hint">{`${unready.map((h) => a.notReady(t.harnesses[h.id])).join(', ')}. ${a.setUp}`}</p>}
       {status && <p className="hint c-status">{status}</p>}
     </>
   );

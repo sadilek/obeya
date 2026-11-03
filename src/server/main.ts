@@ -43,7 +43,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } fro
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import type { RestartReason } from '../core/types';
+import { AGENT_ROLES, type RestartReason } from '../core/types';
 import { type CanvasConfig, Canvases } from './canvas';
 import { Config, CONFIG_FILE, expandConfig, readConfigFile } from './config';
 import { checkPlugin } from './demo';
@@ -52,15 +52,17 @@ import { ghForge, routedForge } from './forge';
 import { forgejoForge, originOf } from './forgejo';
 import { fileForge } from './file-forge';
 import { NarrationHost } from './narration';
-import { claudeExecutable, endAgentsHere, sdkRuntime } from './runtime';
+import { byHarness, claudeExecutable, endAgentsHere, sdkRuntime } from './runtime';
 import { claim, release, restarting, running, takenOver } from './instance';
 import { recordingRuntime, replayRuntime } from './replay';
-import { MachineSetup, welcome } from './machine';
+import { findClaude, MachineSetup, welcome } from './machine';
+import { codexRuntime, codexUsage } from './codex';
+import { Harnesses } from './harnesses';
 import { addToPath, extendPath } from './path';
 import { headOf, installDependencies, ownCheckout, RESTART, RESTART_FROM_FILE, RESTART_PATIENCE_MS, Restarter, TAKEOVER, UPDATE, watchOwnCode } from './self-update';
 import { AppUpdates } from './app-update';
 import { SourceUpdates } from './source-update';
-import { claudeUsage, UsageMeter } from './usage';
+import { claudeUsage, UsageMeter, UsageMeters } from './usage';
 import { COMPILED, resource, SELF, VERSION } from './resources';
 import { oldLinuxBun, onGitHub } from './repo';
 import { Access } from './remote';
@@ -276,6 +278,16 @@ const config = new Config({
       }
     : {}),
 });
+// Claude Code and Codex on this machine: which one a group runs on when the owner chose none, and what the Konfiguration offers
+const harnesses = new Harnesses({
+  cwd: home,
+  claude: async () => {
+    const c = await findClaude(process.env, COMPILED, process.platform, process.arch);
+    return c.version ? { version: c.version, loggedIn: c.loggedIn } : null;
+  },
+});
+// the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
+await Promise.race([harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${e instanceof Error ? e.message : e}`)), Bun.sleep(5000)]);
 canvases = new Canvases(
   configs,
   {
@@ -294,16 +306,17 @@ canvases = new Canvases(
     ...(process.env.OBEYA_PR_POLL ? { prPollMs: Number(process.env.OBEYA_PR_POLL) * 1000 } : {}),
     language: () => ownerLanguage(home),
     conversation: () => conversationLanguage(home),
-    agents: (role) => agentSetting(home, role),
+    agents: (role) => agentSetting(home, role, harnesses.preferred()),
     settings: (path) => config.repoSettings(path),
   },
   // the canvas the setup assistant created gets a first card that says what to try
   (c) => welcome(home, [c]),
 );
-/** The agents' runtime: the Agent SDK's, recorded (`--record`), or a recording played back (`--replay`). */
+/** The agents' runtime: Claude Code's through the Agent SDK or Codex's app server, recorded (`--record`), or a recording played back (`--replay`). */
 function agentRuntime() {
-  if (values.record) return recordingRuntime(sdkRuntime, resolve(values.record), home);
-  if (!values.replay) return sdkRuntime;
+  const live = byHarness({ claude: sdkRuntime, codex: codexRuntime });
+  if (values.record) return recordingRuntime(live, resolve(values.record), home);
+  if (!values.replay) return live;
   const refusedFile = join(home, 'replay-refused.txt');
   rmSync(refusedFile, { force: true });
   return replayRuntime(resolve(values.replay), { home, refused: (why) => writeFileSync(refusedFile, `${why}\n`) });
@@ -319,8 +332,15 @@ const updates = new AppUpdates();
 // run from a clone of Obeya's repository: new commits on its upstream, for the owner to pull
 const sources = own ? new SourceUpdates(own) : undefined;
 // the plan's usage limits in the bar, while the owner has it show them and a page is open
-const usage = new UsageMeter(() => claudeUsage(home), { on: usageMeterView(home).on });
-const machine = new MachineSetup({ home, config, voice: voiceSetup });
+const usage = new UsageMeters(
+  [
+    { harness: 'claude', meter: new UsageMeter(() => claudeUsage(home)) },
+    { harness: 'codex', meter: new UsageMeter(() => codexUsage(home)) },
+  ],
+  { on: usageMeterView(home).on, ready: (h) => harnesses.ready(h), inUse: () => [...new Set(AGENT_ROLES.map((r) => agentSetting(home, r, harnesses.preferred()).harness))] },
+);
+harnesses.onChange(() => (usage.update(), usage.changed()));
+const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses });
 // the canvas the assistant created gets a first card that says what to try
 welcome(home, canvases.all());
 const shutdown = (code: number) => {
@@ -364,7 +384,7 @@ const push = new Push({ store, home, language: () => ownerLanguage(home) });
 const awake = new Awake({ wanted: () => access.awake() === 'always' || (access.awake() === 'works' && busy().length > 0) }).start();
 // what held the server up, or a page, for the owner to notice: in this log and in the home's stalls.log
 const stalls = new Stalls({ home }).start();
-server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, updates, access, push, sources, usage, stalls);
+server = serve(canvases, { transcriber, setup: voiceSetup }, Number(values.port), values.dev, config, restarter, narration, machine, stop, updates, access, push, sources, usage, stalls, harnesses);
 claim(home, { pid: process.env.OBEYA_SUPERVISED ? process.ppid : process.pid, port: server.port!, url: `http://127.0.0.1:${server.port}`, version: VERSION, ...(process.env.OBEYA_FROM_APP ? { app: true } : {}) });
 // the address as a one-time link that signs a browser in (owner.ts)
 const link = access.owner.link(`http://127.0.0.1:${server.port}`);

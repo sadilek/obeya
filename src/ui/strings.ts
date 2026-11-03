@@ -8,7 +8,7 @@ import { type Language, languageOf } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
-import { type AgentEffort, type AgentModel, type AgentRole, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
+import { type AgentEffort, type AgentModel, type AgentRole, type Harness, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
 
 /** A list in a sentence: „a, b und c“. */
 const listOf = (items: string[], and: string) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ${and} ${items.at(-1)}`);
@@ -1224,7 +1224,7 @@ const de = {
       `Obeya läuft gerade mit den Repositories von der Kommandozeile. Speichern legt ${file} an; Obeya startet dann daraus, auch künftig, wenn es ohne Repositories gestartet wird.`,
     koordinator: 'Du kannst Obeya auch nach der Konfiguration fragen oder ihm sagen, was sich ändern soll.',
     askObeya: 'Obeya fragen',
-    sections: { canvases: 'Leinwände', agents: 'Modelle und Effort', voice: 'Spracheingabe', demos: 'Demos', devices: 'Von anderen Geräten', general: 'Allgemein' },
+    sections: { canvases: 'Leinwände', agents: 'Agenten und Modelle', voice: 'Spracheingabe', demos: 'Demos', devices: 'Von anderen Geräten', general: 'Allgemein' },
     unsaved: 'Nicht gespeichert',
     language: {
       heading: 'Sprachen',
@@ -1245,10 +1245,19 @@ const de = {
       names: { light: 'Hell', dark: 'Dunkel' } satisfies Record<Theme, string>,
     },
     agents: {
-      title: 'Modelle und Effort',
-      hint: 'Welches Modell jede Gruppe von Agenten nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall Opus, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.',
+      title: 'Agenten und Modelle',
+      /** By what a group the owner chose nothing for runs on here (`AgentsView.preset`). */
+      hint: (preset: Harness) =>
+        `Worauf jede Gruppe von Agenten läuft (Claude Code oder Codex, mit deinem Abo dort), welches Modell sie nimmt und wie viel es nachdenkt (Effort). Voreingestellt ist überall ${preset === 'codex' ? 'Codex mit seinem Standardmodell, da auf diesem Rechner nur Codex eingerichtet ist' : 'Claude Code mit Opus'}, mit hohem Effort für Agenten an Aufgaben und Explorations-Agenten, sonst mittlerem. Gilt sofort für jeden Agenten, der danach startet; einer, der gerade arbeitet, bleibt bei dem, womit er begann.`,
+      harness: 'Läuft auf',
       model: 'Modell',
       effort: 'Effort',
+      /** A harness not installed or not logged in, which no group can be set to. */
+      notReady: (name: string) => `${name} (nicht eingerichtet)`,
+      /** Where a harness is not set up: what makes it one to choose. */
+      setUp: 'Einrichten unter Einrichtung → Agenten.',
+      /** Codex's own default model. */
+      codexDefault: 'Codex Standard',
       roles: {
         koordinator: { name: 'Obeya', hint: 'Befehle, Planung, Nachschlagen, Projekt-Agenten, Lernen' },
         worker: { name: 'Agenten an Aufgaben', hint: 'bauen die Aufgaben' },
@@ -1687,7 +1696,7 @@ const de = {
     title: 'Einrichtung',
     close: 'Schließen',
     introFirst:
-      'Obeya prüft, was es auf diesem Rechner braucht. Nötig sind Claude Code mit deiner Anmeldung und git; der Rest geht auch später. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da. Danach legst du die erste Leinwand an.',
+      'Obeya prüft, was es auf diesem Rechner braucht. Nötig sind Claude Code oder Codex mit deiner Anmeldung, und git; der Rest geht auch später. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da. Danach legst du die erste Leinwand an.',
     intro: 'Was Obeya auf diesem Rechner braucht. Was ohne Administratorrechte geht, installiert Obeya mit einem Klick, für den Rest steht der Befehl da.',
     platform: (platform: string) => `Geprüft auf ${platform}. Die Liste prüft erneut, sobald du aus einem Terminal oder Installer hierher zurückkommst.`,
     needed: 'nötig',
@@ -1697,7 +1706,7 @@ const de = {
     readyLater: 'geht, der Rest lädt beim ersten Gebrauch',
     open: (n: number) => (n === 1 ? '1 fehlt' : `${n} fehlen`),
     sections: {
-      needed: { title: 'Agenten', hint: 'Ohne Claude Code und git arbeitet kein Agent. Claude Code läuft auf deinem Claude-Abo; die Agenten committen unter deinem Namen.' },
+      needed: { title: 'Agenten', hint: 'Ohne Claude Code oder Codex, und ohne git, arbeitet kein Agent. Eins von beiden reicht: Claude Code läuft auf deinem Claude-Abo, Codex auf deinem ChatGPT-Abo; welche Agenten worauf laufen, wählst du in der Konfiguration unter Agenten und Modelle. Die Agenten committen unter deinem Namen.' },
       pr: { title: 'Pull Requests', hint: 'Freigegebene Arbeit geht als Pull Request auf GitHub, außer die Einstellungen eines Repositorys sagen etwas anderes. Nötig erst bei der ersten Freigabe.' },
       voice: { title: 'Sprachbefehle', hint: 'Leertaste halten und sagen, was zu tun ist. Obeya bestätigt schriftlich: auf der Karte oder in Obeyas Fenster (Schaltfläche oben rechts, Taste C).' },
       demos: { title: 'Demos', hint: 'Agenten zeigen ihre Arbeit als vertontes Video. Ohne das schicken sie eine Zusammenfassung.' },
@@ -1705,6 +1714,8 @@ const de = {
     names: {
       claude: 'Claude Code',
       claudeLogin: 'Anmeldung bei Claude',
+      codex: 'Codex',
+      codexLogin: 'Anmeldung bei Codex',
       git: 'git',
       gitUser: 'Name und E-Mail für Commits',
       gh: 'GitHub CLI (gh)',
@@ -1712,8 +1723,15 @@ const de = {
     } satisfies Record<NeededId | PrId, string>,
     loggedIn: 'angemeldet',
     loggedInAs: (who: string) => `angemeldet als ${who}`,
+    /** Codex, which says how it is logged in rather than as whom. */
+    loggedInVia: (how: string) => `angemeldet über ${how}`,
     loggedOut: 'nicht angemeldet',
     claudeFirst: 'erst Claude Code installieren',
+    codexFirst: 'erst Codex installieren',
+    /** Beside the other harness's missing pieces once one harness is ready. */
+    orOther: (other: string) => `nicht nötig, ${other} ist eingerichtet`,
+    /** Beside Codex's missing pieces while neither harness is ready. */
+    instead: (other: string) => `geht auch statt ${other}`,
     ghFirst: 'erst gh installieren',
     noIdentity: 'nicht eingetragen',
     checkedWith: (version: string) => `Obeya ist mit Claude Code ${version} geprüft. Eine neuere oder ältere Version geht meist auch; hakt es bei den Agenten, hilft diese.`,
@@ -1870,22 +1888,30 @@ const de = {
     failed: (error: string) => `„git pull“ ging nicht: ${error}`,
   },
   /** The plan's usage limits in the bar (src/ui/usage.tsx), and the setting that shows or hides them. */
+  /** The harnesses agents run on, by their names. */
+  harnesses: { claude: 'Claude Code', codex: 'Codex' } satisfies Record<Harness, string>,
   usage: {
     /** The bar's short names of the two groups of limits. */
     groups: { session: 'Sitzung', weekly: 'Woche' } as Record<string, string>,
-    title: 'Nutzungslimits deines Claude-Abos',
+    title: 'Nutzungslimits deiner Abos',
+    /** Beside a plan's meters in the bar, once there are two plans. */
+    short: { claude: 'Claude', codex: 'Codex' } satisfies Record<Harness, string>,
+    /** A plan's heading in the list. */
+    plans: { claude: 'Claude-Abo', codex: 'ChatGPT-Abo (Codex)' } satisfies Record<Harness, string>,
+    /** Beside a plan no group of agents runs on, which the bar leaves out. */
+    unused: 'kein Agent läuft darauf, daher nicht in der Leiste',
     /** A limit by its kind, in the list under the bar's button. */
     kinds: { session: 'Sitzung (5 Stunden)', weekly_all: 'Woche, alle Modelle' } as Record<string, string>,
     /** A limit for one model or surface only. */
     scoped: (scope: string) => `Woche, nur ${scope}`,
     resets: (when: string) => `neu ab ${when}`,
-    source: (time: string) => `Von Claude Code auf diesem Rechner, jede Minute neu; Stand ${time}.`,
+    source: (harness: string, time: string) => `Von ${harness} auf diesem Rechner, jede Minute neu; Stand ${time}.`,
     hide: 'Ausblenden',
     hideHint: 'Wieder einblenden unter Konfiguration → Allgemein.',
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
       label: 'Anzeigen',
-      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit des Claude-Abos verbraucht ist, mit dem Claude Code auf diesem Rechner angemeldet ist: jede Minute neu, solange eine Seite von Obeya offen ist. Mit einem API-Schlüssel gibt es keine Limits zu zeigen. Gilt sofort.',
+      hint: 'Wie viel vom Sitzungs- und vom Wochenlimit der Abos verbraucht ist, mit denen Claude Code und Codex auf diesem Rechner angemeldet sind: jede Minute neu, solange eine Seite von Obeya offen ist. Die Leiste zeigt die Abos, auf denen Agenten laufen. Mit einem API-Schlüssel gibt es keine Limits zu zeigen. Gilt sofort.',
     },
   },
   workspaces: {
@@ -3202,7 +3228,7 @@ const en: Strings = {
       `Obeya is running with the repositories from the command line. Saving creates ${file}; Obeya then starts from it, also in future when it is started without repositories.`,
     koordinator: 'You can also ask Obeya about the configuration or tell it what should change.',
     askObeya: 'Ask Obeya',
-    sections: { canvases: 'Canvases', agents: 'Models and effort', voice: 'Voice input', demos: 'Demos', devices: 'Other devices', general: 'General' },
+    sections: { canvases: 'Canvases', agents: 'Agents and models', voice: 'Voice input', demos: 'Demos', devices: 'Other devices', general: 'General' },
     unsaved: 'Not saved',
     language: {
       heading: 'Languages',
@@ -3222,10 +3248,15 @@ const en: Strings = {
       names: { light: 'Light', dark: 'Dark' },
     },
     agents: {
-      title: 'Models and effort',
-      hint: 'Which model each group of agents uses and how much it thinks (effort). Preset is Opus throughout, with high effort for agents on tasks and exploration agents, medium for the rest. Applies at once to every agent that starts afterwards; one at work keeps what it started with.',
+      title: 'Agents and models',
+      hint: (preset: Harness) =>
+        `What each group of agents runs on (Claude Code or Codex, with your plan there), which model it uses and how much it thinks (effort). Preset is ${preset === 'codex' ? 'Codex with its default model throughout, since only Codex is set up on this machine' : 'Claude Code with Opus throughout'}, with high effort for agents on tasks and exploration agents, medium for the rest. Applies at once to every agent that starts afterwards; one at work keeps what it started with.`,
+      harness: 'Runs on',
       model: 'Model',
       effort: 'Effort',
+      notReady: (name: string) => `${name} (not set up)`,
+      setUp: 'Set it up under Setup → Agents.',
+      codexDefault: 'Codex default',
       roles: {
         koordinator: { name: 'Obeya', hint: 'commands, planning, look-ups, project agents, learning' },
         worker: { name: 'Agents on tasks', hint: 'build the tasks' },
@@ -3664,7 +3695,7 @@ const en: Strings = {
     title: 'Setup',
     close: 'Close',
     introFirst:
-      'Obeya checks what it needs on this machine. Claude Code with your login and git are needed; the rest can wait. What installs without admin rights, Obeya installs at a click; for the rest the command is there. Then you create the first canvas.',
+      'Obeya checks what it needs on this machine. Claude Code or Codex with your login, and git, are needed; the rest can wait. What installs without admin rights, Obeya installs at a click; for the rest the command is there. Then you create the first canvas.',
     intro: 'What Obeya needs on this machine. What installs without admin rights, Obeya installs at a click; for the rest the command is there.',
     platform: (platform: string) => `Checked on ${platform}. The list checks again when you come back here from a terminal or an installer.`,
     needed: 'needed',
@@ -3674,7 +3705,7 @@ const en: Strings = {
     readyLater: 'works, the rest loads on first use',
     open: (n: number) => `${n} missing`,
     sections: {
-      needed: { title: 'Agents', hint: 'Without Claude Code and git no agent works. Claude Code runs on your Claude subscription; the agents commit under your name.' },
+      needed: { title: 'Agents', hint: 'Without Claude Code or Codex, and without git, no agent works. Either one is enough: Claude Code runs on your Claude subscription, Codex on your ChatGPT subscription; which agents run on which you choose in the configuration under Agents and models. The agents commit under your name.' },
       pr: { title: 'Pull requests', hint: 'Approved work goes out as a pull request on GitHub, unless a repository’s settings say otherwise. Needed only at the first approval.' },
       voice: { title: 'Voice commands', hint: 'Hold Space and say what to do. Obeya confirms in writing: on the card or in Obeya’s panel (button at the top right, key C).' },
       demos: { title: 'Demos', hint: 'Agents show their work as a narrated video. Without it they send a summary.' },
@@ -3682,6 +3713,8 @@ const en: Strings = {
     names: {
       claude: 'Claude Code',
       claudeLogin: 'Claude login',
+      codex: 'Codex',
+      codexLogin: 'Codex login',
       git: 'git',
       gitUser: 'Name and e-mail for commits',
       gh: 'GitHub CLI (gh)',
@@ -3689,8 +3722,12 @@ const en: Strings = {
     },
     loggedIn: 'logged in',
     loggedInAs: (who: string) => `logged in as ${who}`,
+    loggedInVia: (how: string) => `logged in using ${how}`,
     loggedOut: 'not logged in',
     claudeFirst: 'install Claude Code first',
+    codexFirst: 'install Codex first',
+    orOther: (other: string) => `not needed, ${other} is set up`,
+    instead: (other: string) => `works instead of ${other} too`,
     ghFirst: 'install gh first',
     noIdentity: 'not set',
     checkedWith: (version: string) => `Obeya was checked with Claude Code ${version}. A newer or older version mostly works too; if agents run into trouble, this one helps.`,
@@ -3845,19 +3882,23 @@ const en: Strings = {
       `\`${checkout}\` has uncommitted changes to files the new commits change: ${files}. Commit them or put them aside with \`git stash\`; then "git pull" here brings in the commits.`,
     failed: (error: string) => `"git pull" failed: ${error}`,
   },
+  harnesses: { claude: 'Claude Code', codex: 'Codex' },
   usage: {
     groups: { session: 'Session', weekly: 'Week' },
-    title: 'Usage limits of your Claude plan',
+    title: 'Usage limits of your plans',
+    short: { claude: 'Claude', codex: 'Codex' },
+    plans: { claude: 'Claude plan', codex: 'ChatGPT plan (Codex)' },
+    unused: 'no agent runs on it, so not in the bar',
     kinds: { session: 'Session (5 hours)', weekly_all: 'Week, all models' },
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,
-    source: (time: string) => `From Claude Code on this machine, every minute; as of ${time}.`,
+    source: (harness: string, time: string) => `From ${harness} on this machine, every minute; as of ${time}.`,
     hide: 'Hide',
     hideHint: 'Show it again under Configuration → General.',
     setting: {
       title: 'Usage limits in the bar',
       label: 'Show',
-      hint: 'How much of the session and the weekly limit is used of the Claude plan that Claude Code on this machine is logged in with: every minute, while a page of Obeya is open. With an API key there are no limits to show. Applies at once.',
+      hint: 'How much of the session and the weekly limit is used of the plans that Claude Code and Codex on this machine are logged in with: every minute, while a page of Obeya is open. The bar shows the plans agents run on. With an API key there are no limits to show. Applies at once.',
     },
   },
   workspaces: {

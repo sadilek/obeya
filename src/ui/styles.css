@@ -387,6 +387,10 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .ph-home .pill.usage .face { padding: 6px 10px; gap: 10px; font-size: 13px; }
 .ph-home .pill.usage .tip { width: min(380px, calc(100vw - 28px)); }
 .pill.usage .group { display: flex; align-items: center; gap: 6px; }
+.pill.usage .plan { display: flex; align-items: center; gap: 12px; }
+.pill.usage .plan + .plan { padding-left: 14px; border-left: 1px solid var(--line); }
+.pill.usage .harness { font-weight: 600; }
+.pill.usage .tip .usage-list + .hint { margin-bottom: 12px; }
 .pill.usage .group b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .pill.usage .meter { position: relative; width: 34px; height: 5px; border-radius: 3px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex: none; }
 .pill.usage .meter i { position: absolute; inset: 0 auto 0 0; background: var(--muted); border-radius: inherit; }
@@ -1561,7 +1565,7 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 #config .cfg-host-clones input { width: 64px; }
 .cfg-hosts > .btn.small { margin-top: 0; }
 .cfg-host-rows + .btn.small { margin-top: 6px !important; }
-.cfg-agents { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(170px, 1fr) minmax(130px, .7fr); gap: 0 14px; align-items: center; max-width: 900px; }
+.cfg-agents { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(130px, .7fr) minmax(170px, 1fr) minmax(130px, .7fr); gap: 0 14px; align-items: center; max-width: 1100px; }
 .cfg-agents > .hint { font-size: 11.5px; padding-bottom: 4px; }
 .cfg-agents > select { min-width: 0; }
 .cfg-agent { display: flex; flex-direction: column; padding: 9px 0; font-size: 14px; }
@@ -1582,7 +1586,7 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
   .cfg-nav-title { padding: 6px 4px 6px 10px; font-size: 13px; }
   .cfg-nav-group > ul > li > button { padding-left: 10px; }
   .cfg-cols { grid-template-columns: 1fr; }
-  .cfg-agents { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .cfg-agents { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
   .cfg-agent { grid-column: 1 / -1; padding-bottom: 2px; }
   .cfg-agents > span:first-child { display: none; }
 }
@@ -1629,6 +1633,8 @@ ol.timeline { list-style: none; padding: 0; margin: 0 0 4px; }
 .c-setup li.missing .c-mark { color: var(--error); }
 .c-setup li.later .c-mark { color: var(--muted); }
 .c-setup li.missing .c-name { font-weight: 600; }
+.c-setup li.missing.or .c-mark { color: var(--muted); }
+.c-setup li.missing.or .c-name { font-weight: inherit; }
 .c-how { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; margin: 3px 0 4px; }
 .c-how code { padding: 2px 6px; border-radius: 2px; background: var(--card); border: 1px solid var(--line); -webkit-user-select: all; user-select: all; }
 .c-how a { font-size: 12px; }

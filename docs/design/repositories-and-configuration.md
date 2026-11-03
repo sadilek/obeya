@@ -341,7 +341,7 @@ button, and shows only while the pointer or the focus is on its entry (a canvas:
 always where nothing hovers (touch). An unsaved draft survives per tab, also a reload or
 restart. Its sections, listed on the left and shown one at a time (the last one chosen per tab):
 Leinwände, a heading with each canvas indented under it as a section of its own and „+ Leinwand“
-last (see Leinwände), Modelle und Effort, Spracheingabe, Demos, Von anderen Geräten (see Other devices) and Allgemein
+last (see Leinwände), Agenten und Modelle, Spracheingabe, Demos, Von anderen Geräten (see Other devices) and Allgemein
 (languages, light or dark, the usage limits in the bar, the server); below them „Einrichtung prüfen“ and „Wunsch oder Fehler
 melden“ (see Wishes for Obeya's makers). Each canvas in the list marks its unsaved changes and
 counts its problems in red; the heading counts the problems of no one canvas (none at all, say). Each section names the file it is saved in; settings are rows of label and control, no boxes in

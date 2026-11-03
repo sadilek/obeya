@@ -217,7 +217,7 @@ The excerpt holds failed tool calls with their error, runs of similar calls (a f
 correction, a command three times or more), files written whole more than once, the worker's words
 around each, and how many calls the run took before it first changed a file. Calls cut off by a
 restart or stopped by the owner, and subagents, are left out; an unreadable transcript gives no
-excerpt and no error. A short read-only small job (see Models and effort) makes 0–3 friction notes
+excerpt and no error. A short read-only small job (see Harnesses, models and effort) makes 0–3 friction notes
 of it (what went wrong, what it cost, what would have prevented it). It is told the settings a
 retrospective may propose as they apply now, so a worker working out what one would have said
 becomes a note naming that setting and the value that worked.

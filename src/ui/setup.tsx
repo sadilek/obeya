@@ -49,10 +49,12 @@ export function SetupList<I extends SetupItem | VoiceSetupItem | MachineItem>({
         const act = action?.(i);
         // the speech recognition, there but too slow on this machine
         const slow = 'speed' in i && typeof i.speed === 'object' && i.speed.slow && !i.cloud?.used;
+        // a harness's piece the other harness stands in for: missing, but not wanted
+        const or = 'or' in i && !!i.or && i.state === 'missing';
         return (
-          <li key={i.id} className={slow ? `${i.state} slow` : i.state}>
+          <li key={i.id} className={slow ? `${i.state} slow` : or ? 'missing or' : i.state}>
             <span className="c-mark" aria-hidden>
-              {slow ? '!' : { ok: '✓', missing: '✗', later: '…' }[i.state]}
+              {slow ? '!' : or ? '–' : { ok: '✓', missing: '✗', later: '…' }[i.state]}
             </span>
             <span className="c-name">{name(i)}</span>
             <span className="hint" title={i.found}>
@@ -209,7 +211,8 @@ export function demoState(i: SetupItem | MachineItem) {
   return (i.id === 'browser' ? i.found?.split(/[\\/]/).at(-1) : i.found) ?? s.there;
 }
 
-const ready = (section: MachineSection | undefined) => !!section && section.items.every((i) => i.state !== 'missing');
+/** Nothing missing that the section needs; a harness's piece the other harness stands in for is not (`or`). */
+const ready = (section: MachineSection | undefined) => !!section && section.items.every((i) => i.state !== 'missing' || i.or);
 
 export function Setup({ first, onClose }: { first?: boolean; onClose?: () => void }) {
   const [view, setView] = useState<MachineView | null>(null);
@@ -303,10 +306,18 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
   const state = (section: MachineSection) => (i: MachineItem) => {
     if (section.id === 'voice') return voiceState(i);
     if (section.id === 'demos') return demoState(i);
-    if (i.state === 'ok') return i.id === 'claudeLogin' || i.id === 'ghLogin' ? (i.found ? s.loggedInAs(i.found) : s.loggedIn) : (i.found ?? t.config.setup.there);
+    const login = i.id === 'claudeLogin' || i.id === 'codexLogin' || i.id === 'ghLogin';
+    if (i.state === 'ok') return login ? (i.found ? (i.id === 'codexLogin' ? s.loggedInVia : s.loggedInAs)(i.found) : s.loggedIn) : (i.found ?? t.config.setup.there);
+    // a harness's piece the other harness makes unneeded, or which may stand in for it
+    if (i.or) {
+      const other = i.id === 'codex' || i.id === 'codexLogin' ? 'claude' : 'codex';
+      const otherReady = section.items.filter((x) => x.id === other || x.id === `${other}Login`).every((x) => x.state === 'ok');
+      return otherReady ? s.orOther(t.harnesses[other]) : s.instead(t.harnesses[other]);
+    }
     if (i.id === 'claudeLogin' && !i.act) return s.claudeFirst;
+    if (i.id === 'codexLogin' && !i.act) return s.codexFirst;
     if (i.id === 'ghLogin' && !i.act) return s.ghFirst;
-    if (i.id === 'claudeLogin' || i.id === 'ghLogin') return s.loggedOut;
+    if (login) return s.loggedOut;
     if (i.id === 'gitUser') return s.noIdentity;
     return t.config.setup.missing;
   };
@@ -343,7 +354,7 @@ export function Setup({ first, onClose }: { first?: boolean; onClose?: () => voi
                     <span className={section.id === 'needed' ? 'setup-tag needed' : 'setup-tag'}>{section.id === 'needed' ? s.needed : s.optional}</span>
                     {section.mb > 0 && <span className="hint">{s.size(fileSize(section.mb * 1e6))}</span>}
                     <span className={ready(section) ? 'setup-ok on' : 'setup-ok'}>
-                      {!ready(section) ? s.open(section.items.filter((i) => i.state === 'missing').length) : section.items.some((i) => i.state === 'later') ? s.readyLater : s.ready}
+                      {!ready(section) ? s.open(section.items.filter((i) => i.state === 'missing' && !i.or).length) : section.items.some((i) => i.state === 'later') ? s.readyLater : s.ready}
                     </span>
                   </div>
                   <p className="hint">{s.sections[section.id].hint}</p>

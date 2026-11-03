@@ -2379,9 +2379,9 @@ export interface ThemeView {
 }
 
 /**
- * One of the usage limits of the Claude plan Claude Code is logged in with on this machine, as the
- * plan's usage endpoint reports it (src/server/usage.ts): how much of its window is used, and when
- * the window starts anew.
+ * One of the usage limits of a plan a harness is logged in with on this machine, as the plan's usage
+ * endpoint reports it (src/server/usage.ts): how much of its window is used, and when the window
+ * starts anew. Codex's windows take the same kinds and groups by their length.
  */
 export interface UsageLimit {
   /** The endpoint's kind of meter: `session` (five hours), `weekly_all`, `weekly_scoped` (one model's), or one Obeya does not know yet. */
@@ -2398,11 +2398,19 @@ export interface UsageLimit {
   severity: string;
 }
 
-/** The plan's usage limits as last fetched, for the bar while the owner has it show them. */
-export interface Usage {
+/** One subscription's usage limits as last fetched: the plan a harness is logged in with. */
+export interface PlanUsage {
+  harness: Harness;
   limits: UsageLimit[];
   /** When they were fetched (ISO time). */
   at: string;
+  /** At least one group of agents runs on this harness: the bar shows its limits, the list all. */
+  inUse: boolean;
+}
+
+/** The usage limits of each subscription with a login, for the bar while the owner has it show them. */
+export interface Usage {
+  plans: PlanUsage[];
 }
 
 /** Whether the bar shows the plan's usage limits (`src/server/settings.ts`); on until the owner turns it off. */
@@ -2486,31 +2494,73 @@ export interface AccessView {
   platform: string;
 }
 
-/** The agents Obeya runs, grouped as the owner sets their model and effort (`src/server/settings.ts`). */
+/** The agents Obeya runs, grouped as the owner sets their harness, model and effort (`src/server/settings.ts`). */
 export const AGENT_ROLES = ['koordinator', 'worker', 'explorer', 'chores'] as const;
 export type AgentRole = (typeof AGENT_ROLES)[number];
-/** The models offered: Claude Code's default, or one of its aliases, each the newest of its family. */
+/** The coding agents Obeya runs its agents on, each on the machine's own installation and login. */
+export const HARNESSES = ['claude', 'codex'] as const;
+export type Harness = (typeof HARNESSES)[number];
+/** Claude Code's models offered: its default, or one of its aliases, each the newest of its family. */
 export const AGENT_MODELS = ['default', 'fable', 'opus', 'sonnet', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
 export const AGENT_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type AgentEffort = (typeof AGENT_EFFORTS)[number];
-/** The model and effort a group of agents runs with. */
+/**
+ * The harness, model and effort a group of agents runs with. `model`: `default` for the harness's
+ * own default; else for Claude Code one of `AGENT_MODELS`, for Codex a model id it lists.
+ */
 export interface AgentSetting {
-  model: AgentModel;
+  harness: Harness;
+  model: string;
   effort: AgentEffort;
 }
+/** A Codex model id as Codex lists it (`gpt-6.1-sol`): what a setting may name. */
+export const CODEX_MODEL = /^[A-Za-z0-9][\w.:-]{0,79}$/;
+/** Whether `model` is one a group on `harness` may run with: Claude Code's aliases are no Codex model, but for the default. */
+export const modelFits = (harness: Harness, model: string): boolean =>
+  harness === 'claude' ? AGENT_MODELS.some((m) => m === model) : CODEX_MODEL.test(model) && (model === 'default' || !AGENT_MODELS.some((m) => m === model));
 /** What applies until the owner chooses otherwise: Opus throughout, high effort for workers and exploration agents. */
 export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
-  koordinator: { model: 'opus', effort: 'medium' },
-  worker: { model: 'opus', effort: 'high' },
-  explorer: { model: 'opus', effort: 'high' },
-  chores: { model: 'opus', effort: 'medium' },
+  koordinator: { harness: 'claude', model: 'opus', effort: 'medium' },
+  worker: { harness: 'claude', model: 'opus', effort: 'high' },
+  explorer: { harness: 'claude', model: 'opus', effort: 'high' },
+  chores: { harness: 'claude', model: 'opus', effort: 'medium' },
 };
+/** The default of a group on a harness: the preset's effort, with the harness's preset model (Codex's own default). */
+export function agentDefault(role: AgentRole, harness: Harness): AgentSetting {
+  const preset = AGENT_DEFAULTS[role];
+  return harness === preset.harness ? preset : { harness, model: 'default', effort: preset.effort };
+}
 
-/** The model and effort of each group of agents, as they apply (`settings.json` over `AGENT_DEFAULTS`). */
+/** A model a harness offers, as the Konfiguration lists it. */
+export interface HarnessModel {
+  id: string;
+  /** Its name as the harness gives it; absent for Claude Code's aliases, which the page names itself. */
+  name?: string;
+  /** The efforts it takes, where the harness says (Codex); absent: all of `AGENT_EFFORTS`. */
+  efforts?: AgentEffort[];
+  /** The one the harness takes by default (Codex's, listed besides as `default` with its name). */
+  isDefault?: true;
+}
+
+/** A harness as this machine has it: installed, logged in, and the models it offers. */
+export interface HarnessView {
+  id: Harness;
+  /** Installed and logged in: agents can run on it. */
+  ready: boolean;
+  /** Its version, once found. */
+  version?: string;
+  /** The models it offers, `default` first. */
+  models: HarnessModel[];
+}
+
+/** The harness, model and effort of each group of agents, as they apply (`settings.json` over `AGENT_DEFAULTS`). */
 export interface AgentsView {
   file: string;
   agents: Record<AgentRole, AgentSetting>;
+  harnesses: HarnessView[];
+  /** What a group the owner chose nothing for runs on here: Claude Code, unless only Codex is ready. */
+  preset: Harness;
 }
 
 /**
@@ -2576,8 +2626,8 @@ export interface VoiceSetupView {
 
 /** The setup assistant's list (`src/server/machine.ts`): what Obeya needs on this machine, by what it is for. */
 export type MachineSectionId = 'needed' | 'pr' | 'voice' | 'demos';
-/** Claude Code, its login, git and git's name and e-mail for commits. */
-export type NeededId = 'claude' | 'claudeLogin' | 'git' | 'gitUser';
+/** Claude Code or Codex with its login, git and git's name and e-mail for commits. */
+export type NeededId = 'claude' | 'claudeLogin' | 'codex' | 'codexLogin' | 'git' | 'gitUser';
 /** gh and its login. */
 export type PrId = 'gh' | 'ghLogin';
 
@@ -2591,6 +2641,8 @@ export type MachineItem = Omit<SetupItem, 'id'> & {
   act?: 'install' | 'login' | 'identity';
   /** What has to be installed first (uv, which brings the speech recognition). */
   waits?: 'uv';
+  /** One harness's piece, not needed while the other harness is ready (or, while neither is, Claude Code is the one asked for). */
+  or?: true;
 } & VoiceRecognitionParts;
 
 export interface MachineSection {

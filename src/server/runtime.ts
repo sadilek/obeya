@@ -17,7 +17,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { LOST, remote, sessionFiles, type SshHost } from './hosts';
+import { hostName, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { localBin, which } from './path';
 import type { z } from 'zod';
 import { filesIn } from './files';
@@ -26,7 +26,7 @@ import { COMPILED } from './resources';
 import { OWN_GROUP } from './spawn';
 import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
-import type { AgentEffort, AgentRole, AgentSetting } from '../core/types';
+import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type Harness } from '../core/types';
 import { messageOf } from '../core/text';
 import { claudeLoginFailed } from '../core/login';
 
@@ -112,8 +112,10 @@ export interface AgentSpec {
   effort?: AgentEffort;
   /** The model, when not the default: a smaller one for small, frequent jobs. */
   model?: string;
-  /** The group the agent belongs to, whose model and effort the owner chooses (`withAgentSetting`). */
+  /** The group the agent belongs to, whose harness, model and effort the owner chooses (`withAgentSetting`). */
   role?: AgentRole;
+  /** The harness it runs on (`byHarness`): Claude Code where none is named. */
+  harness?: Harness;
   /**
    * Asked after every tool step of the agent's own (not a subagent's): what changed since the
    * session's instructions were built, or what waited for its next step, for the agent to read with
@@ -153,19 +155,35 @@ export interface AgentRuntime {
   start(spec: AgentSpec, firstMessage?: string, images?: string[]): AgentSession;
 }
 
+/** A Codex thread's id as Obeya keeps it for a session (`AgentEvent` `session`), told apart from a Claude Code session's. */
+export const CODEX_SESSION = 'codex:';
+
+/** The harness a kept session runs on: Codex's threads carry their mark (`CODEX_SESSION`). */
+export const sessionHarness = (session: string): Harness => (session.startsWith(CODEX_SESSION) ? 'codex' : 'claude');
+
 /**
- * A runtime that starts each agent of a group with its group's model and effort (`agentSetting`),
- * asked at every start; Claude Code's default model is no model given.
+ * A runtime that starts each agent of a group on its group's harness, model and effort
+ * (`agentSetting`), asked at every start; a harness's default model is no model given. A session
+ * resumed stays on the harness it began on, with that harness's default model if the group has
+ * moved on since, so a card goes on with its conversation. A worker on another machine runs on
+ * Claude Code, the only harness Obeya starts there.
  */
 export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
       if (!spec.role) return runtime.start(spec, firstMessage, images);
-      const { model, effort } = setting(spec.role);
+      const chosen = setting(spec.role);
+      const on: Harness = spec.resume ? sessionHarness(spec.resume) : hostName(spec.cwd) !== null ? 'claude' : chosen.harness;
+      const { harness, model, effort } = on === chosen.harness ? chosen : { ...agentDefault(spec.role, on), effort: chosen.effort };
       const { model: _, ...rest } = spec;
-      return runtime.start({ ...rest, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
+      return runtime.start({ ...rest, harness, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
     },
   };
+}
+
+/** A runtime that starts each agent on the harness its spec names (`withAgentSetting`), else the one of the session it resumes, else Claude Code. */
+export function byHarness(runtimes: Record<Harness, AgentRuntime>): AgentRuntime {
+  return { start: (spec, firstMessage, images) => runtimes[spec.harness ?? (spec.resume ? sessionHarness(spec.resume) : 'claude')].start(spec, firstMessage, images) };
 }
 
 const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'];
@@ -445,8 +463,14 @@ export const sdkRuntime: AgentRuntime = {
   },
 };
 
-/** Claude Code processes started on this machine that still run. */
+/** Claude Code and Codex processes started on this machine that still run. */
 const here = new Set<ChildProcess>();
+
+/** Counts a process among the agents' that `endAgentsHere` ends as Obeya stops. */
+export function trackHere(p: ChildProcess) {
+  here.add(p);
+  p.once('exit', () => here.delete(p));
+}
 
 /** How much of what Claude Code said last on stderr a session that ended with an error reports. */
 const STDERR_TAIL = 2000;
@@ -459,8 +483,7 @@ const STDERR_TAIL = 2000;
 export function spawnHere(stderr: (text: string) => void): (o: SpawnOptions) => SpawnedProcess {
   return (o) => {
     const p = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
-    here.add(p);
-    p.once('exit', () => here.delete(p));
+    trackHere(p);
     p.stderr!.setEncoding('utf8').on('data', stderr);
     return p as SpawnedProcess;
   };

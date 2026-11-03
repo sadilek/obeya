@@ -1,5 +1,5 @@
 // Obeya's own settings, in `settings.json` under its home beside `canvases.json` and `demo.json`:
-// the language of Obeya's interface and the one its agents talk to the owner in, light or dark, the model and effort of each group of
+// the language of Obeya's interface and the one its agents talk to the owner in, light or dark, the harness, model and effort of each group of
 // agents, how other devices reach Obeya (remote.ts), and whether the bar shows the plan's usage limits (usage.ts). The owner chooses them in the settings sheet;
 // until then the system's language and look apply, the agents run as `AGENT_DEFAULTS` says, and
 // no other device reaches Obeya. Saving restarts nothing: the page loads again in the new
@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chosenConversationLanguage, chosenLanguage, conversationLanguageIn, OWNER_SETTINGS_FILE as SETTINGS_FILE, ownerLanguageIn, ownerSettingsWritten, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { type Language, LANGUAGES } from '../core/locale';
-import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, type AgentRole, type AgentSetting, type AgentsView, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView } from '../core/types';
+import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, type HarnessView, modelFits, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView } from '../core/types';
 import { BadRequest } from './board';
 
 interface Settings {
@@ -21,7 +21,7 @@ interface Settings {
   /** Light or dark; absent follows the system. */
   theme?: Theme;
   /** Only what differs from `AGENT_DEFAULTS`, so a changed default reaches what the owner left. */
-  agents?: Partial<Record<AgentRole, Partial<AgentSetting>>>;
+  agents?: Partial<Record<AgentRole, Chosen>>;
   /** How other devices reach Obeya; absent, they do not. */
   remote?: RemoteSetting;
   /** `false`: the bar does not show the plan's usage limits; absent, it does. */
@@ -102,41 +102,76 @@ function write(home: string, settings: Settings) {
   ownerSettingsWritten(home);
 }
 
-/** The known choices in a file's `agents` that differ from the defaults; anything else in it is left out. */
-function agentsOf(input: unknown): Partial<Record<AgentRole, Partial<AgentSetting>>> {
-  const o = (input && typeof input === 'object' ? input : {}) as Record<string, { model?: unknown; effort?: unknown } | undefined>;
-  const agents: Partial<Record<AgentRole, Partial<AgentSetting>>> = {};
+/** What the file says of a group: what differs from the preset. */
+type Chosen = Partial<AgentSetting>;
+
+/**
+ * The known choices in a file's `agents`: a harness chosen, and a model and effort that differ from
+ * the defaults; anything else in it is left out. A model differs from its harness's preset (the
+ * harness named, else Claude Code's), and only one that harness takes.
+ */
+function agentsOf(input: unknown): Partial<Record<AgentRole, Chosen>> {
+  const o = (input && typeof input === 'object' ? input : {}) as Record<string, { harness?: unknown; model?: unknown; effort?: unknown } | undefined>;
+  const agents: Partial<Record<AgentRole, Chosen>> = {};
   for (const role of AGENT_ROLES) {
-    const model = AGENT_MODELS.find((m) => m === o[role]?.model && m !== AGENT_DEFAULTS[role].model);
+    // a harness chosen stays, Claude Code too: otherwise the fallback would take its place on a machine with only Codex ready
+    const harness = HARNESSES.find((h) => h === o[role]?.harness);
+    const on = harness ?? AGENT_DEFAULTS[role].harness;
+    const given = o[role]?.model;
+    const model = typeof given === 'string' && modelFits(on, given) && given !== agentDefault(role, on).model ? given : undefined;
     const effort = AGENT_EFFORTS.find((e) => e === o[role]?.effort && e !== AGENT_DEFAULTS[role].effort);
-    if (model || effort) agents[role] = { ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
+    if (harness || model || effort) agents[role] = { ...(harness ? { harness } : {}), ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
   }
   return agents;
 }
 
-/** The model and effort a group of agents runs with: the owner's choice, else the default; read whenever one starts. */
-export const agentSetting = (home: string, role: AgentRole): AgentSetting => ({ ...AGENT_DEFAULTS[role], ...read(home).agents?.[role] });
-
-export function agentsView(home: string): AgentsView {
-  return { file: join(home, SETTINGS_FILE), agents: Object.fromEntries(AGENT_ROLES.map((r) => [r, agentSetting(home, r)])) as Record<AgentRole, AgentSetting> };
+/**
+ * The harness, model and effort a group of agents runs with: the owner's choice, else the default;
+ * read whenever one starts. `fallback`: the harness of a group the owner chose none for (Claude Code,
+ * unless this machine has only Codex). A model the harness does not take is its default.
+ */
+export function agentSetting(home: string, role: AgentRole, fallback: Harness = AGENT_DEFAULTS[role].harness): AgentSetting {
+  const chosen = read(home).agents?.[role] ?? {};
+  const harness = chosen.harness ?? fallback;
+  const preset = agentDefault(role, harness);
+  // a model chosen is one of the harness chosen with it, Claude Code's where none was
+  const model = chosen.model && (chosen.harness ?? AGENT_DEFAULTS[role].harness) === harness && modelFits(harness, chosen.model) ? chosen.model : preset.model;
+  return { harness, model, effort: chosen.effort ?? preset.effort };
 }
 
-/** Saves the choices for the groups given (`{ worker: { model: 'opus' } }`). Other groups and settings in the file stay. */
-export function saveAgents(home: string, input: unknown): AgentsView {
+/** Each group's setting, with the harnesses this machine has (`Harnesses.view`). */
+export function agentsView(home: string, harnesses: HarnessView[] = [], fallback?: Harness): AgentsView {
+  const agents = Object.fromEntries(AGENT_ROLES.map((r) => [r, agentSetting(home, r, fallback)])) as Record<AgentRole, AgentSetting>;
+  return { file: join(home, SETTINGS_FILE), agents, harnesses, preset: fallback ?? 'claude' };
+}
+
+/**
+ * Saves the choices for the groups given (`{ worker: { harness: 'codex' } }`). A harness chosen
+ * without a model takes that harness's default model. Other groups and settings in the file stay.
+ */
+export function saveAgents(home: string, input: unknown, harnesses: HarnessView[] = [], fallback?: Harness): AgentsView {
   const given = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const settings = read(home);
-  const agents: Record<string, unknown> = { ...settings.agents };
+  const agents: Partial<Record<AgentRole, Chosen>> = { ...settings.agents };
   for (const [role, choice] of Object.entries(given)) {
     if (!AGENT_ROLES.some((r) => r === role)) throw new BadRequest('invalid', `agents are one of ${AGENT_ROLES.join(', ')}`);
-    const { model, effort, ...other } = (choice && typeof choice === 'object' ? choice : {}) as Record<string, unknown>;
-    if (Object.keys(other).length) throw new BadRequest('invalid', 'a choice has a model and an effort');
-    if (model !== undefined && !AGENT_MODELS.some((m) => m === model)) throw new BadRequest('invalid', `model must be one of ${AGENT_MODELS.join(', ')}`);
+    const r = role as AgentRole;
+    const { harness, model, effort, ...other } = (choice && typeof choice === 'object' ? choice : {}) as Record<string, unknown>;
+    if (Object.keys(other).length) throw new BadRequest('invalid', 'a choice has a harness, a model and an effort');
+    if (harness !== undefined && !HARNESSES.some((h) => h === harness)) throw new BadRequest('invalid', `harness must be one of ${HARNESSES.join(', ')}`);
+    const before = agentSetting(home, r, fallback);
+    const on = (harness as Harness | undefined) ?? before.harness;
+    if (model !== undefined && (typeof model !== 'string' || !modelFits(on, model))) throw new BadRequest('invalid', on === 'claude' ? `model must be one of ${AGENT_MODELS.join(', ')}` : 'model must be a Codex model id');
     if (effort !== undefined && !AGENT_EFFORTS.some((e) => e === effort)) throw new BadRequest('invalid', `effort must be one of ${AGENT_EFFORTS.join(', ')}`);
-    agents[role] = { ...agents[role]!, ...(model !== undefined ? { model } : {}), ...(effort !== undefined ? { effort } : {}) };
+    // another harness starts from its own default model
+    const next = model ?? (on === before.harness ? before.model : agentDefault(r, on).model);
+    // the harness is kept once chosen, or where the group runs on another than the preset's
+    const keep = harness !== undefined || settings.agents?.[r]?.harness !== undefined || on !== AGENT_DEFAULTS[r].harness;
+    agents[r] = { ...(keep ? { harness: on } : {}), model: next as string, effort: (effort as AgentEffort | undefined) ?? before.effort };
   }
   write(home, { ...settings, agents: agentsOf(agents) });
-  console.log(`Obeya: models and effort of the agents saved to ${join(home, SETTINGS_FILE)}`);
-  return agentsView(home);
+  console.log(`Obeya: harness, model and effort of the agents saved to ${join(home, SETTINGS_FILE)}`);
+  return agentsView(home, harnesses, fallback);
 }
 
 /** A setting for other devices as the file or the page gives it; `null` for none or one Obeya cannot use. */
