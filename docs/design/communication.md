@@ -12,8 +12,9 @@ visible on a card.
   the one from before.
 - `reply(text)`: its answer to a note or feedback. It does not end the turn; with no work left, the
   turn ends with it and the card goes on waiting for approval.
-- `ask(question, options, multiple, pick, pick_why)`: returns at once; the worker ends its turn and
-  the answer is its next message. The owner picks one option (several when `multiple`), writes their
+- `ask(question, options, multiple, pick, pick_why, demo)`: returns at once; the worker ends its
+  turn and the answer is its next message. `demo` is what the owner is to look at to answer (drafts
+  side by side), shown on the card as a handover's demo is (see The demo on the card in Demos). The owner picks one option (several when `multiple`), writes their
   own answer, or both. `pick`/`pick_why` are what the worker would choose and why, marked „Würde ich
   nehmen“ on the card. Picks travel apart from the owner's words: the worker reads `They picked „…“.`
   and below it what they `added in their own words`; the log keeps both as one text, picks first.

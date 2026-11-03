@@ -143,7 +143,8 @@ export function recordingRuntime(inner: AgentRuntime, dir: string, home: string)
               await gitAsync(spec.cwd, 'bundle', 'create', '-q', join(dir, bundle), 'HEAD');
               kept.head = { bundle, from, to, ...((await descends(spec.cwd, from, to)) ? {} : { rewritten: true as const }) };
             }
-            const demoDir = t.name === HANDOVER ? (args.demo as { dir?: unknown } | undefined)?.dir : undefined;
+            // a question may bring a demo too (drafts to choose from)
+            const demoDir = t.name === HANDOVER || t.name === 'ask' ? (args.demo as { dir?: unknown } | undefined)?.dir : undefined;
             if (typeof demoDir === 'string' && existsSync(demoDir)) {
               const copy = `session-${i}/demo-${k}`;
               cpSync(demoDir, join(dir, copy), { recursive: true, filter: (src) => basename(src) !== '.work' });

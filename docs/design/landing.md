@@ -55,7 +55,11 @@ description for readers who have not seen Obeya) and reports it with `pr_opened(
 github.com or an Enterprise server (`https://<host>/<owner>/<repo>/pull/<n>`), or Forgejo and Gitea
 (`…/pulls/<n>`, also below a path). The host decides the forge, and Obeya records the URL with
 that forge's path: a Codeberg PR reported as `…/pull/<n>` (which Codeberg answers with 404) as
-`…/pulls/<n>`. Whatever form a URL was recorded in, each call reads it afresh: gh gets GitHub's
+`…/pulls/<n>`. Work that also needs a pull request in another repository (one that is no
+workspace of the card) gets it reported the same way, a call for each: the card's own is the one in
+its repository (by `origin`), which its landing names; one elsewhere is watched beside it, a PR
+reported again (opened again after it was closed) as before, and one in the card's repository
+reported anew replaces the card's own. Whatever form a URL was recorded in, each call reads it afresh: gh gets GitHub's
 `/pull/<n>` (an Enterprise PR recorded as `…/pulls/<n>` before gh was logged in there), and a PR
 already on a card is recognised in any form (a slash at the end, the host in capitals). An address
 with a login, a query or a fragment before the repository is no PR URL: the host it would be told
@@ -85,14 +89,17 @@ no other card.
   which a push over https with it stores). Quirks: no review threads, so the inline comments on one line
   form one, resolved when any of them is; mergeability is false while a new push is checked, so a
   conflict counts only if it holds at the next look; times are compared in UTC; checks are the head
-  commit's statuses, all pages.
+  commit's statuses and the conversation its comments, all pages; a dismissed request for changes
+  keeps its state and says so in a field of its own.
 
 A PR unreadable for ten minutes says why on its card, once.
 
-New comments, failed checks (once per check and commit) and a conflict (once per commit) go to the
-worker as a message saying what happened, leaving the how to the repository. Each review comment
-gets a reply in its own thread and the thread is resolved, unless the worker still wants the
-reviewer's answer; one summary comment is not enough. The owner's log gets a line per event.
+New comments, failed checks (once per check and commit), a conflict (once per commit) and a branch
+behind its base that branch protection wants up to date (once per commit) go to the worker as a
+message saying what happened, naming the PR where the card has several, leaving the how to the
+repository. Each comment on the code gets a reply in its own thread and the thread is resolved,
+unless the worker still wants the reviewer's answer; one summary comment is not enough. A summary
+or verdict that asks for nothing (a review without findings, an approval) gets no reply. The owner's log gets a line per event.
 Comments by the PR's author (the worker) and by accounts in `prNoise` are skipped; `<name>[bot]`
 counts as `<name>`. Only what needs judgement (a review comment that questions a decision, a
 conflict with product meaning) comes to the owner, as a question on the card; a PR closed without a
@@ -105,7 +112,16 @@ waits.
 every check passed, every thread is resolved, the worker is not in a turn, every reviewer who wrote
 has written since the PR's newest non-merge commit (merging the base in brings changes reviewed
 there), and whoever the author last asked for another look has answered (a rewritten summary
-counts, as bots often answer that way). A review older than the changes makes the worker ask for a
+counts, as bots often answer that way), and no reviewer's request for changes stands (GitHub's
+„Request changes“ and Forgejo's counterpart, until that reviewer approves or it is dismissed).
+Asking is a conversation comment of the author's that answers a reviewer whose latest word in the
+conversation before it was no passing verdict (a request for changes in a plain comment names
+nobody; the answer waits for that reviewer, another reviewer's word does not stand in for theirs),
+or that mentions an account (`@greptileai review`, outside code and quotes; then any reviewer's
+word answers). Passing is an approval or a confidence of at least 4/5; a thank-you that mentions
+nobody while every reviewer's latest word passes asks for nothing. A reviewer's words in a thread on
+the code count for the thread, not for the conversation. A comment a reviewer rewrites into
+anything but a passing verdict reaches the worker again. A review older than the changes makes the worker ask for a
 new one the repository's way (its skill, or a comment mentioning the bot), once per commit; a PR no
 reviewer wrote on waits for nobody.
 
@@ -118,10 +134,22 @@ needs the owner and says Obeya does not merge here, the worker hears so on appro
 makes it `live`; the setting is read each round, so a change applies to open PRs too. Anything new
 for the worker takes readiness back.
 
+A card with several pull requests (see PR loop) has each treated so, with its own repository's
+settings for all of them: the card is `live` once every one is merged, its own repository's merge
+being its landing; until then a merged one says what the card still waits for, on the card and in
+its log. One closed without a merge asks the owner as the card's own does, and holds up nothing
+unless it is reported again.
+
 #### The PR on the card
 
-The card shows the PR link, its checks (each linked to its run), a conflict or a failed merge;
-folded, „PR #42 · 1 Check rot · Konflikt“. Below, the review as last polled, oldest first: per round
+The card shows the PR link, its checks (each linked to its run), a conflict or a failed merge,
+and while it is not ready what it still waits for, in the order it is in the way: a conflict, the
+branch behind its base, a draft, branch protection (an approval, say), the forge still working out
+mergeability, checks red or running, open threads, a standing request for changes, a review of the newest commit, the reviewer's
+answer to a request for another look, the agent at work on it. Folded, „PR #42 · 1 Check rot ·
+Konflikt“, or what it waits for first („PR #42 · wartet auf Review“); a PR in another repository
+is named with it („PR docs #7“), and each of a card's open PRs has its block and its part of the
+folded line. Below, the review as last polled, oldest first: per round
 a reviewer commented in („Runde 2 · greptile-apps · 3 Anmerkungen, 1 offen“), each comment folded to
 its first line with its thread's state and reply count, unfolded with file, comment and replies; the
 conversation between the rounds. Bots' HTML is stripped except badge names (Greptile's „P1“).
@@ -392,6 +420,21 @@ A card no agent worked on, a prototype or an archived card has no field.
   two minutes.
 - **A rewritten summary is an answer, an old review no review** (2026-10-02). Rejected: waiting for
   new comments only (cards stuck) and counting any review (a PR merged on a stale 3/5).
+- **A comment after a passing verdict asks for another look only by a mention** (2026-11-02,
+  issue #45): a PR with Greptile's 5/5 and no findings sat an hour unmerged because the worker's
+  thank-you for the summary counted as a request no reviewer would answer. After any other word of
+  a reviewer, the author's answer still waits for theirs: reviewers' requests for changes on the
+  owner's PRs name nobody, and a plain reply that keeps the code must not let the PR merge. Rejected:
+  counting any comment of the author's (that stall), only mentions (an early merge after such a
+  reply), and dropping the request altogether (a push committed before the last review but pushed
+  after it shows only through the request).
+- **The card says what its PR waits for** (2026-11-02, issue #45), from the same reasons that
+  decide readiness, so the two cannot disagree. Rejected: saying it only after a long wait, which
+  leaves the owner guessing until then.
+- **A card's PRs in other repositories are watched with it, and merged by the same rules**
+  (2026-11-02, issue #45): the approval covers the whole work, and a card went `live` while its
+  second PR was still open. Rejected: a follow-up card per further PR (the owner made one by hand),
+  and leaving such PRs to the owner.
 - **Approval covers the PR, its monitoring and the merge; Obeya merges ready PRs itself**
   (2026-10-05): the owner approves the demo, not the code. Rejected: leaving the merge to the owner,
   which added only waiting (PRs sat for days).

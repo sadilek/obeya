@@ -1560,6 +1560,30 @@ describe('a step the Koordinator takes once it has looked something up', () => {
     expect(later.brief).toContain(`the answer A${asking!.id} came in, and you took up the step you had looked it up for → you: "Zwei neue Aufgaben`);
   });
 
+  test('the tasks of a step it looked up land where the owner was when they asked, also after a restart', async () => {
+    const place = { x: 1200, y: -300, view: { x: 800, y: -600, w: 900, h: 700 } };
+    const k = looking();
+    const heard = k.hear('leg für jedes offene Issue eine Aufgabe an', { place });
+    await settle();
+    runtime.last.call('look_up', { question: 'Welche Issues sind offen?', then: 'Create a task for each.', confirm: 'Ich lese nach und lege sie dann an.' });
+    runtime.last.emit({ type: 'idle' });
+    await heard;
+    const [asking] = board.snapshot().talk;
+    board.answerTalk(asking!.id, '#3 Login\n#4 Logout', 'koordinator');
+    // the server stops before it takes the step up; the next one takes it up where the owner was
+    looking().resume();
+    await until(() => runtime.last.inbox.length === 1);
+    runtime.last.call('act', { actions: [{ do: 'new_card', title: 'Login' }, { do: 'new_card', title: 'Logout' }], confirm: 'Zwei neue Aufgaben.' });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => executed.length === 2);
+    expect(executed).toMatchObject([
+      { do: 'newCard', title: 'Login', place },
+      { do: 'newCard', title: 'Logout', place },
+    ]);
+    expect(board.snapshot().talk[0]!.then).toBeUndefined();
+    expect(board.exchange(asking!.id)!.thenPlace).toBeUndefined();
+  });
+
   test('a question looked up without a step is only answered', async () => {
     const k = looking();
     await say(k, 'welche Issues sind offen?', 'look_up', { question: 'Welche Issues sind offen?', confirm: 'Ich schaue nach.' });

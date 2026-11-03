@@ -8,7 +8,7 @@ import { type Language, languageOf } from '../core/locale';
 import { MESSAGES } from '../core/messages';
 import type { OutdatedBy } from '../core/page-changes';
 import type { NotAProject } from '../core/plan-doc';
-import { type AgentEffort, type AgentModel, type AgentRole, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
+import { type AgentEffort, type AgentModel, type AgentRole, type CardState, type ConfigProblemCode, type DemoKind, type ClipProblem, type DemoSettingsProblem, type ErrorCode, EXPORT_HTML_MAX, type NarrationLanguage, type Theme, type VoiceKind, type Idea, type Need, type NextStep, type Queue, type OwnerHold, type RestartReason, type SetupId, type VoiceSetupId, type CloudPreset, type MachineSectionId, type NeededId, type PrId, type PrWait, type Snooze, type Awaited, type AwaitedState, type LeavingClone, stopped } from '../core/types';
 
 /** A list in a sentence: „a, b und c“. */
 const listOf = (items: string[], and: string) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ${and} ${items.at(-1)}`);
@@ -782,7 +782,29 @@ const de = {
     hideHint: 'Tipp ausblenden',
   },
   pr: {
-    title: (n: number) => `Pull Request #${n}`,
+    title: (n: number, repo?: string) => `Pull Request ${repo ? `${repo.split('/').pop()} ` : ''}#${n}`,
+    merged: 'Gemergt. Die Karte wird live, sobald auch die anderen Pull Requests gemergt sind.',
+    closed: 'Ohne Merge geschlossen.',
+    waits: (waits: PrWait[]) =>
+      `Wartet noch auf ${waits
+        .map(
+          (w) =>
+            ({
+              conflict: 'die Lösung des Konflikts',
+              behind: 'den Abgleich mit dem Zielbranch, den das Repository vor dem Merge verlangt',
+              draft: 'das Ende des Entwurfsstatus',
+              protection: 'den Branch-Schutz, der noch etwas verlangt (etwa eine Freigabe)',
+              forge: 'die Prüfung, ob er sich mergen lässt',
+              checksFailed: 'die Behebung roter Checks',
+              checks: 'laufende Checks',
+              threads: 'die Erledigung offener Anmerkungen',
+              changes: 'die Zustimmung eines Reviewers, der Änderungen verlangt hat',
+              review: 'ein Review des neuesten Commits',
+              answer: 'die Antwort des Reviewers auf die Bitte um ein neues Review',
+              agent: 'den Agenten, der gerade daran arbeitet',
+            })[w],
+        )
+        .join(', ')}.`,
     conflict: 'Konflikt mit dem Zielbranch; der Agent bringt den Branch auf Stand.',
     ready: (reason: string) => `Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. Obeya konnte nicht mergen (${reason}); bitte selbst mergen.`,
     manual: 'Bereit zum Mergen: Checks grün, alle Anmerkungen erledigt, das Review ist durch. In diesem Repository mergt Obeya nicht selbst (Einstellung „Automatisch mergen“): bitte selbst mergen oder dem Agenten sagen, was noch fehlt.',
@@ -800,12 +822,27 @@ const de = {
     agent: 'Agent',
     onForge: 'Im Pull Request',
     edited: (time: string) => `${time} überarbeitet`,
-    short: (n: number, failed: number, conflict: boolean, ready?: boolean, held?: string) =>
-      [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : '', ready ? 'Bereit zum Mergen' : '', held ? `Review nur ${held}` : '']
+    /** On the canvas: what the PR waits for first, after what the line names already (a red check, a conflict). */
+    waitShort: {
+      conflict: 'Konflikt',
+      behind: 'hinter dem Zielbranch',
+      draft: 'Entwurf',
+      protection: 'Branch-Schutz',
+      forge: 'wird geprüft',
+      checksFailed: 'Checks rot',
+      checks: 'Checks laufen',
+      threads: 'Anmerkungen offen',
+      changes: 'Änderungen verlangt',
+      review: 'wartet auf Review',
+      answer: 'wartet auf Reviewer',
+      agent: 'Agent arbeitet',
+    } satisfies Record<PrWait, string>,
+    short: (pr: string, failed: number, conflict: boolean, ready?: boolean, held?: string, wait?: string) =>
+      [`PR ${pr}`, failed ? `${failed} ${failed === 1 ? 'Check rot' : 'Checks rot'}` : '', conflict ? 'Konflikt' : '', ready ? 'Bereit zum Mergen' : '', held ? `Review nur ${held}` : '', wait ?? '']
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { kept: 'Die Demo bleibt hier abrufbar.', again: 'Die Demo der letzten Übergabe. Der Agent arbeitet wieder an der Aufgabe.',
+  demo: { kept: 'Die Demo bleibt hier abrufbar.', again: 'Die Demo der letzten Übergabe. Der Agent arbeitet wieder an der Aufgabe.', asked: 'Zur Frage des Agenten.', askedAgain: 'Zur Frage des Agenten. Er arbeitet wieder an der Aufgabe.',
     artifact: 'HTML-Artefakt des Agenten',
     play: 'Abspielen',
     zoom: 'Größer zeigen (Z)',
@@ -2724,7 +2761,29 @@ const en: Strings = {
     hideHint: 'Hide the tip',
   },
   pr: {
-    title: (n: number) => `Pull request #${n}`,
+    title: (n: number, repo?: string) => `Pull request ${repo ? `${repo.split('/').pop()} ` : ''}#${n}`,
+    merged: 'Merged. The card goes live once the other pull requests are merged too.',
+    closed: 'Closed without a merge.',
+    waits: (waits: PrWait[]) =>
+      `Still waiting for ${waits
+        .map(
+          (w) =>
+            ({
+              conflict: 'the conflict to be resolved',
+              behind: 'the branch to catch up with its base, which the repository requires before a merge',
+              draft: 'the draft to be marked ready',
+              protection: 'branch protection, which still requires something (an approval, say)',
+              forge: 'the check whether it can be merged',
+              checksFailed: 'red checks to be fixed',
+              checks: 'running checks',
+              threads: 'open comments to be settled',
+              changes: 'the approval of a reviewer who requested changes',
+              review: 'a review of the newest commit',
+              answer: 'the reviewer’s answer to the request for another review',
+              agent: 'the agent, who is at work on it',
+            })[w],
+        )
+        .join(', ')}.`,
     conflict: 'Conflict with the target branch; the agent brings the branch up to date.',
     ready: (reason: string) => `Ready to merge: checks green, all comments settled, the review is through. Obeya could not merge (${reason}); please merge it yourself.`,
     manual: 'Ready to merge: checks green, all comments settled, the review is through. In this repository Obeya does not merge by itself (setting “Merge automatically”): please merge it yourself or tell the agent what is still missing.',
@@ -2742,12 +2801,27 @@ const en: Strings = {
     agent: 'Agent',
     onForge: 'In the pull request',
     edited: (time: string) => `revised ${time}`,
-    short: (n: number, failed: number, conflict: boolean, ready?: boolean, held?: string) =>
-      [`PR #${n}`, failed ? `${failed} ${failed === 1 ? 'check red' : 'checks red'}` : '', conflict ? 'Conflict' : '', ready ? 'Ready to merge' : '', held ? `Review only ${held}` : '']
+    /** On the canvas: what the PR waits for first, after what the line names already (a red check, a conflict). */
+    waitShort: {
+      conflict: 'Conflict',
+      behind: 'behind its base',
+      draft: 'Draft',
+      protection: 'branch protection',
+      forge: 'being checked',
+      checksFailed: 'checks red',
+      checks: 'checks running',
+      threads: 'comments open',
+      changes: 'changes requested',
+      review: 'waits for review',
+      answer: 'waits for reviewer',
+      agent: 'agent at work',
+    } satisfies Record<PrWait, string>,
+    short: (pr: string, failed: number, conflict: boolean, ready?: boolean, held?: string, wait?: string) =>
+      [`PR ${pr}`, failed ? `${failed} ${failed === 1 ? 'check red' : 'checks red'}` : '', conflict ? 'Conflict' : '', ready ? 'Ready to merge' : '', held ? `Review only ${held}` : '', wait ?? '']
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { kept: 'The demo stays available here.', again: 'The demo of the last handover. The agent is working on the task again.',
+  demo: { kept: 'The demo stays available here.', again: 'The demo of the last handover. The agent is working on the task again.', asked: 'For the agent’s question.', askedAgain: 'For the agent’s question. The agent is working on the task again.',
     artifact: 'The agent’s HTML artifact',
     play: 'Play',
     zoom: 'Show larger (Z)',

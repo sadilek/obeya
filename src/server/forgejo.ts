@@ -2,7 +2,7 @@
 // the login git has for the host. Tests use canned answers.
 
 import { messageOf } from '../core/text';
-import { type Forge, type PrStatus, parsePrUrl, withBodyFile } from './forge';
+import { type Forge, type PrStatus, parsePrUrl, verdictOf, withBodyFile } from './forge';
 import { spawnOutput } from './spawn';
 import { GIT } from './workspaces';
 
@@ -50,6 +50,8 @@ interface FjReview {
   user: FjUser | null;
   body: string;
   state: string;
+  /** A request for changes dismissed since keeps its state. */
+  dismissed?: boolean;
   submitted_at?: string;
   comments_count: number;
 }
@@ -133,7 +135,8 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
       const [pr, allReviews, conversation, commits, viewer] = await Promise.all([
         api(cwd, base, 'GET', pull) as Promise<FjPr>,
         all<FjReview>(cwd, base, `${pull}/reviews`),
-        api(cwd, base, 'GET', `${repo}/issues/${number}/comments`).then((c) => (c as FjComment[] | undefined) ?? []),
+        // every page: a request on a later one must not let the PR pass for ready
+        all<FjComment>(cwd, base, `${repo}/issues/${number}/comments`),
         all<{ commit: { committer: { date: string } }; parents?: unknown[] }>(cwd, base, `${pull}/commits?verification=false&files=false`),
         // the account the login is for: on a review card, its comments are the owner's own
         (api(cwd, base, 'GET', 'user') as Promise<FjUser | undefined>).then((u) => u?.login, () => undefined),
@@ -191,8 +194,8 @@ export const makeForgejoForge = (forgejo: Api, origin: (cwd: string) => Promise<
             url: c.html_url,
           })),
           ...reviews
-            .filter((r) => r.body.trim())
-            .map((r) => ({ id: `r${r.id}`, author: login(r.user), body: r.body, ...(r.submitted_at ? { at: utc(r.submitted_at) } : {}) })),
+            .map((r) => ({ id: `r${r.id}`, author: login(r.user), body: r.body, ...(r.submitted_at ? { at: utc(r.submitted_at) } : {}), ...verdictOf(r.dismissed ? 'DISMISSED' : r.state) }))
+            .filter((r) => r.body.trim() || r.verdict),
           ...[...threads.values()].flatMap(([first, ...replies]) =>
             [first!, ...replies].map((c) => ({
               id: `i${c.id}`,

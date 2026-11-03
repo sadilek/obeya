@@ -587,8 +587,19 @@ export function Detail(p: Props) {
                           (!demoWaits || sharing) &&
                           ((shown, latest) => (
                             <>
-                              {!demoWaits && latest && <p className="hint">{item.state === 'working' || item.state === 'waiting' ? t.demo.again : t.demo.kept}</p>}
-                              {sharing && shareBox(shown)}
+                              {!demoWaits && latest && (
+                                <p className="hint">
+                                  {shown.asked && item.state === 'waiting' && item.need === 'question'
+                                    ? t.demo.asked
+                                    : item.state === 'working' || item.state === 'waiting'
+                                      ? shown.asked
+                                        ? t.demo.askedAgain
+                                        : t.demo.again
+                                      : t.demo.kept}
+                                </p>
+                              )}
+                              {/* drafts shown with a question are not the work's demo: the handover brings the one to share */}
+                              {sharing && !shown.asked && shareBox(shown)}
                             </>
                           ))
                         }
@@ -599,6 +610,7 @@ export function Detail(p: Props) {
                 {item.pr && (item.state === 'inPr' || item.state === 'waiting') && (
                   <PrBox pr={item.pr} {...(item.contribution?.held && item.state === 'waiting' ? { held: item.contribution.held, author: item.contribution.author, card: item.id, save: (body: string) => api.act(item.id, { action: 'editHeld', body }) } : {})} />
                 )}
+                {(item.state === 'inPr' || item.state === 'waiting') && item.morePrs?.map((pr) => <PrBox key={pr.url} pr={pr} />)}
                 {item.state === 'inPr' && !item.pr && <p className="hint">{t.pr.opening}</p>}
                 {item.finishing && finished(item.state) && <p className="hint">{item.followUp ? t.followingUpLong : item.state === 'done' ? t.finishingDoneLong : t.finishingLong}</p>}
                 {brief}
@@ -2369,11 +2381,13 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
  * commits, the text posted with them, and the findings it asks the contributor for.
  */
 function PrBox({ pr, held, author, card, save }: { pr: PullRequest; held?: HeldChanges; author?: string; card?: string; save?: (body: string) => Promise<void> }) {
+  // a conflict says so on its own line
+  const waits = pr.ready ? [] : (pr.waits ?? []).filter((w) => w !== 'conflict' || !pr.conflict);
   return (
     <div className="question pr">
       <h4>
         <a href={pr.url} target="_blank" rel="noreferrer">
-          {t.pr.title(pr.number)} ↗
+          {t.pr.title(pr.number, pr.repo)} ↗
         </a>
       </h4>
       {held && (
@@ -2391,7 +2405,10 @@ function PrBox({ pr, held, author, card, save }: { pr: PullRequest; held?: HeldC
           {held.asks.length > 0 && author && <div className="pr-held-asks">{t.review.heldAsks(held.asks, author)}</div>}
         </div>
       )}
+      {pr.merged && <div className="q-text">{t.pr.merged}</div>}
+      {pr.closed && <div className="q-text">{t.pr.closed}</div>}
       {pr.conflict && <div className="q-text">{t.pr.conflict}</div>}
+      {waits.length > 0 && <div className="q-text">{t.pr.waits(waits)}</div>}
       {pr.ready && <div className="q-text">{pr.held ? t.pr.held(pr.held.score, pr.held.by) : pr.manual ? t.pr.manual : t.pr.ready(pr.mergeError ?? '')}</div>}
       {pr.checks.length > 0 ? (
         <ul className="checks">

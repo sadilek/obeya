@@ -227,6 +227,114 @@ describe('watching', () => {
     expect(runtime.last.inbox.at(-1)).toContain('pull request was merged');
   });
 
+  test('a summary without findings that the worker thanks for is merged: a reply mentioning nobody asks for no new review', async () => {
+    // a PR on 2026-11-02: Greptile gave 5/5 with no findings, the worker answered the summary, and the PR sat unmerged for an hour
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.checks = [{ name: 'Greptile Review', state: 'success' }];
+    status.comments = [{ id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5\n\nNo issues found.', at: '2026-11-02T12:42:00Z' }];
+    await watcher.poll();
+    // the summary goes to the worker, which is told it needs no reply
+    expect(runtime.last.inbox.at(-1)).toContain('needs no reply');
+    expect(merges).toEqual([]);
+    expect(board.item(id)!.pr!.waits).toEqual(['agent']);
+    status.comments.push({ id: 'cTHANKS', author: 'owner', body: 'Thanks for the review, nothing to change.', at: '2026-11-02T12:43:00Z' });
+    runtime.last.emit({ type: 'idle' });
+    await watcher.poll();
+    expect(merges).toEqual(['aaa']);
+    expect(state(id)).toBe('live');
+  });
+
+  test('a request for changes that mentions nobody reaches the worker, and its plain reply is not merged before the reviewer answers', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.checks = [{ name: 'CI', state: 'success' }];
+    status.comments = [{ id: 'cLEAD', author: 'lead', body: 'Please rename the export to invoices.csv.', at: '2026-11-02T12:20:00Z' }];
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain('Please rename the export to invoices.csv.');
+    expect(merges).toEqual([]);
+    // the worker answers without a push and without mentioning the reviewer
+    status.comments.push({ id: 'cWHY', author: 'owner', body: 'Kept the name: the importer expects export.csv.', at: '2026-11-02T12:30:00Z' });
+    runtime.last.emit({ type: 'idle' });
+    await watcher.poll();
+    expect(merges).toEqual([]);
+    expect(board.item(id)!.pr!.waits).toEqual(['answer']);
+    // a review asking for changes, without words of its own, holds it too
+    status.comments.push({ id: 'rCR', author: 'lead', body: '', at: '2026-11-02T12:35:00Z', verdict: 'changes' });
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain('lead (requests changes)');
+    runtime.last.emit({ type: 'idle' });
+    await watcher.poll();
+    expect(board.item(id)!.pr!.waits).toEqual(['changes']);
+    expect(merges).toEqual([]);
+    // the reviewer approves
+    status.comments.push({ id: 'rOK', author: 'lead', body: '', at: '2026-11-02T12:40:00Z', verdict: 'approved' });
+    await watcher.poll();
+    expect(merges).toEqual(['aaa']);
+  });
+
+  test('a seen comment rewritten into a request reaches the worker again; a summary rewritten to a passing verdict does not', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.checks = [{ name: 'CI', state: 'pending' }];
+    status.comments = [{ id: 'cSUM', author: 'greptile', body: 'Confidence Score: 5/5', at: '2026-11-02T12:10:00Z' }];
+    await watcher.poll();
+    runtime.last.emit({ type: 'idle' });
+    const n = runtime.last.inbox.length;
+    status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 5/5, after another look.', edited: '2026-11-02T12:20:00Z' };
+    await watcher.poll();
+    expect(runtime.last.inbox.length).toBe(n);
+    status.comments[0] = { ...status.comments[0]!, body: 'Confidence Score: 2/5. Please fix the missing authentication check.', edited: '2026-11-02T12:30:00Z' };
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain('missing authentication check');
+    // once only
+    runtime.last.emit({ type: 'idle' });
+    const m = runtime.last.inbox.length;
+    await watcher.poll();
+    expect(runtime.last.inbox.length).toBe(m);
+    expect(state(id)).toBe('inPr');
+  });
+
+  test('the card says what its PR waits for, and the worker hears of a branch behind its base once per commit', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    status.checks = [{ name: 'CI', state: 'pending' }];
+    status.comments = [
+      { id: 'cSUM', author: 'greptile', body: 'Confidence Score: 5/5', at: '2026-11-02T12:42:00Z' },
+      { id: 'cPING', author: 'owner', body: '@greptile review', at: '2026-11-02T12:50:00Z' },
+    ];
+    board.work(id, { pr: JSON.stringify({ ...JSON.parse(board.row(id).pr!), seen: ['cSUM'] }) });
+    await watcher.poll();
+    expect(board.item(id)!.pr!.waits).toEqual(['checks', 'answer']);
+    // branch protection that wants the branch up to date: the worker brings it there
+    status.checks = [{ name: 'CI', state: 'success' }];
+    status.mergeState = 'BEHIND';
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain('is behind its base branch');
+    expect(board.events(id).at(-1)!.text).toContain('hinter dem Zielbranch');
+    expect(board.item(id)!.pr!.waits).toEqual(['behind', 'answer', 'agent']);
+    runtime.last.emit({ type: 'idle' });
+    const inbox = runtime.last.inbox.length;
+    await watcher.poll();
+    expect(runtime.last.inbox.length).toBe(inbox);
+    // an approval branch protection still wants
+    status.mergeState = 'BLOCKED';
+    status.comments[0] = { ...status.comments[0]!, edited: '2026-11-02T12:55:00Z' };
+    await watcher.poll();
+    expect(board.item(id)!.pr!.waits).toEqual(['protection']);
+    status.mergeState = 'CLEAN';
+    await watcher.poll();
+    expect(merges).toEqual(['aaa']);
+  });
+
   test('a push the reviewer has not seen is not merged: the worker is asked to request a new review, once per commit', async () => {
     // a PR on 2026-10-02: the fix after Greptile's 3/5 was pushed without a re-review request
     const id = await inPr();
@@ -587,5 +695,111 @@ describe('gh slow to answer', () => {
     expect(performance.now() - t).toBeLessThan(5000);
     // reading it failed: the card says so if it goes on failing
     expect(JSON.parse(board.row(slow).pr!).readError).toBeDefined();
+  });
+});
+
+describe('pull requests in several repositories', () => {
+  const OTHER = 'https://github.com/acme/docs/pull/7';
+  let statuses: Record<string, PrStatus>;
+
+  beforeEach(() => {
+    workers = new Workers({ board, runtime, workspaces, adapter: settings, remote: 'git@github.com:acme/app.git' });
+    const open = (): PrStatus => ({ state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'aaa', author: 'owner', checks: [{ name: 'CI', state: 'pending' }], comments: [] });
+    statuses = { [URL_]: open(), [OTHER]: { ...open(), head: 'ddd' } };
+    const forge: Forge = {
+      ...noContributions,
+      open: async () => '',
+      status: async (_cwd, url) => statuses[url]!,
+      body: async () => '',
+      setBody: async () => {},
+      merge: async (_cwd, url, head) => {
+        merges.push(head);
+        statuses[url]!.state = 'MERGED';
+      },
+    };
+    watcher = new PrWatcher(board, workers, forge, () => main, () => settings);
+  });
+
+  test('each is watched; the card is live once all are merged, with its own repository’s merge as the landing', async () => {
+    const id = await inPr();
+    // the one in the other repository reported first: the card's own is still to come
+    runtime.last.call('pr_opened', { url: OTHER });
+    expect(board.item(id)!.pr).toBeUndefined();
+    expect(board.item(id)!.morePrs).toMatchObject([{ url: OTHER, number: 7, repo: 'acme/docs' }]);
+    expect(board.events(id).at(-1)!.text).toBe('Pull Request docs #7 geöffnet.');
+    runtime.last.call('pr_opened', { url: URL_ });
+    expect(board.item(id)!.pr).toMatchObject({ url: URL_, number: 42 });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    // a failed check on the other one goes to the worker, naming that pull request
+    statuses[OTHER]!.checks = [{ name: 'CI', state: 'failure' }];
+    await watcher.poll();
+    expect(runtime.last.inbox.at(-1)).toContain(`Checks failed on your pull request (${OTHER})`);
+    expect(board.item(id)!.morePrs![0]!.waits).toEqual(['checksFailed', 'agent']);
+    runtime.last.emit({ type: 'idle' });
+    // the card's own is ready and merged; the card waits for the other
+    statuses[URL_]!.checks = [{ name: 'CI', state: 'success' }];
+    await watcher.poll();
+    expect(merges).toEqual(['aaa']);
+    expect(state(id)).toBe('inPr');
+    expect(board.item(id)!.pr!.merged).toBe(true);
+    expect(board.events(id).at(-1)!.text).toBe('Pull Request #42 gemergt. Live, sobald auch Pull Request docs #7 gemergt ist.');
+    // the other one fixed and merged: now the card is live
+    statuses[OTHER]!.checks = [{ name: 'CI', state: 'success' }];
+    await watcher.poll();
+    expect(merges).toEqual(['aaa', 'ddd']);
+    expect(state(id)).toBe('live');
+    expect(JSON.parse(board.row(id).shipped!).pr).toEqual({ url: URL_, number: 42 });
+  });
+
+  test('one in another repository closed without a merge asks the owner, and holds up nothing once reported again and merged', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.call('pr_opened', { url: OTHER });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    statuses[OTHER]!.state = 'CLOSED';
+    await watcher.poll();
+    expect(state(id)).toBe('waiting:question');
+    expect(board.item(id)!.morePrs![0]!.closed).toBe(true);
+    // the worker opened it again and reports it: watched as before
+    statuses[OTHER]!.state = 'OPEN';
+    runtime.last.call('pr_opened', { url: OTHER });
+    expect(board.item(id)!.morePrs![0]!.closed).toBeUndefined();
+    expect(board.item(id)!.morePrs).toHaveLength(1);
+  });
+
+  test('the card’s own merged and the other closed, left closed by the owner: the card is live', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    runtime.last.call('pr_opened', { url: OTHER });
+    runtime.last.emit({ type: 'idle' });
+    runtime.last.emit({ type: 'idle' });
+    statuses[URL_]!.checks = [{ name: 'CI', state: 'success' }];
+    await watcher.poll();
+    expect(merges).toEqual(['aaa']);
+    expect(state(id)).toBe('inPr');
+    statuses[OTHER]!.state = 'CLOSED';
+    await watcher.poll();
+    expect(state(id)).toBe('waiting:question');
+    workers.answer(id, 'Leave it closed.');
+    runtime.last.emit({ type: 'idle' });
+    await watcher.poll();
+    expect(state(id)).toBe('live');
+  });
+
+  test('another PR in the card’s repository in place of its own starts afresh', async () => {
+    const id = await inPr();
+    runtime.last.call('pr_opened', { url: URL_ });
+    board.work(id, { pr: JSON.stringify({ ...JSON.parse(board.row(id).pr!), seen: ['c1'], merged: 'm1', more: [{ url: OTHER, number: 7, repo: 'acme/docs', seen: [], reported: [] }] }) });
+    runtime.last.call('pr_opened', { url: 'https://github.com/acme/app/pull/43' });
+    const pr = JSON.parse(board.row(id).pr!);
+    expect(pr).toMatchObject({ url: 'https://github.com/acme/app/pull/43', number: 43, seen: [] });
+    expect(pr.merged).toBeUndefined();
+    expect(pr.more).toHaveLength(1);
+    // the same repository name on another host is another repository
+    runtime.last.call('pr_opened', { url: 'https://codeberg.org/acme/app/pulls/3' });
+    expect(board.item(id)!.pr!.number).toBe(43);
+    expect(board.item(id)!.morePrs!.map((p) => p.number)).toEqual([7, 3]);
   });
 });

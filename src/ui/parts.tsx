@@ -4,7 +4,7 @@ import { memo, type MouseEvent, type ReactNode, useEffect, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { type Bounds, dependencyOrder, shapeOf } from '../core/layout';
 import { clip } from '../core/text';
-import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
+import { answering, type AppUpdate, type CanvasInfo, type BlockedClone, type ClonePool, finished, finishedArchivable, finishingUp, handedOver, type Item, needsYou, openQuestions, pausable, type PendingRestart, halted, type PoolHost, type ProjectHistory, type PullRequest, type SourceUpdate, stoppedArchivable, titleFrom } from '../core/types';
 import { ProjectTalk } from './koordinator';
 import { api } from './api';
 import type { Cam, Sides } from './camera';
@@ -26,6 +26,16 @@ const firstLine = (md: string) =>
 /** The state whose colour an open card wears: a demo whose worker takes in the owner's answer is at work. */
 /** The colour a card's state gives its unfolded sheet: a snoozed card's is pencil grey, as on the canvas. */
 export const shownState = (i: Item) => (i.snoozed ? 'muted' : i.kind === 'question' ? 'question' : answering(i) ? 'working' : i.state);
+
+/** A card's pull requests still open as far as Obeya knows: its own and those in other repositories. */
+export const openPrs = (item: Item): PullRequest[] => [...(item.pr ? [item.pr] : []), ...(item.morePrs ?? [])].filter((p) => !p.merged && !p.closed);
+
+/** A pull request's line on the canvas: its checks, a conflict, whether it is ready, and else what it waits for first. */
+const prShort = (p: PullRequest) => {
+  // a red check and a conflict the line names already
+  const wait = p.ready ? undefined : p.waits?.find((w) => w !== 'conflict' && w !== 'checksFailed');
+  return t.pr.short(`${p.repo ? `${p.repo.split('/').pop()} ` : ''}#${p.number}`, p.checks.filter((c) => c.state === 'failure').length, p.conflict, p.ready, p.held?.score, wait && t.pr.waitShort[wait]);
+};
 
 export const landedRef = (l: NonNullable<Item['landedPart']>) => (l.pr ? `PR #${l.pr.number}` : (l.commit?.slice(0, 7) ?? ''));
 
@@ -167,10 +177,10 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
   const open = findings.filter((f) => f.status === 'open');
   const status = results
     ? [t.review.checks(results), ...(item.contribution?.clash ? [t.review.clashShort] : []), t.review.findings(findings.length, open.length, open.filter((f) => f.security).length)].join(' · ')
-    : item.state === 'working' || item.finishing || answering(item) || (item.state === 'inPr' && (!item.pr || item.contribution))
+    : item.state === 'working' || item.finishing || answering(item) || (item.state === 'inPr' && (!openPrs(item).length || item.contribution))
       ? item.statusLine && excerpt(item.statusLine)
-      : item.state === 'inPr' && item.pr
-        ? t.pr.short(item.pr.number, item.pr.checks.filter((c) => c.state === 'failure').length, item.pr.conflict, item.pr.ready, item.pr.held?.score)
+      : item.state === 'inPr'
+        ? openPrs(item).map(prShort).join(' | ')
         : undefined;
   // a proposal being reworked says that in place of its state: the kind line above already calls it a proposal
   const revising = item.state === 'proposal' && item.proposal?.revising;

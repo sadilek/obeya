@@ -91,13 +91,15 @@ export function onPaintTime(frames: Frame[], times: (number | null)[]): Frame[] 
 /**
  * Each frame with how long it is held in the video, from `t0` to `tEnd`: until the next frame,
  * less what a cut takes out. A frame shown only inside a cut is dropped; the last one before a
- * cut ends carries on after it.
+ * cut ends carries on after it. The first frame shows from t0 even when it was painted later (a take
+ * starts once a frame has come, but its clock can place it a moment after), so the frames fill the
+ * whole video.
  */
 export function frameDurations(frames: Frame[], t0: number, tEnd: number, cuts: Cut[]) {
   const at = (t: number) => videoTime(Math.max(t, t0), t0, cuts);
   const firstIdx = Math.max(0, frames.findLastIndex((f) => f.t <= t0));
   const used = frames.slice(firstIdx).filter((f) => f.t < tEnd);
-  const held = used.map((f, i) => ({ file: f.file, seconds: (i + 1 < used.length ? at(used[i + 1]!.t) : at(tEnd)) - at(f.t) }));
+  const held = used.map((f, i) => ({ file: f.file, seconds: (i + 1 < used.length ? at(used[i + 1]!.t) : at(tEnd)) - (i === 0 ? 0 : at(f.t)) }));
   return held.filter((h, i) => h.seconds >= 0.0005 || i === held.length - 1).map((h) => ({ ...h, seconds: Math.max(0.001, h.seconds) }));
 }
 

@@ -45,6 +45,8 @@ import {
   type SettingProposal,
   type SettingProposalState,
   type PrReviewEntry,
+  type PrWait,
+  type PullRequest,
   type ProjectHistory,
   type Proposal,
   type Superseded,
@@ -100,9 +102,25 @@ export interface PrState {
   held?: { score: string; by: string };
   /** A ready PR the repository's settings leave to the people on the forge to merge (`autoMerge` off). */
   manual?: true;
+  /** The commit a branch behind its base, which the repository wants up to date, was last reported for. */
+  behindHead?: string;
   checks?: { name: string; state: 'pending' | 'success' | 'failure'; url?: string }[];
   /** The review as last seen, for the card. */
   review?: PrReviewEntry[];
+  /** What the PR waits for before it is merged, as last polled; gone once it is ready. */
+  waits?: PrWait[];
+  /** `owner/name` of the PR's repository, where that is another than the card's. */
+  repo?: string;
+  /** Merged while the card's other pull requests were not yet: the commit the merge put on the base, where the forge said. */
+  merged?: string | true;
+  /** Closed without a merge: the owner was asked, and it holds up nothing. */
+  closed?: true;
+  /**
+   * On the card's first pull request: the further ones the worker opened for the same work (in
+   * other repositories, or a second in its own), each watched as the first; the card is live once
+   * all are merged. The first is the one in the card's repository, which the landing is about.
+   */
+  more?: PrState[];
 }
 
 /** A card's place in the queue where it waits behind other cards; none otherwise. */
@@ -313,7 +331,8 @@ export function cardDemos(r: CardRow): StoredDemo[] {
   const all = storedDemos(r);
   const latest = r.demo ? (JSON.parse(r.demo) as StoredDemo) : null;
   const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
-  return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])];
+  // drafts a question brought are not the work's result: no page shows them
+  return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])].filter((d) => !d.asked);
 }
 
 /** States a worker or the owner's decision is still part of. */
@@ -1177,9 +1196,9 @@ export class Board {
     return this.store.waitingTalk(this.canvas.id);
   }
 
-  /** The step the Koordinator takes once the exchange's looked-up answer is in; `null` once it has decided it. */
-  thenTalk(id: number, then: string | null) {
-    this.store.thenTalk(id, then);
+  /** The step the Koordinator takes once the exchange's looked-up answer is in, and where the owner was then; `null` once it has decided it. */
+  thenTalk(id: number, then: string | null, place?: Place) {
+    this.store.thenTalk(id, then, place);
   }
 
   /** Looked-up answers that are in whose step the Koordinator has not decided yet: after a restart, it takes them up. */
@@ -2704,6 +2723,20 @@ const sameRow = (a: CardRow, b: CardRow) => {
   return true;
 };
 
+/** A pull request of the card as the card shows it. */
+const pullRequest = (pr: PrState): PullRequest => ({
+  url: pr.url!,
+  number: pr.number!,
+  ...(pr.repo ? { repo: pr.repo } : {}),
+  ...(pr.merged ? { merged: true } : {}),
+  ...(pr.closed ? { closed: true } : {}),
+  checks: pr.checks ?? [],
+  conflict: !!pr.conflictHead,
+  ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}),
+  ...(pr.waits?.length && !pr.merged && !pr.closed ? { waits: pr.waits } : {}),
+  ...(pr.review?.length ? { review: pr.review } : {}),
+});
+
 /** The fields a worker adds to a card. */
 function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   const detail = r.detail ? (JSON.parse(r.detail) as { question?: Item['question']; summary?: string; noChange?: boolean; lands?: Item['lands']; answering?: boolean; answered?: boolean }) : {};
@@ -2721,7 +2754,8 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
   return {
     ...(scope?.length ? { scope } : {}),
     ...(r.queue && (r.state ?? 'planned') === 'planned' ? { queue: JSON.parse(r.queue) as Item['queue'] } : {}),
-    ...(pr?.url ? { pr: { url: pr.url, number: pr.number!, checks: pr.checks ?? [], conflict: !!pr.conflictHead, ...(pr.readyHead && (pr.mergeError || pr.held || pr.manual) ? { ready: true, ...(pr.mergeError ? { mergeError: pr.mergeError } : {}), ...(pr.held ? { held: pr.held } : {}), ...(pr.manual ? { manual: true } : {}) } : {}), ...(pr.review?.length ? { review: pr.review } : {}) } } : {}),
+    ...(pr?.url ? { pr: pullRequest(pr) } : {}),
+    ...(pr?.more?.some((m) => m.url) ? { morePrs: pr.more.filter((m) => m.url).map(pullRequest) } : {}),
     ...(contribution ? { contribution: { url: contribution.url, number: contribution.number, author: contribution.author, title: contribution.title, canModify: contribution.canModify, ...(contribution.results ? { results: contribution.results } : {}), ...(contribution.findings ? { findings: contribution.findings } : {}), ...(contribution.requested ? { requested: contribution.requested } : {}), ...(contribution.held ? { held: { body: contribution.held.body, commits: contribution.held.commits, asks: contribution.held.asks } } : {}), ...(contribution.clash ? { clash: contribution.clash } : {}) } } : {}),
     ...(r.status_line ? { statusLine: r.status_line } : {}),
     ...(detail.question && r.need === 'question' ? { question: detail.question } : {}),
@@ -2758,7 +2792,8 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
 function shareOf(r: CardRow, theme: string | null | undefined): Item['share'] {
   const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
   if (!s || (!s.state && !s.url)) return undefined;
-  const latest = r.demo ? (JSON.parse(r.demo) as StoredDemo) : undefined;
+  // the newest demo of a handover: drafts shown with a question since are not what the page lacks
+  const latest = r.demo ? [...storedDemos(r), JSON.parse(r.demo) as StoredDemo].findLast((d) => !d.asked) : undefined;
   const shared = s.url ? sharedDemos(s) : [];
   // the card's demos on the page, by their handovers
   const on = cardDemos(r).flatMap((d) => (d.handover !== undefined && shared.some((x) => sameDemo(x, d)) ? [d.handover] : []));

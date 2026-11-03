@@ -4,7 +4,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PrReviewEntry, PrThread } from '../core/types';
+import type { PrReviewEntry, PrThread, PrWait } from '../core/types';
 import { enterpriseServer, ghHosts, onGitHub, remoteHost } from './repo';
 import { spawnOutput } from './spawn';
 
@@ -44,6 +44,8 @@ export interface PrStatus {
     round?: string;
     replyTo?: string;
     resolved?: boolean;
+    /** A review's verdict, where it gives one: approved, changes requested, or such a review dismissed since. */
+    verdict?: 'approved' | 'changes' | 'dismissed';
   }[];
   /** Who opened the PR (the owner's account; the worker's own replies carry it too; on a review card, the contributor's). */
   author: string;
@@ -318,7 +320,7 @@ interface GhPr {
   author: { login: string };
   statusCheckRollup: { __typename: string; name?: string; context?: string; status?: string; conclusion?: string; state?: string; detailsUrl?: string; targetUrl?: string }[];
   comments: { id: string; author: { login: string }; body: string; url: string; createdAt?: string }[];
-  reviews: { id: string; author: { login: string }; body: string; submittedAt?: string }[];
+  reviews: { id: string; author: { login: string }; body: string; submittedAt?: string; state?: string }[];
 }
 
 /** GitHub through a `gh` runner (the real CLI, or canned output in tests). */
@@ -486,8 +488,8 @@ function ghStatus(prOut: string, inlineOut: string, threadsOut: string): PrStatu
         url: c.url,
       })),
       ...pr.reviews
-        .filter((r) => r.body.trim())
-        .map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body, ...(r.submittedAt ? { at: r.submittedAt } : {}) })),
+        .map((r) => ({ id: `r${r.id}`, author: r.author.login, body: r.body, ...(r.submittedAt ? { at: r.submittedAt } : {}), ...verdictOf(r.state) }))
+        .filter((r) => r.body.trim() || r.verdict),
       // the REST API names an app `<name>[bot]`, `gh pr view` plain `<name>`: one name for both
       ...inline.map((c) => ({
         id: `i${c.id}`,
@@ -503,6 +505,12 @@ function ghStatus(prOut: string, inlineOut: string, threadsOut: string): PrStatu
     ],
   };
 }
+
+/** A review's verdict by the state the forge gives it (GitHub's `CHANGES_REQUESTED`, Forgejo's `REQUEST_CHANGES`); none for a comment. */
+export const verdictOf = (state?: string): { verdict?: 'approved' | 'changes' | 'dismissed' } => {
+  const v = (state ?? '').toUpperCase();
+  return v === 'APPROVED' ? { verdict: 'approved' } : v === 'CHANGES_REQUESTED' || v === 'REQUEST_CHANGES' ? { verdict: 'changes' } : v === 'DISMISSED' ? { verdict: 'dismissed' } : {};
+};
 
 export const ghForge = makeGhForge(ghCli());
 
@@ -552,21 +560,40 @@ export function reviewOf(s: PrStatus, skip: string[] = [], self = s.author): PrR
 }
 
 /**
- * Whether the pull request only waits for the merge: GitHub sees nothing in the way, every
- * check has passed, every review thread is resolved, a reviewer who wrote has seen the PR's own
- * latest changes, and whoever was asked for another look has answered since the author last asked (a
- * review bot answers a re-review by rewriting its summary, often without a new comment). Comments
- * by `skip` do not count as an answer.
+ * What the pull request waits for before it can be merged, in the order it is in the way: what the
+ * forge sees (a conflict, a branch behind its base, a draft, branch protection, mergeability not
+ * worked out yet), checks failed or running, review threads open, a reviewer who has not seen the
+ * PR's own latest changes, and whoever was asked for another look not having answered since the
+ * author last asked (a review bot answers a re-review by rewriting its summary, often without a new
+ * comment). Comments by `skip` do not count as an answer. Nothing for a PR no longer open.
  */
-export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
-  if (s.state !== 'OPEN' || s.mergeable !== 'MERGEABLE') return false;
-  if (s.mergeState !== 'CLEAN' && s.mergeState !== 'HAS_HOOKS') return false;
-  if (s.checks.some((c) => c.state !== 'success')) return false;
+export function waitsOf(s: PrStatus, skip: string[] = []): PrWait[] {
+  if (s.state !== 'OPEN') return [];
+  const waits: PrWait[] = [];
+  if (s.mergeable === 'CONFLICTING' || s.mergeState === 'DIRTY') waits.push('conflict');
+  else if (s.mergeState === 'BEHIND') waits.push('behind');
+  else if (s.mergeState === 'DRAFT') waits.push('draft');
+  else if (s.mergeState === 'BLOCKED') waits.push('protection');
+  // UNSTABLE: a check not passed, which the checks below name where they hold it
+  else if (s.mergeable !== 'MERGEABLE' || (s.mergeState !== 'CLEAN' && s.mergeState !== 'HAS_HOOKS' && !(s.mergeState === 'UNSTABLE' && s.checks.some((c) => c.state !== 'success'))))
+    waits.push('forge');
+  if (s.checks.some((c) => c.state === 'failure')) waits.push('checksFailed');
+  else if (s.checks.some((c) => c.state !== 'success')) waits.push('checks');
   const others = reviewers(s, skip);
-  if (others.some((c) => c.id.startsWith('i') && !c.replyTo && !c.resolved)) return false;
-  if (reviewStale(s, skip)) return false;
-  const asked = lastAsked(s);
-  return !asked || others.some((c) => (c.edited ?? c.at ?? '') > asked);
+  if (others.some((c) => c.id.startsWith('i') && !c.replyTo && !c.resolved)) waits.push('threads');
+  if (changesRequested(s, skip).length) waits.push('changes');
+  if (reviewStale(s, skip)) waits.push('review');
+  else {
+    const asked = requestOf(s, skip);
+    const after = (who?: string) => others.some((c) => (!who || c.author === who) && (c.edited ?? c.at ?? '') > asked!.at);
+    if (asked && !(asked.awaits.length ? asked.awaits.every(after) : after())) waits.push('answer');
+  }
+  return waits;
+}
+
+/** Whether the pull request only waits for the merge: open, and nothing of `waitsOf` in the way. */
+export function readyToMerge(s: PrStatus, skip: string[] = []): boolean {
+  return s.state === 'OPEN' && !waitsOf(s, skip).length;
 }
 
 /**
@@ -580,10 +607,69 @@ export function reviewStale(s: PrStatus, skip: string[] = []): boolean {
   return !!last && last < s.changedAt;
 }
 
-/** When the author last asked for another look (a conversation comment of theirs). */
-export function lastAsked(s: PrStatus): string {
-  return s.comments.filter((c) => c.author === s.author && c.id.startsWith('c')).reduce((a, c) => latest(a, c.at), '');
+/**
+ * The author's latest request for another look, and whose answer it waits for: a conversation
+ * comment of theirs that answers a reviewer whose latest word in the conversation before it was no
+ * passing verdict (a request for changes in a plain comment, which names nobody, is answered so;
+ * that reviewer's answer is awaited, another's does not stand in for it), or that mentions an
+ * account, as review bots are asked (`@greptile review`; then any reviewer's word answers). A
+ * comment that mentions nobody while every reviewer's latest word is a passing verdict (a thank-you
+ * for a 5/5 summary without findings) asks for nothing: waiting for its answer stalled a PR whose
+ * review was through (2026-11-02). Passing: an approval, or a confidence of at least 4/5. A
+ * reviewer's word in a thread on the code is the thread's business, not the conversation's.
+ * Comments by `skip` are no reviewer's word.
+ */
+export function requestOf(s: PrStatus, skip: string[] = []): { at: string; awaits: string[] } | null {
+  const said = reviewers(s, skip).filter((c) => !c.id.startsWith('i'));
+  const when = (c: PrStatus['comments'][number]) => c.edited ?? c.at ?? '';
+  let found: { at: string; awaits: string[] } | null = null;
+  for (const c of s.comments) {
+    if (c.author !== s.author || !c.id.startsWith('c') || !c.at || (found && c.at < found.at)) continue;
+    const latestOf = new Map<string, PrStatus['comments'][number]>();
+    for (const o of said) if (when(o) <= c.at && (!latestOf.has(o.author) || when(o) >= when(latestOf.get(o.author)!))) latestOf.set(o.author, o);
+    const awaits = [...latestOf].filter(([, o]) => !passing(o)).map(([who]) => who);
+    if (awaits.length || mentions(c.body)) found = { at: c.at, awaits };
+  }
+  return found;
 }
+
+/** When the author last asked for another look (`requestOf`); empty where they never did. */
+export const lastAsked = (s: PrStatus, skip: string[] = []) => requestOf(s, skip)?.at ?? '';
+
+/** Below this share of a reviewer's confidence (4 of 5), Obeya leaves the merge to the owner. */
+export const MIN_CONFIDENCE = 0.8;
+
+/** Whether a reviewer's comment is a verdict that lets the PR go: an approval, or a confidence of at least 4/5. */
+export const passing = (c: PrStatus['comments'][number]) => {
+  if (c.verdict === 'approved') return true;
+  const m = /Confidence Score:\s*(\d+)\s*\/\s*(\d+)/i.exec(c.body);
+  return !!m && Number(m[1]) / Number(m[2]) >= MIN_CONFIDENCE;
+};
+
+/**
+ * The reviewers whose request for changes (GitHub's „Request changes“) stands: their latest review
+ * with a verdict asks for changes, not approved or dismissed since.
+ */
+export function changesRequested(s: PrStatus, skip: string[] = []): string[] {
+  const last = new Map<string, { at: string; verdict: string }>();
+  for (const c of reviewers(s, skip)) {
+    if (!c.verdict) continue;
+    const at = c.at ?? '';
+    const known = last.get(c.author);
+    if (!known || at >= known.at) last.set(c.author, { at, verdict: c.verdict });
+  }
+  return [...last].filter(([, v]) => v.verdict === 'changes').map(([who]) => who);
+}
+
+/** Whether a comment mentions an account (`@name`), outside code (fenced, indented or inline) and quoted lines. */
+const mentions = (body: string) =>
+  /(^|[^\w`@/.-])@[a-z0-9][a-z0-9-]*/i.test(
+    body
+      .replace(/^ {0,3}(```|~~~)[\s\S]*?(^ {0,3}\1|$(?![\s\S]))/gm, '')
+      .replace(/`[^`\n]*`/g, '')
+      .replace(/^ {0,3}>.*$/gm, '')
+      .replace(/^(?: {4}|\t).*$/gm, ''),
+  );
 
 /**
  * The confidence a reviewer gave last, in a comment rewritten or written latest (Greptile's

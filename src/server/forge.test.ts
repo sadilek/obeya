@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, routedForge, type PrStatus } from './forge';
+import { confidence, type Forge, ghCli, githubRepo, landedUrl, lastAsked, makeGhForge, parsePrUrl, readable, readyToMerge, reviewOf, reviewStale, routedForge, waitsOf, type PrStatus } from './forge';
 import { onGitHub } from './repo';
 import { fakeGh, noContributions } from './testing';
 
@@ -161,8 +161,10 @@ test('gh output becomes a PR status', async () => {
         ],
         comments: [{ id: 'IC_1', author: { login: 'greptile-apps' }, body: 'Summary', url: 'https://gh/c1', createdAt: '2026-10-02T08:00:00Z' }],
         reviews: [
-          { id: 'PRR_1', author: { login: 'lead' }, body: '' },
-          { id: 'PRR_2', author: { login: 'lead' }, body: 'Please split this.', submittedAt: '2026-10-02T08:05:00Z' },
+          { id: 'PRR_1', author: { login: 'lead' }, body: '', state: 'COMMENTED' },
+          { id: 'PRR_2', author: { login: 'lead' }, body: 'Please split this.', submittedAt: '2026-10-02T08:05:00Z', state: 'COMMENTED' },
+          // a request for changes without words of its own still holds the merge
+          { id: 'PRR_3', author: { login: 'lead' }, body: '', submittedAt: '2026-10-02T08:06:00Z', state: 'CHANGES_REQUESTED' },
         ],
       });
     if (args[1] === 'graphql')
@@ -207,6 +209,7 @@ test('gh output becomes a PR status', async () => {
     comments: [
       { id: 'cIC_1', author: 'greptile-apps', body: 'Summary', at: '2026-10-02T08:00:00Z', edited: '2026-10-02T08:09:00Z', url: 'https://gh/c1' },
       { id: 'rPRR_2', author: 'lead', body: 'Please split this.', at: '2026-10-02T08:05:00Z' },
+      { id: 'rPRR_3', author: 'lead', body: '', at: '2026-10-02T08:06:00Z', verdict: 'changes' },
       { id: 'i7', author: 'greptile-apps', body: 'Null check.', at: '2026-10-02T08:01:00Z', path: 'src/a.ts', line: 3, url: 'https://gh/i7', round: '90', resolved: true },
       { id: 'i8', author: 'owner', body: 'Added.', at: '2026-10-02T08:03:00Z', path: 'src/a.ts', line: 3, url: 'https://gh/i8', round: '91', replyTo: 'i7' },
     ],
@@ -330,6 +333,143 @@ test('a push since the review is not ready to merge until the reviewer has seen 
   expect(readyToMerge(s, ['cloudflare'])).toBe(true);
   // a PR no reviewer wrote on waits for nobody
   expect(reviewStale({ ...s, comments: [s.comments[0]!] }, ['cloudflare'])).toBe(false);
+});
+
+test('only a comment of the author that mentions an account asks for another look', () => {
+  const s: PrStatus = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'h', author: 'owner', checks: [], comments: [] };
+  const ask = (body: string) => lastAsked({ ...s, comments: [{ id: 'c1', author: 'owner', body, at: '2026-11-02T12:43:00Z' }] });
+  expect(ask('@greptileai review')).toBe('2026-11-02T12:43:00Z');
+  expect(ask('Could you look again, @coderabbitai?')).toBe('2026-11-02T12:43:00Z');
+  // a thank-you to a summary without findings (2026-11-02), an address, code and a quote mention nobody
+  expect(ask('Thanks for the review, nothing to change.')).toBe('');
+  expect(ask('Reported to ops@example.com')).toBe('');
+  expect(ask('See `@types/node` and\n```\n@decorator\n```')).toBe('');
+  expect(ask('> @greptile said this\n\nAgreed.')).toBe('');
+  expect(ask('  > @greptile review\n\nAgreed.')).toBe('');
+  expect(ask('~~~\n@greptile review\n~~~\nDone.')).toBe('');
+  expect(ask('Output:\n\n    @greptile review\n\nDone.')).toBe('');
+  expect(ask('```\ncode\n```\n@greptileai review')).toBe('2026-11-02T12:43:00Z');
+  // a reply in a thread on the code is no request either
+  expect(lastAsked({ ...s, comments: [{ id: 'i1', author: 'owner', body: '@greptile fixed', at: '2026-11-02T12:43:00Z', replyTo: 'i0' }] })).toBe('');
+});
+
+test('a plain reply to a reviewer who asked for changes waits for the reviewer, whom nobody mentioned', () => {
+  // a human reviewer's request in a plain comment, naming nobody, as on the owner's PRs so far
+  const s: PrStatus = {
+    state: 'OPEN',
+    mergeable: 'MERGEABLE',
+    mergeState: 'CLEAN',
+    head: 'h',
+    changedAt: '2026-11-02T12:00:00Z',
+    author: 'owner',
+    checks: [{ name: 'CI', state: 'success' }],
+    comments: [
+      { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: '2026-11-02T12:10:00Z' },
+      { id: 'cLEAD', author: 'lead', body: 'Please rename the export to invoices.csv.', at: '2026-11-02T12:20:00Z' },
+      // the worker keeps the name, without a push and without mentioning anybody
+      { id: 'cWHY', author: 'owner', body: 'Kept the name: the importer expects export.csv.', at: '2026-11-02T12:30:00Z' },
+    ],
+  };
+  expect(lastAsked(s)).toBe('2026-11-02T12:30:00Z');
+  expect(waitsOf(s)).toEqual(['answer']);
+  expect(readyToMerge(s)).toBe(false);
+  // the reviewer answers: through
+  s.comments.push({ id: 'cOK', author: 'lead', body: 'Fine, thanks.', at: '2026-11-02T12:40:00Z' });
+  expect(readyToMerge(s)).toBe(true);
+  // a thank-you after a verdict below 4/5 asks for an answer too
+  const low: PrStatus = { ...s, comments: [{ id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 3/5', at: '2026-11-02T12:10:00Z' }, { id: 'cTHX', author: 'owner', body: 'Thanks!', at: '2026-11-02T12:11:00Z' }] };
+  expect(waitsOf(low)).toEqual(['answer']);
+  // one after an approval does not
+  const approved: PrStatus = { ...s, comments: [{ id: 'r1', author: 'lead', body: '', at: '2026-11-02T12:10:00Z', verdict: 'approved' }, { id: 'cTHX', author: 'owner', body: 'Thanks!', at: '2026-11-02T12:11:00Z' }] };
+  expect(waitsOf(approved)).toEqual([]);
+});
+
+test('a request waits for the reviewer who made it, whatever other reviewers write', () => {
+  const base: PrStatus = { state: 'OPEN', mergeable: 'MERGEABLE', mergeState: 'CLEAN', head: 'h', author: 'owner', checks: [], comments: [] };
+  const at = (m: number) => `2026-11-02T12:${String(m).padStart(2, '0')}:00Z`;
+  // the lead asks for a rename, a bot then gives 5/5, the worker explains why it kept the name
+  const s: PrStatus = {
+    ...base,
+    comments: [
+      { id: 'cLEAD', author: 'lead', body: 'Please rename the export.', at: at(10) },
+      { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: at(15) },
+      { id: 'cWHY', author: 'owner', body: 'Kept the name: the importer expects it.', at: at(20) },
+    ],
+  };
+  expect(waitsOf(s)).toEqual(['answer']);
+  // the bot rewriting its summary is no answer of the lead's
+  s.comments[1]!.edited = at(25);
+  expect(waitsOf(s)).toEqual(['answer']);
+  s.comments.push({ id: 'cOK', author: 'lead', body: 'Fine.', at: at(30) });
+  expect(waitsOf(s)).toEqual([]);
+  // a reviewer's word in a resolved thread after a 5/5 does not turn a thank-you into a request
+  const thread: PrStatus = {
+    ...base,
+    comments: [
+      { id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: at(10) },
+      { id: 'i1', author: 'greptile-apps', body: 'P2: null check', at: at(10), round: 'A', resolved: true },
+      { id: 'i2', author: 'greptile-apps', body: 'Verified, this is fixed.', at: at(15), replyTo: 'i1' },
+      { id: 'cTHX', author: 'owner', body: 'Thanks.', at: at(20) },
+    ],
+  };
+  expect(waitsOf(thread)).toEqual([]);
+});
+
+test('a standing request for changes holds the merge until the reviewer approves or it is dismissed', () => {
+  const s: PrStatus = {
+    state: 'OPEN',
+    mergeable: 'MERGEABLE',
+    mergeState: 'CLEAN',
+    head: 'h',
+    changedAt: '2026-11-02T12:00:00Z',
+    author: 'owner',
+    checks: [],
+    comments: [{ id: 'r1', author: 'lead', body: 'Split this.', at: '2026-11-02T12:10:00Z', verdict: 'changes' }],
+  };
+  expect(waitsOf(s)).toEqual(['changes']);
+  // a later comment of the reviewer's leaves the request standing, as on GitHub
+  s.comments.push({ id: 'r2', author: 'lead', body: 'One more thing.', at: '2026-11-02T12:20:00Z' });
+  expect(waitsOf(s)).toEqual(['changes']);
+  s.comments.push({ id: 'r3', author: 'lead', body: '', at: '2026-11-02T12:30:00Z', verdict: 'approved' });
+  expect(waitsOf(s)).toEqual([]);
+  s.comments[0]!.verdict = 'dismissed';
+  s.comments.pop();
+  expect(waitsOf(s)).toEqual([]);
+});
+
+test('what a pull request waits for, in the order it is in the way', () => {
+  const s: PrStatus = {
+    state: 'OPEN',
+    mergeable: 'MERGEABLE',
+    mergeState: 'CLEAN',
+    head: 'h',
+    changedAt: '2026-11-02T12:40:00Z',
+    author: 'owner',
+    checks: [{ name: 'CI', state: 'success' }],
+    comments: [{ id: 'cSUM', author: 'greptile-apps', body: 'Confidence Score: 5/5', at: '2026-11-02T12:42:00Z' }],
+  };
+  const waits = (f: (c: PrStatus) => void) => {
+    const c = structuredClone(s);
+    f(c);
+    return waitsOf(c);
+  };
+  expect(waitsOf(s)).toEqual([]);
+  expect(readyToMerge(s)).toBe(true);
+  expect(waits((c) => (c.mergeable = 'CONFLICTING'))).toEqual(['conflict']);
+  expect(waits((c) => (c.mergeState = 'BEHIND'))).toEqual(['behind']);
+  expect(waits((c) => (c.mergeState = 'DRAFT'))).toEqual(['draft']);
+  expect(waits((c) => (c.mergeState = 'BLOCKED'))).toEqual(['protection']);
+  expect(waits((c) => (c.mergeable = 'UNKNOWN'))).toEqual(['forge']);
+  // GitHub's UNSTABLE is a check not passed, which the checks name
+  expect(waits((c) => ((c.mergeState = 'UNSTABLE'), (c.checks[0]!.state = 'failure')))).toEqual(['checksFailed']);
+  expect(waits((c) => (c.mergeState = 'UNSTABLE'))).toEqual(['forge']);
+  expect(waits((c) => (c.checks[0]!.state = 'pending'))).toEqual(['checks']);
+  expect(waits((c) => c.comments.push({ id: 'i1', author: 'greptile-apps', body: 'P1', at: '2026-11-02T12:42:00Z', round: 'A', resolved: false }))).toEqual(['threads']);
+  expect(waits((c) => (c.changedAt = '2026-11-02T12:45:00Z'))).toEqual(['review']);
+  expect(waits((c) => c.comments.push({ id: 'cPING', author: 'owner', body: '@greptileai review', at: '2026-11-02T12:45:00Z' }))).toEqual(['answer']);
+  // a PR merged or closed waits for nothing
+  expect(waits((c) => ((c.state = 'MERGED'), (c.mergeable = 'UNKNOWN')))).toEqual([]);
+  expect(readyToMerge({ ...s, state: 'CLOSED' })).toBe(false);
 });
 
 test('the confidence a reviewer gave last', () => {

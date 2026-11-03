@@ -10,6 +10,30 @@
  */
 export const OWN_GROUP = process.platform !== 'win32';
 
+/**
+ * Makes every console program Obeya starts through `Bun.spawn` or `Bun.spawnSync` (git above all,
+ * many times a second while it looks after clones) run without a window, where nothing says
+ * otherwise. On Windows a process without a console, as Obeya is when started detached (a scratch
+ * Obeya, a launcher without a terminal), gives each console program it starts a window of its own:
+ * it flashed up and took the focus from whatever the owner was typing in. A default for all, not
+ * an option at each call: one call forgotten brings the flashing back. Node's `child_process`
+ * passes its own `windowsHide` (false unless given), so a program that is meant to show (Explorer,
+ * a terminal for a login) still does.
+ */
+export function hideConsoleWindows(platform: string = process.platform) {
+  if (platform !== 'win32') return;
+  const { spawn, spawnSync } = Bun;
+  Bun.spawn = ((...args: unknown[]) => (spawn as (...a: unknown[]) => unknown)(...hidden(args))) as typeof Bun.spawn;
+  Bun.spawnSync = ((...args: unknown[]) => (spawnSync as (...a: unknown[]) => unknown)(...hidden(args))) as typeof Bun.spawnSync;
+}
+
+/** The arguments of `Bun.spawn(argv, options)` or `Bun.spawn({ cmd, … })`, without a window unless they ask for one. */
+export function hidden(args: unknown[]): unknown[] {
+  const [first, ...rest] = args;
+  const hide = (o: unknown) => ({ ...(o as object), windowsHide: (o as { windowsHide?: boolean } | undefined)?.windowsHide ?? true });
+  return Array.isArray(first) ? [first, hide(rest[0]), ...rest.slice(1)] : [hide(first), ...rest];
+}
+
 type Options = Omit<Bun.SpawnOptions.SpawnOptions<Bun.SpawnOptions.Writable, 'pipe', 'pipe'>, 'stdout' | 'stderr'>;
 
 /**

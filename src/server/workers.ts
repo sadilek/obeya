@@ -18,7 +18,7 @@ import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
-import { outsidePlanDir } from './repo';
+import { outsidePlanDir, remoteHost } from './repo';
 import type { InputContext } from './koordinator';
 import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
@@ -1179,7 +1179,7 @@ export class Workers {
    * (those not among the question's are dropped). The log holds both as one text, picks first
    * (`pickedAnswer`); the worker reads which is which.
    */
-  answer(cardId: string, words: string, images: string[] = [], spoken = false, replyTo?: number, picks: string[] = []) {
+  answer(cardId: string, words: string, images: string[] = [], spoken = false, replyTo?: number, picks: string[] = [], spot?: SpotInput) {
     const card = this.card(cardId);
     const options = card.question?.options ?? [];
     const picked = options.filter((o) => picks.includes(o));
@@ -1191,9 +1191,11 @@ export class Workers {
     if (detail.permission) return this.answerPermission(card, detail.permission, text, images, spoken, replyTo);
     const question = detail.question;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
+    // an answer given at a place in the demo video (one the question brought, say) is about that place
+    const place = spot ? this.place(cardId, spot) : undefined;
     this.backToWork(cardId);
-    this.recordAnswer(card, q, text, images, replyTo, picked);
-    this.deliver(cardId, `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${this.words(cardId, answerNote(picked, text), images, replyTo)}`, images, true);
+    this.recordAnswer(card, q, text, images, replyTo, picked, place);
+    this.deliver(cardId, `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${this.words(cardId, answerNote(picked, text), images, replyTo, place)}`, [...this.stills(place), ...images], true);
   }
 
   /**
@@ -1486,7 +1488,7 @@ export class Workers {
       [
         `The owner approved your work. In this repository it goes out as a pull request, opened the way the repository does it (its own skills and conventions): from now on you may push this branch. Whoever reads the pull request has not seen Obeya, the card or the plan doc. Do not merge it: ${this.o.adapter.autoMerge === false ? 'the people on the forge merge it' : 'Obeya merges it'} once its checks have passed and its review is through.`,
         shared ? `Your demo video is shared with the team on a page of its own: ${shared}. Link it in the pull request's description.` : '',
-        'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask).',
+        'Once you report its URL with pr_opened, Obeya watches it and passes you review comments, failed checks and conflicts; you handle them the way the repository does (its skill for review comments, if it has one). A comment that questions a decision, or a conflict that needs a product call, is the owner’s (ask). Where the work also needs a pull request in another repository, report that one with pr_opened too: Obeya watches each, and the card is live once all are merged.',
         comments?.text ?? '',
       ]
         .filter(Boolean)
@@ -4088,17 +4090,51 @@ export class Workers {
           multiple: z.boolean().optional(),
           pick: z.array(z.string()).optional(),
           pick_why: z.string().optional(),
+          demo: z
+            .object({
+              kind: z.enum(['video', 'html']).optional().describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at"),
+              dir: z.string().describe('absolute path: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
+              chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
+            })
+            .optional()
+            .describe(
+              "what the owner is to look at to answer, when there is something to see (drafts or variants side by side, as an HTML artifact, say): the card shows it beside your question as it shows a handover's demo. It is no handover: the handover still brings its own demo.",
+            ),
         },
         run: (args) => {
-          handOver();
-          const q = withPick(args as unknown as Asked);
-          this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
-          this.toOwner(cardId, q);
-          return ending(
-            END_TURN,
-            'Recorded: your question waits for the owner on the card, and their answer arrives as your next message.',
-            'if they change your question, ask it anew (the card shows the earlier one as asked again further below)',
-          );
+          const asked = (shown?: StoredDemo): string => {
+            handOver();
+            const q = withPick(args as unknown as Asked);
+            const e = this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
+            if (shown) {
+              // the demo it replaces stays with the card, for the owner to go back to
+              const row = this.o.board.row(cardId);
+              this.o.board.work(cardId, { demo: JSON.stringify({ ...shown, asked: true, handover: e.id, at: e.at } satisfies StoredDemo), ...(row.demo ? { demos: this.earlier(cardId, row) } : {}) });
+            }
+            this.toOwner(cardId, q);
+            return ending(
+              END_TURN,
+              'Recorded: your question waits for the owner on the card, and their answer arrives as your next message.',
+              'if they change your question, ask it anew (the card shows the earlier one as asked again further below)',
+            );
+          };
+          const given = args.demo as { kind?: DemoKind; dir: string; chapters?: string[] } | undefined;
+          if (!given) return asked();
+          // a demo made on another machine is shown from its copy here
+          return this.demoHere(cardId, given.dir).then((here) => {
+            if ('wrong' in here) return `Not asked: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then ask again.`;
+            // copying it takes a while, in which the owner may stop or replace the session
+            if (this.live.get(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
+            const kind = given.kind ?? 'video';
+            if (kind === 'html') {
+              const wrong = checkArtifact(here.dir);
+              if (wrong) return `Not asked: ${wrong}. Fix the artifact, then ask again.`;
+              return asked({ kind, dir: here.dir, chapters: [], ...(artifactFiles(here.dir).length === 1 ? { single: true as const } : {}) });
+            }
+            const chapters = readChapters(here.dir, given.chapters ?? []);
+            if (typeof chapters === 'string') return `Not asked: ${chapters}. Fix the demo, then ask again.`;
+            return asked({ kind, dir: here.dir, chapters });
+          });
         },
       },
       // a prototype makes no cards of its own: what it proposes is building its idea on it
@@ -4240,7 +4276,8 @@ export class Workers {
         : []),
       {
         name: 'pr_opened',
-        description: 'After the owner approved: report the pull request you opened for this card (its URL). Then end your turn; Obeya watches it.',
+        description:
+          'After the owner approved: report the pull request you opened for this card (its URL); where the work also needed one in another repository, report that one too, a call for each. Then end your turn; Obeya watches them, and the card is live once all are merged.',
         schema: { url: z.string() },
         run: ({ url }) => {
           const row = this.o.board.row(cardId);
@@ -4248,9 +4285,21 @@ export class Workers {
           const ref = parsePrUrl(String(url));
           if (!ref) return 'Not recorded: that is not the URL of a pull request (on GitHub or GitHub Enterprise https://<host>/<owner>/<repo>/pull/<number>, on Forgejo or Gitea such as Codeberg https://<host>/<owner>/<repo>/pulls/<number>).';
           handOver();
-          const pr = { ...(JSON.parse(row.pr) as PrState), url: ref.url, number: ref.number };
+          const root = JSON.parse(row.pr) as PrState;
+          // the card's own is the one in its repository, which the landing is about; one in another
+          // repository is watched beside it, and reported again (opened again after it was closed) as before
+          const host = this.o.remote && remoteHost(this.o.remote)?.toLowerCase().replace(/^ssh\.github\.com$/, 'github.com');
+          const elsewhere = !!this.o.remote && (!sameRepo(this.o.remote, ref.owner, ref.repo) || (!!host && host !== ref.host.toLowerCase()));
+          const known = elsewhere ? root.more?.find((m) => parsePrUrl(m.url ?? '')?.url === ref.url) : undefined;
+          let pr: PrState;
+          // the card's own reported again keeps what was told of it; another in its place starts afresh
+          if (!elsewhere) pr = parsePrUrl(root.url ?? '')?.url === ref.url || !root.url ? { ...root, url: ref.url, number: ref.number } : { url: ref.url, number: ref.number, seen: [], reported: [], ...(root.more ? { more: root.more } : {}) };
+          else if (known) {
+            const { closed: _, ...open } = known;
+            pr = { ...root, more: root.more!.map((m) => (m === known ? { ...open, url: ref.url } : m)) };
+          } else pr = { ...root, more: [...(root.more ?? []), { url: ref.url, number: ref.number, repo: `${ref.owner}/${ref.repo}`, seen: [], reported: [] }] };
           this.o.board.work(cardId, { pr: JSON.stringify(pr) });
-          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(ref.number));
+          this.o.board.log(cardId, 'state', 'worker', this.o.board.t.worker.prOpened(elsewhere ? `${ref.repo} #${ref.number}` : `#${ref.number}`));
           this.o.onPrOpened?.(cardId);
           return ending('Recorded. End your turn now; Obeya watches the pull request.', 'Recorded: Obeya watches the pull request.', 'a change to the work goes onto the pull request');
         },
@@ -4378,11 +4427,12 @@ export class Workers {
             const approved = !!row.approved_at;
             // a handover in answer to the owner's words that brings no new demo is an answer to them, not a demo to watch
             const answered = !d && !!row.detail && !!(JSON.parse(row.detail) as { answering?: boolean }).answering;
-            // without a new demo, the one on the card stands
-            const kept = !d && !!row.demo;
+            // without a new demo, the one on the card stands, unless it only came with a question
+            const asked = !!row.demo && !!(JSON.parse(row.demo) as StoredDemo).asked;
+            const kept = !d && !!row.demo && !asked;
             // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
             if (!d && !kept && !approved && !this.folder)
-              return `Not handed over: every handover brings a demo. Record it with ${this.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
+              return `Not handed over: every handover brings a demo${row.demo ? ' (the one you showed with your question is not one)' : ''}. Record it with ${this.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
             let demoJson: string | undefined;
             if (d) {
               const kind = d.kind ?? 'video';
@@ -4428,8 +4478,8 @@ export class Workers {
             const e = this.o.board.log(cardId, 'review', 'worker', s);
             // the demo report's question goes with the handover it came with, also once a later one keeps the demo
             if (demoJson) demoJson = JSON.stringify({ ...(JSON.parse(demoJson) as object), handover: e.id, at: e.at });
-            // the demo it replaces stays with the card, for the owner to go back to
-            const demos = demoJson && row.demo ? this.earlier(cardId, row) : undefined;
+            // the demo it replaces stays with the card, for the owner to go back to; so do a question's drafts, which are no handover's result
+            const demos = (demoJson || asked) && row.demo ? this.earlier(cardId, row) : undefined;
             // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
             this.o.board.work(cardId, {
               // the worker's last status line is about the work it hands over: it would show again once the card is at work
@@ -4437,7 +4487,7 @@ export class Workers {
               // approving work that changes nothing makes the card done, which the owner sees before approving; where work
               // lands that its own branch decides, likewise
               detail: JSON.stringify({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(answered && !approved ? { answered: true } : {}) }),
-              ...(demoJson ? { demo: demoJson } : {}),
+              ...(demoJson ? { demo: demoJson } : asked ? { demo: null } : {}),
               ...(demos ? { demos } : {}),
               // the files named stand until a later handover names others (an empty list named clears them); a folder's card handed
               // over without a demo shows what it changed, while there are files of it to show
@@ -4724,8 +4774,8 @@ export class Workers {
   }
 
   /** The owner's answer to the question `q`: in the card's log, as a decision, and for whoever learns from it. */
-  private recordAnswer(card: Item, q: string, text: string, images: string[], replyTo: number | undefined, picks: string[]) {
-    this.o.board.log(card.id, 'answer', 'owner', text, { images, replyTo, picks });
+  private recordAnswer(card: Item, q: string, text: string, images: string[], replyTo: number | undefined, picks: string[], place?: Spot) {
+    this.o.board.log(card.id, 'answer', 'owner', text, { images, replyTo, picks, ...(place ? { spot: place } : {}) });
     this.o.board.decide({ project_id: card.parent ?? null, card_id: card.id, question: q, answer: text || '(Screenshot)', by: 'owner' });
     if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)');
@@ -4882,7 +4932,7 @@ ${idea.idea.brief}` : '',
       [
         `Then show the owner the result with a demo, so they can judge at a glance whether the work is done, and hand it over with ready_for_review.`,
         `Usually that is a video of the change, recorded with ${this.demoSkill(card.id)} as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ` The owner may share the demo, a video or an HTML artifact, with colleagues of the team on a page of its own: hand it over with that page (title, text${dimensions(this.o.adapter.demo?.site?.tags).length ? ', tags' : ''}), written for them.` : ''} ${run?.trim() ? 'Run the app for it as the recipe above says.' : "The repository's settings say nothing yet about how to run the app: find it out from the repository (README, scripts, configuration) and say in your summary how you ran it."}`,
-        `When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis, an answer), make an HTML artifact instead: an index.html in a new directory under ${this.demosDir(card.id)} (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.`,
+        `When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis, an answer), make an HTML artifact instead: an index.html in a new directory under ${this.demosDir(card.id)} (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html' (drafts the owner is to choose from before you go on come with ask's demo instead). It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.`,
         'Where either would do, record the video: watching the work happen is what the owner enjoys most.',
         "Where the work itself is a file for the owner (a document, a report, a spreadsheet in the repository), name it in ready_for_review's files: the card shows it beside the demo.",
       ].join(' '),

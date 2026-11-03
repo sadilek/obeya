@@ -135,7 +135,7 @@ export function hfModelPresent(repo: string) {
 /** Runs a program to its end, its output line by line into `log`; rejects with the last lines. */
 function exec(cmd: string, args: string[], log: (line: string) => void, env?: Record<string, string>): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env: { ...process.env, ...env } } : {}) });
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, ...(env ? { env: { ...process.env, ...env } } : {}) });
     const tail: string[] = [];
     const take = (b: Buffer) => {
       for (const line of b.toString().split(/\r?\n|\r/)) {

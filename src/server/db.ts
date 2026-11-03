@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { AnswerFile, AnswerRef, CardEvent, DeviceView, CardKind, CardState, Mock, Need, Preference, PreferenceState, ProposedSetting, RepoCommands, SettingProposal, SettingProposalState, Spot, Talk, TalkAfter, TalkMoved, TalkQuote, TalkRef, TalkWait } from '../core/types';
+import type { Place } from '../core/layout';
 import type { Wish } from '../core/wish';
 
 export interface CardRow {
@@ -466,6 +467,8 @@ export const MIGRATIONS = [
    UPDATE cards SET short = substr(replace(id, '-', ''), 1, ${SHORT});
    ${Array.from({ length: 32 - SHORT }, (_, k) => `UPDATE cards SET short = substr(replace(id, '-', ''), 1, ${SHORT + 1 + k}) WHERE short IN (SELECT short FROM cards GROUP BY short HAVING count(*) > 1);`).join('\n   ')}
    CREATE UNIQUE INDEX cards_short ON cards (short);`,
+  // where the owner was on the canvas when they asked for a step that needed looking up first (JSON `Place`): its new cards go there
+  'ALTER TABLE talk ADD COLUMN then_place TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -1036,9 +1039,12 @@ export class Store {
     return (this.db.query('SELECT * FROM talk WHERE canvas_id = $c AND waits IS NOT NULL ORDER BY id').all({ c: canvasId }) as TalkRow[]).map((r) => ({ ...toTalk(r), waiting: JSON.parse(r.waits!) as TalkWaitRow[] }));
   }
 
-  /** The step the Koordinator takes once the exchange's looked-up answer is in; `null` once it has decided it. */
-  thenTalk(id: number, then: string | null) {
-    this.db.query('UPDATE talk SET then_step = $then WHERE id = $id').run({ id, then });
+  /**
+   * The step the Koordinator takes once the exchange's looked-up answer is in, and where the owner
+   * was on the canvas when they asked for it; `null` once it has decided it.
+   */
+  thenTalk(id: number, then: string | null, place?: Place) {
+    this.db.query('UPDATE talk SET then_step = $then, then_place = $place WHERE id = $id').run({ id, then, place: then !== null && place ? JSON.stringify(place) : null });
   }
 
   /** Looked-up answers that are in, oldest first, whose step the Koordinator has not decided yet. */
@@ -1136,9 +1142,9 @@ export class Store {
   }
 
   /** One exchange, with the card its question is about. */
-  exchange(id: number): (Talk & { about?: string }) | null {
+  exchange(id: number): (Talk & { about?: string; thenPlace?: Place }) | null {
     const r = this.db.query('SELECT * FROM talk WHERE id = $id').get({ id }) as TalkRow | null;
-    return r ? { ...withContinues(this.db, r), ...(r.about ? { about: r.about } : {}) } : null;
+    return r ? { ...withContinues(this.db, r), ...(r.about ? { about: r.about } : {}), ...(r.then_place ? { thenPlace: JSON.parse(r.then_place) as Place } : {}) } : null;
   }
 
   /** Questions being looked up, oldest first. */
@@ -1413,6 +1419,7 @@ interface TalkRow {
   moved: string | null;
   then_step: string | null;
   after_answer: number | null;
+  then_place: string | null;
 }
 
 const toTalk = (r: TalkRow): Talk => ({

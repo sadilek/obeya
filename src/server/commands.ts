@@ -415,7 +415,7 @@ export class Commander {
       const about = lookUp.about ?? card ?? (focus.project && this.o.board.item(focus.project) ? focus.project : undefined);
       reply(confirm, { question: lookUp.question, about: about ?? null });
       if (lookUp.follows) this.o.board.followTalk(talk, lookUp.follows);
-      if (lookUp.then) this.o.board.thenTalk(talk, lookUp.then);
+      if (lookUp.then) this.o.board.thenTalk(talk, lookUp.then, focus.place);
       this.o.lookUp?.(talk);
       if (said) this.o.onOwnerInput?.(card, 'talk', said, confirm);
       return { confirm };
@@ -711,14 +711,15 @@ export class Commander {
     return true;
   }
 
-  private async takeUp(x: Talk & { then: string; answer: string; question: string }) {
+  private async takeUp(x: Talk & { then: string; answer: string; question: string; thenPlace?: Place }) {
     const card = x.cardId && this.o.board.item(x.cardId) ? x.cardId : undefined;
     const talk = this.o.board.addTalk('', '', card ?? null, undefined, x.images ?? [], undefined, undefined, undefined, x.id);
     const h: Held = {
       transcript: '',
       // the screenshots of the owner's words go with the cards the step creates
       images: x.images ?? [],
-      focus: card ? { card } : {},
+      // the cards it creates land where the owner was when they asked for them, not where they look now
+      focus: { ...(card ? { card } : {}), ...(x.thenPlace ? { place: x.thenPlace } : {}) },
       input: { answered: { from: x.id, question: x.question, answer: x.answer, then: x.then, said: x.said, promised: x.reply ?? '', at: x.at } },
       at: new Date().toISOString(),
     };
