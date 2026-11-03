@@ -24,8 +24,8 @@ Allgemein turns it on again (on until then). The phone view shows the same at th
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
 answer for a minute) while the setting is on and a page of Obeya is open, and closed once neither
-holds, half a minute after the last page closed: a reload or a switch to another canvas, which loads
-the page anew, finds the numbers there and shows them in the bar from its first frame. Nothing shows for a login without plan limits (an API key, a cloud provider), a Claude Code
+holds, half a minute after the last page closed: a reload finds the numbers there and shows them
+in the bar from its first frame, and a switch to another canvas keeps the bar as it is. Nothing shows for a login without plan limits (an API key, a cloud provider), a Claude Code
 too old to answer, or numbers that could not be fetched again for five minutes. The workers on other
 machines may use other logins; the bar shows this machine's.
 
@@ -62,6 +62,14 @@ folded, the head keeps its count, and which canvases are folded holds per browse
 and the pinned sidebar alike. With one canvas the list has no such heads. A click on an entry opens
 its card, on this canvas or by switching to its own, and closes the list; Obeya's answers open
 Obeya's sheet on their canvas. Nothing waiting says so, and the canvases are still listed.
+
+A switch to another canvas (its head in the list, an entry of it, a link to it, Back or Forward
+between canvases) stays in the page instead of loading it anew: the canvas shown stays until the
+other one's cards have arrived and then gives way to it at once, while the pinned navigation and the
+bar stay where they are. The switch is a step in the browser's history, so Back returns; what the
+owner entered on the canvas left (drafts, Obeya's sheet left open over one) is there again on
+return, as after a reload. A canvas the page does not know yet (one started since it loaded) loads
+as a page.
 
 The entries only open cards: no button on them approves, accepts, answers or dismisses anything.
 Tab still goes through the cards of this canvas that need the owner and Obeya's answers (see the
@@ -222,7 +230,7 @@ The sheets (Obeya's, a project's, a plan doc being read) are a sidebar docked to
 edge, full height; the pinned navigation is one on the left edge. The canvas is the rest between
 them: the top bar, the microphone and its confirmations, the edge indicators, the minimap and an
 unfolding card all keep to it. Opening, closing or resizing a sheet, or pinning the navigation,
-shifts the view so its middle stays in the middle of the rest. What is docked as a page loads (the
+shifts the view so its middle stays in the middle of the rest. What is docked as a canvas comes up (the
 pinned navigation on every switch of canvas, a sheet that comes back) takes its room at once: the
 view returns beside it without a shift, as if it had always been there. A card opened beside a sheet
 returns beside whatever sheet is open when it closes; a project's sheet stays, dimmed, while one of
@@ -350,6 +358,10 @@ code, a generic one otherwise.
   code is stored, not derived from the cards there are at the time, so a later card whose id starts
   alike cannot make an earlier link ambiguous. Rejected: query parameters (`?c=`, `?card=`), and
   the whole id in the address, which is long to read and pass on.
+- **Switching canvases stays in the page** (owner, 2026-11-03): loading the page anew blanked it
+  for a moment on every switch, the pinned navigation included. Rejected: a page load smoothed over
+  by cross-document view transitions, which still reveal the new page's first frame before its
+  canvas has arrived, and not in every browser.
 - **Closing a card goes back a step** (owner, 2026-11-02): an open card is a view over the canvas,
   like a dialog, and the phone already closed cards that way. Rejected: closing as a step of its own,
   after which Back opened the card that was just closed.

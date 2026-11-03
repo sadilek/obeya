@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { IMAGE_TYPES, MAX_FILE_BYTES, MAX_IMAGE_BYTES } from '../core/types';
 import { api, ApiError, at } from './api';
 import { droppedPath, withBytes } from './appDrop';
-import { draftOf, dropDraft, insertFiles, markupOf, pathWord, setMarkup, updateDraft, useDraft } from './draft';
+import { draftOf, draftsHome, dropDraft, insertFiles, markupOf, pathWord, setMarkup, updateDraft, updateDraftAt, useDraft } from './draft';
 import { know, known } from './known';
 import { badgeOf, CLICK_PX, drawMarks, EDGE, type Mark, markOf, markSize, type Point, RED, roundedRect } from './marks';
 import { confirmPasteHint, pastedShots, pickedShots, usePasteHint } from './pasteHint';
@@ -57,17 +57,19 @@ async function markedImage(src: string, marks: Mark[]): Promise<Blob> {
 export async function attachTo(key: string, files: File[], added?: () => void) {
   let arrived = 0;
   if (!files.length) return arrived;
+  // a switch to another canvas meanwhile: the screenshots go to the draft they were pasted into
+  const home = draftsHome();
   updateDraft(key, (d) => ({ error: '', uploading: d.uploading + files.length }));
   for (const f of files) {
     try {
       const id = await api.uploadImage(await prepareImage(await withBytes(f)));
-      updateDraft(key, (d) => ({ images: [...d.images, id] }));
+      updateDraftAt(home, key, (d) => ({ images: [...d.images, id] }));
       arrived++;
       added?.();
     } catch (e) {
-      updateDraft(key, { error: failText(e) });
+      updateDraftAt(home, key, { error: failText(e) });
     } finally {
-      updateDraft(key, (d) => ({ uploading: d.uploading - 1 }));
+      updateDraftAt(home, key, (d) => ({ uploading: d.uploading - 1 }));
     }
   }
   return arrived;

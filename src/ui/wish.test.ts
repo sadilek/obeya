@@ -49,3 +49,36 @@ test('a draft with text or screenshots stays, and the new wish waits for the own
     expect(calls).toHaveLength(0);
   }
 });
+
+test("another canvas in the same page brings its own draft of a wish, and closes the dialog", () => {
+  wishNow().issue = null;
+  openWish({ said: 'x' });
+  closeWish();
+  m.set('obeya-wish-web', JSON.stringify({ title: 'On the website', body: '', images: [] }));
+  const shop = m.get(KEY);
+  keepWish(store, 'web');
+  expect(wishNow()).toMatchObject({ open: false, issue: { title: 'On the website' } });
+  expect(m.get(KEY)).toBe(shop);
+  keepWish(store, 'shop');
+  expect(wishNow().issue?.title).toBe(shop ? JSON.parse(shop).title : undefined);
+});
+
+test('a wish still being written when the page switches canvas goes into the draft of the canvas it was asked on', async () => {
+  keepWish(store, 'shop');
+  wishNow().issue = null;
+  m.delete(KEY);
+  m.delete('obeya-wish-web');
+  const write = api.writeWish;
+  let answer: (v: Awaited<ReturnType<typeof api.writeWish>>) => void = () => {};
+  api.writeWish = () => new Promise((r) => (answer = r));
+  openWish({ said: 'Late wish' });
+  keepWish(store, 'web');
+  answer({ title: 'Issue: Late wish', body: 'Late wish' });
+  await written();
+  expect(wishNow()).toMatchObject({ issue: null, writing: false });
+  expect(m.get('obeya-wish-web')).toBeUndefined();
+  expect(JSON.parse(m.get(KEY)!).title).toBe('Issue: Late wish');
+  keepWish(store, 'shop');
+  expect(wishNow().issue?.title).toBe('Issue: Late wish');
+  api.writeWish = write;
+});

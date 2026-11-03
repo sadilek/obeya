@@ -138,6 +138,8 @@ export interface SiteHow {
 
 export const api = {
   canvases: () => call<CanvasInfo[]>('GET', '/api/canvases'),
+  /** The canvas `id` as it is now, for a switch to it before its own connection is open. */
+  canvasOf: (id: string) => call<CanvasSnapshot>('GET', `/api/c/${encodeURIComponent(id)}/canvas`),
   /** Obeya's configuration, for all canvases. */
   config: () => call<ConfigView>('GET', '/api/config'),
   /** What the configuration as saved amounts to, and what is wrong with it: it reads every repository, so it comes after `config`. */
@@ -511,23 +513,8 @@ export async function takeHandOver() {
   } catch {}
 }
 
-/**
- * The live canvas `id` (the shown one by default): the server pushes a snapshot on connect and after
- * every change, the restart that waits, the newer version of the app there is, how many cards on
- * each canvas need the owner, and the Bun it runs on when that is too old. A lost connection is
- * tried again with a growing pause, and at once when the page comes back into view (a phone that
- * was locked).
- */
-/** The server answered nothing while the page loaded (the app from the home screen, the machine asleep). */
-export let quietAtStart = false;
-export const markQuiet = () => void (quietAtStart = true);
-
-/** How long a connection may take to open before the page counts the server as not answering. */
-const QUIET_MS = 3000;
-/** How long before it is given up and tried anew. */
-const GIVE_UP_MS = 10_000;
-
-export function useCanvas(id = canvasId): {
+/** What the page hears of the canvas it shows, and of the server. */
+export interface CanvasFeed {
   snapshot: CanvasSnapshot | null;
   online: boolean;
   /** Since when the server does not answer; null while it does. */
@@ -543,18 +530,37 @@ export function useCanvas(id = canvasId): {
   oldBun: string | null;
   /** The canvases as they changed while the page is open (one started, stopped or renamed); null until they do. */
   canvases: CanvasInfo[] | null;
-} {
-  const [snapshot, setSnapshot] = useState<CanvasSnapshot | null>(null);
+}
+
+/**
+ * The live canvas `id` (the shown one by default): the server pushes a snapshot on connect and after
+ * every change, the restart that waits, the newer version of the app there is, how many cards on
+ * each canvas need the owner, and the Bun it runs on when that is too old. A lost connection is
+ * tried again with a growing pause, and at once when the page comes back into view (a phone that
+ * was locked). `start` is what the page has already, on a switch from another canvas.
+ */
+/** The server answered nothing while the page loaded (the app from the home screen, the machine asleep). */
+export let quietAtStart = false;
+export const markQuiet = () => void (quietAtStart = true);
+
+/** How long a connection may take to open before the page counts the server as not answering. */
+const QUIET_MS = 3000;
+/** How long before it is given up and tried anew. */
+const GIVE_UP_MS = 10_000;
+
+export function useCanvas(id = canvasId, start?: Partial<CanvasFeed>): CanvasFeed {
+  const [snapshot, setSnapshot] = useState<CanvasSnapshot | null>(start?.snapshot ?? null);
   // a page that loaded while the server answered nothing says so at once
   const [online, setOnline] = useState(!quietAtStart);
   const [offlineSince, setOfflineSince] = useState<number | null>(() => (quietAtStart ? Date.now() - QUIET_MS : null));
-  const [restart, setRestart] = useState<PendingRestart | null>(null);
-  const [update, setUpdate] = useState<AppUpdate | null>(null);
-  const [source, setSource] = useState<SourceUpdate | null>(null);
-  const [usage, setUsage] = useState<Usage | null>(null);
-  const [waiting, setWaiting] = useState<Record<string, Waiting>>({});
-  const [oldBun, setOldBun] = useState<string | null>(null);
-  const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
+  // what the bar shows is the server's, not the canvas's: a switch to another canvas starts from it
+  const [restart, setRestart] = useState<PendingRestart | null>(start?.restart ?? null);
+  const [update, setUpdate] = useState<AppUpdate | null>(start?.update ?? null);
+  const [source, setSource] = useState<SourceUpdate | null>(start?.source ?? null);
+  const [usage, setUsage] = useState<Usage | null>(start?.usage ?? null);
+  const [waiting, setWaiting] = useState<Record<string, Waiting>>(start?.waiting ?? {});
+  const [oldBun, setOldBun] = useState<string | null>(start?.oldBun ?? null);
+  const [canvases, setCanvases] = useState<CanvasInfo[] | null>(start?.canvases ?? null);
   useEffect(() => {
     let ws: WebSocket;
     let retry: ReturnType<typeof setTimeout>;

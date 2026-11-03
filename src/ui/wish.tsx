@@ -70,15 +70,26 @@ function writeAgain() {
   }, Math.min(Math.max(0, Date.parse(a.until) - Date.now()), 2 ** 31 - 1));
 }
 
-/** Takes back the canvas's draft that `store` kept, and writes it down there from now on. Once per page. */
+/**
+ * Takes back the canvas's draft that `store` kept, and writes it down there from now on. Called again
+ * for the same canvas, it changes nothing; for another (a switch of canvas in the same page), that
+ * canvas's draft takes the place of the one's before, which is written down already.
+ */
 export function keepWish(store: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>, canvas: string) {
-  if (kept) return;
-  kept = { store, key: `obeya-wish-${canvas}` };
+  const key = `obeya-wish-${canvas}`;
+  if (kept?.store === store && kept.key === key) return;
+  const switched = !!kept;
+  kept = { store, key };
+  let issue: Issue | null = null;
   try {
-    const issue = JSON.parse(store.getItem(kept.key) ?? 'null') as Issue | null;
-    if (issue && typeof issue.title === 'string' && typeof issue.body === 'string') state = { ...state, issue: { ...issue, images: issue.images ?? [] } };
+    const saved = JSON.parse(store.getItem(key) ?? 'null') as Issue | null;
+    if (saved && typeof saved.title === 'string' && typeof saved.body === 'string') issue = { ...saved, images: saved.images ?? [] };
   } catch {}
+  // a wish still being written for the canvas before goes into that canvas's draft (`write`)
+  if (switched) state = { open: false, issue, writing: false, error: '' };
+  else if (issue) state = { ...state, issue };
   writeAgain();
+  if (switched) for (const fn of listeners) fn();
 }
 
 export const useWish = () =>
@@ -124,6 +135,7 @@ async function write(w: Wish, images: string[], { base, seed }: { base?: { title
   const before = base === undefined ? state.issue : base;
   const from = seed ? w : state.issue?.from;
   set({ writing: true, error: '' });
+  const home = kept;
   try {
     const out = await api.writeWish({
       said: w.said,
@@ -134,8 +146,12 @@ async function write(w: Wish, images: string[], { base, seed }: { base?: { title
     });
     const shots = base === undefined ? [...(state.issue?.images ?? []), ...images] : (state.issue?.images ?? images);
     const limited = out.limitedUntil ? { again: { wish: w, images, until: out.limitedUntil, base: before ? { title: before.title, body: before.body } : null } } : {};
-    set({ writing: false, issue: { title: out.title, body: out.body, images: shots, ...(out.raw ? { raw: true as const } : {}), ...limited, ...(from ? { from } : {}) } });
+    const issue: Issue = { title: out.title, body: out.body, images: shots, ...(out.raw ? { raw: true as const } : {}), ...limited, ...(from ? { from } : {}) };
+    // the page switched to another canvas meanwhile: the draft is the canvas's it was asked on
+    if (kept !== home) return void home?.store.setItem(home.key, JSON.stringify(issue));
+    set({ writing: false, issue });
   } catch (e) {
+    if (kept !== home) return;
     set({ writing: false, error: e instanceof ApiError ? errorText(e.code) : t.offlineError });
   }
 }

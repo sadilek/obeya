@@ -87,7 +87,9 @@ type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 const lasting = (key: string) => key.startsWith('card:') || key === OBEYA_DRAFT || key.startsWith(`${OBEYA_DRAFT}:`) || key === MIC_DRAFT || key === WISH_DRAFT;
 const storeKey = (canvas: string) => `obeya-drafts-${canvas}`;
 const markupsKey = (canvas: string) => `obeya-markups-${canvas}`;
-let kept: { store: Store; canvas: string } | null = null;
+/** The store and canvas the drafts are written down for. */
+export type DraftsHome = { store: Store; canvas: string } | null;
+let kept: DraftsHome = null;
 
 /**
  * A screenshot the owner marked in a field: the original and the marks on it, by the id of the
@@ -120,11 +122,17 @@ export function setMarkup(id: string, markup: Markup | null) {
 /**
  * Takes back the canvas's drafts that `store` kept (the phone view's, which shows every canvas, under
  * a name of its own) and writes them down there from now on, text,
- * screenshots, picks and the message replied to, whenever they change, and the marks on the screenshots. Once per page;
- * later calls change nothing.
+ * screenshots, picks and the message replied to, whenever they change, and the marks on the screenshots. Called
+ * again for the same canvas, it changes nothing; for another (a switch of canvas in the same page), that canvas's
+ * drafts take the place of the one's before, which are written down already.
  */
 export function keepDrafts(store: Store, canvas: string) {
-  if (kept) return;
+  if (kept?.store === store && kept.canvas === canvas) return;
+  const switched = !!kept;
+  if (switched) {
+    for (const key of [...drafts.keys()]) if (lasting(key)) drafts.delete(key);
+    markups.clear();
+  }
   kept = { store, canvas };
   try {
     const saved = JSON.parse(store.getItem(storeKey(canvas)) ?? '{}') as Record<string, Kept>;
@@ -136,6 +144,7 @@ export function keepDrafts(store: Store, canvas: string) {
     for (const [id, m] of Object.entries(saved)) if (!markups.has(id)) markups.set(id, m);
   } catch {}
   listeners.add(writeDown);
+  if (switched) changed();
 }
 
 function writeDown() {
@@ -159,6 +168,28 @@ export function updateDraft(key: string, change: Partial<Draft> | ((d: Draft) =>
   const d = draftOf(key);
   drafts.set(key, { ...d, ...(typeof change === 'function' ? change(d) : change) });
   changed();
+}
+
+/** Where the drafts are kept now, for what comes back to a draft later (an upload that arrives). */
+export const draftsHome = (): DraftsHome => kept;
+
+/**
+ * `updateDraft` for the drafts kept at `home`: where the page has switched to another canvas since,
+ * the change goes into what the canvas left behind has written down, not into a draft of the one
+ * shown now; a draft that lasts no longer than its field is gone with it.
+ */
+export function updateDraftAt(home: DraftsHome, key: string, change: Partial<Draft> | ((d: Draft) => Partial<Draft>)) {
+  if (home === kept || !home) return updateDraft(key, change);
+  if (!lasting(key)) return;
+  try {
+    const saved = JSON.parse(home.store.getItem(storeKey(home.canvas)) ?? '{}') as Record<string, Kept>;
+    const d = { ...EMPTY, ...saved[key] };
+    const k = keptOf({ ...d, ...(typeof change === 'function' ? change(d) : change) });
+    if (k) saved[key] = k;
+    else delete saved[key];
+    if (Object.keys(saved).length) home.store.setItem(storeKey(home.canvas), JSON.stringify(saved));
+    else home.store.removeItem(storeKey(home.canvas));
+  } catch {}
 }
 
 /**

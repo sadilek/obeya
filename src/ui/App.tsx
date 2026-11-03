@@ -1,10 +1,11 @@
 // The canvas: camera, drag, unfold-in-place and the plan sheet.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
-import { api, ApiError, beforeReload, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
+import { api, ApiError, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
+import { goTo, onSwitch } from './switch';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
@@ -63,17 +64,75 @@ export function App() {
     const h = setTimeout(() => setCanvases((c) => c ?? keptCanvases()), quietAtStart ? 0 : 3000);
     return () => clearTimeout(h);
   }, []);
+  // what the page heard of the canvas it shows, for a switch to another to start from
+  const seen = useRef<CanvasFeed | null>(null);
+  // a switch to another canvas: what it starts from, and whether the canvas before has gone yet
+  const [switching, setSwitching] = useState<{ path: string; push: boolean; start: Partial<CanvasFeed>; gone: boolean } | null>(null);
+  const shownRef = useRef<string | undefined>(undefined);
+  const canvasesRef = useRef(canvases);
+  canvasesRef.current = canvases;
+  useEffect(() => {
+    if (phone) return;
+    let latest = 0;
+    const to = async (path: string, push: boolean) => {
+      const url = new URL(path, location.href);
+      const id = readAddress(url).canvas;
+      const list = seen.current?.canvases ?? canvasesRef.current ?? [];
+      if (!id || id === shownRef.current || !list.some((c) => c.id === id)) return push ? location.assign(path) : location.reload();
+      const n = ++latest;
+      // the canvas before stays until the next one is there: the page never shows neither
+      const snapshot = await api.canvasOf(id).catch(() => null);
+      if (n !== latest) return;
+      if (!snapshot) return push ? location.assign(path) : location.reload();
+      setCanvases(list);
+      setSwitching({ path: `${url.pathname}${url.search}${url.hash}`, push, start: { ...seen.current, snapshot }, gone: false });
+    };
+    // Back or Forward to another canvas's address; one within the canvas is the canvas's own
+    const pop = () => {
+      const id = readAddress().canvas;
+      if (id && id !== shownRef.current) void to(`${location.pathname}${location.search}`, false);
+    };
+    // a link to another canvas in the page (in the navigation, a text) switches to it, as `goTo` does
+    const click = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!a || (a.target && a.target !== '_self') || a.hasAttribute('download')) return;
+      const url = new URL(a.href);
+      const id = readAddress(url).canvas;
+      if (url.origin !== location.origin || !url.pathname.startsWith('/c/') || !id || id === shownRef.current) return;
+      e.preventDefault();
+      void to(`${url.pathname}${url.search}${url.hash}`, true);
+    };
+    addEventListener('popstate', pop);
+    document.addEventListener('click', click);
+    const off = onSwitch((path) => void to(path, true));
+    return () => {
+      off();
+      removeEventListener('popstate', pop);
+      document.removeEventListener('click', click);
+    };
+  }, []);
+  // the canvas before goes first (what it writes down as it goes is still its own), then the
+  // address, the API and the drafts move on to the next one, before the browser paints in between
+  useLayoutEffect(() => {
+    if (!switching || switching.gone) return;
+    if (switching.push) history.pushState(null, '', switching.path);
+    setSwitching({ ...switching, gone: true });
+  }, [switching]);
   if (!canvases) return <Splash offline={failed} />;
+  if (switching && !switching.gone) return null;
   // the canvas in the address, else the first
   const wanted = readAddress().canvas;
   const current = canvases.find((c) => c.id === wanted) ?? canvases[0];
   if (!current) return <NoCanvas />;
   // a phone gets every canvas's waits and work, and the cards full screen, instead of the canvas
   if (phone) return <Phone canvases={canvases} />;
+  shownRef.current = current.id;
   setCanvas(current.id);
   keepDrafts(sessionStorage, current.id);
   keepWish(sessionStorage, current.id);
-  return <Live canvases={canvases} />;
+  const start = switching?.start.snapshot?.canvas.id === current.id ? switching.start : undefined;
+  return <Live key={current.id} canvases={canvases} start={start} seen={seen} />;
 }
 
 /**
@@ -131,8 +190,10 @@ function Splash({ offline }: { offline: boolean }) {
   );
 }
 
-function Live({ canvases: loaded }: { canvases: CanvasInfo[] }) {
-  const { snapshot, online, restart, update, source, usage, waiting, oldBun, canvases } = useCanvas();
+function Live({ canvases: loaded, start, seen }: { canvases: CanvasInfo[]; start?: Partial<CanvasFeed>; seen: { current: CanvasFeed | null } }) {
+  const feed = useCanvas(undefined, start);
+  seen.current = feed;
+  const { snapshot, online, restart, update, source, usage, waiting, oldBun, canvases } = feed;
   if (!snapshot) return <Splash offline={!online} />;
   // a canvas started, stopped or renamed while the page is open: the switcher follows
   return <Canvas snapshot={snapshot} online={online} restart={restart} update={update} source={source} usage={usage} canvases={canvases ?? loaded} waiting={waiting} oldBun={oldBun} />;
@@ -420,6 +481,19 @@ function Canvas({
     edit.current = null;
     return Object.keys(e.patch).length ? api.patch(e.id, e.patch) : Promise.resolve();
   };
+  // leaving for another canvas: what was typed is saved at once, and what this canvas still had
+  // under way (a lookup, a step of the address) no longer touches the page, which shows the other
+  const gone = useRef(false);
+  useEffect(
+    () => () => {
+      gone.current = true;
+      flushEdit().catch(console.error);
+      beingWritten.clear();
+    },
+    [],
+  );
+  // a call about a card goes to its canvas, even once the page shows another
+  useEffect(() => cardsOn(snapshot.canvas.id, snapshot.items.map((i) => i.id)), [snapshot]);
   // what the open card holds as typed, which the snapshot may not carry yet
   const openDraft = useRef<Pick<Item, 'kind' | 'title' | 'body' | 'images'>>({ kind: 'task', title: '', body: '' });
   const onEdit = (p: CardPatch) => {
@@ -666,7 +740,11 @@ function Canvas({
   useEffect(() => {
     const away = () => leaveSheet(sessionStorage, snapshot.canvas.id, kOnRef.current && drafted(OBEYA_DRAFT));
     addEventListener('pagehide', away);
-    return () => removeEventListener('pagehide', away);
+    // a switch to another canvas leaves this one as going to another page does
+    return () => {
+      removeEventListener('pagehide', away);
+      away();
+    };
   }, []);
   useEffect(() => {
     const k = takeKept(sessionStorage, snapshot.canvas.id);
@@ -682,6 +760,7 @@ function Canvas({
     addressSet.current = true;
     const done = () => {
       addressSet.current = false;
+      if (gone.current) return;
       history.replaceState(history.state, '', pathOf(openNow()));
     };
     if (k) return void reopen(k).catch(console.error).finally(done);
@@ -719,7 +798,7 @@ function Canvas({
   // (by a link in it) takes over that one's step. Changes take effect one after the other: a step
   // back is done once the browser says so.
   const addressChain = useRef(Promise.resolve());
-  const address = (change: () => void | Promise<void>) => void (addressChain.current = addressChain.current.then(change).catch(console.error));
+  const address = (change: () => void | Promise<void>) => void (addressChain.current = addressChain.current.then(() => (gone.current ? undefined : change())).catch(console.error));
   /** The step back this page asked the browser for, until it is done. */
   const stepBack = useRef<(() => void) | null>(null);
   /** While the page opens what the address names (as it loads, on Back or Forward): the address is set already. */
@@ -768,6 +847,7 @@ function Canvas({
   /** Opens what the address names; a code no card has leaves the canvas, at its address. */
   async function openAddress(code: string, quick: boolean) {
     const i = await namedBy(code);
+    if (gone.current) return;
     // by its short code, where it was named by its id
     history.replaceState(history.state, '', pathOf(i));
     if (!i) return;
@@ -781,6 +861,7 @@ function Canvas({
   async function followAddress() {
     const code = readAddress().card;
     const i = code ? await namedBy(code) : undefined;
+    if (gone.current) return;
     addressSet.current = true;
     try {
       const f = focusRef.current;
@@ -797,6 +878,9 @@ function Canvas({
   follow.current = followAddress;
   useEffect(() => {
     const pop = () => {
+      // Back or Forward to another canvas: the page switches to it (App)
+      const to = readAddress().canvas;
+      if (to && to !== snapshot.canvas.id) return;
       const done = stepBack.current;
       stepBack.current = null;
       if (done) done();
@@ -1004,7 +1088,7 @@ function Canvas({
       onNotice((n) => {
         // the open card moved to another canvas (built in a new repository there): the page follows it
         const f = focusRef.current;
-        if (n.movedTo && n.cardId && f?.type === 'card' && f.id === n.cardId) return location.assign(cardPath(n.movedTo, n.cardId));
+        if (n.movedTo && n.cardId && f?.type === 'card' && f.id === n.cardId) return goTo(cardPath(n.movedTo, n.cardId));
         const i = itemsRef.current.find((x) => x.id === n.cardId);
         if (n.wish) openWish(n.wish);
         // the card a review of its PR asked for, unless the owner has another one open; one just made, once it is on the canvas
@@ -1136,7 +1220,10 @@ function Canvas({
       pendingRemovals.current.clear();
     };
     addEventListener('pagehide', away);
-    return () => removeEventListener('pagehide', away);
+    return () => {
+      removeEventListener('pagehide', away);
+      away();
+    };
   }, []);
   /** A removal still waiting for „Rückgängig“ to run out is taken back: the arrow stays. */
   function keepDependency(key: string) {
@@ -1537,8 +1624,8 @@ function Canvas({
     pinned,
     pinnable: !matchMedia(NARROW).matches && innerWidth - NAV_W - side.right >= NAV_CANVAS_MIN,
     onPin: pin,
-    onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : location.assign(cardPath(c, i))),
-    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : location.assign(`${canvasPath(c)}?talk`)),
+    onOpen: (c: string, i: Item) => (c === snapshot.canvas.id ? void openFresh(i) : goTo(cardPath(c, i))),
+    onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : goTo(`${canvasPath(c)}?talk`)),
   };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
   const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
@@ -1872,7 +1959,7 @@ function Canvas({
             {online && update && restart?.reason !== 'update' && <UpdatePill update={update} />}
             {online && source && <SourcePill source={source} />}
             {online && usage && <UsagePill usage={usage} />}
-            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => location.assign(cardPath(c, card))} onTake={takeWorkspace} onKeep={keepWorkspace} />}
+            {snapshot.workspaces && <WorkspacesPill pools={snapshot.workspaces} canvas={snapshot.canvas} canvases={canvases} items={items} onOpen={(i) => void openFresh(i)} onElsewhere={(c, card) => goTo(cardPath(c, card))} onTake={takeWorkspace} onKeep={keepWorkspace} />}
             <button className={cOn ? 'pill kpill config on' : 'pill kpill config'} title={t.config.button} onClick={toggleConfig}>
               <BarIcon d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
               <span className="lbl">{t.config.button}</span>

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { appended, cardDraft, pathWord, wordsOf, draftOf, dropDraft, giveBack, insert, insertFiles, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, setMarkup, updateDraft, withoutWords } from './draft';
+import { appended, cardDraft, pathWord, wordsOf, draftOf, draftsHome, dropDraft, giveBack, insert, insertFiles, keepDrafts, MIC_DRAFT, markupOf, moveFiles, moveImages, OBEYA_DRAFT, setMarkup, updateDraft, updateDraftAt, withoutWords } from './draft';
 
 const store = () => {
   const m = new Map<string, string>();
@@ -118,4 +118,38 @@ test('a word taken out of a text takes the space after it, or at the end of a li
   expect(withoutWords('Schau /a.pdf\nund das', ['/a.pdf'])).toBe('Schau\nund das');
   // only as a word of its own
   expect(withoutWords('/a.pdfx /a.pdf', ['/a.pdf'])).toBe('/a.pdfx');
+});
+
+test("another canvas in the same page brings its drafts in place of the ones before, which stay written down", () => {
+  updateDraft(cardDraft('s1'), { text: 'auf dem Shop' });
+  updateDraft(OBEYA_DRAFT, { text: 'an Obeya im Shop' });
+  s.setItem('obeya-drafts-web', JSON.stringify({ [OBEYA_DRAFT]: { text: 'an Obeya auf der Website', images: [] } }));
+  keepDrafts(s, 'web');
+  expect(draftOf(OBEYA_DRAFT).text).toBe('an Obeya auf der Website');
+  expect(draftOf(cardDraft('s1')).text).toBe('');
+  // what the owner writes now goes to this canvas's drafts; the other canvas's stay as they were
+  updateDraft(OBEYA_DRAFT, { text: 'neu auf der Website' });
+  expect(JSON.parse(s.getItem('obeya-drafts-web')!)[OBEYA_DRAFT].text).toBe('neu auf der Website');
+  expect(JSON.parse(s.getItem('obeya-drafts-shop')!)[OBEYA_DRAFT].text).toBe('an Obeya im Shop');
+  // and back: the first canvas's drafts again
+  keepDrafts(s, 'shop');
+  expect(draftOf(OBEYA_DRAFT).text).toBe('an Obeya im Shop');
+  expect(draftOf(cardDraft('s1')).text).toBe('auf dem Shop');
+  dropDraft(OBEYA_DRAFT);
+  dropDraft(cardDraft('s1'));
+  expect(s.getItem('obeya-drafts-shop')).toBeNull();
+});
+
+test('a screenshot that arrives after a switch of canvas goes into the draft it was pasted into, not the one shown now', () => {
+  updateDraft(OBEYA_DRAFT, { text: 'mit Bild' });
+  const home = draftsHome();
+  keepDrafts(s, 'web');
+  updateDraftAt(home, OBEYA_DRAFT, (d) => ({ images: [...d.images, 'late'] }));
+  expect(draftOf(OBEYA_DRAFT).images).toEqual([]);
+  expect(JSON.parse(s.getItem('obeya-drafts-shop')!)[OBEYA_DRAFT]).toEqual({ text: 'mit Bild', images: ['late'] });
+  keepDrafts(s, 'shop');
+  expect(draftOf(OBEYA_DRAFT).images).toEqual(['late']);
+  dropDraft(OBEYA_DRAFT);
+  dropDraft(OBEYA_DRAFT);
+  s.removeItem('obeya-drafts-web');
 });
