@@ -232,6 +232,10 @@ page for something to look at; the worker picks which, and runs the app for it a
   variables, fonts, a logo as a `data:`-embedded file of `.obeya/`. It is a file, not a setting;
   which parts of the pages it can style is in the design doc's chapter "Sharing demos" (A
   repository's theme). A changed theme leaves the pages shared before it outdated, to share again.
+  Once a page of the repository is online and it has no theme yet, Obeya proposes a card for one,
+  once: its worker derives the theme from the repository's own look (its app's colours, a logo)
+  with the skill `obeya:theme`, from a template naming what each colour variable colours, light
+  and dark, and shows the pages with it in its demo.
 
 A site from the file is deployed to and read only once you trusted it (see Commands you trust).
 

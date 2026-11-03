@@ -74,7 +74,7 @@ export interface CanvasDeps {
   permissionMode?: PermissionMode;
   /** Watch plan docs and pull requests; off in tests. */
   watch?: boolean;
-  /** Propose the card that fills in a repository's settings where it has none (`proposeSetup`); off in tests not about it. */
+  /** Propose the cards that set up a repository: its settings where it has none (`proposeSetup`), its pages' theme (`proposeTheme`); off in tests not about them. */
   setupProposals?: boolean;
   /** How long a voice command waits for undo. */
   commandDelayMs?: number;
@@ -447,7 +447,10 @@ export class CanvasRuntime {
       languageFor: (card) => (this.runs(card) ? this.repoOf(card).adapter.demo?.language : undefined),
       onPage: (cardId, r) => {
         const card = board.item(cardId);
-        if (card && this.runs(card)) this.repoOf(card).workers.pageSettled(cardId, r);
+        if (!card || !this.runs(card)) return;
+        const repo = this.repoOf(card);
+        repo.workers.pageSettled(cardId, r);
+        if (r && 'url' in r) this.proposeTheme(repo);
       },
     });
     this.sharing.resume();
@@ -626,7 +629,10 @@ export class CanvasRuntime {
     this.themeReads.delete(path);
     const before = this.themes.get(path);
     this.themes.set(path, theme);
-    if (!this.shutDown && (before === undefined || before?.hash !== theme?.hash)) this.board.changed();
+    if (this.shutDown) return;
+    if (before === undefined || before?.hash !== theme?.hash) this.board.changed();
+    const r = this.repos.find((x) => x.info.path === path);
+    if (r) this.proposeTheme(r);
   }
 
   /** By repository's path: its theme (`themeOf`), and a read of it under way. */
@@ -943,6 +949,7 @@ export class CanvasRuntime {
     this.board.canvas.repos.push(r.ref);
     this.watch(r);
     this.proposeSetup(r);
+    this.proposeTheme(r);
   }
 
   /** Stops what the repository set up: its Lesestand, the watchers, its workers' sessions. Its cards stay. */
@@ -1988,6 +1995,17 @@ export class CanvasRuntime {
     const settings = this.shared.get(r.info.path)?.settings ?? {};
     const own = SHARED_FIELDS.some((k) => settings[k] !== undefined);
     this.board.proposeSetup(r.ref.id, r.ref.name, !own || !!this.adapterModules.get(r.info.path));
+  }
+
+  /**
+   * Obeya proposes the card that gives a repository's shared pages a theme once a page of it is
+   * online and its default branch has no `.obeya/theme.css`; it waits for the theme to be read.
+   */
+  private proposeTheme(r: RepoRuntime) {
+    if (!this.deps.setupProposals) return;
+    const theme = this.themeKnown(r.info.path);
+    if (theme === undefined) return;
+    this.board.proposeTheme(r.ref.id, r.ref.name, { themed: theme !== null, shares: this.board.sharesPages(r.ref.id) });
   }
 
   /**

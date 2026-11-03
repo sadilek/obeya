@@ -62,6 +62,12 @@ export async function readingTheme(repo: string, tree: string | undefined): Prom
   }
 }
 
+/**
+ * The theme as the checkout at `repo` has it, committed or not: what its pages will carry once it is
+ * on the default branch (the theme skill's preview). Null without a `theme.css`.
+ */
+export const workingTheme = (repo: string): Theme | null => themeOf(folderFiles(join(repo, THEME_DIR)));
+
 /** The theme from the files of `.obeya/`, each read by its path there; null without a `theme.css`. */
 function themeOf(file: (path: string) => Buffer | null): Theme | null {
   const text = file(THEME_FILE);

@@ -377,6 +377,9 @@ const CLAUDE_MD_SETTING = 'claude_md_card:';
 /** The setting that names the card filling in a repository's settings, proposed by Obeya or made in the Konfiguration dialog, per repository: Obeya proposes it once. */
 const SETUP_CARD_SETTING = 'setup_card:';
 
+/** The setting that names the card Obeya proposed to give a repository's shared pages a theme, per repository: Obeya proposes it once. */
+const THEME_CARD_SETTING = 'theme_card:';
+
 /** How long an empty card of the owner's (no title, text or screenshots) may exist before Obeya drops it on start. */
 const UNTITLED_GRACE_MS = 10 * 60_000;
 
@@ -993,8 +996,16 @@ export class Board {
    * proposes it no more.
    */
   setupCard(repo: string, name: string, propose = false): Item {
+    return this.repoCard(repo, SETUP_CARD_SETTING, this.t.adapterSetup, name, propose);
+  }
+
+  /**
+   * A card of Obeya's for setting up a repository (`setupCard`, `proposeTheme`), right of everything
+   * on the canvas, at the top: the owner's, or Obeya's proposal (`propose`) with why. The setting
+   * `key` names it for the repository from then on.
+   */
+  private repoCard(repo: string, key: string, t: { title: (name: string) => string; body: string; reason: (name: string) => string }, name: string, propose: boolean): Item {
     this.checkRepo(repo);
-    const { title, body, reason } = this.t.adapterSetup;
     // clear of the note on the plan directory, as on a canvas that has nothing else yet
     const { items, planDirs = [] } = this.snapshot();
     const box = unionBounds([...items.filter((i) => !i.parent).map((i) => boundsOf(i, items)), ...planDirs.flatMap((d) => planDirNoteBox(d) ?? [])]);
@@ -1004,14 +1015,14 @@ export class Board {
         canvas_id: this.canvas.id,
         kind: 'task',
         state: propose ? 'proposal' : 'planned',
-        title: title(name),
-        body,
+        title: t.title(name),
+        body: t.body,
         ...at,
         repo: this.repoColumn(repo),
-        ...(propose ? { proposal: JSON.stringify({ ...proposalOf({ reason: reason(name) }), setup: true } satisfies Proposal) } : {}),
+        ...(propose ? { proposal: JSON.stringify({ ...proposalOf({ reason: t.reason(name) }), setup: true } satisfies Proposal) } : {}),
       },
     ]);
-    this.setSetting(`${SETUP_CARD_SETTING}${repo}`, row!.id);
+    this.setSetting(`${key}${repo}`, row!.id);
     this.changed();
     return this.itemOf(row!);
   }
@@ -1027,8 +1038,33 @@ export class Board {
       if (unknown && !this.openSetupCard(repo, name)) this.setupCard(repo, name, true);
       return;
     }
+    if (!unknown) this.withdrawOwn(id);
+  }
+
+  /**
+   * Obeya proposes the card that gives a repository's shared pages a look of their own once a page
+   * of it is out (`shares`) and it has no theme (`themed`), once: dismissed, accepted or done, it
+   * does not come back. Its proposal still open goes once the repository has a theme.
+   */
+  proposeTheme(repo: string, name: string, p: { themed: boolean; shares: boolean }) {
+    const id = this.setting(`${THEME_CARD_SETTING}${repo}`);
+    if (!id) {
+      if (!p.themed && p.shares) this.repoCard(repo, THEME_CARD_SETTING, this.t.themeCard, name, true);
+      return;
+    }
+    if (p.themed) this.withdrawOwn(id);
+  }
+
+  /** Whether a page of the repository's cards is online, or was (archived cards too). */
+  sharesPages(repo: string): boolean {
+    const column = this.repoColumn(repo);
+    return this.sharedRows().some((r) => r.repo === column && r.share && !!(JSON.parse(r.share) as StoredShare).url);
+  }
+
+  /** Obeya's own proposal still open goes, withdrawn rather than dismissed. */
+  private withdrawOwn(id: string) {
     const row = this.store.card(id);
-    if (unknown || !row || row.deleted_at || row.state !== 'proposal') return;
+    if (!row || row.deleted_at || row.state !== 'proposal') return;
     this.store.update(id, { proposal: JSON.stringify({ ...storedProposal(row)!, superseded: {} } satisfies Proposal), deleted_at: new Date().toISOString() });
     this.changed();
   }
