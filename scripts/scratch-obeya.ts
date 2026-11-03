@@ -163,7 +163,7 @@ import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGES } from '../src/core/locale';
 import type { CanvasSnapshot, Item } from '../src/core/types';
 import { loginLink, ownerHeaders } from '../src/server/owner';
-import { findTailscale, type ServeEntry, Tailscale } from '../src/server/tailscale';
+import { findTailscale, type NamedEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';
 import { branchName } from '../src/server/workspaces';
 import { opt } from './common';
@@ -988,8 +988,8 @@ function stop(d: string) {
   const served = join(d, 'home', 'tailscale-serve.json');
   if (existsSync(served)) {
     const tailscale = findTailscale();
-    const entry = JSON.parse(readFileSync(served, 'utf8')) as ServeEntry & { name: string };
-    if (tailscale) new Tailscale(tailscale).unserveSync(entry.name, entry);
+    const entry = JSON.parse(readFileSync(served, 'utf8')) as NamedEntry;
+    if (tailscale) new Tailscale(tailscale).unserveSync(entry);
     rmSync(served, { force: true });
   }
   return gone;

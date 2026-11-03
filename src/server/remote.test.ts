@@ -111,6 +111,43 @@ describe('through Tailscale', () => {
     expect(existsSync(join(dir, 'tailscale-serve.json'))).toBe(false);
   });
 
+  test('the machine renamed in the tailnet, Obeya moves its entry with its port to the new name and leaves others be', async () => {
+    const renamed = 'macbook.tail1234.ts.net';
+    await turnOn();
+    const config = () => JSON.parse(readFileSync(join(ts, 'serve.json'), 'utf8'));
+    // something else serves under the old name: it stays, as does the port it holds
+    const others = { ...config(), Web: { ...config().Web, [`${NAME}:10000`]: { Handlers: { '/': { Proxy: 'http://127.0.0.1:3000' } } } } };
+    writeFileSync(join(ts, 'serve.json'), JSON.stringify({ ...others, TCP: { ...others.TCP, 10000: { HTTPS: true } } }));
+    tailscaleStatus(ts, { state: 'Running', name: renamed, https: true });
+    expect((await view()).address).toBe(`https://${renamed}`);
+    expect(config().Web).toEqual({
+      [`${NAME}:10000`]: { Handlers: { '/': { Proxy: 'http://127.0.0.1:3000' } } },
+      [`${renamed}:443`]: { Handlers: { '/': { Proxy: `http://127.0.0.1:${server.port}` } } },
+    });
+    expect(Object.keys(config().TCP).sort()).toEqual(['10000', '443']);
+    expect(JSON.parse(readFileSync(join(dir, 'tailscale-serve.json'), 'utf8')).name).toBe(renamed);
+    expect((await viaTailnet('/', { host: renamed, 'x-forwarded-host': renamed })).status).not.toBe(421);
+  });
+
+  test('an entry under an old name that proxies to Obeya is Obeya’s, though it noted another since: Obeya takes its port back', async () => {
+    // renamed before Obeya moved its entry: it served the new name on the next port and noted only that one
+    const renamed = 'macbook.tail1234.ts.net';
+    const target = 'http://127.0.0.1:4417';
+    const handler = (proxy: string) => ({ Handlers: { '/': { Proxy: proxy } } });
+    writeFileSync(
+      join(ts, 'serve.json'),
+      JSON.stringify({ TCP: { 443: { HTTPS: true }, 8443: { HTTPS: true } }, Web: { [`${NAME}:443`]: handler(target), [`${renamed}:8443`]: handler(target) } }),
+    );
+    tailscaleStatus(ts, { state: 'Running', name: renamed, https: true });
+    const home = mkdtempSync(join(tmpdir(), 'obeya-remote-home-'));
+    writeFileSync(join(home, 'tailscale-serve.json'), JSON.stringify({ https: 8443, target, name: renamed }));
+    const other = new Access({ store, home, tailscale: new Tailscale(join(ts, 'tailscale')) });
+    await other.start(4417, () => {});
+    expect((await other.save({ remote: { via: 'tailscale' } })).address).toBe(`https://${renamed}`);
+    expect(JSON.parse(readFileSync(join(ts, 'serve.json'), 'utf8'))).toEqual({ TCP: { 443: { HTTPS: true } }, Web: { [`${renamed}:443`]: handler(target) } });
+    rmSync(home, { recursive: true, force: true });
+  });
+
   test('says what the network lacks: Tailscale logged out, HTTPS off in the tailnet, missing', async () => {
     tailscaleStatus(ts, { state: 'NeedsLogin', name: NAME, https: false });
     expect((await turnOn()).tailscale).toEqual({ state: 'loggedOut' });

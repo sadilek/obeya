@@ -79,7 +79,12 @@ own for it and is never on the open internet. „Von anderen Geräten erreichbar
   It takes 443, else 8443, else 10000, whichever no entry serves, and touches no other entry; it notes
   its own in `tailscale-serve.json` in the home, so it can move or remove exactly that one, after a
   restart too. Stopping, Obeya removes it, so a program taking its port later is not served to the
-  tailnet. Bun's dev server answers for scripts only under the name it listens on, so an Obeya with
+  tailnet. Renamed in the tailnet, the machine keeps its entries under the old name: nothing reaches
+  them any more, but they hold their ports, since Tailscale keeps ports per machine. Obeya then
+  removes its own there (the one it noted, and any that proxies to its port) and serves the new name
+  on the best port they held, so the address stays without a port where it had none; other entries
+  stay. `tailscale serve --https=<port> off` reaches only entries under the current name, so Obeya
+  removes entries through `tailscale serve set-raw`, with the configuration it read minus its own. Bun's dev server answers for scripts only under the name it listens on, so an Obeya with
   `--dev` shows a blank page through `tailscale serve`.
 - *Über eine Adresse*: Obeya also listens, in plain HTTP, on an address of one of the machine's
   interfaces (another VPN's). The section says a phone's browser allows microphone and push only over

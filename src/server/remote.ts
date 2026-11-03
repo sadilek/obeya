@@ -23,7 +23,7 @@ import type { Store } from './db';
 import { OWNER_SETTINGS_FILE as SETTINGS_FILE } from '../../plugin/skills/demo/lib/language.ts';
 import { Owner } from './owner';
 import { remoteOf, remoteSetting, saveRemote } from './settings';
-import { type ServeEntry, Tailscale } from './tailscale';
+import { type NamedEntry, Tailscale } from './tailscale';
 
 export const DEVICE_COOKIE = 'obeya-device';
 /** How long a pairing code holds. */
@@ -92,7 +92,7 @@ export class Access implements Gate {
   private setting: RemoteSetting | null;
   private ts: TailscaleState = { state: 'missing' };
   /** The `tailscale serve` entry Obeya keeps, and the tailnet name it serves at. */
-  private served: (ServeEntry & { name: string }) | null = null;
+  private served: NamedEntry | null = null;
   /** The other address Obeya listens on. */
   private listening: string | null = null;
   private problem: RemoteProblem | undefined;
@@ -139,7 +139,7 @@ export class Access implements Gate {
   release() {
     this.stop();
     if (!this.served) return;
-    this.tailscale.unserveSync(this.served.name, this.served);
+    this.tailscale.unserveSync(this.served);
     this.keepServed(null);
   }
 
@@ -163,7 +163,7 @@ export class Access implements Gate {
     }
     if (s?.via !== 'tailscale') {
       if (this.served) {
-        await this.tailscale.unserve(this.served.name, this.served).catch(() => {});
+        await this.tailscale.unserve(this.served).catch(() => {});
         this.keepServed(null);
       }
       if (s?.via === 'address' && this.listening !== s.address) {
@@ -188,7 +188,7 @@ export class Access implements Gate {
     if (this.ts.state !== 'ready') return void (this.problem = undefined);
     const name = this.ts.name;
     if (this.served && this.served.name === name && this.served.target === `http://127.0.0.1:${this.port}` && !check && !this.problem) return;
-    const r = await this.tailscale.serve(name, this.port, this.served?.name === name ? this.served : null);
+    const r = await this.tailscale.serve(name, this.port, this.served);
     if ('problem' in r) {
       this.problem = r.problem;
       return;
@@ -197,17 +197,17 @@ export class Access implements Gate {
     this.keepServed({ ...r.entry, name });
   }
 
-  private readServed(): (ServeEntry & { name: string }) | null {
+  private readServed(): NamedEntry | null {
     if (!this.home || !existsSync(join(this.home, SERVE_FILE))) return null;
     try {
-      const o = JSON.parse(readFileSync(join(this.home, SERVE_FILE), 'utf8')) as ServeEntry & { name: string };
+      const o = JSON.parse(readFileSync(join(this.home, SERVE_FILE), 'utf8')) as NamedEntry;
       return typeof o.https === 'number' && typeof o.target === 'string' && typeof o.name === 'string' ? o : null;
     } catch {
       return null;
     }
   }
 
-  private keepServed(entry: (ServeEntry & { name: string }) | null) {
+  private keepServed(entry: NamedEntry | null) {
     this.served = entry;
     if (!this.home) return;
     if (entry) writeFileSync(join(this.home, SERVE_FILE), `${JSON.stringify(entry, null, 2)}\n`);
