@@ -842,7 +842,7 @@ const de = {
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { kept: 'Die Demo bleibt hier abrufbar.', again: 'Die Demo der letzten Übergabe. Der Agent arbeitet wieder an der Aufgabe.',
+  demo: { kept: 'Die Demo bleibt hier abrufbar.', again: 'Die Demo der letzten Übergabe. Der Agent arbeitet wieder an der Aufgabe.', asked: 'Zur Frage des Agenten.', askedAgain: 'Zur Frage des Agenten. Er arbeitet wieder an der Aufgabe.',
     artifact: 'HTML-Artefakt des Agenten',
     play: 'Abspielen',
     zoom: 'Größer zeigen (Z)',
@@ -2820,7 +2820,7 @@ const en: Strings = {
         .filter(Boolean)
         .join(' · '),
   },
-  demo: { kept: 'The demo stays available here.', again: 'The demo of the last handover. The agent is working on the task again.',
+  demo: { kept: 'The demo stays available here.', again: 'The demo of the last handover. The agent is working on the task again.', asked: 'For the agent’s question.', askedAgain: 'For the agent’s question. The agent is working on the task again.',
     artifact: 'The agent’s HTML artifact',
     play: 'Play',
     zoom: 'Show larger (Z)',

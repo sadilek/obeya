@@ -587,8 +587,19 @@ export function Detail(p: Props) {
                           (!demoWaits || sharing) &&
                           ((shown, latest) => (
                             <>
-                              {!demoWaits && latest && <p className="hint">{item.state === 'working' || item.state === 'waiting' ? t.demo.again : t.demo.kept}</p>}
-                              {sharing && shareBox(shown)}
+                              {!demoWaits && latest && (
+                                <p className="hint">
+                                  {shown.asked && item.state === 'waiting' && item.need === 'question'
+                                    ? t.demo.asked
+                                    : item.state === 'working' || item.state === 'waiting'
+                                      ? shown.asked
+                                        ? t.demo.askedAgain
+                                        : t.demo.again
+                                      : t.demo.kept}
+                                </p>
+                              )}
+                              {/* drafts shown with a question are not the work's demo: the handover brings the one to share */}
+                              {sharing && !shown.asked && shareBox(shown)}
                             </>
                           ))
                         }

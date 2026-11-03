@@ -2752,7 +2752,8 @@ function shareOf(r: CardRow): Item['share'] {
   const shared = s.url ? sharedDemos(s) : [];
   // the card's demos on the page, by their handovers
   const on = cardDemos(r).flatMap((d) => (d.handover !== undefined && shared.some((x) => sameDemo(x, d)) ? [d.handover] : []));
-  const stale = !!s.url && !!latest && !shared.some((x) => sameDemo(x, latest));
+  // drafts shown with a question are not the work's demo: the page lacks nothing for them
+  const stale = !!s.url && !!latest && !latest.asked && !shared.some((x) => sameDemo(x, latest));
   const outdated = reshareable(r);
   return {
     state: s.refresh ? 'shared' : (s.state ?? 'shared'),

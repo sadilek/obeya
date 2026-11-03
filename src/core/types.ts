@@ -884,6 +884,11 @@ export interface Demo {
   answer?: string;
   /** The handover event it came with: a later handover may keep the demo, and its question stays with the first. */
   handover?: number;
+  /**
+   * It came with the worker's question (`handover` is then that question's event): drafts or variants
+   * to choose between, not the result of the work, so a handover does not keep it as its demo.
+   */
+  asked?: true;
   /** When that handover was. */
   at?: string;
   /** The page it is shared on, for colleagues who have never seen Obeya: written by the worker at handover, or later from its summary. */

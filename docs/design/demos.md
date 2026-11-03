@@ -448,10 +448,17 @@ The addresses the card loads its demo from carry the handover (`?v=<handover>`),
 often renders a new demo into the directory of the one before: a card left open loads the new demo
 when it arrives.
 
+A worker's question may bring a demo too (`ask`'s `demo`, a video or an HTML artifact): drafts or
+variants the owner is to choose from before the worker goes on, shown where a handover's demo would
+be, with a hint that it belongs to the question („Zur Frage des Agenten.“), without autoplay and
+without sharing, since it is not the result of the work. It replaces the demo on the card like a new
+handover's and stays in view after the answer while the worker goes on.
+
 A handover without a demo is refused, unless the card has one from an earlier handover, which then
-stands: whether to record a demo again after feedback is the worker's call. While the worker works
-again or waits on a question, the card shows the last demo without autoplay, with a hint that it is
-the last handover's and the agent is on the task again; sharing stays beside it. Demos stay in
+stands: whether to record a demo again after feedback is the worker's call. A question's demo does
+not stand for one. While the worker works again or waits on a question, the card shows the last
+demo without autoplay, with a hint that it is the last handover's and the agent is on the task
+again; sharing stays beside it. Demos stay in
 the demo directory, never in git; a pull request links a demo only once it is shared (see Sharing a demo).
 
 #### Watching the demo
@@ -540,6 +547,10 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 
 - **A demo is a video or an HTML artifact, chosen by the worker** (2026-10-01): drafts to choose
   from (a logo) say more side by side on a page than in a recording.
+- **A question can bring a demo** (owner, 2026-11-03): drafts to choose a direction from (three
+  designs, say) were a path in the question's text, which the owner had to open by hand. Rejected:
+  handing over with the drafts and the demo report's question, which puts work that has only begun
+  up for approval.
 - **There is no handover without a demo** (owner, 2026-10-15): without one the owner has to read to
   decide. Rejected: a `no_demo` handover with a reason, and a repository setting leaving demos to the
   worker; a settings file that still has `demo.required` shows it as a problem.

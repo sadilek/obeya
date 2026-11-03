@@ -4088,17 +4088,51 @@ export class Workers {
           multiple: z.boolean().optional(),
           pick: z.array(z.string()).optional(),
           pick_why: z.string().optional(),
+          demo: z
+            .object({
+              kind: z.enum(['video', 'html']).optional().describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at"),
+              dir: z.string().describe('absolute path: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
+              chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
+            })
+            .optional()
+            .describe(
+              "what the owner is to look at to answer, when there is something to see (drafts or variants side by side, as an HTML artifact, say): the card shows it beside your question as it shows a handover's demo. It is no handover: the handover still brings its own demo.",
+            ),
         },
         run: (args) => {
-          handOver();
-          const q = withPick(args as unknown as Asked);
-          this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
-          this.toOwner(cardId, q);
-          return ending(
-            END_TURN,
-            'Recorded: your question waits for the owner on the card, and their answer arrives as your next message.',
-            'if they change your question, ask it anew (the card shows the earlier one as asked again further below)',
-          );
+          const asked = (shown?: StoredDemo): string => {
+            handOver();
+            const q = withPick(args as unknown as Asked);
+            const e = this.o.board.log(cardId, 'question', 'worker', formatQuestion(q, this.o.board.language()));
+            if (shown) {
+              // the demo it replaces stays with the card, for the owner to go back to
+              const row = this.o.board.row(cardId);
+              this.o.board.work(cardId, { demo: JSON.stringify({ ...shown, asked: true, handover: e.id, at: e.at } satisfies StoredDemo), ...(row.demo ? { demos: this.earlier(cardId, row) } : {}) });
+            }
+            this.toOwner(cardId, q);
+            return ending(
+              END_TURN,
+              'Recorded: your question waits for the owner on the card, and their answer arrives as your next message.',
+              'if they change your question, ask it anew (the card shows the earlier one as asked again further below)',
+            );
+          };
+          const given = args.demo as { kind?: DemoKind; dir: string; chapters?: string[] } | undefined;
+          if (!given) return asked();
+          // a demo made on another machine is shown from its copy here
+          return this.demoHere(cardId, given.dir).then((here) => {
+            if ('wrong' in here) return `Not asked: the demo could not be copied to the owner's machine (${here.wrong}). Check the directory, then ask again.`;
+            // copying it takes a while, in which the owner may stop or replace the session
+            if (this.live.get(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
+            const kind = given.kind ?? 'video';
+            if (kind === 'html') {
+              const wrong = checkArtifact(here.dir);
+              if (wrong) return `Not asked: ${wrong}. Fix the artifact, then ask again.`;
+              return asked({ kind, dir: here.dir, chapters: [], ...(artifactFiles(here.dir).length === 1 ? { single: true as const } : {}) });
+            }
+            const chapters = readChapters(here.dir, given.chapters ?? []);
+            if (typeof chapters === 'string') return `Not asked: ${chapters}. Fix the demo, then ask again.`;
+            return asked({ kind, dir: here.dir, chapters });
+          });
         },
       },
       // a prototype makes no cards of its own: what it proposes is building its idea on it
@@ -4391,11 +4425,11 @@ export class Workers {
             const approved = !!row.approved_at;
             // a handover in answer to the owner's words that brings no new demo is an answer to them, not a demo to watch
             const answered = !d && !!row.detail && !!(JSON.parse(row.detail) as { answering?: boolean }).answering;
-            // without a new demo, the one on the card stands
-            const kept = !d && !!row.demo;
+            // without a new demo, the one on the card stands, unless it only came with a question
+            const kept = !d && !!row.demo && !(JSON.parse(row.demo) as StoredDemo).asked;
             // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
             if (!d && !kept && !approved && !this.folder)
-              return `Not handed over: every handover brings a demo. Record it with ${this.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
+              return `Not handed over: every handover brings a demo${row.demo ? ' (the one you showed with your question is not one)' : ''}. Record it with ${this.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
             let demoJson: string | undefined;
             if (d) {
               const kind = d.kind ?? 'video';
@@ -4895,7 +4929,7 @@ ${idea.idea.brief}` : '',
       [
         `Then show the owner the result with a demo, so they can judge at a glance whether the work is done, and hand it over with ready_for_review.`,
         `Usually that is a video of the change, recorded with ${this.demoSkill(card.id)} as its instructions say (directory, chapter titles). Its length follows the size of the change, never padded: 30–60 s for a small one (a fix: the broken behaviour, then the fixed one), 1½–3 min for a larger one. Skip the skill's last steps (opening the page, the notification, the chat reply): Obeya shows the demo on the card.${this.shares ? ` The owner may share the demo, a video or an HTML artifact, with colleagues of the team on a page of its own: hand it over with that page (title, text${dimensions(this.o.adapter.demo?.site?.tags).length ? ', tags' : ''}), written for them.` : ''} ${run?.trim() ? 'Run the app for it as the recipe above says.' : "The repository's settings say nothing yet about how to run the app: find it out from the repository (README, scripts, configuration) and say in your summary how you ran it."}`,
-        `When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis, an answer), make an HTML artifact instead: an index.html in a new directory under ${this.demosDir(card.id)} (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html'. It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.`,
+        `When the result is something to look at rather than something that happens (drafts of a logo or a layout side by side, a comparison of variants, an analysis, an answer), make an HTML artifact instead: an index.html in a new directory under ${this.demosDir(card.id)} (never in git), self-contained or with the files it loads beside it, made for the owner to decide on, and hand it over with kind 'html' (drafts the owner is to choose from before you go on come with ask's demo instead). It shows in a sandboxed frame on the card, about 800 px wide, without Obeya's API.`,
         'Where either would do, record the video: watching the work happen is what the owner enjoys most.',
         "Where the work itself is a file for the owner (a document, a report, a spreadsheet in the repository), name it in ready_for_review's files: the card shows it beside the demo.",
       ].join(' '),

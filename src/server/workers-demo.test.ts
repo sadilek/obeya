@@ -625,6 +625,49 @@ describe('handing over with a demo', () => {
     expect(board.item(c.id)!.demos).toBeUndefined();
   });
 
+  test('a question may bring drafts to look at: the card shows them as its demo while the question waits', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const drafts = artifact();
+    const asked = await runtime.last.call('ask', { question: 'Welche Richtung?', options: ['A', 'B'], demo: drafts });
+    expect(asked).toContain('End your turn');
+    expect(state(c.id)).toBe('waiting:question');
+    const question = board.events(c.id).findLast((e) => e.kind === 'question')!;
+    expect(board.item(c.id)!.demo).toEqual({ kind: 'html', chapters: [], single: true, asked: true, handover: question.id, at: question.at });
+    expect(board.demoFiles(c.id)).toEqual({ dir: drafts.dir, kind: 'html' });
+    // the answer leaves them in view while the worker goes on with the direction chosen
+    workers.answer(c.id, 'A');
+    expect(state(c.id)).toBe('working');
+    expect(board.item(c.id)!.demo!.asked).toBe(true);
+  });
+
+  test('a question whose drafts are not there is not asked', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const empty = artifact();
+    rmSync(join(empty.dir, 'index.html'));
+    expect(await runtime.last.call('ask', { question: 'Welche Richtung?', demo: empty })).toContain('Not asked: index.html is missing');
+    expect(state(c.id)).toBe('working');
+    expect(board.item(c.id)!.demo).toBeUndefined();
+    expect(board.events(c.id).some((e) => e.kind === 'question')).toBe(false);
+  });
+
+  test("the drafts of a question are no handover's demo: the handover brings its own, and they stay with the card's earlier demos", async () => {
+    const c = manual();
+    await workers.start(c.id);
+    const drafts = artifact();
+    await runtime.last.call('ask', { question: 'Welche Richtung?', demo: drafts });
+    const question = board.events(c.id).findLast((e) => e.kind === 'question')!;
+    workers.answer(c.id, 'A');
+    expect(await runtime.last.call('ready_for_review', { summary: 'Richtung A umgesetzt.' })).toContain('the one you showed with your question is not one');
+    expect(state(c.id)).toBe('working');
+    const result = artifact();
+    expect(await runtime.last.call('ready_for_review', { summary: 'Richtung A umgesetzt.', demo: result })).toContain('End your turn');
+    expect(state(c.id)).toBe('waiting:demo');
+    expect(board.item(c.id)!.demo!.asked).toBeUndefined();
+    expect(board.item(c.id)!.demos).toEqual([{ kind: 'html', chapters: [], single: true, asked: true, handover: question.id, at: question.at, n: 0 }]);
+  });
+
   test('where demos are shared, a video or an artifact comes with its page for colleagues, kept with the demo', async () => {
     rmSync(dir, { recursive: true, force: true });
     setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
