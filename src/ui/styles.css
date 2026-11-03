@@ -2034,6 +2034,10 @@ button.link:hover { text-decoration: underline; }
 .ph-card:hover { transform: none; }
 .ph-card:active { transform: translateY(1px); }
 .ph-card .kind { font-size: 12.5px; }
+/* the number in the top right corner, beside the first line (the kind, or the title of a plain task) */
+.ph-card > .card-no { position: absolute; top: 14px; right: 14px; margin: 0; padding: 0; font-size: 12.5px; line-height: 1.2; }
+.ph-card > .kind, .ph-card > .ttl:first-child { padding-right: 44px; }
+.ph-card > .ttl:first-child ~ .card-no { top: 20px; }
 .ph-card .ttl { font-size: 18.5px; line-height: 1.2; margin-top: 2px; -webkit-line-clamp: 3; }
 .ph-card .meta { font-size: 14px; }
 .ph-card .state { position: static; margin-top: auto; padding-top: 8px; font-size: 13px; flex-wrap: wrap; gap: 0; }

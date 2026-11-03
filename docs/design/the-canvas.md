@@ -232,8 +232,9 @@ Card faces on the canvas link nothing, since a click there opens the card itself
 Every card has a number (`K42`): counting across all canvases of this Obeya, given once when the
 card is made and never again, also once a card is deleted. A card keeps it when it moves to another
 canvas. Existing cards got theirs when the database was migrated, in the order they were made. The
-number stands at the start of the card's state line on the canvas and in the phone's lists (its end
-is where the card's buttons show under the pointer), at the end of a project's head, beside the close
+number stands at the start of the card's state line on the canvas (its end is where the card's
+buttons show under the pointer), at the top right of an entry in the phone's lists (where the state
+line, wrapping on the narrow screen, has no room to set it apart), at the end of a project's head, beside the close
 button of its sheet and at the end of the phone's bar over the card. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
 says „Kopiert“ for a moment; under the pointer it shows a copy icon, on a touch screen always. The
 form is the same in every language.

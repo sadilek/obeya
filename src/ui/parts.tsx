@@ -165,7 +165,8 @@ export const cardClass = (item: Item, underway?: string) =>
  * `where` it is, its repository or canvas), its title, a line of its text, its state line in its
  * state's colour after its number (`since` after it) and the pin while it needs the owner. A `chip`, a delivered
  * workstream, shows only its title, after its label, so it still reads as its workstream. A face
- * `inButton` (a list's entry that opens the card) shows the number without copying it: its sheet does.
+ * `inButton` (a list's entry that opens the card) shows the number without copying it (its sheet does), in its top
+ * right corner, so the state line starts with the state.
  */
 export function CardFace({ item, where, underway, since, chip, inButton }: { item: Item; where?: string; underway?: string; since?: string; chip?: boolean; inButton?: boolean }) {
   const kind =
@@ -225,8 +226,9 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
           {since && <span className="since"> · {since}</span>}
         </span>
-        {!chip && (inButton ? <span className="card-no plain">{cardTag(item.number)}</span> : <CardNumber n={item.number} />)}
+        {!chip && !inButton && <CardNumber n={item.number} />}
       </div>
+      {inButton && <span className="card-no plain">{cardTag(item.number)}</span>}
       {needsYou(item) && !underway && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}
     </>
   );
