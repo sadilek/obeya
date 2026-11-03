@@ -264,6 +264,9 @@ export const proposalTask = (unseen: string) =>
 const HELD_EDITED = 'While your handover waits, the owner edited the text that goes onto the pull request with the approval.';
 const heldEdited = (body: string) => `${HELD_EDITED} It reads now:\n\n${body}\n\nThat is the text that goes out with your commits. Should you hand over again with pr_draft, start from it and keep the owner's wording where nothing calls for a change.`;
 
+/** How the worker hears that the owner ignored findings of its review, and nothing else; until it has, its list keeps them dropped. */
+const FINDINGS_IGNORED = 'The owner ignored findings of your review, on the card:';
+
 /** How the worker hears that its approved work could not land for something that is not its own to fix. */
 const NOT_LANDED = 'Since you handed over, the owner approved your work, but Obeya could not land it on main:';
 
@@ -822,13 +825,14 @@ export class Workers {
 
   /**
    * What the owner decided for findings of a review card (by number: to the contributor, the
-   * worker's own change, or a follow-up task), as the worker reads it above their words. Each is
-   * marked as decided until the worker records what came of it; a follow-up task the worker makes
-   * itself (`followUpTask`), bundling the findings as the owner's words say, else as it bundled them.
-   * Refuses a finding that is not open, and the worker's own change where the contributor allows no
-   * maintainers' edits.
+   * worker's own change, a follow-up task, or ignored), as the worker reads it above their words.
+   * Each is marked as decided until the worker records what came of it; a follow-up task the worker
+   * makes itself (`followUpTask`), bundling the findings as the owner's words say, else as it bundled
+   * them. One the owner ignores is not pursued from now on, which asks nothing of the worker (`quiet`
+   * where that is all). Refuses a finding that is not open, and the worker's own change where the
+   * contributor allows no maintainers' edits.
    */
-  private decide(cardId: string, decisions: Record<number, ChangeRoute>): { note: string; log: string } {
+  private decide(cardId: string, decisions: Record<number, ChangeRoute>): { note: string; log: string; quiet: boolean } {
     const c = contributionOf(this.o.board.row(cardId));
     if (!c) throw new BadRequest('notReview', 'only a review card has findings to decide on');
     const t = this.o.board.t.worker;
@@ -844,11 +848,13 @@ export class Workers {
     const withChanges = changing || !!c.changing || !!c.held;
     const findings = c.findings!.map((f): Finding => {
       const p = picked.find((x) => x.f.id === f.id);
-      return p ? { ...f, decided: p.route, ...(p.route === 'contributor' && withChanges ? { withChanges: true as const } : {}) } : f;
+      if (!p) return f;
+      if (p.route === 'drop') return { ...f, status: 'dropped' };
+      return { ...f, decided: p.route, ...(p.route === 'contributor' && withChanges ? { withChanges: true as const } : {}) };
     });
     this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, findings, ...(changing ? { changing: true as const } : {}) } satisfies StoredContribution) });
     const name = (f: Finding) => `#${f.id} „${f.title}“`;
-    const what = (p: (typeof picked)[number]) => (p.route === 'self' ? t.findingSelf : p.route === 'later' ? t.findingLater : t.findingTo(c.author));
+    const what = (p: (typeof picked)[number]) => (p.route === 'self' ? t.findingSelf : p.route === 'later' ? t.findingLater : p.route === 'drop' ? t.findingDrop : t.findingTo(c.author));
     const later = of('later');
     const ids = new Set(later.map((p) => p.f.id));
     // the worker's own bundles, as far as they hold among the findings the owner chose for later
@@ -862,7 +868,7 @@ export class Workers {
     ];
     return {
       note: [
-        'The owner decided on findings of your review, on the card; do it now:',
+        picked.every((p) => p.route === 'drop') ? FINDINGS_IGNORED : 'The owner decided on findings of your review, on the card; do it now:',
         of('contributor').length
           ? withChanges
             ? `- To ${c.author}: ${of('contributor').map((p) => name(p.f)).join(', ')}. ${changing ? 'They go with your own changes below' : 'Your own changes wait for the owner’s approval, and these go with them'}, as one message: write the request into the same pr_draft as what you changed, and do not send it now. Obeya posts it as one review asking for changes once the owner approves.${changing ? '' : ' Hand over again with that pr_draft; the demo on the card stands.'}`
@@ -874,10 +880,14 @@ export class Workers {
         later.length
           ? `- As follow-up tasks: ${later.map((p) => name(p.f)).join(', ')}. Make them tasks of their own with follow_up_task, outside this PR, before anything else ends your turn. Findings that belong together become one task: as the owner's words below say first („2 and 3 together“, „combine them as you see fit“, „all separate“); without a word on it, ${bundles.length ? `as you bundled them (${bundles.map((b) => `findings ${b}`).join('; ')}), the others one each` : 'one task each'}. Write each task from what your review knows (the files concerned, the cause, the PR's link). They go neither to ${c.author} nor into your changes.`
           : '',
+        of('drop').length
+          ? `- Ignored: ${of('drop').map((p) => name(p.f)).join(', ')}. The owner does not pursue ${of('drop').length === 1 ? 'it' : 'them'}, and Obeya marked ${of('drop').length === 1 ? 'it' : 'them'} dropped: nothing to do for ${of('drop').length === 1 ? 'it' : 'them'}, neither for ${c.author} nor in your changes.`
+          : '',
       ]
         .filter(Boolean)
         .join('\n'),
       log: picked.map((p) => t.findingDecided(p.f.id, p.f.title, what(p))).join('\n'),
+      quiet: picked.every((p) => p.route === 'drop'),
     };
   }
 
@@ -928,6 +938,8 @@ export class Workers {
     const c = contributionOf(this.o.board.row(cardId));
     if (!c) return 'Not recorded: this card reviews no pull request.';
     const had = c.findings ?? [];
+    // a list written before the worker heard the owner ignore findings keeps them ignored
+    const ignoring = this.unheard(cardId).some((u) => u.text.startsWith(FINDINGS_IGNORED));
     let next = Math.max(0, ...had.map((f) => f.id)) + 1;
     const seen = new Set<number>();
     const findings: Finding[] = [];
@@ -938,7 +950,8 @@ export class Workers {
       seen.add(id);
       const before = had.find((f) => f.id === id);
       // one the owner made a follow-up task stays one, and only a task made with follow_up_task makes one
-      const status = before?.status === 'later' ? 'later' : g.status === 'later' ? (before?.status ?? 'open') : (g.status ?? before?.status ?? 'open');
+      const status =
+        before?.status === 'later' || (ignoring && before?.status === 'dropped') ? before.status : g.status === 'later' ? (before?.status ?? 'open') : (g.status ?? before?.status ?? 'open');
       const url = g.url ?? (status === before?.status ? before?.url : undefined);
       if (g.with?.length) named.push([id, g.with]);
       findings.push({
@@ -977,6 +990,12 @@ export class Workers {
     if (place && handover && !findings) return this.hold(card, text, images, spoken, replyTo, place);
     // on a review card, what the owner decided for its findings goes with the words, above them
     const decided = findings ? this.decide(cardId, findings) : undefined;
+    // findings ignored, and nothing else: done as they stand, the worker hears it with its next message or step
+    if (decided?.quiet && !text && !images.length) {
+      this.o.board.log(cardId, 'hint', 'owner', decided.log, { replyTo });
+      this.o.board.work(cardId, { unheard: JSON.stringify([...this.unheard(cardId), { said: [], text: decided.note, images: [] }] satisfies Unheard[]) });
+      return;
+    }
     const words = `${decided ? `${decided.note}\n\n` : ''}${this.words(cardId, text, images, replyTo, place)}`;
     // the log shows the owner's screenshots, not the stills that join them below
     const shots = images;
@@ -4998,6 +5017,7 @@ ${idea.idea.brief}` : '',
           ? `- Yourself (${c.author} allows maintainers' edits): make the change and commit it on your branch, run the checks, mark the finding fixed, and hand over again with a new demo and pr_draft, the text that goes onto the PR with your commits (what you changed and why, in the PR's language, as the owner's words, without mentioning Obeya or agents). Once the owner approves, Obeya pushes your commits onto the PR's branch and posts the text. Findings for ${c.author} decided together with yours, or while yours wait for the owner, go with them in the same text, not with request_changes. In the squash merge ${c.author} stays its author.`
           : `- ${c.author} does not allow maintainers' edits, so findings go to them or become follow-up tasks.`,
         '- As a follow-up task: you make it a task of its own beside your card, outside this PR (follow_up_task), which marks it later in your findings. Findings that belong together become one task: as the owner\'s words say first, else as you bundled them in your findings (with), so bundle there only what one worker would sensibly do in one go.',
+        '- Ignored: Obeya marks it dropped in your findings; nothing is to be done for it.',
         'Words of the owner\'s that ask the same in so many words („send them finding 1“, „fix that yourself“) count the same. Anything else they say (a question, more to look at) you answer or do on the card, and nothing goes to the PR.',
       ].join('\n'),
     ];

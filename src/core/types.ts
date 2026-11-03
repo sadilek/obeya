@@ -771,10 +771,10 @@ export interface Clash {
 /**
  * What the owner decides for a finding of a review card: it goes to the contributor as a change
  * request, (`self`) the worker makes the change, which Obeya pushes onto the PR's branch on the
- * owner's approval, or (`later`)
- * it becomes a follow-up task of its own, outside the PR.
+ * owner's approval, (`later`) it becomes a follow-up task of its own, outside the PR, or (`drop`)
+ * nobody pursues it.
  */
-export type ChangeRoute = 'contributor' | 'self' | 'later';
+export type ChangeRoute = 'contributor' | 'self' | 'later' | 'drop';
 
 /** One finding of a review card's review, as its worker keeps it. */
 export interface Finding {
@@ -793,8 +793,8 @@ export interface Finding {
   url?: string;
   /** The follow-up task the worker made of it, on the owner's word; several findings may share one. */
   card?: string;
-  /** What the owner decided for it, while the worker carries it out. */
-  decided?: ChangeRoute;
+  /** What the owner decided for it, while the worker carries it out; one they ignore is `dropped` at once. */
+  decided?: Exclude<ChangeRoute, 'drop'>;
   /** Decided for the contributor while the worker's own changes are under way or held: the request goes with them, as one message. */
   withChanges?: true;
   /** The other findings its worker would make one follow-up task with it (their ids), in both directions. */

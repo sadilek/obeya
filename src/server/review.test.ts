@@ -385,6 +385,45 @@ describe('a review card', () => {
     expect(board.item(id)!.state).toBe('inPr');
   });
 
+  test('a finding the owner ignores is not pursued at once; alone, it starts no turn of the worker, which hears it with its next message', async () => {
+    const id = await reviewCard();
+    await handOver();
+    const before = runtime.last.inbox.length;
+    workers.message(id, '', [], false, undefined, undefined, { 2: 'drop' });
+    expect(board.item(id)!.contribution!.findings!.map((f) => [f.id, f.status, f.decided])).toEqual([
+      [1, 'open', undefined],
+      [2, 'dropped', undefined],
+    ]);
+    expect(board.item(id)!.state).toBe('waiting');
+    expect(runtime.last.inbox.length).toBe(before);
+    expect(board.events(id).at(-1)!.text).toBe('Befund 2 „No shortcut“: ignorieren');
+    // ignored already: not decided again
+    expect(() => workers.message(id, '', [], false, undefined, undefined, { 2: 'contributor' })).toThrow();
+    // a list the worker writes before it heard of it keeps the finding ignored
+    runtime.last.call('findings', { findings: [{ id: 1, title: 'Path in the file name', text: 'T', security: true, status: 'open' }, { id: 2, title: 'No shortcut', text: 'T', status: 'open' }] });
+    expect(board.item(id)!.contribution!.findings![1]!.status).toBe('dropped');
+    workers.message(id, 'Is the first one serious?', [], false);
+    const told = runtime.last.inbox.at(-1)!;
+    expect(told).toContain('Ignored: #2 „No shortcut“');
+    expect(told).toContain('Is the first one serious?');
+    // heard: the worker may take it up again, on the owner's word
+    runtime.last.call('findings', { findings: [{ id: 1, title: 'Path in the file name', text: 'T', security: true }, { id: 2, title: 'No shortcut', text: 'T', status: 'open' }] });
+    expect(board.item(id)!.contribution!.findings![1]!.status).toBe('open');
+  });
+
+  test('an ignored finding beside other decisions goes to the worker with them', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 1: 'contributor', 2: 'drop' });
+    const told = runtime.last.inbox.at(-1)!;
+    expect(told).toContain('To amerlander: #1 „Path in the file name“');
+    expect(told).toContain('Ignored: #2 „No shortcut“');
+    expect(board.item(id)!.contribution!.findings!.map((f) => [f.status, f.decided])).toEqual([
+      ['open', 'contributor'],
+      ['dropped', undefined],
+    ]);
+  });
+
   test('a request decided while its own change waits for the owner goes into the same text', async () => {
     const id = await reviewCard();
     await handOver();

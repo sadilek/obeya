@@ -2208,7 +2208,7 @@ function useZoom(video: RefObject<HTMLVideoElement | null>) {
  * on one line, then each finding of the review, which its agent keeps as the conversation goes on.
  * Findings its agent would make one follow-up task stand together in a bracket that says so, while
  * they are open or made one. On an open finding the owner decides („An Beitragenden“, „Selbst
- * ändern“, „Als Folgeaufgabe“, a second click takes it back; a bracket picks nothing for its others)
+ * ändern“, „Als Folgeaufgabe“, „Ignorieren“, a second click takes it back; a bracket picks nothing for its others)
  * while their words reach its agent (`decides`); the decisions stand in the card's draft and go out
  * with the field's one Send. „Selbst ändern“ is greyed with its reason where the contributor allows
  * no edits by maintainers. A finding something came of says what; one made a follow-up task links
@@ -2277,6 +2277,9 @@ function Findings({ item, decides, onPush }: { item: Item; decides: boolean; onP
               </button>
               <button className={`choice${picks[f.id] === 'later' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'later'} title={t.review.laterHint} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'later')}>
                 {t.review.later}
+              </button>
+              <button className={`choice${picks[f.id] === 'drop' ? ' on' : ''}`} aria-pressed={picks[f.id] === 'drop'} title={t.review.dropHint} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(f, 'drop')}>
+                {t.review.drop}
               </button>
             </div>
           )
@@ -2368,7 +2371,7 @@ function DecidedChip({ item, decided }: { item: Item; decided: Record<string, Ch
       <div className="decided-lines">
         {named.map(([id, route]) => (
           <span key={id} className="quote-text">
-            {t.review.decidedLine(Number(id), route === 'self' ? t.review.self : route === 'later' ? t.review.later : t.review.toContributor)}
+            {t.review.decidedLine(Number(id), route === 'self' ? t.review.self : route === 'later' ? t.review.later : route === 'drop' ? t.review.drop : t.review.toContributor)}
           </span>
         ))}
         {later.length > 1 && <span className="decided-tasks">{t.review.tasks(tasks)}</span>}

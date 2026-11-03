@@ -1603,14 +1603,14 @@ export class CanvasRuntime {
     return r;
   }
 
-  /** What the owner decided for a review card's findings, as the browser sent it: by finding number, to the contributor, the worker's own change or a follow-up task. */
+  /** What the owner decided for a review card's findings, as the browser sent it: by finding number, to the contributor, the worker's own change, a follow-up task or not pursued. */
   private decisions(findings: unknown): Record<number, ChangeRoute> | undefined {
     if (findings === undefined || findings === null) return undefined;
-    if (typeof findings !== 'object') throw new BadRequest('invalid', 'findings must map finding numbers to contributor, self or later');
+    if (typeof findings !== 'object') throw new BadRequest('invalid', 'findings must map finding numbers to contributor, self, later or drop');
     const out: Record<number, ChangeRoute> = {};
     for (const [id, route] of Object.entries(findings as Record<string, unknown>)) {
-      if (!/^\d+$/.test(id) || (route !== 'contributor' && route !== 'self' && route !== 'later')) throw new BadRequest('invalid', 'findings must map finding numbers to contributor, self or later');
-      out[Number(id)] = route;
+      if (!/^\d+$/.test(id) || !['contributor', 'self', 'later', 'drop'].includes(route as string)) throw new BadRequest('invalid', 'findings must map finding numbers to contributor, self, later or drop');
+      out[Number(id)] = route as ChangeRoute;
     }
     return Object.keys(out).length ? out : undefined;
   }

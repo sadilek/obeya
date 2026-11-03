@@ -199,8 +199,8 @@ none) is refused. Its demo report asks a question only beyond what the findings'
 finding's choice. The findings are for the owner: nothing of them reaches the contributor unless the
 owner sends it. Obeya records the head the worker handed over.
 
-On each open finding the owner decides „An Beitragenden“, „Selbst ändern“ or „Als Folgeaufgabe“ (a
-second click takes it back), as they pick a question's options: the decisions stand in the card's draft, show above the
+On each open finding the owner decides „An Beitragenden“, „Selbst ändern“, „Als Folgeaufgabe“ or
+„Ignorieren“ (a second click takes it back), as they pick a question's options: the decisions stand in the card's draft, show above the
 field („Befund 1: An Beitragenden“) and go to the worker with the one Send of every card, with words
 of the owner's or alone; with several chosen as follow-up tasks the field says how many tasks they
 make as bundled („→ 1 Folgeaufgabe“). The finding then reads what is under way („Geht an amerlander
@@ -231,6 +231,11 @@ same; anything else the owner says (a question, more to look at) stays on the ca
   PR's link where the text lacks it. Each such finding is then settled for the PR and links its
   task, and goes into no change request. Until all of them have a task, Obeya refuses the worker's
   handover, its reply (which may end its turn) and its change request.
+- Ignored: for what the owner accepts as it is. Obeya marks the finding not pursued („Ignoriert“) on the Send,
+  with nothing under way first, and it goes neither to the contributor nor into a change or a task.
+  Ignoring alone, without words, starts no turn of the worker: it hears of it with its next message
+  or step, and until then a list it records keeps the finding not pursued. Words of the owner's can
+  take it up again („Befund 2 doch an ihn“), as the worker then reopens it.
 
 „Mergen (PR #5)“ approves: Obeya reads the PR, and at a head other than the one handed over (the
 contributor pushed since) it pushes, posts and merges nothing, and the worker reviews the PR as it
@@ -486,6 +491,11 @@ A card no agent worked on, a prototype or an archived card has no field.
   something worth fixing that should not hold the PR up). Rejected: the worker proposing the card (a
   second decision for one already made); only asking Obeya for a follow-up in words (it works, but
   is not found beside the other two choices).
+- **„Ignorieren“ is a fourth choice per finding** (2026-11-03, the owner: some findings are fine
+  as they are). It goes with the one Send like the other choices, but asks the worker for nothing,
+  so alone it costs no turn. Rejected: only saying so in words („Befund 2 ist egal“; it works, but is
+  not found beside the other choices, and costs a turn of the worker); a click that ignores at once
+  (every other choice goes with the Send).
 - **A follow-up task starts at once and waits for the PR's merge** (2026-11-02, the review of PR
   #34: its three follow-up tasks stood planned, and the owner did not dare start them, unsure
   whether Obeya would see that they build on the PR). Choosing „Als Folgeaufgabe“ is the decision to
