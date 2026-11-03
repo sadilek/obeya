@@ -5,7 +5,7 @@ import { forYouCount, forYouOf, forYouTotal } from './forYou';
 const card = (id: string, more: Partial<Item> = {}) => ({ id, kind: 'task', state: 'working', title: id, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
 const talk = (id: number, unread = false): Talk => ({ id, at: '2026-11-02T09:00:00Z', said: `q${id}`, reply: '', ...(unread ? { unread: true as const } : {}) });
 
-test('a canvas lists what needs the owner in its order, those snoozed while they waited last, and not what does not wait', () => {
+test('a canvas lists what needs the owner in its order, and not what does not wait, nor what the owner snoozed while it waited', () => {
   const items = [
     card('snoozed', { state: 'waiting', need: 'review', snoozed: { by: 'owner', waiting: true, until: '2026-11-03T08:00:00Z' } }),
     card('review', { state: 'waiting', need: 'review' }),
@@ -13,8 +13,10 @@ test('a canvas lists what needs the owner in its order, those snoozed while they
     card('proposal', { state: 'proposal' }),
   ];
   const w = waitingIn({ items, talk: [] });
-  expect(w.items.map((i) => i.id)).toEqual(['snoozed', 'review', 'proposal']);
-  expect(forYouOf(w, () => false).cards.map((i) => i.id)).toEqual(['review', 'proposal', 'snoozed']);
+  expect(w.items.map((i) => i.id)).toEqual(['review', 'proposal']);
+  expect(forYouOf(w, () => false).cards.map((i) => i.id)).toEqual(['review', 'proposal']);
+  // the phone hands it its whole snapshot
+  expect(forYouOf({ items, talk: [] }, () => false).cards.map((i) => i.id)).toEqual(['review', 'proposal']);
 });
 
 test('a card the owner just acted on leaves the list before the server says so', () => {

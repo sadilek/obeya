@@ -198,8 +198,8 @@ meanwhile (its PR closed, a tool call to allow) ends the snooze.
 On the canvas a snoozed card is pushed back on greyed stock with a clock: „◷ Zurückgestellt bis
 morgen, 00:05“ (or „bis „…“ erledigt ist“, with „spätestens …“ when it has a time too), with who
 snoozed it and why. One waiting on another card shows that wait while the pointer is on either, as
-a queued card does (see The queue's order). It counts neither as at work nor as needing the owner; on the phone it stands at
-the end of its list. Its conversation shows a line where it was snoozed, carrying „Jetzt
+a queued card does (see The queue's order). It counts neither as at work nor as needing the owner, and „Braucht dich“ does not list it; on
+the phone it stands at the end of „Läuft“. Its conversation shows a line where it was snoozed, carrying „Jetzt
 zurückholen“ and „Ändern“ (the same menu, whoever snoozed it) while it lasts, and on waking a line
 that says why it is back („Wieder da: Zeitpunkt erreicht“, „… von dir zurückgeholt“, …).
 

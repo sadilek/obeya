@@ -254,12 +254,12 @@ export const waitingOn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>) => s.items.
 
 /**
  * What of a canvas „Braucht dich“ lists (the phone's, and the navigation on every other canvas's page):
- * the cards that need the owner and those snoozed while they did, and the Koordinator's answers that
+ * the cards that need the owner (none snoozed, which are put off), and the Koordinator's answers that
  * wait unread.
  */
 export type Waiting = Pick<CanvasSnapshot, 'items' | 'talk'>;
 export const waitingIn = (s: Pick<CanvasSnapshot, 'items' | 'talk'>): Waiting => ({
-  items: s.items.filter((i) => needsYou(i) || !!i.snoozed?.waiting),
+  items: s.items.filter(needsYou),
   talk: s.talk.filter((x) => x.unread),
 });
 

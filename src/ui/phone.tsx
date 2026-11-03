@@ -644,8 +644,8 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
         <section className="ph-section">
           <h2>{t.phone.running}</h2>
           {/* nothing known yet (the server has not answered since the page loaded): no claim that nothing runs */}
-          {/* a snoozed card at the end, after those at work now */}
-          {ordered.length > 0 && <Running entries={all.filter(({ item }) => runs(item) || isUnderway(item.id)).sort((a, b) => Number(!!a.item.snoozed) - Number(!!b.item.snoozed))} several={several} onOpen={openCard} />}
+          {/* a snoozed card at the end, after those at work now; one the owner snoozed while it waited for them among them */}
+          {ordered.length > 0 && <Running entries={all.filter(({ item }) => runs(item) || !!item.snoozed?.waiting || isUnderway(item.id)).sort((a, b) => Number(!!a.item.snoozed) - Number(!!b.item.snoozed))} several={several} onOpen={openCard} />}
         </section>
         {planned.length > 0 && <Folded label={t.phone.planned} entries={planned} several={several} open={plannedOpen} onToggle={togglePlanned} onOpen={openCard} />}
         {done.length > 0 && <Folded label={t.phone.done} entries={done} several={several} open={doneOpen} onToggle={toggleDone} onOpen={openCard} />}

@@ -51,8 +51,8 @@ button names the canvas and its home branch (or its count of repositories) and c
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
 them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Braucht dich“, the
 phone's list (see The phone view), built once for both: the same entries in the same order. Its
-head counts what waits on every canvas, as the button does; a snoozed card is listed but not
-counted, being put off. Each entry is a light row, its title and what it waits for since when,
+head counts what waits on every canvas, as the button does; a snoozed card is neither listed nor
+counted, being put off, until it comes back. Each entry is a light row, its title and what it waits for since when,
 without the waiting card's orange frame, set apart from the next by a line, and the card open now is
 marked in it. With several canvases, each canvas in the configuration's order heads what waits on
 it, in a shaded head row that sets the canvases apart, the open one in full ink; a click on the
@@ -324,6 +324,10 @@ code, a generic one otherwise.
   one the agent should not have asked for; an inbox as a sheet on the right, which competes
   with Obeya's sheet for the same edge; and the phone's card faces in the list, whose orange frames
   say nothing where every entry waits for the owner and make the list loud.
+- **A snoozed card leaves „Braucht dich“** (issue #50, 2026-11-03): the owner put it off, so it
+  waits for nobody until it comes back, and listing it under what needs them (uncounted, at the
+  end) only made the list longer. On the canvas it still stands, greyed; on the phone it moves to
+  the end of „Läuft“, which already ended in the snoozed cards there.
 - **Each canvas folds by itself, not as an accordion** (2026-11-03, issue #49): the
   owner folds away canvases they are not attending to while keeping several open side by side; an
   accordion would close one canvas as another opens, hiding what waits there. The counts on the

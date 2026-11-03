@@ -15,19 +15,16 @@ export const when = (iso: string | number) => (new Date(iso).toDateString() === 
 
 /**
  * One canvas's entries in Tab's order: the cards that need the owner (but none they just acted on,
- * `underway`), then those snoozed while they waited, until they come back; and Obeya's latest answer
+ * `underway`, nor any snoozed, which are put off until they come back); and Obeya's latest answer
  * while answers wait unread in its conversation.
  */
 export function forYouOf(w: Waiting, underway: (id: string) => boolean): { cards: Item[]; obeya?: Talk } {
-  const cards = [...w.items.filter((i) => needsYou(i) && !underway(i.id)), ...w.items.filter((i) => i.snoozed?.waiting)];
+  const cards = w.items.filter((i) => needsYou(i) && !underway(i.id));
   const unread = w.talk.filter((x) => x.unread);
   return unread.length ? { cards, obeya: unread.at(-1)! } : { cards };
 }
 
-/**
- * How much of a canvas's entries waits for the owner: the cards that need them (not those snoozed,
- * which are put off, nor those underway), and one for Obeya's answers waiting unread.
- */
+/** How much of a canvas's entries waits for the owner: the cards listed, and one for Obeya's answers waiting unread. */
 export const forYouCount = (w: Waiting, underway: (id: string) => boolean) => waitingOn({ items: w.items.filter((i) => !underway(i.id)), talk: w.talk });
 
 /** The same on every canvas: what the bar's button and the head of „Braucht dich“ count. */
