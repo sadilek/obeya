@@ -1155,9 +1155,9 @@ export class Board {
     return this.store.waitingTalk(this.canvas.id);
   }
 
-  /** The step the Koordinator takes once the exchange's looked-up answer is in; `null` once it has decided it. */
-  thenTalk(id: number, then: string | null) {
-    this.store.thenTalk(id, then);
+  /** The step the Koordinator takes once the exchange's looked-up answer is in, and where the owner was then; `null` once it has decided it. */
+  thenTalk(id: number, then: string | null, place?: Place) {
+    this.store.thenTalk(id, then, place);
   }
 
   /** Looked-up answers that are in whose step the Koordinator has not decided yet: after a restart, it takes them up. */

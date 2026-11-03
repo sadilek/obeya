@@ -167,7 +167,10 @@ agent has the shell and asks the owner's permission.
 
 A new card or idea lands in view, centred where the pointer was when the owner stopped speaking or
 sent the words, else in the middle of the view, moved to the nearest free spot wholly in view; with a
-card or project open, in the view closing it returns to. A follow-up goes below the card it follows.
+card or project open, in the view closing it returns to. Cards made by a step that waited for
+something to be looked up first (a task for each open issue) land there too, where the pointer was
+when the owner asked, not where they look once the answer is in. A follow-up goes below the card it
+follows.
 What comes without a pointer (a request an agent passed on) uses the view a page last reported: each
 page reports it over its WebSocket on every change and when its window gets the focus back. The
 camera flies only when the card landed out of view.
