@@ -1034,12 +1034,14 @@ export class Workers {
         if (images.length) this.live.get(cardId)!.session.send('The screenshots of the owner’s note.', images);
         return;
       }
+      // comments on the demo video still held back, made before the question came, go first, and stand above the note
+      const held = this.takeHeld(cardId);
       const said = log(true);
       if (text) this.o.onOwnerInput?.(card, 'note', text);
       this.deliver(
         cardId,
-        `A note from the owner instead of an answer${spoken ? ` (${SPOKEN})` : ''}. It withdraws your question („${card.question?.text ?? ''}“): if the note settles it, go on; if not, ask again.\n\n${words}`,
-        images,
+        `A note from the owner instead of an answer${spoken ? ` (${SPOKEN})` : ''}. It withdraws your question („${card.question?.text ?? ''}“): if the note settles it, go on; if not, ask again.\n\n${held ? `${held.text}\n\nThen they wrote:\n\n` : ''}${words}`,
+        [...(held?.images ?? []), ...images],
         true,
         said,
       );
@@ -1054,11 +1056,13 @@ export class Workers {
       if (text) this.o.onOwnerInput?.(card, 'note', text);
       this.o.board.work(cardId, { unheard: JSON.stringify([...this.unheard(cardId), { said, text: `A note from the owner while you waited for the clone${spoken ? ` (${SPOKEN})` : ''}:\n\n${words}`, images }] satisfies Unheard[]) });
     } else if (card.state === 'working' || card.state === 'inPr' || card.finishing) {
+      // comments on the demo video still held back from its handover go first, and stand above the note
+      const held = this.takeHeld(cardId);
       const said = log(true);
       if (text) this.o.onOwnerInput?.(card, 'note', text);
       // a note to a paused worker lets it go on, with the note
       const how = card.paused ? 'with which they let you go on' : 'it does not stop you; adjust your plan if it changes anything';
-      this.deliver(cardId, `A note from the owner${spoken ? ` (${SPOKEN})` : ''} (${how}):\n\n${words}`, images, true, said);
+      this.deliver(cardId, `A note from the owner${spoken ? ` (${SPOKEN})` : ''} (${how}):\n\n${held ? `${held.text}\n\nThen they wrote:\n\n` : ''}${words}`, [...(held?.images ?? []), ...images], true, said);
     } else if (askable(card)) this.followUp(card, text, images, spoken, replyTo, place);
     else throw new BadRequest('noAgent', 'no agent works on this card');
   }
@@ -1214,9 +1218,16 @@ export class Workers {
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
     // an answer given at a place in the demo video (one the question brought, say) is about that place
     const place = spot ? this.place(cardId, spot) : undefined;
+    // comments on the demo video still held back, made before the question came, go first, and stand above the answer
+    const held = this.takeHeld(cardId);
     this.backToWork(cardId);
     this.recordAnswer(card, q, text, images, replyTo, picked, place);
-    this.deliver(cardId, `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${this.words(cardId, answerNote(picked, text), images, replyTo, place)}`, [...this.stills(place), ...images], true);
+    this.deliver(
+      cardId,
+      `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${held ? `${held.text}\n\nThen they answered:\n\n` : ''}${this.words(cardId, answerNote(picked, text), images, replyTo, place)}`,
+      [...(held?.images ?? []), ...this.stills(place), ...images],
+      true,
+    );
   }
 
   /**
@@ -1392,10 +1403,22 @@ export class Workers {
     this.o.board.unlog(cardId, id);
   }
 
-  /** The comments held back go to the worker as one message, the card still waiting for approval. */
+  /**
+   * The comments held back go to the worker as one message, the card still waiting for approval.
+   * Once it no longer waits (its worker, taking in earlier words, asked a question or went back to
+   * work), they go as a note, or with the answer to the question that is open.
+   */
   private release(cardId: string) {
     const card = this.o.board.item(cardId);
-    if (!card || !handedOver(card)) return void this.takeHeld(cardId);
+    if (!card) return void this.takeHeld(cardId);
+    if (!handedOver(card)) {
+      if (card.state === 'waiting' && card.need === 'question') return;
+      if (!(card.state === 'working' || card.state === 'inPr' || card.finishing)) return void this.takeHeld(cardId);
+      const held = this.takeHeld(cardId);
+      if (!held) return;
+      const how = card.paused ? 'with which they let you go on' : 'it does not stop you; adjust your plan if it changes anything';
+      return this.deliver(cardId, `The owner watched your demo video and commented on places in it (${how}):\n\n${held.text}`, held.images, true);
+    }
     const held = this.takeHeld(cardId);
     if (!held) return;
     this.takingIn(cardId);

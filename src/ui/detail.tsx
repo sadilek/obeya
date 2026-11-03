@@ -1374,10 +1374,17 @@ function Conversation({
       />
       {turn.e.id === held.at(-1) && (
         <div className="held-note">
-          {t.demo.held(held.length)}
-          <button className="held-send" title={t.demo.sendNowHint} onClick={() => void api.act(item.id, { action: 'release', now: true }).catch(() => {})}>
-            {t.demo.sendNow}
-          </button>
+          {/* the agent asked a question meanwhile: they go with the answer */}
+          {item.state === 'waiting' && item.need === 'question' ? (
+            t.demo.heldForAnswer(held.length)
+          ) : (
+            <>
+              {t.demo.held(held.length)}
+              <button className="held-send" title={t.demo.sendNowHint} onClick={() => void api.act(item.id, { action: 'release', now: true }).catch(() => {})}>
+                {t.demo.sendNow}
+              </button>
+            </>
+          )}
         </div>
       )}
     </Fragment>

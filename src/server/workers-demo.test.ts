@@ -905,6 +905,48 @@ describe('comments on places in the demo video', () => {
     expect(runtime.sessions.flatMap((s) => s.inbox).at(-1)).toContain('Hier.');
   });
 
+  test('one made while the worker takes in the ones before, which then asks a question, goes with the answer', async () => {
+    const c = await waiting();
+    workers.message(c.id, 'Hier fehlt die Kopfzeile.', [], false, undefined, { at: 7 });
+    workers.released(c.id, true);
+    // the worker at work on the first comment; the owner, still watching, comments again
+    workers.message(c.id, 'Und hier ist es zu schnell.', [], false, undefined, { at: 2 });
+    expect(board.item(c.id)!.held).toHaveLength(1);
+    await runtime.last.call('ask', { question: 'Welche Spalte?' });
+    runtime.last.emit({ type: 'idle' });
+    const n = runtime.last.inbox.length;
+    // the card closes with the question open: the comment stays for the worker
+    workers.released(c.id, true);
+    expect(runtime.last.inbox).toHaveLength(n);
+    expect(board.item(c.id)!.held).toHaveLength(1);
+    workers.answer(c.id, 'Die erste.');
+    expect(runtime.last.inbox).toHaveLength(n + 1);
+    expect(runtime.last.inbox.at(-1)).toContain('A comment on places in your demo video:\n\n[Demo video at 0:02, chapter „Liste“, narration: „Die Liste.“]\nUnd hier ist es zu schnell.\n\nThen they answered:\n\nDie erste.');
+    expect(board.item(c.id)!.held).toBeUndefined();
+    // it stands where it went: above the answer
+    const owner = board.events(c.id).filter((e) => e.author === 'owner');
+    const [comment, answer] = [owner.find((e) => e.text === 'Und hier ist es zu schnell.')!, owner.at(-1)!];
+    expect(answer.text).toBe('Die erste.');
+    expect(comment.readAfter).toBeLessThan(answer.id);
+  });
+
+  test('one still held once the card is at work again reaches the worker as a note', async () => {
+    const c = await waiting();
+    workers.message(c.id, 'Hier fehlt die Kopfzeile.', [], false, undefined, { at: 7 });
+    workers.released(c.id, true);
+    workers.message(c.id, 'Und hier ist es zu schnell.', [], false, undefined, { at: 2 });
+    await runtime.last.call('ask', { question: 'Welche Spalte?' });
+    runtime.last.emit({ type: 'idle' });
+    // a permission or another way back to work that does not take the comment along
+    board.work(c.id, { state: 'working', need: null });
+    const n = runtime.last.inbox.length;
+    workers.released(c.id, true);
+    expect(runtime.last.inbox).toHaveLength(n + 1);
+    expect(runtime.last.inbox.at(-1)).toContain('The owner watched your demo video and commented on places in it');
+    expect(runtime.last.inbox.at(-1)).toContain('Und hier ist es zu schnell.');
+    expect(board.item(c.id)!.held).toBeUndefined();
+  });
+
   test('an approval takes them, also one clicked as the card closes', async () => {
     const c = await waiting();
     workers.message(c.id, 'Etwas kleiner.', [], false, undefined, { at: 1 });

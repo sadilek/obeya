@@ -506,8 +506,11 @@ as a card what still matters); otherwise ten minutes after the last. Approving a
 still takes them. Until they go, each stands dashed and unread at the end of the conversation, with
 a bin to take it back (its words return to an empty field); once sent it moves to where it went. The
 worker gets them in one message, each as `[Demo video at 1:23, chapter „…“, narration: „…“]` above
-the words with its frame. Such a comment is no answer to the report's question. On a card at work or
-finished, a comment with a place goes at once.
+the words with its frame. Such a comment is no answer to the report's question. Comments still held
+once the card no longer waits for approval (the worker, taking in earlier words, asked a question or
+went back to work) are never dropped: with a question open they go with the answer or a note (the
+line under them says so, without „Jetzt senden“); otherwise they go as a note when they would have.
+On a card at work or finished, a comment with a place goes at once.
 
 #### Earlier demos
 
@@ -632,7 +635,10 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   keys once clicked.
 - **Comments are tied to a place in the video and held until the owner has watched** (2026-10-12).
   Rejected: the owner naming the time while the video ran on; held comments standing where they were
-  said, above worker steps that had not heard them (2026-10-15).
+  said, above worker steps that had not heard them (2026-10-15). A comment held while the worker
+  took in the one before, which then asked a question, was dropped unread once the card closed
+  (2026-11-03): held comments now outlast the card leaving its handover. Rejected: sending them at
+  once as a note, which would withdraw the question the owner is about to answer.
 - **A dry run before the first render, and failures that say where**: twice a scene waited for a
   state that never came and showed it only after synthesis; a worker once took the screenshot's
   path, the only path in the message, for the page's address.
