@@ -177,9 +177,9 @@ describe('a canvas with several repositories', () => {
     scopeCall(['src/index.ts']);
     // C's estimate, once git has read what A changed
     await until(() => estimate().inbox[0]!.includes('task "C"'));
-    expect(estimate().inbox[0]).toContain('K1: "A"');
+    expect(estimate().inbox[0]).toContain(`K${a.number}: "A"`);
     expect(estimate().inbox[0]).not.toContain('"B"');
-    scopeCall(['src/index.ts'], ['K1']);
+    scopeCall(['src/index.ts'], [`K${a.number}`]);
     await settle();
     expect(item(c.id).queue).toMatchObject({ behind: [a.id] });
   });
@@ -1747,7 +1747,7 @@ describe('owner-drawn dependencies in the queue', () => {
     const b = canvas.board.create({ title: 'B', x: 400, y: 0 });
     canvas.act(b.id, { action: 'start' });
     await until(() => estimate()?.inbox[0]);
-    expect(estimate().inbox[0]).toContain('K2: "A"');
+    expect(estimate().inbox[0]).toContain(`K${a.number}: "A"`);
     canvas.board.connect(b.id, a.id);
     await judge(true);
     expect(item(b.id).queue).toMatchObject({ behind: [expect.not.stringMatching(a.id)] });

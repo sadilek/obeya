@@ -91,6 +91,8 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE talk DROP COLUMN then_step');
     s.db.run('ALTER TABLE talk DROP COLUMN after_answer');
     s.db.run('ALTER TABLE events DROP COLUMN token');
+    s.db.run('DROP INDEX cards_number');
+    s.db.run('ALTER TABLE cards DROP COLUMN number');
     s.db.run('DROP INDEX cards_short');
     s.db.run('ALTER TABLE cards DROP COLUMN short');
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
@@ -132,14 +134,49 @@ test('the migration gives the cards there are codes of their own, longer where t
     const s = new Store(path);
     s.ensureCanvas('c', 'C');
     const ids = ['12345678-0000-4000-8000-000000000001', '12345678-0000-4000-8000-000000000002', '1234aaaa-0000-4000-8000-000000000003', 'ffffffff-0000-4000-8000-000000000004'];
+    s.db.run('DROP INDEX cards_number');
+    s.db.run('ALTER TABLE cards DROP COLUMN number');
     const insert = s.db.query("INSERT INTO cards (id, short, canvas_id, kind, x, y, created_at, updated_at) VALUES ($id, $id, 'c', 'task', 0, 0, '', '')");
     for (const id of ids) insert.run({ id });
     s.db.run('DROP INDEX cards_short');
     s.db.run('ALTER TABLE cards DROP COLUMN short');
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 2}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 3}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
+    after.db.close();
+  }));
+
+test('a card gets the next number across all canvases, also after the newest card was deleted', () => {
+  const s = new Store(':memory:');
+  s.ensureCanvas('c', 'C');
+  s.ensureCanvas('d', 'D');
+  const [a, b] = s.insert([0, 1].map((y) => ({ canvas_id: 'c', kind: 'task' as const, x: 0, y })));
+  const [c] = s.insert([{ canvas_id: 'd', kind: 'task', x: 0, y: 0 }]);
+  expect([a!.number, b!.number, c!.number]).toEqual([1, 2, 3]);
+  s.update(c!.id, { deleted_at: new Date().toISOString() });
+  expect(s.insert([{ canvas_id: 'c', kind: 'task', x: 0, y: 0 }])[0]!.number).toBe(4);
+  expect(s.cardByNumber(3)!.id).toBe(c!.id);
+  expect(s.cardByNumber(5)).toBeNull();
+});
+
+test('the migration numbers the cards there are in the order they were made, across canvases, and notes since when each canvas has numbers', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    s.ensureCanvas('d', 'D');
+    const insert = s.db.query("INSERT INTO cards (id, short, number, canvas_id, kind, x, y, created_at, updated_at) VALUES ($id, $id, NULL, $c, 'task', 0, 0, $at, $at)");
+    insert.run({ id: 'later', c: 'c', at: '2026-10-02T00:00:00.000Z' });
+    insert.run({ id: 'first', c: 'd', at: '2026-10-01T00:00:00.000Z' });
+    insert.run({ id: 'same-time', c: 'c', at: '2026-10-02T00:00:00.000Z' });
+    s.db.run('DROP INDEX cards_number');
+    s.db.run('ALTER TABLE cards DROP COLUMN number');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 1}`);
+    s.db.close();
+    const after = new Store(path);
+    expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);
+    expect(after.setting('c', 'card_numbers_since')).toMatch(/^\d{4}-\d\d-\d\dT/);
+    expect(after.setting('d', 'card_numbers_since')).not.toBeNull();
     after.db.close();
   }));

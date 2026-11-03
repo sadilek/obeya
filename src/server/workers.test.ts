@@ -342,6 +342,17 @@ describe('workers', () => {
     expect(runtime.last.inbox.length).toBe(before + 1);
   });
 
+  test("a card number in the owner's note reaches the worker with the card it names", async () => {
+    const c = manual();
+    const other = board.create({ title: 'Login', x: 0, y: 400 });
+    await workers.start(c.id);
+    const s = runtime.last;
+    s.emit({ type: 'tool', name: 'Read', input: { file_path: 'export.ts' } });
+    workers.message(c.id, `Wie bei K${other.number}, bitte.`);
+    s.emit({ type: 'tool', name: 'Edit', input: { file_path: 'export.ts' } });
+    expect(s.toolStep()).toContain(`Wie bei K${other.number}, bitte.\n\n(Card numbers in these words: K${other.number} is the card “Login”, planned.)`);
+  });
+
   test('a note during a turn waits, unread, for the next step, and stands where the worker read it', async () => {
     const c = manual();
     await workers.start(c.id);

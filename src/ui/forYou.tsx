@@ -86,7 +86,7 @@ export function ForYouRows({
       {cards.map((i) => (
         <li key={i.id}>
           <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
-            <CardFace item={i} where={where} since={i.waitingSince ? t.phone.since(when(i.waitingSince)) : undefined} />
+            <CardFace inButton item={i} where={where} since={i.waitingSince ? t.phone.since(when(i.waitingSince)) : undefined} />
           </button>
         </li>
       ))}

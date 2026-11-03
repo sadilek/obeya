@@ -285,6 +285,8 @@ export interface Item {
   id: string;
   /** The card's code in addresses (`/c/<canvas>/card/<code>`): a few hex digits, unique among all cards; the id works there too. */
   short?: string;
+  /** The card's number (`K42`, `cardTag`): counting across all canvases, given once and never again. */
+  number: number;
   kind: CardKind;
   state: CardState;
   need?: Need;

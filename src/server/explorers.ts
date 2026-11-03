@@ -84,7 +84,7 @@ export class Explorers {
     this.o.board.setIdea(cardId, { yourTurn: false, questions: [], next: undefined });
     if (text) this.o.onOwnerInput?.(card, text);
     const quoted = replyTo ? this.o.board.quoted(cardId, replyTo) : undefined;
-    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${replyNote(quoted, 'explorer')}${text}${imageNote(images)}`, images, false, [said.id], true);
+    this.send(card, `The owner says${spoken ? ` (${SPOKEN})` : ''}:\n\n${replyNote(quoted, 'explorer')}${text}${this.o.board.numbersNote(text, card.id)}${imageNote(images)}`, images, false, [said.id], true);
   }
 
   /**
@@ -514,7 +514,7 @@ export class Explorers {
   private briefing(card: Item, shots: string[], said: number[] = []): string {
     return [
       `The idea: “${card.title}”.`,
-      card.body.trim(),
+      card.body.trim() && `${card.body.trim()}${this.o.board.numbersNote(card.body, card.id)}`,
       shots.length ? `The owner attached ${shots.length === 1 ? 'a screenshot' : `${shots.length} screenshots`} to the card (shown with this message; files: ${shots.join(', ')}).` : '',
       `Decisions on cards without a project so far:\n${decisionLog(this.o.board.decisions(null))}`,
       this.standing(card, said),

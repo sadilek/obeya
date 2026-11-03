@@ -224,6 +224,23 @@ prototype's idea and project, what Obeya waits on), the name is a link to that c
 the canvas: a click opens it in place of the open one, a click with a modifier in a tab of its own.
 Card faces on the canvas link nothing, since a click there opens the card itself.
 
+### Card numbers
+
+Every card has a number (`K42`): counting across all canvases of this Obeya, given once when the
+card is made and never again, also once a card is deleted. A card keeps it when it moves to another
+canvas. Existing cards got theirs when the database was migrated, in the order they were made. The
+number stands at the start of the card's state line on the canvas and in the phone's lists (its end
+is where the card's buttons show under the pointer), at the end of a project's head, beside the close
+button of its sheet and at the end of the phone's bar over the card. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
+says „Kopiert“ for a moment; under the pointer it shows a copy icon, on a touch screen always. The
+form is the same in every language.
+
+The owner names cards by it, to Obeya and to the agents, typed or spoken (speech recognition may
+write `K 42` or `Ka 42`, which count too). The Koordinator knows every card by it (see Koordinator
+memory); an agent that reads the owner's words (a note, an answer, feedback, the task) is told which
+card each number in them names, with its title and where it is (another canvas, the archive,
+deleted, the agent's own card).
+
 ### Sheets
 
 The sheets (Obeya's, a project's, a plan doc being read) are a sidebar docked to the window's right
@@ -324,6 +341,14 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **Cards have a running number, `K42`, counting across all canvases** (owner, 2026-11-03): the
+  Koordinator used to tag cards afresh in each session (K1, K2, …); the tags leaked into its replies,
+  the owner took them up, and „archiviere K7“ in a later session hit another card. The number is what
+  the owner already typed, is easy to say, and stays the card's own wherever it goes. Rejected: `#42`,
+  which GitHub turns into a link to the issue or pull request of that number in commit messages and
+  comments; the hex short code of the address, which is hard to dictate and to recognise; a number
+  per canvas, which a card moving to another canvas would lose and which would name two cards where
+  the Koordinator or a worker speaks of another canvas's card.
 - **One navigation on the left for canvases and what waits** (owner, 2026-11-02): what waits for the
   owner was split between „brauchen dich“ (this canvas), the switcher's counts (the others) and the
   cards themselves; an inbox would have been a fourth place. Its list is the phone's „Braucht dich“, so

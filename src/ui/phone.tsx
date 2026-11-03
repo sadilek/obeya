@@ -10,6 +10,7 @@ import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivabl
 import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
 import { forYouOf, ForYouRows, forYouTotal, when } from './forYou';
+import { CardNumber } from './cardNumber';
 import { type ActDone, Detail, type Pending, TalkElsewhere, useEvents } from './detail';
 import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
 import { KoordinatorTalk } from './koordinator';
@@ -546,6 +547,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
               {t.phone.back}
             </button>
             {c && several && <span className="ph-canvas">{c.name}</span>}
+            {i && <CardNumber n={i.number} className="ph-no" />}
           </header>
           {banner}
           <div className="card-sheet ph-sheet">
@@ -735,7 +737,7 @@ function Running({ entries, several, onOpen }: { entries: { item: Item; canvas: 
       {entries.map(({ item: i, canvas: c }) => (
         <li key={i.id}>
           <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
-            <CardFace item={i} where={several ? c.name : undefined} />
+            <CardFace inButton item={i} where={several ? c.name : undefined} />
           </button>
         </li>
       ))}
@@ -791,7 +793,7 @@ function Folded({ label, entries, several, open, onToggle, onOpen }: { label: st
           {entries.map(({ item: i, canvas: c }) => (
             <li key={i.id}>
               <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
-                <CardFace item={i} where={several ? c.name : undefined} />
+                <CardFace inButton item={i} where={several ? c.name : undefined} />
               </button>
             </li>
           ))}

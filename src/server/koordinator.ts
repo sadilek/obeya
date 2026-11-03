@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { RepoAdapter } from '../adapters/types';
+import { cardTag } from '../core/card-number';
 import { drawnWaits, inQueue, movable, notStarted, queueOrder, reach, waitsOn } from '../core/queue';
 import { type AgentRole, type CardEvent, EVICT_HOLD_MS, finished, type Item, nameless, type Preference, START_ALL_HOLD_MS, titleFrom, type Wait } from '../core/types';
 import { ACTIVE, BadRequest, type Board, contributionOf } from './board';
@@ -274,7 +275,7 @@ export class Koordinator {
   /** One turn reads from the plan doc which workstream builds on which: the keys of those each builds on, by key. */
   private async dependencies(project: Item, kids: Item[]): Promise<Record<string, string[]>> {
     const keys = this.o.board.workstreamKeys(project.id);
-    const tags = new Map(kids.map((k, n) => [`K${n + 1}`, k.id]));
+    const tags = new Map(kids.map((k) => [cardTag(k.number), k.id]));
     let on: Record<string, string[]> | undefined;
     const error = await readSession(this.o.runtime, {
       cwd: this.o.repoFor(project).path,
@@ -994,7 +995,7 @@ export class Koordinator {
   /** `onLimit`: where the estimate shows that it waits for the usage limit. */
   private async estimate(card: Item, active: Item[], ahead: Item[], pending: Item[], onLimit: (until: number | undefined) => void): Promise<Scope> {
     let scope: Scope | undefined;
-    const tags = new Map([...active, ...ahead, ...pending].map((a, n) => [`K${n + 1}`, a.id]));
+    const tags = new Map([...active, ...ahead, ...pending].map((a) => [cardTag(a.number), a.id]));
     // a conflict only with what runs or goes first; building on only a workstream of its project
     const running = new Set([...active, ...ahead].map((a) => a.id));
     const siblings = new Set([...active, ...ahead, ...pending].filter((a) => card.parent && a.parent === card.parent).map((a) => a.id));
@@ -1034,7 +1035,7 @@ export class Koordinator {
    */
   private async schedule(project: Item | undefined, batch: Item[], active: Item[], ahead: Item[]): Promise<Planned[]> {
     let plan: Planned[] | undefined;
-    const tags = new Map([...active, ...ahead, ...batch].map((a, n) => [`K${n + 1}`, a.id]));
+    const tags = new Map([...active, ...ahead, ...batch].map((a) => [cardTag(a.number), a.id]));
     const hands = this.o.repoFor(batch[0]!);
     const noun = project ? 'workstream' : 'card';
     const error = await readSession(this.o.runtime, {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { CLONES, type FilledClones, type Item, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
 
-const card = (over: Partial<Item>): Item => ({ id: 'x', kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
+const card = (over: Partial<Item>): Item => ({ id: 'x', number: 1, kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
 
 describe('openPerGroup', () => {
   test('counts the cards still to be done, a project by its workstreams', () => {

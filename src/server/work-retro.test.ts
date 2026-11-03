@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
+import { cardTag } from '../core/card-number';
 import { Board } from './board';
 import { Store } from './db';
 import { artifact, FakeRuntime, type FakeSession, gitRepo } from './testing';
@@ -35,6 +36,8 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const settle = () => new Promise((r) => setTimeout(r, 5));
+/** The number a card goes by, as the retrospective names it. */
+const tag = (c: { number: number }) => cardTag(c.number);
 const noteSessions = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'note'));
 const retroSessions = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'card'));
 
@@ -85,9 +88,9 @@ describe('Arbeitsrückschau', () => {
 
   test('every few finished cards a retrospective in the repository proposes cards and CLAUDE.md lines for friction on two cards or more', async () => {
     files = { a: SAMPLE, b: SAMPLE };
-    ran('A', 'a');
+    const a = ran('A', 'a');
     await note({ what: 'wrong flag for the dev server' });
-    ran('B', 'b');
+    const b = ran('B', 'b');
     await note({ what: 'wrong flag for the dev server again' });
     expect(retroSessions()).toHaveLength(0);
     ran('C', 'c');
@@ -95,15 +98,15 @@ describe('Arbeitsrückschau', () => {
     const s = retroSessions()[0]! as FakeSession;
     expect(s.spec).toMatchObject({ readOnly: true, cwd: main });
     expect(s.spec.model).toBeUndefined();
-    expect(s.inbox[0]).toContain('K1 "A":\n- wrong flag for the dev server');
-    expect(s.inbox[0]).toContain('K2 "B":');
+    expect(s.inbox[0]).toContain(`${tag(a)} "A":\n- wrong flag for the dev server`);
+    expect(s.inbox[0]).toContain(`${tag(b)} "B":`);
     expect(board.setting('work_retro_cards:home')).toBe('0');
 
-    expect(s.call('card', { title: 'Skript für den Dev-Server', body: 'Baue es.', basis: 'Nur A.', cards: ['K1'] })).toContain('at least two cards');
-    expect(s.call('card', { title: 'Skript `scripts/dev.ts` für den Dev-Server', body: 'Ein Skript, das den Server startet.', basis: 'Auf „A“ und „B“ falsche Flags.', cards: ['K1', 'K2', 'K7'] })).toBe('Proposed.');
-    expect(s.call('rule', { rule: 'Der Dev-Server startet mit -p <port>.', basis: 'Auf „A“ und „B“ falsche Flags.', cards: ['K1', 'K2'] })).toBe('Proposed.');
-    s.call('card', { title: 'Noch eins', body: '…', basis: '…', cards: ['K1', 'K2'] });
-    expect(s.call('card', { title: 'Zu viel', body: '…', basis: '…', cards: ['K1', 'K2'] })).toContain('At most 3');
+    expect(s.call('card', { title: 'Skript für den Dev-Server', body: 'Baue es.', basis: 'Nur A.', cards: [tag(a)] })).toContain('at least two cards');
+    expect(s.call('card', { title: 'Skript `scripts/dev.ts` für den Dev-Server', body: 'Ein Skript, das den Server startet.', basis: 'Auf „A“ und „B“ falsche Flags.', cards: [tag(a), tag(b), 'K7'] })).toBe('Proposed.');
+    expect(s.call('rule', { rule: 'Der Dev-Server startet mit -p <port>.', basis: 'Auf „A“ und „B“ falsche Flags.', cards: [tag(a), tag(b)] })).toBe('Proposed.');
+    s.call('card', { title: 'Noch eins', body: '…', basis: '…', cards: [tag(a), tag(b)] });
+    expect(s.call('card', { title: 'Zu viel', body: '…', basis: '…', cards: [tag(a), tag(b)] })).toContain('At most 3');
     s.emit({ type: 'idle' });
 
     const card = board.snapshot().items.find((i) => i.title === 'Skript `scripts/dev.ts` für den Dev-Server')!;
@@ -116,12 +119,12 @@ describe('Arbeitsrückschau', () => {
 
   test('the next retrospective reads only the newer notes, and hears of proposals dismissed before', async () => {
     files = { a: SAMPLE, b: SAMPLE, c: SAMPLE };
-    ran('A', 'a');
+    const a = ran('A', 'a');
     await note({ what: 'old friction' });
     retro.now('home');
     await settle();
     const first = retroSessions()[0]! as FakeSession;
-    first.call('card', { title: 'Skill für Demos', body: '…', basis: 'Demos scheitern.', cards: ['K1', 'K1'] });
+    first.call('card', { title: 'Skill für Demos', body: '…', basis: 'Demos scheitern.', cards: [tag(a), tag(a)] });
     first.emit({ type: 'idle' });
     await settle();
     // a proposal needs two different cards
@@ -160,12 +163,12 @@ describe('Arbeitsrückschau', () => {
     expect(s.inbox[0]).toContain('- checks (the commands a worker runs before it hands its work over): "bun test"');
     expect(s.inbox[0]).toContain('- run ("How to run the app": the recipe every worker reads, in prose: how to start the app, what to do after which kind of change, where it gives its address, the login and test data for a demo): (empty)');
 
-    expect(s.call('setting', { field: 'run', value: 'bun run dev -p 4500', basis: 'Nur einer.', cards: ['K1'] })).toContain('at least two cards');
-    expect(s.call('setting', { field: 'run', value: '  ', basis: '…', cards: ['K1', 'K2'] })).toContain('value is missing');
+    expect(s.call('setting', { field: 'run', value: 'bun run dev -p 4500', basis: 'Nur einer.', cards: [tag(a)] })).toContain('at least two cards');
+    expect(s.call('setting', { field: 'run', value: '  ', basis: '…', cards: [tag(a), tag(b)] })).toContain('value is missing');
     const recipe = 'bun run dev -p 4500\nAnmelden als demo@example.com';
-    expect(s.call('setting', { field: 'run', value: recipe, basis: 'Auf „Login-Seite“ und „Warenkorb“ suchten die Agenten, wie die App startet.', cards: ['K1', 'K2'] })).toBe('Proposed.');
-    expect(s.call('setting', { field: 'run', value: 'anders', basis: '…', cards: ['K1', 'K2'] })).toContain('already waits');
-    expect(s.call('setting', { field: 'checks', value: 'bun test\nbun run typecheck\n', basis: '…', cards: ['K1', 'K2'] })).toBe('Proposed.');
+    expect(s.call('setting', { field: 'run', value: recipe, basis: 'Auf „Login-Seite“ und „Warenkorb“ suchten die Agenten, wie die App startet.', cards: [tag(a), tag(b)] })).toBe('Proposed.');
+    expect(s.call('setting', { field: 'run', value: 'anders', basis: '…', cards: [tag(a), tag(b)] })).toContain('already waits');
+    expect(s.call('setting', { field: 'checks', value: 'bun test\nbun run typecheck\n', basis: '…', cards: [tag(a), tag(b)] })).toBe('Proposed.');
     s.emit({ type: 'idle' });
 
     expect(board.snapshot().settingProposals).toEqual([

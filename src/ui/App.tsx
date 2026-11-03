@@ -9,6 +9,7 @@ import { goTo, onSwitch } from './switch';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
 import { besideSheet, BOTTOM, type Cam, camFor, centreOn, chase, dragLimit, edgeScroll, FAR, flying, flyTo, keepInView, MAX_ZOOM, midX, MIN_ZOOM, NO_SIDES, overviewCam, placeIn, shows, type Sides, stopFlight, TOP, toWorld } from './camera';
 import { plain } from './markdown';
+import { CardNumber } from './cardNumber';
 import { clip } from '../core/text';
 import { type ActDone, Detail, type Pending } from './detail';
 import { Cards } from './message';
@@ -1991,6 +1992,7 @@ function Canvas({
         <WishDialog />
         {newHintOn && <NewCardHint onClose={() => setNewHintOn(false)} />}
         <div id="panel" ref={panelRef}>
+          {openItem && <CardNumber n={openItem.number} className="sheet-no" />}
           <button className="close" title={t.close} onClick={() => closeCard()}>
             ✕
           </button>

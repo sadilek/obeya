@@ -125,6 +125,8 @@ export interface CardRow {
   page_heard: string | null;
   /** The card's code in addresses (`/c/<canvas>/card/<code>`): the start of its id's hex digits, unique among all cards (`SHORT`). */
   short: string;
+  /** The card's number (`K42`): counting across all canvases, given once and never again. */
+  number: number;
 }
 
 /** Words the usage limit keeps the Koordinator from reading (`talk.held`): until when, and how it reads them then (`Commander`'s). */
@@ -469,6 +471,12 @@ export const MIGRATIONS = [
    CREATE UNIQUE INDEX cards_short ON cards (short);`,
   // where the owner was on the canvas when they asked for a step that needed looking up first (JSON `Place`): its new cards go there
   'ALTER TABLE talk ADD COLUMN then_place TEXT;',
+  // a card's number (`K42`), across all canvases, in the order the cards were made; and since when
+  // each canvas has them, as its Koordinator's memory of earlier sessions names cards by tags of its own
+  `ALTER TABLE cards ADD COLUMN number INTEGER;
+   UPDATE cards SET number = (SELECT n FROM (SELECT id, row_number() OVER (ORDER BY created_at, rowid) AS n FROM cards) o WHERE o.id = cards.id);
+   CREATE UNIQUE INDEX cards_number ON cards (number);
+   INSERT OR IGNORE INTO settings (canvas_id, key, value) SELECT id, 'card_numbers_since', strftime('%Y-%m-%dT%H:%M:%fZ', 'now') FROM canvases;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -653,10 +661,15 @@ export class Store {
     return (this.db.query('SELECT * FROM cards WHERE id = $id').get({ id }) as CardRow | null) ?? null;
   }
 
+  /** The card with the number, wherever it is: on any canvas, archived or deleted. */
+  cardByNumber(n: number): CardRow | null {
+    return (this.db.query('SELECT * FROM cards WHERE number = $n').get({ n }) as CardRow | null) ?? null;
+  }
+
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, short, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at)
-       VALUES ($id, $short, $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now)`,
+      `INSERT INTO cards (id, short, number, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at)
+       VALUES ($id, $short, (SELECT coalesce(max(number), 0) + 1 FROM cards), $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now)`,
     );
     const taken = this.db.query('SELECT 1 FROM cards WHERE short = $s');
     const ids = this.db.transaction(() =>

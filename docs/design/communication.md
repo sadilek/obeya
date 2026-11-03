@@ -247,6 +247,9 @@ work (in its PR or after the landing, where it was), and the worker hears that i
 withdrawn and asks anew if the note did not settle it. The note is no answer and goes into no
 decision log. Words on a demo whose report asks a question answer it (see Waiting for approval).
 
+Card numbers in the owner's words reach the worker with a line saying which card each names (see
+Card numbers in The canvas).
+
 ### Questions go to the owner
 
 A worker's question goes straight to the owner, with the worker's own pick; no other agent answers

@@ -164,6 +164,12 @@ const de = {
     howTo: 'Mehrere Karten auf einmal verschieben: mit Umschalt anklicken oder mit Umschalt um sie herum ziehen.',
   },
   close: 'Schließen (Esc)',
+  /** A card's number (`K42`), which a click copies. */
+  cardNumber: {
+    copy: (tag: string) => `Nummer ${tag} kopieren: so nennst du die Karte Obeya und den Agenten`,
+    copied: 'Kopiert',
+    selected: 'Markiert',
+  },
   sheetGrip: 'Breite ziehen · Doppelklick: zurück auf die Standardbreite',
   planSheet: 'Projekt · Plan',
   plan: {
@@ -2221,6 +2227,12 @@ const en: Strings = {
     howTo: 'To move several cards at once: Shift-click them, or hold Shift and drag around them.',
   },
   close: 'Close (Esc)',
+  /** A card's number (`K42`), which a click copies. */
+  cardNumber: {
+    copy: (tag: string) => `Copy the number ${tag}: name the card by it to Obeya and the agents`,
+    copied: 'Copied',
+    selected: 'Selected',
+  },
   sheetGrip: 'Drag to resize · Double-click: back to the default width',
   planSheet: 'Project · Plan',
   plan: {

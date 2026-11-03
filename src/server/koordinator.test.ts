@@ -7,6 +7,7 @@ import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, type StoredContribution } from './board';
 import { Store } from './db';
 import { Koordinator, overlaps } from './koordinator';
+import { cardTag } from '../core/card-number';
 import { move, queueOrder, reach } from '../core/queue';
 import { artifact, FakeRuntime, type FakeSession, gitRepo } from './testing';
 import { Workers } from './workers';
@@ -50,6 +51,8 @@ async function settle() {
 }
 const card = (title: string) => board.create({ title, x: 0, y: 0 });
 const item = (id: string) => board.item(id)!;
+/** The number a card goes by, as the Koordinator's sessions name it. */
+const tag = (c: { number: number }) => cardTag(c.number);
 const estimates = () => runtime.sessions.filter((s) => s.spec.tools.some((t) => t.name === 'scope'));
 const workerOf = (id: string) => runtime.sessions.find((s) => s.spec.cwd === board.row(id).workspace)!;
 
@@ -95,7 +98,7 @@ describe('Koordinator', () => {
     k.request(b.id);
     await settle();
     expect(estimates().at(-1)!.inbox[0]).toContain('"A"');
-    await scope(['src/a.ts', 'src/b.ts'], ['K1'], 'Beide ändern decide() in src/a.ts.');
+    await scope(['src/a.ts', 'src/b.ts'], [tag(a)], 'Beide ändern decide() in src/a.ts.');
     expect(item(b.id)).toMatchObject({ state: 'planned', queue: { behind: [a.id], reason: 'Beide ändern decide() in src/a.ts.' } });
 
     const wa = board.row(a.id).workspace!;
@@ -144,7 +147,7 @@ describe('Koordinator', () => {
     board.work(a.id, { state: 'inPr' });
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
     board.work(a.id, { state: 'live' });
     await settle();
@@ -157,7 +160,7 @@ describe('Koordinator', () => {
     await scope(['src/a.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     const c = card('C');
     k.request(c.id);
     await scope(['src/a.ts']);
@@ -166,7 +169,7 @@ describe('Koordinator', () => {
     await settle();
     expect(item(b.id).queue).toMatchObject({ checking: true });
     expect(estimates().at(-1)!.inbox[0]).toContain('"C"');
-    await scope(['src/a.ts'], ['K1'], 'Beide ändern dieselbe Funktion.');
+    await scope(['src/a.ts'], [tag(c)], 'Beide ändern dieselbe Funktion.');
     expect(item(b.id).queue).toMatchObject({ behind: [c.id] });
     await workers.stop(c.id);
     await settle();
@@ -181,7 +184,7 @@ describe('Koordinator', () => {
     await settle();
     expect(estimates()).toHaveLength(1);
     await scope(['src/shared.ts']);
-    await scope(['src/shared.ts'], ['K1']);
+    await scope(['src/shared.ts'], [tag(a)]);
     expect(item(a.id).state).toBe('working');
     expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
   });
@@ -192,19 +195,19 @@ describe('Koordinator', () => {
     await scope(['src/a.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     k.dequeue(b.id);
     expect(item(b.id).queue).toBeUndefined();
 
     const c = card('C');
     k.request(c.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     k.force(c.id);
     expect(item(c.id).state).toBe('working');
 
     const d = card('D');
     k.request(d.id);
-    await scope(['src/a.ts'], ['K1', 'K2']);
+    await scope(['src/a.ts'], [tag(a), tag(c)]);
     expect(item(d.id).queue).toMatchObject({ behind: [a.id, c.id] });
     await workers.stop(a.id);
     await settle();
@@ -222,9 +225,9 @@ describe('Koordinator', () => {
     const later = card('Später');
     const first = card('Zuerst');
     k.request(first.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     k.request(later.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     expect(item(first.id).queue).toMatchObject({ behind: [a.id] });
     const since = item(later.id).queue!.since;
     expect(since! > item(first.id).queue!.since!).toBe(true);
@@ -239,8 +242,8 @@ describe('Koordinator', () => {
     expect(brief.indexOf('"Zuerst"')).toBeLessThan(brief.indexOf('"Später"'));
     expect(schedules().at(-1)!.spec.system).toContain('what they waited for has landed now');
     await schedule([
-      ['K1', ['src/a.ts'], [], [], 'Kann sofort laufen.'],
-      ['K2', ['src/a.ts'], [], ['K1'], 'Beide ändern dieselbe Funktion.'],
+      [tag(first), ['src/a.ts'], [], [], 'Kann sofort laufen.'],
+      [tag(later), ['src/a.ts'], [], [tag(first)], 'Beide ändern dieselbe Funktion.'],
     ]);
     expect(item(first.id).state).toBe('working');
     expect(board.events(first.id).some((e) => e.text.includes('Zusammen mit den anderen frei gewordenen Aufgaben geprüft'))).toBe(true);
@@ -257,14 +260,14 @@ describe('Koordinator', () => {
     await scope(['src/a.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts', 'src/b.ts'], ['K1']);
+    await scope(['src/a.ts', 'src/b.ts'], [tag(a)]);
     const c = card('C');
     k.request(c.id);
     await settle();
     const brief = estimates().at(-1)!.inbox[0]!;
     expect(brief).toContain('Cards queued ahead of this one');
-    expect(brief).toContain('- K2: "B"\n  expected to change: src/a.ts, src/b.ts\n  waits for: "A"');
-    await scope(['src/b.ts'], ['K2'], 'Beide ändern render() in src/b.ts.');
+    expect(brief).toContain(`- ${tag(b)}: "B"\n  expected to change: src/a.ts, src/b.ts\n  waits for: "A"`);
+    await scope(['src/b.ts'], [tag(b)], 'Beide ändern render() in src/b.ts.');
     expect(item(c.id).queue).toMatchObject({ behind: [b.id], reason: 'Beide ändern render() in src/b.ts.' });
     expect(board.events(c.id).some((e) => e.text.includes('„B“ (wartet selbst und ist vorher dran)'))).toBe(true);
 
@@ -284,14 +287,14 @@ describe('Koordinator', () => {
     await scope(['src/a.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     const d = card('D');
     k.request(d.id);
     await scope(['src/d.ts']);
     expect(item(d.id).state).toBe('working');
     const c = card('C');
     k.request(c.id);
-    await scope(['src/a.ts'], ['K3']);
+    await scope(['src/a.ts'], [tag(b)]);
     expect(item(c.id).queue).toMatchObject({ behind: [b.id] });
 
     await workers.stop(a.id);
@@ -311,10 +314,10 @@ describe('Koordinator', () => {
     await scope(['src/a.ts']);
     const b = card('B');
     k.request(b.id);
-    await scope(['src/a.ts', 'src/b.ts'], ['K1']);
+    await scope(['src/a.ts', 'src/b.ts'], [tag(a)]);
     const c = card('C');
     k.request(c.id);
-    await scope(['src/b.ts'], ['K2']);
+    await scope(['src/b.ts'], [tag(b)]);
     expect(item(c.id).queue).toMatchObject({ behind: [b.id] });
     k.dequeue(b.id);
     await settle();
@@ -332,7 +335,7 @@ describe('Koordinator', () => {
     await scope(['src/b.ts']);
     const c = card('C');
     k.request(c.id);
-    await scope(['src/a.ts', 'src/b.ts'], ['K1', 'K2']);
+    await scope(['src/a.ts', 'src/b.ts'], [tag(a), tag(b)]);
     const since = item(c.id).queue!.since;
     expect(since).toBeString();
     await workers.stop(a.id);
@@ -346,11 +349,11 @@ describe('Koordinator', () => {
     await scope(['src/a.ts']);
     const [b, c, d] = [card('B'), card('C'), card('D')];
     k.request(b.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     k.request(c.id);
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     k.request(d.id);
-    await scope(['src/c.ts'], ['K3']);
+    await scope(['src/c.ts'], [tag(c)]);
     expect(item(d.id).queue).toMatchObject({ behind: [c.id] });
     const order = () => queueOrder(board.snapshot().items).map((i) => i.title);
     expect(order()).toEqual(['B', 'C', 'D']);
@@ -383,8 +386,8 @@ describe('Koordinator', () => {
     const brief = schedules().at(-1)!.inbox[0]!;
     expect(brief.indexOf('"C"')).toBeLessThan(brief.indexOf('"B"'));
     await schedule([
-      ['K1', ['src/a.ts'], [], [], 'Kann sofort laufen.'],
-      ['K2', ['src/a.ts'], [], ['K1'], 'Beide ändern src/a.ts.'],
+      [tag(c), ['src/a.ts'], [], [], 'Kann sofort laufen.'],
+      [tag(b), ['src/a.ts'], [], [tag(c)], 'Beide ändern src/a.ts.'],
     ]);
     expect(item(c.id).state).toBe('working');
     expect(item(b.id).queue).toMatchObject({ behind: [c.id] });
@@ -449,7 +452,7 @@ describe('Koordinator', () => {
     await new Promise((r) => setTimeout(r, 60));
     expect(item(b.id).limitedUntil).toBeUndefined();
     expect(s.inbox.at(-1)).toContain('usage limit');
-    await scope(['src/a.ts'], ['K1']);
+    await scope(['src/a.ts'], [tag(a)]);
     expect(item(b.id).queue).toMatchObject({ behind: [a.id] });
   });
 
@@ -504,11 +507,11 @@ describe("Koordinator queues a review's follow-up tasks", () => {
     // the first does not start before the turn has seen the second
     expect(item(f1.id).queue).toMatchObject({ checking: true });
     const brief = schedules().at(-1)!.inbox[0]!;
-    expect(brief).toContain('K1: task "Explain the arrows" — Tooltips on the arrows.');
-    expect(brief).toContain('K2: task "Say why a link is refused"');
+    expect(brief).toContain(`${tag(f1)}: task "Explain the arrows" — Tooltips on the arrows.`);
+    expect(brief).toContain(`${tag(f2)}: task "Say why a link is refused"`);
     await schedule([
-      ['K2', ['src/ui/arrow.tsx'], [], [], 'Bringt die Meldung neben dem Pfeil.'],
-      ['K1', ['src/ui/arrow.tsx'], ['K2'], [], 'Die Tooltips bauen auf der Meldung auf.'],
+      [tag(f2), ['src/ui/arrow.tsx'], [], [], 'Bringt die Meldung neben dem Pfeil.'],
+      [tag(f1), ['src/ui/arrow.tsx'], [tag(f2)], [], 'Die Tooltips bauen auf der Meldung auf.'],
     ]);
     expect(item(f2.id).state).toBe('working');
     expect(item(f1.id).queue).toMatchObject({ behind: [f2.id], buildsOn: [f2.id], reason: 'Die Tooltips bauen auf der Meldung auf.' });
@@ -757,7 +760,7 @@ describe('Koordinator waits for a free workspace', () => {
     await scope(['src/c.ts']);
     const d = card('D');
     k.request(d.id);
-    await scope(['src/b.ts'], ['K2']);
+    await scope(['src/b.ts'], [tag(b)]);
     expect(item(c.id).queue).toMatchObject({ workspace: 'none' });
     expect(item(d.id).queue).toMatchObject({ behind: [b.id] });
 
@@ -893,13 +896,13 @@ describe('Koordinator starts all workstreams of a project', () => {
     expect(estimates()).toHaveLength(1);
     const brief = schedules()[0]!.inbox[0]!;
     expect(brief).toContain('plan doc docs/plan/p.md');
-    expect(brief).toContain('- K2: W2 "Titel W2" — Text W2');
-    expect(brief).toContain('- K1: "A"');
+    expect(brief).toContain(`- ${tag(w2)}: W2 "Titel W2" — Text W2`);
+    expect(brief).toContain(`- ${tag(a)}: "A"`);
     // W4 goes first, W2 builds on it, W3 collides with A
     await schedule([
-      ['K4', ['src/w4.ts'], [], [], 'W4 ist unabhängig.'],
-      ['K2', ['src/w2.ts'], ['K4'], [], 'W2 baut auf der API aus W4 auf.'],
-      ['K3', ['src/a.ts'], [], ['K1'], 'W3 und „A“ ändern dieselbe Funktion.'],
+      [tag(w4), ['src/w4.ts'], [], [], 'W4 ist unabhängig.'],
+      [tag(w2), ['src/w2.ts'], [tag(w4)], [], 'W2 baut auf der API aus W4 auf.'],
+      [tag(w3), ['src/a.ts'], [], [tag(a)], 'W3 und „A“ ändern dieselbe Funktion.'],
     ]);
     expect(item(w4.id)).toMatchObject({ state: 'working', scope: ['src/w4.ts'] });
     expect(item(w2.id)).toMatchObject({ state: 'planned', scope: ['src/w2.ts'], queue: { behind: [w4.id], buildsOn: [w4.id], reason: 'W2 baut auf der API aus W4 auf.' } });
@@ -947,11 +950,11 @@ describe('Koordinator starts all workstreams of a project', () => {
     k.request(p.id);
     await settle();
     const s = schedules()[0]!;
-    expect(s.call('schedule', { workstreams: [{ card: 'K1', files: [], builds_on: [], conflicts_with: [], reason: '' }] })).toContain('missing K2, K3');
+    expect(s.call('schedule', { workstreams: [{ card: tag(w2), files: [], builds_on: [], conflicts_with: [], reason: '' }] })).toContain(`missing ${tag(w3)}, ${tag(w4)}`);
     await schedule([
-      ['K1', ['src/w2.ts'], ['K3'], [], 'Wartet auf W4.'],
-      ['K2', ['src/w3.ts'], [], ['K2'], ''],
-      ['K3', ['src/w4.ts'], ['K1'], [], 'Baut auf W2 auf.'],
+      [tag(w2), ['src/w2.ts'], [tag(w4)], [], 'Wartet auf W4.'],
+      [tag(w3), ['src/w3.ts'], [], [tag(w3)], ''],
+      [tag(w4), ['src/w4.ts'], [tag(w2)], [], 'Baut auf W2 auf.'],
     ]);
     expect(item(w2.id).state).toBe('working');
     expect(item(w3.id).state).toBe('working');
@@ -1023,7 +1026,7 @@ describe('Koordinator starts all workstreams of a project', () => {
     expect(brief).toContain('W2 "Titel W2" (not started) — Text W2');
     expect(brief).toContain('W4 "Titel W4" (not started)');
     expect(estimates().at(-1)!.spec.system).toContain('builds_on');
-    await scope(['src/w3.ts'], [], 'W3 nutzt die API aus W2.', ['K1']);
+    await scope(['src/w3.ts'], [], 'W3 nutzt die API aus W2.', [tag(w2)]);
     expect(item(w3.id)).toMatchObject({ state: 'planned', queue: { behind: [w2.id], buildsOn: [w2.id], reason: 'W3 nutzt die API aus W2.' } });
     expect(board.events(w3.id).at(-1)!.text).toBe('Obeya: wartet auf W2 „Titel W2“ (noch nicht gestartet). W3 nutzt die API aus W2.');
 
@@ -1038,7 +1041,7 @@ describe('Koordinator starts all workstreams of a project', () => {
     // W3 is queued ahead of W4, and no workstream is left unstarted
     k.request(w4.id);
     await settle();
-    expect(estimates().at(-1)!.inbox[0]).toContain('- K2: "Titel W3"');
+    expect(estimates().at(-1)!.inbox[0]).toContain(`- ${tag(w3)}: "Titel W3"`);
     expect(estimates().at(-1)!.inbox[0]).not.toContain('not started');
     await scope(['src/w4.ts']);
     expect(item(w4.id).state).toBe('working');
@@ -1056,9 +1059,9 @@ describe('Koordinator starts all workstreams of a project', () => {
     k.request(w2.id);
     await scope(['src/w2.ts']);
     k.request(w3.id);
-    await scope(['src/w3.ts'], [], 'Baut auf W2 auf.', ['K1']);
+    await scope(['src/w3.ts'], [], 'Baut auf W2 auf.', [tag(w2)]);
     k.request(w4.id);
-    await scope(['src/w2.ts'], ['K1'], 'Beide ändern src/w2.ts.');
+    await scope(['src/w2.ts'], [tag(w2)], 'Beide ändern src/w2.ts.');
     expect(item(w3.id).queue).toMatchObject({ behind: [w2.id], buildsOn: [w2.id] });
     expect(item(w4.id).queue).toMatchObject({ behind: [w2.id] });
 
@@ -1095,9 +1098,9 @@ describe('Koordinator starts all workstreams of a project', () => {
     k.request(p.id);
     await new Promise((r) => setTimeout(r, 60));
     await schedule([
-      ['K1', [], [], [], ''],
-      ['K2', [], [], [], ''],
-      ['K3', [], [], [], ''],
+      [tag(w2), [], [], [], ''],
+      [tag(w3), [], [], [], ''],
+      [tag(w4), [], [], [], ''],
     ]);
     expect(() => k.dequeue(p.id)).toThrow(expect.objectContaining({ code: 'notQueued' }));
   });
@@ -1459,10 +1462,10 @@ describe('Koordinator arranges a project by what builds on what', () => {
     expect(readings()).toHaveLength(1);
     const brief = readings()[0]!.inbox[0]!;
     expect(brief).toContain('plan doc docs/plan/p.md');
-    expect(brief).toContain('- K1 (delivered): W1 "Titel W1"');
-    expect(brief).toContain('- K3: W3 "Titel W3" — Text W3');
+    expect(brief).toContain(`- ${tag(w1)} (delivered): W1 "Titel W1"`);
+    expect(brief).toContain(`- ${tag(w3)}: W3 "Titel W3" — Text W3`);
     // W2 builds on W4, W3 on W2 and on the delivered W1
-    await read({ K2: ['K4'], K3: ['K2', 'K1'], K4: [] });
+    await read({ [tag(w2)]: [tag(w4)], [tag(w3)]: [tag(w2), tag(w1)], [tag(w4)]: [] });
     expect(item(p.id).arranging).toBeUndefined();
     expect(item(w2.id).buildsOn).toEqual([w4.id]);
     expect(item(w3.id).buildsOn).toEqual([w2.id, w1.id]);
@@ -1473,15 +1476,15 @@ describe('Koordinator arranges a project by what builds on what', () => {
   });
 
   test('every open workstream once: a reading that leaves one out is asked again', async () => {
-    project();
+    const { w2, w3, w4 } = project();
     await settle();
-    expect(readings()[0]!.call('dependencies', { workstreams: [{ card: 'K2', builds_on: [] }] })).toContain('missing K3, K4');
+    expect(readings()[0]!.call('dependencies', { workstreams: [{ card: tag(w2), builds_on: [] }] })).toContain(`missing ${tag(w3)}, ${tag(w4)}`);
   });
 
   test('a card the owner moved before the reading came keeps its place; the reading is kept', async () => {
     const { p, w2, w3, w4 } = project();
     board.patch(w3.id, { x: 900, y: 500 });
-    await read({ K2: ['K4'], K3: [], K4: [] });
+    await read({ [tag(w2)]: [tag(w4)], [tag(w3)]: [], [tag(w4)]: [] });
     expect(item(w3.id)).toMatchObject({ x: 900, y: 500 });
     expect(item(w2.id).x).toBe(w2.x);
     expect(item(w2.id).buildsOn).toEqual([w4.id]);
@@ -1491,7 +1494,7 @@ describe('Koordinator arranges a project by what builds on what', () => {
   test('asked to arrange, it uses what it read for the doc as it stands, and reads again once the doc changed', async () => {
     const { p, w2, w3, w4 } = project();
     board.patch(w2.id, { x: 900, y: 500 });
-    await read({ K2: ['K4'], K3: [], K4: [] });
+    await read({ [tag(w2)]: [tag(w4)], [tag(w3)]: [], [tag(w4)]: [] });
     await k.arrange(p.id);
     expect(readings()).toHaveLength(1);
     expect(item(w2.id).x).toBeGreaterThan(item(w4.id).x);
@@ -1501,7 +1504,7 @@ describe('Koordinator arranges a project by what builds on what', () => {
     expect(board.deps(p.id).current).toBe(false);
     const done = k.arrange(p.id);
     expect(item(p.id).arranging).toBe(true);
-    await read({ K2: ['K4'], K3: [], K4: ['K3'] });
+    await read({ [tag(w2)]: [tag(w4)], [tag(w3)]: [], [tag(w4)]: [tag(w3)] });
     await done;
     expect(readings()).toHaveLength(2);
     // W3, then W4, then W2: three columns

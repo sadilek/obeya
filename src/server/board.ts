@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
+import { cardNumbersIn, cardTag } from '../core/card-number';
 import type { CardFile } from '../core/files';
 import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
@@ -368,6 +369,13 @@ export class BadRequest extends Error {
   }
 }
 
+/** A card a number names (`Board.numbered`): its row; as the UI sees it where it is this canvas's; the name of its canvas where that is another. */
+export interface Numbered {
+  row: CardRow;
+  item?: Item;
+  canvasName?: string;
+}
+
 /** What the owner can reply to: the messages of a conversation. */
 const QUOTABLE: CardEvent['kind'][] = ['say', 'closing', 'question', 'answer', 'hint', 'review', 'talk'];
 
@@ -718,6 +726,39 @@ export class Board {
     const doc = ref && !ref.includes('#') ? (this.docs ??= this.read()).find((d) => d.file === ref) : undefined;
     if (!doc) throw new BadRequest('invalid', 'not a project with a plan doc');
     return { file: doc.file, markdown: doc.markdown };
+  }
+
+  /**
+   * The card a number names (`K42`), wherever it is: this canvas's as the UI sees it (on the canvas
+   * or archived), another canvas's or a deleted one by its row alone; none for a number no card has.
+   */
+  numbered(n: number): Numbered | undefined {
+    const row = this.store.cardByNumber(n);
+    if (!row) return undefined;
+    const item = row.canvas_id === this.canvas.id && !row.deleted_at ? this.card(row.id) : undefined;
+    return { row, ...(item ? { item } : {}), ...(row.canvas_id !== this.canvas.id ? { canvasName: this.store.canvasName(row.canvas_id) ?? row.canvas_id } : {}) };
+  }
+
+  /** The card's number as its tag (`K42`), wherever the card is; '' for none. */
+  tagOf(id: string): string {
+    const row = this.store.card(id);
+    return row ? cardTag(row.number) : '';
+  }
+
+  /**
+   * Which cards the card numbers in the owner's words name, for an agent reading them: a line for
+   * each that names one, '' where they name none. `self`: the card the agent works on.
+   */
+  numbersNote(text: string, self?: string): string {
+    const named = cardNumbersIn(text).flatMap((n) => {
+      const found = this.numbered(n);
+      if (!found) return [];
+      const { row, item, canvasName } = found;
+      const where = row.id === self ? ' (your own card)' : row.deleted_at ? ' (deleted)' : canvasName ? ` (on the canvas “${canvasName}”)` : '';
+      const state = item ? `, ${item.archivedAt ? 'archived' : item.state}` : '';
+      return [`${cardTag(n)} is the card “${item?.title ?? row.title ?? ''}”${where}${state}.`];
+    });
+    return named.length ? `\n\n(Card numbers in these words: ${named.join(' ')})` : '';
   }
 
   /** The card as the UI sees it. */
@@ -2866,6 +2907,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       manual.push({
         id: r.id,
         short: r.short,
+        number: r.number,
         kind: r.kind,
         state: r.state ?? 'planned',
         ...(r.need ? { need: r.need } : {}),
@@ -2896,6 +2938,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       projects.push({
         id: r.id,
         short: r.short,
+        number: r.number,
         kind: 'project',
         state: 'planned',
         title: doc.title,
@@ -2928,6 +2971,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       item: {
         id: r.id,
         short: r.short,
+        number: r.number,
         kind: r.kind,
         state,
         ...(r.need ? { need: r.need } : {}),

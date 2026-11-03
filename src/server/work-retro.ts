@@ -170,9 +170,9 @@ export class WorkRetro {
       if (told) b.notify({ text: b.t.retro.nothingToRead(name) });
       return;
     }
-    // the cards as tags, in the order their notes came
+    // the cards by their numbers, in the order their notes came
     const tags = new Map<string, string>();
-    for (const n of notes) if (![...tags.values()].includes(n.cardId)) tags.set(`K${tags.size + 1}`, n.cardId);
+    for (const n of notes) if (![...tags.values()].includes(n.cardId)) tags.set(b.tagOf(n.cardId), n.cardId);
     const titles = new Map(notes.map((n) => [n.cardId, n.title]));
     const byCard = [...tags].map(([tag, id]) => {
       const mine = notes.filter((n) => n.cardId === id);

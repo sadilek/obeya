@@ -101,6 +101,7 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
   overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .project > .head .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .project > .head .progress { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.project > .head .head-no { order: 0; margin: 0 -2px 0 -4px; font-size: 12px; }
 /* arranges the workstreams by their dependencies, starts all planned ones; quiet until the pointer is on one */
 .project > .head .head-btn { display: flex; align-items: center; gap: 6px; flex: none; padding: 4px 11px 4px 9px; border-radius: 3px;
   font: inherit; font-size: 12px; font-weight: 500; color: var(--working); background: var(--card); border: 1px solid var(--line);
@@ -141,6 +142,13 @@ h1, h2, .cfg-head h3, .p-title, .project > .head .ttl, .timeline .a-ttl { font-f
 .card .state { position: absolute; left: 14px; right: 14px; bottom: 10px; font-size: 12px; line-height: 1.2; font-weight: 600; color: var(--c); display: flex; align-items: center; gap: 7px; }
 .card .state .state-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .state::after { flex: none; }
+/* a card's number, at the start of its state line (its end is where a card's buttons show under the pointer): muted, its copy icon while the pointer is on it, on a touch screen always */
+.card-no { flex: none; order: -1; margin: -3px -4px -3px -5px; padding: 3px 5px; display: inline-flex; align-items: center; gap: 3px; border: 0; border-radius: 3px; background: none; font: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted); cursor: copy; font-variant-numeric: tabular-nums; }
+.card-no:not(.plain):hover, .card-no.copied, .card-no.selected { color: var(--ink); background: var(--chip); }
+.card-no.plain { cursor: inherit; }
+.card-no svg { opacity: 0; transition: opacity .12s; }
+.card-no:hover svg, .card-no:focus-visible svg { opacity: 1; }
+@media (hover: none) { .card-no svg { opacity: 1; } }
 .card.task { width: 300px; height: 136px; }
 .card.chip { width: 196px; height: 64px; padding-top: 11px; }
 .card.chip::before { height: 3px; }
@@ -593,6 +601,8 @@ button.pill.help:hover, button.pill.help.on { color: var(--ink); }
 }
 #panel.ready .inner { opacity: 1; }
 #panel .close { position: absolute; right: 14px; top: 12px; border: 0; background: var(--chip); width: 32px; height: 32px; border-radius: 3px; cursor: pointer; z-index: 2; }
+/* the card's number, left of the close button */
+#panel .sheet-no { position: absolute; right: 54px; top: 18px; z-index: 2; margin: 0; font-size: 12.5px; }
 /* the card's rule across the top, as on the card it unfolded from */
 #panel::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--c); z-index: 1; }
 .p-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -1994,6 +2004,9 @@ button.link:hover { text-decoration: underline; }
 .ph-back { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; padding: 0 12px 0 6px; border: 0; border-radius: 3px;
   background: var(--chip); font-size: 16px; cursor: pointer; }
 .ph-canvas { margin-left: auto; color: var(--muted); font-size: 13px; }
+/* the card's number at the bar's end, after the canvas's name where it shows */
+.ph-bar .ph-no { order: 0; margin: 0 0 0 auto; font-size: 13px; }
+.ph-canvas + .ph-no { margin-left: 0; }
 .ph-quiet { position: sticky; top: 60px; z-index: 5; margin: 12px 0 0; padding: 10px 12px; border-radius: 3px; background: var(--ink); color: var(--bg); display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
 .ph-quiet b { font-weight: 600; font-size: 14.5px; }
 .ph-notify { margin: 14px 0 0; padding: 10px 12px; border-radius: 3px; border: 1px solid var(--line); background: var(--card); font-size: 14.5px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }

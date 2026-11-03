@@ -13,6 +13,8 @@ import { Doc, excerpt, Inline, plain } from './markdown';
 import { Body } from './message';
 import { waitedOn, waitReason } from './queue';
 import { ClockMark, snoozeWho } from './snooze';
+import { cardTag } from '../core/card-number';
+import { CardNumber } from './cardNumber';
 import { becomesLabel, clock, shortDay, snoozeWhen, stateLabel, t } from './strings';
 
 /** The first line of a card's text that says something (not a bare "Ziel" label, as briefs start). */
@@ -161,10 +163,11 @@ export const cardClass = (item: Item, underway?: string) =>
 /**
  * What a card says on its face, on the canvas and in the phone view's lists alike: its kind (after
  * `where` it is, its repository or canvas), its title, a line of its text, its state line in its
- * state's colour (`since` after it) and the pin while it needs the owner. A `chip`, a delivered
- * workstream, shows only its title, after its label, so it still reads as its workstream.
+ * state's colour after its number (`since` after it) and the pin while it needs the owner. A `chip`, a delivered
+ * workstream, shows only its title, after its label, so it still reads as its workstream. A face
+ * `inButton` (a list's entry that opens the card) shows the number without copying it: its sheet does.
  */
-export function CardFace({ item, where, underway, since, chip }: { item: Item; where?: string; underway?: string; since?: string; chip?: boolean }) {
+export function CardFace({ item, where, underway, since, chip, inButton }: { item: Item; where?: string; underway?: string; since?: string; chip?: boolean; inButton?: boolean }) {
   const kind =
     item.label ??
     (item.contribution ? t.review.kind(item.contribution.number, item.contribution.author) : item.parent ? t.kind.workstream : item.kind === 'question' ? t.kind.question : item.idea || item.proposal?.idea ? t.kind.idea : item.becomesProject ? becomesLabel(item) : item.prototypeOf ? t.kind.prototype : item.kind === 'project' ? t.kind.project : '');
@@ -222,6 +225,7 @@ export function CardFace({ item, where, underway, since, chip }: { item: Item; w
           {item.idea?.next && needsYou(item) && ` · ${t.idea.suggests[item.idea.next.step]}`}
           {since && <span className="since"> · {since}</span>}
         </span>
+        {!chip && (inButton ? <span className="card-no plain">{cardTag(item.number)}</span> : <CardNumber n={item.number} />)}
       </div>
       {needsYou(item) && !underway && <div className="badge pulse">{item.state === 'proposal' ? '✦' : '!'}</div>}
     </>
@@ -875,6 +879,7 @@ export const ProjectView = memo(
           <span className="ttl">{plain(item.title)}</span>
           <span className="kind">{t.kind.project}</span>
           <span className="progress">{t.progress(live, kids.length)}</span>
+          <CardNumber n={item.number} className="head-no" />
           {/* collapsed, its workstreams are not on the canvas to arrange; its sheet still has the button */}
           {!collapsed && (item.arranging || arrangeable(kids)) && (
             <button

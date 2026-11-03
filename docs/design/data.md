@@ -22,7 +22,8 @@ Persistent (SQLite):
   proposals waiting for the owner; the new repository a card is to be built in, and that Obeya made
   it; an idea's brief, open questions and picks; a prototype's idea
   and outcome; a project's plan doc as last read and the plan docs its landed work added; its short
-  code for addresses (see Addresses in The canvas), unique across the database;
+  code for addresses (see Addresses in The canvas), unique across the database, and its number
+  (see Card numbers in The canvas);
 - card events (the conversation log, with the owner's screenshots and agents' mocks), workspaces
   and their leases, what a card changed in a folder without git and its undo there;
 - the Koordinator's conversation with the owner and the threads of looked-up questions (the

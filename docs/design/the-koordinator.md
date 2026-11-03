@@ -356,8 +356,12 @@ sees a card's open question, also one in a demo report, so „ja“ is an answer
 approval by word („deploy it“, „raus damit“) lands the way the repository sets; words that ask to
 bypass the pull request („ohne PR“, „direkt auf main“) approve nothing in a repository whose work
 goes out as one, and the Koordinator replies that only the card's button „Direkt auf main“ does that,
-where the settings allow it. Card
-tags (`K1`, …) stay fixed for the session. Each command brings the cards as they are and what
+where the settings allow it. It
+knows each card by its number (see Card numbers in The canvas), in its actions too; a card the
+owner's words name by number that is not on the canvas (finished, archived, on another canvas,
+deleted) comes with the command, so it can say what became of it, though it acts only on cards of
+its canvas that are not archived. Its memory of exchanges from before cards had numbers says that a
+K-number said then was a tag of that session and names another card now. Each command brings the cards as they are and what
 happened since the previous one (state changes, questions, answers, hand-overs, notes, errors, new
 cards; not the workers' steps), including a command the owner took back. Every exchange is stored.
 

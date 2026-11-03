@@ -161,7 +161,7 @@ describe('a question the Koordinator looks up', () => {
     const heard = canvas.commander.hear('was macht X?', {});
     await settle();
     const s = runtime.sessions.find(isKoordinator)!;
-    expect(s.call('look_up', { question: 'X?', card: 'K9', confirm: 'Moment.' })).toContain('Unknown tag K9');
+    expect(s.call('look_up', { question: 'X?', card: 'K9', confirm: 'Moment.' })).toContain('No card K9 on this canvas');
     s.call('reply', { confirm: 'Welche Karte meinst du?' });
     s.emit({ type: 'idle' });
     expect((await heard).confirm).toBe('Welche Karte meinst du?');

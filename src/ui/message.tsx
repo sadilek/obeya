@@ -9,6 +9,7 @@ import { type Block, blocks, Inline, ListTree, plain, Table } from './markdown';
 import { clock as time, t } from './strings';
 import type { Quoted } from './reply';
 import { clip } from '../core/text';
+import { CopyIcon } from './cardNumber';
 import { copyOrSelect } from './copy';
 
 /**
@@ -192,10 +193,7 @@ function Code({ text }: { text: string }) {
         {done ? (
           <span>{label}</span>
         ) : (
-          <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true">
-            <rect x="7" y="7" width="9.5" height="9.5" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-            <path d="M13 4.5V4.2A1.2 1.2 0 0 0 11.8 3H4.2A1.2 1.2 0 0 0 3 4.2v7.6A1.2 1.2 0 0 0 4.2 13h.3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
+          <CopyIcon />
         )}
       </button>
     </div>

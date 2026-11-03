@@ -1278,7 +1278,7 @@ export class Workers {
    */
   private words(cardId: string, text: string, images: string[], replyTo?: number, place?: Spot) {
     const still = this.stills(place);
-    return `${place ? `${spotNote(place)}\n` : ''}${replyNote(replyTo ? this.o.board.quoted(cardId, replyTo) : undefined, 'worker')}${text}${still.length ? `\n\nThe frame at that place in the video is shown below (file: ${still[0]}).` : ''}${imageNote(images)}`;
+    return `${place ? `${spotNote(place)}\n` : ''}${replyNote(replyTo ? this.o.board.quoted(cardId, replyTo) : undefined, 'worker')}${text}${this.o.board.numbersNote(text, cardId)}${still.length ? `\n\nThe frame at that place in the video is shown below (file: ${still[0]}).` : ''}${imageNote(images)}`;
   }
 
   /**
@@ -1424,7 +1424,7 @@ export class Workers {
       images.push(...still, ...shots);
       const files = [...still.map((f) => `frame: ${f}`), ...shots.map((f) => `screenshot: ${f}`)];
       return [
-        `${e.spot ? spotNote(e.spot) : ''}${spoken ? ` (${SPOKEN})` : ''}\n${replyNote(e.replyTo ? this.o.board.quoted(cardId, e.replyTo) : undefined, 'worker')}${e.text}${files.length ? `\n(${files.join('; ')})` : ''}`,
+        `${e.spot ? spotNote(e.spot) : ''}${spoken ? ` (${SPOKEN})` : ''}\n${replyNote(e.replyTo ? this.o.board.quoted(cardId, e.replyTo) : undefined, 'worker')}${e.text}${this.o.board.numbersNote(e.text, cardId)}${files.length ? `\n(${files.join('; ')})` : ''}`,
       ];
     });
     if (!comments.length) return null;
@@ -4924,7 +4924,7 @@ ${idea.idea.brief}` : '',
           .filter(Boolean)
           .join('\n\n'),
       );
-    if (card.body.trim()) parts.push(card.body.trim());
+    if (card.body.trim()) parts.push(`${card.body.trim()}${this.o.board.numbersNote(card.body, card.id)}`);
     // the owner's own words: the language the worker writes them in until they say more (`ownersLanguage`)
     if (card.body.trim() && taskAuthor(card) === 'owner') parts.push('The owner wrote this task themselves: write to them in its language.');
     if (card.mocks?.length) parts.push(mocksText(card.mocks));
