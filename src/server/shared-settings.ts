@@ -127,9 +127,9 @@ export async function pushShared(repoPath: string, mine: SharedSettings): Promis
  * main branch: a commit on top of it, pushed to a branch of its own, and the pull request opened.
  * None where that branch holds them already.
  */
-export async function proposeShared(repoPath: string, mine: SharedSettings, forge: Forge, now = new Date()): Promise<SettingsShared & { after?: SharedSettings }> {
-  const { branch, text, commit, after } = await onOrigin(repoPath, mine);
-  if (!commit) return { unchanged: true, branch, after };
+export async function proposeShared(repoPath: string, mine: SharedSettings, forge: Forge, now = new Date()): Promise<SettingsShared> {
+  const { branch, text, commit } = await onOrigin(repoPath, mine);
+  if (!commit) return { unchanged: true, branch };
   const head = `obeya-settings-${now.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-')}`;
   await must(repoPath, ['push', '--quiet', 'origin', `${commit}:refs/heads/${head}`]);
   try {

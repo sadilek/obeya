@@ -453,7 +453,8 @@ export class Config {
       if (!resolved?.repos[at.repo]?.shareDirect) throw new BadRequest('noDirect', `${repoPath}: work goes to main only through pull requests`);
       const { after, ...done } = await pushShared(repoPath, mine);
       console.log(`Obeya: settings of ${repoPath} for everyone, ${'unchanged' in done ? 'which origin\'s ' + done.branch + ' had already' : `pushed onto origin's ${done.branch}`}`);
-      this.takenOver(repoPath, undefined, after);
+      // origin's had them already: only what the main branch Obeya reads has goes (the local one may be ahead of origin's)
+      this.takenOver(repoPath, undefined, 'unchanged' in done ? readShared(repoPath).settings : after);
       this.o.onSettings?.();
       return done;
     }
@@ -471,13 +472,14 @@ export class Config {
   private async share(path: string, patch: SharedSettings, to: 'main' | 'pr', what: string): Promise<SettingsShared> {
     if (to === 'pr') {
       if (!this.o.forge) throw new BadRequest('settingsShare', 'no forge to open a pull request with');
-      const { after, ...done } = await proposeShared(path, patch, this.o.forge);
+      const done = await proposeShared(path, patch, this.o.forge);
       if ('pr' in done) {
         console.log(`Obeya: ${what} of ${path} for everyone, as a pull request: ${done.pr}`);
         return done;
       }
       console.log(`Obeya: ${what} of ${path} for everyone, which origin's ${'branch' in done ? done.branch : ''} had already`);
-      this.takenOver(path, undefined, after);
+      // only what the main branch Obeya reads has: the local one may be ahead of origin's
+      this.takenOver(path, undefined, readShared(path).settings);
       return done;
     }
     const { before: _, after, ...done } = await commitShared(path, patch);

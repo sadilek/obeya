@@ -484,6 +484,32 @@ describe("Obeya's configuration", async () => {
     expect(applied).toBe(0);
   });
 
+  test("„Für alle ins Repository übernehmen“ of what origin's main holds already: no pull request; this machine's values go only where the main branch Obeya reads has them too", async () => {
+    mkdirSync(join(dir, 'home'));
+    mkdirSync(join(web, '.obeya'));
+    writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'pr', checks: ['bun test'] }));
+    git(web, 'add', '.obeya/settings.json');
+    git(web, 'commit', '--quiet', '-m', 'settings');
+    const origin = join(dir, 'origin.git');
+    git(dir, 'clone', '--quiet', '--bare', web, origin);
+    git(web, 'remote', 'add', 'origin', origin);
+    git(web, 'fetch', '--quiet', 'origin');
+    const opened: unknown[] = [];
+    const settings = { checks: ['bun test'] };
+    writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings }] }]));
+    const c = new Config({ file, source: 'file', started: [], store, running: () => [], server: { port: 4417, home: dir, permissionMode: 'auto' }, forge: { ...noForge, open: async (_cwd, pr) => (opened.push(pr), 'https://github.com/acme/web/pull/7') } });
+    // the local main is ahead of origin's with other checks: they are what Obeya reads, so this machine's stay
+    writeFileSync(join(web, '.obeya/settings.json'), JSON.stringify({ land: 'pr', checks: ['bun test --local'] }));
+    git(web, 'commit', '--quiet', '-am', 'local checks');
+    expect(await c.shareSettings({ path: web })).toEqual({ unchanged: true, branch: 'main' });
+    expect(opened).toEqual([]);
+    expect(readConfigFile(file)).toEqual([{ repos: [{ path: web, settings }] }]);
+    // with the local main where origin's is, they come from the repository
+    git(web, 'reset', '--quiet', '--hard', 'origin/main');
+    expect(await c.shareSettings({ path: web })).toEqual({ unchanged: true, branch: 'main' });
+    expect(readConfigFile(file)).toEqual([{ repos: [{ path: web }] }]);
+  });
+
   test("„Für alle ins Repository übernehmen“ straight onto origin's main, where work may go there beside pull requests", async () => {
     mkdirSync(join(dir, 'home'));
     const origin = join(dir, 'origin.git');

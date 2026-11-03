@@ -153,8 +153,6 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   const unpinned = useRef<CanvasConfig[] | null>(null);
   // counts the drafts loaded anew (reset, read again): a canvas of the one before is not one of this one
   const [loads, setLoads] = useState(0);
-  // what was taken over for everyone shows until the dialog closes
-  useEffect(() => () => sharedDone.clear(), []);
   const load = (v: ConfigView, c: Checked | null) => {
     setLoads((n) => n + 1);
     filled.current.clear();
@@ -221,6 +219,7 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   // read afresh whenever the dialog opens: the Koordinator or the file may have changed it; a draft not saved yet stays, after a reload too
   useEffect(() => {
     if (!on) return;
+    sharedDone.clear();
     const s = keptSection();
     if (s) setSectionState(s);
     const f = sessionStorage.getItem(FOCUS_KEY);
@@ -2342,7 +2341,7 @@ function sharedPreview(repo: RepoConfig, values: RepoValues): Record<string, unk
   return Object.fromEntries(SHARED_FIELDS.filter((k) => merged[k] !== undefined).map((k) => [k, merged[k]]));
 }
 
-/** What „Für alle ins Repository übernehmen“ did, by repository, while the dialog is open: the reload after it mounts the settings afresh. */
+/** What „Für alle ins Repository übernehmen“ did, by repository, until the dialog opens again: the reload after it mounts the settings afresh. */
 const sharedDone = new Map<string, SettingsShared>();
 
 /**
@@ -2382,9 +2381,9 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
     <div className="cfg-field cfg-setting cfg-share-settings">
       <div className="cfg-label">{c.label}</div>
       <div className="cfg-control">
-        {done && 'committed' in done && <p className="hint ok">{c.committed(done.branch, done.committed.slice(0, 7))}</p>}
-        {done && 'unchanged' in done && <p className="hint ok">{c.unchanged(done.branch)}</p>}
-        {done && 'pr' in done && (
+        {done && !confirming && 'committed' in done && <p className="hint ok">{c.committed(done.branch, done.committed.slice(0, 7))}</p>}
+        {done && !confirming && 'unchanged' in done && <p className="hint ok">{c.unchanged(done.branch)}</p>}
+        {done && !confirming && 'pr' in done && (
           <p className="hint ok">
             {c.opened}{' '}
             <a href={done.pr} target="_blank" rel="noreferrer">
@@ -2394,7 +2393,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
           </p>
         )}
         {!done && !count && <p className="hint">{c.none}</p>}
-        {!done && count > 0 && !confirming && (
+        {count > 0 && !confirming && (
           <>
             <button type="button" className="btn small" disabled={!saved && !prepare} onClick={() => setConfirming(true)}>
               {c.button(count)}
