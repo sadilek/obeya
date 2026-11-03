@@ -19,7 +19,38 @@
       "url": "https://demos.obeya.si",
       "deploy": "bunx wrangler@4 pages deploy {dir} --project-name obeya-demos --branch main --commit-dirty=true",
       "env": "sites/demos.obeya.si/cloudflare.env",
-      "publish": "approved"
+      "publish": "approved",
+      "tags": {
+        "Area": [
+          "Canvas",
+          "Navigation",
+          "Cards & conversation",
+          "Queue & dependencies",
+          "Obeya assistant",
+          "Voice",
+          "Agents & models",
+          "Review & landing",
+          "Demos",
+          "Demo sites",
+          "Ideas & projects",
+          "Setup & settings"
+        ],
+        "Platform": [
+          "Desktop browser",
+          "Phone",
+          "Mac app",
+          "Windows",
+          "Remote machines"
+        ],
+        "Kind": [
+          "New feature",
+          "Improvement",
+          "Bug fix",
+          "Performance",
+          "Contribution review",
+          "Maintenance"
+        ]
+      }
     }
   }
 }
