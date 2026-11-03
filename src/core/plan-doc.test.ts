@@ -111,6 +111,7 @@ describe('parsePlanDoc', () => {
     expect(keys(['Ship the thing. Details', 'Größe prüfen'])).toEqual(['ship-the-thing', 'grosse-prufen']);
     expect(keys(['New one', '#12. Ship the thing. Details', 'Ship the thing'])).toEqual(['new-one', 'ship-the-thing', 'ship-the-thing~2']);
     expect(keys(['…'])).toEqual(['#1']);
+    expect(keys(['Вход в систему', '登录', 'Søk'])).toEqual(['вход-в-систему', '登录', 'søk']);
   });
 
   test('German section names', () => {

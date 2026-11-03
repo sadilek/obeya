@@ -214,8 +214,23 @@ export function titleKey(title: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-|-$/g, '');
+}
+
+const SPACED_TITLE = new RegExp(String.raw`^(${CODE})\s+(.*)$`);
+
+/**
+ * Every key the workstream would have in another version of its doc where only the other items
+ * differ: with or without its code read as a label (`4A Title` alone in a doc is a title), and with
+ * or without its title after a label the doc gives twice (`W1~upload`).
+ */
+export function workstreamAliases(w: Pick<Workstream, 'label' | 'title'>): string[] {
+  const spaced = w.label ? null : SPACED_TITLE.exec(w.title);
+  const label = w.label ?? spaced?.[1];
+  const title = w.label ? w.title : spaced?.[2];
+  const keys = [titleKey(w.label ? `${w.label} ${w.title}` : w.title), ...(label ? [label, `${label}~${titleKey(title!)}`] : [])];
+  return [...new Set(keys.filter((k) => k && !k.endsWith('~')))];
 }
 
 const trimPunct = (s: string) => s.trim().replace(/[\s:.;,—–-]+$/, '').trim();

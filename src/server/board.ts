@@ -15,7 +15,7 @@ import type { Language } from '../core/locale';
 import { MESSAGES, type Messages, snoozeTerm } from '../core/messages';
 import { type KnownChange, missedChanges, PAGE_CHANGES, pagesVersion } from '../core/page-changes';
 import { pageTags, untagged } from '../core/page-tags';
-import { allTicked, type OtherDoc, type PlanDoc, parsePlanDoc, withoutReference, type Workstream } from '../core/plan-doc';
+import { allTicked, type OtherDoc, type PlanDoc, parsePlanDoc, withoutReference, type Workstream, workstreamAliases } from '../core/plan-doc';
 import {
   type AnswerFile,
   type CanvasInfo,
@@ -2385,32 +2385,82 @@ export class Board {
     this.planHistory = fn;
   }
 
+  /** What the doc's history says, read once per `follow`. */
+  private past(file: string): Workstream[] {
+    return this.pastOf.get(file) ?? this.pastOf.set(file, this.planHistory?.(file) ?? []).get(file)!;
+  }
+
+  /** Cards whose workstream left its doc, by when that was seen, that wait to leave their project (`follow`). */
+  private missing = new Map<string, number>();
+  /** Looks at the waiting cards again once the first of them may leave. */
+  private waking?: ReturnType<typeof setTimeout>;
+
   /**
-   * Keeps each workstream card with its own workstream. A card whose workstream the doc no longer
-   * lists, while the doc is there, leaves the project once an agent worked on it, with its log, as a
-   * card of its own (`leave`); one nobody worked on just goes from view. With `read` (the docs were
-   * read again), a project read before workstreams had keys of their own (`#n`, their place in the
-   * doc) moves its cards onto those keys first (`rekey`).
+   * Keeps each workstream card with its own workstream. A card whose workstream the doc gives
+   * another key now (a sibling dropped or added, `workstreamAliases`) moves onto it. A card whose
+   * workstream the doc no longer lists, while the doc is there, leaves the project once an agent
+   * worked on it, with its log, as a card of its own (`leave`); one nobody worked on just goes from
+   * view. It remembers what the workstream was right away, and leaves only once it holds no
+   * workspace it is not at work in, and, for a doc in a plan folder outside the repository, which
+   * is written in place, once the workstream stayed away for `LEAVE_AFTER_MS`. With `read` (the docs
+   * were read again), a project read before workstreams had keys of their own (`#n`, their place in
+   * the doc) moves its cards onto those keys first (`rekey`). Between reads, only waiting cards
+   * bring it here.
    */
   private follow(all: PlanDoc[], read: boolean) {
+    if (!read && !this.missing.size) return;
     this.pastOf.clear();
     const byFile = new Map(all.map((d) => [d.file, d]));
-    for (const p of this.store.projects(this.canvas.id)) {
-      const doc = byFile.get(p.plan_ref!);
-      if (!doc) continue;
-      // the doc as last read, with its whole text: only parsed where a card needs it
-      let before: PlanDoc | null | undefined;
-      const last = () => (before ??= p.plan ? (JSON.parse(p.plan) as PlanDoc) : null);
-      if (read && last()) this.rekey(p, last()!, doc);
+    const projects = this.store.projects(this.canvas.id).filter((p) => byFile.has(p.plan_ref!));
+    // the doc as last read, with its whole text: only parsed where a card needs it
+    const lastOf = new Map<string, PlanDoc | null>();
+    const last = (p: CardRow) => (lastOf.has(p.id) ? lastOf.get(p.id)! : lastOf.set(p.id, p.plan ? (JSON.parse(p.plan) as PlanDoc) : null).get(p.id)!);
+    if (read) for (const p of projects) if (last(p)) this.rekey(p, last(p)!, byFile.get(p.plan_ref!)!);
+    const kidsOf = Map.groupBy(this.store.children(projects.map((p) => p.id)), (k) => k.parent_id!);
+    const waiting = new Set<string>();
+    const now = Date.now();
+    for (const p of projects) {
+      const doc = byFile.get(p.plan_ref!)!;
+      const kids = kidsOf.get(p.id) ?? [];
       const keys = new Set(doc.workstreams.map((w) => w.key));
-      for (const k of this.store.children([p.id])) {
+      const claimed = new Set(kids.flatMap((k) => (keys.has(keyOfRef(k.plan_ref) ?? '') ? [keyOfRef(k.plan_ref)!] : [])));
+      for (const k of kids) {
         const key = keyOfRef(k.plan_ref);
-        if (key === null || keys.has(key) || !worked(k)) continue;
-        // a stopped card gives its workspace back first, as a workstream no longer in the doc does (`leaseEnded`)
-        if (k.workspace && !atWork(k)) continue;
-        this.leave(k, p, this.identity(k, doc.file, last(), false), this.t.idea.leftGone(doc.title));
+        if (key === null || keys.has(key)) continue;
+        const w = sameWorkstream(key, doc, last(p), claimed);
+        if (w) {
+          this.store.replan(k.id, `${doc.file}#${w.key}`, p.id);
+          claimed.add(w.key);
+          continue;
+        }
+        if (!worked(k)) continue;
+        // what the workstream was, while the doc as last read still has it
+        const was = last(p)?.workstreams.find((x) => x.key === key);
+        if (was) this.remember(k, was);
+        const since = this.missing.get(k.id) ?? now;
+        // a stopped card gives its workspace back first, as a workstream no longer in the doc does (`leaseEnded`);
+        // a doc written in place may lack an item only while it is being edited
+        if ((k.workspace && !atWork(k)) || (outsideRef(doc.file) && now - since < LEAVE_AFTER_MS)) {
+          waiting.add(k.id);
+          this.missing.set(k.id, since);
+          continue;
+        }
+        this.leave(k, p, this.identity(k, doc.file, last(p), false), this.t.idea.leftGone(doc.title));
       }
     }
+    for (const id of this.missing.keys()) if (!waiting.has(id)) this.missing.delete(id);
+    clearTimeout(this.waking);
+    const next = Math.min(...[...this.missing.values()].map((t) => t + LEAVE_AFTER_MS - now).filter((ms) => ms > 0));
+    if (Number.isFinite(next)) {
+      this.waking = setTimeout(() => this.changed(), next + 50);
+      this.waking.unref?.();
+    }
+  }
+
+  /** The card keeps what its workstream was (`w`), for when it leaves the project after the doc is read again. */
+  private remember(row: CardRow, w: Pick<Workstream, 'label' | 'title' | 'body'>) {
+    const title = w.label ? `${w.label} ${w.title}` : w.title;
+    if (row.title !== title || row.body !== w.body) this.store.update(row.id, { title, body: w.body });
   }
 
   /**
@@ -2440,7 +2490,7 @@ export class Board {
     const order = [...moving].sort((a, b) => Number(!started.get(a.id)) - Number(!started.get(b.id)) || b.updated_at.localeCompare(a.updated_at));
     for (const k of order) {
       const slug = started.get(k.id);
-      const key = slug ? this.startedOn(slug, doc, claimed) : renamed.get(keyOfRef(k.plan_ref)!);
+      const key = slug ? this.startedOn(slug, doc, claimed, again) : renamed.get(keyOfRef(k.plan_ref)!);
       if (key && keys.has(key) && !claimed.has(key)) {
         to.set(k.id, key);
         claimed.add(key);
@@ -2460,8 +2510,11 @@ export class Board {
       for (const k of leaving) {
         const w = this.identity(k, doc.file, before, true);
         if (atWork(k) || !k.workspace) this.leave(k, project, w, this.t.idea.leftOther(doc.title));
-        // a stopped card gives its workspace back first, then leaves (`follow`)
-        else this.store.replan(k.id, `${project.plan_ref}#~${k.id.slice(0, 6)}`, project.id);
+        // a stopped card gives its workspace back first, then leaves (`follow`), with what it remembers
+        else {
+          this.store.replan(k.id, `${project.plan_ref}#~${k.id.slice(0, 6)}`, project.id);
+          this.remember(k, w);
+        }
       }
       // cards left, others get fresh ones: the project lays out afresh in the doc's order, which the mix-up had broken anyway
       if (leaving.length) {
@@ -2491,13 +2544,16 @@ export class Board {
   /**
    * The key of the doc's workstream an agent started on under the title its branch was named after
    * (`slug`), among those no card has yet (`claimed`): by that title, or, where the doc reworded it
-   * since, by the label the doc's history gave that title.
+   * since, by the label the doc as Obeya last kept it (`stored`, read anew) or the doc's history gave
+   * that title.
    */
-  private startedOn(slug: string, doc: PlanDoc, claimed: Set<string>): string | undefined {
+  private startedOn(slug: string, doc: PlanDoc, claimed: Set<string>, stored: PlanDoc): string | undefined {
     const free = doc.workstreams.filter((w) => !claimed.has(w.key));
     const byTitle = free.find((w) => named(w, slug));
     if (byTitle) return byTitle.key;
-    const label = (this.pastOf.get(doc.file) ?? this.pastOf.set(doc.file, this.planHistory?.(doc.file) ?? []).get(doc.file)!).find((w) => w.label && named(w, slug))?.label;
+    const label =
+      stored.workstreams.find((w) => w.label && named(w, slug))?.label ??
+      this.past(doc.file).find((w) => w.label && named(w, slug))?.label;
     const same = label ? free.filter((w) => w.label === label) : [];
     return same.length === 1 && doc.workstreams.filter((w) => w.label === label).length === 1 ? same[0]!.key : undefined;
   }
@@ -2510,15 +2566,17 @@ export class Board {
   }
 
   /**
-   * The workstream a card worked on, from the doc as last read (`before`) or the doc's history: by
-   * its key, or, for a card whose key was its place in the doc (`positional`), by the title its
-   * branch was named after.
+   * The workstream a card worked on, from the doc as last read (`before`), what the card remembered
+   * of it (`remember`) or the doc's history: by its key, or, for a card whose key was its place in
+   * the doc (`positional`), by the title its branch was named after.
    */
   private identity(row: CardRow, file: string, before: PlanDoc | null, positional: boolean): Pick<Workstream, 'label' | 'title' | 'body'> {
     const key = keyOfRef(row.plan_ref) ?? '';
     const slug = this.startedAs(row);
-    const past = () => this.pastOf.get(file) ?? this.pastOf.set(file, this.planHistory?.(file) ?? []).get(file)!;
-    const byKey = () => (positional ? undefined : (before?.workstreams.find((w) => w.key === key) ?? past().find((w) => w.key === key)));
+    const past = () => this.past(file);
+    // what the card remembered when its workstream left the doc (`remember`)
+    const kept = () => (!positional && row.title ? { title: row.title, body: row.body ?? '' } : undefined);
+    const byKey = () => (positional ? undefined : (before?.workstreams.find((w) => w.key === key) ?? kept() ?? past().find((w) => w.key === key)));
     const bySlug = () => (slug ? (before?.workstreams.find((w) => named(w, slug)) ?? past().find((w) => named(w, slug))) : undefined);
     const byPlace = () => (positional && !slug ? before?.workstreams.find((w) => w.key === key) : undefined);
     return byKey() ?? bySlug() ?? byPlace() ?? { title: slug ? slug.replace(/-/g, ' ') : key, body: '' };
@@ -2811,6 +2869,26 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
       .map((k) => k.item),
   );
   return [...projects, ...ordered, ...manual];
+}
+
+/** How long a workstream stays away from a doc in a plan folder outside the repository before its card leaves the project: such a doc is written in place, an item moved in two edits. */
+export const LEAVE_AFTER_MS = 5 * 60_000;
+
+/** Whether a plan reference is to a doc in a plan folder outside the repository. */
+const outsideRef = (ref: string) => OUTSIDE_PATH.test(pathOfRef(ref));
+
+/**
+ * The doc's workstream, among those no card has (`claimed`), that a card keyed `key` had under
+ * another key: the doc dropped or added a sibling, which changes whether a code is read as a label or
+ * a label needs its title. Several such: the one the doc as last read (`before`) had under `key`.
+ */
+function sameWorkstream(key: string, doc: PlanDoc, before: PlanDoc | null, claimed: Set<string>): Workstream | undefined {
+  const free = doc.workstreams.filter((w) => !claimed.has(w.key) && workstreamAliases(w).includes(key));
+  if (free.length < 2) return free[0];
+  const was = before?.workstreams.find((w) => w.key === key);
+  const its = was ? workstreamAliases(was).filter((k) => k !== key) : [];
+  const same = free.filter((w) => workstreamAliases(w).some((k) => its.includes(k)));
+  return same.length === 1 ? same[0] : undefined;
 }
 
 /** The workstream key of a plan reference (`<doc>#<key>`); null for a project's or a card's without one. */

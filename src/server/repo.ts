@@ -115,17 +115,23 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): { docs: Pl
 }
 
 /**
- * Every workstream the plan doc at `path` in the repository at `repoPath` was given in a commit, the
- * newest first, as its checklist items read where they were added; none where git has no history of
- * it. A card whose workstream the doc no longer lists takes its title from here.
+ * Every workstream the plan doc at `path` in the repository at `repoPath` had in its last `max`
+ * commits, the newest first, each as the doc read when a commit left it; none where git has no
+ * history of it. A card whose workstream the doc no longer lists takes its title from here.
  */
-export function planHistory(repoPath: string, path: string): Workstream[] {
-  const log = gitOrNull(repoPath, 'log', '-p', '--unified=0', '--no-color', '--no-ext-diff', '--format=', '--', path);
+export function planHistory(repoPath: string, path: string, max = 200): Workstream[] {
+  // with all of the doc as context, each commit's one hunk is the whole doc as the commit left it
+  const log = gitOrNull(repoPath, 'log', '-p', `--max-count=${max}`, '--unified=1000000', '--no-color', '--no-ext-diff', '--format=%x01', '--', path);
   if (!log) return [];
-  return log.split(/^@@.*$/m).flatMap((hunk) => {
-    // checklist items and their indented lines; a whole doc added at once brings its headings too
-    const added = hunk.split('\n').flatMap((l) => (l.startsWith('+') && !l.startsWith('+++') && /^(- \[[ xX]\]\s|\s+\S)/.test(l.slice(1)) ? [l.slice(1)] : []));
-    const doc = parsePlanDoc(path, `## Workstreams\n\n${added.join('\n')}\n`);
+  return log.split('\x01').flatMap((commit) => {
+    const at = commit.search(/^@@.*$/m);
+    if (at < 0) return [];
+    const lines = commit
+      .slice(at)
+      .split('\n')
+      .slice(1)
+      .flatMap((l) => (l.startsWith('+') || l.startsWith(' ') ? [l.slice(1)] : []));
+    const doc = parsePlanDoc(path, `${lines.join('\n')}\n`);
     return 'reason' in doc ? [] : doc.workstreams;
   });
 }

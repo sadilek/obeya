@@ -1,10 +1,10 @@
-import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { placeWorkstreams } from '../core/layout';
 import { type PlanDoc, parsePlanDoc } from '../core/plan-doc';
-import { Board } from './board';
+import { Board, LEAVE_AFTER_MS } from './board';
 import { Store } from './db';
 import { planHistory } from './repo';
 import { gitRepo } from './testing';
@@ -89,6 +89,84 @@ describe('a workstream card keeps its workstream', () => {
   });
 });
 
+describe('a sibling dropped or added changes no card’s workstream', () => {
+  test('a code alone in the doc stops being a label, and the card stays', () => {
+    const [a, b] = read(parse(['[ ] **4A Sitzungen.** Revoke.', '[ ] **3B Auth.** One.']));
+    work(a!.id, '4A Sitzungen', { state: 'planned' });
+    const after = read(parse(['[ ] **4A Sitzungen.** Revoke.']));
+    expect(after.map((k) => [k.id, k.title])).toEqual([[a!.id, '4A Sitzungen']]);
+    expect(board.archived()).toEqual([]);
+    // and back: a second code makes it a label again
+    expect(read(parse(['[ ] **4A Sitzungen.** Revoke.', '[ ] **5C Neu.** New.'])).map((k) => [k.label, k.id === a!.id])).toEqual([
+      ['4A', true],
+      ['5C', false],
+    ]);
+    expect(b).toBeDefined();
+  });
+
+  test('a label given twice: the one left keeps its card, and a second one added finds the card by its title', () => {
+    const [up, down] = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+    work(down!.id, 'W1 Download', { state: 'planned' });
+    expect(read(parse(['[ ] **W1:** Download. y'])).map((k) => k.id)).toEqual([down!.id]);
+    const again = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+    expect(again.map((k) => [k.title, k.id === down!.id])).toEqual([
+      ['Upload', false],
+      ['Download', true],
+    ]);
+    expect(board.archived()).toEqual([]);
+    expect(up).toBeDefined();
+  });
+});
+
+describe('a doc in a plan folder outside the repository', () => {
+  const OUT = '/plans/audit.md';
+  const outside = (items: string[]) => parsePlanDoc(OUT, md(items)) as PlanDoc;
+  afterEach(() => setSystemTime());
+
+  test('a workstream away for a moment keeps its card; one that stays away lets it go, with its title and text', () => {
+    const [g, b] = read(outside(OLD));
+    work(g!.id, '1G Testlücken schließen', { state: 'done' });
+    work(b!.id, '3B Auth zusammenführen', { state: 'planned' });
+    // the doc is saved in two edits: 3B is missing for a moment
+    read(outside([OLD[0]!, OLD[2]!]));
+    expect(board.archived()).toEqual([]);
+    expect(read(outside(OLD)).find((k) => k.label === '3B')!.id).toBe(b!.id);
+    // now 1G goes for good
+    const t = Date.now();
+    read(outside(OLD.slice(1)));
+    read(outside(OLD.slice(1)));
+    expect(board.archived()).toEqual([]);
+    setSystemTime(new Date(t + LEAVE_AFTER_MS + 1000));
+    board.changed();
+    board.snapshot();
+    expect(board.archived().find((i) => i.id === g!.id)).toMatchObject({ title: '1G Testlücken schließen', body: 'Only tests.', state: 'done' });
+  });
+
+  test('a stopped card leaves once it gave its workspace back, under the title and text the doc had', () => {
+    const [, b] = read(outside(OLD));
+    work(b!.id, '3B Auth zusammenführen', { state: 'planned', branch: `obeya/3b-auth-zusammenfuhren-${b!.id.slice(0, 6)}`, workspace: '/ws/1' });
+    const t = Date.now();
+    read(outside([OLD[0]!, OLD[2]!]));
+    setSystemTime(new Date(t + LEAVE_AFTER_MS + 1000));
+    board.changed();
+    board.snapshot();
+    expect(board.snapshot().items.some((i) => i.id === b!.id)).toBe(false);
+    store.update(b!.id, { workspace: null });
+    board.changed();
+    expect(board.snapshot().items.find((i) => i.id === b!.id)).toMatchObject({ title: '3B Auth zusammenführen', body: 'One auth service.', state: 'planned', source: 'manual' });
+  });
+
+  test('the repair finds a reworded labelled title by the doc as last kept, without git', () => {
+    const was = outside(['[ ] **S1: Foundation.** Base', '[ ] **S2: Sign-in.** Rest']);
+    docs = [positional(was)];
+    const [s1] = kids();
+    work(s1!.id, 'S1: Foundation', { state: 'live' });
+    const after = read(outside(['[x] **S1: Foundation layer.** Base', '[ ] **S2: Sign-in.** Rest']));
+    expect(after[0]!.id).toBe(s1!.id);
+    expect(board.archived()).toEqual([]);
+  });
+});
+
 describe('cards of a doc read by an older Obeya', () => {
   test('a card holding another workstream’s log leaves the project, and the workstream gets a fresh card in its place', () => {
     // as the bug left it: the doc was read anew, and 3B took the card of 1G at its place
@@ -165,5 +243,14 @@ describe('planHistory', () => {
     expect(seen.indexOf('4A')).toBeLessThan(seen.indexOf('1G'));
     expect(planHistory(repo, FILE).find((w) => w.label === '1G')).toMatchObject({ title: 'Testlücken schließen', body: 'Only tests.' });
     expect(planHistory(repo, 'docs/plan/none.md')).toEqual([]);
+  });
+
+  test('a commit that only ticks a box gives the whole item, with its details', () => {
+    const items = ['[ ] **W1:** Upload. Details\n  - first\n  - second', '[ ] **W2:** Download.'];
+    const repo = gitRepo(join(dir, 't'), { [FILE]: md(items) });
+    writeFileSync(join(repo, FILE), md([items[0]!.replace('[ ]', '[x]'), items[1]!]));
+    git(repo, 'commit', '-qam', 'tick W1');
+    expect(planHistory(repo, FILE)[0]).toMatchObject({ label: 'W1', done: true, title: 'Upload' });
+    expect(planHistory(repo, FILE)[0]!.body).toContain('second');
   });
 });
