@@ -29,9 +29,11 @@
 // their pull request's link. What counts is the demo's own files (`source` in meta.json), not the
 // copies on the site, which carry what Obeya adds to an artifact (artifact-copy.ts).
 //
-// A repository's theme (theme.ts) goes into each page of its cards, and into the overview of a listed
-// site whose target names it (the repository publishing), after Obeya's style. Without one, the
-// pages are what they were.
+// A repository's theme (theme.ts) goes into each page of its cards, after Obeya's style, and beside
+// it as `theme.css`; each page names its repository (`repoMark`). The overview carries a theme only
+// while every page that names its repository names the same one: the theme of that repository's
+// page written last. Several repositories on one site: Obeya's look. Without a theme, the pages
+// are what they were.
 //
 // A host may serve no byte ranges (Cloudflare Pages does not): the video page then loads the video
 // whole, so a browser can seek in it (`demo-page.ts`).
@@ -53,13 +55,12 @@ import { dimensions } from '../core/page-tags';
 import type { PageTags } from '../core/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, credit, day, demoFile, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
-import type { Theme } from './theme';
 import { artifactCopy } from './artifact-copy';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
 import { DEMO_FILES, OWN_CONNECTIONS } from './demo';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
-import { HERE } from './workspaces';
+import { HERE, isFolder } from './workspaces';
 import { BLANK_PAGE, GITHUB_PAGES, githubPagesDeploy } from './site-hosts';
 import { COMMAND_TIMEOUT, commandWords, SHARE_CWD, type SharePage, type ShareTarget, scriptArgv, tail } from './share';
 import { messageOf } from '../core/text';
@@ -91,6 +92,8 @@ interface Meta {
   more?: MoreMeta[];
   /** The page's tags from the site's vocabulary (`demo.site.tags`), by dimension; absent on pages without. */
   tags?: PageTags;
+  /** The repository it was published from (`repoMark`); absent on pages from before (until 2026-11-03). */
+  repo?: string;
 }
 
 /** A later demo version on a page: what its section shows, and when it was handed over (`handed`, its heading). */
@@ -211,8 +214,6 @@ export interface SiteOptions {
    * for search engines, no referrer for the links leaving it.
    */
   unlisted?: { secret: string };
-  /** The theme of the repository publishing (theme.ts), for the overview: a listed site's overview carries the theme of the repository that published last. */
-  theme?: () => Theme | null;
 }
 
 /** git's name in the repository (its own `user.name`, else the global one); undefined where it has none. */
@@ -223,6 +224,33 @@ function gitName(repo: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** A page's theme beside its `index.html`, for the overview (`overviewTheme`). */
+const PAGE_THEME = 'theme.css';
+
+/** Repository marks by checkout, as `repoMark` worked them out. */
+const marks = new Map<string, string>();
+
+/**
+ * Which repository a page comes from, the same for every clone of it on any machine: a hash of its
+ * first commit (the smallest, where histories were joined), else of its path (a folder, a
+ * repository without commits). A hash, so the public site names no repository.
+ */
+export function repoMark(repo: string): string {
+  const key = resolve(repo);
+  let mark = marks.get(key);
+  if (mark) return mark;
+  let root = '';
+  if (!isFolder(key)) {
+    try {
+      const r = Bun.spawnSync(['git', '-C', key, 'rev-list', '--max-parents=0', 'HEAD'], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
+      if (r.exitCode === 0) root = r.stdout.toString().trim().split('\n').sort()[0] ?? '';
+    } catch {}
+  }
+  mark = createHash('sha256').update(root ? `commit:${root}` : `path:${key}`).digest('hex').slice(0, 16);
+  marks.set(key, mark);
+  return mark;
 }
 
 /** About 30 s for a deployment to show: a host or its CDN may serve the earlier one for a moment. */
@@ -450,7 +478,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       return;
     }
     const pages = readPages(dir);
-    writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), opts.theme?.()?.css));
+    writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), overviewTheme(dir, pages, readLocal().pages)));
     writeFileSync(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
     writeFileSync(join(dir, HEADERS), artifactHeaders(site));
   };
@@ -638,6 +666,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               language: p.language,
               ...(by ? { by } : {}),
               ...(p.tags && Object.values(p.tags).some((v) => v.length) ? { tags: p.tags } : {}),
+              repo: repoMark(repo),
               ...(later.length
                 ? {
                     more: later.map(({ d, html, source, at }) => ({
@@ -654,6 +683,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
                 : {}),
             };
             writeFileSync(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
+            if (p.theme) writeFileSync(join(target, PAGE_THEME), p.theme.css);
             writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => existsSync(join(target, sub, 'poster.jpg')), undefined, unlisted, p.theme?.css));
             return { ...entryOf(slug), rev };
           },
@@ -841,6 +871,19 @@ function readPages(dir: string): (Meta & { slug: string })[] {
     .filter((d) => existsSync(join(dir, d, 'meta.json')))
     .map((slug) => ({ slug, ...(JSON.parse(readFileSync(join(dir, slug, 'meta.json'), 'utf8')) as Meta) }))
     .sort((a, b) => newest(b).localeCompare(newest(a)));
+}
+
+/**
+ * The theme of the overview: while the pages that name their repository all name the same one, the
+ * theme of its page written last (`written`, the manifest's pages); none where they name several,
+ * or none, or that page carries none. A page from before the marks does not count.
+ */
+function overviewTheme(dir: string, pages: (Meta & { slug: string })[], written: Record<string, Entry>): string | undefined {
+  const marked = pages.filter((p) => p.repo);
+  if (!marked.length || marked.some((p) => p.repo !== marked[0]!.repo)) return undefined;
+  const last = marked.reduce((a, b) => ((written[b.slug]?.at ?? '') > (written[a.slug]?.at ?? '') ? b : a));
+  const file = join(dir, last.slug, PAGE_THEME);
+  return existsSync(file) ? readFileSync(file, 'utf8') : undefined;
 }
 
 /** The site's Atom feed, at its root beside the overview. */

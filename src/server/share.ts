@@ -939,7 +939,7 @@ export class Sharing {
     const src = this.o.sourceFor(card);
     if (!src?.site || siteMissing(this.o.home, src.site)) return null;
     const language = this.o.languageFor?.(card);
-    return siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share, { ...(language ? { language } : {}), ...(src.theme ? { theme: src.theme } : {}) });
+    return siteTarget(src.site, src.repo, this.o.home, this.o.board.t.share, language ? { language } : {});
   }
 
   /**

@@ -161,7 +161,8 @@ away), the card lists „Theme geändert“ without a day beside the page change
 entry counts its pages with them. „Ausblenden“ hides each of them until its repository's theme
 changes again or the page is shared again. The theme is read with the repository's settings, when
 its default branch moves (in a folder without git, when Obeya next reads the settings), not each
-time the canvas is drawn.
+time the canvas is drawn. The overview has no flag of its own: it is outdated exactly while the
+pages it takes its theme from are, and sharing any of them again brings the new theme to it.
 
 A page published again with the same video keeps its date („Geteilt am“), so the overview keeps its
 order; a new video dates it anew.
@@ -270,10 +271,19 @@ https://obeya.si, without a setting to turn it off; `?alone` leaves it out.
 A repository gives its shared pages a look of its own with one file, `.obeya/theme.css`, without a
 setting or anything in Obeya's UI: Obeya manages nothing of it. Like the settings, it is read from
 the default branch, not from a card's branch. Every page of the repository carries it, on its own
-site and on the personal site alike, and so does an export (ZIP and HTML file); the overview of a
-repository's site carries the theme of the repository publishing, as with the site's title (the feed
-has no styling), while the overview of a listed personal site keeps Obeya's look, as it belongs to
-no repository. An artifact in its frame stays untouched.
+site and on the personal site alike, and so does an export (ZIP and HTML file). An artifact in its
+frame stays untouched; the feed has no styling.
+
+The overview of a site carries a theme only while all its pages come from one repository: then the
+theme of that repository's page written last (sharing a page again counts), so a changed theme
+reaches the overview with the next page shared again, and a theme taken away leaves it. As soon as
+pages of a second repository are on the site, the overview has Obeya's look, whichever of them
+published last, until that repository's pages are all withdrawn. The overview is written from what
+the site holds, so every machine publishing to it writes the same one. For that each page names its
+repository in its `meta.json` (`repo`: a hash of its first commit, the same for every clone; of its
+path in a folder without git), and keeps its theme beside it as `theme.css`. A page shared before
+2026-11-03 names none and does not count until it is shared again. The overview of a listed
+personal site keeps Obeya's look, as it belongs to no repository.
 
 The file goes into the page's head after Obeya's own style, so its rules win. Files it names with
 `url()` or `@import` (a logo, a font, another stylesheet, which may name more in turn) go in as
@@ -530,6 +540,17 @@ another machine withdrew loses its link here, with a line naming the machine.
   it. Rejected: single colour fields in the settings (too narrow), a `theme.html` with pieces of
   markup (it would need insertion points and scripts, a risk without a gain), and a theme UI in
   Obeya. The markup the pages have is its interface from then on.
+- **The overview of a site carries a theme only while all its pages come from one repository**
+  (owner, 2026-11-03): until then it took the theme of the repository that published last, so a
+  site shared by several repositories switched its look with every publish. A site with one
+  repository, the usual case, keeps its theme whole; one shared by several looks like none of them
+  rather than like one at random, and the rule needs no setting. Rejected: a theme only when every
+  page carries the same one (a changed theme would drop the overview to Obeya's look until every
+  page was shared again), and a repository chosen in its settings to give the site its look (a new
+  setting, and two repositories could claim it). The repository is named by a hash of its first
+  commit, not its remote's address: the same for every clone and remote, and the public site names
+  no repository. A theme changed without a page shared again marks no overview outdated of its own
+  and deploys nothing: the pages it would come from are outdated already.
 - **A page is outdated by a change written down for its viewers** (2026-10-16). Rejected: a hash of
   the pages' bytes, which marked pages outdated without saying what changed, also where nothing
   showed, so the owner could not judge whether resharing 70 pages was worth it.

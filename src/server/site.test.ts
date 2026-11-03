@@ -11,7 +11,7 @@ import { readShared } from '../adapters';
 import { commandsOf } from './trust';
 import type { SharePage, ShareTarget } from './share';
 import { Sharing } from './share';
-import { MANIFEST, parseEnv, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
+import { MANIFEST, parseEnv, repoMark, siteKey, siteMissing, pagesHash, siteName, siteTarget } from './site';
 import { PAGES_HASH } from '../core/page-changes';
 import { FakeRuntime, gitRepo, noForge } from './testing';
 
@@ -430,22 +430,54 @@ describe('a site Obeya keeps', () => {
     expect(deploys()).toEqual(['_headers d-444444 feed.xml index.html obeya-site.json token=']);
   });
 
-  test('a theme: each page carries its card’s repository’s, the overview the one of the repository publishing', async () => {
+  test('a theme: each page carries its card’s repository’s', async () => {
     const theme = { css: 'h1 { color: navy; } /* </style><script>alert(1)</script> */', hash: '0123456789abcdef' };
     await target.publish(page('ohne-theme-abc123'));
-    // a site that carries no theme for its overview (the personal one): Obeya's look there, the page its repository's
     await target.publish(page('mit-theme-def456', { theme, shared: ['ohne-theme-abc123'] }));
     const html = readFileSync(join(siteDir(), 'mit-theme-def456/index.html'), 'utf8');
     // nothing in it ends its element early
     expect(html).toContain(String.raw`<style>h1 { color: navy; } /* <\/style><script>alert(1)</script> */</style></head>`);
     expect(html).toContain('<meta http-equiv="Content-Security-Policy"');
     expect(readFileSync(join(siteDir(), 'ohne-theme-abc123/index.html'), 'utf8')).not.toContain('navy');
-    expect(overview()).not.toContain('navy');
-    expect(overview()).not.toContain('Content-Security-Policy');
-    target = siteTarget({ ...SITE(), deploy: SITE().deploy.replace('__OUT__', dir) }, repo, home, MESSAGES.en.share, { machine: 'a', checkWaits: [0, 10, 10], by: 'Ada Lovelace', theme: () => theme });
-    await target.publish(page('noch-eine-ghi789', { shared: ['ohne-theme-abc123', 'mit-theme-def456'] }));
+    // one repository on the site: the overview carries the theme of its page written last
     expect(overview()).toContain('<style>h1 { color: navy; }');
     expect(overview()).toContain('<meta http-equiv="Content-Security-Policy"');
+    // the theme taken away: the page published since carries none, nor does the overview
+    await target.publish(page('noch-eine-ghi789', { shared: ['ohne-theme-abc123', 'mit-theme-def456'] }));
+    expect(overview()).not.toContain('navy');
+    expect(overview()).not.toContain('Content-Security-Policy');
+  });
+
+  test('the overview of a site several repositories publish to keeps Obeya’s look, whoever published last', async () => {
+    const navy = { css: 'h1 { color: navy; }', hash: 'navy' };
+    const other = join(dir, 'other');
+    mkdirSync(other);
+    writeFileSync(join(other, 'deploy.ts'), DEPLOY);
+    const second = siteTarget({ ...SITE(), deploy: SITE().deploy.replace('__OUT__', dir) }, other, home, MESSAGES.en.share, { machine: 'a', checkWaits: [0, 10, 10], language: 'de', by: 'Ada Lovelace' });
+    await target.publish(page('a-1', { theme: navy }));
+    expect(overview()).toContain('color: navy');
+    // a page from a repository without a theme joins: Obeya's look, and it stays so when the themed one publishes again
+    await second.publish(page('b-1', { shared: ['a-1'] }));
+    expect(overview()).not.toContain('navy');
+    await target.publish(page('a-2', { theme: navy, shared: ['a-1', 'b-1'] }));
+    expect(overview()).not.toContain('navy');
+    expect(overview()).not.toContain('Content-Security-Policy');
+    // the other's only page withdrawn, by itself: one repository again, its theme
+    await second.withdraw('b-1', ['a-1', 'a-2']);
+    expect(overview()).toContain('color: navy');
+    // its theme changed: the page shared again brings the new one to the overview
+    await target.publish(page('a-1', { theme: { css: 'h1 { color: teal; }', hash: 'teal' }, shared: ['a-2'] }));
+    expect(overview()).toContain('color: teal');
+    expect(overview()).not.toContain('navy');
+  });
+
+  test('a page names its repository the same from every clone of it, by a hash', () => {
+    const one = gitRepo(join(dir, 'one'));
+    cpSync(one, join(dir, 'clone'), { recursive: true });
+    const other = gitRepo(join(dir, 'other'), { 'README.md': 'another\n' });
+    expect(repoMark(join(dir, 'clone'))).toBe(repoMark(one));
+    expect(repoMark(other)).not.toBe(repoMark(one));
+    expect(repoMark(one)).toMatch(/^[0-9a-f]{16}$/);
   });
 
   test('its pages are the ones the page changes account for', () => {
