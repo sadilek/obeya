@@ -224,6 +224,12 @@ page for something to look at; the worker picks which, and runs the app for it a
   the deploy, since deploying blind could take other machines' pages offline. Pages shared from
   here that a later deploy from elsewhere took offline are deployed again.
 
+  The pages get a look of the repository's own from `.obeya/theme.css` beside this file, a
+  stylesheet put into every page after Obeya's own (as the default branch has it): its colour
+  variables, fonts, a logo as a `data:`-embedded file of `.obeya/`. It is a file, not a setting;
+  which parts of the pages it can style is in the design doc's chapter „Sharing demos“ (A
+  repository's theme). A changed theme leaves the pages shared before it outdated, to share again.
+
 A site from the file is deployed to and read only once you trusted it (see Commands you trust).
 
 Each of the two is a setting of its own. Default: the demo settings' language, no site.

@@ -430,6 +430,24 @@ describe('a site Obeya keeps', () => {
     expect(deploys()).toEqual(['_headers d-444444 feed.xml index.html obeya-site.json token=']);
   });
 
+  test('a theme: each page carries its card’s repository’s, the overview the one of the repository publishing', async () => {
+    const theme = { css: 'h1 { color: navy; } /* </style><script>alert(1)</script> */', hash: '0123456789abcdef' };
+    await target.publish(page('ohne-theme-abc123'));
+    // a site that carries no theme for its overview (the personal one): Obeya's look there, the page its repository's
+    await target.publish(page('mit-theme-def456', { theme, shared: ['ohne-theme-abc123'] }));
+    const html = readFileSync(join(siteDir(), 'mit-theme-def456/index.html'), 'utf8');
+    // nothing in it ends its element early
+    expect(html).toContain(String.raw`<style>h1 { color: navy; } /* <\/style><script>alert(1)</script> */</style></head>`);
+    expect(html).toContain('<meta http-equiv="Content-Security-Policy"');
+    expect(readFileSync(join(siteDir(), 'ohne-theme-abc123/index.html'), 'utf8')).not.toContain('navy');
+    expect(overview()).not.toContain('navy');
+    expect(overview()).not.toContain('Content-Security-Policy');
+    target = siteTarget({ ...SITE(), deploy: SITE().deploy.replace('__OUT__', dir) }, repo, home, MESSAGES.en.share, { machine: 'a', checkWaits: [0, 10, 10], by: 'Ada Lovelace', theme: () => theme });
+    await target.publish(page('noch-eine-ghi789', { shared: ['ohne-theme-abc123', 'mit-theme-def456'] }));
+    expect(overview()).toContain('<style>h1 { color: navy; }');
+    expect(overview()).toContain('<meta http-equiv="Content-Security-Policy"');
+  });
+
   test('its pages are the ones the page changes account for', () => {
     // a different hash: the pages come out different. Where a viewer sees the difference, add an
     // entry to PAGE_CHANGES (src/core/page-changes.ts) with its words in the UI's strings
