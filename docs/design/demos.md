@@ -451,8 +451,11 @@ when it arrives.
 A worker's question may bring a demo too (`ask`'s `demo`, a video or an HTML artifact): drafts or
 variants the owner is to choose from before the worker goes on, shown where a handover's demo would
 be, with a hint that it belongs to the question („Zur Frage des Agenten.“), without autoplay and
-without sharing, since it is not the result of the work. It replaces the demo on the card like a new
-handover's and stays in view after the answer while the worker goes on.
+without sharing, since it is not the result of the work: no page shows it, nor counts it as a demo
+the page lacks. It replaces the demo on the card like a new handover's and stays in view after the
+answer while the worker goes on, among the earlier demos once a handover brings its own (a folder
+card's handover without a demo shows its changes instead). Words at a place in its video answer
+the question with that place, as a comment would.
 
 A handover without a demo is refused, unless the card has one from an earlier handover, which then
 stands: whether to record a demo again after feedback is the worker's call. A question's demo does

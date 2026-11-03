@@ -1179,7 +1179,7 @@ export class Workers {
    * (those not among the question's are dropped). The log holds both as one text, picks first
    * (`pickedAnswer`); the worker reads which is which.
    */
-  answer(cardId: string, words: string, images: string[] = [], spoken = false, replyTo?: number, picks: string[] = []) {
+  answer(cardId: string, words: string, images: string[] = [], spoken = false, replyTo?: number, picks: string[] = [], spot?: SpotInput) {
     const card = this.card(cardId);
     const options = card.question?.options ?? [];
     const picked = options.filter((o) => picks.includes(o));
@@ -1191,9 +1191,11 @@ export class Workers {
     if (detail.permission) return this.answerPermission(card, detail.permission, text, images, spoken, replyTo);
     const question = detail.question;
     const q = question?.text ?? this.pendingQuestion(cardId) ?? '';
+    // an answer given at a place in the demo video (one the question brought, say) is about that place
+    const place = spot ? this.place(cardId, spot) : undefined;
     this.backToWork(cardId);
-    this.recordAnswer(card, q, text, images, replyTo, picked);
-    this.deliver(cardId, `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${this.words(cardId, answerNote(picked, text), images, replyTo)}`, images, true);
+    this.recordAnswer(card, q, text, images, replyTo, picked, place);
+    this.deliver(cardId, `Answer to your question (from the owner${spoken ? `; ${SPOKEN}` : ''}):\n\n${this.words(cardId, answerNote(picked, text), images, replyTo, place)}`, [...this.stills(place), ...images], true);
   }
 
   /**
@@ -4426,7 +4428,8 @@ export class Workers {
             // a handover in answer to the owner's words that brings no new demo is an answer to them, not a demo to watch
             const answered = !d && !!row.detail && !!(JSON.parse(row.detail) as { answering?: boolean }).answering;
             // without a new demo, the one on the card stands, unless it only came with a question
-            const kept = !d && !!row.demo && !(JSON.parse(row.demo) as StoredDemo).asked;
+            const asked = !!row.demo && !!(JSON.parse(row.demo) as StoredDemo).asked;
+            const kept = !d && !!row.demo && !asked;
             // in a folder without git the card's change list shows what changed, where often nothing can be shown on screen
             if (!d && !kept && !approved && !this.folder)
               return `Not handed over: every handover brings a demo${row.demo ? ' (the one you showed with your question is not one)' : ''}. Record it with ${this.demoSkill(cardId)}, or make an HTML artifact when the result is something to look at, then call ready_for_review again with it.`;
@@ -4475,8 +4478,8 @@ export class Workers {
             const e = this.o.board.log(cardId, 'review', 'worker', s);
             // the demo report's question goes with the handover it came with, also once a later one keeps the demo
             if (demoJson) demoJson = JSON.stringify({ ...(JSON.parse(demoJson) as object), handover: e.id, at: e.at });
-            // the demo it replaces stays with the card, for the owner to go back to
-            const demos = demoJson && row.demo ? this.earlier(cardId, row) : undefined;
+            // the demo it replaces stays with the card, for the owner to go back to; so do a question's drafts, which are no handover's result
+            const demos = (demoJson || asked) && row.demo ? this.earlier(cardId, row) : undefined;
             // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
             this.o.board.work(cardId, {
               // the worker's last status line is about the work it hands over: it would show again once the card is at work
@@ -4484,7 +4487,7 @@ export class Workers {
               // approving work that changes nothing makes the card done, which the owner sees before approving; where work
               // lands that its own branch decides, likewise
               detail: JSON.stringify({ summary: report, ...(work ? (own ? { lands: own } : {}) : { noChange: true }), ...(answered && !approved ? { answered: true } : {}) }),
-              ...(demoJson ? { demo: demoJson } : {}),
+              ...(demoJson ? { demo: demoJson } : asked ? { demo: null } : {}),
               ...(demos ? { demos } : {}),
               // the files named stand until a later handover names others (an empty list named clears them); a folder's card handed
               // over without a demo shows what it changed, while there are files of it to show
@@ -4771,8 +4774,8 @@ export class Workers {
   }
 
   /** The owner's answer to the question `q`: in the card's log, as a decision, and for whoever learns from it. */
-  private recordAnswer(card: Item, q: string, text: string, images: string[], replyTo: number | undefined, picks: string[]) {
-    this.o.board.log(card.id, 'answer', 'owner', text, { images, replyTo, picks });
+  private recordAnswer(card: Item, q: string, text: string, images: string[], replyTo: number | undefined, picks: string[], place?: Spot) {
+    this.o.board.log(card.id, 'answer', 'owner', text, { images, replyTo, picks, ...(place ? { spot: place } : {}) });
     this.o.board.decide({ project_id: card.parent ?? null, card_id: card.id, question: q, answer: text || '(Screenshot)', by: 'owner' });
     if (text) this.o.onOwnerInput?.(card, 'answer', text, { question: q });
     if (card.prototypeOf) this.o.onPrototypeAnswer?.(card, q, text || '(Screenshot)');

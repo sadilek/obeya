@@ -1494,7 +1494,7 @@ export class CanvasRuntime {
       this.koordinator.learn(card, 'note', text.trim());
       return this.act(cardId, { action: 'revise', ...said }, true);
     }
-    if (card.state === 'waiting' && card.need === 'question') return this.act(cardId, { action: 'answer', ...said });
+    if (card.state === 'waiting' && card.need === 'question') return this.act(cardId, { action: 'answer', ...said, ...(spot ? { spot } : {}) });
     return this.act(cardId, { action: 'message', ...said, ...(spot ? { spot } : {}) });
   }
 
@@ -1636,7 +1636,7 @@ export class CanvasRuntime {
         return this.repoOf(cardId).workers.unsay(cardId, a.id);
       }
       case 'answer':
-        return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken, replyTo, picks);
+        return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken, replyTo, picks, this.spot(a.spot));
       case 'approve':
         return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct });
       case 'undo':

@@ -939,6 +939,17 @@ describe('comments on places in the demo video', () => {
     expect(runtime.last.inbox.at(-1)).toContain('[Demo video at 0:01, chapter „Zeile“');
   });
 
+  test("an answer to a question given at a place in the video is about that place, with its frame", async () => {
+    const c = await waiting();
+    board.work(c.id, { state: 'working', need: null });
+    await runtime.last.call('ask', { question: 'Welcher Schnitt?' });
+    const frame = still();
+    workers.answer(c.id, 'Dieser hier.', [], false, undefined, [], { at: 6.5, still: frame });
+    expect(runtime.last.inbox.at(-1)).toContain(`[Demo video at 0:06, chapter „Export“, narration: „Jetzt der Export.“]\nDieser hier.\n\nThe frame at that place in the video is shown below (file: ${images.path(frame)}).`);
+    expect(runtime.last.images.at(-1)).toEqual([images.path(frame)!]);
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'answer', text: 'Dieser hier.', spot: { at: 6.5, still: frame } });
+  });
+
   test('while the worker works, one goes to it at once, with its place and frame', async () => {
     const c = await waiting();
     // at work again, after a note say

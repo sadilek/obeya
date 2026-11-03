@@ -1459,7 +1459,7 @@ export type CardAction =
   /** `findings`: on a review card, what the owner decided for its findings, by their numbers; with them the text may be empty. */
   | { action: 'message'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; spot?: SpotInput; findings?: Record<string, ChangeRoute> }
   /** `picks`: the options of the question the owner picked; with them the text, their own words, may be empty. */
-  | { action: 'answer'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; picks?: string[] }
+  | { action: 'answer'; text: string; spoken?: boolean; images?: string[]; replyTo?: number; picks?: string[]; spot?: SpotInput }
   /**
    * The owner has finished watching the demo video: the comments on places in it that Obeya held back
    * go to the worker. `now`: they sent them themselves ("Jetzt senden"), so they go without a moment's wait.

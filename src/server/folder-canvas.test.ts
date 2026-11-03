@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { FolderWorkspaces } from './folder';
-import { FakeRuntime, noForge } from './testing';
+import { artifact, FakeRuntime, noForge } from './testing';
 
 let dir: string;
 let docs: string;
@@ -111,6 +111,23 @@ describe('a canvas over a folder without git', () => {
     canvas.act(rename.id, { action: 'force' });
     await settle();
     expect(item(rename.id).state).toBe('working');
+  });
+
+  test("a question's drafts are no result: a handover without a demo shows the card's changes instead", async () => {
+    const plan = canvas.board.create({ title: 'Letterhead', x: 0, y: 0 });
+    const workers = canvas.repoOf(plan.id).workers;
+    await workers.start(plan.id);
+    const a = runtime.last;
+    const drafts = artifact();
+    expect(await a.call('ask', { question: 'Which letterhead?', options: ['A', 'B'], demo: drafts })).toContain('End your turn');
+    expect(item(plan.id).demo).toMatchObject({ kind: 'html', asked: true });
+    workers.answer(plan.id, 'A');
+    await a.use('Write', { file_path: join(docs, 'Estate', 'Letterhead.md') }, () => writeFileSync(join(docs, 'Estate', 'Letterhead.md'), '# A\n'));
+    expect(await a.call('ready_for_review', { summary: 'Done.' })).toContain('Recorded');
+    expect(item(plan.id)).toMatchObject({ state: 'waiting', need: 'review' });
+    expect(item(plan.id).demo).toBeUndefined();
+    // kept with the card's earlier demos, which show once a later handover brings a demo
+    expect(JSON.parse(canvas.board.row(plan.id).demos!)).toMatchObject([{ kind: 'html', asked: true }]);
   });
 
   test('a card shows the files it changed as its result: those its worker names first, served from the folder, no other file of it', async () => {

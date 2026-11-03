@@ -321,7 +321,8 @@ export function cardDemos(r: CardRow): StoredDemo[] {
   const all = storedDemos(r);
   const latest = r.demo ? (JSON.parse(r.demo) as StoredDemo) : null;
   const later = (i: number) => [...all.slice(i + 1).map((d) => d.dir), ...(latest ? [latest.dir] : [])];
-  return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])];
+  // drafts a question brought are not the work's result: no page shows them
+  return [...all.filter((d, i) => !later(i).includes(d.dir) && demoThere(d)), ...(latest ? [latest] : [])].filter((d) => !d.asked);
 }
 
 /** States a worker or the owner's decision is still part of. */
@@ -2748,12 +2749,12 @@ function work(r: CardRow): Partial<Item> {
 function shareOf(r: CardRow): Item['share'] {
   const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
   if (!s || (!s.state && !s.url)) return undefined;
-  const latest = r.demo ? (JSON.parse(r.demo) as StoredDemo) : undefined;
+  // the newest demo of a handover: drafts shown with a question since are not what the page lacks
+  const latest = r.demo ? [...storedDemos(r), JSON.parse(r.demo) as StoredDemo].findLast((d) => !d.asked) : undefined;
   const shared = s.url ? sharedDemos(s) : [];
   // the card's demos on the page, by their handovers
   const on = cardDemos(r).flatMap((d) => (d.handover !== undefined && shared.some((x) => sameDemo(x, d)) ? [d.handover] : []));
-  // drafts shown with a question are not the work's demo: the page lacks nothing for them
-  const stale = !!s.url && !!latest && !latest.asked && !shared.some((x) => sameDemo(x, latest));
+  const stale = !!s.url && !!latest && !shared.some((x) => sameDemo(x, latest));
   const outdated = reshareable(r);
   return {
     state: s.refresh ? 'shared' : (s.state ?? 'shared'),

@@ -521,6 +521,17 @@ describe('several demo versions on one page', () => {
     expect(page(c.id)).toContain('src="2/demo.mp4"');
   });
 
+  test("drafts a question showed in between are no demo of the page: not what it lacks, and not shared with a supplement", async () => {
+    const c = first();
+    await shared(c.id, () => sharing.share(c.id));
+    later(c.id, 2, { asked: true });
+    expect(share(c.id)!.stale).toBeUndefined();
+    later(c.id, 3, { follows: 'supplements' });
+    expect(share(c.id)).toMatchObject({ on: [1], stale: true });
+    await shared(c.id, () => sharing.share(c.id, { add: true }));
+    expect(stored(c.id).demos!.map((d) => d.handover)).toEqual([1, 3]);
+  });
+
   test('"Teilen" on a supplement with no page yet puts the demo it supplements above it', async () => {
     const c = first();
     later(c.id, 2, { follows: 'supplements' });
