@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
+import { awaitsContributorNext, needsYou } from '../core/types';
 import { Board, type StoredContribution } from './board';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
@@ -837,6 +838,78 @@ describe('„Review PR #5“ on a canvas', () => {
     canvas.board.work(own.id, { state: 'inPr', pr: JSON.stringify({ url: 'https://GitHub.com/acme/app/pull/5/', number: 5, seen: [], reported: [] }) });
     expect(await canvas.reviewPr({ do: 'reviewPr', pr: URL_, text: '' })).toBe(own.id);
     expect(canvas.board.snapshot().items.some((i) => i.contribution)).toBe(false);
+  });
+
+  /** The review card's worker, among the canvas's sessions. */
+  const worker = () => runtime.sessions.find((x) => x.spec.tools?.some((t) => t.name === 'findings'))!;
+  /** A watcher of the card's pull request, as the canvas runs one where it watches. */
+  const watcherOf = (id: string) => {
+    const r = canvas.repoOf(id);
+    return new PrWatcher(canvas.board, r.workers, fake.forge, () => main, () => r.adapter);
+  };
+  /** A review card for PR #5 on the canvas, its review handed over. */
+  async function handedOver() {
+    const id = (await canvas.reviewPr({ do: 'reviewPr', pr: '5', text: '' }))!;
+    await until(() => !!worker());
+    worker().call('findings', { findings: FINDINGS });
+    await worker().call('ready_for_review', { summary: 'S', demo: artifact(), review: results });
+    worker().emit({ type: 'idle' });
+    return id;
+  }
+
+  test('handed over, it waits for the contributor until they respond: then its worker reviews again', async () => {
+    const id = await handedOver();
+    const prs = () => watcherOf(id);
+    // a comment from before the handover is no answer
+    fake.status.comments = [{ id: 'c0', author: 'amerlander', body: 'Thanks for looking.', at: '2020-01-01T00:00:00Z' }];
+    expect(awaitsContributorNext(canvas.board.item(id)!)).toBe(true);
+    await canvas.act(id, { action: 'awaitContributor' });
+    const card = canvas.board.item(id)!;
+    expect(card.snoozed).toMatchObject({ by: 'owner', waiting: true, contributor: { author: 'amerlander' } });
+    expect(needsYou(card)).toBe(false);
+    expect(awaitsContributorNext(card)).toBe(false);
+    expect(canvas.board.events(id).at(-1)!.text).toBe(canvas.board.t.worker.snoozed(canvas.board.t.worker.contributorNext('amerlander')));
+    const n = worker().inbox.length;
+    await prs().poll();
+    expect(worker().inbox.length).toBe(n);
+    expect(canvas.board.item(id)!.snoozed).toBeDefined();
+    // the time it also has comes first: it waits for the owner again, its handover as it was
+    await canvas.act(id, { action: 'snooze', until: new Date(Date.now() + 3_600_000).toISOString() });
+    expect(canvas.board.item(id)!.snoozed!.contributor!.author).toBe('amerlander');
+    expect(canvas.board.item(id)!.snoozed!.until).toBeTruthy();
+    canvas.wakeDue(Date.now() + 7_200_000);
+    expect(canvas.board.item(id)!.snoozed).toBeUndefined();
+    expect(needsYou(canvas.board.item(id)!)).toBe(true);
+    // set aside again, the contributor answers: the card wakes and its worker hears what they wrote
+    await canvas.act(id, { action: 'awaitContributor' });
+    fake.status.comments.push({ id: 'c1', author: 'amerlander', body: 'The narration language gets its own answer: yes, always.', at: new Date(Date.now() + 60_000).toISOString() });
+    await prs().poll();
+    const woke = canvas.board.item(id)!;
+    expect(woke.snoozed).toBeUndefined();
+    expect(woke.state).toBe('working');
+    const told = worker().inbox.at(-1)!;
+    expect(told).toContain('set your handover aside until amerlander responded');
+    expect(told).toContain('yes, always');
+    expect(told).not.toContain('Thanks for looking.');
+    expect(canvas.board.events(id).at(-1)!.text).toBe(canvas.board.t.worker.woke(canvas.board.t.pr.comments(1, 'amerlander')));
+  });
+
+  test('a push of the contributor’s wakes a card that waits for them too', async () => {
+    const id = await handedOver();
+    await canvas.act(id, { action: 'awaitContributor' });
+    push('stop.ts');
+    await watcherOf(id).poll();
+    expect(canvas.board.item(id)!.state).toBe('working');
+    expect(worker().inbox.at(-1)).toContain('pushed to the pull request');
+  });
+
+  test('only a review card handed over can wait for its contributor', async () => {
+    const id = (await canvas.reviewPr({ do: 'reviewPr', pr: '5', text: '' }))!;
+    await until(() => !!worker());
+    expect(() => canvas.act(id, { action: 'awaitContributor' })).toThrow();
+    const own = canvas.board.create({ title: 'Export', x: 0, y: 0 });
+    canvas.board.work(own.id, { state: 'waiting', need: 'demo' });
+    expect(() => canvas.act(own.id, { action: 'awaitContributor' })).toThrow();
   });
 
   test('a closed PR gets no card', async () => {

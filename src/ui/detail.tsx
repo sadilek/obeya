@@ -33,7 +33,7 @@ import { useStickToEnd } from './stickToEnd';
 import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPick';
 import { dismissPlace, type Place, seekTo, showsVersions, usePlace, videoOf, watch } from './spot';
 import { cameInView, useSeen } from './seen';
-import { ClockMark, SnoozeLine, SnoozeMenu, snoozeWho } from './snooze';
+import { ClockMark, contributorChoice, SnoozeLine, SnoozeMenu, snoozeWho } from './snooze';
 import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen, stateLabel, t } from './strings';
 import { agentWorks, cardTalk, demoHandover, talkState, koordinatorReads, ownerField, parseQuestion, snoozeLine, talkAlone, type Turn, unseenTurns, waitsFirstStart, worked as isWorked } from './talk';
 import { PageChangeList } from './page-changes';
@@ -737,7 +737,13 @@ const archivedOn = (i: Item) => i.archivedAt && <span className="p-status"> · {
  */
 function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
   if (!snoozable(item) || item.snoozed) return null;
-  return <SnoozeMenu label={t.snooze.button} onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })} />;
+  return (
+    <SnoozeMenu
+      label={t.snooze.button}
+      also={contributorChoice(item, () => void act({ action: 'awaitContributor' }, { close: false }))}
+      onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })}
+    />
+  );
 }
 
 /**

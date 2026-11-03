@@ -171,6 +171,8 @@ const de = {
     snoozed: (at: string, why?: string) => `Zurückgestellt bis ${at}${why ? ` · ${why}` : ''}`,
     /** Until when a worker waits on another card: until it is done or waits for the owner, and at the latest when, if it gave a time. */
     awaits: (title: string, state: AwaitedState, at?: string) => `„${title}“ ${state === 'done' ? 'erledigt ist' : 'auf dich wartet'}${at ? `, spätestens ${at}` : ''}`,
+    /** Until when a review card waits for its contributor to write on the pull request or push, and at the latest when, if it has a time too. */
+    contributorNext: (author: string, at?: string) => `${author} sich meldet${at ? `, spätestens ${at}` : ''}`,
     /** It woke from a snooze, and why (`wokeWhy`). Until 2026-10-17 the line said who had snoozed it: „Wieder da (vom Agenten zurückgestellt)“. */
     woke: (why: string) => `Wieder da: ${why}`,
     wokeWhy: {
@@ -665,6 +667,7 @@ const en: Messages = {
     resumedByOwner: 'Resumed.',
     snoozed: (at: string, why?: string) => `Snoozed until ${at}${why ? ` · ${why}` : ''}`,
     awaits: (title: string, state: AwaitedState, at?: string) => `“${title}” ${state === 'done' ? 'is done' : 'waits for you'}${at ? `, at the latest ${at}` : ''}`,
+    contributorNext: (author: string, at?: string) => `${author} responds${at ? `, at the latest ${at}` : ''}`,
     woke: (why: string) => `Woke up: ${why}`,
     wokeWhy: {
       time: 'the time has come',
@@ -1002,4 +1005,7 @@ const en: Messages = {
 export const MESSAGES: Record<Language, Messages> = { de, en };
 
 /** Until when a card is snoozed, in the words of `m`: a time, or the card it waits on (with a time, when it has one too). */
-export const snoozeTerm = (m: Messages, s: Snooze) => (s.on ? m.worker.awaits(s.on.title, s.on.state, s.until ? m.at(Date.parse(s.until)) : undefined) : m.at(Date.parse(s.until!)));
+export const snoozeTerm = (m: Messages, s: Snooze) => {
+  const at = s.until ? m.at(Date.parse(s.until)) : undefined;
+  return s.on ? m.worker.awaits(s.on.title, s.on.state, at) : s.contributor ? m.worker.contributorNext(s.contributor.author, at) : at!;
+};

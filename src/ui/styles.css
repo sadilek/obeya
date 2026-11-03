@@ -1033,6 +1033,7 @@ span.cl-name { color: inherit; cursor: default; }
 .snooze-opt { border: 0; background: none; text-align: left; padding: 7px 12px; font: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer; }
 .snooze-opt:hover { background: var(--chip); }
 .snooze-opt.more { border-top: 1px solid var(--line); margin-top: 2px; }
+.snooze-opt.also { border-bottom: 1px solid var(--line); margin-bottom: 2px; }
 .snooze-pick { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); margin-top: 2px; align-items: center; }
 .snooze-pick input { min-width: 0; font: inherit; font-size: 13px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink); }
 .snooze-pick .btn { padding: 6px 12px; }

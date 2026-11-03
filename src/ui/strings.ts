@@ -298,6 +298,12 @@ const de = {
     until: (when: string) => `Zurückgestellt bis ${when}`,
     /** The card's state while its agent waits on another card: until that is done or waits for the owner, and at the latest when, if it has a time too. */
     on: (title: string, state: AwaitedState, when?: string) => `Zurückgestellt bis „${title}“ ${state === 'done' ? 'erledigt ist' : 'auf dich wartet'}${when ? `, spätestens ${when}` : ''}`,
+    /** A review card's state while it waits for its contributor to respond, and at the latest when, if it has a time too. */
+    contributor: (author: string, when?: string) => `Zurückgestellt bis ${author} sich meldet${when ? `, spätestens ${when}` : ''}`,
+    /** The menu's choice on a review card handed over: back once the contributor writes on the PR or pushes. */
+    untilContributor: (author: string) => `Bis ${author} sich meldet`,
+    untilContributorHint: (author: string) =>
+      `Die Karte verlässt „brauchen dich“, bis ${author} auf dem PR schreibt oder pusht. Dann prüft der Agent den PR erneut und übergibt wieder. Mergen kannst du bis dahin trotzdem.`,
     by: { agent: 'vom Agenten', owner: 'von dir' },
     today: 'heute',
     nextDay: 'morgen',
@@ -2334,6 +2340,10 @@ const en: Strings = {
     set: 'Snooze',
     until: (when: string) => `Snoozed until ${when}`,
     on: (title: string, state: AwaitedState, when?: string) => `Snoozed until “${title}” ${state === 'done' ? 'is done' : 'waits for you'}${when ? `, at the latest ${when}` : ''}`,
+    contributor: (author: string, when?: string) => `Snoozed until ${author} responds${when ? `, at the latest ${when}` : ''}`,
+    untilContributor: (author: string) => `Until ${author} responds`,
+    untilContributorHint: (author: string) =>
+      `The card leaves “need you” until ${author} writes on the PR or pushes. Then the agent reviews the PR again and hands over anew. You can still merge meanwhile.`,
     by: { agent: 'by the agent', owner: 'by you' },
     today: 'today',
     nextDay: 'tomorrow',
@@ -4081,7 +4091,9 @@ export const stateLabel = (i: { kind?: string; thread?: { thinking?: boolean }; 
   i.snoozed
     ? i.snoozed.on
       ? t.snooze.on(i.snoozed.on.title, i.snoozed.on.state, i.snoozed.until && snoozeWhen(i.snoozed.until))
-      : t.snooze.until(snoozeWhen(i.snoozed.until!))
+      : i.snoozed.contributor
+        ? t.snooze.contributor(i.snoozed.contributor.author, i.snoozed.until && snoozeWhen(i.snoozed.until))
+        : t.snooze.until(snoozeWhen(i.snoozed.until!))
     : i.pausing
     ? t.pause.pausing
     : i.kind === 'question'

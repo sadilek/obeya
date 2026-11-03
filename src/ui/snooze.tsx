@@ -1,9 +1,10 @@
 // Snoozing a card until a point in time: the owner's „Später …“ with its presets and a date and time
 // of their own, on a card's action row and as „Ändern“ on the snooze line of its conversation, and
-// that line with „Jetzt zurückholen“. One component for every kind of card.
+// that line with „Jetzt zurückholen“. One component for every kind of card; a review card handed over
+// can also wait for its contributor to respond.
 
 import { useLayoutEffect, useRef, useState } from 'react';
-import type { CardEvent, Item, Snooze } from '../core/types';
+import { awaitsContributorNext, type CardEvent, type Item, type Snooze } from '../core/types';
 import { api } from './api';
 import { useMenuClose } from './queue';
 import { clock, t } from './strings';
@@ -57,7 +58,8 @@ function placeOnScreen(menu: HTMLElement, button: DOMRect) {
  * time to pick. `inline`: the menu opens below the button where the screen has room, else above it,
  * over the conversation rather than in it (on the phone the conversation is often lower than the
  * menu, which it cut off); else above the button. A proposal's start time is set with the same
- * menu (`heading`, `hint`), which can also take the time away (`clear`).
+ * menu (`heading`, `hint`), which can also take the time away (`clear`). `also`: a choice above
+ * the times that waits for something else than a time (a review card's contributor).
  */
 export function SnoozeMenu({
   label,
@@ -69,6 +71,7 @@ export function SnoozeMenu({
   set = t.snooze.set,
   at,
   clear,
+  also,
   mark = true,
 }: {
   label: string;
@@ -82,6 +85,7 @@ export function SnoozeMenu({
   /** The time set now, which the field to pick one starts from. */
   at?: Date;
   clear?: { label: string; hint: string; onClear: () => void };
+  also?: { label: string; hint: string; onPick: () => void };
   /** The clock mark on the button; none where the line beside it has one. */
   mark?: boolean;
 }) {
@@ -121,6 +125,19 @@ export function SnoozeMenu({
       {open && (
         <div className="snooze-menu" role="menu" ref={menu}>
           <div className="snooze-h">{heading}</div>
+          {also && (
+            <button
+              className="snooze-opt also"
+              role="menuitem"
+              title={also.hint}
+              onClick={() => {
+                close();
+                also.onPick();
+              }}
+            >
+              {also.label}
+            </button>
+          )}
           {snoozePresets(now).map((p) => (
             <button key={p.label} className="snooze-opt" role="menuitem" onClick={() => go(p.at)}>
               {p.label}
@@ -172,6 +189,11 @@ export function SnoozeMenu({
 
 /** Snoozes the card until `until`, or wakes it; the card shows it once the server has. */
 const snooze = (cardId: string, until: string) => void api.act(cardId, { action: 'snooze', until }).catch(() => {});
+const awaitContributor = (cardId: string) => void api.act(cardId, { action: 'awaitContributor' }).catch(() => {});
+
+/** „Bis amerlander sich meldet“ in the menu of a review card handed over that does not wait for its contributor yet. */
+export const contributorChoice = (item: Item, pick: () => void = () => awaitContributor(item.id)) =>
+  item.contribution && awaitsContributorNext(item) ? { label: t.snooze.untilContributor(item.contribution.author), hint: t.snooze.untilContributorHint(item.contribution.author), onPick: pick } : undefined;
 const wake = (cardId: string) => void api.act(cardId, { action: 'wake' }).catch(() => {});
 
 /** The line in the conversation where the card was snoozed, while it still is: with „Jetzt zurückholen“ and „Ändern“. */
@@ -185,7 +207,7 @@ export function SnoozeLine({ item, e, at }: { item: Item; e: CardEvent; at: stri
         <button className="btn small" title={t.snooze.wakeHint} onClick={() => wake(item.id)}>
           {t.snooze.wake}
         </button>
-        <SnoozeMenu label={t.snooze.change} className="btn small" inline onSnooze={(until) => snooze(item.id, until)} />
+        <SnoozeMenu label={t.snooze.change} className="btn small" inline also={contributorChoice(item)} onSnooze={(until) => snooze(item.id, until)} />
       </div>
     </div>
   );

@@ -237,6 +237,18 @@ same; anything else the owner says (a question, more to look at) stays on the ca
   or step, and until then a list it records keeps the finding not pursued. Words of the owner's can
   take it up again („Befund 2 doch an ihn“), as the worker then reopens it.
 
+The next step may be the contributor's even though nothing is sent to them: an answer to a question
+already on the PR, or a push they announced. For that, „Später …“ on a review card handed over
+offers „Bis amerlander sich meldet“ above the times, also on the line of a card snoozed until a time
+(„Ändern“), and by voice („bis er sich meldet“). The card is snoozed as one waiting for the owner
+(see Snoozing a card: out of „Braucht dich“, its handover standing and approvable, „Jetzt
+zurückholen“), reading „Zurückgestellt bis amerlander sich meldet“, with „spätestens …“ once a time
+is picked as well, which then comes first or not. It comes back as soon as the contributor comments
+on the PR or pushes, counting from when the card came to wait for the owner, so what they did
+between the handover and the click counts too: the line that it is back says what they did, and the
+worker hears it (and that the owner waited for it), reviews again as after a change request, and
+hands over anew; the handover before gives way to that review.
+
 „Mergen (PR #5)“ approves: Obeya reads the PR, and at a head other than the one handed over (the
 contributor pushed since) it pushes, posts and merges nothing, and the worker reviews the PR as it
 is, its own commits not pushed yet put on top of the new head. Otherwise the
@@ -496,6 +508,13 @@ A card no agent worked on, a prototype or an archived card has no field.
   so alone it costs no turn. Rejected: only saying so in words („Befund 2 ist egal“; it works, but is
   not found beside the other choices, and costs a turn of the worker); a click that ignores at once
   (every other choice goes with the Send).
+- **Waiting for the contributor without a request is a snooze of the handover** (2026-11-03, the
+  review of PR #37: the owner waited for the contributor's answer to a question on the PR, while the
+  card went on asking for the merge). A snooze keeps the handover approvable and „Jetzt
+  zurückholen“ at hand, and „Später …“ is where the owner already sets a card aside. Rejected:
+  putting the card into the state a change request leaves it in (no merge without a new handover,
+  and no way back); a button of its own in the action row (rarely used, and beside „Später …“ it
+  would be a second way to set a card aside).
 - **A follow-up task starts at once and waits for the PR's merge** (2026-11-02, the review of PR
   #34: its three follow-up tasks stood planned, and the owner did not dare start them, unsure
   whether Obeya would see that they build on the PR). Choosing „Als Folgeaufgabe“ is the decision to

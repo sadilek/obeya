@@ -315,7 +315,8 @@ export class PrWatcher {
   /**
    * A review card's pull request, which someone outside opened: Obeya never merges it here (only the
    * owner's approval of a reviewed head does), and what the contributor does reaches the worker only
-   * while the card waits for them. Their comments count, not the PR author's being skipped as on the
+   * while the card waits for them: after a change request, or handed over and set aside by the owner
+   * until they respond. Their comments count, not the PR author's being skipped as on the
    * worker's own PRs: skipped are the owner's (the account Obeya acts as, the worker's too) and
    * `prNoise`. A new head counts once, whatever the worker reviewed before.
    */
@@ -329,8 +330,10 @@ export class PrWatcher {
       if (!c.closed) this.workers.contributionClosed(cardId);
       return;
     }
-    if (state === 'inPr') {
-      const since = c.requested?.at ?? '';
+    // set aside by the owner until the contributor responds: what they did since the card came to wait for the owner counts
+    const awaited = state === 'waiting' ? this.board.snoozedOf(cardId)?.contributor : undefined;
+    if (state === 'inPr' || awaited) {
+      const since = awaited?.since ?? c.requested?.at ?? '';
       const comments = s.comments.filter((x) => !pr.seen.includes(x.id) && x.author !== self && !noise.includes(x.author) && (x.edited ?? x.at ?? '') > since);
       const reviewed = c.reviewed ?? pr.headSeen ?? s.head;
       next.headSeen ??= s.head;

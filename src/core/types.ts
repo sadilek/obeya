@@ -209,8 +209,8 @@ export type AwaitedState = (typeof AWAITED_STATES)[number];
 
 export type Awaited = 'reached' | 'gone' | 'archived' | 'stopped' | 'dropped';
 
-/** Why a snoozed card woke: its time came, the owner woke it, Obeya had something for its agent, it needs the owner, or what became of the card it waited on. */
-export type Woke = 'time' | 'owner' | 'news' | 'needsYou' | { met: Awaited };
+/** Why a snoozed card woke: its time came, the owner woke it, Obeya had something for its agent, it needs the owner, what became of the card it waited on, or what the contributor it waited for did (`said`, as its log says it). */
+export type Woke = 'time' | 'owner' | 'news' | 'needsYou' | { met: Awaited } | { said: string };
 
 /**
  * Whether the card a snoozed worker waits on gets it to wake: `reached` the state it waits for;
@@ -238,6 +238,13 @@ export const plannedToStart = (i: Pick<Item, 'kind' | 'state' | 'queue' | 'archi
  * (it starts then); a snoozed card's time can be changed.
  */
 export const snoozable = (i: Item) => !i.archivedAt && (!!i.snoozed || needsYou(i) || workerAtWork(i) || plannedToStart(i));
+
+/**
+ * A review card the owner can set aside until its contributor writes on the pull request or pushes
+ * („Bis amerlander sich meldet“ in „Später …“): it is handed over (whether snoozed until a time
+ * meanwhile or not), and not snoozed so already.
+ */
+export const awaitsContributorNext = (i: Item) => !!i.contribution && !i.archivedAt && handedOver(i) && !answering(i) && !i.landing && !i.snoozed?.contributor && (!i.snoozed || !!i.snoozed.waiting);
 
 /** Answers in the Koordinator's sheet the owner has not seen yet. */
 export const unreadAnswers = (talk: Talk[]) => talk.filter((x) => x.unread).length;
@@ -512,6 +519,12 @@ export interface Snooze {
   moved?: true;
   /** It is planned: it starts at the time, through the Koordinator, as if started then. */
   start?: true;
+  /**
+   * A review card the owner set aside until its contributor (`author`) writes on the pull request or
+   * pushes, whichever they do first, counting from `since` (when the card came to wait for the owner);
+   * with a time too, at the latest then. Its worker then reviews again.
+   */
+  contributor?: { author: string; since: string };
 }
 
 /**
@@ -1452,6 +1465,8 @@ export type CardAction =
    * owner leaves them until then. On a snoozed card, it changes the time.
    */
   | { action: 'snooze'; until: string }
+  /** A review card handed over leaves the owner until its contributor writes on the pull request or pushes (`Snooze.contributor`). */
+  | { action: 'awaitContributor' }
   /** A snoozed card wakes now; a snoozed planned card starts now. */
   | { action: 'wake' }
   /** When a proposal starts once accepted (ISO), or `null`: at once. */

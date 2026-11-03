@@ -13,7 +13,7 @@ import { repoName } from '../adapters/generic';
 import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
@@ -494,6 +494,18 @@ export class CanvasRuntime {
     if (card.snoozed?.waiting || (!card.snoozed && needsYou(card))) return this.board.snooze(cardId, { ...(card.snoozed ?? { by: 'owner', waiting: true }), until: iso }, 'owner');
     if (card.snoozed?.start || (!card.snoozed && plannedToStart(card))) return this.board.snooze(cardId, { ...(card.snoozed ?? { by: 'owner', start: true }), until: iso }, 'owner');
     this.repoOf(cardId).workers.snooze(cardId, iso);
+  }
+
+  /**
+   * The owner sets a review card handed over aside until its contributor writes on the pull request
+   * or pushes, counting from when it came to wait for them: what the contributor did since reaches
+   * its worker, which reviews again (see the watcher). A time it was snoozed until stays as the latest.
+   */
+  private awaitContributor(cardId: string) {
+    const card = this.board.item(cardId);
+    if (!card?.contribution || !awaitsContributorNext(card)) throw new BadRequest('notSnoozable', 'only a review card handed over can wait for its contributor');
+    const since = card.waitingSince ?? new Date().toISOString();
+    this.board.snooze(cardId, { ...(card.snoozed ?? { by: 'owner', waiting: true }), contributor: { author: card.contribution.author, since } }, 'owner');
   }
 
   /** A time to snooze until or start at, as ISO: within the coming year. */
@@ -1673,6 +1685,8 @@ export class CanvasRuntime {
         return this.agentOf(cardId).resume(cardId);
       case 'snooze':
         return this.snooze(cardId, a.until);
+      case 'awaitContributor':
+        return this.awaitContributor(cardId);
       case 'wake':
         return this.wake(cardId, false);
       case 'startAt':
@@ -2493,6 +2507,8 @@ export class CanvasRuntime {
         return this.act(c.card, { action: c.do });
       case 'snooze':
         return this.act(c.card, { action: 'snooze', until: c.until });
+      case 'awaitContributor':
+        return this.act(c.card, { action: 'awaitContributor' });
       case 'configure':
         return this.deps.config?.save(c.canvases);
       case 'remember':

@@ -1726,15 +1726,15 @@ export class Board {
 
   /**
    * The card is snoozed no longer, with the line that it woke and why (`woke`): its time came, the
-   * owner woke it, Obeya had something for its agent, the card needs the owner, or what became of the
-   * card it waited on. Returns the snooze it had.
+   * owner woke it, Obeya had something for its agent, the card needs the owner, what became of the
+   * card it waited on, or what the contributor it waited for did. Returns the snooze it had.
    */
   unsnooze(cardId: string, woke: Woke): Snooze | null {
     const s = this.snoozedOf(cardId);
     if (!s) return null;
     this.work(cardId, { snoozed: null });
     const why = this.t.worker.wokeWhy;
-    this.log(cardId, 'state', woke === 'owner' ? 'owner' : 'obeya', this.t.worker.woke(typeof woke === 'object' ? (s.on ? why.card(s.on.title, woke.met, s.on.state) : why.time) : why[woke]));
+    this.log(cardId, 'state', woke === 'owner' ? 'owner' : 'obeya', this.t.worker.woke(typeof woke === 'object' ? ('said' in woke ? woke.said : s.on ? why.card(s.on.title, woke.met, s.on.state) : why.time) : why[woke]));
     return s;
   }
 

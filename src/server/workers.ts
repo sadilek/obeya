@@ -1752,14 +1752,18 @@ export class Workers {
 
   /**
    * The contributor answered while the review card waited for them, or pushed: the worker hears
-   * what came and reviews again; the owner's log gets `note`.
+   * what came and reviews again; the owner's log gets `note`. A card the owner set aside on its
+   * handover until then wakes with it, and its handover gives way to the new review.
    */
   contributorAnswered(cardId: string, note: string, message: string) {
-    this.o.board.log(cardId, 'state', 'obeya', note);
+    const awaited = this.o.board.snoozedOf(cardId)?.contributor;
+    if (awaited) this.o.board.unsnooze(cardId, { said: note });
+    else this.o.board.log(cardId, 'state', 'obeya', note);
     const c = contributionOf(this.o.board.row(cardId));
     if (c?.requested) this.o.board.work(cardId, { contribution: JSON.stringify({ ...c, requested: undefined } satisfies StoredContribution) });
-    if (this.o.board.row(cardId).state === 'inPr') this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null });
-    this.deliver(cardId, message);
+    const state = this.o.board.row(cardId).state;
+    if (state === 'inPr' || (awaited && state === 'waiting')) this.o.board.work(cardId, { state: 'working', need: null, detail: null, status_line: null });
+    this.deliver(cardId, awaited ? `The owner had set your handover aside until ${awaited.author} responded.\n\n${message}` : message);
   }
 
   /**

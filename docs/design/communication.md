@@ -176,7 +176,8 @@ work, cards waiting for the owner, and planned tasks not yet with the Koordinato
 - A card waiting for the owner leaves the count of what waits and Tab, moves to the end of „Braucht dich“, and comes back
   at the time like a snoozed mail, with a push to the phone. Nothing goes to its agent; background
   work runs on. Answering it anyway (or parking the idea, reworking the proposal) ends the
-  snooze.
+  snooze. A review card handed over can instead wait until its contributor responds (see Review
+  cards in Landing).
 - A planned card starts at the time as if the owner had started it, through the Koordinator's queue;
   its worker hears that the card was set to start then. „Starten“, „Jetzt zurückholen“ or „Alle
   starten“ on its project start it at once. An accepted proposal with a start time is such a card

@@ -1291,6 +1291,19 @@ describe('snoozing by voice', () => {
     expect(brief).toContain('it starts then; start or wake starts it now');
   });
 
+  test('„bis er sich meldet“ sets a review card handed over aside until its contributor responds, as the card list then says', async () => {
+    const a = board.create({ title: 'PR #5: Export', x: 0, y: 0 });
+    board.work(a.id, { state: 'waiting', need: 'demo', contribution: JSON.stringify({ url: 'https://github.com/acme/app/pull/5', number: 5, author: 'amerlander', title: 'Export', canModify: true }) });
+    const k = commander();
+    const { heard } = await say(k, 'stell das zurück, bis amerlander sich meldet', 'act', { actions: [{ do: 'snooze', card: 'K1', until: 'contributor' }], confirm: '„PR #5“ wartet auf amerlander.' });
+    k.arm(heard.token!);
+    await until(() => executed.length > 0);
+    expect(executed).toEqual([{ do: 'awaitContributor', card: a.id }]);
+    board.snooze(a.id, { by: 'owner', waiting: true, contributor: { author: 'amerlander', since: new Date().toISOString() } });
+    const { brief: later } = await say(k, 'was ist mit PR 5?', 'reply', { confirm: 'Wartet auf amerlander.' });
+    expect(later).toContain('until amerlander, the author of the pull request, responds');
+  });
+
   test('a time that passed, or a card neither planned, at work nor waiting, is refused', async () => {
     const done = board.create({ title: 'Export', x: 0, y: 0 });
     board.work(done.id, { state: 'live' });
