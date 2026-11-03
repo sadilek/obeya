@@ -362,8 +362,8 @@ interface ServeSpec {
 
 /**
  * The process that holds the session's browser: launches it, writes the state, and closes it when
- * the session's process has ended, at `stop` (the browser closed over CDP, which works on Windows
- * too, where killing this process would leave the browser behind) or on a signal.
+ * the session's process has ended, on a signal (`stop` sends one), or when the browser went (on
+ * Windows `stop` closes it over CDP: killing this process there would leave the browser behind).
  */
 async function serve(spec: ServeSpec) {
   const { launchChromium, SILENT_SPEECH } = await import('../../../lib/chromium.ts');
@@ -389,9 +389,7 @@ async function serve(spec: ServeSpec) {
     if (ending) return;
     ending = true;
     clearInterval(watch);
-    // On a busy machine Chrome's orderly shutdown takes many seconds; its profile is temporary, so
-    // after a short grace exiting is enough: Playwright then kills its process tree and removes it.
-    await Promise.race([browser.close().catch(() => {}), sleep(2000)]);
+    await browser.close().catch(() => {});
     if (readState(spec.state)?.pid === process.pid) {
       fs.rmSync(spec.state, { force: true });
       fs.rmSync(logFile(spec.state), { force: true });
@@ -491,7 +489,11 @@ async function stop() {
     console.log('Nothing to stop.');
     return;
   }
-  if (await isAlive(state.port)) {
+  // Its holder closes it, killing it after a short grace (Chrome's own shutdown, asked over CDP,
+  // hung for ten seconds on a busy Mac); on Windows a signal would kill the holder, which leaves the
+  // browser behind, so there it is asked over CDP.
+  if (process.platform !== 'win32' && alive(state.pid)) process.kill(state.pid, 'SIGTERM');
+  else if (await isAlive(state.port)) {
     const { webSocketDebuggerUrl } = await http(state.port, '/json/version');
     await cdp(webSocketDebuggerUrl, 'Browser.close').catch(() => {});
   }

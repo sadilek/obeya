@@ -60,7 +60,8 @@ beforeAll(() => {
   // the server sends each change to the pages that show the canvas
   canvas.board.onChange(() => JSON.stringify(canvas.board.snapshot()));
   canvas.board.changed();
-});
+  // over a thousand cards and their demo folders take more than the default 5 s on a busy machine
+}, 30_000);
 
 afterAll(() => {
   canvas.shutdown();

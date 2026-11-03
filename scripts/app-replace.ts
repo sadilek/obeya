@@ -52,7 +52,8 @@ export function asides(to: string): string[] {
 /** Whether a process has a file in `dir` open (a shell started from it, its program); yes when there is no lsof to ask. */
 function opened(dir: string): boolean {
   try {
-    return Bun.spawnSync(['lsof', '-t', '+D', dir], { stderr: 'ignore' }).stdout.toString().trim() !== '';
+    // without -n and -P it resolved the host and port names of every socket on the machine: seconds on a busy one
+    return Bun.spawnSync(['lsof', '-n', '-P', '-t', '+D', dir], { stderr: 'ignore' }).stdout.toString().trim() !== '';
   } catch {
     return true;
   }

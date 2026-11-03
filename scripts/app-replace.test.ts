@@ -39,4 +39,5 @@ test.skipIf(process.platform !== 'darwin')('the bundle of a shell that still run
   replace(bundle('fourth.app', 'fourth'), to);
   expect(program(to)).toBe('fourth');
   expect(asides(to)).toEqual([]);
-});
+  // each install asks lsof, which goes through every process's open files: a second on a busy machine
+}, 30_000);

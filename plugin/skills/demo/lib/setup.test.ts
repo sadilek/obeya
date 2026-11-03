@@ -8,7 +8,11 @@ let dir: string;
 beforeEach(() => (dir = mkdtempSync(join(tmpdir(), 'obeya-demo-setup-'))));
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-/** A directory of fake programs, each printing `out`, first on the PATH (the system's after it, for `cat`). */
+/**
+ * A directory of fake programs, each printing `out`, first on the PATH (the system's after it, for
+ * `cat`). macOS checks a program written moments ago before it first runs, which on a busy machine
+ * took seconds: the tests that run them have more than the default 5 s.
+ */
 function fakePath(programs: Record<string, string>) {
   const bin = join(dir, 'bin');
   mkdirSync(bin, { recursive: true });
@@ -84,13 +88,13 @@ describe('demo setup', () => {
     expect(by.ffmpeg).toMatchObject({ state: 'missing', found: '6.1', need: 'libx264' });
     expect(by.uv).toMatchObject({ state: 'ok', found: '0.8.0' });
     expect(by.voice).toMatchObject({ state: 'ok', found: 'say' });
-  });
+  }, 30_000);
 
   test.skipIf(process.platform === 'win32')('takes a current Node and an ffmpeg with libx264', async () => {
     const env = fakePath({ node: 'v24.1.0', ffmpeg: 'ffmpeg version 7.1 Copyright\n V....D libx264  H.264', uv: 'uv 0.8.0' });
     const check = await checkSetup({ language: 'de', voice: 'say' }, { env, home: dir, narrationOnly: true });
     expect(check.items.filter((i) => i.state === 'missing')).toEqual([]);
-  });
+  }, 30_000);
 
   test('prints what is missing with the commands under it', () => {
     const check: SetupCheck = {

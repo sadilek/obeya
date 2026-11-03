@@ -7,7 +7,7 @@ describe('silent speech', () => {
   let browser: Browser;
   let page: Page;
 
-  // Chrome starts and closes slowly while the other test files run beside it.
+  // Chrome starts slowly while the other test files run beside it.
   beforeAll(async () => {
     browser = await launchChromium();
     const ctx = await browser.newContext();
@@ -31,7 +31,7 @@ describe('silent speech', () => {
 
   afterAll(async () => {
     await browser?.close();
-  }, 30_000);
+  });
 
   const events = async (script: string) => {
     await page.evaluate(script);

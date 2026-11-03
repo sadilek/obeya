@@ -23,6 +23,11 @@ them by default), so a list scrolling in a fixed height, or two scrollbars side 
 video and a screenshot. Permanent scrollbars on a Mac set to overlay ones would need Chrome started
 without Playwright and were not wanted (owner, 2026-10-21).
 
+Both browsers close within a few seconds: on a busy Mac Chrome's orderly shutdown hung until its
+own teardown watchdog ended it ten seconds later (Chrome 156, 2026-11-03), and a demo waited for
+that after its login and its take. Their profiles are temporary, so after a short grace the
+browser's process tree is killed and the profile removed.
+
 The report page (`index.html` beside the video, for use without Obeya) holds the title, the summary
 (what the change does, then what the owner needs to know beyond the video: a behaviour left out and
 why, what is open or unverified, a defect found in someone else's change; a few short paragraphs),
@@ -524,9 +529,8 @@ of the owner's earlier private skill `chrome-headless`, so workers' habits carri
 Code session has its own browser, muted and with the silent `speechSynthesis` (see The demo skill),
 keyed by the session's process (`CLAUDE_PID`); the silencing must be in place before a page's first
 script, in every out-of-process frame and every later document. The browser closes when the session
-ends, at `stop` (through CDP, since on Windows killing its holder leaves it behind) or on a signal,
-within a few seconds: on a busy machine Chrome's orderly shutdown takes ten seconds and more, so
-after a short grace its holder kills its process tree and removes its temporary profile.
+ends, at `stop` or on a signal; on Windows `stop` closes it through CDP, since a signal there kills its
+holder outright, which leaves the browser behind.
 Without `CLAUDE_PID` (a terminal) there is one browser per user. `--fake-mic` plays a WAV as the
 microphone.
 

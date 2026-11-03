@@ -8,7 +8,8 @@ import { STALL_MS } from './stalls';
 const DAY = 24 * 3600;
 let demos: string;
 beforeEach(() => (demos = mkdtempSync(join(tmpdir(), 'obeya-demo-space-'))));
-afterEach(() => rmSync(demos, { recursive: true, force: true }));
+// a thousand demos (the last test) take seconds to delete on a busy machine
+afterEach(() => rmSync(demos, { recursive: true, force: true }), 30_000);
 
 /** A rendered demo: video, a clip and its frames in `.work`, everything last written `days` ago. */
 function render(dir: string, days: number) {

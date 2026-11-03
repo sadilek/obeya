@@ -13,7 +13,7 @@ describe('the demo overlay', () => {
   let page: Page;
   let server: ReturnType<typeof Bun.serve>;
 
-  // Chrome starts and closes slowly while the other test files run beside it.
+  // Chrome starts slowly while the other test files run beside it.
   beforeAll(async () => {
     const html = (body: string) => new Response(`<!doctype html><body>${body}</body>`, { headers: { 'content-type': 'text/html' } });
     server = Bun.serve({
@@ -35,7 +35,7 @@ describe('the demo overlay', () => {
   afterAll(async () => {
     await browser?.close();
     server?.stop();
-  }, 30_000);
+  });
 
   test('paints its clock strip in the top page and in no iframe', async () => {
     await page.waitForFunction(() => document.querySelector('canvas')?.isConnected);

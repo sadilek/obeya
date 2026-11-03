@@ -1,11 +1,10 @@
 import { afterAll, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 import type { Browser } from 'playwright-core';
-import { launchChromium } from './chromium.ts';
+import { CLOSE_GRACE_MS, launchChromium } from './chromium.ts';
 
 let browser: Browser | undefined;
-// Chrome takes about 1.5 s to exit after Playwright asks it to close, and several times that while
-// the other test files run alongside: more than a hook's default 5 s.
-afterAll(() => browser?.close(), 30_000);
+afterAll(() => browser?.close());
 
 // A box that scrolls shows its scrollbar in a screenshot: classic on Windows and Linux, on a Mac
 // with overlay scrollbars while it scrolls (hence the wheel just before).
@@ -29,3 +28,30 @@ test('a scrolling box shows its scrollbar', async () => {
   }, shot.toString('base64'));
   expect(dark).toBeGreaterThan(50);
 }, 60_000);
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// a frozen browser stands in for one whose orderly shutdown hangs, as on a busy machine
+test.skipIf(process.platform === 'win32')('a browser that does not close in time is killed, its profile with it', async () => {
+  const frozen = await launchChromium();
+  const cdp = await frozen.newBrowserCDPSession();
+  const { processInfo } = (await cdp.send('SystemInfo.getProcessInfo')) as { processInfo: { type: string; id: number }[] };
+  await cdp.detach();
+  const pid = processInfo.find((p) => p.type === 'browser')!.id;
+  const ps = Bun.spawnSync(['ps', '-o', 'args=', '-p', String(pid)]).stdout.toString();
+  const profile = ps.match(/--user-data-dir=(\S+)/)![1]!;
+  expect(existsSync(profile)).toBe(true);
+  process.kill(pid, 'SIGSTOP');
+  const start = performance.now();
+  await frozen.close();
+  expect(performance.now() - start).toBeLessThan(CLOSE_GRACE_MS + 2000);
+  expect(alive(pid)).toBe(false);
+  expect(existsSync(profile)).toBe(false);
+}, 30_000);
