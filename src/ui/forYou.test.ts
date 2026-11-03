@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { type Item, type Talk, waitingIn } from '../core/types';
-import { forYouOf } from './forYou';
+import { type CanvasInfo, type Item, type Talk, waitingIn } from '../core/types';
+import { forYouCount, forYouOf, forYouTotal } from './forYou';
 
 const card = (id: string, more: Partial<Item> = {}) => ({ id, kind: 'task', state: 'working', title: id, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
 const talk = (id: number, unread = false): Talk => ({ id, at: '2026-11-02T09:00:00Z', said: `q${id}`, reply: '', ...(unread ? { unread: true as const } : {}) });
@@ -27,4 +27,16 @@ test("Obeya's answers waiting unread stand as one entry, the latest", () => {
   expect(w.talk.map((x) => x.id)).toEqual([1, 3]);
   expect(forYouOf(w, () => false).obeya?.id).toBe(3);
   expect(forYouOf(waitingIn({ items: [], talk: [talk(1)] }), () => false).obeya).toBeUndefined();
+});
+
+test('the count leaves out snoozed cards and those underway, and counts unread answers once, on every canvas', () => {
+  const a = waitingIn({
+    items: [card('review', { state: 'waiting', need: 'review' }), card('proposal', { state: 'proposal' }), card('snoozed', { state: 'waiting', need: 'review', snoozed: { by: 'owner', waiting: true, until: '2026-11-03T08:00:00Z' } })],
+    talk: [talk(1, true), talk(2, true)],
+  });
+  const b = waitingIn({ items: [card('question', { state: 'waiting', need: 'question' })], talk: [] });
+  expect(forYouCount(a, () => false)).toBe(3);
+  expect(forYouCount(a, (id) => id === 'review')).toBe(2);
+  const canvases = [{ id: 'a' }, { id: 'b' }, { id: 'c' }] as CanvasInfo[];
+  expect(forYouTotal(canvases, { a, b }, () => false)).toBe(4);
 });

@@ -5,7 +5,7 @@
 // Obeya's conversation): the owner decides on a card with its demo, its questions and its
 // conversation in view.
 
-import { type Item, needsYou, type Talk, type Waiting } from '../core/types';
+import { type CanvasInfo, type Item, needsYou, type Talk, type Waiting, waitingOn } from '../core/types';
 import { plain } from './markdown';
 import { CardFace, cardClass, shownTitle } from './parts';
 import { clock, shortDay, stateLabel, t } from './strings';
@@ -23,6 +23,16 @@ export function forYouOf(w: Waiting, underway: (id: string) => boolean): { cards
   const unread = w.talk.filter((x) => x.unread);
   return unread.length ? { cards, obeya: unread.at(-1)! } : { cards };
 }
+
+/**
+ * How much of a canvas's entries waits for the owner: the cards that need them (not those snoozed,
+ * which are put off, nor those underway), and one for Obeya's answers waiting unread.
+ */
+export const forYouCount = (w: Waiting, underway: (id: string) => boolean) => waitingOn({ items: w.items.filter((i) => !underway(i.id)), talk: w.talk });
+
+/** The same on every canvas: what the bar's button and the head of „Braucht dich“ count. */
+export const forYouTotal = (canvases: CanvasInfo[], waiting: Record<string, Waiting | undefined>, underway: (id: string) => boolean) =>
+  canvases.reduce((n, c) => n + (waiting[c.id] ? forYouCount(waiting[c.id]!, underway) : 0), 0);
 
 /**
  * One canvas's entries as rows of a list: as cards, `where` (its name, with several canvases) leading

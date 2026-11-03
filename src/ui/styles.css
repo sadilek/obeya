@@ -293,12 +293,22 @@ button.pill:hover { box-shadow: var(--lift); }
 .nav-pin { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 3px;
   background: var(--chip); color: var(--muted); cursor: pointer; }
 .nav-pin:hover, .nav-pin.on { color: var(--ink); }
-.nav-canvas + .nav-canvas { margin-top: 10px; }
-.nav-row { position: relative; }
-.nav-row a { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 2px; text-decoration: none; font-size: 13px; color: var(--muted); }
+.nav-head .waits { flex: none; }
+/* each canvas a section of its own under a shaded head, apart from the next by space; its head folds
+   it with the arrow at its left, and keeps its count while folded */
+.nav-canvas + .nav-canvas { margin-top: 14px; }
+.nav-row { position: relative; display: flex; align-items: center; border-radius: 3px; background: var(--chip); }
+.nav-fold { flex: none; width: 20px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 2px;
+  background: none; color: var(--muted); cursor: pointer; }
+button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, var(--chip)); }
+.nav-fold svg { transition: transform .15s ease-out; transform: rotate(90deg); }
+.nav-canvas.folded .nav-fold svg { transform: none; }
+.nav-row a { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; padding: 6px 10px 6px 4px; border-radius: 2px; text-decoration: none; font-size: 13.5px; color: var(--muted); }
 .nav-row a svg { flex: none; }
+.nav-row a b { white-space: nowrap; }
 .nav-row a .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-row a:hover { background: var(--chip); }
+.nav-row a .waits { flex: none; margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; font-size: 11px; border-radius: 9px; }
+.nav-row a:hover { background: color-mix(in srgb, var(--ink) 6%, var(--chip)); }
 .nav-canvas.on > .nav-row a { color: var(--ink); }
 .nav-row:has(.canvas-agents) a { padding-right: 46px; }
 .ph-none + .nav-canvas, :is(.nav-menu, .nav-sheet) > .ph-none { margin-bottom: 6px; }
@@ -306,7 +316,10 @@ button.pill:hover { box-shadow: var(--lift); }
 /* its entries are light rows, the title and what it waits for: everything in it waits for the owner,
    so a waiting card's orange frame would say nothing; the card open now is marked */
 .fy-rows { list-style: none; margin: 0; padding: 0; }
-.nav-canvas > .fy-rows { margin: 1px 0 0 22px; }
+.nav-canvas > .fy-rows { margin: 2px 0 0 26px; }
+/* the cards apart from each other by a line, which gives way where the pointer or the open card's mark is */
+.fy-rows > li + li { border-top: 1px solid var(--line); }
+.fy-rows > li:has(> .fy-row:is(:hover, .on)), .fy-rows > li:has(> .fy-row:is(:hover, .on)) + li { border-top-color: transparent; }
 .fy-row { position: relative; display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 6px 10px; border: 0; border-radius: 2px;
   background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .fy-row:hover { background: var(--chip); }

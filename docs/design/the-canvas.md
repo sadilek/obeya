@@ -50,14 +50,18 @@ place of a canvas switcher, a count of this canvas's cards that need the owner, 
 button names the canvas and its home branch (or its count of repositories) and counts, in the
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
 them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Braucht dich“, the
-phone's list (see The phone view), built once for both: the same entries in the same order. Here
-each is a light row, its title and what it waits for since when, without the waiting card's orange
-frame, and the card open now is marked in it. With several canvases, each canvas in the
-configuration's order heads what waits on it, the open one in full ink; a click on it switches there,
-and its row carries its agents' pause (see Pausing a canvas's agents). With one canvas the list has
-no such heads. A click on an entry opens its card, on this canvas or by switching to its own, and
-closes the list; Obeya's answers open Obeya's sheet on their canvas. Nothing waiting says so, and
-the canvases are still listed.
+phone's list (see The phone view), built once for both: the same entries in the same order. Its
+head counts what waits on every canvas, as the button does; a snoozed card is listed but not
+counted, being put off. Each entry is a light row, its title and what it waits for since when,
+without the waiting card's orange frame, set apart from the next by a line, and the card open now is
+marked in it. With several canvases, each canvas in the configuration's order heads what waits on
+it, in a shaded head row that sets the canvases apart, the open one in full ink; a click on the
+row switches there, it counts what waits on that canvas, and it carries its agents' pause (see
+Pausing a canvas's agents). An arrow at the head's left folds the canvas's entries away and back;
+folded, the head keeps its count, and which canvases are folded holds per browser, in the list
+and the pinned sidebar alike. With one canvas the list has no such heads. A click on an entry opens
+its card, on this canvas or by switching to its own, and closes the list; Obeya's answers open
+Obeya's sheet on their canvas. Nothing waiting says so, and the canvases are still listed.
 
 The entries only open cards: no button on them approves, accepts, answers or dismisses anything.
 Tab still goes through the cards of this canvas that need the owner and Obeya's answers (see the
@@ -319,6 +323,10 @@ code, a generic one otherwise.
   one the agent should not have asked for; an inbox as a sheet on the right, which competes
   with Obeya's sheet for the same edge; and the phone's card faces in the list, whose orange frames
   say nothing where every entry waits for the owner and make the list loud.
+- **Each canvas folds by itself, not as an accordion** (2026-11-03, issue #49): the
+  owner folds away canvases they are not attending to while keeping several open side by side; an
+  accordion would close one canvas as another opens, hiding what waits there. The counts on the
+  heads keep a folded canvas's waiting cards in view.
 - **Waits are always on the canvas, as faint lines** (owner, 2026-11-02): with waits shown only
   under the pointer, the overall picture was missing, and one forgot that Obeya tracks them at all.
   There is no switch to hide them. Rejected: stubs at the cards' edges only (they say there is a

@@ -1,12 +1,12 @@
 // The navigation at the bar's left: the canvas's name, and under it the canvases with what waits
 // for the owner on each („Braucht dich“, the phone's list), in one place. It opens as a list under its
 // button, or stays pinned as a sidebar docked on the left, the canvas the rest. An entry opens its
-// card, on this canvas or on its own.
+// card, on this canvas or on its own; a canvas's section folds away under its head, which keeps its count.
 
-import { useRef, useState } from 'react';
-import { type CanvasInfo, type Item, type Waiting, waitingOn } from '../core/types';
+import { useRef, useState, useSyncExternalStore } from 'react';
+import type { CanvasInfo, Item, Waiting } from '../core/types';
 import { canvasPath } from './address';
-import { forYouOf, ForYouRows } from './forYou';
+import { forYouCount, forYouOf, ForYouRows, forYouTotal } from './forYou';
 import { CanvasAgents } from './parts';
 import { useMenuClose } from './queue';
 import { t } from './strings';
@@ -47,8 +47,34 @@ interface ListProps {
   onObeya: (canvas: string) => void;
 }
 
-/** The count of all that waits for the owner, on every canvas. */
-export const waitingCount = (canvases: CanvasInfo[], waiting: Record<string, Waiting>) => canvases.reduce((n, c) => n + (waiting[c.id] ? waitingOn(waiting[c.id]!) : 0), 0);
+// The canvases whose sections are folded, per browser as pinning is; shared by the list under the
+// button and the sidebar, so that one folded in either stays folded in the other.
+const FOLD_KEY = 'obeya-nav-folded';
+let folded: string[] = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(FOLD_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+})();
+const foldListeners = new Set<() => void>();
+const toggleFolded = (id: string) => {
+  folded = folded.includes(id) ? folded.filter((x) => x !== id) : [...folded, id];
+  try {
+    if (folded.length) localStorage.setItem(FOLD_KEY, JSON.stringify(folded));
+    else localStorage.removeItem(FOLD_KEY);
+  } catch {}
+  for (const l of foldListeners) l();
+};
+const useFolded = () =>
+  useSyncExternalStore(
+    (l) => {
+      foldListeners.add(l);
+      return () => foldListeners.delete(l);
+    },
+    () => folded,
+  );
 
 /** The bar's button and the list under it. */
 export function NavPill(p: ListProps) {
@@ -56,7 +82,7 @@ export function NavPill(p: ListProps) {
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(open, box, () => setOpen(false), true);
   const home = p.canvas.repos[0];
-  const n = waitingCount(p.canvases, p.waiting);
+  const n = forYouTotal(p.canvases, p.waiting, p.underway);
   // a click on an entry goes elsewhere: the list closes
   const close = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => {
     setOpen(false);
@@ -93,18 +119,25 @@ export function NavSheet({ on, ...p }: ListProps & { on: boolean }) {
 
 /**
  * „Braucht dich“ and the canvases: with several, each canvas in the configuration's order heads what
- * waits on it, so a click on it switches there; within a canvas in Tab's order.
+ * waits on it, so a click on it switches there, and its arrow folds it; within a canvas in Tab's order.
+ * The head counts what waits on every canvas, each canvas's head what waits on it, as the bar's button does.
  */
 function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, onPin, onOpen, onObeya, titlebar }: ListProps & { titlebar?: boolean }) {
   // with one canvas, its name heads the list only where the bar's button with the name is not there
   const several = canvases.length > 1 || pinned;
-  const waits = waitingCount(canvases, waiting) > 0;
+  const n = forYouTotal(canvases, waiting, underway);
+  const fold = useFolded();
   const none: Waiting = { items: [], talk: [] };
   const rows = (c: CanvasInfo) => <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />;
   return (
     <>
       <div className="nav-head" {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>
         <h2 {...(titlebar ? { 'data-tauri-drag-region': '' } : {})}>{t.phone.forYou}</h2>
+        {n > 0 && (
+          <span className="waits" title={t.nav.waiting(n)}>
+            {n}
+          </span>
+        )}
         {(pinnable || pinned) && (
           <button className={pinned ? 'nav-pin on' : 'nav-pin'} title={pinned ? t.nav.unpin : t.nav.pin} aria-label={pinned ? t.nav.unpin : t.nav.pin} aria-pressed={pinned} onClick={() => onPin(!pinned)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
@@ -115,22 +148,51 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
           </button>
         )}
       </div>
-      {!waits && <p className="ph-none">{t.phone.nothingWaits}</p>}
+      {!n && <p className="ph-none">{t.phone.nothingWaits}</p>}
       {several ? (
         canvases.map((c) => {
           const w = waiting[c.id] ?? none;
           const listed = forYouOf(w, underway);
+          const has = listed.cards.length > 0 || !!listed.obeya;
+          const shut = fold.includes(c.id);
+          const count = forYouCount(w, underway);
           return (
-            <section key={c.id} className={c.id === canvas.id ? 'nav-canvas on' : 'nav-canvas'}>
+            <section key={c.id} className={['nav-canvas', c.id === canvas.id && 'on', shut && 'folded'].filter(Boolean).join(' ')}>
               <div className="nav-row">
+                {has ? (
+                  <button
+                    type="button"
+                    className="nav-fold"
+                    aria-expanded={!shut}
+                    aria-controls={`nav-${c.id}`}
+                    aria-label={`${shut ? t.nav.unfold : t.nav.fold}: ${c.name}`}
+                    title={shut ? t.nav.unfold : t.nav.fold}
+                    onClick={() => toggleFolded(c.id)}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
+                      <path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                ) : (
+                  <span className="nav-fold" aria-hidden />
+                )}
                 <a href={canvasPath(c.id)}>
                   <CanvasIcon />
                   <b>{c.name}</b>
                   <span className="hint">{c.repos.map((r) => r.name).join(', ')}</span>
+                  {count > 0 && (
+                    <span className="waits" title={t.nav.waiting(count)}>
+                      {count}
+                    </span>
+                  )}
                 </a>
                 <CanvasAgents canvas={c} />
               </div>
-              {(listed.cards.length > 0 || listed.obeya) && <ul className="fy-rows">{rows(c)}</ul>}
+              {has && !shut && (
+                <ul className="fy-rows" id={`nav-${c.id}`}>
+                  {rows(c)}
+                </ul>
+              )}
             </section>
           );
         })

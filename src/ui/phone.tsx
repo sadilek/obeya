@@ -6,10 +6,10 @@
 // what was typed but not sent survives a reload. It holds one WebSocket per canvas.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage, waitingOn } from '../core/types';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage } from '../core/types';
 import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
-import { ForYouRows, forYouOf, when } from './forYou';
+import { forYouOf, ForYouRows, forYouTotal, when } from './forYou';
 import { type ActDone, Detail, type Pending, TalkElsewhere, useEvents } from './detail';
 import { cardDraft, fieldOn, focusedDraft, keepDrafts, MIC_DRAFT, obeyaDraft } from './draft';
 import { KoordinatorTalk } from './koordinator';
@@ -607,6 +607,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   // the tasks nobody has started yet (stopped ones and those set to start at a time among them), but nothing the lists above show already
   const planned = all.filter(({ item }) => plannedLater(item) && !runs(item) && !isUnderway(item.id));
   // what the canvas's „Erledigte archivieren“ would take, but nothing the lists above show already
+  const waitsHere = forYouTotal(ordered, snaps, isUnderway);
   const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
   return (
     <HoldToTalk.Provider value={press}>
@@ -620,7 +621,14 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
         {banner}
         <Notify />
         <section className="ph-section">
-          <h2>{t.phone.forYou}</h2>
+          <h2>
+            {t.phone.forYou}
+            {waitsHere > 0 && (
+              <span className="waits" title={t.nav.waiting(waitsHere)}>
+                {waitsHere}
+              </span>
+            )}
+          </h2>
           <ForYou
             canvases={ordered}
             snaps={snaps}
@@ -703,7 +711,7 @@ function ForYou({
   onObeya: (canvas: string) => void;
 }) {
   if (!canvases.length) return null;
-  const waits = canvases.some((c) => waitingOn(snaps[c.id]!) > 0);
+  const waits = forYouTotal(canvases, snaps, underway) > 0;
   const rows = canvases.filter((c) => forYouOf(snaps[c.id]!, underway).cards.length || unreadAnswers(snaps[c.id]!.talk));
   return (
     <>
