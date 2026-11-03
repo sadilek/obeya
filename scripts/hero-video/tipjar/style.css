@@ -7,4 +7,4 @@ input[type='text'] { width: 100%; box-sizing: border-box; font: inherit; padding
 .tips legend { padding: 0; margin-bottom: 6px; }
 .tips label { margin: 0; }
 .result { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 24px 0 0; padding-top: 20px; border-top: 1px solid #eee4d4; }
-.result dd { margin: 0; font-weight: 600; text-align: right; }
+.result dd { margin: 0; text-align: right; }
