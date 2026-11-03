@@ -509,7 +509,7 @@ const de = {
   themeCard: {
     title: (repo: string) => `Demo-Seiten von ${repo} im Look des Projekts`,
     body: 'Schreib mit dem Skill `obeya:theme` ein `.obeya/theme.css` für die geteilten Demo-Seiten dieses Repositorys: die Farbvariablen für hell und dunkel, mit Kommentaren, was jede färbt und wo ein Logo hingehört, abgeleitet aus dem eigenen Look des Repositorys (die Farben im CSS seiner App, eine Logo-Datei), wo es einen hat. Deine Demo zeigt eine geteilte Demo-Seite und die Übersicht in den Farben des Projekts, hell und dunkel, neben Obeyas eigenem Look.',
-    reason: (repo: string) => `Die geteilten Demo-Seiten von ${repo} sehen aus wie Obeyas eigene; ein \`.obeya/theme.css\` gibt ihnen die Farben und das Logo des Projekts.`,
+    reason: (repo: string) => `Die geteilten Demo-Seiten von ${repo} sehen aus wie Obeyas eigene; ein .obeya/theme.css gibt ihnen die Farben und das Logo des Projekts.`,
   },
   /** The card that turns a doc in the plan directory that is not a project into one. */
   preparePlanDoc: {
@@ -982,7 +982,7 @@ const en: Messages = {
   themeCard: {
     title: (repo: string) => `Demo pages of ${repo} in the project's look`,
     body: "With the skill `obeya:theme`, write a `.obeya/theme.css` for this repository's shared demo pages: the colour variables for light and dark, with comments on what each one colours and where a logo goes, derived from the repository's own look (the colours in its app's CSS, a logo file) where it has one. Your demo shows a shared demo page and the overview in the project's colours, light and dark, beside Obeya's own look.",
-    reason: (repo: string) => `The shared demo pages of ${repo} look like Obeya's own; a \`.obeya/theme.css\` gives them the project's colours and logo.`,
+    reason: (repo: string) => `The shared demo pages of ${repo} look like Obeya's own; a .obeya/theme.css gives them the project's colours and logo.`,
   },
   preparePlanDoc: {
     title: (file: string) => `Prepare ${file.slice(file.lastIndexOf('/') + 1)} as a project`,
