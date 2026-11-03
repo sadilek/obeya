@@ -704,7 +704,7 @@ export function Detail(p: Props) {
             </button>
           )}
           {review ? prototypeActions || approveButton : (running || (halted && !item.archivedAt)) && prototypeActions}
-          <Later item={item} act={act} {...(review && item.contribution?.held && !item.contribution.held.asks.length ? { pushOnly: item.contribution.number } : {})} />
+          <Later item={item} act={act} />
           {running && (
             <button className="btn" title={t.stopHint} onClick={() => act({ action: 'stop' }, { close: true, ack: t.stopped })}>
               {t.stop}
@@ -733,20 +733,18 @@ const archivedOn = (i: Item) => i.archivedAt && <span className="p-status"> · {
 
 /**
  * „Später …“ in a card's action row, on any card the owner can snooze that is not snoozed yet (a
- * snoozed one changes its time on its line in the conversation). On a review card whose agent's own
- * changes wait for the approval (`pushOnly`, its PR's number), it also holds „Nur pushen“: the
- * changes go onto the PR now, the merge later.
+ * snoozed one changes its time on its line in the conversation).
  */
-function Later({ item, act, pushOnly }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; pushOnly?: number }) {
-  const extra = pushOnly !== undefined ? { label: t.review.pushOnly, hint: t.review.pushOnlyHint, onClick: () => void act({ action: 'pushChanges' }, { close: true, ack: t.review.pushed(pushOnly), pending: t.review.pushingHeld }) } : undefined;
-  if ((!snoozable(item) || item.snoozed) && !extra) return null;
-  return <SnoozeMenu label={t.snooze.button} onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })} {...(extra ? { extra } : {})} />;
+function Later({ item, act }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void> }) {
+  if (!snoozable(item) || item.snoozed) return null;
+  return <SnoozeMenu label={t.snooze.button} onSnooze={(until) => void act({ action: 'snooze', until }, { close: false })} />;
 }
 
 /**
  * Approving a review card: „Mergen (PR #5)“, or where its agent's own changes wait for the approval,
- * „Pushen und mergen“, and with requests to the contributor beside them „Pushen und an … schicken“,
- * which merges nothing and leaves the card waiting for them.
+ * „Pushen und mergen“ with „Nur pushen und kommentieren“ beside it (the merge later), and with
+ * requests to the contributor beside them „Pushen und an … schicken“, which merges nothing and
+ * leaves the card waiting for them.
  */
 function ApproveReview({ c, act }: { c: Contribution; act: (a: CardAction, done: ActDone) => Promise<void> }) {
   const go = (ack: string, pending: string) => act({ action: 'approve' }, { close: true, ack, pending });
@@ -758,9 +756,16 @@ function ApproveReview({ c, act }: { c: Contribution; act: (a: CardAction, done:
     );
   const label = c.held ? (c.clash ? t.review.pushMergeAnyway(c.number) : t.review.pushMerge(c.number)) : c.clash ? t.review.mergeAnyway(c.number) : t.review.merge(c.number);
   return (
-    <button className="btn primary" title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
-      {label}
-    </button>
+    <>
+      <button className="btn primary" title={c.clash ? t.review.mergeClashHint : c.held ? t.review.pushMergeHint : t.review.mergeHint} onClick={() => go(t.review.merged(c.number), c.held ? t.review.pushingHeld : t.review.merging)}>
+        {label}
+      </button>
+      {c.held && (
+        <button className="btn" title={t.review.pushOnlyHint} onClick={() => act({ action: 'pushChanges' }, { close: true, ack: t.review.pushed(c.number), pending: t.review.pushingHeld })}>
+          {t.review.pushOnly}
+        </button>
+      )}
+    </>
   );
 }
 

@@ -265,8 +265,9 @@ Follow-up tasks are made at once, as always: they are the owner's, not the contr
 
 The approve button names what it does:
 
-- own changes alone: „Pushen und mergen (PR #5)“; „Später …“ also holds „Nur pushen“, after which the
-  card waits with „Mergen (PR #5)“ again;
+- own changes alone: „Pushen und mergen (PR #5)“, and beside it „Nur pushen und kommentieren“ for
+  when the merge waits on something else (an answer of the contributor's, say), after which the card
+  waits with „Mergen (PR #5)“ again;
 - own changes and requests to the contributor: „Pushen und an amerlander schicken“, which merges
   nothing: the card then waits for the contributor as after any change request;
 - no own changes: as above.
@@ -458,8 +459,12 @@ A card no agent worked on, a prototype or an archived card has no field.
   to the contributor beside own changes go in the same text, so the contributor gets one message and
   does not work on a branch that is pushed to afterwards. Rejected: two approvals, one for the push
   and one for the merge (a round more where the owner merges after their own correction anyway;
-  „Nur pushen“ covers the other case); requests at once and own changes after the approval (two
+  „Nur pushen und kommentieren“ covers the other case); requests at once and own changes after the approval (two
   messages to the contributor, who may by then be working on the branch pushed to afterwards).
+- **„Nur pushen und kommentieren“ is a button of its own beside the approval** (2026-11-03, the
+  owner, waiting on a contributor's answer, looked for it in the action row and did not find it in
+  „Später …“, where it had been). Rejected: keeping it in „Später …“ (the clock names snoozing, not
+  a second way to approve).
 - **The findings are an element of the card, decided on one by one, the decisions going with the
   one Send** (2026-10-27, the owner after the first demo). Rejected: a switch below the field for
   where a change request goes (it read as if what is typed into the field went to the contributor or

@@ -70,7 +70,6 @@ export function SnoozeMenu({
   at,
   clear,
   mark = true,
-  extra,
 }: {
   label: string;
   onSnooze: (until: string) => void;
@@ -85,8 +84,6 @@ export function SnoozeMenu({
   clear?: { label: string; hint: string; onClear: () => void };
   /** The clock mark on the button; none where the line beside it has one. */
   mark?: boolean;
-  /** An action of the card's that puts something off as well, below the times (a review card's „Nur pushen“: the merge later). */
-  extra?: { label: string; hint: string; onClick: () => void };
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -152,19 +149,6 @@ export function SnoozeMenu({
               }}
             >
               {t.snooze.pick}
-            </button>
-          )}
-          {extra && (
-            <button
-              className="snooze-opt more"
-              role="menuitem"
-              title={extra.hint}
-              onClick={() => {
-                close();
-                extra.onClick();
-              }}
-            >
-              {extra.label}
             </button>
           )}
           {clear && (
