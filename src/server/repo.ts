@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync, watch } from 'node:fs'
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse } from 'node:path';
 import type { RepoAdapter, RepoInfo } from '../adapters/types';
-import { type OtherDoc, type PlanDoc, parsePlanDoc } from '../core/plan-doc';
+import { type OtherDoc, type PlanDoc, parsePlanDoc, type Workstream } from '../core/plan-doc';
 import { defaultBranch, gitOrNull } from './workspaces';
 
 export function repoInfo(path: string): RepoInfo {
@@ -112,6 +112,28 @@ export function readPlanDocs(repoPath: string, adapter: RepoAdapter): { docs: Pl
     else docs.push(doc);
   }
   return { docs, others };
+}
+
+/**
+ * Every workstream the plan doc at `path` in the repository at `repoPath` had in its last `max`
+ * commits, the newest first, each as the doc read when a commit left it; none where git has no
+ * history of it. A card whose workstream the doc no longer lists takes its title from here.
+ */
+export function planHistory(repoPath: string, path: string, max = 200): Workstream[] {
+  // with all of the doc as context, each commit's one hunk is the whole doc as the commit left it
+  const log = gitOrNull(repoPath, 'log', '-p', `--max-count=${max}`, '--unified=1000000', '--no-color', '--no-ext-diff', '--format=%x01', '--', path);
+  if (!log) return [];
+  return log.split('\x01').flatMap((commit) => {
+    const at = commit.search(/^@@.*$/m);
+    if (at < 0) return [];
+    const lines = commit
+      .slice(at)
+      .split('\n')
+      .slice(1)
+      .flatMap((l) => (l.startsWith('+') || l.startsWith(' ') ? [l.slice(1)] : []));
+    const doc = parsePlanDoc(path, `${lines.join('\n')}\n`);
+    return 'reason' in doc ? [] : doc.workstreams;
+  });
 }
 
 /**

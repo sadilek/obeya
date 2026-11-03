@@ -600,7 +600,8 @@ for (const [i, c] of stage.cards.entries()) {
   else if (c.workstream) {
     const [doc, label] = c.workstream.includes('#') ? c.workstream.split('#') : [undefined, c.workstream];
     const projects = new Set(snapshot.items.filter((x) => x.kind === 'project' && (!doc || x.plan?.file === doc)).map((x) => x.id));
-    id = snapshot.items.find((x) => x.label === label && x.parent && projects.has(x.parent))?.id;
+    // code before short codes were labels (`4A Title`, --code) has the code at the start of the title
+    id = snapshot.items.find((x) => (x.label ?? x.title.split(' ')[0]) === label && x.parent && projects.has(x.parent))?.id;
   } else {
     if (c.from && !ids[c.from]) fail(`card ${c.key ?? i}: "from" names ${c.from}, which comes later or does not exist`);
     // without a place: in rows of four below the plan docs (a follow-up goes below its card)

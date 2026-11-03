@@ -15,7 +15,7 @@ import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { holdsNotes } from '../core/queue';
-import { BadRequest, Board, pathOfRef, replyNote, type StoredContribution } from './board';
+import { BadRequest, Board, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -31,7 +31,7 @@ import { PrWatcher } from './pr-watcher';
 import { branchCommit, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
 import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
-import { ghHosts, onGitHub, outsidePlanDir, readPlanDocs, watchPlanDocs } from './repo';
+import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
 import { boundsOf, GAP, type Place, planDirNoteBox, unionBounds } from '../core/layout';
 import { type AgentRuntime, idleRuntime, withAgentSetting, withLimitWait, withRepoTrust } from './runtime';
 import { type TagCard, tagCards } from './tag-proposal';
@@ -294,6 +294,12 @@ export class CanvasRuntime {
       repoLanguage: (repo) => (this.repos.find((r) => r.ref.id === repo) ?? this.repos[0]!).adapter.language,
     });
     board.showSettings(this.settingsNow);
+    board.readPlanHistory((ref) => {
+      const repo = this.repos.find((r) => r.ref.id === repoOfRef(ref, board.home));
+      const path = pathOfRef(ref);
+      // a plan folder outside the repository has no history in git
+      return repo && !outsidePlanDir(path) ? planHistory(repo.read.path, path) : [];
+    });
     // the Koordinator needs the workers, and the workers ask it: it is set right after them
     repos.forEach((x, i) => {
       try {

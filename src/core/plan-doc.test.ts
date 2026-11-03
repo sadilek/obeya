@@ -44,7 +44,7 @@ describe('parsePlanDoc', () => {
   });
 
   test('takes top-level checklist items of the workstreams section only', () => {
-    expect(p.workstreams.map((w) => w.key)).toEqual(['W1', 'W2', 'W3', 'W4', 'WP', '#6', 'W4~2']);
+    expect(p.workstreams.map((w) => w.key)).toEqual(['W1', 'W2', 'W3', 'W4~migrate-the-readers', 'WP', 'unlabelled-item', 'W4~duplicate-label']);
   });
 
   test('splits label, title and body', () => {
@@ -80,6 +80,38 @@ describe('parsePlanDoc', () => {
       ['[#12](https://example.com/pull/12). Description of the workstream as before', 'More details.'],
       ['#12. Description of the workstream as before', 'More details.'],
     ]);
+  });
+
+  test('short codes before the title are labels too, and key their workstream', () => {
+    const items = ['**S1: Foundation.** Blocked by nothing.', '**A1 — Login.** Rest', '**1G.** Testlücken schließen. Rest', '**2FA einführen.** Rest', '**3D-Ansicht.** Rest', '**K8s Cluster aufsetzen.** Rest'];
+    const ws = items.map((i) => (parsePlanDoc('a.md', `# A\n\n## Workstreams\n\n- [ ] ${i}\n`) as PlanDoc).workstreams[0]!);
+    expect(ws.map((w) => [w.key, w.label, w.title])).toEqual([
+      ['S1', 'S1', 'Foundation'],
+      ['A1', 'A1', 'Login'],
+      ['1G', '1G', 'Testlücken schließen'],
+      ['2fa-einfuhren', undefined, '2FA einführen'],
+      ['3d-ansicht', undefined, '3D-Ansicht'],
+      ['k8s-cluster-aufsetzen', undefined, 'K8s Cluster aufsetzen'],
+    ]);
+  });
+
+  test('a code before a space is a label where the doc’s items use codes', () => {
+    const doc = (items: string[]) => (parsePlanDoc('a.md', `# A\n\n## Workstreams\n\n${items.map((i) => `- [ ] ${i}`).join('\n')}\n`) as PlanDoc).workstreams;
+    expect(doc(['**4A Sitzungen und Mandantensperre.** Mittel 157.', '**3B Auth zusammenführen.** Rest']).map((w) => [w.key, w.title])).toEqual([
+      ['4A', 'Sitzungen und Mandantensperre'],
+      ['3B', 'Auth zusammenführen'],
+    ]);
+    // the same code twice: told apart by title, so a reorder keeps each card with its own
+    expect(doc(['**S3 Upload.** Rest', '**S3 Download.** Rest']).map((w) => w.key)).toEqual(['S3~upload', 'S3~download']);
+    expect(doc(['**S3 Download.** Rest', '**S3 Upload.** Rest']).map((w) => w.key)).toEqual(['S3~download', 'S3~upload']);
+  });
+
+  test('an unlabelled workstream is keyed by its title, wherever it stands and whatever pull request a worker puts before it', () => {
+    const keys = (items: string[]) => (parsePlanDoc('a.md', `# A\n\n## Workstreams\n\n${items.map((i) => `- [ ] ${i}`).join('\n')}\n`) as PlanDoc).workstreams.map((w) => w.key);
+    expect(keys(['Ship the thing. Details', 'Größe prüfen'])).toEqual(['ship-the-thing', 'grosse-prufen']);
+    expect(keys(['New one', '#12. Ship the thing. Details', 'Ship the thing'])).toEqual(['new-one', 'ship-the-thing', 'ship-the-thing~2']);
+    expect(keys(['…'])).toEqual(['#1']);
+    expect(keys(['Вход в систему', '登录', 'Søk'])).toEqual(['вход-в-систему', '登录', 'søk']);
   });
 
   test('German section names', () => {
