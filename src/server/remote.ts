@@ -62,10 +62,13 @@ export function machineAddresses(): string[] {
   return [...all.filter((a) => a!.family === 'IPv4'), ...all.filter((a) => a!.family === 'IPv6')].map((a) => a!.address);
 }
 
-/** Where a remote request reached Obeya, as the device's browser has it: behind `tailscale serve`, from the headers it forwards. */
-function originOf(req: Request): string | null {
-  const proto = req.headers.get('x-forwarded-proto') ?? new URL(req.url).protocol.slice(0, -1);
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+/**
+ * Where a remote request reached Obeya, as the device's browser has it: behind `tailscale serve`
+ * (from loopback), from the headers it forwards; on the other address, as it came.
+ */
+function originOf(req: Request, proxied: boolean): string | null {
+  const proto = (proxied && req.headers.get('x-forwarded-proto')) || new URL(req.url).protocol.slice(0, -1);
+  const host = (proxied && req.headers.get('x-forwarded-host')) || req.headers.get('host');
   if (!host) return null;
   try {
     return new URL(`${proto}://${host}`).origin;
@@ -240,7 +243,8 @@ export class Access implements Gate {
     const s = this.setting;
     if (s?.via === 'tailscale' && this.served && this.ts.state === 'ready' && this.served.name === this.ts.name && !this.problem)
       return `https://${this.served.name}${this.served.https === 443 ? '' : `:${this.served.https}`}`;
-    if (s?.via === 'address' && this.listening === s.address) return `http://${inUrl(s.address)}:${this.port}`;
+    // as a browser's origin has it, port 80 left out, for comparing with the address a device's app keeps
+    if (s?.via === 'address' && this.listening === s.address) return new URL(`http://${inUrl(s.address)}:${this.port}`).origin;
     return null;
   }
 
@@ -304,8 +308,9 @@ export class Access implements Gate {
     const device = this.device(req);
     if (device) {
       this.from.set(req, device.id);
-      // the app on the device's home screen says so as it connects (`?app`): the address it keeps
-      if (new URL(req.url).searchParams.has('app')) this.appAt(device, originOf(req));
+      // the app on the device's home screen says so as its WebSocket connects (`?app`): the address it keeps
+      if (req.headers.get('upgrade')?.toLowerCase() === 'websocket' && new URL(req.url).searchParams.has('app'))
+        this.appAt(device, originOf(req, LOOPBACK.has(server.requestIP(req)?.address ?? '')));
       if (route.startsWith('/api/access') && !(route === '/api/access' && req.method === 'GET'))
         return Response.json({ code: 'onlyHere', error: 'only on the machine Obeya runs on' }, { status: 403 });
       return null;
@@ -370,9 +375,11 @@ export class Access implements Gate {
   // ------------------------------------------------------------ pairing
 
   private livePairing(): Pairing | null {
-    const p = this.pairing;
     const address = this.address();
-    if (!p || !address || p.address !== address || p.expires <= this.now()) return null;
+    // a code made at another address is gone, also once Obeya is back at the one it was made at
+    if (this.pairing && this.pairing.address !== address) this.pairing = null;
+    const p = this.pairing;
+    if (!p || !address || p.expires <= this.now()) return null;
     return { code: p.code, url: `${address}/pair?code=${p.code}`, expires: new Date(p.expires).toISOString(), ...(p.paired ? { paired: p.paired } : {}), ...(p.replaced ? { replaced: p.replaced } : {}) };
   }
 
@@ -388,8 +395,9 @@ export class Access implements Gate {
   /** Pairs the device that brings the current code; its cookie, or `null` for a wrong or expired code. */
   /** `counts`: a wrong code spends one of the tries; one another site sent the browser here with spends none. */
   redeem(code: string, userAgent: string, counts = true): { token: string; device: DeviceView } | null {
+    if (this.pairing && this.pairing.address !== this.address()) this.pairing = null;
     const p = this.pairing;
-    if (!p || p.paired || p.address !== this.address() || p.expires <= this.now()) return null;
+    if (!p || p.paired || p.expires <= this.now()) return null;
     if (code.replace(/\D/g, '') !== p.code) {
       // guessing gets five tries at a code, then it is spent
       if (counts && ++p.tries >= PAIRING_TRIES) this.pairing = null;

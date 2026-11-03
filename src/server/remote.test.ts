@@ -283,6 +283,8 @@ describe('pairing', () => {
     const at = (name: string) => ({ host: name, 'x-forwarded-for': '100.64.0.7', 'x-forwarded-host': name, 'x-forwarded-proto': 'https', origin: `https://${name}` });
     // in the browser the device keeps no address; its app on the home screen says so as it connects
     (await opens({ ...at(NAME), cookie }))!.close();
+    // a page another site sends the browser to says nothing of the app
+    expect((await viaTailnet('/?app', { cookie, 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' })).status).toBe(200);
     expect((await view()).devices[0]!.app).toBeUndefined();
     (await opens({ ...at(NAME), cookie }, '/api/c/main/ws?app'))!.close();
     let v = await view();
