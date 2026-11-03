@@ -153,6 +153,8 @@ export function ConfigDialog({ on, page, onClose, onSetup, onAsk, onTalk, onProb
   const unpinned = useRef<CanvasConfig[] | null>(null);
   // counts the drafts loaded anew (reset, read again): a canvas of the one before is not one of this one
   const [loads, setLoads] = useState(0);
+  // what was taken over for everyone shows until the dialog closes
+  useEffect(() => () => sharedDone.clear(), []);
   const load = (v: ConfigView, c: Checked | null) => {
     setLoads((n) => n + 1);
     filled.current.clear();
@@ -2340,6 +2342,9 @@ function sharedPreview(repo: RepoConfig, values: RepoValues): Record<string, unk
   return Object.fromEntries(SHARED_FIELDS.filter((k) => merged[k] !== undefined).map((k) => [k, merged[k]]));
 }
 
+/** What „Für alle ins Repository übernehmen“ did, by repository, while the dialog is open: the reload after it mounts the settings afresh. */
+const sharedDone = new Map<string, SettingsShared>();
+
 /**
  * „Für alle ins Repository übernehmen“ under a repository's settings: this machine's values (but
  * the main branch) go into its `.obeya/settings.json`, so that everyone who clones it gets them.
@@ -2350,7 +2355,7 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
   const c = t.config.settings.share;
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<SettingsShared | null>(null);
+  const [done, setDone] = useState<SettingsShared | null>(() => sharedDone.get(repo.path) ?? null);
   const [error, setError] = useState('');
   const { branch: _, ...mine } = repo.settings ?? {};
   const count = Object.keys(mine).length + (mine.demo ? Object.keys(mine.demo).length - 1 : 0);
@@ -2364,7 +2369,10 @@ function ShareSettings({ repo, values, branch, shareTo, shareDirect, takeover }:
       const r = await api.shareSettings(repo.path, direct);
       setDone(r);
       setConfirming(false);
-      if (!('pr' in r)) await onReload();
+      if (!('pr' in r)) {
+        sharedDone.set(repo.path, r);
+        await onReload();
+      }
     } catch (e) {
       setError(failText(e, { detail: ['settingsShare'] }));
     }
