@@ -389,7 +389,9 @@ async function serve(spec: ServeSpec) {
     if (ending) return;
     ending = true;
     clearInterval(watch);
-    await Promise.race([browser.close().catch(() => {}), sleep(10_000)]);
+    // On a busy machine Chrome's orderly shutdown takes many seconds; its profile is temporary, so
+    // after a short grace exiting is enough: Playwright then kills its process tree and removes it.
+    await Promise.race([browser.close().catch(() => {}), sleep(2000)]);
     if (readState(spec.state)?.pid === process.pid) {
       fs.rmSync(spec.state, { force: true });
       fs.rmSync(logFile(spec.state), { force: true });

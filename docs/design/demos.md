@@ -524,7 +524,9 @@ of the owner's earlier private skill `chrome-headless`, so workers' habits carri
 Code session has its own browser, muted and with the silent `speechSynthesis` (see The demo skill),
 keyed by the session's process (`CLAUDE_PID`); the silencing must be in place before a page's first
 script, in every out-of-process frame and every later document. The browser closes when the session
-ends, at `stop` (through CDP, since on Windows killing its holder leaves it behind) or on a signal.
+ends, at `stop` (through CDP, since on Windows killing its holder leaves it behind) or on a signal,
+within a few seconds: on a busy machine Chrome's orderly shutdown takes ten seconds and more, so
+after a short grace its holder kills its process tree and removes its temporary profile.
 Without `CLAUDE_PID` (a terminal) there is one browser per user. `--fake-mic` plays a WAV as the
 microphone.
 

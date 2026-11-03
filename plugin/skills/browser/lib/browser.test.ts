@@ -53,10 +53,11 @@ const answers = (port: number) =>
     () => false,
   );
 
-/** The command line of the browser the process `holder` launched (POSIX `ps`; chrome://version is empty in Playwright's headless shell). */
-function browserCommand(holder: number): string {
-  const ps = Bun.spawnSync(['ps', '-A', '-o', 'ppid=,args=']).stdout.toString();
-  return ps.split('\n').find((line) => line.trim().startsWith(`${holder} `) && line.includes('--remote-debugging-port')) ?? '';
+/** The pid and command line of the browser the process `holder` launched (POSIX `ps`; chrome://version is empty in Playwright's headless shell). */
+function browserProcess(holder: number): { pid: number; command: string } {
+  const ps = Bun.spawnSync(['ps', '-A', '-o', 'pid=,ppid=,args=']).stdout.toString();
+  const [pid, , ...command] = ps.split('\n').find((line) => line.trim().split(/\s+/)[1] === String(holder) && line.includes('--remote-debugging-port'))?.trim().split(/\s+/) ?? [];
+  return { pid: Number(pid), command: command.join(' ') };
 }
 
 /** A mono 16-bit WAV of a 440 Hz tone. */
@@ -87,7 +88,7 @@ describe('browser skill', () => {
     const pid = session();
     expect(await browser(pid, 'start', '--window-size', '1000,700')).toContain('muted');
     const { port, pid: holder } = readState(pid);
-    expect(browserCommand(holder)).toContain('--mute-audio');
+    expect(browserProcess(holder).command).toContain('--mute-audio');
     // start again in the same session: the same browser
     expect(await browser(pid, 'start')).toContain(`Already running on CDP port ${port}`);
 
@@ -107,6 +108,23 @@ describe('browser skill', () => {
     expect(await answers(port)).toBe(false);
     expect(existsSync(state(pid))).toBe(false);
     expect(existsSync(state(pid).replace('.json', '.log'))).toBe(false);
+  }, 30_000);
+
+  // a frozen browser stands in for one whose orderly shutdown drags on, as on a busy machine
+  test.skipIf(process.platform === 'win32')('a browser that does not close when the session ends is killed within seconds, its profile with it', async () => {
+    const pid = session();
+    await browser(pid, 'start');
+    const { pid: holder } = readState(pid);
+    const { pid: chrome, command } = browserProcess(holder);
+    const profile = command.match(/--user-data-dir=(\S+)/)![1]!;
+    expect(existsSync(profile)).toBe(true);
+    process.kill(chrome, 'SIGSTOP');
+    sessions[0]!.kill();
+    // the session's end is seen within a second, then the browser has two to close
+    await until(() => !alive(holder), 6000);
+    expect(alive(chrome)).toBe(false);
+    expect(existsSync(profile)).toBe(false);
+    expect(existsSync(state(pid))).toBe(false);
   }, 30_000);
 
   test('two sessions never share a browser; stop closes only its own', async () => {
