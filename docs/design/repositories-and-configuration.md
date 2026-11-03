@@ -107,7 +107,10 @@ items with the same label are told apart by their titles; two with the same titl
 order. Titles in any script count (`Вход`, `登录`); only an item whose title has no letter or digit
 is known by its place. Where dropping or adding a sibling changes how an item reads (a code before a
 space left alone in the doc is a title again; a label the doc no longer gives twice needs no title
-after it), its card follows it onto its new key.
+after it), its card follows it onto its new key: where it is known what the workstream was (the doc
+as last read, or what the card remembered of it), by its label and title together, since a label
+alone may be another item's now. A card nobody worked on that holds such a key gives way to the card
+with the workstream's log.
 
 A card whose workstream the doc no longer lists, while the doc is there, leaves the project once an
 agent worked on it: as a task of its own, with its log, under the workstream's label and title and

@@ -2423,20 +2423,27 @@ export class Board {
       const doc = byFile.get(p.plan_ref!)!;
       const kids = kidsOf.get(p.id) ?? [];
       const keys = new Set(doc.workstreams.map((w) => w.key));
-      const claimed = new Set(kids.flatMap((k) => (keys.has(keyOfRef(k.plan_ref) ?? '') ? [keyOfRef(k.plan_ref)!] : [])));
+      const holderOf = new Map(kids.flatMap((k) => (keys.has(keyOfRef(k.plan_ref) ?? '') ? [[keyOfRef(k.plan_ref)!, k] as const] : [])));
       for (const k of kids) {
         const key = keyOfRef(k.plan_ref);
         if (key === null || keys.has(key)) continue;
-        const w = sameWorkstream(key, doc, last(p), claimed);
-        if (w) {
+        // what the workstream was: in the doc as last read, else as the card remembered it
+        const known = last(p)?.workstreams.find((x) => x.key === key);
+        const w = sameWorkstream(key, doc, known ?? (k.title ? { title: k.title } : undefined));
+        const holder = w && holderOf.get(w.key);
+        // a card nobody worked on gives way to the one with the workstream's log
+        if (w && (!holder || (!worked(holder) && worked(k)))) {
+          if (holder) {
+            this.store.replan(holder.id, `${p.plan_ref}#\u0000${holder.id}`, p.id);
+            this.store.update(holder.id, { deleted_at: new Date().toISOString() });
+          }
           this.store.replan(k.id, `${doc.file}#${w.key}`, p.id);
-          claimed.add(w.key);
+          holderOf.set(w.key, k);
+          this.missing.delete(k.id);
           continue;
         }
         if (!worked(k)) continue;
-        // what the workstream was, while the doc as last read still has it
-        const was = last(p)?.workstreams.find((x) => x.key === key);
-        if (was) this.remember(k, was);
+        if (known) this.remember(k, known);
         const since = this.missing.get(k.id) ?? now;
         // a stopped card gives its workspace back first, as a workstream no longer in the doc does (`leaseEnded`);
         // a doc written in place may lack an item only while it is being edited
@@ -2509,8 +2516,9 @@ export class Board {
       }
       for (const k of leaving) {
         const w = this.identity(k, doc.file, before, true);
-        if (atWork(k) || !k.workspace) this.leave(k, project, w, this.t.idea.leftOther(doc.title));
-        // a stopped card gives its workspace back first, then leaves (`follow`), with what it remembers
+        if ((atWork(k) || !k.workspace) && !outsideRef(doc.file)) this.leave(k, project, w, this.t.idea.leftOther(doc.title));
+        // a stopped card gives its workspace back first, and a doc outside the repository may lack an item
+        // only for a moment: it leaves later (`follow`), with what it remembers
         else {
           this.store.replan(k.id, `${project.plan_ref}#~${k.id.slice(0, 6)}`, project.id);
           this.remember(k, w);
@@ -2562,7 +2570,9 @@ export class Board {
   private startedAs(row: CardRow): string | null {
     const short = row.id.slice(0, 6);
     const at = new RegExp(`${CARD_BRANCH}([a-z0-9-]+)-${short}`);
-    return at.exec(row.branch ?? '')?.[1] ?? at.exec(this.store.branchMention(row.id) ?? '')?.[1] ?? null;
+    const slug = at.exec(row.branch ?? '')?.[1] ?? at.exec(this.store.branchMention(row.id) ?? '')?.[1] ?? null;
+    // a title without a Latin letter or digit names its branch `card`, which tells no workstream apart
+    return slug === 'card' ? null : slug;
   }
 
   /**
@@ -2878,16 +2888,14 @@ export const LEAVE_AFTER_MS = 5 * 60_000;
 const outsideRef = (ref: string) => OUTSIDE_PATH.test(pathOfRef(ref));
 
 /**
- * The doc's workstream, among those no card has (`claimed`), that a card keyed `key` had under
- * another key: the doc dropped or added a sibling, which changes whether a code is read as a label or
- * a label needs its title. Several such: the one the doc as last read (`before`) had under `key`.
+ * The doc's workstream that a card keyed `key` had under another key: the doc dropped or added a
+ * sibling, which changes whether a code is read as a label or a label needs its title. Where it is
+ * known what the workstream was (`was`), the one with its label and title (a label alone may be
+ * another's now); else the only one that would have had `key`.
  */
-function sameWorkstream(key: string, doc: PlanDoc, before: PlanDoc | null, claimed: Set<string>): Workstream | undefined {
-  const free = doc.workstreams.filter((w) => !claimed.has(w.key) && workstreamAliases(w).includes(key));
-  if (free.length < 2) return free[0];
-  const was = before?.workstreams.find((w) => w.key === key);
-  const its = was ? workstreamAliases(was).filter((k) => k !== key) : [];
-  const same = free.filter((w) => workstreamAliases(w).some((k) => its.includes(k)));
+function sameWorkstream(key: string, doc: PlanDoc, was?: Pick<Workstream, 'label' | 'title'>): Workstream | undefined {
+  const its = was ? workstreamAliases(was, true) : [];
+  const same = doc.workstreams.filter((w) => (was ? workstreamAliases(w).some((k) => its.includes(k)) : workstreamAliases(w).includes(key)));
   return same.length === 1 ? same[0] : undefined;
 }
 

@@ -225,11 +225,12 @@ const SPACED_TITLE = new RegExp(String.raw`^(${CODE})\s+(.*)$`);
  * differ: with or without its code read as a label (`4A Title` alone in a doc is a title), and with
  * or without its title after a label the doc gives twice (`W1~upload`).
  */
-export function workstreamAliases(w: Pick<Workstream, 'label' | 'title'>): string[] {
+export function workstreamAliases(w: Pick<Workstream, 'label' | 'title'>, titled = false): string[] {
   const spaced = w.label ? null : SPACED_TITLE.exec(w.title);
   const label = w.label ?? spaced?.[1];
   const title = w.label ? w.title : spaced?.[2];
-  const keys = [titleKey(w.label ? `${w.label} ${w.title}` : w.title), ...(label ? [label, `${label}~${titleKey(title!)}`] : [])];
+  // `titled`: only the keys that name the title too, which a label alone does not
+  const keys = [titleKey(w.label ? `${w.label} ${w.title}` : w.title), ...(label ? [...(titled ? [] : [label]), `${label}~${titleKey(title!)}`] : [])];
   return [...new Set(keys.filter((k) => k && !k.endsWith('~')))];
 }
 

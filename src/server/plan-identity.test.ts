@@ -8,7 +8,7 @@ import { Board, LEAVE_AFTER_MS } from './board';
 import { Store } from './db';
 import { planHistory } from './repo';
 import { gitRepo } from './testing';
-import { git } from './workspaces';
+import { branchName, git } from './workspaces';
 
 const FILE = 'docs/plan/audit.md';
 const md = (items: string[]) => `# Audit\n\n## Goal\n\nFix the findings.\n\n## Workstreams\n\n${items.map((i) => `- ${i}`).join('\n')}\n`;
@@ -39,7 +39,7 @@ const read = (d: PlanDoc) => {
 };
 /** An agent worked on the card while it showed `title`: its branch is named after it. */
 const work = (id: string, title: string, fields: Parameters<Store['update']>[1] = {}) => {
-  const branch = `obeya/${title.toLowerCase().replace(/ü/g, 'u').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, '-')}-${id.slice(0, 6)}`;
+  const branch = branchName(title, id);
   store.update(id, { session_id: 's', ...fields });
   board.log(id, 'state', 'obeya', `Agent gestartet auf ${branch}.`);
   board.docsChanged();
@@ -118,6 +118,35 @@ describe('a sibling dropped or added changes no card’s workstream', () => {
   });
 });
 
+describe('a card follows its own workstream, not one that would have had its key', () => {
+  test('a hidden card of a dropped workstream gives way to the card with the log', () => {
+    const [up, down] = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+    read(parse(['[ ] **W1:** Download. y']));
+    // the doc rewords the one left, and an agent works on it
+    expect(read(parse(['[ ] **W1:** Upload. x'])).map((k) => k.id)).toEqual([down!.id]);
+    work(down!.id, 'W1 Upload', { state: 'planned' });
+    const after = read(parse(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y']));
+    expect(after.map((k) => [k.title, k.id === down!.id])).toEqual([
+      ['Upload', true],
+      ['Download', false],
+    ]);
+    expect(after.some((k) => k.id === up!.id)).toBe(false);
+  });
+
+  test('cards of titles without a Latin letter keep their places through the repair', () => {
+    const was = parse(['[ ] **登录.** a', '[ ] **退出.** b']);
+    docs = [positional(was)];
+    const [a, b] = kids();
+    work(a!.id, '登录', { state: 'working' });
+    work(b!.id, '退出', { state: 'done' });
+    const after = read(was);
+    expect(after.map((k) => [k.title, k.id, k.state])).toEqual([
+      ['登录', a!.id, 'working'],
+      ['退出', b!.id, 'done'],
+    ]);
+  });
+});
+
 describe('a doc in a plan folder outside the repository', () => {
   const OUT = '/plans/audit.md';
   const outside = (items: string[]) => parsePlanDoc(OUT, md(items)) as PlanDoc;
@@ -154,6 +183,25 @@ describe('a doc in a plan folder outside the repository', () => {
     store.update(b!.id, { workspace: null });
     board.changed();
     expect(board.snapshot().items.find((i) => i.id === b!.id)).toMatchObject({ title: '3B Auth zusammenführen', body: 'One auth service.', state: 'planned', source: 'manual' });
+  });
+
+  test('a workstream back under another key finds its waiting card by what the card remembered', () => {
+    const [u] = read(outside(['[ ] **W1:** Upload. x', '[ ] **W2:** Other. z']));
+    work(u!.id, 'W1 Upload', { state: 'planned' });
+    read(outside(['[ ] **W2:** Other. z']));
+    const after = read(outside(['[ ] **W1:** Upload. x', '[ ] **W1:** Download. y', '[ ] **W2:** Other. z']));
+    expect(after.find((k) => k.title === 'Upload')!.id).toBe(u!.id);
+  });
+
+  test('the repair lets a card whose workstream is away for a moment wait too', () => {
+    const was = outside(OLD);
+    docs = [positional(was)];
+    const [g] = kids();
+    work(g!.id, '1G Testlücken schließen', { state: 'planned' });
+    read(outside(OLD.slice(1)));
+    expect(board.archived()).toEqual([]);
+    expect(board.snapshot().items.some((i) => i.id === g!.id)).toBe(false);
+    expect(read(outside(OLD)).find((k) => k.label === '1G')!.id).toBe(g!.id);
   });
 
   test('the repair finds a reworded labelled title by the doc as last kept, without git', () => {
