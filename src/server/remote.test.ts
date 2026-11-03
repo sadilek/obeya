@@ -295,25 +295,24 @@ describe('pairing', () => {
     const RENAMED = 'studio.tail1234.ts.net';
     tailscaleStatus(ts, { state: 'Running', name: RENAMED, https: true });
     v = await view();
-    // (the entry under the old name still holds 443, so the new one is served at 8443)
-    expect(v.address).toBe(`https://${RENAMED}:8443`);
+    // (Obeya moves its entry to the new name with its port, so the address differs in the name alone)
+    expect(v.address).toBe(`https://${RENAMED}`);
     expect(v.devices[0]!.app).toBe(`https://${NAME}`);
     // the code the phone paired with at the old address no longer says it is connected
     expect(v.pairing).toBeNull();
-    const there = (name: string) => ({ ...at(name), host: `${name}:8443`, 'x-forwarded-host': `${name}:8443`, origin: `https://${name}:8443` });
 
     // its browser has no cookie for the new name: it pairs anew, and that entry replaces the old one
     const p = await pairing();
-    expect(p.url).toBe(`https://${RENAMED}:8443/pair?code=${p.code}`);
-    const again = await viaTailnet(`/pair?code=${p.code}`, there(RENAMED));
+    expect(p.url).toBe(`https://${RENAMED}/pair?code=${p.code}`);
+    const again = await viaTailnet(`/pair?code=${p.code}`, at(RENAMED));
     expect(again.status).toBe(303);
     v = await view();
     expect(v.devices.map((d) => [d.name, d.app])).toEqual([['iPhone · Safari', undefined]]);
     expect(v.pairing?.replaced).toBe(`https://${NAME}`);
-    (await opens({ ...there(RENAMED), cookie: cookieOf(again) }, '/api/c/main/ws?app'))!.close();
-    expect((await view()).devices[0]!.app).toBe(`https://${RENAMED}:8443`);
+    (await opens({ ...at(RENAMED), cookie: cookieOf(again) }, '/api/c/main/ws?app'))!.close();
+    expect((await view()).devices[0]!.app).toBe(`https://${RENAMED}`);
     // a phone that only shares the name, its app at the current address, is left alone
-    const other = await viaTailnet(`/pair?code=${(await pairing()).code}`, there(RENAMED));
+    const other = await viaTailnet(`/pair?code=${(await pairing()).code}`, at(RENAMED));
     v = await view();
     expect(v.devices).toHaveLength(2);
     expect(v.pairing?.replaced).toBeUndefined();
