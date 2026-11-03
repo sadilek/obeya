@@ -92,6 +92,9 @@ describe('a repository’s theme', () => {
       // a value put in where the page is drawn, and a stylesheet in a data: URL
       `k { --x: "/outside.png"; background: image-set(var(--x, "/outside.png") 1x); }`,
       `@import "data:text/css,l%7Bbackground:url(https://x.example/l.png)%7D";`,
+      // a fallback holding a block, and a string in another function inside a reference
+      `m { background: image-set(var(--x, {)}) "/outside.png"); }`,
+      `n { background: image-set(random-item(1, "/outside.png") type("image/png") 1x); }`,
       // the `#` part of a file that goes in, ending its string early
       String.raw`h { background: url("logo.svg#\22 ) url(https://x.example/h.png) \22"); }`,
     ].join('\n');
@@ -107,6 +110,8 @@ describe('a repository’s theme', () => {
     // none of them a reference any more: no `url(` with it, no `image-set()` taking it
     expect(css).not.toMatch(/url\(\s*["']?\/outside/);
     expect(css).toContain('image-set("" 1x)');
+    expect(css).toContain('random-item(1, "") type("image/png") 1x');
+    expect(css).toContain('m { background: image-set("" ""); }');
     expect(css).toContain(' rl("/outside.png") {}');
     // a character beyond the basic plane in the `#` part
     expect(themeOf(gitRepo(join(root, 'astral'), { '.obeya/theme.css': 'a { background: url("logo.svg#😀"); }', '.obeya/logo.svg': LOGO }))!.css).toContain('#%F0%9F%98%80');

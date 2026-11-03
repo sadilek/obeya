@@ -121,6 +121,9 @@ const HELD = /^(?:data:|#)/i;
 /** The functions whose strings name an image to load (CSS Images 4), beside `url()` and `src()`. */
 const IMAGE_FUNCTIONS = new Set(['image-set', '-webkit-image-set', 'image']);
 
+/** Functions in a reference whose strings describe the file rather than name one (`type("image/avif")`). */
+const DESCRIBING = new Set(['type', 'format', 'tech']);
+
 /** Functions whose value is put in only where the page is drawn (a custom property's, an attribute's): in a reference, it could name anything. */
 const SUBSTITUTED = (fn: string) => fn.startsWith('--') || ['var', 'env', 'attr', 'if', 'inherit'].includes(fn);
 
@@ -136,7 +139,7 @@ const SUBSTITUTED = (fn: string) => fn.startsWith('--') || ['var', 'env', 'attr'
 function strictStyleData(css: string, at: Inlining, from: string, outer: string[]): string {
   const out: string[] = [];
   const n = css.length;
-  // the functions open around the token read (`''` for a plain parenthesis)
+  // the functions open around the token read (`''` for a plain parenthesis, `[` and `{` for a block in one)
   const open: string[] = [];
   // how deep in blocks the token read is: an `@import` counts at the top alone
   let depth = 0;
@@ -176,7 +179,7 @@ function strictStyleData(css: string, at: Inlining, from: string, outer: string[
       if (importing && !importing.ref && !open.length) {
         const url = ref(value);
         out.push(url ? `url(${url})` : css.slice(i, j));
-      } else if (fn === 'url' || fn === 'src' || (fn !== undefined && IMAGE_FUNCTIONS.has(fn))) {
+      } else if (fn !== undefined && !DESCRIBING.has(fn) && inReference()) {
         const url = ref(value);
         out.push(url === null ? css.slice(i, j) : `"${url}"`);
       } else out.push(css.slice(i, j));
@@ -233,9 +236,13 @@ function strictStyleData(css: string, at: Inlining, from: string, outer: string[
       i = j + 1;
       continue;
     }
+    const top = open.at(-1);
     if (c === '(') open.push('');
-    else if (c === ')') open.pop();
-    else if (importing && !open.length && (c === ';' || c === '{' || c === '}')) {
+    else if ((c === '[' || c === '{') && open.length) open.push(c);
+    // a closing character ends what it closes alone; another stays a character in it
+    else if (c === ')' || ((c === ']' || c === '}') && open.length)) {
+      if (top !== undefined && CLOSES[c] === (top === '[' || top === '{' ? top : '(')) open.pop();
+    } else if (importing && !open.length && (c === ';' || c === '{' || c === '}')) {
       if (importing.drop) {
         dropImport();
         i++;
@@ -257,9 +264,13 @@ function strictStyleData(css: string, at: Inlining, from: string, outer: string[
   return out.join('');
 }
 
-/** Where the function whose arguments start at `i` ends: after its parenthesis, what is nested in it, strings and comments skipped. */
+/**
+ * Where the function whose arguments start at `i` ends: after its parenthesis, what is nested in it
+ * (parentheses, brackets, braces: a fallback may hold a block), strings and comments skipped.
+ */
 function closing(css: string, i: number): number {
-  for (let depth = 1, j = i; j < css.length; ) {
+  const open = ['('];
+  for (let j = i; j < css.length; ) {
     const c = css[j]!;
     if (css.startsWith('/*', j)) {
       const end = css.indexOf('*/', j + 2);
@@ -267,13 +278,19 @@ function closing(css: string, i: number): number {
     } else if (c === '"' || c === "'") j = cssString(css, j)[1];
     else if (escapes(css, j)) j += 2;
     else {
-      if (c === '(') depth++;
-      else if (c === ')' && --depth === 0) return j + 1;
+      if (c === '(' || c === '[' || c === '{') open.push(c);
+      else if (CLOSES[c] === open.at(-1)) {
+        open.pop();
+        if (!open.length) return j + 1;
+      }
       j++;
     }
   }
   return css.length;
 }
+
+/** What each closing character closes. */
+const CLOSES: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
 
 const WHITE = /[ \t\n\r\f]/;
 const NAME_START = /[A-Za-z_\u0080-\uffff]/;
