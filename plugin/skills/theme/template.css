@@ -18,6 +18,21 @@
   --accent: #08888e; /* links, a hovered or focused entry, a chosen filter chip */
 }
 
+/*
+ * A logo above every page and the overview: put the file into .obeya/ (logo.svg, say) and remove
+ * the comment around the rule. A logo that only reads on light ground gets a second file for dark,
+ * in the media query below.
+ */
+/*
+main::before {
+  content: '';
+  display: block;
+  height: 36px;
+  margin-bottom: 20px;
+  background: url('logo.svg') left center / contain no-repeat;
+}
+*/
+
 /* The same for a reader whose system is set to dark. */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -29,19 +44,5 @@
     --chip: #2c2925;
     --accent: #27b9b6;
   }
+  /* main::before { background-image: url('logo-dark.svg'); } */
 }
-
-/*
- * A logo above every page and the overview: put the file into .obeya/ (logo.svg, say) and remove
- * the comment around the rule. A logo that only reads on light ground gets a second file for dark,
- * set in the media query above (main::before { background-image: url('logo-dark.svg'); }).
- */
-/*
-main::before {
-  content: '';
-  display: block;
-  height: 36px;
-  margin-bottom: 20px;
-  background: url('logo.svg') left center / contain no-repeat;
-}
-*/
