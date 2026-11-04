@@ -190,8 +190,9 @@ task goes into the text, not into a note.
 
 A text the owner may edit (a planned task's, a proposal's) shows formatted in the frame of a text
 field, as Markdown everywhere on a card does; a click into it, or Enter on it, turns it into its
-Markdown with the cursor where the click went, and leaving the field shows it formatted again. A
-click on a link, a code block's copy button, or one that ends a marking of text does what it does
+Markdown with the cursor where the click went, and leaving the field shows it formatted again. Text
+without formatting stands in both exactly where the field puts it, line by line with its
+indentation, so nothing moves as it switches. A click on a link, a code block's copy button, or one that ends a marking of text does what it does
 elsewhere. An empty text is the field itself, ready for typing.
 
 On every planned card, a stopped one too, the field takes notes for the agent that takes the card on

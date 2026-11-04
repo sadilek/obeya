@@ -664,8 +664,8 @@ textarea.p-body:focus { border-color: var(--muted); }
   background: var(--card); cursor: text; overflow-wrap: break-word; }
 .p-body-shown:hover, .p-body-shown:focus-visible { border-color: var(--muted); outline: none; }
 .p-body-shown > :first-child { margin-top: 0; }
-/* line by line as typed: a blank line is the space between paragraphs */
-.p-body-shown .p-lead { margin-top: 2px; font-size: 15px; max-width: none; }
+/* line by line as typed, each where the field puts it: a blank line is the space between paragraphs */
+.p-body-shown .p-lead { margin-top: 0; font-size: 15px; max-width: none; }
 .p-body-shown :is(.p-list, .p-table, .p-code-box) { margin-top: 4px; max-width: none; }
 /* a card's task takes screenshots like a message: thumbnails above, the button in the field's corner */
 .p-body-field { max-width: 76ch; }

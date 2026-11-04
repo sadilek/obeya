@@ -139,9 +139,9 @@ type ListItem = { text: string; mark: '' | 'open' | 'done'; children: List[] };
 /**
  * Splits a markdown document into blocks: headings, paragraphs, lists, tables, quotes, code. A quote
  * holds blocks of its own.
- * `breaks`: every line break ends a paragraph, a line that is not indented ends a list, and each
- * blank line between blocks stays as one (`blank`), as in a chat message; a document joins wrapped
- * lines.
+ * `breaks`: every line break ends a paragraph, which keeps the line's indentation, a line that is
+ * not indented ends a list, and each blank line between blocks stays as one (`blank`), as in a chat
+ * message; a document joins wrapped lines.
  */
 export function blocks(md: string, { breaks = false } = {}): Block[] {
   const lines = md.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, '').split('\n');
@@ -200,7 +200,7 @@ export function blocks(md: string, { breaks = false } = {}): Block[] {
       out.push({ t: 'list', list: parseList(lines.slice(start, i)) });
     } else {
       const para: string[] = [];
-      for (; i < lines.length && (para.length === 0 || (!breaks && !startsBlock(lines[i]!))); i++) para.push(lines[i]!.trim());
+      for (; i < lines.length && (para.length === 0 || (!breaks && !startsBlock(lines[i]!))); i++) para.push(breaks ? lines[i]!.trimEnd() : lines[i]!.trim());
       out.push({ t: 'p', text: para.join(' ') });
     }
   }

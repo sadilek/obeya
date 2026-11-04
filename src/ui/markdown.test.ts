@@ -172,6 +172,14 @@ describe('messages', () => {
     expect(blocks('One\n\nTwo').map((b) => b.t)).toEqual(['p', 'p']);
   });
 
+  test('a line keeps its indentation, as typed', () => {
+    expect(blocks('Steps:\n  first\n\t second  ', { breaks: true })).toEqual([
+      { t: 'p', text: 'Steps:' },
+      { t: 'p', text: '  first' },
+      { t: 'p', text: '\t second' },
+    ]);
+  });
+
   test('a line after a list item that is not indented ends the list', () => {
     const md = '- one\n  wrapped\n- two\nAfter.';
     expect(blocks(md, { breaks: true })).toEqual([
