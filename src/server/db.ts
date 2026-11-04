@@ -26,6 +26,8 @@ export interface CardRow {
   session_id: string | null;
   /** The model that session runs on, as its harness reported it at the start (`claude-opus-5-5`); its harness is the session's (`sessionHarness`). */
   model: string | null;
+  /** The size of its change as the server last read it (JSON `ChangeSize`), for the page to lay out before it reads the change. */
+  change_size: string | null;
   /** Leased clone and branch while a worker has the card. */
   workspace: string | null;
   branch: string | null;
@@ -485,6 +487,8 @@ export const MIGRATIONS = [
   'ALTER TABLE devices ADD COLUMN app TEXT;',
   // the model a card's agent session runs on, as its harness reported it
   'ALTER TABLE cards ADD COLUMN model TEXT;',
+  // the size of a card's change as last read (JSON `ChangeSize`): the page lays out its change list with it before reading the change
+  'ALTER TABLE cards ADD COLUMN change_size TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';

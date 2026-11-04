@@ -350,6 +350,13 @@ export interface Item {
    * An empty list: none named, but there are files of its change to show (a folder's card handed over without a demo).
    */
   files?: CardFile[];
+  /**
+   * The size of the card's change as the server last read it (at the handover, and whenever the card's
+   * diff is read): the lines of its change list and the lines added and removed. The page lays out
+   * the change list and the branch line with it before it has read the change itself, so that what
+   * stands below them (the demo) does not move when the change arrives.
+   */
+  changeSize?: ChangeSize;
   /** The demo's page for colleagues, once the owner shared it (or is about to). */
   share?: Share;
   /** Where the repository's site publishes on approval: the owner unticked „Mit der Freigabe teilen“, so approving shares nothing. */
@@ -927,6 +934,15 @@ export interface Demo {
   tracks?: string[];
   /** A video without sound: its captions show from the start. */
   silent?: true;
+  /** A video's width and height in pixels, read at the handover: the player has its shape before the video's first bytes arrive. */
+  size?: [number, number];
+}
+
+/** The size of a card's change (`Item.changeSize`): the lines of its change list (`changeRows`), and the lines added and removed. */
+export interface ChangeSize {
+  files: number;
+  added: number;
+  removed: number;
 }
 
 /** A demo a later handover replaced: `n` is its place among the card's earlier demos, for its files. */

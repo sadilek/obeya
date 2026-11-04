@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
-import { artifactFiles, captionTracks, silentVideo } from './demo-page';
+import { artifactFiles, captionTracks, silentVideo, videoSize } from './demo-page';
 import { checkPlugin, DEMO_SKILL, DEMO_SKILL_FILE, demoFiles, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, serveDemoFile, serveMockFrame, videoFacts } from './demo';
 
 const dir = mkdtempSync(join(tmpdir(), 'obeya-demo-'));
@@ -80,6 +80,27 @@ describe('a demo with a caption track per language', () => {
     expect(silentVideo(file)).toBe(true);
     writeFileSync(file, Buffer.from('\0\0\0 ftypisom\0\0\0\0mdat', 'latin1'));
     expect(silentVideo(file)).toBe(false);
+  });
+
+  test("a video's width and height come from the first track in its list with a picture, for the player's shape before it loads", () => {
+    // a `tkhd` box: version and flags, times, track and duration (wider in version 1), then 52 bytes to width and height in 16.16
+    const tkhd = (version: 0 | 1, w: number, h: number) => {
+      const b = Buffer.alloc(4 + 4 + (version ? 32 : 20) + 52 + 8);
+      b.write('tkhd', 0, 'latin1');
+      b[4] = version;
+      b.writeUInt32BE(w * 65536, b.length - 8);
+      b.writeUInt32BE(h * 65536, b.length - 4);
+      return b;
+    };
+    const file = join(tracked, 'sized.mp4');
+    // the sound's track, without a picture, comes first
+    writeFileSync(file, Buffer.concat([Buffer.from('\0\0\0 ftypisom\0\0\0\0moov', 'latin1'), tkhd(0, 0, 0), tkhd(0, 1440, 900)]));
+    expect(videoSize(file)).toEqual([1440, 900]);
+    writeFileSync(file, Buffer.concat([Buffer.from('\0\0\0 ftypisom\0\0\0\0moov', 'latin1'), tkhd(1, 860, 1640)]));
+    expect(videoSize(file)).toEqual([860, 1640]);
+    expect(videoFacts(tracked).size).toBeUndefined();
+    writeFileSync(file, Buffer.from('\0\0\0 ftypisom\0\0\0\0mdat', 'latin1'));
+    expect(videoSize(file)).toBeNull();
   });
 });
 

@@ -1804,8 +1804,8 @@ function DemoView({
   const artifact = useRef<HTMLIFrameElement>(null);
   const artifactHeight = useReportedHeight(artifact, ARTIFACT_CAP);
   const [now, setNow] = useState(0);
-  // the video's shape once its metadata is in: until it first plays, Chrome sizes the element by its poster, and
-  // by its default 300 × 150 when the poster does not load, a flat strip at full width
+  // the video's shape once its metadata is in, where the handover did not read it: until it first plays, Chrome sizes the
+  // element by its poster, and by its default 300 × 150 when the poster does not load, a flat strip at full width
   const [shape, setShape] = useState<string>();
   // the earlier demo shown (its `n`), or the latest; a new handover leaves the owner where they are
   const [shownN, setShownN] = useState<number | null>(null);
@@ -1924,7 +1924,7 @@ function DemoView({
                 preload="metadata"
                 poster={demo.noPoster ? undefined : src('poster.jpg')}
                 src={src('demo.mp4')}
-                style={shape ? { aspectRatio: shape } : undefined}
+                style={demo.size || shape ? { aspectRatio: demo.size ? `${demo.size[0]} / ${demo.size[1]}` : shape } : undefined}
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   if (v.videoWidth && v.videoHeight) setShape(`${v.videoWidth} / ${v.videoHeight}`);

@@ -191,27 +191,50 @@ export function captionTracks(dir: string): CaptionTrack[] {
 /** How much of an MP4's start is searched for its tracks: the director writes them there (`+faststart`). */
 const MP4_HEAD = 4 << 20;
 
+/** The start of an MP4 (`MP4_HEAD`), where its track list is; null where it cannot be read. */
+function mp4Head(file: string): Buffer | null {
+  try {
+    const fd = openSync(file, 'r');
+    try {
+      const head = Buffer.alloc(MP4_HEAD);
+      return head.subarray(0, readSync(fd, head, 0, MP4_HEAD, 0));
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Whether a demo video has no sound: an MP4 whose track list, at its start, holds no audio
  * track (a handler of type `soun`). One whose list is not at its start counts as having sound.
  */
 export function silentVideo(file: string): boolean {
-  let head: Buffer;
-  try {
-    const fd = openSync(file, 'r');
-    try {
-      head = Buffer.alloc(MP4_HEAD);
-      head = head.subarray(0, readSync(fd, head, 0, MP4_HEAD, 0));
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    return false;
-  }
-  const text = head.toString('latin1');
-  if (!text.includes('moov')) return false;
+  const text = mp4Head(file)?.toString('latin1');
+  if (!text?.includes('moov')) return false;
   // a `hdlr` box: its type, four bytes of version and flags, four predefined, then the handler's type
   return !/hdlr[\s\S]{8}soun/.test(text);
+}
+
+/**
+ * A demo video's width and height in pixels: those of the first track in the list at the MP4's
+ * start that has a picture (its `tkhd` box); null where there is none.
+ */
+export function videoSize(file: string): [number, number] | null {
+  const head = mp4Head(file);
+  if (!head) return null;
+  for (let at = head.indexOf('tkhd'); at >= 0; at = head.indexOf('tkhd', at + 4)) {
+    // after the type: version and flags, then times, track and duration (wider in version 1), reserved,
+    // layer, group, volume, reserved and the matrix, then width and height as 16.16 fixed point
+    const box = at + 4;
+    const size = box + 4 + (head[box] === 1 ? 32 : 20) + 52;
+    if (size + 8 > head.length) return null;
+    const w = Math.round(head.readUInt32BE(size) / 65536);
+    const h = Math.round(head.readUInt32BE(size + 4) / 65536);
+    if (w > 0 && h > 0) return [w, h];
+  }
+  return null;
 }
 
 export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

@@ -246,6 +246,16 @@ machine; from another device the file downloads and „Im Ordner zeigen“ says 
 The column keeps its tallest height so the card does not jump; a PDF's viewer is as high as the
 column shows, so its scrollbar is the only one; a video left for another file stops.
 
+A card opens in its final layout, with nothing above the demo moving once its parts have loaded: on
+the phone a tap meant for the video's full-screen button landed on a tag when the video slid down.
+The server keeps the size of each card's change as it last read it (the lines of its change list,
+the lines added and removed), reading it at every handover and whenever the page reads the change,
+and sends it with the card; until the page has read the change itself, the change list stands with
+that many lines (empty where it shows them, under the fold toggle with its count otherwise) and the
+branch line with that size. A demo video's width and height are read from its file at the handover,
+so the player has its shape before the video's first bytes arrive. The link to the card's app
+(Trying the app by hand) holds its place, unseen, until the first look says whether the app answers.
+
 A card with named files, or a folder card handed over without a demo but with files to show, is a
 split even without a demo; the server decides at the handover so the layout does not jump. A worker
 names files of its change, at most twelve; a file it names outside its change (one it only read) is
@@ -472,6 +482,13 @@ image.
   phone above all. The named files stay in view, being results themselves; a handover without demo
   or named files shows its files open, since some result must show. The size of the change moved
   from the branch line to the folded list, so count, size and files stand together.
+- **A card's layout does not change while it loads** (owner, 2026-11-04): on the phone the change
+  list arrived after the video's poster and pushed the video down under the owner's finger. The
+  server keeps the change's last read size with the card rather than the page waiting for the change
+  before showing the demo (the video would appear late instead, moving what stands below it) or
+  placing the change list below the demo (the buttons under it would move instead, and the phone
+  would depart from the desktop). A change that differs from its last read size still changes the
+  list once read (beside a demo only the count in its toggle); a card whose size was never read, once.
 - **Claude Code lists the skills, and the owner's `/name` reaches the agent unchanged** (2026-10-30,
   GitHub issue #27). Rejected: Obeya reading the skill directories itself (plugins, marketplaces,
   the account's and Claude Code's own skills: Claude Code's discovery to rebuild and keep up with);

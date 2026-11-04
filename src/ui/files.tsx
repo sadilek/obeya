@@ -25,6 +25,9 @@ const PAGE_CAP = 30000;
 
 const DEMO = '';
 
+/** A line of the change list whose file is not read yet (`ChangeList`'s `pending`). */
+type Pending = { pending: number };
+
 /** The card's change, read as the work moves on; `given` where the card has read it already (a folder's change list). */
 function useChange(item: Item, given: CardDiff | null | undefined): CardDiff | null {
   const [diff, setDiff] = useState<CardDiff | null>(null);
@@ -54,6 +57,8 @@ export function ResultFiles({ item, diff, demo, tab, onTab }: { item: Item; diff
   // beside a demo, and while the agent is at work, the code behind the result waits folded
   const fold = !!demo || atWork(item);
   const rows = changeRows(change, item.files);
+  // until the change is read, the lines its last read size says it has stand empty in their place, so the demo under them does not move
+  const pending = change ? 0 : Math.max(0, (item.changeSize?.files ?? 0) - rows.length);
   const files = rows.flatMap((r) => (r.file ? [r.file] : []));
   // which files show their changes rather than themselves, where the owner chose; a changed one does at first
   const [asChanges, setAsChanges] = useState<Record<string, boolean>>({});
@@ -84,20 +89,22 @@ export function ResultFiles({ item, diff, demo, tab, onTab }: { item: Item; diff
     const view = current === DEMO ? (demoBox.current?.querySelector('video, iframe') ?? demoBox.current) : box.current?.querySelector('.r-file');
     if (view && !seen(view)) view.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }, [picked]);
-  if (!rows.length && !demo) return item.files && change ? <p className="hint">{t.files.none}</p> : null;
+  if (!rows.length && !pending && !demo) return item.files && change ? <p className="hint">{t.files.none}</p> : null;
   const file = files.find((f) => f.path === current);
   // the size of the whole change stands with its files, not up in the card's branch line
   const count = change?.folder ? shownChanges(change.folder.changes).length : (change?.files.length ?? 0);
+  const size = count ? { ...diffSize(change!.files), files: count } : !change && item.changeSize?.files ? item.changeSize : undefined;
   // the demo keeps its place in the page once the change is read: moved, it would start afresh and no longer play on its own
   return (
     <div className="results" ref={box} style={tallest ? { minHeight: tallest } : undefined}>
-      {rows.length > 0 && (
+      {rows.length + pending > 0 && (
         <ChangeList
           item={item}
           rows={rows}
+          pending={pending}
           demo={demoKind}
           fold={fold}
-          total={count ? { ...diffSize(change!.files), files: count } : undefined}
+          total={size}
           current={current}
           onPick={(path, changes) => {
             onTab(path);
@@ -142,6 +149,7 @@ export const atWork = (item: Item) => item.state === 'working' || item.state ===
 export function ChangeList({
   item,
   rows,
+  pending = 0,
   demo,
   fold,
   total,
@@ -150,6 +158,8 @@ export function ChangeList({
 }: {
   item: Item;
   rows: ChangeRow[];
+  /** Lines of a change not read yet, empty until it is: as many as its size last read has beyond `rows`. */
+  pending?: number;
   demo?: DemoKind | 'any';
   fold?: boolean;
   total?: { added: number; removed: number; files: number };
@@ -164,10 +174,11 @@ export function ChangeList({
     setMore(false);
     onPick(path, changes);
   });
-  const lines: (ChangeRow | typeof DEMO)[] = [...(demo ? ([DEMO] as const) : []), ...rows];
-  const at = (l: ChangeRow | typeof DEMO) => (l === DEMO ? DEMO : l.path);
+  const empty = Array.from({ length: pending }, (_, i): Pending => ({ pending: i }));
+  const lines: (ChangeRow | Pending | typeof DEMO)[] = [...(demo ? ([DEMO] as const) : []), ...rows, ...empty];
+  const at = (l: ChangeRow | Pending | typeof DEMO) => (l === DEMO ? DEMO : 'pending' in l ? null : l.path);
   // folded, the result is the demo and the files the worker named; otherwise a line or two past the fold are shown rather than folded
-  const kept = fold ? lines.filter((l) => l === DEMO || l.caption !== undefined) : lines.slice(0, FOLD);
+  const kept = fold ? lines.filter((l) => l === DEMO || ('path' in l && l.caption !== undefined)) : lines.slice(0, FOLD);
   const folds = fold ? kept.length < lines.length : lines.length > FOLD + 2;
   const visible = folds && !more ? lines.filter((l) => kept.includes(l) || at(l) === current) : lines;
   const hidden = lines.length - visible.length;
@@ -192,6 +203,15 @@ export function ChangeList({
                   <button className="cl-name" role="tab" aria-selected={current === DEMO}>
                     {t.files.demo[demo!]}
                   </button>
+                </td>
+                <td />
+                <td />
+              </tr>
+            ) : 'pending' in l ? (
+              <tr key={`pending:${l.pending}`} className="cl-row off" aria-hidden="true">
+                <td />
+                <td className="cl-path">
+                  <span className="cl-name">{'\u00a0'}</span>
                 </td>
                 <td />
                 <td />

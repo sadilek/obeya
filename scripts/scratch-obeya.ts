@@ -164,6 +164,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGES } from '../src/core/locale';
 import type { CanvasSnapshot, Item } from '../src/core/types';
+import { videoFacts } from '../src/server/demo';
 import { loginLink, ownerHeaders } from '../src/server/owner';
 import { findTailscale, type NamedEntry, Tailscale } from '../src/server/tailscale';
 import { mayRecordInto } from '../src/server/replay';
@@ -645,7 +646,8 @@ for (const [i, c] of stage.cards.entries()) {
   if (c.summary !== undefined) row.detail = { summary: c.summary };
   if (c.question !== undefined) row.detail = { question: { options: [], ...c.question } };
   // an HTML artifact is shown from a copy in <dir>, which --artifact may rewrite
-  const demo = c.demo && (c.demo.kind === 'html' ? { ...c.demo, dir: copyArtifact(String(c.demo.dir), artifactDir(dir, c.key ?? String(i))) } : c.demo);
+  // a video as a handover keeps it, with what the player knows of it beforehand
+  const demo = c.demo && (c.demo.kind === 'html' ? { ...c.demo, dir: copyArtifact(String(c.demo.dir), artifactDir(dir, c.key ?? String(i))) } : { ...videoFacts(String(c.demo.dir)), ...c.demo });
   if (demo !== undefined) row.demo = { kind: 'video', ...demo };
   if (c.queue !== undefined)
     row.queue = {

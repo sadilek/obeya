@@ -9,7 +9,7 @@ import { type Language, LANGUAGE_NAMES, LANGUAGES, ownersLanguage, repositoryLan
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { realpathSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
-import { type CardFile, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
+import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
@@ -2281,12 +2281,19 @@ export class Workers {
    * What the card's work changes: once it landed, what the landing put on the default branch;
    * before, its branch in its workspace so far. Null when neither is there to read.
    */
-  diff(cardId: string, full: boolean): Promise<CardDiff | null> {
+  async diff(cardId: string, full: boolean): Promise<CardDiff | null> {
     const row = this.o.board.row(cardId);
     const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
     // landed work's workspace, while its worker finishes, has nothing left against the default branch
-    if (row.state === 'live' && shipped?.commit && shipped.base) return this.o.workspaces.landedDiff(shipped.base, shipped.commit, full);
-    return this.o.workspaces.diff(cardId, full);
+    const diff = row.state === 'live' && shipped?.commit && shipped.base ? await this.o.workspaces.landedDiff(shipped.base, shipped.commit, full) : await this.o.workspaces.diff(cardId, full);
+    // its size, for the page to lay out the card's change list before it has read the change
+    const size = diff && JSON.stringify(changeSize(diff));
+    try {
+      if (size && size !== this.o.board.row(cardId).change_size) this.o.board.work(cardId, { change_size: size });
+    } catch {
+      // the card went while its change was read
+    }
+    return diff;
   }
 
   /** The files of the card's change as they are now, as `diff` reads it, by a list no file name can pass for another in (`CardWorkspaces.changedFiles`). */
@@ -4595,6 +4602,8 @@ export class Workers {
                     ? { files: null }
                     : {}),
             });
+            // the size of the change handed over, for the page to lay out its change list from the first time it opens the card
+            void this.diff(cardId, false).catch(() => {});
             const card = this.o.board.item(cardId);
             if (card?.prototypeOf) this.o.onPrototype?.(card, report, demoJson);
             if (approved)

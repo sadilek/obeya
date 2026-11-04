@@ -49,6 +49,18 @@ describe('the files a card names as its result', () => {
     expect(board.item(c.id)!.files).toBeUndefined();
   });
 
+  test('the size of the change goes with the card from its handover on, and is kept as the change is read again', async () => {
+    const { c, ws } = await reportCard();
+    expect(board.item(c.id)!.changeSize).toBeUndefined();
+    expect(await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact() })).toContain('Recorded');
+    // read beside the handover, so the page has it from the first time it opens the card
+    for (let i = 0; i < 100 && !board.item(c.id)!.changeSize; i++) await Bun.sleep(20);
+    expect(board.item(c.id)!.changeSize).toEqual({ files: 2, added: 4, removed: 1 });
+    writeFileSync(join(ws, 'docs', 'more.md'), 'more\n');
+    await workers.diff(c.id, false);
+    expect(board.item(c.id)!.changeSize).toEqual({ files: 3, added: 5, removed: 1 });
+  });
+
   test('Obeya serves a file the card made or changed, and an image a Markdown file of it shows; no other file of the workspace', async () => {
     const { c } = await reportCard();
     const ws = realpathSync(board.row(c.id).workspace!);

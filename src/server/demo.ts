@@ -7,7 +7,7 @@ import { basename, join } from 'node:path';
 import { pagePolicy, withHeightReport, withMarkReport } from '../core/frame';
 import { chapterAt, type DemoKind } from '../core/types';
 import { filesKey, ownOrigin } from './access';
-import { captionTracks, demoFile, esc, silentVideo } from './demo-page';
+import { captionTracks, demoFile, esc, silentVideo, videoSize } from './demo-page';
 import type { FileAt } from './workspaces';
 import { resource } from './resources';
 
@@ -62,13 +62,14 @@ export const demoFiles = (dir: string): string[] =>
 /**
  * What a player needs to know of a video demo beyond its files: the languages of its caption
  * tracks in their order (empty: no subtitles; none for a demo from before them, whose track is its
- * `captions.vtt`), and whether it is silent.
+ * `captions.vtt`), whether it is silent, and its width and height.
  */
-export function videoFacts(dir: string): { tracks?: string[]; silent?: true } {
+export function videoFacts(dir: string): { tracks?: string[]; silent?: true; size?: [number, number] } {
   const all = captionTracks(dir);
   const tracks = all.flatMap((t) => (t.language ? [t.language] : []));
   const video = demoFile(dir, 'demo.mp4');
-  return { ...(all.some((t) => !t.language) ? {} : { tracks }), ...(video && silentVideo(video) ? { silent: true as const } : {}) };
+  const size = video && videoSize(video);
+  return { ...(all.some((t) => !t.language) ? {} : { tracks }), ...(video && silentVideo(video) ? { silent: true as const } : {}), ...(size ? { size } : {}) };
 }
 
 /** The page of an HTML artifact; the files beside it (images, styles) are served too. */
