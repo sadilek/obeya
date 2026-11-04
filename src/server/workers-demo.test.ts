@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from '../adapters/generic';
 import type { RepoAdapter } from '../adapters/types';
@@ -611,17 +611,37 @@ describe('handing over with a demo', () => {
     await runtime.last.call('ready_for_review', { summary: 'Ausgerichtet.', demo: demo(second, ['Nachher', 'Danach']) });
     expect(board.item(c.id)!.demo!.chapters).toEqual([[0, 'Nachher'], [6, 'Danach']]);
     expect(board.item(c.id)!.demos).toEqual([{ kind: 'html', chapters: [], single: true, handover: handover.id, at: handover.at, n: 0 }]);
-    expect(board.demoFiles(c.id, 0)).toEqual({ dir: first.dir, kind: 'html' });
+    // the earlier one is shown from the copy Obeya kept of it at its handover
+    const firstKept = join(dir, 'kept', c.id, String(handover.id));
+    expect(board.demoFiles(c.id, 0)).toEqual({ dir: firstKept, kind: 'html' });
+    expect(readFileSync(join(firstKept, 'index.html'), 'utf8')).toBe('<p>Ergebnis</p>\n');
     expect(board.demoFiles(c.id)).toEqual({ dir: second, kind: 'video' });
     // a handover without a new demo keeps both as they are
     await runtime.last.call('ready_for_review', { summary: 'Text geändert.' });
     expect(board.item(c.id)!.demos).toHaveLength(1);
-    // a demo rendered again into the same directory replaced the files of the one before: nothing to go back to
+    // a demo rendered again into the same directory replaces the files of the one before, which stays from its copy
+    const secondHandover = board.item(c.id)!.demo!.handover!;
+    writeFileSync(join(second, 'demo.mp4'), 'retake');
     await runtime.last.call('ready_for_review', { summary: 'Neu aufgenommen.', demo: demo(second) });
-    expect(board.item(c.id)!.demos!.map((d) => d.n)).toEqual([0]);
+    expect(board.item(c.id)!.demos!.map((d) => d.n)).toEqual([0, 1]);
+    const secondKept = join(dir, 'kept', c.id, String(secondHandover));
+    expect(board.demoFiles(c.id, 1)).toEqual({ dir: secondKept, kind: 'video' });
+    expect(readFileSync(join(secondKept, 'demo.mp4'), 'utf8')).toBe('x');
+    expect(readFileSync(join(second, 'demo.mp4'), 'utf8')).toBe('retake');
     // demos are deleted to free space: one whose files are gone is no longer offered, from the canvas's next change on
-    rmSync(first.dir, { recursive: true, force: true });
+    rmSync(firstKept, { recursive: true, force: true });
     board.work(c.id, { status_line: 'Liest' });
+    expect(board.item(c.id)!.demos!.map((d) => d.n)).toEqual([1]);
+  });
+
+  test('a demo handed over before Obeya kept copies is gone once a later one is rendered into its directory', async () => {
+    setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: generic }));
+    const c = manual();
+    await workers.start(c.id);
+    const d = demoDir();
+    await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(d) });
+    workers.message(c.id, 'Nochmal.');
+    await runtime.last.call('ready_for_review', { summary: 'Neu aufgenommen.', demo: demo(d) });
     expect(board.item(c.id)!.demos).toBeUndefined();
   });
 

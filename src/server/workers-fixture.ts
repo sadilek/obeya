@@ -70,6 +70,7 @@ export function setup(adapter: RepoAdapter, withOrigin = false) {
     adapter,
     onMerged: (cardId) => void merged.push(cardId),
     env: { OBEYA_URL: 'http://127.0.0.1:4417' },
+    keptDemos: join(dir, 'kept'),
   });
 }
 

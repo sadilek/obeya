@@ -310,17 +310,22 @@ export function missedBy(s: StoredShare): KnownChange[] {
   return PAGE_CHANGES.filter((c) => missed.has(c));
 }
 
-/** A demo as a card keeps it (`CardRow.demo`, and each of `CardRow.demos`). */
-export type StoredDemo = Demo & { dir: string };
+/**
+ * A demo as a card keeps it (`CardRow.demo`, and each of `CardRow.demos`): where its files are, and
+ * for the latest one handed over, where Obeya keeps a copy of them (`keepDemo`). Once a later one
+ * comes, it is the copy that the earlier demo's `dir` names.
+ */
+export type StoredDemo = Demo & { dir: string; kept?: string };
 
-/** A demo as the UI gets it: without its directory, and saying whether a video has a poster. */
-const shownDemo = ({ dir, ...d }: StoredDemo): Demo => (d.kind !== 'html' && !existsSync(join(dir, 'poster.jpg')) ? { ...d, noPoster: true } : d);
+/** A demo as the UI gets it: without its directories, and saying whether a video has a poster. */
+const shownDemo = ({ dir, kept: _, ...d }: StoredDemo): Demo => (d.kind !== 'html' && !existsSync(join(dir, 'poster.jpg')) ? { ...d, noPoster: true } : d);
 
 const storedDemos = (r: CardRow): StoredDemo[] => (r.demos ? (JSON.parse(r.demos) as StoredDemo[]) : []);
 
 /**
  * The card's earlier demos the owner can still go back to: their files are on disk (demos are
- * deleted to free space) and no later demo was rendered into the same directory over them.
+ * deleted to free space) and no later demo was rendered into the same directory over them, as it
+ * was for one from before Obeya kept copies (`StoredDemo`).
  */
 function earlierDemos(r: CardRow): EarlierDemo[] {
   const all = storedDemos(r);

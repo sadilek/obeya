@@ -24,7 +24,7 @@ import { type Gone, siteBase, siteMissing, siteTarget } from './site';
 import { allowedHere, approvedHere, newToken, type PersonalSite, personalDemoSite, readPersonal } from './personal-site';
 import { artifactCopy } from './artifact-copy';
 import { GITHUB_PAGES } from './site-hosts';
-import { rereadChapters, videoFacts } from './demo';
+import { keepDemo, rereadChapters, videoFacts } from './demo';
 import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, captionTracks, type DemoPageParts, day, demoFile, demoPageHtml, ON_DISK, PAGE_WORDS, type PageCommit, type PageLanguage, silentVideo } from './demo-page';
 import type { Theme } from './theme';
 import { type Forge, landedUrl, parsePrUrl } from './forge';
@@ -354,8 +354,10 @@ export class Sharing {
     if (s?.state || (s?.url && sharedDemos(s).some((d) => sameDemo(d, refOf(demo))))) throw new BadRequest('shareBusy', 'the demo is on a shared page; stop sharing it first');
     const chapters = rereadChapters(demo.dir);
     if (typeof chapters === 'string') throw new BadRequest('invalid', chapters);
-    const { page: _, tracks: _tracks, silent: _silent, ...rest } = demo;
-    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters, ...videoFacts(demo.dir) }) });
+    const { page: _, tracks: _tracks, silent: _silent, kept, ...rest } = demo;
+    // the copy Obeya keeps of it is of what it is now
+    const keeps = kept && keepDemo({ dir: demo.dir, kind: 'video' }, kept);
+    this.o.board.work(cardId, { demo: JSON.stringify({ ...rest, chapters, ...videoFacts(demo.dir), ...(keeps ? { kept } : {}) }) });
     this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.share.rebuilt(this.languageOf(demo.dir, this.card(cardId))));
   }
 
@@ -666,7 +668,7 @@ export class Sharing {
     let demos: SharedDemo[];
     if (s.refresh) {
       // the page as it is: a newer demo on the card waits for "Auf der Seite ersetzen" or "Zur Seite dazunehmen"
-      demos = sharedDemos(s);
+      demos = sharedDemos(s).map((d) => this.filesOf(cardId, d));
       if (!demos.length || !target) {
         if (s.again) return back(t.demoGone);
         this.set(cardId, atRest(s));
@@ -683,7 +685,7 @@ export class Sharing {
       for (const ref of want) {
         const kept = s.url ? sharedDemos(s).find((d) => sameDemo(d, ref)) : undefined;
         if (kept) {
-          demos.push(kept);
+          demos.push(this.filesOf(cardId, kept));
           continue;
         }
         const demo = this.cardDemo(cardId, ref);
@@ -1170,13 +1172,23 @@ export class Sharing {
     return inOrder([...now, ...along.filter((d) => !now.some((n) => sameDemo(n, d)))]);
   }
 
+  /**
+   * A version on the page with where its files are now: an earlier demo is shown from the copy Obeya
+   * kept of it once a later one came (`StoredDemo`), which may have been rendered over the files it
+   * went out from.
+   */
+  private filesOf(cardId: string, d: SharedDemo): SharedDemo {
+    const dir = this.cardDemo(cardId, d)?.dir;
+    return dir && d.handover !== undefined ? { ...d, dir } : d;
+  }
+
   private cardDemo(cardId: string, ref: DemoRef): StoredDemo | null {
     return cardDemos(this.o.board.row(cardId)).findLast((d) => sameDemo(d, ref)) ?? null;
   }
 
-  private demo(cardId: string): (Demo & { dir: string }) | null {
+  private demo(cardId: string): StoredDemo | null {
     const d = this.o.board.row(cardId).demo;
-    return d ? (JSON.parse(d) as Demo & { dir: string }) : null;
+    return d ? (JSON.parse(d) as StoredDemo) : null;
   }
 
   /** The cards of the canvas, archived ones too, that were ever shared or are about to be, with their shares. */

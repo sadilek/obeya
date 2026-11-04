@@ -1,13 +1,13 @@
 // A card's demo: the directory the `demo` skill rendered into, or an HTML artifact the worker
 // made instead, read and served by Obeya.
 
-import { closeSync, existsSync, fstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync } from 'node:fs';
+import { closeSync, constants, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, rmSync, statSync, utimesSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { pagePolicy, withHeightReport, withMarkReport } from '../core/frame';
 import { chapterAt, type DemoKind } from '../core/types';
 import { filesKey, ownOrigin } from './access';
-import { captionTracks, demoFile, esc, silentVideo, videoSize } from './demo-page';
+import { artifactFiles, captionTracks, demoFile, esc, silentVideo, videoSize } from './demo-page';
 import type { FileAt } from './workspaces';
 import { resource } from './resources';
 
@@ -58,6 +58,34 @@ export const isDemoFile = (name: string) => (DEMO_FILES as readonly string[]).in
 /** The files of a video demo's directory that are served, published and passed on: those of `DEMO_FILES` it has, and its caption tracks. */
 export const demoFiles = (dir: string): string[] =>
   [...DEMO_FILES, ...captionTracks(dir).flatMap((t) => (t.language ? [t.file] : []))].filter((f) => demoFile(dir, f));
+
+/**
+ * Copies the files of a demo handed over into `to`, replacing what was there, with their times
+ * (a page names the day its demo was made): a video's that are served and published
+ * (`demoFiles`) and its report page, whose language a page takes; an artifact's (`artifactFiles`).
+ * A worker renders a later demo of the card into the same directory as often as not, which
+ * overwrites this one; the card goes back to it, and shares it, from the copy. Copy-on-write where
+ * the file system has it. Whether the copy is whole.
+ */
+export function keepDemo(demo: { dir: string; kind: DemoKind }, to: string): boolean {
+  try {
+    rmSync(to, { recursive: true, force: true });
+    const files = demo.kind === 'html' ? artifactFiles(demo.dir) : [...demoFiles(demo.dir), ...(demoFile(demo.dir, 'index.html') ? ['index.html'] : [])];
+    if (!files.length) return false;
+    for (const f of files) {
+      const from = demoFile(demo.dir, f)!;
+      mkdirSync(dirname(join(to, f)), { recursive: true });
+      copyFileSync(from, join(to, f), constants.COPYFILE_FICLONE);
+      const { atime, mtime } = statSync(from);
+      utimesSync(join(to, f), atime, mtime);
+    }
+    return true;
+  } catch (e) {
+    console.error(`keeping a copy of the demo in ${demo.dir}:`, e instanceof Error ? e.message : e);
+    rmSync(to, { recursive: true, force: true });
+    return false;
+  }
+}
 
 /**
  * What a player needs to know of a video demo beyond its files: the languages of its caption

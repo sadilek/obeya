@@ -581,6 +581,24 @@ describe('several demo versions on one page', () => {
     expect(page(c.id)).toContain('src="2/demo.mp4"');
   });
 
+  test('a supplement rendered into the directory of the shared demo goes beside it, which goes out again from the copy Obeya kept', async () => {
+    const c = first();
+    await shared(c.id, () => sharing.share(c.id));
+    // the worker renders the supplement over the files of the first, which the card shows from its copy since
+    const one = JSON.parse(board.row(c.id).demo!) as { dir: string };
+    const kept = videoDir(join(dir, 'kept', c.id, '1'));
+    writeFileSync(join(one.dir, 'demo.mp4'), 'video 2');
+    board.work(c.id, {
+      demos: JSON.stringify([{ ...JSON.parse(board.row(c.id).demo!), dir: kept }]),
+      demo: JSON.stringify({ kind: 'video', dir: one.dir, chapters: [], page: { title: 'Ergänzung 2', text: 'T.' }, handover: 2, follows: 'supplements' }),
+    });
+    await shared(c.id, () => sharing.share(c.id, { add: true }));
+    expect(share(c.id)).toMatchObject({ on: [1, 2] });
+    expect(readFileSync(join(dir, 'deployed', slug(c.id), 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(dir, 'deployed', slug(c.id), '2', 'demo.mp4'), 'utf8')).toBe('video 2');
+    expect(stored(c.id).demos!.map((d) => d.dir)).toEqual([kept, one.dir]);
+  });
+
   test("drafts a question showed in between are no demo of the page: not what it lacks, and not shared with a supplement", async () => {
     const c = first();
     await shared(c.id, () => sharing.share(c.id));

@@ -157,6 +157,15 @@ brief names it for an HTML artifact. The demo directory is where demos are made,
 looks for them: a handover names its demo by its absolute path, and the card serves it from there
 wherever that is. A worker on a host puts its demos into the host's `~/demos` (see Hosts).
 
+A worker renders a later demo of the same card into the directory of the one before as often as
+not (a retake after feedback, a supplement), which overwrites it. So at each handover (and each
+question that brings drafts) Obeya keeps a copy of the demo's files under its home, by card and
+handover: a video's served files and its report page, an artifact's files, with their times
+(copy-on-write where the file system has it, a few megabytes a video otherwise). The latest demo is
+served from where the worker made it, so a re-voicing in place shows (and renews the copy); once a
+later one comes, the earlier one is served, shared and exported from its copy. A copy that could
+not be made leaves the demo as it was, in its directory only.
+
 #### Disk space of demos
 
 A render keeps the frames its video is cut from in its work directory (`.work/frames`, with their
@@ -567,7 +576,8 @@ often shows only what changed. A line above the video, left of "Share", says whi
 ("Latest demo 2 of 2 · 13:37"), with ‹ and › and "To the latest"; an earlier one is marked in
 colour ("Earlier demo 1 of 2"). Sharing is about the demo shown (see Several versions on one page).
 Stepping does not count as having finished watching, and a new handover leaves the owner on the demo
-they look at. A demo whose directory a later one reused, or whose files are gone, is not offered. A
+they look at. A demo whose files are gone is not offered, nor one from before Obeya kept copies
+(see The demo directory) whose directory a later one reused. A
 comment on a place keeps its demo: a click shows that demo, and the worker hears it as about the
 earlier video.
 
@@ -690,6 +700,13 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   succeed; a setting or a setup-check line for the hearing.
 - **Earlier demos stay on the card** (2026-10-16): a demo after feedback often shows only the
   corrected part.
+- **Obeya keeps a copy of every demo handed over** (2026-11-04): two in three later demos were
+  rendered into the directory of the one before, which lost the earlier demo from the card, and a
+  supplement shared beside it showed only itself. Rejected: the demo skill sending a later demo
+  into a new directory (an agent that re-renders where it rendered loses it all the same, and a
+  re-voicing works in place); copying only once a handover reuses a directory (by then the files
+  are overwritten); serving the latest demo from its copy too (a re-voicing in place would not
+  show).
 - **The demo zooms within the window** (2026-10-12). Rejected: full screen, too much on a large
   monitor.
 - **Space and the arrows reach the video; the microphone's 200 ms wait holds only with a video

@@ -99,7 +99,9 @@ Nothing goes out without the owner's click.
 
 A supplement never goes on a page without what it supplements: shared on a new page, added, or put
 there by an approval, it takes along the demo before it, and that one the demo before it while it
-supplements too, back to the first or one recorded afresh, also where those were never shared. Before
+supplements too, back to the first or one recorded afresh, also where those were never shared, and
+from the copy Obeya keeps of each where a later one was rendered over its files (see The demo
+directory in Demos). Before
 a page exists, a line under "Share" names them ("Goes on the page with demo 1, which the agent says this
 demo supplements."). "Replace on the page" puts the demo there alone, as the owner chose.
 

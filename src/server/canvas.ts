@@ -840,6 +840,7 @@ export class CanvasRuntime {
       demoLanguage: () => readDemoSettings(deps.home).language,
       harness: () => (deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]))('worker').harness,
       demoDirectory: () => demoDirectory(readDemoSettings(deps.home)),
+      keptDemos: join(deps.home, 'kept-demos'),
       ...(deps.parkGrace !== undefined ? { parkGrace: deps.parkGrace } : {}),
     });
     Object.assign(repo, { ref, info, adapter, site, read, workspaces, workers, projectAgents });

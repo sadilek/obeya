@@ -7,15 +7,15 @@ import type { RepoAdapter } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import { type Language, LANGUAGE_NAMES, LANGUAGES, ownersLanguage, repositoryLanguage } from '../core/locale';
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
-import { realpathSync } from 'node:fs';
-import { basename, isAbsolute } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { basename, isAbsolute, join } from 'node:path';
 import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
 import { BadRequest, type Board, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
-import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, videoFacts } from './demo';
+import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, keepDemo, OBEYA_PLUGIN, placeIn, readChapters, videoFacts } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
@@ -109,6 +109,8 @@ export interface WorkerOptions {
   demoLanguage?: () => Language;
   /** The harness the workers' group runs on (`withAgentSetting`), where a card chose none: how a worker waits differs by it. Claude Code when left out. */
   harness?: () => Harness;
+  /** Where Obeya keeps a copy of each demo handed over (`keepDemo`), by card and handover; without it a demo's files are only where the worker made them. */
+  keptDemos?: string;
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */
   demoDirectory?: () => string;
   /** A card's work ended (landed, closed without a change, a prototype discarded or built): its runs can be read now. */
@@ -1324,9 +1326,18 @@ export class Workers {
    * places in it the owner's comments are about.
    */
   private earlier(cardId: string, row: CardRow): string {
-    const replaced = JSON.parse(row.demo!) as StoredDemo;
+    const { kept, ...replaced } = JSON.parse(row.demo!) as StoredDemo;
     const e = replaced.handover === undefined ? this.o.board.events(cardId).findLast((e) => e.kind === 'review') : undefined;
-    return JSON.stringify([...(JSON.parse(row.demos ?? '[]') as StoredDemo[]), { ...replaced, ...(e ? { handover: e.id, at: e.at } : {}) }]);
+    // from its copy: the new demo may have been rendered over its files
+    const dir = kept && existsSync(kept) ? kept : replaced.dir;
+    return JSON.stringify([...(JSON.parse(row.demos ?? '[]') as StoredDemo[]), { ...replaced, dir, ...(e ? { handover: e.id, at: e.at } : {}) }]);
+  }
+
+  /** The demo handed over with the event `handover`, with where Obeya keeps a copy of its files (`keepDemo`) where it could make one. */
+  private keep<D extends { dir: string; kind: DemoKind }>(cardId: string, handover: number, demo: D): D & { kept?: string } {
+    if (!this.o.keptDemos) return demo;
+    const kept = join(this.o.keptDemos, cardId, String(handover));
+    return keepDemo(demo, kept) ? { ...demo, kept } : demo;
   }
 
   /** The file of the frame at a place in the video, if it has one. */
@@ -4216,7 +4227,7 @@ export class Workers {
             if (shown) {
               // the demo it replaces stays with the card, for the owner to go back to
               const row = this.o.board.row(cardId);
-              this.o.board.work(cardId, { demo: JSON.stringify({ ...shown, asked: true, handover: e.id, at: e.at } satisfies StoredDemo), ...(row.demo ? { demos: this.earlier(cardId, row) } : {}) });
+              this.o.board.work(cardId, { demo: JSON.stringify({ ...this.keep(cardId, e.id, shown), asked: true, handover: e.id, at: e.at } satisfies StoredDemo), ...(row.demo ? { demos: this.earlier(cardId, row) } : {}) });
             }
             this.toOwner(cardId, q);
             return ending(
@@ -4584,7 +4595,7 @@ export class Workers {
             const report = this.report(cardId, s);
             const e = this.o.board.log(cardId, 'review', 'worker', s);
             // the demo report's question goes with the handover it came with, also once a later one keeps the demo
-            if (demoJson) demoJson = JSON.stringify({ ...(JSON.parse(demoJson) as object), handover: e.id, at: e.at });
+            if (demoJson) demoJson = JSON.stringify({ ...this.keep(cardId, e.id, JSON.parse(demoJson) as StoredDemo), handover: e.id, at: e.at });
             // the demo it replaces stays with the card, for the owner to go back to; so do a question's drafts, which are no handover's result
             const demos = (demoJson || asked) && row.demo ? this.earlier(cardId, row) : undefined;
             // approved work does not wait for the owner again: it stays with Obeya until its turn has ended
