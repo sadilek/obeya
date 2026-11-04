@@ -210,7 +210,12 @@ When a card's work ends (landed, closed without a change, a prototype discarded 
 unfinished), Obeya draws an excerpt from its runs' transcripts without a model. The Agent SDK keeps
 them at `<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<cwd, non-alphanumerics as „-“>/<session
 id>.jsonl`, also after the workspace is gone; Obeya looks there first, then in every directory, as
-the naming may change. Earlier runs are found through the log, where a start from scratch notes the
+the naming may change. Codex keeps a thread at `<CODEX_HOME or ~/.codex>/sessions/<yyyy>/<mm>/<dd>/
+rollout-<time>-<thread id>.jsonl` (or under `archived_sessions`); its day is in the thread id (a
+UUIDv7), and Obeya looks there and on the days beside it first, then everywhere. Of a thread the
+excerpt reads the items Codex completed, named as Claude Code's tool calls are: a command as `Bash`,
+failed when it ended with another exit code than 0, a file added as `Write`, changed as `Edit`. A
+worker on a host left its transcripts there; they are copied here to be read. Earlier runs are found through the log, where a start from scratch notes the
 session before („Der frühere Lauf (Sitzung …) bleibt für die Arbeitsrückschau erhalten.“).
 
 The excerpt holds failed tool calls with their error, runs of similar calls (a failure and its

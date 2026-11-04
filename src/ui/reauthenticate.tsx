@@ -73,3 +73,69 @@ export function Reauthenticate({ start = false, token = false }: { start?: boole
     </div>
   );
 }
+
+/**
+ * Logs Codex in again where a card's session lost its login (`host`: the machine it ran on, null
+ * for this one): ChatGPT's sign-in opens in a new tab, and the line says once it worked. The
+ * sign-in returns to the machine Obeya runs on, so the phone view and another device get no
+ * button, only where to go.
+ */
+export function CodexLogin({ host, start = false }: { host: string | null; start?: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState('');
+  const [done, setDone] = useState(false);
+  const [here, setHere] = useState(() => !phoneView());
+  const [following, setFollowing] = useState('');
+  useEffect(() => {
+    let live = true;
+    if (here) void onThisMachine().then((v) => live && setHere(v));
+    return () => void (live = false);
+  }, []);
+  useEffect(() => {
+    if (!following) return;
+    let live = true;
+    const look = async () => {
+      if (!live) return;
+      try {
+        const s = await api.codexLoginState(following);
+        if (!live) return;
+        if (s.state === 'done') return setDone(true);
+        if (s.state === 'failed') {
+          setFollowing('');
+          setPage('');
+          return setStatus(t.setup.failed(s.error ?? ''));
+        }
+      } catch {}
+      setTimeout(() => void look(), 1500);
+    };
+    void look();
+    return () => void (live = false);
+  }, [following]);
+  const login = async () => {
+    setBusy(true);
+    setStatus('');
+    // opened in the click, which the browser allows, and pointed at the page once Codex names it
+    const tab = window.open('', '_blank');
+    try {
+      const { id, url } = await api.codexLogin(host);
+      if (tab) tab.location.href = url;
+      setPage(url);
+      setFollowing(id);
+    } catch (e) {
+      tab?.close();
+      setStatus(failText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!here) return <div className="reauthenticate"><div className="hint">{t.setup.codexAtComputer}</div></div>;
+  if (done) return <div className="reauthenticate"><div className="hint" role="status">{t.setup.codexLoggedIn(start)}</div></div>;
+  return (
+    <div className="reauthenticate">
+      <button className="btn small" disabled={busy} onClick={() => void login()}>{t.setup.codexLogin}</button>
+      {page && <span className="hint" role="status">{t.setup.codexSigningIn(host)} <a href={page} target="_blank" rel="noreferrer">{t.setup.codexOpenPage}</a></span>}
+      {status && <span className="hint" role="status">{status}</span>}
+    </div>
+  );
+}

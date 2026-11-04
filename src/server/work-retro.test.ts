@@ -78,6 +78,13 @@ describe('Arbeitsrückschau', () => {
     expect(board.events(a.id).at(-1)).toMatchObject({ author: 'koordinator', text: 'Arbeitsrückschau, Reibung notiert:\n– bun run dev has no --port flag Kosten: a few steps Verhindert hätte es: a script\n– the demo script failed and was rewritten Kosten: a few steps Verhindert hätte es: a script' });
   });
 
+  test("a card whose earlier run was on Codex has that thread's excerpt read too", async () => {
+    files = { 'codex:01a1a634-1526-77c0-b3ba-30c136b024f5': join(import.meta.dir, 'fixtures', 'codex-thread.jsonl') };
+    ran('On Codex', 'codex:01a1a634-1526-77c0-b3ba-30c136b024f5', 's2');
+    await settle();
+    expect(noteSessions()[0]!.inbox[0]).toContain('The script fails; I write it anew.');
+  });
+
   test('a run without a transcript, or without anything gone wrong, gets no session; a card that never ran does not count', async () => {
     ran('Never ran');
     ran('No transcript', 's9');

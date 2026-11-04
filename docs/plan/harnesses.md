@@ -16,8 +16,10 @@ Since W1–W4, each group of agents runs on Claude Code or Codex as the owner ch
 Modelle“; the welcome screen accepts either harness; the bar shows the usage limits of every plan
 agents run on (design: Agents and workspaces → Codex, Harnesses, models and effort; The canvas;
 Setup assistant). Since W8 a card's conversation names the harness and model its session runs on
-(design: Conversation on the card → The conversation). The Codex harness lacks a few things Claude Code gives Obeya, listed at the end of
-Agents and workspaces → Codex; W11 closes those that matter in use.
+(design: Conversation on the card → The conversation). Since W11, Codex works where Claude Code
+does in daily use: on SSH hosts, with its hooks refusing long foreground waits and following a
+folder's changes before they run, in the Arbeitsrückschau, and with a login button on a card whose
+session lost its login.
 
 ## Workstreams
 
@@ -39,6 +41,6 @@ Agents and workspaces → Codex; W11 closes those that matter in use.
   runs on.
 - [ ] **W9:** More harnesses: opencode and pi, each behind the same session interface.
 - [ ] **W10:** Local models, where no harness brings them.
-- [ ] **W11:** Closing the Codex gaps that matter in use: Codex on SSH hosts, the Arbeitsrückschau's
+- [x] **W11:** Closing the Codex gaps that matter in use: Codex on SSH hosts, the Arbeitsrückschau's
   excerpt from Codex's threads, a folder's undo before a Codex change runs, a long foreground wait
   refused, the login button on a card whose Codex session lost its login.

@@ -10,18 +10,22 @@
 // request the reviewer leaves to a person reaches the owner (`AgentSpec.askOwner`). Read-only agents
 // run in Codex's read-only sandbox.
 //
-// What Claude Code gives Obeya and Codex does not: a long wait in the foreground is not refused
-// before it runs, and a folder without git hears of a change as Codex reports it, not before.
+// Codex's hooks, given on its command line, tell Obeya of each command and patch before it runs
+// (and after, in a folder without git): a long wait in the foreground is refused, and a folder's
+// watch reads the folder before a change, as Claude Code's hooks have it. On another machine the
+// session runs there over SSH, its hooks reaching Obeya through a forwarded port.
 
 import { type ChildProcess, spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { messageOf } from '../core/text';
 import type { AgentEffort, HarnessModel, UsageLimit } from '../core/types';
 import { AGENT_EFFORTS } from '../core/types';
 import type { ToolCall } from './folder';
-import { hostName } from './hosts';
+import { HostError, LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { which } from './path';
-import { CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, trackHere, withStderr } from './runtime';
+import { BOUNDED_WAITS, carryTo, CODEX_SESSION, type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, cleanEnv, FOREGROUND_SLEEP_LIMIT, foregroundSleep, trackHere, withStderr } from './runtime';
 import { OWN_GROUP } from './spawn';
 import type { PlanLimits, UsageSource } from './usage';
 import { z } from 'zod';
@@ -92,6 +96,9 @@ export async function codexLogin(bin: string, env: Env): Promise<{ loggedIn: boo
   return { loggedIn: true, ...(how ? { how } : {}) };
 }
 
+/** A process that runs an app server: one started here, or one over `ssh` (`SshHost.session`). */
+type Spawned = Pick<ChildProcess, 'stdin' | 'stdout' | 'kill'> & { stderr?: ChildProcess['stderr']; once(event: string, listener: (...a: any[]) => void): unknown };
+
 /** A failure the app server reported for a request. */
 export class CodexError extends Error {
   constructor(
@@ -111,12 +118,14 @@ const STDERR_TAIL = 2000;
  * `onRequest`.
  */
 export class AppServer {
-  private proc: ChildProcess;
+  private proc: Spawned;
   private next = 0;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   private buffer = '';
   /** The process has ended: a request gets no answer any more. */
   private dead = false;
+  /** Started here, rather than given (one over `ssh`, say). */
+  private here: boolean;
   stderr = '';
   onNotification: (method: string, params: Record<string, unknown>) => void = () => {};
   onRequest: (method: string, params: Record<string, unknown>) => Promise<unknown> = async (method) => {
@@ -125,13 +134,20 @@ export class AppServer {
   /** Settles with the exit code once the process has ended. */
   readonly exited: Promise<number | null>;
 
-  constructor(o: { bin: string; cwd: string; env: Env; args?: string[] }) {
-    const argv = startArgv(o.bin, ['app-server', ...(o.args ?? [])]);
-    this.proc = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP, ...spawnOptions(argv) });
-    trackHere(this.proc);
+  /** Starts `codex app-server` here, or speaks to one a process given runs (on another machine, say). */
+  constructor(o: { bin: string; cwd: string; env: Env; args?: string[] } | { process: Spawned }) {
+    this.here = !('process' in o);
+    if ('process' in o) this.proc = o.process;
+    else {
+      const argv = startArgv(o.bin, ['app-server', ...(o.args ?? [])]);
+      const p = spawn(argv[0]!, argv.slice(1), { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP, ...spawnOptions(argv) });
+      trackHere(p);
+      this.proc = p;
+    }
     this.exited = new Promise((resolve) => {
-      this.proc.once('error', (e) => ((this.stderr += e.message), resolve(null)));
-      this.proc.once('close', (code) => resolve(code));
+      this.proc.once('error', (e: Error) => ((this.stderr += e.message), resolve(null)));
+      // a process here has closed its pipes too once it is done; one given may have none of its own
+      this.proc.once(this.here ? 'close' : 'exit', (code: number | null) => resolve(code));
     });
     void this.exited.then(() => {
       this.dead = true;
@@ -139,7 +155,7 @@ export class AppServer {
       this.pending.clear();
     });
     this.proc.stdout!.setEncoding('utf8').on('data', (d: string) => this.take(d));
-    this.proc.stderr!.setEncoding('utf8').on('data', (d: string) => (this.stderr = (this.stderr + d).slice(-STDERR_TAIL)));
+    this.proc.stderr?.setEncoding('utf8').on('data', (d: string) => (this.stderr = (this.stderr + d).slice(-STDERR_TAIL)));
     // a closed pipe as the process ends is no error of Obeya's
     this.proc.stdin!.on('error', () => {});
   }
@@ -165,7 +181,8 @@ export class AppServer {
 
   /** Ends the process, and what it runs. */
   close() {
-    endTree(this.proc);
+    if (this.here) endTree(this.proc as ChildProcess);
+    else this.proc.kill();
   }
 
   private write(m: unknown) {
@@ -276,12 +293,21 @@ function input(text: string, images: string[] = []) {
   return [{ type: 'text', text, text_elements: [] }, ...images.map((path) => ({ type: 'localImage', path }))];
 }
 
-/** The git directory a worktree commits into, outside the worktree itself; nothing for a clone. */
-async function gitCommonDir(cwd: string): Promise<string | undefined> {
+/** The git directory a worktree commits into, outside the worktree itself; nothing for a clone. `host`: the machine `cwd` is on, if not this one. */
+async function gitCommonDir(cwd: string, host?: SshHost): Promise<string | undefined> {
+  const argv = ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'];
   try {
-    const p = Bun.spawn(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, stdout: 'pipe', stderr: 'ignore' });
-    const out = (await new Response(p.stdout).text()).trim();
-    return (await p.exited) === 0 && out && !out.startsWith(cwd) ? out : undefined;
+    let out: string;
+    if (host) {
+      const r = await host.run(argv, { cwd });
+      if (r.code !== 0) return undefined;
+      out = r.stdout.trim();
+    } else {
+      const p = Bun.spawn(argv, { cwd, stdout: 'pipe', stderr: 'ignore' });
+      out = (await new Response(p.stdout).text()).trim();
+      if ((await p.exited) !== 0) return undefined;
+    }
+    return out && !out.startsWith(cwd) ? out : undefined;
   } catch {
     return undefined;
   }
@@ -291,6 +317,95 @@ async function gitCommonDir(cwd: string): Promise<string | undefined> {
 function jsonSchema(shape: z.ZodRawShape): unknown {
   const { $schema: _, ...schema } = z.toJSONSchema(z.object(shape)) as Record<string, unknown>;
   return schema;
+}
+
+/** The files an `apply_patch` input touches, each as the tool call Claude Code's would be: a file added as `Write`, one changed, moved or deleted as `Edit`. */
+export function patchCalls(id: string, patch: string): ToolCall[] {
+  const calls: ToolCall[] = [];
+  for (const m of patch.matchAll(/^\*\*\* (Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$/gm)) {
+    const path = (m[2] ?? m[3])!.trim();
+    calls.push({ id: `${id}:${calls.length}`, name: m[1] === 'Add' || m[3] ? 'Write' : 'Edit', input: { file_path: path } });
+  }
+  return calls;
+}
+
+/** What Codex's hooks pass about a tool call (`PreToolUse`, `PostToolUse`); only what Obeya reads of it. */
+interface HookCall {
+  hook_event_name?: string;
+  tool_name?: string;
+  tool_use_id?: string;
+  tool_input?: { command?: unknown };
+}
+
+/** The tool calls a hook's call stands for, as a folder's watch reads them. */
+function hookCalls(h: HookCall): ToolCall[] {
+  const id = h.tool_use_id ?? '';
+  const command = typeof h.tool_input?.command === 'string' ? h.tool_input.command : '';
+  if (h.tool_name === 'Bash') return [{ id, name: 'Bash', input: { command } }];
+  if (h.tool_name === 'apply_patch') return patchCalls(id, command);
+  return [];
+}
+
+/** Why a command that waits too long in the foreground is not run, in Codex's terms: it has no background task that wakes the session. */
+export const WAIT_REFUSED = `Not run: this command sleeps in the foreground for more than ${FOREGROUND_SLEEP_LIMIT} seconds (or in a loop with no bound), and a note from the owner reaches you only once a command is done. Wait in commands that sleep ${FOREGROUND_SLEEP_LIMIT} seconds at most, e.g. \`${BOUNDED_WAITS[0]}\`, and run one again until what you wait for is there. For anything longer, snooze (snooze) and end your turn: Obeya wakes you then.`;
+
+/**
+ * Where Codex's hooks reach the session: a server on the loopback that only this session's token
+ * opens, which hears of each command and patch before it runs (and, for a folder's watch, after)
+ * and answers as a `PreToolUse` hook does. The hook itself is curl, which sends what Codex gives
+ * it and prints the answer; a hook that fails (no curl) lets the call run.
+ */
+class Hooks {
+  private server: ReturnType<typeof Bun.serve>;
+  private token = randomBytes(18).toString('base64url');
+
+  constructor(private on: (h: HookCall) => Promise<unknown>) {
+    this.server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: async (req) => {
+        if (new URL(req.url).pathname !== `/${this.token}` || req.method !== 'POST') return new Response('', { status: 404 });
+        let h: HookCall;
+        try {
+          h = (await req.json()) as HookCall;
+        } catch {
+          return new Response('', { status: 400 });
+        }
+        return Response.json((await this.on(h).catch((e) => console.error(`Obeya: a Codex hook failed: ${messageOf(e)}`))) ?? {});
+      },
+    });
+  }
+
+  get port(): number {
+    return this.server.port!;
+  }
+
+  /** The `-c` overrides that make Codex call the hooks at `port` (where the session's Codex reaches this server): before every command and patch, and after them where `after`. */
+  args(port: number, after: boolean, windows: boolean): string[] {
+    const command = `${windows ? 'curl.exe' : 'curl'} -sf --data-binary @- http://127.0.0.1:${port}/${this.token}`;
+    const hook = (matcher: string) => `[{matcher=${JSON.stringify(matcher)},hooks=[{type="command",command=${JSON.stringify(command)},timeout=600}]}]`;
+    const tools = after ? '^(Bash|apply_patch)$' : '^Bash$';
+    return ['-c', `hooks.PreToolUse=${hook(tools)}`, ...(after ? ['-c', `hooks.PostToolUse=${hook(tools)}`] : [])];
+  }
+
+  close() {
+    void this.server.stop(true);
+  }
+}
+
+/**
+ * The trust Codex needs before it runs hooks given on its command line (it keeps none for them):
+ * their hashes as `hooks/list` reports them, as the thread's `hooks.state`. Nothing where it lists
+ * none (a Codex without hooks).
+ */
+async function hookTrust(server: AppServer, cwd: string): Promise<Record<string, unknown>> {
+  try {
+    const r = await server.request<{ data: { hooks: { key: string; source: string; currentHash: string }[] }[] }>('hooks/list', { cwds: [cwd] });
+    const own = r.data.flatMap((d) => d.hooks).filter((h) => h.source === 'sessionFlags');
+    return own.length ? { 'hooks.state': Object.fromEntries(own.map((h) => [h.key, { trusted_hash: h.currentHash }])) } : {};
+  } catch {
+    return {};
+  }
 }
 
 /** What a session that ends without a turn's result says: the server's last words on stderr. */
@@ -303,21 +418,21 @@ export function codexLoginFailed(info: unknown, message: string): boolean {
   return info === 'unauthorized' || /\bcodex login\b|\bnot logged in\b|\b401 Unauthorized\b/i.test(message);
 }
 
-/** Runs agents through `codex app-server`, on the Codex login of this machine. */
+/** A failure for Codex's missing login on `host` (null: this machine), as `codexLoginLost` reads it on the card. */
+export const notLoggedIn = (host: string | null, message: string) => `Codex is not logged in on ${host ?? 'this machine'}. (${message})`;
+
+/** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
+const hookPortThere = () => 30_000 + Math.floor(Math.random() * 30_000);
+
+/** Runs agents through `codex app-server`, on the Codex login of the machine they work on: this one, or a host's over SSH. */
 export const codexRuntime: AgentRuntime = {
-  start(spec, firstMessage, images) {
-    if (hostName(spec.cwd) !== null) {
-      // hosts run Claude Code (withAgentSetting); a session that gets here anyway says why it does not start
-      const done = Promise.resolve().then(() => spec.onEvent({ type: 'error', message: 'Codex runs only on the machine Obeya runs on' }));
-      return { send: () => {}, close: () => {}, done };
-    }
-    return new CodexSession(spec, firstMessage, images);
-  },
+  start: (spec, firstMessage, images) => new CodexSession(spec, firstMessage, images),
 };
 
 class CodexSession implements AgentSession {
   readonly done: Promise<void>;
   private server: AppServer | undefined;
+  private hooks: Hooks | undefined;
   private closed = false;
   private thread: string | undefined;
   /** The turn under way, once known; `starting` while its start is asked for. */
@@ -330,27 +445,58 @@ class CodexSession implements AgentSession {
   private finishing = false;
   /** Messages no turn has taken yet. */
   private queue: { text: string; images?: string[] }[] = [];
+  /** For a session on another machine: the images and files a message names, copied there, in the order the messages came. */
+  private carry?: (text: string, images: string[]) => Promise<{ text: string; images: string[] }>;
+  private carrying: Promise<void>;
+  /** Lets messages to a host be carried, once the host is ready (or the session failed). */
+  private carryable: () => void = () => {};
   private limits: RateSnapshot | undefined;
   /** The error a failed turn reports, as the server said it while it went (`error`, `willRetry: false`). */
   private failure: { message: string; info?: unknown } | undefined;
   /** A folder's watch hears of calls one after the other. */
   private watching: Promise<void> = Promise.resolve();
+  /** The host the session runs on, if not here; and whether its connection failed. */
+  private there: ReturnType<typeof remote> = null;
+  private lost = false;
+  /** The calls a hook told of before they ran, by Codex's item id: their items need no watch of their own. */
+  private hooked = new Set<string>();
 
   constructor(
     private spec: AgentSpec,
     firstMessage: string | undefined,
     images: string[] | undefined,
   ) {
-    if (firstMessage !== undefined) this.queue.push({ text: firstMessage, images });
-    this.done = this.run().catch((e) => {
-      if (!this.closed) this.emit({ type: 'error', message: withStderr(messageOf(e), this.server?.stderr ?? '') });
-    });
+    this.carrying = new Promise((r) => (this.carryable = r));
+    let unknownHost: unknown;
+    try {
+      this.there = remote(spec.cwd);
+    } catch (e) {
+      unknownHost = e;
+    }
+    if (firstMessage !== undefined) this.send(firstMessage, images);
+    this.done = (unknownHost ? Promise.reject(unknownHost) : this.run())
+      .catch((e) => {
+        if (this.closed) return;
+        if (this.there && (this.lost || e instanceof HostError)) this.emit({ type: 'lost', message: `the connection to ${this.there!.host.name} was lost` });
+        else this.emit({ type: 'error', message: withStderr(messageOf(e), this.server?.stderr ?? '') });
+      })
+      .finally(() => (this.carryable(), this.hooks?.close()));
   }
 
   send(text: string, images?: string[]) {
     if (this.closed) return;
-    this.queue.push({ text, images });
-    this.pump();
+    if (!this.carry && !this.there) {
+      this.queue.push({ text, images });
+      this.pump();
+      return;
+    }
+    // copied there first, keeping the order: the session takes a message once its files are there
+    this.carrying = this.carrying.then(async () => {
+      const c = this.carry ? await this.carry(text, images ?? []) : { text, images: images ?? [] };
+      if (this.closed) return;
+      this.queue.push(c);
+      this.pump();
+    });
   }
 
   close() {
@@ -365,18 +511,45 @@ class CodexSession implements AgentSession {
 
   private async run() {
     const spec = this.spec;
-    const bin = codexExecutable({ ...process.env, ...spec.env });
+    const there = this.there;
+    const cwd = there ? there.path : spec.cwd;
+    const bin = there ? 'codex' : codexExecutable({ ...process.env, ...spec.env });
     if (!bin) throw new Error('Codex is not installed on this machine: no `codex` on the PATH');
-    const writable = [...(spec.dirs ?? []), tmpdir()];
-    const common = spec.readOnly ? undefined : await gitCommonDir(spec.cwd);
+    const hooks = (this.hooks = new Hooks((h) => this.hook(h)));
+    const writable = [...(spec.dirs ?? []), ...(there ? [] : [tmpdir()])];
+    const common = spec.readOnly ? undefined : await gitCommonDir(cwd, there?.host);
     if (common) writable.push(common);
     if (this.closed) return;
-    const server = (this.server = new AppServer({ bin, cwd: spec.cwd, env: { ...cleanEnv(), ...spec.env } }));
+    let server: AppServer;
+    let roots = spec.plugins ?? [];
+    if (there) {
+      const host = there.host;
+      const files = sessionFiles(host.o.home, roots);
+      // a host that cannot be made ready loses the connection rather than failing the session
+      const dir = await host.prepare(files);
+      roots = roots.map((p) => `${dir}/${basename(p)}`);
+      this.carry = (text, images) => carryTo(host, dir, text, images, join(host.o.home, 'files'));
+      this.carryable();
+      const port = hookPortThere();
+      const start = host.session({
+        cwd,
+        files,
+        login: false,
+        forwards: [`127.0.0.1:${port}:127.0.0.1:${hooks.port}`],
+        onExit: (code) => (this.lost = code === LOST && !this.closed),
+        onStderr: (text) => this.server && (this.server.stderr = (this.server.stderr + text).slice(-STDERR_TAIL)),
+      });
+      server = new AppServer({ process: start({ command: bin, args: ['app-server', ...hooks.args(port, !!spec.watch, false)], cwd, env: { ...spec.env }, signal: new AbortController().signal }) });
+    } else {
+      server = new AppServer({ bin, cwd, env: { ...cleanEnv(), ...spec.env }, args: hooks.args(hooks.port, !!spec.watch, process.platform === 'win32') });
+    }
+    this.server = server;
     server.onNotification = (method, params) => this.heard(method, params);
     server.onRequest = (method, params) => this.asked(method, params);
     const exited = server.exited;
     await server.init();
-    if (spec.plugins?.length) await server.request('skills/extraRoots/set', { extraRoots: spec.plugins.map((p) => `${p}/skills`) }).catch(() => {});
+    if (roots.length) await server.request('skills/extraRoots/set', { extraRoots: roots.map((p) => `${p}/skills`) }).catch(() => {});
+    const trust = await hookTrust(server, cwd);
     if (this.closed) return;
     const config: Record<string, unknown> = {
       // a repository that has a CLAUDE.md and no AGENTS.md is read as Claude Code reads it
@@ -388,9 +561,10 @@ class CodexSession implements AgentSession {
       'sandbox_workspace_write.writable_roots': writable,
       // what the repository's instructions say comes with the system prompt where its own settings wait for the owner
       ...(spec.untrusted ? { project_doc_max_bytes: 0 } : {}),
+      ...trust,
     };
     const settings = {
-      cwd: spec.cwd,
+      cwd,
       ...(spec.model ? { model: spec.model } : {}),
       approvalPolicy: spec.readOnly ? 'never' : 'on-request',
       ...(spec.readOnly ? {} : { approvalsReviewer: 'auto_review' }),
@@ -398,19 +572,50 @@ class CodexSession implements AgentSession {
       config,
       developerInstructions: spec.system,
     };
-    const opened = spec.resume
-      ? await server.request<{ thread: { id: string }; model?: string }>('thread/resume', { threadId: spec.resume.replace(CODEX_SESSION, ''), excludeTurns: true, ...settings })
-      : await server.request<{ thread: { id: string }; model?: string }>('thread/start', {
-          ...settings,
-          dynamicTools: spec.tools.length
-            ? [{ type: 'namespace', name: 'obeya', description: "Obeya's tools: how this agent talks to the owner and to Obeya.", tools: spec.tools.map((t) => ({ type: 'function', name: t.name, description: t.description, inputSchema: jsonSchema(t.schema) })) }]
-            : [],
-        });
+    let opened: { thread: { id: string }; model?: string };
+    try {
+      opened = spec.resume
+        ? await server.request<{ thread: { id: string }; model?: string }>('thread/resume', { threadId: spec.resume.replace(CODEX_SESSION, ''), excludeTurns: true, ...settings })
+        : await server.request<{ thread: { id: string }; model?: string }>('thread/start', {
+            ...settings,
+            dynamicTools: spec.tools.length
+              ? [{ type: 'namespace', name: 'obeya', description: "Obeya's tools: how this agent talks to the owner and to Obeya.", tools: spec.tools.map((t) => ({ type: 'function', name: t.name, description: t.description, inputSchema: jsonSchema(t.schema) })) }]
+              : [],
+          });
+    } catch (e) {
+      if (e instanceof CodexError && codexLoginFailed(undefined, e.message)) throw new Error(notLoggedIn(there?.host.name ?? null, e.message));
+      throw e;
+    }
     this.thread = opened.thread.id;
     this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}`, ...(opened.model ? { model: opened.model } : {}) });
     this.pump();
     const code = await exited;
-    if (!this.closed) this.emit({ type: 'error', message: ended(code, server.stderr) });
+    if (this.closed) return;
+    if (this.lost) this.emit({ type: 'lost', message: `the connection to ${there!.host.name} was lost` });
+    else if (there && code === 127) this.emit({ type: 'error', message: withStderr(`Codex is not installed on ${there.host.name}: no \`codex\` on its PATH`, server.stderr) });
+    else this.emit({ type: 'error', message: ended(code, server.stderr) });
+  }
+
+  /**
+   * A hook's call (`Hooks`): a command that would wait too long in the foreground is refused
+   * before it runs, and a folder's watch hears of a command or patch before it runs and after.
+   */
+  private async hook(h: HookCall): Promise<unknown> {
+    const calls = hookCalls(h);
+    if (!calls.length || this.closed) return {};
+    if (h.hook_event_name === 'PreToolUse') {
+      const command = h.tool_name === 'Bash' ? String(calls[0]!.input.command) : '';
+      if (command && foregroundSleep(command) > FOREGROUND_SLEEP_LIMIT) {
+        this.emit({ type: 'denied', name: 'Bash', input: { command }, by: 'obeya' });
+        return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: WAIT_REFUSED } };
+      }
+      if (!this.spec.watch) return {};
+      this.hooked.add(h.tool_use_id ?? '');
+      for (const call of calls) await this.watch((w) => w.before(call));
+      return {};
+    }
+    if (h.hook_event_name === 'PostToolUse' && this.spec.watch) for (const call of calls) await this.watch((w) => w.after(call));
+    return {};
   }
 
   /** Starts a turn with what waits, or steers the one under way with it. */
@@ -472,17 +677,19 @@ class CodexSession implements AgentSession {
       }
       case 'item/started': {
         const item = p.item as Item;
+        // a call no hook told of (a Codex without hooks, a host without curl) is watched as late as Codex reports it
+        const unhooked = this.spec.watch && (item.type === 'commandExecution' || item.type === 'fileChange') && !this.hooked.has(item.id);
         for (const call of itemCalls(item)) {
           this.emit({ type: 'tool', name: call.name, input: call.input });
-          if (this.spec.watch && (item.type === 'commandExecution' || item.type === 'fileChange')) this.watch((w) => w.before(call));
+          if (unhooked) void this.watch((w) => w.before(call));
         }
         return;
       }
       case 'item/completed': {
         const item = p.item as Item;
         if (item.type === 'agentMessage' && item.text?.trim()) this.emit({ type: 'text', text: item.text });
-        if (item.type === 'commandExecution' || item.type === 'fileChange') {
-          if (this.spec.watch) for (const call of itemCalls(item)) this.watch((w) => w.after(call));
+        if ((item.type === 'commandExecution' || item.type === 'fileChange') && this.spec.watch && !this.hooked.delete(item.id)) {
+          for (const call of itemCalls(item)) void this.watch((w) => w.after(call));
         }
         // what changed meanwhile goes with the step, as Claude Code's agent reads it with a tool's result
         if (item.type === 'commandExecution' || item.type === 'fileChange' || item.type === 'mcpToolCall' || item.type === 'webSearch') {
@@ -512,7 +719,7 @@ class CodexSession implements AgentSession {
           if (failed) {
             const limited = failed.info === 'usageLimitExceeded';
             const resetsAt = limited ? limitResets(this.limits) : undefined;
-            const message = codexLoginFailed(failed.info, failed.message) ? `Codex is not logged in on this machine: run “codex login” in a terminal. (${failed.message})` : failed.message;
+            const message = codexLoginFailed(failed.info, failed.message) ? notLoggedIn(this.there?.host.name ?? null, failed.message) : failed.message;
             this.emit({ type: 'error', message, ...(limited ? { limit: resetsAt ? { resetsAt } : {} } : {}) });
           }
           this.emit({ type: 'idle', background: 0, ...(this.queue.length ? { more: true } : {}) });
@@ -523,9 +730,11 @@ class CodexSession implements AgentSession {
     }
   }
 
-  private watch(step: (w: NonNullable<AgentSpec['watch']>) => Promise<void>) {
+  /** Tells the folder's watch of a step, after those before it; settles once it is done. */
+  private watch(step: (w: NonNullable<AgentSpec['watch']>) => Promise<void>): Promise<void> {
     const w = this.spec.watch!;
     this.watching = this.watching.then(() => step(w)).catch((e) => console.error(`Obeya: a folder's watch failed: ${messageOf(e)}`));
+    return this.watching;
   }
 
   private async asked(method: string, p: Record<string, unknown>): Promise<unknown> {
@@ -679,4 +888,72 @@ export function codexUsage(cwd: string): UsageSource {
     },
     close: () => server?.close(),
   };
+}
+
+/** Where a login to Codex stands: waiting for the browser's return from the sign-in, done, or failed. */
+export interface CodexLoginState {
+  state: 'waiting' | 'done' | 'failed';
+  error?: string;
+}
+
+/** How long a login waits for the owner to sign in before it gives up. */
+const LOGIN_WAIT = 10 * 60_000;
+/** The port Codex's sign-in returns to, on the loopback of the machine Codex runs on. */
+const LOGIN_PORT = 1455;
+
+/**
+ * Logins to Codex started from a card whose session lost its login: an app server asked for
+ * ChatGPT's sign-in (`account/login/start`), whose page the owner opens in the browser here; the
+ * sign-in returns to a port on this machine, where Codex listens. For a host the app server runs
+ * there, with that port forwarded to it, so its own login is renewed. One at a time, as the port is.
+ */
+export class CodexLogins {
+  private logins = new Map<string, { state: CodexLoginState; server: AppServer }>();
+
+  constructor(private env: Env = process.env) {}
+
+  async start(host: SshHost | null): Promise<{ id: string; url: string }> {
+    for (const [id, l] of this.logins) if (l.state.state === 'waiting') this.end(id, { state: 'failed', error: 'another login started' });
+    let server: AppServer;
+    if (host) {
+      const argv = host.argv(['codex', 'app-server'], { local: `localhost:${LOGIN_PORT}:localhost:${LOGIN_PORT}` });
+      server = new AppServer({ process: spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }) });
+    } else {
+      const bin = codexExecutable(this.env);
+      if (!bin) throw new Error('Codex is not installed on this machine');
+      server = new AppServer({ bin, cwd: tmpdir(), env: cleanEnv(this.env) });
+    }
+    const id = randomBytes(9).toString('base64url');
+    const login = { state: { state: 'waiting' } as CodexLoginState, server };
+    let loginId: string | undefined;
+    server.onNotification = (method, p) => {
+      if (method !== 'account/login/completed' || (loginId && p.loginId && p.loginId !== loginId)) return;
+      this.end(id, p.success ? { state: 'done' } : { state: 'failed', error: typeof p.error === 'string' ? p.error : 'the sign-in failed' });
+    };
+    try {
+      await server.init();
+      const r = await server.request<{ type: string; authUrl?: string; loginId?: string }>('account/login/start', { type: 'chatgpt' });
+      if (!r.authUrl) throw new Error('Codex gave no sign-in page');
+      loginId = r.loginId;
+      this.logins.set(id, login);
+      void server.exited.then(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: withStderr('the Codex app server ended', server.stderr) }));
+      setTimeout(() => login.state.state === 'waiting' && this.end(id, { state: 'failed', error: 'nobody signed in' }), LOGIN_WAIT).unref?.();
+      return { id, url: r.authUrl };
+    } catch (e) {
+      server.close();
+      throw new Error(withStderr(messageOf(e), server.stderr));
+    }
+  }
+
+  /** Where the login `id` stands; one Obeya does not know (from before a restart, say) has failed. */
+  state(id: string): CodexLoginState {
+    return this.logins.get(id)?.state ?? { state: 'failed', error: 'no such login' };
+  }
+
+  private end(id: string, state: CodexLoginState) {
+    const l = this.logins.get(id);
+    if (!l) return;
+    l.state = state;
+    l.server.close();
+  }
 }

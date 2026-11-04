@@ -217,6 +217,11 @@ command it starts wherever it stands in the line. Heredoc text counts only when 
 (`bash <<EOF`, `ssh host <<EOF`). The refusal names two bounded waits that pass, one without
 `timeout`, which macOS lacks.
 
+Codex refuses the same commands through its hooks (see Codex in Agents and workspaces). Codex has no
+background task that wakes the session, so its workers are told, and its refusal says, to wait in
+commands of 30 seconds at most, run again until what they wait for is there (a note reaches them
+between two), and to snooze for anything longer.
+
 ### Refused and confirmed tool calls
 
 A tool call refused without asking anyone (a deny rule, auto mode's classifier, the permission mode,

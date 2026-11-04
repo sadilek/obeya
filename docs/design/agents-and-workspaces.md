@@ -52,13 +52,17 @@ does), and a request it leaves to a person becomes the question the card waits o
 question tool gets no answer: the agent asks through Obeya's. Read-only agents run in the read-only
 sandbox and are never asked. A turn that fails for Codex's usage limit waits for its reset as Claude
 Code's does (the reset of the window used up, from the rate limits Codex reports during the turn); a
-missing login says to run `codex login`.
+missing login offers to log in again on the card (see Conversation on the card).
 
-What Codex does not give Obeya: a long foreground wait is not refused before it runs (Codex workers
-are told to wait in short commands and snooze for longer, there being no background task that wakes
-the session); a folder without git hears of a Codex change when Codex reports it, not before it
-runs; the Arbeitsrückschau reads only Claude Code's transcripts. Workers on SSH hosts run on Claude
-Code.
+Codex's hooks tell Obeya of each command and patch before it runs, and after it in a folder without
+git, as Claude Code's hooks do: a foreground wait too long is refused (see Waiting without blocking),
+a folder's watch reads the folder before the change (see Folders without git). Each session gives
+its hooks on Codex's command line (`-c hooks.PreToolUse=…`, `hooks.PostToolUse=…`, for `Bash` and
+`apply_patch`), as curl posting what Codex passes to a server on the loopback that only this session's
+token opens, and prints the answer. Codex runs no hook it has no trust for, and keeps none for hooks
+given that way: the session asks the app server for their hashes (`hooks/list`) and starts its thread
+with them trusted (`hooks.state`). A hook that fails (no curl) lets the call run; a folder then hears
+of the change as Codex reports it, which may be after it began.
 
 ### Harnesses, models and effort
 
@@ -257,7 +261,8 @@ folder (0.3 s for 4,615 files). Background work keeps a window open; the end of 
 left open. A file only in the cloud (dataless) is never read, hashed or copied, which would download
 it. Per path, a card's change runs from before its first change to after its last (added, changed,
 moved, deleted; a moved directory is one move), with a hash of what it wrote, kept after the card is
-done. Agents that only read (the Koordinator, project agents) are not followed.
+done. Agents that only read (the Koordinator, project agents) are not followed. A Codex worker's calls are
+followed through its hooks the same way (see Codex).
 
 The card shows the list in the place of its branch („Im Ordner geändert: 4 Dateien +12 −1 ·
 Rückgängig: vollständig“), whose size shows it over the page with diffs of the text files whose
@@ -307,7 +312,8 @@ as `ssh://<host>/<path>`; a new card goes there when the machines before it have
 
 #### Running there
 
-Every git call, stack command and worker session in such a workspace runs there through `ssh`,
+Every git call, stack command and worker session (Claude Code, or Codex's app server, whichever its
+group runs on) in such a workspace runs there through `ssh`,
 unseen by its callers: `ssh <target> exec sh -c '…'` with the installers' directories on the `PATH`;
 `exec`, so a shell that forks for a command (dash) does not stay as the session's parent under
 another pid. One shared connection where `ControlMaster` exists (not Windows), its sockets in
@@ -321,7 +327,7 @@ when it answers, waiting cards look again.
 Nothing secret is stored there: the repository's GitHub login (from `git credential fill` here) and
 the Claude login (`claude-token` in Obeya's home, from `claude setup-token`, else
 `CLAUDE_CODE_OAUTH_TOKEN`) travel as the first line
-of stdin of each command and session; the clones' credential helper reads `GH_TOKEN` (after an empty
+of stdin of each command and session (a Codex session gets no Claude login); the clones' credential helper reads `GH_TOKEN` (after an empty
 helper, so macOS's keychain does not keep it). The clones are marked trusted in the host's
 `~/.claude.json`, since nobody answers the folder dialog there and the repository's own permission
 rules would not apply.
@@ -333,7 +339,12 @@ owner's demo settings without a key file (no API key goes to a host) and without
 (a path of this machine: demos there go into the host's `~/demos`, which the brief names), and that is the session's
 `OBEYA_HOME`. Its `OBEYA_URL` is a port forwarded
 (`-R`) to a server of Obeya's that answers only narration clips, inline as base64, so demos rendered
-there get the owner's voice, which only this machine runs.
+there get the owner's voice, which only this machine runs. A Codex session's hooks reach their
+session's server here through a port of their own forwarded the same way.
+
+Codex there runs on the host's own Codex login: none travels, since Codex keeps its login as a file
+whose refresh token it renews, and one login used on two machines would end the other's. When it
+lost it, the card's „Bei Codex anmelden“ renews it there (see Conversation on the card).
 
 Screenshots in the owner's message are copied to `~/.obeya/remote/images` there and named by those
 paths, as are the copies of dropped files whose paths the message holds (to `~/.obeya/remote/files`;
@@ -350,7 +361,8 @@ resumes the session by id with the message not yet taken, or word of the drop if
 session that never started there starts anew with its first message); a
 card waiting for the owner needs no session until their next message. The resumed session first ends
 the one the drop may have left running there, by the pid it wrote, never itself (a restarted host,
-a container say, reuses pids). A host needs git, Claude Code and what the repository's work needs.
+a container say, reuses pids). A host needs git, Claude Code or Codex (with its own login and curl
+for its hooks), and what the repository's work needs.
 
 ### Decisions
 
@@ -359,6 +371,21 @@ a container say, reuses pids). A host needs git, Claude Code and what the reposi
   Obeya, no steering, a process per message); the Codex SDK, which wraps `codex exec`; Obeya's tools
   as an MCP server over HTTP that Codex connects to, which needs a port, a token per session and
   resuming the connection after a restart, where dynamic tools come with the thread.
+- **Codex's hooks come on its command line and post to the session over the loopback**
+  (2026-11-04): they run before a command or patch and Codex waits for them, so a refusal and a
+  folder's copy come before the change. Their trust comes from `hooks/list` at each start, since the
+  hash of a hook naming its session's port and token changes every time. Rejected: interrupting the
+  turn when Codex reports a command started (part of it may have run by then); Obeya's own binary
+  as the hook (a host has none, and Bun starts slower than curl); trust written into the owner's
+  Codex configuration, or `bypass_hook_trust`, which would also run hooks the owner never trusted.
+- **Codex on a host runs on that host's own login** (2026-11-04). Rejected: carrying this machine's
+  `auth.json` along as the Claude token travels, since Codex renews its refresh token and the copy
+  there would end the login here (or the other way round).
+- **Codex logs in again from the card in the browser** (2026-11-04), through the app server's
+  ChatGPT sign-in, whose page returns to a port on the machine Obeya runs on (forwarded for a host).
+  Rejected: a terminal with `codex login` (the UI sends the owner to no command line, and on a host
+  it would not reach the sign-in's return); the device-code sign-in, which works from a phone but
+  has to be switched on in ChatGPT's settings first.
 - **The harness column is called „Läuft auf“** (owner, 2026-11-03), under the title „Agenten und
   Modelle“, which names the rows. Rejected: „Harness“, jargon beside that title; „Werkzeug“ or
   „Tool“, which agents' commands are called already, and which undersells a coding agent.

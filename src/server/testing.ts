@@ -159,9 +159,9 @@ export const until = async (done: () => unknown, ms = 3000) => {
  * A stand-in for `ssh` that runs the command on this machine, as a host's login shell would; the
  * host counts as unreachable (exit 255, as ssh's own) while `<dir>/down` exists. Its home is
  * `<dir>/home`. Each command it ran is appended to `<dir>/log`, with the target first; each
- * connection it tried, reachable or not, adds a line to `<dir>/tries`. A forward from here (`-L`)
- * is a proxy on this machine for as long as the command runs; its pid goes to `<dir>/forwards`,
- * the proxy's to `<dir>/proxies`.
+ * connection it tried, reachable or not, adds a line to `<dir>/tries`. A forward (`-L` from here,
+ * `-R` from there, the same on one machine) is a proxy on this machine for as long as the command
+ * runs; the command's pid goes to `<dir>/forwards`, each proxy's to `<dir>/proxies`.
  */
 export function fakeSsh(dir: string): string {
   mkdirSync(dir, { recursive: true });
@@ -184,7 +184,7 @@ createServer((c) => {
     `#!/bin/sh
 fwd=
 while [ $# -gt 1 ]; do
-  case "$1" in -L) fwd="$2"; shift 2 ;; -o|-R) shift 2 ;; -T|-n) shift ;; *) break ;; esac
+  case "$1" in -L|-R) fwd="$fwd $2"; shift 2 ;; -o) shift 2 ;; -T|-n) shift ;; *) break ;; esac
 done
 target="$1"; shift
 echo x >> ${JSON.stringify(join(dir, 'tries'))}
@@ -193,8 +193,11 @@ printf '%s %s\\n' "$target" "$*" >> ${JSON.stringify(join(dir, 'log'))}
 HOME=${JSON.stringify(join(dir, 'home'))}; export HOME; mkdir -p "$HOME"
 [ -z "$fwd" ] && exec sh -c "$*"
 echo $$ >> ${JSON.stringify(join(dir, 'forwards'))}
-${JSON.stringify(process.execPath)} ${JSON.stringify(proxy)} "$fwd" & proxy=$!
-echo $proxy >> ${JSON.stringify(join(dir, 'proxies'))}
+proxy=
+for f in $fwd; do
+  ${JSON.stringify(process.execPath)} ${JSON.stringify(proxy)} "$f" & proxy="$proxy $!"
+  echo $! >> ${JSON.stringify(join(dir, 'proxies'))}
+done
 # a command in the background reads /dev/null in dash, even with <&0: stdin goes by another fd
 exec 3<&0
 sh -c "$*" <&3 3<&- & command=$!

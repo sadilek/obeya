@@ -47,6 +47,8 @@ const de = {
   },
   failure: {
     notLoggedIn: 'Claude ist auf diesem Rechner nicht angemeldet: im Terminal „claude“ starten und „/login“ ausführen.',
+    /** Codex lost its login on `host` (null: this machine); the card's error line offers to log in again. */
+    codexNotLoggedIn: (host: string | null) => `Codex ist ${host ? `auf ${host}` : 'auf diesem Rechner'} nicht mehr angemeldet: „Bei Codex anmelden“ in der Meldung auf der Karte.`,
     session: (message: string) => `Die Claude-Sitzung brach mit einem Fehler ab: ${message}`,
   },
   answer: {
@@ -570,6 +572,7 @@ const en: Messages = {
   },
   failure: {
     notLoggedIn: 'Claude is not logged in on this machine: run “claude” in a terminal and then “/login”.',
+    codexNotLoggedIn: (host: string | null) => `Codex is no longer logged in ${host ? `on ${host}` : 'on this machine'}: “Log in to Codex” in the card’s message.`,
     session: (message: string) => `The Claude session failed with an error: ${message}`,
   },
   answer: {

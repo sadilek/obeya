@@ -67,6 +67,7 @@
 // The stage file (JSON; every field but `cards` optional):
 //   {
 //     "name": "Shop", "canvases": ["Website"], "language": "en", "conversation": "de",
+//     "agents": { "worker": { "harness": "codex" } },
 //     "clones": 2, "mainBranch": "master",
 //     "poolCheckout": true, "slots": 3,
 //     "hosts": [{ "name": "Workhorse", "ssh": "me@workhorse.local", "clones": 2, "slots": 2 }],
@@ -105,7 +106,8 @@
 // gives its workers from the repository's `demo.language`, else the demo settings'), so that the
 // screen a demo records matches its narration. Card titles and conversations are not translated:
 // write them in that language. `language` is the interface's; `conversation`, the language agents
-// write the owner in before the owner's words say otherwise, follows it where left out.
+// write the owner in before the owner's words say otherwise, follows it where left out. `agents` is
+// what „Agenten und Modelle“ sets per group (`settings.json`'s `agents`: Codex for workers, say).
 // A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
@@ -218,6 +220,8 @@ interface Stage {
   language?: Language;
   /** The owner's conversation language; the interface's without it. */
   conversation?: Language;
+  /** What „Agenten und Modelle“ sets per group, as `settings.json` keeps it under `agents`. */
+  agents?: Record<string, unknown>;
   /** The directory of the canvas's repository under the scratch directory, and so its id (default `repo`). */
   repoName?: string;
   /** Further repositories on the canvas the cards go on, each in a directory of its name, which is its id. */
@@ -365,7 +369,7 @@ const mainBranch = stage.mainBranch ?? 'main';
 mkdirSync(home, { recursive: true });
 for (const k of ['language', 'conversation'] as const) if (stage[k] && !LANGUAGES.includes(stage[k])) fail(`"${k}" is ${LANGUAGES.join(' or ')}, not ${stage[k]}`);
 // the languages of Obeya's interface and of its agents' conversation with the owner (src/server/settings.ts)
-writeFileSync(join(home, 'settings.json'), `${JSON.stringify({ language: stage.language ?? demoSettingsHere().language, ...(stage.conversation ? { conversationLanguage: stage.conversation } : {}) })}\n`);
+writeFileSync(join(home, 'settings.json'), `${JSON.stringify({ language: stage.language ?? demoSettingsHere().language, ...(stage.conversation ? { conversationLanguage: stage.conversation } : {}), ...(stage.agents ? { agents: stage.agents } : {}) })}\n`);
 // the owner's key, made before the server starts, which takes it from the home (owner.ts); code from before it has none and ignores it
 const owner = ownerHeaders(home);
 

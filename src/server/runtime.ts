@@ -17,7 +17,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { hostName, LOST, remote, sessionFiles, type SshHost } from './hosts';
+import { LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { localBin, which } from './path';
 import type { z } from 'zod';
 import { filesIn } from './files';
@@ -28,7 +28,7 @@ import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
 import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type Harness } from '../core/types';
 import { messageOf } from '../core/text';
-import { claudeLoginFailed } from '../core/login';
+import { claudeLoginFailed, codexLoginLost } from '../core/login';
 
 export interface AgentTool {
   name: string;
@@ -166,15 +166,14 @@ export const sessionHarness = (session: string): Harness => (session.startsWith(
  * A runtime that starts each agent of a group on its group's harness, model and effort
  * (`agentSetting`), asked at every start; a harness's default model is no model given. A session
  * resumed stays on the harness it began on, with that harness's default model if the group has
- * moved on since, so a card goes on with its conversation. A worker on another machine runs on
- * Claude Code, the only harness Obeya starts there.
+ * moved on since, so a card goes on with its conversation.
  */
 export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
       if (!spec.role) return runtime.start(spec, firstMessage, images);
       const chosen = setting(spec.role);
-      const on: Harness = spec.resume ? sessionHarness(spec.resume) : hostName(spec.cwd) !== null ? 'claude' : chosen.harness;
+      const on: Harness = spec.resume ? sessionHarness(spec.resume) : chosen.harness;
       const { harness, model, effort } = on === chosen.harness ? chosen : { ...agentDefault(spec.role, on), effort: chosen.effort };
       const { model: _, ...rest } = spec;
       return runtime.start({ ...rest, harness, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
@@ -633,6 +632,8 @@ export async function askOwner(
 /** A session's failure in the owner's words. */
 export function failureReason(message: string, t: Messages): string {
   if (claudeLoginFailed(message)) return t.failure.notLoggedIn;
+  const codex = codexLoginLost(message);
+  if (codex) return t.failure.codexNotLoggedIn(codex.host);
   return t.failure.session(message);
 }
 
@@ -966,18 +967,32 @@ export function cleanEnv(env: Record<string, string | undefined> = process.env):
  * (the session sees the images in it all the same).
  */
 async function carryImages(host: SshHost, dir: Promise<string>, text: string, images: string[], files: string): Promise<string> {
-  const dropped = filesIn(text, files);
-  if (!images.length && !dropped.length) return text;
+  if (!images.length && !filesIn(text, files).length) return text;
   try {
-    const to = `${await dir}/images`;
+    return (await carryTo(host, await dir, text, images, files)).text;
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Copies a message's images and the dropped files its text names (under `files` here) into Obeya's
+ * directory `dir` on the host: the text with their paths there, and the images' paths there. What
+ * cannot be copied keeps its path here.
+ */
+export async function carryTo(host: SshHost, dir: string, text: string, images: string[], files: string): Promise<{ text: string; images: string[] }> {
+  const dropped = filesIn(text, files);
+  if (!images.length && !dropped.length) return { text, images };
+  try {
+    const to = `${dir}/images`;
     if (images.length) await host.copyFiles(images, to);
-    const there = `${await dir}/files`;
+    const there = `${dir}/files`;
     if (dropped.length) await host.copyFiles(dropped, there);
     const carried = images.reduce((t, f) => t.split(f).join(`${to}/${basename(f)}`), text);
-    return dropped.reduce((t, d) => t.split(d).join(`${there}/${basename(d)}`), carried);
+    return { text: dropped.reduce((t, d) => t.split(d).join(`${there}/${basename(d)}`), carried), images: images.map((f) => `${to}/${basename(f)}`) };
   } catch (e) {
     console.error(e instanceof Error ? e.message : e);
-    return text;
+    return { text, images };
   }
 }
 

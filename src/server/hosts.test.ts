@@ -13,6 +13,7 @@ import { Board } from './board';
 import { Store } from './db';
 import { HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
 import { runAppCommand } from './app-command';
+import { codexRuntime } from './codex';
 import { type AgentEvent, sdkRuntime } from './runtime';
 import { FakeRuntime, fakeSsh, gitRepo, identify, until } from './testing';
 import { Workers } from './workers';
@@ -335,6 +336,60 @@ describe('clones on a host', () => {
     writeFileSync(join(dir, 'net', 'down'), '');
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 1, () => undefined)).toContain('Connection refused');
     expect(spaces.list()).toEqual([]);
+  });
+});
+
+describe('a Codex session on a host', () => {
+  beforeEach(() => {
+    // the host's Codex: the stand-in for its app server, where the installers put programs
+    const bin = join(dir, 'net', 'home', '.local', 'bin');
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, 'codex'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(join(import.meta.dir, 'fixtures', 'fake-codex.ts'))} "$@"\n`, { mode: 0o755 });
+    mkdirSync(join(dir, 'ws'));
+    mkdirSync(join(dir, 'plugin', 'skills'), { recursive: true });
+  });
+
+  test("runs Codex's app server there, with the plugin's skills as copied there, its hooks reaching Obeya here, and no Claude login", async () => {
+    const events: AgentEvent[] = [];
+    const requests = join(dir, 'requests.jsonl');
+    const session = codexRuntime.start({ cwd: onHost(name, join(dir, 'ws')), system: '', tools: [], plugins: [join(dir, 'plugin')], env: { FAKE_CODEX_LOG: requests }, onEvent: (e) => events.push(e) }, 'run echo $CLAUDE_CODE_OAUTH_TOKEN there');
+    await until(() => events.some((e) => e.type === 'idle'), 10_000);
+    expect(events).toContainEqual({ type: 'text', text: 'ran: there' });
+    const asked = readFileSync(requests, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { method: string; params: any });
+    expect(asked.find((r) => r.method === 'skills/extraRoots/set')!.params.extraRoots).toEqual([join(dir, 'net', 'home', '.obeya', 'remote', 'plugin', 'skills')]);
+    expect(asked.find((r) => r.method === 'thread/start')!.params.cwd).toBe(join(dir, 'ws'));
+    // the hook ran there and Obeya answered it: a long wait is refused there as here
+    session.send('run sleep 45');
+    await until(() => events.filter((e) => e.type === 'idle').length === 2, 10_000);
+    expect(events).toContainEqual({ type: 'denied', name: 'Bash', input: { command: 'sleep 45' }, by: 'obeya' });
+    // a screenshot goes there with the message, named by its path there
+    writeFileSync(join(dir, 'shot.png'), 'png');
+    session.send('look', [join(dir, 'shot.png')]);
+    await until(() => events.filter((e) => e.type === 'idle').length === 3, 10_000);
+    const images = join(dir, 'net', 'home', '.obeya', 'remote', 'images');
+    expect(events).toContainEqual({ type: 'text', text: `echo: look | [image ${images}/shot.png]` });
+    expect(readFileSync(join(images, 'shot.png'), 'utf8')).toBe('png');
+    expect(log()).not.toContain('sk-claude');
+    session.close();
+    await session.done;
+  }, 20_000);
+
+  test('a host unreachable before Codex starts there loses the connection rather than failing the session', async () => {
+    writeFileSync(join(dir, 'net', 'down'), '');
+    const events: AgentEvent[] = [];
+    const session = codexRuntime.start({ cwd: onHost(name, join(dir, 'ws')), system: '', tools: [], onEvent: (e) => events.push(e) }, 'hello');
+    await session.done;
+    expect(events).toEqual([{ type: 'lost', message: `the connection to ${name} was lost` }]);
+  });
+
+  test("a Codex thread's transcript there is found by its id for the Arbeitsrückschau", async () => {
+    const id = '01a1a634-1526-77c0-b3ba-30c136b024f5';
+    const day = join(dir, 'net', 'home', '.codex', 'sessions', '2026', '11', '04');
+    mkdirSync(day, { recursive: true });
+    writeFileSync(join(day, `rollout-2026-11-04T11-56-33-${id}.jsonl`), '{"type":"session_meta"}\n');
+    const file = await host.transcript(`codex:${id}`, join(dir, 'ws'));
+    expect(readFileSync(file!, 'utf8')).toBe('{"type":"session_meta"}\n');
+    expect(await host.transcript('codex:../../x', join(dir, 'ws'))).toBeNull();
   });
 });
 

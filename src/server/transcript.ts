@@ -1,12 +1,14 @@
 // The excerpt of a worker's run for the Arbeitsrückschau, drawn without a model from the Agent
-// SDK's transcript (`<projects>/<workspace path>/<session id>.jsonl`): where the worker went wrong
-// and corrected itself. The format is the SDK's own and may change: whatever cannot be read is
-// left out, and a transcript that cannot be read at all gives no excerpt rather than an error.
+// SDK's transcript (`<projects>/<workspace path>/<session id>.jsonl`) or from Codex's thread
+// (`<CODEX_HOME>/sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<thread id>.jsonl`): where the worker went
+// wrong and corrected itself. The formats are the harnesses' own and may change: whatever cannot be
+// read is left out, and a transcript that cannot be read at all gives no excerpt rather than an error.
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { clip } from '../core/text';
+import { CODEX_SESSION } from './runtime';
 
 /** One tool call of the run, with what came of it and the agent's words around it. */
 export interface Call {
@@ -49,6 +51,7 @@ export function transcriptsDir(): string {
  * in first (`cwd`, as the SDK names its directory), then in every directory, as the naming may change.
  */
 export function findTranscript(sessionId: string, cwd?: string | null, dir = transcriptsDir()): string | null {
+  if (sessionId.startsWith(CODEX_SESSION)) return findThread(sessionId.slice(CODEX_SESSION.length));
   if (!/^[\w-]+$/.test(sessionId)) return null;
   const name = `${sessionId}.jsonl`;
   if (cwd) {
@@ -61,6 +64,63 @@ export function findTranscript(sessionId: string, cwd?: string | null, dir = tra
       if (existsSync(file)) return file;
     }
   } catch {}
+  return null;
+}
+
+/** The directories holding Codex's threads: those of the last days by date, then those archived. */
+export function threadsDirs(): string[] {
+  const home = process.env.CODEX_HOME ?? join(homedir(), '.codex');
+  return [join(home, 'sessions'), join(home, 'archived_sessions')];
+}
+
+/**
+ * The file of a Codex thread, or null. Its name ends in the thread's id; the directory is the day
+ * it began, which a thread id (UUIDv7) carries in its first 48 bits: that day and the ones beside
+ * it (time zones) are looked in first, then every directory.
+ */
+export function findThread(threadId: string, dirs = threadsDirs()): string | null {
+  if (!/^[\da-f-]{36}$/i.test(threadId)) return null;
+  const suffix = `-${threadId}.jsonl`;
+  const hit = (d: string) => {
+    try {
+      const f = readdirSync(d).find((n) => n.startsWith('rollout-') && n.endsWith(suffix));
+      return f ? join(d, f) : null;
+    } catch {
+      return null;
+    }
+  };
+  const began = parseInt(threadId.replace(/-/g, '').slice(0, 12), 16);
+  for (const dir of dirs) {
+    for (const shift of [0, -1, 1]) {
+      const d = new Date(began + shift * 86_400_000);
+      const day = join(dir, String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0'));
+      const f = hit(day);
+      if (f) return f;
+    }
+    const f = hit(dir) ?? walkFor(dir, hit);
+    if (f) return f;
+  }
+  return null;
+}
+
+/** The first file `hit` finds in a directory under `dir`, depth first. */
+function walkFor(dir: string, hit: (d: string) => string | null): string | null {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  for (const n of names) {
+    const d = join(dir, n);
+    try {
+      if (!statSync(d).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    const f = hit(d) ?? walkFor(d, hit);
+    if (f) return f;
+  }
   return null;
 }
 
@@ -79,22 +139,34 @@ export function excerptOf(file: string | null): Excerpt | null {
 
 type Entry = { kind: 'text'; text: string } | { kind: 'call'; id: string; tool: string; input: Record<string, unknown> };
 
+/** What a run's lines hold: the agent's words and tool calls in order, and each call's result by its id. */
+interface Run {
+  entries: Entry[];
+  results: Map<string, { failed: boolean; output: string }>;
+}
+
 /**
- * The excerpt of a transcript's text (JSON lines); null when no line reads as the run of an agent.
- * Subagents' lines are left out: their own transcript is not the worker's.
+ * The excerpt of a transcript's text (JSON lines), Claude Code's or Codex's; null when no line
+ * reads as the run of an agent. Subagents' lines are left out: their own transcript is not the worker's.
  */
 export function excerpt(jsonl: string): Excerpt | null {
+  const lines: unknown[] = [];
+  for (const line of jsonl.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      lines.push(JSON.parse(line));
+    } catch {}
+  }
+  const run = lines.some((d) => isObject(d) && d.type === 'session_meta') ? codexRun(lines) : claudeRun(lines);
+  return run && analyse(run);
+}
+
+/** A Claude Code transcript's run: its assistant messages' text and tool uses, and the users' tool results. */
+function claudeRun(lines: unknown[]): Run | null {
   const entries: Entry[] = [];
   const results = new Map<string, { failed: boolean; output: string }>();
   let recognised = false;
-  for (const line of jsonl.split('\n')) {
-    if (!line.trim()) continue;
-    let d: unknown;
-    try {
-      d = JSON.parse(line);
-    } catch {
-      continue;
-    }
+  for (const d of lines) {
     if (!isObject(d) || d.isSidechain === true || !isObject(d.message)) continue;
     const content = d.message.content;
     if (!Array.isArray(content)) continue;
@@ -111,8 +183,62 @@ export function excerpt(jsonl: string): Excerpt | null {
       }
     }
   }
-  if (!recognised) return null;
+  return recognised ? { entries, results } : null;
+}
 
+/**
+ * A Codex thread's run, from the items it completed (`event_msg` `item_completed`), each named as
+ * Claude Code's tool calls are (as the card's log names them): a command as `Bash`, a file added as
+ * `Write` and changed as `Edit`, Obeya's tools as `mcp__obeya__…`. A command failed when it ended
+ * with another exit code than 0 or was refused.
+ */
+function codexRun(lines: unknown[]): Run | null {
+  const entries: Entry[] = [];
+  const results = new Map<string, { failed: boolean; output: string }>();
+  let recognised = false;
+  const call = (id: string, tool: string, input: Record<string, unknown>, failed: boolean, output: string) => {
+    recognised = true;
+    entries.push({ kind: 'call', id, tool, input });
+    results.set(id, { failed, output });
+  };
+  for (const d of lines) {
+    if (!isObject(d) || d.type !== 'event_msg' || !isObject(d.payload) || d.payload.type !== 'item_completed' || !isObject(d.payload.item)) continue;
+    const item = d.payload.item;
+    const id = str(item.id);
+    const unfinished = item.status === 'failed' || item.status === 'declined';
+    switch (item.type) {
+      case 'AgentMessage': {
+        const text = (Array.isArray(item.content) ? item.content : []).map((c) => (isObject(c) ? str(c.text) : '')).join('').trim();
+        if (text) (recognised = true), entries.push({ kind: 'text', text });
+        break;
+      }
+      case 'CommandExecution': {
+        const argv = Array.isArray(item.command) ? item.command.map(str) : [str(item.command)];
+        // the shell's own wrapper (`/bin/zsh -lc '…'`) is no part of what the agent ran
+        const command = argv.length === 3 && /(?:^|\/)(?:ba|z|da)?sh$/.test(argv[0]!) && /^-l?c$/.test(argv[1]!) ? argv[2]! : argv.join(' ');
+        const code = typeof item.exit_code === 'number' ? item.exit_code : null;
+        const output = str(item.aggregated_output) || [str(item.stdout), str(item.stderr)].filter(Boolean).join('\n');
+        call(id, 'Bash', { command }, unfinished || (code !== null && code !== 0), code !== null && code !== 0 ? `Exit code ${code}\n${output}` : output);
+        break;
+      }
+      case 'FileChange': {
+        const changes = isObject(item.changes) ? Object.entries(item.changes) : [];
+        changes.forEach(([path, c], i) => call(`${id}:${i}`, isObject(c) && c.type === 'add' ? 'Write' : 'Edit', { file_path: path }, unfinished, str(item.stderr) || str(item.stdout)));
+        break;
+      }
+      case 'DynamicToolCall':
+        call(id, `mcp__${str(item.namespace) || 'obeya'}__${str(item.tool)}`, isObject(item.arguments) ? item.arguments : {}, unfinished || item.success === false, resultText(Array.isArray(item.content_items) ? item.content_items : []));
+        break;
+      case 'McpToolCall':
+        call(id, `mcp__${str(item.server)}__${str(item.tool)}`, isObject(item.arguments) ? item.arguments : {}, unfinished, isObject(item.error) ? str(item.error.message) : '');
+        break;
+    }
+  }
+  return recognised ? { entries, results } : null;
+}
+
+/** The excerpt of a run: its calls, the failures and retries among them, the files written whole again. */
+function analyse({ entries, results }: Run): Excerpt {
   const calls: (Call & { key: string; input: Record<string, unknown> })[] = [];
   let lastText: string | undefined;
   for (const e of entries) {

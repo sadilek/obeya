@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { excerpt, excerptOf, excerptText, findTranscript } from './transcript';
+import { excerpt, excerptOf, excerptText, findThread, findTranscript } from './transcript';
 
 const SAMPLE = join(import.meta.dir, 'fixtures', 'transcript.jsonl');
 const sample = () => readFileSync(SAMPLE, 'utf8');
@@ -95,5 +95,45 @@ describe('transcript excerpt', () => {
     expect(findTranscript('22222222-0000-0000-0000-000000000000', null, dir)).toBeNull();
     expect(findTranscript('../../etc/passwd', null, dir)).toBeNull();
     expect(findTranscript(id, null, join(dir, 'missing'))).toBeNull();
+  });
+
+  test("a Codex thread's run: its failed commands and their corrections, files written whole again, Obeya's tools by their names", () => {
+    const e = excerpt(readFileSync(join(import.meta.dir, 'fixtures', 'codex-thread.jsonl'), 'utf8'))!;
+    expect(e.steps).toBe(6);
+    expect(e.firstChange).toBe(2);
+    const [flags, script, rewrite] = e.findings;
+    expect(flags).toMatchObject({
+      kind: 'retry',
+      calls: [
+        { step: 1, tool: 'Bash', what: '`bun run dev --port=4500`', failed: true, before: 'I start the server.' },
+        { step: 2, what: '`bun run dev -p 4500`', failed: false, after: 'It runs on 4500.' },
+      ],
+    });
+    expect(flags?.kind === 'retry' && flags.calls[0]!.error).toBe("Exit code 1\nerror: unknown option '--port=4500'");
+    expect(script).toMatchObject({ kind: 'failure', call: { step: 4, what: '`bun scripts/demo.ts`', after: 'The script fails; I write it anew.' } });
+    expect(rewrite).toEqual({ kind: 'rewrite', file: '/ws/card/scripts/demo.ts', times: 2, before: 'The script fails; I write it anew.' });
+    expect(e.findings).toHaveLength(3);
+  });
+
+  test("finds a Codex thread's file by its id under the day it began, else anywhere, and archived ones", () => {
+    dir = mkdtempSync(join(tmpdir(), 'obeya-tr-'));
+    // a UUIDv7 carries when the thread began: 2026-11-04
+    const id = '01a1a634-1526-77c0-b3ba-30c136b024f5';
+    const began = new Date(parseInt('01a1a6341526', 16));
+    const day = join(dir, 'sessions', String(began.getFullYear()), String(began.getMonth() + 1).padStart(2, '0'), String(began.getDate()).padStart(2, '0'));
+    mkdirSync(day, { recursive: true });
+    writeFileSync(join(day, `rollout-2026-11-04T11-56-33-${id}.jsonl`), '');
+    const dirs = [join(dir, 'sessions'), join(dir, 'archived_sessions')];
+    expect(findThread(id, dirs)).toBe(join(day, `rollout-2026-11-04T11-56-33-${id}.jsonl`));
+    const other = '01a1a634-1526-77c0-b3ba-30c136b024f6';
+    mkdirSync(join(dir, 'sessions', '2020', '01', '01'), { recursive: true });
+    writeFileSync(join(dir, 'sessions', '2020', '01', '01', `rollout-x-${other}.jsonl`), '');
+    expect(findThread(other, dirs)).toBe(join(dir, 'sessions', '2020', '01', '01', `rollout-x-${other}.jsonl`));
+    const archived = '01a1a634-1526-77c0-b3ba-30c136b024f7';
+    mkdirSync(dirs[1]!);
+    writeFileSync(join(dirs[1]!, `rollout-y-${archived}.jsonl`), '');
+    expect(findThread(archived, dirs)).toBe(join(dirs[1]!, `rollout-y-${archived}.jsonl`));
+    expect(findThread('../../etc/passwd', dirs)).toBeNull();
+    expect(findThread('01a1a634-1526-77c0-b3ba-000000000000', dirs)).toBeNull();
   });
 });

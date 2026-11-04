@@ -136,7 +136,7 @@ export class SshHost {
    * under it (dash, say, forks for it), so that a session's pid is the one ssh started and a signal
    * to it reaches the command.
    */
-  argv(command: string[] | string, o: { cwd?: string; env?: boolean; forward?: string; local?: string } = {}): string[] {
+  argv(command: string[] | string, o: { cwd?: string; env?: boolean; forward?: string[]; local?: string } = {}): string[] {
     const line = typeof command === 'string' ? command : `exec ${command.map(sh).join(' ')}`;
     const script = [
       o.env ? 'IFS= read -r obeya_env; eval "$obeya_env"; unset obeya_env;' : '',
@@ -147,7 +147,7 @@ export class SshHost {
       .filter(Boolean)
       .join(' ');
     // a forward from here goes on a connection of its own, which ends with it rather than with the shared one
-    const forwards = [...(o.forward ? ['-R', o.forward] : []), ...(o.local ? ['-o', 'ExitOnForwardFailure=yes', '-L', o.local] : [])];
+    const forwards = [...(o.forward ?? []).flatMap((f) => ['-R', f]), ...(o.local ? ['-o', 'ExitOnForwardFailure=yes', '-L', o.local] : [])];
     return [this.o.program ?? 'ssh', ...this.options(!!o.local), ...forwards, this.o.ssh, `exec sh -c ${sh(script)}`];
   }
 
@@ -284,14 +284,19 @@ export class SshHost {
   }
 
   /**
-   * A session's transcript there (Claude Code's, under the directory it ran in), copied here for
-   * the Arbeitsrückschau; null when there is none or the host does not answer.
+   * A session's transcript there (Claude Code's, under the directory it ran in; a Codex thread's,
+   * under Codex's sessions or archived ones), copied here for the Arbeitsrückschau; null when there
+   * is none or the host does not answer.
    */
   async transcript(sessionId: string, cwd: string): Promise<string | null> {
-    if (!/^[\w-]+$/.test(sessionId)) return null;
-    const r = await this.run(`cat "$HOME"/.claude/projects/${sh(cwd.replace(/[^a-zA-Z0-9]/g, '-'))}/${sh(`${sessionId}.jsonl`)}`);
+    const thread = sessionId.startsWith('codex:') ? sessionId.slice('codex:'.length) : null;
+    if (thread ? !/^[\da-f-]{36}$/i.test(thread) : !/^[\w-]+$/.test(sessionId)) return null;
+    const read = thread
+      ? `f=$(find "\${CODEX_HOME:-$HOME/.codex}/sessions" "\${CODEX_HOME:-$HOME/.codex}/archived_sessions" -name ${sh(`rollout-*-${thread}.jsonl`)} 2>/dev/null | head -n 1); [ -n "$f" ] && cat "$f"`
+      : `cat "$HOME"/.claude/projects/${sh(cwd.replace(/[^a-zA-Z0-9]/g, '-'))}/${sh(`${sessionId}.jsonl`)}`;
+    const r = await this.run(read);
     if (r.code !== 0 || !r.stdout) return null;
-    const file = join(this.o.home, 'hosts', this.name, 'transcripts', `${sessionId}.jsonl`);
+    const file = join(this.o.home, 'hosts', this.name, 'transcripts', `${thread ?? sessionId}.jsonl`);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, r.stdout);
     return file;
@@ -389,19 +394,21 @@ export class SshHost {
   }
 
   /**
-   * A worker's session there: the SDK's `spawnClaudeCodeProcess`, which starts Claude Code through
-   * `ssh` in `cwd` once the host has `files` (paths of those directories among its arguments
-   * become their copies there), its environment (the SDK's and the session's, Obeya's directory
-   * there as `OBEYA_HOME`, the logins) read from stdin first. A host that cannot be made ready
-   * ends the process as a lost connection would. With `OBEYA_NARRATION_URL` in the environment, a
-   * port there is forwarded to it, Obeya's narration alone, as `OBEYA_URL` there. `onExit` hears the exit code of
-   * `ssh` (`LOST`: the connection failed or dropped).
+   * A worker's session there: the SDK's `spawnClaudeCodeProcess`, which starts Claude Code (or
+   * Codex's app server) through `ssh` in `cwd` once the host has `files` (paths of those directories
+   * among its arguments become their copies there), its environment (the SDK's and the session's,
+   * Obeya's directory there as `OBEYA_HOME`, the Claude login unless `login` is false) read from
+   * stdin first. A host that cannot be made ready ends the process as a lost connection would. With
+   * `OBEYA_NARRATION_URL` in the environment, a port there is forwarded to it, Obeya's narration
+   * alone, as `OBEYA_URL` there; `forwards` are more (`-R`), for the session's own hooks. `onExit`
+   * hears the exit code of `ssh` (`LOST`: the connection failed or dropped), `onStderr` what the
+   * command there and ssh say on stderr.
    */
-  session(o: { cwd: string; files: HostFiles; onExit?: (code: number | null) => void }): (s: SpawnOptions) => SpawnedProcess {
+  session(o: { cwd: string; files: HostFiles; login?: boolean; forwards?: string[]; onExit?: (code: number | null) => void; onStderr?: (text: string) => void }): (s: SpawnOptions) => SpawnedProcess {
     const ready = this.prepare(o.files);
     return (s) => {
       const p = deferred(ready, (dir) => {
-        const token = this.o.claudeToken?.();
+        const token = o.login === false ? undefined : this.o.claudeToken?.();
         const local = Object.entries(o.files.dirs);
         const args = s.args.map((a) => {
           const hit = local.find(([, from]) => a === from);
@@ -414,11 +421,12 @@ export class SshHost {
         // a session cut off by a dropped connection may still run there: the one that resumes it ends it first;
         // not itself, whose pid a host that restarted since (a container, say) may give out again
         const pid = sh(`${dir}/sessions/${o.cwd.replace(/[^\w.-]+/g, '-')}.pid`);
-        const previous = `mkdir -p ${sh(`${dir}/sessions`)}; old=$(cat ${pid} 2>/dev/null); [ -n "$old" ] && [ "$old" != $$ ] && ps -p "$old" -o command= 2>/dev/null | grep -q claude && kill "$old"; echo $$ > ${pid};`;
+        const previous = `mkdir -p ${sh(`${dir}/sessions`)}; old=$(cat ${pid} 2>/dev/null); [ -n "$old" ] && [ "$old" != $$ ] && ps -p "$old" -o command= 2>/dev/null | grep -q ${sh(basename(s.command))} && kill "$old"; echo $$ > ${pid};`;
+        const forward = [...(here ? [`127.0.0.1:${there}:127.0.0.1:${here}`] : []), ...(o.forwards ?? [])];
         const argv = this.argv(`${previous} exec ${[s.command, ...args].map(sh).join(' ')}`, {
           cwd: o.cwd,
           env: true,
-          ...(here ? { forward: `127.0.0.1:${there}:127.0.0.1:${here}` } : {}),
+          ...(forward.length ? { forward } : {}),
         });
         const child = spawn(argv[0]!, argv.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: OWN_GROUP });
         // with Obeya reachable, a voice it holds loaded narrates from Obeya's machine (OBEYA_HOLDS_VOICE: no need to install it here)
@@ -429,6 +437,7 @@ export class SshHost {
         child.stderr!.on('data', (d: Buffer) => {
           const text = d.toString().trim();
           if (text) console.error(`${this.name}: ${text}`);
+          if (text) o.onStderr?.(`${text}\n`);
         });
         return child;
       });

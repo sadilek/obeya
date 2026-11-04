@@ -56,6 +56,15 @@ process's exit. The server words a session's failure by the same rule („Claude
 this machine …“). Another tool's login error (gh's, an expired OAuth token of some API) offers no
 Claude login.
 
+A Codex session that lost its login (an `unauthorized` turn, Codex's „401 Unauthorized“) fails as
+„Codex is not logged in on this machine.“ or „… on <host>.“, and that error offers „Bei Codex
+anmelden“ in the same places. It needs no terminal: Obeya asks a Codex app server for ChatGPT's
+sign-in (on the machine the session ran on), opens its page in a new tab, and the line says once
+Codex is logged in again, and that the message is to be sent again (or the agent started again). The
+sign-in returns to a port on the machine Obeya runs on, so the phone and other devices get the hint
+that it happens at that computer. A host's login is renewed there: its app server runs over SSH with
+that port forwarded to it.
+
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its
 background work that runs („Im Hintergrund“, each with how long it has run). Once the card waits for

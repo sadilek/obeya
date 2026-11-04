@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { bareCommand, codexRuntime, codexUsageOf, itemCalls, limitResets, modelsOf } from './codex';
+import { bareCommand, CodexLogins, codexRuntime, codexUsageOf, itemCalls, limitResets, modelsOf, notLoggedIn, patchCalls, WAIT_REFUSED } from './codex';
+import type { ToolCall } from './folder';
 import type { AgentEvent, AgentSession, AgentSpec } from './runtime';
 import { until } from './testing';
 
@@ -137,12 +138,61 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     expect(s.requests().find((r) => r.method === 'thread/start')!.params.config.project_doc_max_bytes).toBe(0);
   });
 
+  test('a command that would wait too long in the foreground is refused before it runs; a short one runs', async () => {
+    const s = start({}, 'run sleep 45 && echo late');
+    await until(() => s.idles() === 1);
+    expect(s.texts()).toEqual([`blocked: ${WAIT_REFUSED}`]);
+    expect(s.events).toContainEqual({ type: 'denied', name: 'Bash', input: { command: 'sleep 45 && echo late' }, by: 'obeya' });
+    // it never started: no item, no line in the log
+    expect(s.events.some((e) => e.type === 'tool')).toBe(false);
+    // Codex runs the hooks only as the thread trusts them
+    expect(Object.keys(s.requests().find((r) => r.method === 'thread/start')!.params.config['hooks.state'])).toEqual(['/<session-flags>/config.toml:pre_tool_use:0:0']);
+    s.session.send('run echo hi');
+    await until(() => s.idles() === 2);
+    expect(s.texts().at(-1)).toBe('ran: hi');
+    expect(s.events).toContainEqual({ type: 'tool', name: 'Bash', input: { command: 'echo hi' } });
+  });
+
+  test("a folder's watch hears of a command and a patch before they change anything, and after", async () => {
+    const heard: string[] = [];
+    const dir = mkdtempSync(join(tmpdir(), 'obeya-codex-folder-'));
+    dirs.push(dir);
+    const file = join(dir, 'notes.txt');
+    const watch = {
+      before: async (c: ToolCall) => void heard.push(`before ${c.name} ${JSON.stringify(c.input)} ${existsSync(file) ? 'there' : 'not there'}`),
+      after: async (c: ToolCall) => void heard.push(`after ${c.name} ${existsSync(file) ? 'there' : 'not there'}`),
+    };
+    const s = start({ cwd: dir, watch }, `patch ${file} hello`);
+    await until(() => s.idles() === 1);
+    expect(heard).toEqual([`before Write {"file_path":"${file}"} not there`, 'after Write there']);
+    rmSync(file);
+    s.session.send(`run echo hi > ${file}`);
+    await until(() => s.idles() === 2);
+    expect(heard.slice(2)).toEqual([`before Bash {"command":"echo hi > ${file}"} not there`, 'after Bash there']);
+    expect(s.requests().find((r) => r.method === 'thread/start')!.params.config['hooks.state']).toHaveProperty(['/<session-flags>/config.toml:post_tool_use:0:0']);
+  });
+
+  test('a turn that fails for a missing login says so, as the card offers to log in', async () => {
+    const s = start({}, 'unauthorized');
+    await until(() => s.idles() === 1);
+    expect(s.events).toContainEqual({ type: 'error', message: notLoggedIn(null, 'unexpected status 401 Unauthorized') });
+  });
+
   test('closed, the session ends without an error', async () => {
     const s = start({}, 'wait');
     await until(() => s.requests().some((r) => r.method === 'turn/start'));
     s.session.close();
     await s.session.done;
     expect(s.events.some((e) => e.type === 'error')).toBe(false);
+  });
+
+  test("a login where the session lost it: ChatGPT's sign-in page for the browser, then done once the owner signed in", async () => {
+    const logins = new CodexLogins({ ...process.env, OBEYA_CODEX: FAKE });
+    const { id, url } = await logins.start(null);
+    expect(url).toStartWith('https://auth.openai.com/');
+    expect(logins.state(id).state).toBe('waiting');
+    await until(() => logins.state(id).state === 'done');
+    expect(logins.state('unknown')).toEqual({ state: 'failed', error: 'no such login' });
   });
 
   test('without Codex on the machine the session says so', async () => {
@@ -157,6 +207,16 @@ test("a command without its shell's wrapper, as the card's log shows it", () => 
   expect(bareCommand(`bash -c "bun test"`)).toBe('bun test');
   expect(bareCommand("/bin/zsh -lc 'echo '\\''hi'\\'''")).toBe("echo 'hi'");
   expect(bareCommand('ls -la')).toBe('ls -la');
+});
+
+test("a patch's files as Claude Code's tool calls: added as Write, changed, deleted or moved as Edit and Write", () => {
+  const patch = '*** Begin Patch\n*** Add File: a.txt\n+hi\n*** Update File: b.txt\n@@\n-x\n+y\n*** Move to: c.txt\n*** Delete File: d.txt\n*** End Patch';
+  expect(patchCalls('exec-1', patch)).toEqual([
+    { id: 'exec-1:0', name: 'Write', input: { file_path: 'a.txt' } },
+    { id: 'exec-1:1', name: 'Edit', input: { file_path: 'b.txt' } },
+    { id: 'exec-1:2', name: 'Write', input: { file_path: 'c.txt' } },
+    { id: 'exec-1:3', name: 'Edit', input: { file_path: 'd.txt' } },
+  ]);
 });
 
 test("Codex's items as Claude Code's tool calls: a command, files written and edited, Obeya's tools", () => {

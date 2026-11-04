@@ -126,9 +126,9 @@ test("an agent of a group starts on the group's harness with its model and effor
   worker = { harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' };
   runtime.start({ ...spec, role: 'worker' });
   expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' });
-  // a worker on another machine runs on Claude Code, the only harness Obeya starts there
+  // a worker on another machine runs on its group's harness too
   runtime.start({ ...spec, cwd: 'ssh://mini/r', role: 'worker' });
-  expect(fake.last.spec).toMatchObject({ harness: 'claude', model: 'opus', effort: 'high' });
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'high' });
   // a session resumed stays on its harness: a Claude Code one after the group moved to Codex, and back
   runtime.start({ ...spec, role: 'worker', resume: 'b9e1c0de-claude-session' });
   expect(fake.last.spec).toMatchObject({ harness: 'claude', model: 'opus', effort: 'high' });

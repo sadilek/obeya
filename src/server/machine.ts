@@ -24,11 +24,11 @@ import { BadRequest } from './board';
 import type { CanvasRuntime } from './canvas';
 import type { Config } from './config';
 import { previewGitSetup, setUpGit, withoutGit } from './git-setup';
-import { saveClaudeToken } from './hosts';
+import { onHost, remote, saveClaudeToken, type SshHost } from './hosts';
 import { repoInfo } from './repo';
 import { COMPILED } from './resources';
 import { claudeExecutable } from './runtime';
-import { codexExecutable, spawnOptions, startArgv } from './codex';
+import { codexExecutable, CodexLogins, type CodexLoginState, spawnOptions, startArgv } from './codex';
 import { findCodex, type HarnessFound, type Harnesses } from './harnesses';
 import { extendPath, freshPath, which } from './path';
 import { ownerLanguage } from './settings';
@@ -273,6 +273,7 @@ interface Found {
 
 export class MachineSetup {
   private job?: MachineJob;
+  private codexLogins?: CodexLogins;
 
   constructor(private o: MachineOptions) {}
 
@@ -473,6 +474,29 @@ export class MachineSetup {
     if (token && item.id !== 'claudeLogin') throw new BadRequest('invalid', `${id} takes no token`);
     const argv = token ? [login[0]!, 'setup-token'] : login;
     return { opened: await openTerminal(argv, this.platform, this.env), command: shown(argv) };
+  }
+
+  /**
+   * Starts a login to Codex where a card's session lost it: on this machine, or on the host named
+   * (`host`); the page of ChatGPT's sign-in for the owner's browser, and the id to follow it by.
+   */
+  async codexLogin(input: unknown): Promise<{ id: string; url: string }> {
+    const { host } = (input ?? {}) as { host?: unknown };
+    let there: SshHost | null = null;
+    if (host !== undefined && host !== null) {
+      if (typeof host !== 'string' || !/^[\w.-]+$/.test(host)) throw new BadRequest('invalid', 'not a host');
+      try {
+        there = remote(onHost(host, '/'))!.host;
+      } catch {
+        throw new BadRequest('invalid', `no host ${host}`);
+      }
+    }
+    return (this.codexLogins ??= new CodexLogins(this.env)).start(there);
+  }
+
+  /** Where a login to Codex stands (`codexLogin`). */
+  codexLoginState(id: string): CodexLoginState {
+    return (this.codexLogins ??= new CodexLogins(this.env)).state(id);
   }
 
   /** The token the owner got from `claude setup-token`, for the sessions that run on a token. */
