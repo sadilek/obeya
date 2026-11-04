@@ -20,6 +20,7 @@ import { landedRef, PauseMark, PlayMark, shownTitle } from './parts';
 import { holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
+import { ACK_MS } from './tell';
 import { Inline, plain } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
 import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
@@ -2668,38 +2669,115 @@ function ShareBox({ item, demo, act, onApproval, approveAll, vocabulary, unliste
   );
 }
 
+/** How long a tapped × asks „Entfernen“ before it is an × again. */
+const ARMED_MS = 4000;
+
 /**
  * The page's tags as chips, before sharing and after: × takes one off, „+“ offers the values of the
  * site's vocabulary the page lacks. A change takes effect at once (a shared page goes out again), and
- * stays: neither a later worker nor Obeya's reading session changes what the owner set.
+ * stays: neither a later worker nor Obeya's reading session changes what the owner set. A tag taken
+ * off stays in its place for a while, struck through, with „Rückgängig“. A tap on × first asks
+ * „Entfernen“: on a phone the card's layout may still move under the finger as it opens.
  */
 function ShareTags({ tags, vocabulary, set }: { tags: PageTags | undefined; vocabulary: PageTags; set: (dimension: string, values: string[]) => void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(open, box, () => setOpen(false), true);
-  const shown = shownTags(tags, vocabulary);
-  const on = new Map(shown);
+  // the chip whose × was tapped, asking „Entfernen“; how the last press on an × came (touch asks first)
+  const [armed, setArmed] = useState<string | null>(null);
+  const touch = useRef(false);
+  useEffect(() => {
+    if (!armed) return;
+    const off = (e: PointerEvent) => !(e.target as Element).closest?.('.tag-chip.armed') && setArmed(null);
+    const timer = setTimeout(() => setArmed(null), ARMED_MS);
+    document.addEventListener('pointerdown', off, true);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('pointerdown', off, true);
+    };
+  }, [armed]);
+  // the tags taken off a moment ago, each with „Rückgängig“ until its time is up
+  const [gone, setGone] = useState<{ key: string; d: string; v: string }[]>([]);
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const forget = (key: string) => {
+    clearTimeout(timers.current.get(key));
+    timers.current.delete(key);
+    setGone((g) => g.filter((x) => x.key !== key));
+  };
+  // one taken off is off at once, before the server's answer
+  const isGone = (d: string, v: string) => gone.some((g) => g.d === d && g.v === v);
+  const on = new Map(shownTags(tags, vocabulary).map(([d, values]) => [d, values.filter((v) => !isGone(d, v))] as const));
   const rest = dimensions(vocabulary).flatMap(([d, values]) => {
     const left = values.filter((v) => !on.get(d)?.includes(v));
     return left.length ? [[d, left] as const] : [];
   });
+  const remove = (d: string, v: string) => {
+    const key = `${d}\n${v}`;
+    setArmed(null);
+    set(d, (on.get(d) ?? []).filter((x) => x !== v));
+    clearTimeout(timers.current.get(key));
+    timers.current.set(key, setTimeout(() => forget(key), ACK_MS));
+    setGone((g) => [...g.filter((x) => x.key !== key), { key, d, v }]);
+  };
+  // the ones gone stand where they stood, among the others in the vocabulary's order
+  const withGone = { ...tags };
+  for (const g of gone) withGone[g.d] = [...(withGone[g.d] ?? []), g.v];
+  const chips = shownTags(withGone, vocabulary);
   return (
     <div className="share-row share-tags" ref={box} title={t.share.tagsHint}>
       <span className="share-label">{t.share.tags}</span>
-      {!shown.length && <span className="hint t">{t.share.noTags}</span>}
-      {shown.flatMap(([d, values]) =>
-        values.map((v) => (
-          <span key={`${d}\n${v}`} className="tag-chip">
-            <span className="t">
-              <span className="dim">{d}:</span> {v}
+      {!chips.length && <span className="hint t">{t.share.noTags}</span>}
+      {chips.flatMap(([d, values]) =>
+        values.map((v) => {
+          const key = `${d}\n${v}`;
+          if (isGone(d, v))
+            return (
+              <span key={key} className="tag-chip gone">
+                <span className="t">
+                  <span className="dim">{d}:</span> {v}
+                </span>
+                <button
+                  className="tag-undo"
+                  title={t.share.restoreTag(d, v)}
+                  onClick={() => {
+                    forget(key);
+                    set(d, [...(on.get(d) ?? []), v]);
+                  }}
+                >
+                  {t.undo}
+                </button>
+              </span>
+            );
+          const sure = armed === key;
+          return (
+            <span key={key} className={sure ? 'tag-chip armed' : 'tag-chip'}>
+              <span className="t">
+                <span className="dim">{d}:</span> {v}
+              </span>
+              <button
+                className={sure ? 'x sure' : 'x'}
+                title={t.share.removeTag(d, v)}
+                aria-label={t.share.removeTag(d, v)}
+                onPointerDown={(e) => (touch.current = e.pointerType !== 'mouse')}
+                onClick={() => {
+                  // a mouse or a key takes it off at once; a finger first gets „Entfernen“ to tap
+                  if (sure || !touch.current) remove(d, v);
+                  else setArmed(key);
+                  touch.current = false;
+                }}
+              >
+                {sure ? (
+                  t.share.removeTagSure
+                ) : (
+                  <svg viewBox="0 0 10 10" aria-hidden="true">
+                    <path d="M2 2l6 6M8 2l-6 6" />
+                  </svg>
+                )}
+              </button>
             </span>
-            <button className="x" title={t.share.removeTag(d, v)} aria-label={t.share.removeTag(d, v)} onClick={() => set(d, values.filter((x) => x !== v))}>
-              <svg viewBox="0 0 10 10" aria-hidden="true">
-                <path d="M2 2l6 6M8 2l-6 6" />
-              </svg>
-            </button>
-          </span>
-        )),
+          );
+        }),
       )}
       {rest.length > 0 && (
         <span className="menu-pill">
@@ -2719,6 +2797,7 @@ function ShareTags({ tags, vocabulary, set }: { tags: PageTags | undefined; voca
                       className="tag-chip pick"
                       onClick={() => {
                         setOpen(false);
+                        forget(`${d}\n${v}`);
                         set(d, [...(on.get(d) ?? []), v]);
                       }}
                     >

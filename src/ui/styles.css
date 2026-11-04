@@ -789,6 +789,10 @@ textarea.p-body:focus { border-color: var(--muted); }
 .tag-chip .x { all: unset; cursor: pointer; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: var(--muted); }
 .tag-chip .x svg, .tag-add svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
 .tag-chip .x:hover { background: var(--line); color: var(--ink); }
+.tag-chip .x.sure { width: auto; height: 18px; padding: 0 8px; border-radius: 9px; background: var(--error); color: var(--on-ink); font-size: 12px; font-weight: 600; }
+.tag-chip.gone .t { color: var(--muted); text-decoration: line-through; }
+.tag-undo { all: unset; cursor: pointer; height: 18px; padding: 0 8px; border-radius: 9px; font-size: 12px; font-weight: 600; color: var(--ink); background: var(--line); display: inline-flex; align-items: center; }
+.tag-undo:hover { background: var(--ink); color: var(--on-ink); }
 .tag-chip.pick { all: unset; cursor: pointer; display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--chip); font-size: 12.5px; line-height: 1; box-sizing: border-box; }
 .tag-chip.pick:hover { background: var(--line); }
 .tag-add { all: unset; cursor: pointer; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1px dashed var(--muted); color: var(--muted); box-sizing: border-box; }

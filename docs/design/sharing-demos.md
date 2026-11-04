@@ -60,7 +60,13 @@ it and the owner's before both.
 
 The share box shows the page's tags as chips, before sharing and after: × takes one off, „+“ offers
 the vocabulary's other values. A change takes effect at once, without a hold: a shared page goes out
-again with the same demos (one going out goes out once more after it), and the log says so.
+again with the same demos (one going out goes out once more after it), and the log says so. A tag
+taken off stays in its place for a few seconds, struck through, with „Rückgängig“, which puts it
+back. On a touch screen the first tap on × only turns it into „Entfernen“ (for a few seconds, or
+until a tap elsewhere); the second takes the tag off. A mouse click or a key takes it off at once.
+Why: the row stands right above the demo video, and on a phone a card's layout can still move as it
+opens, so a tap aimed at the video's fullscreen button landed on a tag's × and took the tag off
+(2026-11-04).
 
 Pages without tags are tagged from the Koordinator's sheet: while pages on a site with a vocabulary
 lack tags in a dimension (archived cards' included, also where their demo files are gone), an entry

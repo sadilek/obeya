@@ -963,6 +963,9 @@ const de = {
     noTags: 'noch keine',
     addTag: 'Tag hinzufügen',
     removeTag: (dimension: string, value: string) => `${dimension}: ${value} entfernen`,
+    /** In place of the × once a finger has tapped it: a second tap takes the tag off. */
+    removeTagSure: 'Entfernen',
+    restoreTag: (dimension: string, value: string) => `${dimension}: ${value} wieder hinzufügen`,
   },
   /** What changed on shared demo pages (src/core/page-changes.ts), as their viewers see it. */
   pageChanges: {
@@ -3031,6 +3034,8 @@ const en: Strings = {
     noTags: 'none yet',
     addTag: 'Add a tag',
     removeTag: (dimension: string, value: string) => `Remove ${dimension}: ${value}`,
+    removeTagSure: 'Remove',
+    restoreTag: (dimension: string, value: string) => `Add ${dimension}: ${value} back`,
   },
   pageChanges: {
     only: { video: 'Video pages', html: 'Artifact pages' },
