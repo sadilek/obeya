@@ -1,8 +1,9 @@
 // The archive: finished and stopped cards and parked or dropped ideas taken off the canvas and projects whose plan doc is
 // gone, the most recently archived first, listed under the bar's button as the queue is. A project's
 // workstreams belong to it and are not listed on their own. A field over the list filters it as
-// the owner types. The list holds hundreds of cards: only the rows in view and a margin around them
-// are on the page, the rest stand in as space of the height they had or will roughly have.
+// the owner types and stays in sight: only the list under it scrolls. The list holds hundreds of
+// cards: only the rows in view and a margin around them are on the page, the rest stand in as
+// space of the height they had or will roughly have.
 
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { type Item, stopped } from '../core/types';
@@ -70,6 +71,7 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
   }, [shown]);
 
   // ---- only the rows in view are on the page
+  /** The box that scrolls: the list under the field, which stays in sight. */
   const menu = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   /** The rows' heights once on the page, by key; they stay for the next opening. */
@@ -166,7 +168,7 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
         <span className="lbl">{t.archive.button}</span>
       </button>
       {on && (
-        <div id="amenu" className="bar-menu archive-menu" ref={menu} onScroll={look}>
+        <div id="amenu" className="bar-menu archive-menu">
           {archived.length > 0 && (
             <div className="a-search">
               <input
@@ -191,39 +193,41 @@ export function ArchivePill({ on, onToggle, onClose, held, archived, done, onOpe
               {t.archive.archiveDone(done)}
             </button>
           )}
-          {archived.length === 0 ? (
-            <p className="hint">{t.archive.empty}</p>
-          ) : shown.length === 0 ? (
-            <p className="hint">{t.archive.noMatch(query.trim())}</p>
-          ) : (
-            <div className="timeline" ref={list} style={{ paddingTop: starts[from], paddingBottom: starts.at(-1)! - starts[to]! }}>
-              {rows.slice(from, to).map((r) => {
-                if (!r.item)
+          <div className="a-list" ref={menu} onScroll={look}>
+            {archived.length === 0 ? (
+              <p className="hint">{t.archive.empty}</p>
+            ) : shown.length === 0 ? (
+              <p className="hint">{t.archive.noMatch(query.trim())}</p>
+            ) : (
+              <div className="timeline" ref={list} style={{ paddingTop: starts[from], paddingBottom: starts.at(-1)! - starts[to]! }}>
+                {rows.slice(from, to).map((r) => {
+                  if (!r.item)
+                    return (
+                      <h4 key={r.key} data-k={r.key} ref={row(r.key)}>
+                        {r.day}
+                      </h4>
+                    );
+                  const i = r.item;
+                  const label = labelOf(i);
                   return (
-                    <h4 key={r.key} data-k={r.key} ref={row(r.key)}>
-                      {r.day}
-                    </h4>
+                    <div key={r.key} data-k={r.key} ref={row(r.key)} className={`a-row${r.first ? ' first' : ''}${r.last ? ' last' : ''}`}>
+                      <time>{t.archive.time(new Date(i.archivedAt!))}</time>
+                      <span className="tick" />
+                      <button className="a-card" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
+                        <span className="a-ttl">{marked(plain(i.title), words)}</span>
+                        {label && (
+                          <span className="hint">
+                            {label}
+                            {i.kind === 'project' && ` · ${t.archive.workstreams(workstreams.get(i.id)?.length ?? 0)}`}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   );
-                const i = r.item;
-                const label = labelOf(i);
-                return (
-                  <div key={r.key} data-k={r.key} ref={row(r.key)} className={`a-row${r.first ? ' first' : ''}${r.last ? ' last' : ''}`}>
-                    <time>{t.archive.time(new Date(i.archivedAt!))}</time>
-                    <span className="tick" />
-                    <button className="a-card" ref={(el) => void (el ? els.set(i.id, el) : els.delete(i.id))} onClick={() => onOpen(i)}>
-                      <span className="a-ttl">{marked(plain(i.title), words)}</span>
-                      {label && (
-                        <span className="hint">
-                          {label}
-                          {i.kind === 'project' && ` · ${t.archive.workstreams(workstreams.get(i.id)?.length ?? 0)}`}
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -1161,7 +1161,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .menu-pill { position: relative; }
 .bar-menu { position: absolute; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 28px)); max-height: calc(100vh - 80px); overflow: auto;
   padding: 6px; background: var(--panel); border-radius: 3px; box-shadow: var(--lift); z-index: 30; white-space: normal; }
-.bar-menu > .hint { margin: 6px 8px; font-size: 13px; line-height: 1.45; }
+.bar-menu > .hint, .a-list > .hint { margin: 6px 8px; font-size: 13px; line-height: 1.45; }
 /* the queue: the waiting cards in turn, in the bar's list and unfolded on a waiting card */
 .qlist { list-style: none; padding: 0; margin: 0; }
 .qlist li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px; border-radius: 2px; cursor: pointer; font-size: 13px; }
@@ -1388,8 +1388,11 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .sheet .ws-text .p-list { font-size: inherit; max-width: none; }
 .sheet .ws-text .p-list li { margin: 1px 0; }
 /* the archive: per day a timeline, the time on the left, each archived card as a small card */
-.archive-menu { width: min(460px, calc(100vw - 28px)); padding: 8px 10px 4px; }
-.archive-menu > .btn { margin: 2px 0 6px; padding: 6px 12px; font-size: 13px; }
+.archive-menu { width: min(460px, calc(100vw - 28px)); padding: 8px 10px 0; display: flex; flex-direction: column; overflow: hidden; }
+.archive-menu > .btn { flex: none; align-self: flex-start; margin: 2px 0 6px; padding: 6px 12px; font-size: 13px; }
+.archive-menu > .a-search { flex: none; }
+/* only the list scrolls, out to the menu's edge, so the field stays in sight; rows measure their place from its top */
+.a-list { position: relative; overflow: auto; overflow-anchor: none; min-height: 0; margin: 0 -10px; padding: 0 10px 4px; }
 .a-search { position: relative; margin: 2px 0 8px; }
 .a-search input { width: 100%; box-sizing: border-box; padding: 8px 30px 8px 11px; font-size: 14px; background: var(--card); border: 1px solid var(--line);
   border-radius: 3px; outline: none; }
@@ -1398,7 +1401,6 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
   color: var(--muted); background: none; border: 0; cursor: pointer; }
 .a-search .x:hover { color: var(--ink); }
 .timeline .a-ttl mark { background: var(--chip); color: inherit; border-radius: 2px; box-shadow: 0 0 0 1px var(--chip); }
-.archive-menu { overflow-anchor: none; }
 .archive-menu h4 { margin: 0; padding: 6px 0; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .timeline .a-row { position: relative; display: grid; grid-template-columns: 38px 12px 1fr; column-gap: 8px; align-items: start; padding-bottom: 8px; }
 .timeline .a-row.last { padding-bottom: 12px; }

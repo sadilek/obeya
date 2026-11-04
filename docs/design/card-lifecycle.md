@@ -178,7 +178,7 @@ like a card an agent worked on, the task as its conversation's first message.
 The archive (its button in the bar, or `A`) drops down like the queue: archived cards on a timeline
 by day, newest first, labelled with their kind or state unless plain tasks. One unfolds as on the canvas and can go
 back to its place; an ended prototype only shows, read-only, how it ended. A search field, focused on
-opening and kept between openings, filters by every typed word (case and accents aside) in title,
+opening, kept between openings and always in sight (only the list under it scrolls), filters by every typed word (case and accents aside) in title,
 text, summary, last status, open question, a proposal's reason or label, and a project's goal and
 workstreams, marking the words in the titles. The bar's search finds cards on the canvas and in the
 archive the same way (see The bar). The list stays under the dim while a card from it is open, so the card folds back into it;
