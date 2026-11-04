@@ -128,24 +128,22 @@ describe('re-voicing a demo', () => {
     expect(() => cuesByScene(['a'], says)).toThrow('does not add up');
   });
 
-  test('the demo keeps the tracks its captions named, the new narration in the one of its language', () => {
+  test('the demo keeps the tracks its captions named, the new narration first', () => {
     const original = mkdtempSync(join(tmpdir(), 'obeya-revoice-'));
     try {
       const says = source.scenes.map((s) => s.say);
       const cues = (texts: string[]) => `WEBVTT\n\n${texts.map((t, i) => `00:00:0${i}.000 --> 00:00:0${i + 1}.000\n${t}\n`).join('\n')}`;
-      writeFileSync(join(original, 'captions.vtt'), cues(['Ein Vorschlag.', 'Bisher scheiterte das.', 'Jetzt geht es.']).replace('WEBVTT', 'WEBVTT - subtitles: fr en de'));
+      writeFileSync(join(original, 'captions.vtt'), cues(['Ein Vorschlag.', 'Bisher scheiterte das.', 'Jetzt geht es.']).replace('WEBVTT', 'WEBVTT - subtitles: de fr en'));
       writeFileSync(join(original, 'captions.fr.vtt'), cues(['Une proposition.', 'Cela échouait.', 'Maintenant ça marche.']));
       const narration = { language: 'en', scenes: [['A proposal.', 'It failed until now.'], ['Now it works.']] };
       expect(keptTracks(original, 'de', says, narration)).toEqual([
-        { language: 'fr', scenes: [['Une proposition.', 'Cela échouait.'], ['Maintenant ça marche.']] },
         narration,
         { language: 'de', scenes: [['Ein Vorschlag.', 'Bisher scheiterte das.'], ['Jetzt geht es.']] },
+        { language: 'fr', scenes: [['Une proposition.', 'Cela échouait.'], ['Maintenant ça marche.']] },
       ]);
       // one from before its captions named tracks had the narration's alone
       writeFileSync(join(original, 'captions.vtt'), cues(['Ein Vorschlag.', 'Bisher scheiterte das.', 'Jetzt geht es.']));
       expect(keptTracks(original, 'de', says, narration)).toEqual([narration]);
-      writeFileSync(join(original, 'captions.vtt'), 'WEBVTT - subtitles: none\n');
-      expect(keptTracks(original, 'de', says, narration)).toEqual([]);
     } finally {
       rmSync(original, { recursive: true, force: true });
     }

@@ -1,7 +1,7 @@
-// A demo's captions: its narration a cue per sentence, a track in each language the demo settings
-// list (`subtitleLanguages`), every track with the same cue times. `captions.vtt` holds the
-// narration's cues whether or not it is a track: where in the video it says what (`placeIn` of the
-// server reads it there), and which tracks the demo offers, in its first line (`narrationVtt`). With a voice,
+// A demo's captions: its narration a cue per sentence, a track in the narration's language and in
+// each further one of the demo settings (`subtitleLanguages`), every track with the same cue times.
+// `captions.vtt` holds the narration's cues as well: where in the video it says what (`placeIn` of
+// the server reads it there), and which tracks the demo offers, in order, in its first line (`narrationVtt`). With a voice,
 // a scene's clip is shared out over its sentences by their length; without one (voice `none`), each
 // sentence stays as long as it takes to read in the language that takes longest.
 //
@@ -169,7 +169,7 @@ export const narrationTrack = (source: SubtitleSource): Track => ({ language: so
 
 /**
  * The caption tracks of a render, one per language of `languages` in their order: the narration's
- * (`source`) where it is among them, each other from its translation in
+ * from `source`, each other from its translation in
  * `work/subtitles/<language>.json`. Where one is missing, or was made for a narration that has
  * changed since (it is set aside as `<language>.stale.json`), the brief that asks the agent for it
  * instead. A translation that does not keep the sentences one to one fails the render.

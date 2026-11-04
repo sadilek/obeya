@@ -97,21 +97,20 @@ describe('demo settings', () => {
     expect(() => withVoice(saved, 'robot')).toThrow('unknown voice');
   });
 
-  test('name the languages of the subtitles: the known codes given, in their order, the narration only where listed', () => {
+  test('name the languages of the subtitles: the narration first, then the known codes given, in their order', () => {
     const s = tidyDemoSettings({ language: 'de', voice: 'none', subtitles: ['en', 'pt-br', 'xx', 'en', 'de', 7] });
     expect(s).toEqual({ language: 'de', voice: 'none', subtitles: ['en', 'pt-BR', 'de'] });
-    expect(subtitleLanguages(s)).toEqual(['en', 'pt-BR', 'de']);
-    expect(describeDemoSettings(s, undefined)).toContain('subtitles: en, pt-BR, de — the render asks for a translation of the narration into en, pt-BR');
-    expect(subtitleLanguages({ language: 'en', voice: 'piper', subtitles: ['de', 'fr'] })).toEqual(['de', 'fr']);
+    expect(subtitleLanguages(s)).toEqual(['de', 'en', 'pt-BR']);
+    expect(describeDemoSettings(s, undefined)).toContain('subtitles: de, en, pt-BR — the render asks for a translation of the narration into en, pt-BR');
+    expect(subtitleLanguages({ language: 'en', subtitles: ['de', 'fr'] })).toEqual(['en', 'de', 'fr']);
     expect(tidyDemoSettings({ language: 'en', voice: 'piper', subtitles: [] })).toEqual({ language: 'en', voice: 'piper' });
     expect(withVoice({ language: 'en', voice: 'piper' }, 'none')).toEqual({ language: 'en', voice: 'none' });
   });
 
-  test("list no subtitles: a voiced demo gets none, a silent one the narration's", () => {
-    expect(subtitleLanguages({ language: 'en', voice: 'piper' })).toEqual([]);
-    expect(describeDemoSettings({ language: 'en', voice: 'piper' }, undefined)).toContain('subtitles: none');
-    expect(subtitleLanguages({ language: 'en', voice: 'none' })).toEqual(['en']);
-    expect(describeDemoSettings({ language: 'en', voice: 'piper' }, 'none')).toContain("subtitles: en — none are listed, so a silent demo shows the narration's");
+  test('with no further languages, the narration is the only track, with a voice or without', () => {
+    expect(subtitleLanguages({ language: 'en', subtitles: [] })).toEqual(['en']);
+    expect(describeDemoSettings({ language: 'en', voice: 'none' }, undefined)).toContain("subtitles: en (the narration's alone)");
+    expect(describeDemoSettings({ language: 'en', voice: 'piper' }, undefined)).toContain("subtitles: en (the narration's alone)");
   });
 
   test("speak in the first person only in the owner's own voice", () => {

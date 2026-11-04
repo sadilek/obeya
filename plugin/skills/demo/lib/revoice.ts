@@ -275,19 +275,18 @@ export async function revoice(dir: string, language: string | undefined) {
 }
 
 /**
- * The caption tracks of the demo as recorded, in their order, re-voiced as `narration`: the one in
- * its language takes its sentences, that of the recorded narration (in `from`) the sentences of
- * `says`, each other the texts of its cues, scene by scene. A demo from before its `captions.vtt`
- * named its tracks had the narration's alone, and keeps that.
+ * The caption tracks of the demo re-voiced as `narration`: the new narration's first, then the
+ * others of the demo as recorded, in their order: that of the recorded narration (in `from`) with
+ * the sentences of `says`, each other with the texts of its cues, scene by scene. A demo from before
+ * its `captions.vtt` named its tracks had the narration's alone, and keeps that.
  */
 export function keptTracks(original: string, from: string | undefined, says: string[], narration: Track): Track[] {
   const listed = listedTracks(read(path.join(original, 'captions.vtt')));
   if (!listed) return [narration];
-  return listed.map((language) => {
-    if (language === narration.language) return narration;
+  return [narration, ...listed.filter((language) => language !== narration.language).map((language) => {
     if (language === from) return { language, scenes: says.map((say) => sentencesOf(say, from)) };
     return { language, scenes: cuesByScene(cuesOf(read(path.join(original, trackFile(language)))), says, from).map((cues) => cues.map((c) => c.text)) };
-  });
+  })];
 }
 
 /** What the agent is asked to translate, and how. */

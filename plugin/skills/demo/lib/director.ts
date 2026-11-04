@@ -812,8 +812,7 @@ export async function runDemo(spec: DemoSpec, demoDir: string) {
   writeJobs(says, work);
   if (!SILENT) clips = synthesize(says, work);
   // each sentence's time: its share of the scene's clip, or as long as it takes to read in the slowest of the subtitles' languages
-  const shown = tracks.length ? tracks : [narration];
-  const timings = spec.scenes.map((_, i) => (clips ? sharedOut(clips[i]!.seconds, narration.scenes[i]!) : readingTimes(shown.map((t) => t.scenes[i]!))));
+  const timings = spec.scenes.map((_, i) => (clips ? sharedOut(clips[i]!.seconds, narration.scenes[i]!) : readingTimes(tracks.map((t) => t.scenes[i]!))));
   const speech = timings.map((t) => t.reduce((a, b) => a + b, 0));
 
   const { browser, ctx, page, d } = await openPage(spec, viewport, work, true);
