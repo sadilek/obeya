@@ -25,7 +25,8 @@ All commands: `node ${CLAUDE_SKILL_DIR}/lib/browser.ts <command>`
 ```bash
 start [--window-size 1280,900] [--fake-mic file.wav]   # launch (idempotent; prints CDP port)
 stop                              # close it (it also closes when the session ends)
-status | tabs                     # list open tabs: id, url, title
+status                            # CDP port, pid and open tabs
+tabs                              # open tabs: id, url, title
 open <url> [--no-wait]            # new tab, waits for document.readyState === complete, prints tab id
 nav <url> [--tab id] [--no-wait]  # navigate an existing tab
 close <tabId>                     # close a tab

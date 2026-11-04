@@ -23,13 +23,13 @@ machine's active account may lack the admin rights a workflow run or a rerun nee
    propose (the next minor one while the version is 0.x), how far GitHub's `main` is behind, the
    latest release and whether `site-media` is still a pre-release, when the site's video went up
    next to the last commit to `src/ui`, and whether the build's secrets are there. It ends with what
-   stands in the way and exits with 1 then. Two of its checks come from v0.1.0, where GitHub's
-   `main` was 35 commits behind and `site-media` was the latest release.
+   stands in the way and exits with 1 then.
 2. The narration (`scripts/hero-video/narration.ts`), read against the UI being released: a
    sentence that no longer holds is reworded before the render. Every changed sentence costs
    ElevenLabs credits; the others come from the clip cache in the render's `.work/`, so the render
    goes to its default directory `obeya-hero/` in the demo directory (`<demos>`: `~/demos` unless
-   the demo settings name another), not a new one.
+   the demo settings name another), not a new one. The README's text is read the same way: like
+   the site, it names what the release adds that a newcomer should know.
 3. The video, rendered whole from the release's code, with real agents whose run is recorded
    (`--record`), about ten minutes (`scripts/hero-video/README.md`), and its stills checked for the
    three failures the README names. A correction of the scenes after that renders again with the
@@ -46,16 +46,18 @@ machine's active account may lack the admin rights a workflow run or a rerun nee
      so that what goes out in step 8 is the video that was looked at, even if the hero video is
      rendered again meanwhile.
 4. The version in `package.json` (the app, its settings and the release take it from there),
-   committed with the poster and the screenshots. Landing it restarts a
-   running Obeya (`package.json` counts as code).
+   committed with the README, the poster and the screenshots. Landing it restarts a running Obeya
+   (`package.json` counts as code).
 5. `git push origin main`. The tag's commit has to be on GitHub, and the README and the site
    come from `main`.
-6. `git tag v<version> <commit>` on the commit with the version, and `git push origin v<version>`:
-   `git push` alone pushes no tag (v0.1.0's was pushed by hand later). The tag must be the version of `package.json`,
-   else the run makes no release (its first check fails at once). The build workflow builds every platform, checks them, signs and
-   notarises the Mac apps (Apple answers within a minute or so) and makes a draft release with the
-   installers, the updates and their signatures, `SHA256SUMS`, `latest.json` and notes from the
-   commits since the tag before. A run takes about ten minutes.
+6. `git tag v<version> main` and `git push origin v<version>` (`git push` alone pushes no tag).
+   The tag goes on the tip of the current `main`, not on the version commit, so a release holds
+   everything on `main` when it is tagged, also what landed while it was prepared; a tag set
+   earlier moves there. The tag must be the version of `package.json`, else the run makes no
+   release (its first check fails at once). The build workflow builds every platform, checks them,
+   signs and notarises the Mac apps (Apple answers within a minute or so) and makes a draft release
+   with the installers, the updates and their signatures, `SHA256SUMS`, `latest.json` and notes
+   from the commits since the tag before. A run takes about ten minutes.
 7. The run and the draft: the run of the build workflow for the tag (`bun scripts/gh.ts run list
    --workflow build.yml --branch v<version>`, then `bun scripts/gh.ts run watch <id>`; a job that
    failed on something flaky runs again with `bun scripts/gh.ts run rerun <id> --failed`), then
@@ -96,9 +98,9 @@ new key has to be installed by hand once (say so in its notes).
 
 ## Signing the Mac apps
 
-The build signs and notarises them with four repository secrets (five with a team key) (Settings → Secrets and variables
-→ Actions, or `gh secret set <NAME> --repo sadilek/obeya`, which reads the value from standard
-input). A tag fails on the Macs while one is missing.
+The build signs and notarises them with four repository secrets, five with a team key (Settings →
+Secrets and variables → Actions, or `gh secret set <NAME> --repo sadilek/obeya`, which reads the
+value from standard input). A tag fails on the Macs while one is missing.
 
 ### Membership and agreement
 
@@ -146,10 +148,11 @@ now and then, and a release fails the same way until it is accepted again.
 
 ### Trying it before a release
 
-Actions → Build → Run workflow, with "Sign and notarise the macOS app" ticked (or `bun scripts/gh.ts workflow run
-build.yml --ref main -f sign=true`): the Macs build as on a tag (without a
-release), and the step "The compiled server and the app around it" ends
-with Gatekeeper's verdict, `source=Notarized Developer ID`. On a Mac, `bun run build:app` does the same with the certificate in the keychain:
+Actions → Build → Run workflow, with "Sign and notarise the macOS app" ticked (or `bun scripts/gh.ts
+workflow run build.yml --ref main -f sign=true`): the Macs build as on a tag (without a release),
+and the step "The compiled server and the app around it" ends with Gatekeeper's verdict,
+`source=Notarized Developer ID`. On a Mac, `bun run build:app` does the same with the certificate
+in the keychain:
 
 ```sh
 APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)" \
@@ -168,16 +171,14 @@ download against `SHA256SUMS`.
 
 The Windows certificate is to come from the SignPath Foundation: free for open-source projects,
 issued in the Foundation's name, the key in SignPath's HSM, each release signed from a GitHub
-Actions build after an approver has approved its signing request. The owner decided on
-2026-10-19 to apply right after v0.5.0. Its conditions
-(<https://signpath.org/terms>) as they bear on Obeya:
+Actions build after an approver has approved its signing request. Applied for after v0.5.0
+(2026-10-19). Its conditions (<https://signpath.org/terms>) as they bear on Obeya:
 
 - **Every component under an OSI licence, nothing proprietary.** The server (`obeya.exe` in the
   installer) has Anthropic's Claude Agent SDK compiled into it, whose licence is "© Anthropic PBC.
   All rights reserved"; Claude Code itself is not shipped. The application says so up front. If
-  SignPath declines because of it, Obeya would have to talk to the machine's Claude Code without
-  the SDK (its stream-json control protocol, undocumented, which the SDK tracks for each Claude
-  Code version), or take a certificate of its own (below).
+  SignPath declines because of it, Obeya takes a certificate of its own (below); dropping the SDK
+  to qualify was rejected (`docs/design/distribution.md`, Decisions).
 - **Reputation** for downloadable programs: SignPath's judgement, without a threshold. At the
   application: the repository two weeks old, 7 stars, a handful of downloads per release.
 - **A code signing policy** on the home page and the download and release pages, under that

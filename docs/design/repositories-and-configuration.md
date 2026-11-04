@@ -83,19 +83,19 @@ thing to read meanwhile, may be on a card's branch.
 
 ### Plan docs
 
-A doc in the repository's plan directory (`planDocs`) is a project when its `## Workstreams` section
-has a checklist; each top-level item is a workstream (`**W3:** Title. Details`). A short code at the
-start of the bold text is its label: `W3`, `WP`, and the codes other docs use, before a colon, dash
-or full stop (`S1:`, `A1 —`, `1G.`). A code before a space (`4A Title`) is a label where at least two
-of the doc's items start with one; alone, it is part of a title (`K8s Cluster`, `2FA einführen`). A pull request's
-number before the text (`**W3:** #27. Title. Details`, as a worker may tick it off) stays part of the
-title instead of becoming all of it, so the tile and the sheet still say what the workstream is
-(issue #12, 2026-10-26). Checked means
-`live`, `(in review)` after the label `in PR`, anything else `planned`. The goal is the first
-paragraph under `## Goal` / `## Ziel`. Obeya reads plan docs and never writes them; workers tick off
-their workstream in the doc as part of their change. A plan card is stored when first seen, so the
-owner's placement persists; its title, text and state always come from the doc. Each read keeps the
-doc's last state on the project.
+A doc in the repository's plan directory (`planDocs`) is a project when its `## Workstreams` (or
+`## Arbeitspakete`) section has a checklist; each top-level item is a workstream
+(`**W3:** Title. Details`). A short code at the start of the bold text is its label: `W3`, `WP`,
+and the codes other docs use, before a colon, dash or full stop (`S1:`, `A1 —`, `1G.`). A code
+before a space (`4A Title`) is a label where at least two of the doc's items start with one; alone,
+it is part of a title (`K8s Cluster`, `2FA einführen`). A pull request's number before the text
+(`**W3:** #27. Title. Details`, as a worker may tick it off) stays part of the title instead of
+becoming all of it, so the tile and the sheet still say what the workstream is (issue #12,
+2026-10-26). Checked means `live`, `(in review)` after the label `in PR`, anything else `planned`.
+The goal is the first paragraph under `## Goal` / `## Ziel`. Obeya reads plan docs and never writes
+them; workers tick off their workstream in the doc as part of their change. A plan card is stored
+when first seen, so the owner's placement persists; its title, text and state always come from the
+doc. Each read keeps the doc's last state on the project.
 
 #### A workstream's identity
 
@@ -250,7 +250,7 @@ canvases follow: the Lesestand moves when work now lands elsewhere, the plan dir
 afresh, a repository now landing through pull requests gets its PR watcher (one leaving them keeps it for the
 pull requests still open), and the page shows the
 main branch and how work lands. `workspaces` is the exception: changing it restarts that repository's
-agents, as the dialog says at the field, which sits in the repository's row (see Canvases).
+agents, as the dialog says at the field, the first of the repository's page (see Canvases).
 
 #### `.obeya/settings.json`
 
@@ -262,19 +262,20 @@ a save while the branches have not moved keeps the last read. A new version take
 restart; one that changes `workspaces` restarts the repository's agents once they paused (see
 Restarts for landed code).
 
-"Take over into the repository for everyone" below the form takes this machine's saved values (but the main
-branch and the share command) into the file, keeping what else it holds, after showing the file as
-it will be. Unsaved changes are saved first, as the confirmation says; only where saving restarts
-Obeya (a command-line configuration) is the button off. Where work lands on main, Obeya commits the
-file there without touching the checkout's other changes, staged or not (a commit made beside the
-checkout: temporary index, `commit-tree`, `update-ref`); a checkout on main gets the file as committed, and one with its own
-changes to the file refuses. Where work goes through pull requests, the commit goes to a branch `obeya-settings-<time>`
-and a pull request, linked in the dialog; with `direct`, the dialog also offers to push it onto
-`origin`'s main (never forced, so a protected branch refuses). Where the file there holds every
-value already (in whatever order of fields), nothing is committed, pushed or opened, and the dialog
-says so: an empty commit would only clutter the history. Once the file holds the values (at
-once, or when the merge reaches the Lesestand), they go from this machine's settings and show as from
-the repository. The work retrospective proposes single values too (see Setting proposals).
+"Take over into the repository for everyone" below the form takes this machine's saved values (but
+the main branch) into the file, keeping what else it holds, after showing the file as it will be.
+Unsaved changes are saved first, as the confirmation says; only where saving restarts Obeya (a
+command-line configuration) is the button off. Where work lands on main, Obeya commits the file
+there without touching the checkout's other changes, staged or not (a commit made beside the
+checkout: temporary index, `commit-tree`, `update-ref`); a checkout on main gets the file as
+committed, and one with its own changes to the file refuses. Where work goes through pull requests,
+the commit goes to a branch `obeya-settings-<time>` and a pull request, linked in the dialog; with
+`direct`, the dialog also offers to push it onto `origin`'s main (never forced, so a protected
+branch refuses). Where the file there holds every value already (in whatever order of fields),
+nothing is committed, pushed or opened, and the dialog says so: an empty commit would only clutter
+the history. Once the file holds the values (at once, or when the merge reaches the Lesestand), they
+go from this machine's settings and show as from the repository. The work retrospective proposes
+single values too (see Setting proposals).
 
 #### Problems in the settings
 

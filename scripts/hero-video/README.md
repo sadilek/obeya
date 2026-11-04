@@ -1,20 +1,20 @@
 # The hero video for obeya.si
 
 A real run, recorded with Obeya's own demo pipeline (`plugin/skills/demo`): a scratch Obeya on a
-small tip calculator, the wall arranged (a lasso into a group, a card dragged beside another group), an
-idea said into the microphone, a bug report typed, pasted and spoken in Obeya's
-sidebar, a real agent building the idea and recording its demo, two comments said into that video and the
-agent's new demo on them, the approval landing it on main,
-proposals from an agent and from Obeya's work retrospective, an idea discussed with its agent, and the
-phone view of the same wall in a phone's frame.
-About four minutes, in English, in the owner's ElevenLabs voice, recorded at twice the pixels
-(2880×1800, as the app looks on a Retina screen) with gentle compression (`sharp` in the spec).
+small tip calculator, the wall arranged (a lasso into a group, a card dragged beside another
+group), an idea said into the microphone, a bug report typed, pasted and spoken in Obeya's sidebar,
+a real agent building the idea and recording its demo, two comments said into that video and the
+agent's new demo on them, the approval landing it on main, proposals from an agent and from Obeya's
+work retrospective, an idea discussed with its agent, and the phone view of the same wall in a
+phone's frame. About four and a half minutes, in English, in the owner's ElevenLabs voice,
+recorded at twice the pixels (2880×1800, as the app looks on a Retina screen) with gentle
+compression (`sharp` in the spec).
 
 - `narration.ts`: what the video says, scene by scene. Review it as text before rendering.
 - `demo.ts`: the scenes, what each shows while its narration plays.
 - `stage.ts`: the canvas it starts on (cards, their states and places); the repository is `tipjar/`.
-- `tipjar/`: the example app, with its own settings (work lands on main, every change gets a demo)
-  and a plan doc.
+- `tipjar/`: the example app, with its own settings (work lands on main, how its app runs) and a
+  plan doc.
 - `render.ts`: renders in the owner's ElevenLabs voice (`eleven_v4`, which reads the audio tags in
   square brackets), with the key from `.voice/elevenlabs.key` of the main checkout (gitignored);
   with `--qwen` in the owner's voice cloned by Qwen3-TTS, which costs no credits.
@@ -47,9 +47,8 @@ recording; a changed sentence the agents hear (the spoken command, the dictation
 a recorded run too, since the recorded agents act on the old words. Then record anew.
 
 The output goes to `obeya-hero/` in the demo directory (`~/demos` unless the demo settings name
-another; `HERO_OUT` names another output): `demo.mp4`, `captions.vtt`,
-`chapters.vtt` (the scenes, which the site lists under the video),
-`review/` with a still from the middle and the end of each scene, and `index.html`. Clips are
+another; `HERO_OUT` names another output): `demo.mp4`, `captions.vtt`, `chapters.vtt` (the scenes,
+which the site lists under the video), `review/` with a still from the middle and the end of each scene, and `index.html`. Clips are
 cached by voice and text, so a re-render after a visual change costs no credits. The scratch
 Obeya runs on port 4730; `bun scripts/scratch-obeya.ts --stop 4730` ends it, which the render
 leaves running for a look.

@@ -7,10 +7,11 @@ edge indicators, minimap, and a frosted top bar the canvas slides under.
 
 ### The bar
 
-Left, after the navigation's button (see The navigation): the search's place, the archive's button (see Card lifecycle), the queue's and "New
-task". The queue's button counts the waiting cards; a click lists them in turn, each with what it
-waits for, buttons to move it and a × that takes it out of the queue at once, as "Take out of the queue" on the card does (back to planned; no
-undo, starting it again is the way back); a row opens its card. The navigation's, the archive's and
+Left, after the navigation's button (see The navigation): the search's place, the archive's button
+(see Archive), the queue's and "New task". The queue's button counts the waiting cards; a click
+lists them in turn, each with what it waits for, buttons to move it and a × that takes it out of the
+queue at once, as "Take out of the queue" on the card does (back to planned; no undo, starting it
+again is the way back); a row opens its card. The navigation's, the archive's and
 the queue's lists close on a click beside them and on Esc. Obeya's button is the rightmost (see
 Sheets).
 
@@ -28,9 +29,9 @@ handover, its pull request), or a line in its conversation other than a worker's
 Moving a card, grouping it, folding a project and the bookkeeping behind a card (its session, its
 workspace, what was read) do not count. With the first word, it finds the cards on the canvas, and below
 them those in the archive, that hold every typed word, matched as the archive's search does. In each
-part, cards with every word in the title come first, then those holding the words only in their
-text, summary, last status, open question, a proposal's reason, label or a project's goal, with an
-excerpt that shows the words there. Each list shows 30 cards and counts the rest.
+part, cards with every word in the title come first, then those holding them only in another field
+the archive's search reads, with an excerpt that shows the words there. Each list shows 30 cards and
+counts the rest.
 
 The row under the pointer, or the one the arrow keys pick, lights its card up on the canvas with a
 ring in its state's colour that breathes; the camera stays where it is. A card out of sight lights
@@ -48,12 +49,12 @@ Right, before the workspace pool: the usage limits of the plans Claude Code and 
 machine are logged in with, the session's (five hours) and the week's, each a short meter with its
 percentage, the most used limit of each group, coloured in the grade the plan's usage endpoint gives
 it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). The bar shows the plans
-of the harnesses at least one group of agents runs on, each under its name ("Claude", "Codex") once
-it shows two; with one, no name, as before there were two. A click lists every limit of every plan with a login (the session, the week
-for all models, the week for a single model), a plan no agent runs on marked as such, with when it
-starts anew, where the numbers come from and as of when,
-and "Hide", which turns the setting off; "Usage limits in the bar" under Configuration →
-General turns it on again (on until then). The phone view shows the same at the right of its bar.
+of the harnesses at least one group of agents runs on, each under its name ("Claude", "Codex") when
+it shows two, without one when it shows one. A click lists every limit of every plan with a login
+(the session, the week for all models, the week for a single model), a plan no agent runs on
+marked as such, with when it starts anew, where the numbers come from and as of when, and "Hide",
+which turns the setting off; "Usage limits in the bar" under Configuration → General turns it on
+again (on until then). The phone view shows the same at the right of its bar.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
 answer for a minute) while the setting is on and a page of Obeya is open, and closed once neither
@@ -85,16 +86,17 @@ orange of a waiting card, everything that waits for the owner on every canvas: t
 them, and per canvas one for Obeya's answers waiting unread. A click lists under it "Needs you", the
 phone's list (see The phone view), built once for both: the same entries in the same order. Its
 head counts what waits on every canvas, as the button does; a snoozed card is neither listed nor
-counted, being put off, until it comes back. Each entry is a light row, its title and what it waits for since when,
-without the waiting card's orange frame, set apart from the next by a line, and the card open now is
-marked in it. With several canvases, each canvas in the configuration's order heads what waits on
-it, in a shaded head row that sets the canvases apart, the open one in full ink; a click on the
-row switches there, it counts what waits on that canvas, and it carries its agents' pause (see
-Pausing a canvas's agents). An arrow at the head's left folds the canvas's entries away and back;
-folded, the head keeps its count, and which canvases are folded holds per browser, in the list
-and the pinned sidebar alike. With one canvas the list has no such heads. A click on an entry opens
-its card, on this canvas or by switching to its own, and closes the list; Obeya's answers open
-Obeya's sheet on their canvas. Nothing waiting says so, and the canvases are still listed.
+counted until it comes back (see Snoozing a card). Each entry is a light row, its title and what it
+waits for since when, without the waiting card's orange frame, set apart from the next by a line,
+and the card open now is marked in it. With several canvases, each canvas in the configuration's
+order heads what waits on it, in a shaded head row that sets the canvases apart, the open one in
+full ink; a click on the row switches there, it counts what waits on that canvas, and it carries
+its agents' pause (see Pausing a canvas's agents). An arrow at the head's left folds the canvas's
+entries away and back; folded, the head keeps its count, and which canvases are folded holds per
+browser, in the list and the pinned sidebar alike. With one canvas the list has no such heads. A
+click on an entry opens its card, on this canvas or by switching to its own, and closes the list;
+Obeya's answers open Obeya's sheet on their canvas. Nothing waiting says so, and the canvases are
+still listed.
 
 A switch to another canvas (its head in the list, an entry of it, a link to it, Back or Forward
 between canvases) stays in the page instead of loading it anew: the canvas shown stays until the
@@ -158,9 +160,11 @@ waits, not the chain. All kinds of wait look alike (a card queued behind another
 those it builds on, a card snoozed until another, an arrow the owner drew); a wait ends once the card
 waited for is finished, so finished cards keep no lines. A workstream of a collapsed project shows
 its waits at the project's head. The lines stay thin on screen however far the view zooms out.
-Under the pointer a card shows the waits around it over every step instead, in the waiting colour
-(see Scheduling); a wait shows once, never as both. Only the colour changes: line, head and course
-stay as they were, so that moving the pointer over the cards leaves the picture calm.
+Under the pointer a card shows its waits both ways over every step instead, in the waiting colour:
+the cards it waits for ("comes first") and those waiting for it ("waits for it"), each with a ring;
+a wait shows once, never as both. Only the colour changes: line, head and course stay as they were,
+so that moving the pointer over the cards leaves the picture calm. What makes a card wait: see
+Scheduling.
 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
@@ -192,8 +196,8 @@ cross little, else the plan's order; a column holds four cards and overflows int
 Plan docs state dependencies in prose ("Needs W1", "after W2", or only implicitly), so the
 Koordinator reads them in a turn of its own: for each open workstream the ones it builds on
 directly. The reading is kept for the doc as it stood; under the pointer a workstream shows the open
-ones it builds on as waits (see Scheduling), and the project's sheet lists the workstreams in this
-order with what each builds on.
+ones it builds on as waits (see Cards on the canvas), and the project's sheet lists the
+workstreams in this order with what each builds on.
 
 A project arriving with two or more open workstreams is arranged once read, unless the owner has
 moved one of its cards meanwhile. "Arrange" in its head (or in its sheet) arranges it again, after a
@@ -238,12 +242,11 @@ The page's address names what it shows: `/c/<canvas>` a canvas, `/c/<canvas>/car
 or project open on it (the phone view: the card full screen). The code is the card's short code, the
 first six hex digits of its id with one more digit for each card already holding those; its whole id
 works in its place, and the page then shows the short one. The short code is given once, when the
-card is made, and never changes, so a link stays good; existing cards got theirs when the database
-was migrated, each the shortest start of its id no other card shared. Opening an address (a link, a
-bookmark, a reload) opens that card at once, without the flight; an archived one unfolds from its
+card is made, and never changes, so a link stays good. Opening an address (a link, a bookmark, a
+reload) opens that card at once, without the flight; an archived one unfolds from its
 row in the archive, an archived workstream from its project's sheet; a code no card has leaves the
-canvas open at its own address. Addresses of the form before paths (`/?c=<canvas>&card=<id>`) are
-rewritten to this form, so old links and bookmarks keep working. What else the page shows that is
+canvas open at its own address. Query addresses (`/?c=<canvas>&card=<id>`) are rewritten to this
+form, so old links and bookmarks keep working. What else the page shows that is
 not a place (`?view=phone`, the phone's open conversation `?talk`; on the canvas `?talk` opens
 Obeya's sheet once, as the navigation's link to an answer on another canvas does) stays in the query.
 
@@ -261,11 +264,11 @@ Card faces on the canvas link nothing, since a click there opens the card itself
 
 Every card has a number (`K42`): counting across all canvases of this Obeya, given once when the
 card is made and never again, also once a card is deleted. A card keeps it when it moves to another
-canvas. Existing cards got theirs when the database was migrated, in the order they were made. The
-number stands at the start of the card's state line on the canvas (its end is where the card's
-buttons show under the pointer), at the top right of an entry in the phone's lists (where the state
-line, wrapping on the narrow screen, has no room to set it apart), at the end of a project's head, beside the close
-button of its sheet and at the end of the phone's bar over the card. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
+canvas. The number stands at the start of the card's state line on the canvas (its end is where
+the card's buttons show under the pointer), at the top right of an entry in the phone's lists
+(where the state line, wrapping on the narrow screen, has no room to set it apart), at the end of a
+project's head, beside the close button of its sheet and at the end of the phone's bar over the
+card. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
 says "Copied" for a moment; under the pointer it shows a copy icon, on a touch screen always. The
 form is the same in every language.
 
@@ -381,7 +384,7 @@ code, a generic one otherwise.
   stands instead of flying there, since the view would jump with every movement of the mouse.
   It opens with `/`, the key that searches on GitHub and elsewhere, and the bar teaches the key with
   a button that goes once the key is known, as `?` does, instead of a search button there for good
-  (sadilek, 2026-11-04). Rejected: a sidebar on the right like Obeya's conversation (it would take
+  (owner, 2026-11-04). Rejected: a sidebar on the right like Obeya's conversation (it would take
   the edge Obeya's sheet docks at, for a list that is closed again after one pick); a button beside the microphone (the bottom middle is for what goes to agents, and the
   list would open over the middle of the canvas); the archive's filter for active cards too (no one
   looks for an active card in the archive).
@@ -391,9 +394,9 @@ code, a generic one otherwise.
   thresholds to keep that out; one way of matching across Obeya is easier to predict.
 
 - **Cards have a running number, `K42`, counting across all canvases** (owner, 2026-11-03): the
-  Koordinator used to tag cards afresh in each session (K1, K2, …); the tags leaked into its replies,
-  the owner took them up, and „archiviere K7“ in a later session hit another card. The number is what
-  the owner already typed, is easy to say, and stays the card's own wherever it goes. Rejected: `#42`,
+  owner names cards by number to Obeya, and a tag given afresh in each session (K1, K2, …) made
+  „archiviere K7“ in a later session hit another card. The number is what the owner already typed,
+  is easy to say, and stays the card's own wherever it goes. Rejected: `#42`,
   which GitHub turns into a link to the issue or pull request of that number in commit messages and
   comments; the hex short code of the address, which is hard to dictate and to recognise; a number
   per canvas, which a card moving to another canvas would lose and which would name two cards where

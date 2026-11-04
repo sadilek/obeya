@@ -1906,7 +1906,7 @@ export interface DemoSite {
   title: string;
   /** Where the site is served; a page's URL is `url/<slug>/`. */
   url: string;
-  /** The command line that deploys the site, run in the repository; `{dir}` stands for the site's directory. */
+  /** The command line that deploys the site, run in `share/` under Obeya's home; `{dir}` stands for the site's directory. */
   deploy: string;
   /**
    * A file of `KEY=value` lines, relative to Obeya's home, added to the deploy's environment
@@ -1940,7 +1940,7 @@ export interface RepoSettings {
   /**
    * How approved work lands: `main` fast-forwards the checkout Obeya runs on to the worker's
    * branch (created clones then come from that checkout); `pr` leaves the branch for a pull
-   * request (M5) and clones come from `origin`.
+   * request and clones come from `origin`.
    */
   land?: 'main' | 'pr';
   /**

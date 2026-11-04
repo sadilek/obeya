@@ -36,7 +36,8 @@ Under Obeya the card shows the video and the handover summary instead, a problem
 change is a proposal, and a defect in a contributor's pull request is a finding of its review card.
 
 Obeya loads the plugin into every worker session (the Agent SDK's `plugins` option), so a worker has
-`obeya:demo`, which its brief names, and `obeya:settings` (see Writing the settings). The skill also
+`obeya:demo`, which its brief names, `obeya:browser` (see UI checks) and `obeya:settings` (see
+Writing the settings). The skill also
 runs without Obeya, as the plugin or as a user skill linking to `plugin/skills/demo`. Claude Code
 lists a skill file once: when Obeya's plugin is the very directory such a user skill links to, the
 session knows the skill as `demo`, not `obeya:demo` (Claude Code 2.1.299, 2026-10-14). So the brief
@@ -363,9 +364,9 @@ link to it.
 
 #### Pauses in every voice
 
-Pause tags (`[short pause]`, `[long pause]`) are silence in every voice: ElevenLabs v3 and v4 read
-them; for other voices the parts between them are spoken one by one and joined with 0.5 s or 1.5 s
-of silence.
+Pause tags (`[short pause]`, `[pause]`, `[long pause]`) are silence in every voice: ElevenLabs v3
+and v4 read them; for other voices the parts between them are spoken one by one and joined with
+0.5 s, 0.8 s or 1.5 s of silence. Captions leave them out.
 
 #### Sharp for a public page
 
@@ -593,9 +594,9 @@ and Firefox are installed; `playwright install` installs them.
 What headless Chromium can't reproduce (the on-screen keyboard and `visualViewport`, video
 fullscreen, rotation) workers check in Obeya's repository with `scripts/android-phone.ts`: Chrome in
 the Android emulator, driven from the shell (start, open, eval, tap, type, rotate, screenshot,
-record, stop). Every wait in it is bounded and ends with an error naming what it waited for (workers
-had built such helpers in /tmp for each card, at most of a run's tool calls, and their unbounded
-waits were blocked). `start` boots the AVD read-only, so several checkouts each run their own
+record, stop). Every wait in it is bounded and ends with an error naming what it waited for, so
+workers build no wait loops of their own (they had, for each card, and unbounded ones were
+blocked). `start` boots the AVD read-only, so several checkouts each run their own
 emulator of it. A tap is a real touch, so the keyboard opens (`tap` on a text field returns once it
 is open and the page has settled) and fullscreen counts as a user's gesture. `open` turns off what
 Chrome and Android lay over a page on their own (first-run screens, prompts to allow notifications,
@@ -696,9 +697,9 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   keys once clicked.
 - **Comments are tied to a place in the video and held until the owner has watched** (2026-10-12).
   Rejected: the owner naming the time while the video ran on; held comments standing where they were
-  said, above worker steps that had not heard them (2026-10-15). A comment held while the worker
-  took in the one before, which then asked a question, was dropped unread once the card closed
-  (2026-11-03): held comments now outlast the card leaving its handover. Rejected: sending them at
+  said, above worker steps that had not heard them (2026-10-15). Held comments outlast the card
+  leaving its handover (2026-11-03): one held while the worker took in the one before and then asked
+  a question was dropped unread once the card closed. Rejected: sending them at
   once as a note, which would withdraw the question the owner is about to answer.
 - **A dry run before the first render, and failures that say where**: twice a scene waited for a
   state that never came and showed it only after synthesis; a worker once took the screenshot's

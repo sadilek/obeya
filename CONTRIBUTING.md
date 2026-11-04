@@ -23,9 +23,10 @@ project is done, what passes the design doc's test moves into it and the plan do
 ## Cards
 
 A task is a card. Its agent works in its own clone or worktree on a branch of its own, asks on the
-card when a decision is not its to make, runs `bun test --parallel` and `bun run typecheck`, and hands over
-with a demo and a short summary. Approval lands the branch on `main`; feedback sends the card back
-to its agent. Something it notices beyond its task becomes a proposed card, not a wider change.
+card when a decision is not its to make, runs `bun test --parallel` and `bun run typecheck`, and
+hands over with a demo and a short summary. Approval lands the branch on `main`; feedback sends the
+card back to its agent. Something it notices beyond its task becomes a proposed card, not a wider
+change.
 
 ## Demos
 
@@ -38,12 +39,13 @@ second. Demo videos and voice recordings never go into git.
 ## The code
 
 - Bun and TypeScript throughout. `src/core/` is shared by server and UI, `src/server/` is the Bun
-  server with SQLite, `src/ui/` the React canvas, `src/adapters/` the repository adapters.
+  server with SQLite, `src/ui/` the React canvas, `src/adapters/` what Obeya knows of a repository
+  (its defaults, its settings).
 - Code that drives agents is tested against the fake runtime in `src/server/testing.ts` and real
   git repositories in a temp directory.
 - UI strings live in `src/ui/strings.ts`.
-- Nothing specific to one repository goes into the core: it belongs in that repository's adapter
-  (`.obeya/adapter/` in the repository).
+- Nothing specific to one repository goes into the core: it belongs in that repository's settings
+  (`.obeya/settings.json`, described in [`docs/settings.md`](docs/settings.md)).
 - [`CLAUDE.md`](CLAUDE.md) holds the conventions for coding agents; they hold for people too.
 
 ## From outside

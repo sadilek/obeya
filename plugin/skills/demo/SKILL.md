@@ -56,14 +56,13 @@ The recording is only evidence if the running app contains the code in scope:
 
 The local dev stack is yours without restriction: issue, cancel, delete, reset the database,
 create data through the API or SQL, restart services — whatever shows the behaviour best. If a
-behaviour only becomes visible after an irreversible step (an issued document, a Storno), perform
-the step. The only boundary is outside the local stack: production, and anything that reaches
-real external systems — and other agents' work on the same machine: they render their own demos
-and run their own stacks in parallel, so end only processes you started (by PID), never by
-pattern. Restrictions aside, prefer adding data over resetting: a database may hold
-a restored prod dump or simulator history that takes minutes to rebuild (check the project's
-notes and its recipe), and a restart of the whole stack
-costs more than a restart of one service.
+behaviour only becomes visible after an irreversible step (an issued document, a cancellation),
+perform the step. The only boundary is outside the local stack: production, and anything that
+reaches real external systems — and other agents' work on the same machine: they render their own
+demos and run their own stacks in parallel, so end only processes you started (by PID), never by
+pattern. Restrictions aside, prefer adding data over resetting: a database may hold a restored prod
+dump or simulator history that takes minutes to rebuild (check the project's notes and its
+recipe), and a restart of the whole stack costs more than a restart of one service.
 
 ## 3. Explore before scripting
 
@@ -94,7 +93,7 @@ take `.first()`. Pick seeded data that makes each behaviour visible; create what
 
 Defects the demo uncovers:
 - In own work, they are part of the session's work: fix the change (with its test), demo the
-  fixed state, and say in the chat report what the demo caught.
+  fixed state, and say in your report what the demo caught.
 - In an existing change, do not touch the code: say what the defect is and how to reproduce it,
   and let the owner decide: in the summary, or, on a review card under Obeya, as a finding, which
   carries its own choices.
@@ -102,18 +101,6 @@ Defects the demo uncovers:
 A decision that is the owner's (a product or wording question, a trade-off) is the report's
 `question`. A problem outside the change that is worth a task of its own goes, under Obeya, into a
 proposal (`propose_card`); without Obeya, into the summary.
-
-Under Obeya, the card shows the video and the worker's handover summary, not the report page:
-what the report's summary would tell the owner goes into the handover summary.
-
-A later demo of the same card either shows the change afresh or only what was corrected or
-explained since the one before (often after feedback, a short one). Where `ready_for_review` asks
-for the demo's `follows`, say which (`replaces` or `supplements`): the owner can share a
-supplement beside the earlier demo on the same page, and a demo recorded afresh in its place.
-
-Where `ready_for_review` asks for the page's `tags`, choose for each dimension it names the values
-that fit the change, from those it gives (an empty list where none does): colleagues find the page
-on the demo site by them.
 
 ## 4. Write the demo script
 
@@ -156,7 +143,7 @@ is shown as captions only, and each scene lasts as long as its text takes to rea
 - Waiting is not shown: where the demo waits for something slow (an agent's answer, a build, a
   sync), put the wait into `d.skip` after the scene's `untilSpoken(1)`. The video cuts it out
   with a white flash that says how much later it is; the next scene's narration starts with the
-  jump ("Etwas später …"). A wait under five seconds stays in the video, without a flash. A wait
+  jump ("A little later, …"). A wait under five seconds stays in the video, without a flash. A wait
   that is only the app's latency (a reply that takes a few seconds), not time a viewer will
   spend waiting, goes into `d.skip(fn, { quiet: true })`: cut whole, without flash or label.
 - Write large numbers as words ("about fifteen thousand two hundred euros"); small ones as digits
@@ -177,17 +164,18 @@ is shown as captions only, and each scene lasts as long as its text takes to rea
 
 Director helpers (`d`): `goto`, `click`, `type` (clears, then types at reading pace; `''`
 clears), `drag(from, to, ms?)` (onto an element or a point, the pointer moving along),
-`scrollTo`, `highlight(locator | locator[], label?)` (ring around the visible part of its elements, cut
-at the edge of a scrolling list or the window, that follows scrolling; cleared at each
-scene and by `clearHighlights()`; not inside iframes; several in one scene all stay bright, each
-with its own label, and only the rest of the page is dimmed; an element hidden behind another part
-of the page, often another match of the locator, fails the scene, and so does a ring on just what a
-ring of the scene has already, as its locator then mostly matched another element than meant), `untilSpoken(fraction)` to time an action
-to the narration, `pdfFrom(button, name)` (PDF from a new-tab button → PNG pages; needs `pdftoppm` from poppler),
-`showImage(png, top, caption)`, `panImage(top)`, `hideImage`, `skip(fn, { quiet? })` (runs a wait and cuts
-it from the video, see above), `wait`, `evaluate(fn, arg?)` (`page.evaluate` that fails
-once the page has not answered for 20 s), and `d.page` for raw Playwright. Keep the recording on the app's own pages: other material (a results page, a report)
-goes on screen with `showImage`, since a `goto` to another origin and back broke the timeline.
+`scrollTo`, `highlight(locator | locator[], label?)` (a ring around the visible part of its
+elements that follows scrolling; cleared at each scene and by `clearHighlights()`; not inside
+iframes; several in one scene all stay bright, each with its own label, and only the rest of the
+page is dimmed; an element hidden behind another part of the page fails the scene, and so does a
+ring on exactly what a ring of the scene has already: either way the locator mostly matched another
+element than meant), `untilSpoken(fraction)` to time an action to the narration,
+`pdfFrom(button, name)` (PDF from a new-tab button → PNG pages; needs `pdftoppm` from poppler),
+`showImage(png, top, caption)`, `panImage(top)`, `hideImage`, `skip(fn, { quiet? })` (see above),
+`wait`, `evaluate(fn, arg?)` (`page.evaluate` that fails once the page has not answered for 20 s),
+and `d.page` for raw Playwright. Keep the recording on the app's own pages: other material (a
+results page, a report) goes on screen with `showImage`, since a `goto` to another origin and back
+breaks the timeline.
 
 ## 5. Render
 
@@ -227,20 +215,18 @@ Narration is synthesised first by `lib/tts.py` (except in a silent demo), in the
 default) or Qwen3-TTS on this machine, macOS `say`, the owner's own command, or a hosted service
 (Gemini, OpenAI, ElevenLabs, Azure, an own endpoint) with its key from its environment variable or
 a key file. Qwen3 hears each sentence back with Parakeet, the speech recognition that came with
-it, and makes one it stumbled over again. The settings live in `demo.json` in Obeya's home (`OBEYA_HOME`, else `~/.obeya`);
-Obeya's configuration dialog edits them, installs Piper and Qwen3-TTS, and plays a sample. A voice that
-is not installed stops the render with how to install it: from the configuration dialog, or
-`node ${CLAUDE_SKILL_DIR}/lib/voices.ts install`; so does anything else the render needs
-(`lib/setup.ts`, section 3). `DEMO_VOICE=<provider>` renders in another
+it, and makes one it stumbled over again. The settings live in `demo.json` in Obeya's home
+(`OBEYA_HOME`, else `~/.obeya`); Obeya's configuration dialog edits them. A missing voice or tool
+stops the render with how to install it (section 3). `DEMO_VOICE=<provider>` renders in another
 voice; `DEMO_VOICE=<path>.wav` clones that clip with Qwen3-TTS (its exact transcript beside it as
-`.txt`); `DEMO_VOICE=none` renders a silent version. Clips are cached by voice and text, so re-runs after a visual fix skip synthesis. A
-voice that loads a large model (Qwen3-TTS, the owner's command) takes several GB, so only one such
-demo loads it at a time (lock `~/.cache/demo-skill/tts.lock`); the others log "waiting for it"
-and wait, which is expected, not a hang. Under Obeya (`OBEYA_URL` set), Obeya holds Qwen3-TTS
-loaded for all demos and for about 5 minutes after the last clip: the narration then logs
-"synthesised by Obeya", and parallel demos take turns clip by clip without the lock. Recording
-uses the local Chrome, else Edge, else Playwright's own Chromium (`DEMO_CHROME` names another; headless screencast, 1440×900); it runs
-on macOS, Linux and Windows. A failing scene (or `login`, `open`) stops the run with the page's
+`.txt`); `DEMO_VOICE=none` renders a silent version. Clips are cached by voice and text, so re-runs
+after a visual fix skip synthesis. A voice that loads a large model (Qwen3-TTS, the owner's
+command) takes several GB, so only one such demo loads it at a time (lock
+`~/.cache/demo-skill/tts.lock`); the others log "waiting for it" and wait, which is expected, not a
+hang. Under Obeya (`OBEYA_URL` set), Obeya holds Qwen3-TTS loaded for all demos and for about 5
+minutes after the last clip: the narration then logs "synthesised by Obeya", and parallel demos
+take turns clip by clip without the lock. Recording uses the local Chrome, else Edge, else
+Playwright's own Chromium (`DEMO_CHROME` names another; headless screencast, 1440×900). A failing scene (or `login`, `open`) stops the run with the page's
 `URL:`, a `Screenshot:` of it (`.work/failure.png`) and the `Cause:`, Playwright's message with
 the locator it waited for.
 
@@ -264,10 +250,21 @@ the locator it waited for.
 - A warning that the screencast frames are smaller than the viewport means part of the page is
   missing from the video.
 
-Iterate until it is clean. Then `open` the page, send a push notification (the `PushNotification`
-tool; load it via ToolSearch if it is deferred), and reply in the chat
-with the page path, the length, the open question if any, and what the demo caught and fixed —
-one line each.
+Iterate until it is clean.
+
+Under Obeya, hand the demo over with `ready_for_review` (its directory and chapter titles): the card
+shows the video and the handover summary, not the report page, so what the report's summary would
+tell the owner goes into the handover summary. A later demo of the same card either shows the
+change afresh or only what was corrected or explained since the one before (often after feedback,
+a short one); where `ready_for_review` asks for the demo's `follows`, say which (`replaces` or
+`supplements`): the owner can share a supplement beside the earlier demo on the same page, and a
+demo recorded afresh in its place. Where it asks for the page's `tags`, choose for each dimension
+it names the values that fit the change, from those it gives (an empty list where none does):
+colleagues find the page on the demo site by them.
+
+Without Obeya, `open` the page, send a push notification (the `PushNotification` tool; load it via
+ToolSearch if it is deferred), and reply in the chat with the page path, the length, the open
+question if any, and what the demo caught and fixed — one line each.
 
 ## Re-voicing a demo in another language
 
@@ -289,8 +286,8 @@ Check the result as section 6 says, the scenes it flags for a changed pace first
 
 ## 7. Feedback
 
-The owner answers in the chat. Apply the feedback to the change or the demo, re-render, and point
-to the same page. Do not publish the page or video anywhere (Artifact, Slack) without asking when
+Apply the owner's feedback to the change or the demo and re-render; without Obeya, point to the
+same page. Do not publish the page or video anywhere (Artifact, Slack) without asking when
 it carries the owner's cloned voice.
 
 ## How to run the app

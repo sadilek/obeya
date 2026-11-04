@@ -2,7 +2,7 @@
 
 A chapter of the [design doc](../design.md), whose header says how it is written.
 
-The Koordinator is read-only SDK turns on the Lesestand of the card's repository (the home
+The Koordinator is read-only agent turns on the Lesestand of the card's repository (the home
 repository's without a card), one decision at a time (look-ups excepted, see Looked-up questions).
 It schedules the cards, reads the owner's commands (see Commands to the Koordinator), looks things
 up, and learns the owner's rules.
@@ -24,8 +24,9 @@ A branch's change is measured from where it left the nearest branch that is not 
 it was merged into the card's branch since. So a card built on another card's branch keeps that work
 as its own. Commits the branch starts with whose change the main branch holds as other commits are not
 the card's: a pull after a merge on the forge rebases the local main's unpushed commits onto
-`origin`, and the branches cards made before it keep those commits as they were. Counted, a card that
-changed nothing showed their files and "Approve" (2026-11-02). git reads the changes of all cards in progress at once, without blocking the server.
+`origin`, and the branches cards made before it keep those commits as they were; counted, they would
+show a card that changed nothing with their files and "Approve" (2026-11-02). git reads the changes
+of all cards in progress at once, without blocking the server.
 
 In a folder without git (see Folders without git) the judgement is whether the card gets in the way
 of one in progress: the same files changed, moved or deleted, or a directory reorganised that the
@@ -114,23 +115,18 @@ why when clicked. A drop moves it there in one step: it passes each
 card between, which each move up one place. The order decides who goes first once free, who gets a
 free workspace, and which cards count as ahead when one is judged again.
 
-Each direct wait is a faint line on the canvas at all times (see Cards on the canvas). While the
-pointer is on a card, its waits show both ways over every step, in the waiting colour over the faint
-lines: the cards it waits for ("comes first") and those waiting for it ("waits for it"), each with
-a ring and an arrow from the card waited for to the card waiting. A workstream not delivered yet also shows the open workstreams
-it builds on as read for its project's arrangement (see A project arranged by its dependencies), and
-a card snoozed until another card gets somewhere waits for that card (see Snoozing a card).
+Each wait shows on the canvas, under the pointer over every step (see Cards on the canvas).
 
 #### Starting a whole project
 
-"Start all N" (the project card's head, its sheet, or by voice) queues all planned workstreams in
-the plan's order, with 8 seconds for "Undo" (the button is easily hit). Then one Koordinator
-turn sees them with the plan doc, the cards in progress and those queued ahead, puts them in an
-order and says for each what it waits for: a workstream it builds on (until that has landed) or one
-it would likely conflict with; the rest start at once. A workstream waits only for what comes before
-it, and that order becomes the queue's. The project's sheet names what each waits for. If the turn
-fails, each is judged alone, seeing the others as queued after it; after a restart the joint turn
-runs again.
+"Start all N workstreams" (the project card's head, its sheet, or by voice) queues all planned
+workstreams in the plan's order, with 8 seconds for "Undo" (the button is easily hit). Then one
+Koordinator turn sees them with the plan doc, the cards in progress and those queued ahead, puts
+them in an order and says for each what it waits for: a workstream it builds on (until that has
+landed) or one it would likely conflict with; the rest start at once. A workstream waits only for
+what comes before it, and that order becomes the queue's. The project's sheet names what each waits
+for. If the turn fails, each is judged alone, seeing the others as queued after it; after a restart
+the joint turn runs again.
 
 ### Learning the owner's rules
 
@@ -334,10 +330,11 @@ take them back), except while its turn waits for background work: then they reac
 them to the fresh one). Its agent passes on with `to_obeya` what asks Obeya; a note the Koordinator
 passes to the card goes to it too.
 
-It holds answers, not work: a look of its own ("QUESTION"), the number of answers and files, not taken
-by "Archive … finished tasks", no build, plan, prototype or park buttons. It has two: "Discuss as
-idea" (not while its agent reads) makes it an idea whose agent starts from the thread and its
-directory, and "Done" archives it. The Koordinator lists Question cards among the cards it sees.
+It holds answers, not work: a look of its own ("QUESTION"), the number of answers and files, not
+archived with all finished cards at once (see Archive), no build, plan, prototype or park buttons.
+It has two: "Discuss as idea" (not while its agent reads) makes it an idea whose agent starts from
+the thread and its directory, and "Done" archives it. The Koordinator lists Question cards among
+the cards it sees.
 
 #### Asking in a project's sheet
 

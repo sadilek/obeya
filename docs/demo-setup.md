@@ -1,14 +1,13 @@
 # Recording demos: what a machine needs
 
-A change an Obeya worker hands over comes with a
-narrated video, recorded by the demo skill (`plugin/skills/demo/`, `obeya:demo` in a worker). The
-skill records on macOS, Linux and Windows. This guide lists what it needs on the machine and how
-to install each piece.
+A change an Obeya worker hands over comes with a narrated video, recorded by the demo skill
+(`plugin/skills/demo/`, `obeya:demo` in a worker) on macOS, Linux or Windows. This guide lists what
+it needs on the machine and how to install each piece.
 
 ## Check first
 
-- In Obeya: "Configuration", section "Demos", then "What demos need on this machine" beside the demo settings.
-  Each missing piece shows with the commands that install it on this platform.
+- In Obeya: "Configuration", section "Demos", then "What demos need on this machine" beside the
+  demo settings. Each missing piece shows with the commands that install it on this platform.
 - In a terminal, in the Obeya checkout: `node plugin/skills/demo/lib/setup.ts`. It prints the same
   list and exits with 1 while something is missing.
 - A render runs the same check before it starts and stops with the list, so a missing tool shows
@@ -82,4 +81,4 @@ applies.
 
 Recording was checked on macOS (Apple Silicon), Ubuntu x64, Linux on ARM (in Docker) and Windows
 Server 2025 (2026-10-05). Not tried: Edge as the fallback browser, a voice command through
-`cmd.exe`, Qwen3-TTS through PyTorch (no machine with a GPU), and Obeya itself on Windows.
+`cmd.exe`, and Qwen3-TTS through PyTorch (no machine with a GPU).

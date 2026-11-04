@@ -71,9 +71,7 @@ background work that runs ("In the background", each with how long it has run). 
 the owner (handed over, asked) and the worker's turn has ended, nobody is at work on it, even while
 its background work runs on (the app served for the owner to try): the conversation then shows only
 that work, under "In the background", without the agent at work or its step, and there is nothing to
-pause. Until 2026-10-22 it showed the agent at work as long as such work ran, which read as if it
-were still working on the change while the card waited for the owner. A card that waits on a
-question ends with it, its options and the card's one field.
+pause. A card that waits on a question ends with it, its options and the card's one field.
 
 How a question ended is one rule for every kind of card, read from what came after it: picked
 options stand ticked (an answer in the owner's own words ticks the options it names); asked again in
@@ -227,33 +225,32 @@ The change list at the top of the column is also its row of tabs, so each file s
 per file with its sign (＋ added, ✎ changed, ↪ moved or renamed, ✕ deleted), its path cut at the
 front so the name stays, its lines added and removed, and on a folder card what discarding would
 leave. The demo comes first, named by its kind ("Demo video", "Demo artifact"; "Demo" where the
-card's demos are of both) and without a play mark: it is a tab, not a player, and a ▶ there made
-it read as a button that ought to start a video (a colleague's report, 2026-11-02). Then the files the worker named at its handover (`ready_for_review`'s
-`files`, the caption under the path), then other changed files that can be shown, documents first;
-last, greyed and not to be picked, deleted files, directories and files that are neither documents
-nor text (their line counts still open their diff). The line picked is marked like a tab; a click on
-a line shows its file below, a click on its line counts its changes there. Where what a click picked
-(the line marked already too) lies out of sight, below the column's visible part or under the card's
-buttons in a low window, the click scrolls it into view: otherwise it seemed to do nothing. Beside a demo, and while
-the agent is at work (working, stopped, or asking), the list shows the demo and the named files
-only, the other changed files folded under "N changed files ▾" (or "and N more ▾" below named
-files), and no file is picked until the owner picks one; handed over without a demo, the list is
-open and its first file shows, so there is always a result to see. Unfolded, past eight lines "and
-N more ▾" unfolds the rest. The file picked stays in view when folded. Beside the toggle stands
-the size of the whole change ("+120 −30"), which shows the whole diff over the page. On a git card the lines are
-the branch's files, on a folder card its change list. The phone shows the same list with lines tall
-enough to tap. Markdown shows formatted (with its images), a PDF in the browser's
-viewer (on a phone, and where the browser has none, its pages drawn by pdf.js one under the other
-as wide as the column), an image as is, an HTML page as an HTML artifact, text and code as text; anything else as a
-tile with "Open on the computer". A changed file first shows "Changes", with "Formatted" or
-"Whole file" beside. "Open on the computer" and "Show in folder" act on the machine Obeya runs
-on (a non-document only in its folder, since opening would run it), and only for a request from that
-machine; from another device the file downloads and "Show in folder" says it works only there.
-The column keeps its tallest height so the card does not jump; a PDF's viewer is as high as the
-column shows, so its scrollbar is the only one; a video left for another file stops.
+card's demos are of both), without a play mark. Then the files the worker named at its handover
+(`ready_for_review`'s `files`, the caption under the path), then other changed files that can be
+shown, documents first; last, greyed and not to be picked, deleted files, directories and files that
+are neither documents nor text (their line counts still open their diff). The line picked is marked
+like a tab; a click on a line shows its file below, a click on its line counts its changes there.
+Where what a click picked (the line marked already too) lies out of sight, below the column's
+visible part or under the card's buttons in a low window, the click scrolls it into view: otherwise
+it seemed to do nothing. Beside a demo, and while the agent is at work (working, stopped, or
+asking), the list shows the demo and the named files only, the other changed files folded under "N
+changed files ▾" (or "and N more ▾" below named files), and no file is picked until the owner picks
+one; handed over without a demo, the list is open and its first file shows, so there is always a
+result to see. Unfolded, past eight lines "and N more ▾" unfolds the rest. The file picked stays in
+view when folded. Beside the toggle stands the size of the whole change ("+120 −30"), which shows
+the whole diff over the page. On a git card the lines are the branch's files, on a folder card its
+change list. The phone shows the same list with lines tall enough to tap. Markdown shows formatted
+(with its images), a PDF in the browser's viewer (on a phone, and where the browser has none, its
+pages drawn by pdf.js one under the other as wide as the column), an image as is, an HTML page as an
+HTML artifact, text and code as text; anything else as a tile with "Open on the computer". A changed
+file first shows "Changes", with "Formatted" or "Whole file" beside. "Open on the computer" and
+"Show in folder" act on the machine Obeya runs on (a non-document only in its folder, since opening
+would run it), and only for a request from that machine; from another device the file downloads and
+"Show in folder" says it works only there. The column keeps its tallest height so the card does not
+jump; a PDF's viewer is as high as the column shows, so its scrollbar is the only one; a video left
+for another file stops.
 
-A card opens in its final layout, with nothing above the demo moving once its parts have loaded: on
-the phone a tap meant for the video's full-screen button landed on a tag when the video slid down.
+A card opens in its final layout, with nothing above the demo moving once its parts have loaded.
 The server keeps the size of each card's change as it last read it (the lines of its change list,
 the lines added and removed), reading it at every handover and whenever the page reads the change,
 and sends it with the card; until the page has read the change itself, the change list stands with
@@ -265,11 +262,9 @@ so the player has its shape before the video's first bytes arrive. The link to t
 A card with named files, or a folder card handed over without a demo but with files to show, is a
 split even without a demo; the server decides at the handover so the layout does not jump. A worker
 names files of its change, at most twelve; a file it names outside its change (one it only read) is
-left out, and the handover's result says so, instead of refusing the handover: a refusal held the
-whole result back, also from a worker that never read it (Codex's code mode drops a tool's result its
-script does not print; 2026-11-04). Without `files` later the earlier ones stand, as they do where
-none named is of the change; an empty list removes them. An open view reads its file afresh when a handover arrives
-or the work changes it.
+left out, and the handover's result says so; the handover is not refused. Without `files` later the
+earlier ones stand, as they do where none named is of the change; an empty list removes them. An
+open view reads its file afresh when a handover arrives or the work changes it.
 
 Obeya serves only the files the card made or changed and images their Markdown shows, nothing else
 and no link the card made; on a branch it reads git's NUL-separated name list, as diff headers
@@ -396,7 +391,7 @@ image.
 - **A planned card takes notes for its agent** (2026-10-30, GitHub issue #24): a scheduled task
   offered only to start it or to snooze it, so what the owner thought of meanwhile (what to watch
   out for) had to go into the task's text or wait for the agent. Rejected: notes only on queued
-  cards (2026-10-16 until then); a field on a card just created, which offered two places for the
+  cards; a field on a card just created, which offered two places for the
   task. Spoken words still go to the Koordinator, since „starte das“ and „stell das zurück“ are
   what is said to a planned card, and no agent is there yet to pass them on.
 - **One layout for every card with a conversation** (2026-10-07). Rejected: a task stacking demo,
@@ -438,9 +433,9 @@ image.
   message, so the reply follows it. Rejected: holding the reply back in the server until the
   agent's message (it would be lost in a restart, and each kind of agent would need it).
 - **Obeya's look-up apart from the agent's work** (2026-10-29): Obeya logs what it reads for a
-  look-up on the card it was asked on, and it showed in the worker's bubble at work as if the worker
-  read it. It now goes with Obeya's answer. Rejected: not logging it on the card (the owner would
-  not see what the answer rests on).
+  look-up on the card it was asked on, under its answer. Rejected: showing it in the worker's bubble
+  at work, as if the worker read it; not logging it on the card (the owner would not see what the
+  answer rests on).
 - **Words read after an open question stand below it** (2026-10-22), also while it waits at the
   end. Rejected: holding them back until the owner answers, which keeps from the worker what it
   could take in at once.
@@ -477,7 +472,16 @@ image.
 - **A card's files are its result, in tabs beside the demo** (owner, 2026-10-21), named files first.
   Rejected: an open button per change-list entry (no place for the result, Markdown unread in the
   browser), Markdown formatted only in the diff overlay (the result hidden behind "Show"), a
-  bundled pdf.js everywhere. A file opened from another device downloads; an answer's files do the same.
+  bundled pdf.js everywhere. A file opened from another device downloads; an answer's files do the
+  same.
+- **The demo's tab has no play mark** (a colleague's report, 2026-11-02): it is a tab, not a
+  player. Rejected: a ▶, which read as a button that ought to start a video.
+- **A named file outside the change is left out, not refused** (2026-11-04). Rejected: refusing the
+  handover, which held the whole result back, also from a worker that never read the refusal
+  (Codex's code mode drops a tool's result its script does not print).
+- **Nobody is at work on a card that waits for the owner, though its background work runs**
+  (2026-10-22). Rejected: showing the agent at work as long as such work ran, which read as if it
+  were still working on the change.
 - **On a phone, pdf.js draws a PDF** (2026-10-22): Chrome on Android shows an empty frame for a PDF,
   so the owner saw nothing of a PDF on the phone; Safari on the iPhone is no more reliable in a frame.
   Rejected: a tile that opens the file in the phone's PDF app (the result to judge would be one tap
@@ -491,8 +495,8 @@ image.
   owner works on requirements and judges the result by its demo and the files named as the result,
   not by reading the code; a dozen changed files above the video put the code in front, on the
   phone above all. The named files stay in view, being results themselves; a handover without demo
-  or named files shows its files open, since some result must show. The size of the change moved
-  from the branch line to the folded list, so count, size and files stand together.
+  or named files shows its files open, since some result must show. The size of the change stands
+  with the folded list, so count, size and files stand together.
 - **A card's layout does not change while it loads** (owner, 2026-11-04): on the phone the change
   list arrived after the video's poster and pushed the video down under the owner's finger. The
   server keeps the change's last read size with the card rather than the page waiting for the change

@@ -12,7 +12,8 @@ agent opens the discussion at once, with what the owner said or what the card sa
 the top of the conversation as its starting point ("Starting point").
 
 A planned task offers its ways on in one row, each with a tooltip saying what follows: "Start
-agent", "Discuss as an idea", "Plan as a project", and "Delete" set apart at the right end.
+agent", "Later …" (see Snoozing a card), "Discuss as an idea", "Plan as a project", and "Delete" set
+apart at the right end.
 "Plan as a project" does on the task what it does on an idea (see Deciding): a worker on the task's
 card ("Task → Project") writes a plan doc from its title, text and screenshots, and once the doc
 has landed the project takes the task's place and the task goes to the archive (by voice:
@@ -103,9 +104,8 @@ picks that target from the conversation („bau es in ~/dev/super59, eigene Lein
 `plan_repo` (a folder and whether it gets a canvas of its own; the whole value each time, an empty
 folder for none); the picker shows it, and what the owner picks there instead stands, the agent does
 not change it. On a canvas with one repository the picker shows only once a new repository is
-picked, so a card without one looks as before. The button then names the target ("Build it like this
-in super59 (new)"), with a line under it on what the click does, and the click builds the idea there
-(see Building in a new repository).
+picked. The button then names the target ("Build it like this in super59 (new)"), with a line under
+it on what the click does, and the click builds the idea there (see Building in a new repository).
 
 "Build this prototype" does the same on that prototype's branch: its workspace and branch become
 the idea's, and the worker hears that the branch holds a throwaway prototype, to take over what
@@ -172,8 +172,9 @@ and the card says why.
 
 ### While the agent replies
 
-While the agent works on a reply, "Plan as a project", "Split off a task" and "Build
-this prototype" wait: the buttons are disabled ("The reply is coming") and the server refuses them.
+While the agent works on a reply, "Plan as a project", "Split off a task" and "Build this
+prototype" wait: the buttons are disabled (their tooltip: "The reply is coming …") and the server
+refuses them.
 The reply almost always rewrites the brief, so a plan taken before it would start from a brief the
 owner never read.
 
@@ -231,9 +232,7 @@ when Obeya stopped.
   click, and moves there whole** (2026-10-28). Its agent picks the target from the conversation;
   the card's repository picker shows and changes it, and the button names it. Obeya sets up git
   itself (as for a folder without git) and moves the card with its brief, conversation and
-  decisions, since its exploration agent's session ends with the building anyway. It was found on
-  an idea where Obeya made a task to create the repository, its worker searched other repositories
-  and the database for how, copied the brief into `docs/` and waited for approval, the canvas then
-  came without the card, and a card made for it on the old canvas could not start there. Rejected: a
-  worker setting up the repository and copying the brief (searching, an approval, context only as a
-  copy); only instructing the agents better (the detour would stay).
+  decisions, since its exploration agent's session ends with the building anyway. Rejected: a task
+  whose worker sets up the repository and copies the brief (it searched other repositories for how,
+  waited for an approval, carried the context only as a copy, and the new canvas came without the
+  card); only instructing the agents better (the detour would stay).

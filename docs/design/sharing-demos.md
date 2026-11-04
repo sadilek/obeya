@@ -64,9 +64,6 @@ again with the same demos (one going out goes out once more after it), and the l
 taken off stays in its place for a few seconds, struck through, with "Undo", which puts it
 back. On a touch screen the first tap on × only turns it into "Remove" (for a few seconds, or
 until a tap elsewhere); the second takes the tag off. A mouse click or a key takes it off at once.
-Why: the row stands right above the demo video, and on a phone a card's layout can still move as it
-opens, so a tap aimed at the video's fullscreen button landed on a tag's × and took the tag off
-(2026-11-04).
 
 Pages without tags are tagged from the Koordinator's sheet: while pages on a site with a vocabulary
 lack tags in a dimension (archived cards' included, also where their demo files are gone), an entry
@@ -118,7 +115,7 @@ The demo on the card): hosts send no or a wildcard CORS header, a ZIP from disk 
 and behind a login (Cloudflare Access) the frame's requests for files go cross-site without the
 login's cookie (Firefox always, Chrome unless `SameSite=None`), so the login answers with its own
 page. From disk Chrome loads nothing at all beside a sandboxed page. So the artifact's copy
-(`src/server/artifact-copy.ts`, for site and ZIP) loads no file beside its pages: module scripts are
+(for site and ZIP) loads no file beside its pages: module scripts are
 bundled in (CDN and package imports stay imports, comments naming this machine's paths go, a script
 that does not bundle stays as it is), the files its pages name (images, `srcset`,
 media, classic scripts, stylesheets and their imports, fonts, icons, CSS `url()`s) go in as `data:`
@@ -428,8 +425,7 @@ A private one, or one whose forge cannot tell (no remote, a folder), shares ther
 ticks it: the export box on its cards says the repository is private and offers "Share this
 repository's demos on my personal site", and the configuration lists the private
 repositories of the canvases (and those ticked) with a checkbox each, ticked or not, to change it
-there too. A repository whose site publishes on approval does so on the personal site too; one
-without a site the owner may tick for it on the personal site (see Publishing on approval).
+there too. Sharing on approval there: see Publishing on approval.
 
 Where the personal site lives decides whether it is listed, without a setting of its own: on
 Cloudflare Pages and from a private GitHub repository it is unlisted; from a public GitHub repository,
@@ -594,6 +590,9 @@ another machine withdrew loses its link here, with a line naming the machine.
   and in the changes made and planned on it, which the owner would otherwise have to survey by hand.
   Rejected: a card whose worker writes the settings (the owner wants the proposal where the field is,
   and a worker cannot read the canvas's cards and demos).
+- **On a touch screen a tag's × takes a second tap** (2026-11-04): the row stands right above the
+  demo video, and on a phone a card's layout can still move as it opens, so a tap aimed at the
+  video's fullscreen button landed on a tag's × and took the tag off.
 - **Links are copied one by one and as the filtered list** (owner, 2026-10-28): a demo goes to one
   person, or several on one topic into a mail, release notes or to a customer.
 - **A personal site per person, beside the repositories' sites** (owner, 2026-10-28): the site is a

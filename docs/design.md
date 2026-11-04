@@ -39,18 +39,21 @@ touches, and keep those current in the same change.
   (later starts, taking back, reworking by words), at work, waiting for approval (the handover
   report), approval and landing, live and done, archive, how projects end.
 - [Communication](design/communication.md) — how workers and Obeya exchange messages: a worker's
-  tools, turns that end without a handover, pausing an agent or a canvas's agents, snoozing a card, waiting without
-  blocking, refused and confirmed tool calls, notes and replies, questions go to the owner.
+  tools, turns that end without a handover (the usage limit), pausing an agent or a canvas's
+  agents, snoozing a card, waiting without blocking, refused and confirmed tool calls, notes and
+  replies, questions go to the owner.
 - [Conversation on the card](design/conversation-on-the-card.md) — what the owner sees and does in
-  a card's conversation: messages, reading order, replying to a message, the task as first message,
-  card layout (the files beside the demo, trying the app by hand), screenshots and marking them,
-  other files by their path, skills by `/`.
-- [The canvas](design/the-canvas.md) — the UI around the cards: the bar, creating cards, cards on
-  the canvas (a project arranged by its dependencies), moving around, unfolding a card, addresses
-  (a card's permalink, Back and Forward), card numbers (`K42`), sheets, visual identity, groups on the canvas, refusals.
+  a card's conversation: messages, reading order, replying to a message, quoting marked text, the
+  task as first message, card layout (the files beside the demo, trying the app by hand),
+  screenshots and marking them, other files by their path, skills by `/`.
+- [The canvas](design/the-canvas.md) — the UI around the cards: the bar, the navigation, creating
+  cards, cards on the canvas (a project arranged by its dependencies), moving around, unfolding a
+  card, addresses (a card's permalink, Back and Forward), card numbers (`K42`), sheets, visual
+  identity, groups on the canvas, refusals.
 - [Agents and workspaces](design/agents-and-workspaces.md) — how agents run and where: agents
-  (Claude Code, Codex), harnesses, models and effort, workspaces (slots, the pool in the bar), folders without git, parking, hosts
-  (running there, logins and files, a dropped connection).
+  (Claude Code, Codex), harnesses, models and effort, workspaces (taking a card's workspace, slots,
+  the pool in the bar), folders without git, parking, hosts (running there, logins and files, a
+  dropped connection).
 - [Landing](design/landing.md) — how approved work reaches `main`: how work lands, the PR loop
   (watching the PR, ready to merge, the PR on the card), review cards for a contributor's pull
   request (own changes wait for the approval, unpushed commits it collides with), after landing
@@ -67,8 +70,9 @@ touches, and keep those current in the same change.
   the demo on the card (watching it, comments in the video, earlier demos), UI checks in a
   headless browser.
 - [Sharing demos](design/sharing-demos.md) — demos on a page of their own for colleagues: where a
-  demo goes, tags, several versions on one page, publishing (on approval too), outdated pages, the page
-  and the pull request, export without a site, a repository's theme, static sites, several machines on one site.
+  demo goes, tags, several versions on one page, a shared artifact, outdated pages, the page and the
+  pull request, publishing on approval, export without a site, a repository's theme, static sites,
+  the personal site, several machines on one site.
 - [Repositories and configuration](design/repositories-and-configuration.md) — canvases and
   repositories, main branch, Lesestand, plan docs (and how Obeya reads them), repository settings
   (`.obeya/settings.json`, problems, trusting commands, writing them), the Configuration dialog,
@@ -105,10 +109,10 @@ on the walls and decisions are made in front of the wall.
   What is to be looked at rather than watched (drafts side by side, a layout, an analysis, an
   answer) is an HTML artifact instead of a video; the worker picks, the video where either would
   do. There is no handover without one.
-- **Voice first, mouse welcome.** Push-to-talk in Obeya's window; buttons for the obvious actions. No live
-  transcript: what the owner says to an open card's agent shows in its conversation, a command to
-  Obeya gets a short written confirmation with undo. What was said and answered stays in the
-  conversation of the open card, or in the Koordinator's sheet. Obeya does not speak.
+- **Voice first, mouse welcome.** Push-to-talk in Obeya's window; buttons for the obvious actions.
+  No live transcript: what the owner says to an open card's agent shows in its conversation, a
+  command to Obeya gets a short written confirmation with undo. What was said and answered stays in
+  the conversation of the open card, or in the Koordinator's sheet. Obeya does not speak.
 - **Repo-agnostic core.** Project specifics live in the repository's settings: in the repository
   itself (`.obeya/settings.json`), or set for this machine in the configuration.
 
@@ -122,7 +126,7 @@ on the walls and decisions are made in front of the wall.
   other cards say what they are (idea, prototype, workstream number, project). The UI and the
   Koordinator call a task *Aufgabe* and a follow-up *Folgeaufgabe*, never *Karte* (in English:
   *task*, *follow-up*, never *card*); *Karte* is only a card on the canvas as such (moving,
-  grouping, „Karte oder Projekt schließen“).
+  grouping, „Karte, Projekt oder Obeya-Chat schließen“).
 - **Groups** — besides by place, the owner sorts the canvas by group: a group has a name and a
   colour, and a card belongs to none or one; a project belongs as a whole, with its workstreams. A
   proposal, a follow-up and a prototype come into the group of the card they come from, a project
@@ -131,15 +135,16 @@ on the walls and decisions are made in front of the wall.
   while a card belongs to it, on the canvas or in the archive; the last card leaving it ends it, and
   so does deleting it, which takes all its cards out (see Groups on the canvas).
 - **States** — `idea` → `planned` → `working` → `waiting` (demo ready | question) → `approved` → `in
-  PR` → `live`, or `done` when the work changed no code; an agent's `proposal` is started when
-  accepted. Every handover brings a demo; where the repository has no recipe for running its app
-  (Obeya's defaults have none), the worker finds that out from the repository. `waiting: review`
-  (a handover without a demo) occurs only on old cards (see Demos, Decisions). An idea is `open`,
-  `parked` or `dropped`.
+  PR` → `live`, or `done` when the work changed no code; an agent's `proposal` is planned or started
+  when accepted. Every handover brings a demo; where the repository has no recipe for running its
+  app (Obeya's defaults have none), the worker finds that out from the repository. Only a folder
+  card where nothing can be seen hands over without one, as `waiting: review` (see Folders without
+  git). An idea is `open`, `parked` or `dropped`.
 - **Agents**
   - *Worker*, one per card while it is worked on: implementation, local reviews, demo.
   - *Project agent*, one per project, long-lived: knows the plan doc and the history of every
-    workstream; the owner asks it in the project's sheet, or asks Obeya, which passes the question on.
+    workstream; the owner asks it in the project's sheet, or asks Obeya, which passes the question
+    on.
   - *Exploration agent*, one per idea, long-lived, with a worker's tools: discusses the idea with
     the owner and keeps its brief.
   - *Koordinator* (Chief of Staff), one per canvas: takes voice input on the open canvas, creates
@@ -183,9 +188,8 @@ on the walls and decisions are made in front of the wall.
   uploads it when the canvas has changed enough.
 - **Agents run only through the user's own installation of a harness and its login** (Claude Code,
   and since 2026-11-03 Codex): Obeya starts that installation and never uses the subscription's
-  token itself. Tools that used the token
-  against the API themselves were blocked; tools that start the official installation appear to be
-  tolerated (T3 Code, Conductor).
+  token itself. Tools that used the token against the API themselves were blocked; tools that start
+  the official installation appear to be tolerated (T3 Code, Conductor).
 - **No business and no cloud service for now** (2026-10-06): being known comes first. Considered and
   parked: hosting demos for sharing, remote access from the phone through a relay, voice as a
   service, a team canvas, a subscription covering the costs. Hosted agents were ruled out.

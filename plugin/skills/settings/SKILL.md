@@ -6,8 +6,9 @@ description: Write a repository's Obeya settings (`.obeya/settings.json`) — ho
 # Writing a repository's settings
 
 Obeya learns how a project works from the repository's settings for everyone, in
-`.obeya/settings.json`: setup, checks, landing, plan docs, how to run the app, the demo site. The owner sees and changes them in "Konfiguration". The reference for every field and
-when a change takes effect is `${CLAUDE_SKILL_DIR}/../../../docs/settings.md`. Read it first; this
+`.obeya/settings.json`: setup, checks, landing, plan docs, how to run the app, the demo site. The
+owner sees and changes them in "Configuration". The reference for every field and when a change
+takes effect is `${CLAUDE_SKILL_DIR}/../../../docs/settings.md`. Read it first; this
 skill is the way to fill it in.
 
 The result is a settings file whose every field holds for this repository: a worker who knows
@@ -25,37 +26,35 @@ Find out, from the files rather than by guessing:
 - **The app**: README, CONTRIBUTING, CLAUDE.md or AGENTS.md, `docker-compose.yml` /
   `compose.yaml`, `.env.example`, `Procfile`, dev scripts. What kind of app it is (a web app, a CLI,
   a desktop or mobile app), what starts in which order, which ports it takes (fixed ones mean one
-  app per clone: `workspaces: 'clones'`), what to do after which kind of change (restart a
+  app per clone: `"workspaces": "clones"`), what to do after which kind of change (restart a
   service, reload the page, rebuild; nothing where it reloads by itself), where it gives its
   address (a file it writes, the console), migrations, seed data, and how to stop the app of one
   workspace (`app.stop`; `app.keep` where some hold data that must stay).
 - **An adapter module from before**: a `.obeya/adapter/index.ts` held what the settings hold now
-  (how the app runs, the demo site). Obeya no longer reads it: take its values over, then delete
-  `.obeya/adapter/`. What it held that is set on each machine in "Konfiguration" goes into your
+  (how the app runs, the demo site). Obeya does not read it: take its values over, then delete
+  `.obeya/adapter/`. What it held that is set on each machine in "Configuration" goes into your
   summary for the owner: the canvas's name.
 - **Logging in and test data**: seed scripts, fixtures, test users in the docs or the seed.
 - **Landing**: the `origin` remote (Obeya detects `land`: `pr` on GitHub, else `main`; write it
   only to differ), whether the default branch is protected, which bots comment on pull requests
   (`prNoise`).
 - **Plan docs**: where the project keeps its plans, if it does: `docs/plan/`, other directories
-  under `docs/`, `rfcs/`, `adr/`, `PLAN*.md`, a `TODO.md`. Obeya shows each `*.md` directly in one
-  directory (`planDocs.dir`) as a project when it has a checklist under `## Workstreams` (or
-  `## Arbeitspakete`): each top-level item is a workstream (`- [ ] **W1:** Title. Details`), a
-  ticked one has landed, and once all are ticked the project goes into the archive. Its goal is the
-  first paragraph under `## Goal` (or `## Ziel`). A doc in that directory without such a checklist
-  shows on the canvas as one that is not a project, with "Als Projekt aufbereiten", which has an
-  agent add the checklist in the doc's own style. Design notes and ADRs that plan nothing belong
-  elsewhere, or in `planDocs.exclude`. Plans that git ignores are not on the default branch Obeya
-  reads: their folder's absolute path goes into the owner's configuration on their machine
-  (Plan-Dokumente), not into the file.
+  under `docs/`, `rfcs/`, `adr/`, `PLAN*.md`, a `TODO.md`. What makes a doc in `planDocs.dir` a
+  project is under `planDocs` in the reference; a doc without the checklist shows on the canvas
+  with "Prepare as a project", which has an agent add it in the doc's own style. Design notes and
+  ADRs that plan nothing belong elsewhere, or in `planDocs.exclude`. Plans that git ignores are not
+  on the default branch Obeya reads: their folder's absolute path goes into the owner's
+  configuration on their machine ("Plan docs"), not into the file.
+- **Language**: the language the repository's code, docs and commit messages are written in
+  (`language`), and the one its demos are to be narrated in (`demo.language`).
 
 ## 2. Ask what the repository does not tell
 
 Some things only the owner knows: the login for a demo when no seed makes one, which test data
 shows the app well, whether approved work may go straight
 onto the default branch, where demos are shared with colleagues (a static site: `demo.site`), and
-where plan docs go: the directory of plans you found (its docs then converted with "Als Projekt
-aufbereiten" on the canvas), or a new `docs/plan/`. Collect them and ask in one question
+where plan docs go: the directory of plans you found (its docs then converted with "Prepare as a
+project" on the canvas), or a new `docs/plan/`. Collect them and ask in one question
 (the `ask` tool under Obeya), with the options you found, while you go on with the rest. A secret
 (a real password, an API key) goes into `app.run` only as where to find it (a file outside git,
 an environment variable), never itself.
@@ -63,8 +62,8 @@ an environment variable), never itself.
 ## 3. Write `.obeya/settings.json`
 
 Start from the example in the reference and keep only the fields that differ from Obeya's
-defaults: `setup`, `checks`, `land`, `direct`, `autoMerge`, `planDocs`, `softPaths`, `workspaces`, `prNoise`,
-`app` with `run`, `stop` and `keep`, and `demo` with `site`.
+defaults: `setup`, `checks`, `land`, `direct`, `autoMerge`, `planDocs`, `softPaths`, `workspaces`,
+`prNoise`, `language`, `app` with `run`, `stop` and `keep`, and `demo` with `language` and `site`.
 
 `app.run` is the part that decides whether workers can run and show their work. Write it for a
 newcomer, as a few sentences: what to start, in which order and how (in the background, which
@@ -97,6 +96,7 @@ problems."
 ## 5. Hand over
 
 Commit `.obeya/` alone. In the summary say what the settings set and why where it was a judgement
-call (the checks you left out, clones or worktrees), what the owner answered, and
-that they count once they are on the default branch (at once; where they move the workers between
-clones and worktrees, Obeya restarts the repository's agents by itself).
+call (the checks you left out, clones or worktrees), what the owner answered, and that they count
+once they are on the default branch (at once; where they move the workers between clones and
+worktrees, Obeya restarts the repository's agents by itself), its commands (`app.stop`,
+`app.keep`, the demo site) once the owner trusts them in "Configuration".

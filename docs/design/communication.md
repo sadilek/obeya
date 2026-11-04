@@ -14,24 +14,28 @@ visible on a card.
   turn ends with it and the card goes on waiting for approval.
 - `ask(question, options, multiple, pick, pick_why, demo)`: returns at once; the worker ends its
   turn and the answer is its next message. `demo` is what the owner is to look at to answer (drafts
-  side by side), shown on the card as a handover's demo is (see The demo on the card in Demos). The owner picks one option (several when `multiple`), writes their
-  own answer, or both. `pick`/`pick_why` are what the worker would choose and why, marked "I would take this"
-  on the card. Picks travel apart from the owner's words: the worker reads `They picked „…“.`
-  and below it what they `added in their own words`; the log keeps both as one text, picks first.
-  An answer stands in the conversation at once and leaves the card open.
+  side by side), shown on the card as a handover's demo is (see The demo on the card in Demos). The
+  owner picks one option (several when `multiple`), writes their own answer, or both.
+  `pick`/`pick_why` are what the worker would choose and why, marked "I would take this" on the
+  card. Picks travel apart from the owner's words: the worker reads `They picked „…“.` and below it
+  what they `added in their own words`; the log keeps both as one text, picks first. An answer
+  stands in the conversation at once and leaves the card open.
 - `propose_card(title, task, reason, idea?, questions?, replaces?, start_at?, repo?)` and
   `withdraw_proposal(title, why, replaced_by?)` (see Proposals): something it noticed outside its
   task, instead of doing it, or a follow-up due later (`start_at`). `repo` exists wherever Obeya
   runs more than one repository: its description lists the ids and paths of the canvas's own and,
   by canvas, those of the other canvases.
-- `ready_for_review(summary, demo)`, whose summary is the report the owner reads. The demo's
-  `question` (text, options, multiple, pick, pick_why) is asked and answered as with `ask`, while the
-  card goes on waiting for approval (see Waiting for approval in Card lifecycle).
+- `ready_for_review(summary, demo, files)`, whose summary is the report the owner reads and whose
+  files are the result shown beside the demo (see The files beside the demo). The demo's `question`
+  (text, options, multiple, pick, pick_why) is asked and answered as with `ask`, while the card goes
+  on waiting for approval (see Waiting for approval in Card lifecycle).
 - `app_running(url)`: where the app in its workspace opens, for the owner to try by hand (see Trying
   the app by hand); for a workspace on another machine Obeya forwards the port.
 - `snooze(until, why, card, state)` (see Snoozing a card).
 - `to_obeya(request)`: what the owner's words ask of Obeya rather than of the worker (see Passing a
   request on to Obeya).
+- After the approval: `pr_opened(url)` (see PR loop), `after_restart` (see Restarts for landed code)
+  and `close_unchanged` (see Live and done).
 
 A call that ends the turn (`ask`, `ready_for_review`, `pr_opened`, `snooze`, `after_restart`)
 returns "end your turn now". When the owner's words waited for that very step (see Reading order in
@@ -117,12 +121,13 @@ A worker's bubble also lists its background work under "In the background", each
 described it, with how long it has run, counting from when Obeya first saw it (the SDK gives no
 start time); the SDK's own housekeeping does not show.
 
-Pausing (at once, or once the turn has ended) ends the session, mid-step if need be, with whatever
-it ran, and keeps the card's state and the session. A worker keeps workspace and branch, frees its slot, and its app is parked
-after the grace; one paused on its handover leaves the card waiting for approval ("Demo ready ·
-agent paused"), Approve included. An idea's or Question card's agent keeps what it had not
-answered. The bubble stays where the agent stopped, in pencil grey, "Agent paused · ▶
-Resume", over the line "Paused."; a restart of Obeya leaves paused agents paused.
+Pausing (at once, or once the turn has ended) stops the running session, mid-step if need be, with
+whatever it ran, and keeps the card's state and the session to resume. A worker keeps workspace and
+branch, frees its slot, and its app is parked after the grace; one paused on its handover leaves the
+card waiting for approval ("Demo ready · agent paused"), Approve included. An idea's or Question
+card's agent keeps what it had not answered. The bubble stays where the agent stopped, in pencil
+grey, "Agent paused · ▶ Resume", over the line "Paused."; a restart of Obeya leaves paused agents
+paused.
 
 "Resume" (by voice „mach weiter“) or anything the owner writes resumes the same session; the
 agent hears that it was paused and what ran was stopped (exit code 137), plus the owner's words and
@@ -131,23 +136,24 @@ along then. "Stop" stays in the card's action row: it ends the agent and plans t
 
 ### Pausing a canvas's agents
 
-With several canvases, each canvas's row in the navigation (see The navigation) shows the moving line of a card at work while
-at least one agent works on that canvas (any agent with a pause, as above). While the pointer is on
-the row, the line turns into a pause button, faint like a card's, "Pause x running agents" in its tooltip; with
-none at work but at least one paused, the row shows ▶ on the same hover, "Resume x paused
-agents". On a touch screen the button is always there. Nothing else of it sits in the bar. The
-phone has none of it, to stay simple (owner, 2026-10-30): pausing is for the desktop.
+With several canvases, each canvas's row in the navigation (see The navigation) shows the moving
+line of a card at work while at least one agent works on that canvas (any agent with a pause, as
+above). While the pointer is on the row, the line turns into a pause button, faint like a card's,
+"Pause x running agents" in its tooltip; with none at work but at least one paused, the row shows ▶
+on the same hover, "Resume x paused agents". On a touch screen the button is always there. Nothing
+else of it sits in the bar. The phone has none of it, to stay simple (owner, 2026-10-30): pausing is
+for the desktop.
 
 Pausing pauses each agent at work there as the pause on its card does, at a safe point; those about
-to pause count as paused already. As long as one of them is still paused (or about to be), the cards the Koordinator lets start on that canvas wait in the queue ("Waiting:
-canvas paused") instead of taking the slots that pausing freed. Resuming resumes every paused
-agent there, as "Resume" does, and the waiting cards start. Once none on the canvas is paused
-any more (the owner resumed each on its card, or their cards went), the queue runs again by itself;
-one that could not go on (its repository left the canvas) is still paused and keeps the queue held.
-A restart leaves it as it was: the cards stay paused and the canvas holds its queue. A snoozed card
-is not a paused agent, though its worker stopped the same way: it counts for neither number, the
-canvas's resume leaves it asleep, it holds no queue, and its card shows no ▶; it wakes at its time
-or by "Wake now".
+to pause count as paused already. As long as one of them is still paused (or about to be), the cards
+the Koordinator lets start on that canvas wait in the queue ("Waiting: canvas paused") instead of
+taking the slots that pausing freed. Resuming resumes every paused agent there, as "Resume" does,
+and the waiting cards start. Once none on the canvas is paused any more (the owner resumed each on
+its card, or their cards went), the queue runs again by itself; one that could not go on (its
+repository left the canvas) is still paused and keeps the queue held. A restart leaves it as it was:
+the cards stay paused and the canvas holds its queue. A snoozed card is not a paused agent, though
+its worker stopped the same way: it counts for neither number, the canvas's resume leaves it asleep,
+it holds no queue, and its card shows no ▶; it wakes at its time or by "Wake now".
 
 ### Snoozing a card
 
@@ -165,10 +171,11 @@ slot frees, the app is parked, and no nudge follows. It is allowed only while th
 (started, in its PR, finishing after the landing) or its worker takes in the owner's words on its
 handover, and the owner is not pausing it (the pause would end at the snooze's time); a question or
 handover in the same turn takes it back. Snoozed on its handover (the owner asked it to check again
-in three days), the card leaves the count of what waits for the owner as one the owner snoozed does, its handover stands
-and can be approved meanwhile, which ends the snooze; woken, the worker is at work on it again. Its instructions send waits longer than a background command's two hours, and waits for
-another card, to `snooze`; checkpoints are one snooze after another. Idea and Question cards' agents
-have no such tool.
+in three days), the card leaves the count of what waits for the owner as one the owner snoozed does,
+its handover stands and can be approved meanwhile, which ends the snooze; woken, the worker is at
+work on it again. Its instructions send waits longer than a background command's two hours, and
+waits for another card, to `snooze`; checkpoints are one snooze after another. Idea and Question
+cards' agents have no such tool.
 
 The owner snoozes with "Later …" (a visible button with a clock in the action row; by voice „stell
 das bis morgen früh zurück“): this evening 18:00 (while more than half an hour off), tomorrow 08:00,
@@ -176,10 +183,10 @@ next Monday 08:00, or a date and time. One menu serves every kind of card. It is
 work, cards waiting for the owner, and planned tasks not yet with the Koordinator:
 
 - A card at work stops as on a pause and goes on where it stopped at the time.
-- A card waiting for the owner leaves the count of what waits and Tab, moves to the end of "Needs you", and comes back
+- A card waiting for the owner leaves the count of what waits, "Needs you" and Tab, and comes back
   at the time like a snoozed mail, with a push to the phone. Nothing goes to its agent; background
-  work runs on. Answering it anyway (or parking the idea, reworking the proposal) ends the
-  snooze. A review card handed over can instead wait until its contributor responds (see Review
+  work runs on. Answering it anyway (or parking the idea, reworking the proposal) ends the snooze. A
+  review card handed over can instead wait until its contributor responds (see Review
   cards in Landing).
 - A planned card starts at the time as if the owner had started it, through the Koordinator's queue;
   its worker hears that the card was set to start then. "Start agent", "Wake now" or "Start
@@ -201,11 +208,12 @@ meanwhile (its PR closed, a tool call to allow) ends the snooze.
 
 On the canvas a snoozed card is pushed back on greyed stock with a clock: "◷ Snoozed until
 tomorrow, 00:05" (or "until “…” is done", with "at the latest …" when it has a time too), with who
-snoozed it and why. One waiting on another card shows that wait while the pointer is on either, as
-a queued card does (see The queue's order). It counts neither as at work nor as needing the owner, and "Needs you" does not list it; on
-the phone it stands at the end of "Running". Its conversation shows a line where it was snoozed, carrying "Wake
-now" and "Change" (the same menu, whoever snoozed it) while it lasts, and on waking a line
-that says why it is back ("Woke up: the time has come", "… woken by you", …).
+snoozed it and why. One waiting on another card shows that wait while the pointer is on either, as a
+queued card does (see Cards on the canvas). It counts neither as at work nor as needing the owner,
+and "Needs you" does not list it; on the phone it stands at the end of "Running". Its conversation
+shows a line where it was snoozed, carrying "Wake now" and "Change" (the same menu, whoever snoozed
+it) while it lasts, and on waking a line that says why it is back ("Woke up: the time has come", "…
+woken by you", …).
 
 ### Waiting without blocking
 
@@ -273,9 +281,9 @@ as a learned preference does. Older answers agents gave in the owner's name stay
 - **An agent's question is a first-class thing with answer options**, not prose: the owner answers
   with a click, own words always possible. The answer travels as text, so the conversation reads the
   same later and a spoken answer takes the same path.
-- **A handover's question has options like `ask`'s** (2026-10-29): one kind of question, answered with
-  the same click and pick everywhere. Rejected: free text only, which made the owner type an answer
-  the worker could have offered.
+- **A handover's question has options like `ask`'s** (2026-10-29): one kind of question, answered
+  with the same click and pick everywhere. Rejected: free text only, which made the owner type an
+  answer the worker could have offered.
 - **Picks travel apart from the owner's words** (2026-10-15), so the worker can tell them apart.
   Rejected: the pick as the first line of the owner's words.
 - **A worker's question goes straight to the owner, with the worker's own pick** (2026-10-07).
@@ -305,10 +313,10 @@ as a learned preference does. Older answers agents gave in the owner's name stay
 - **The pause sits on the bubble of the running turn** (2026-10-15), not in the action row: the row
   holds decisions about the card, pausing is about the turn now running, and the pause exists
   exactly when a turn runs (also while a worker takes in the owner's words on a waiting card, before
-  a paid render, say). "Stop" is named so it does not read like a pause. Rejected: the bubble's pause
-  waiting for the next safe point, as for a restart: there the owner stops an agent going the wrong
-  way (the card's pause waits, see below).
-- **The pause, the reply and the copy button show on hover at the desk, from the first use on**
+  a paid render, say). "Stop" is named so it does not read like a pause. Rejected: the bubble's
+  pause waiting for the next safe point, as for a restart: there the owner stops an agent going the
+  wrong way (the card's pause waits, see below).
+- **The pause, the reply and the copy button show on hover at the desk, for newcomers too**
   (2026-10-29, owner): always in view, even faint, the pause drew the eye on every running turn. A
   newcomer finds a button that appears where the pointer goes, so none stays in view until its
   first use. Rejected: always visible; visible until used once. A touch screen, without hover,

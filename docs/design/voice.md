@@ -26,14 +26,14 @@ the repeating key made it flicker.
 A field being spoken into is framed, and the line under it and the microphone says "→ into the
 field · send with Enter", then "Writing it down …"; nothing heard leaves the field as it was and
 says so. Otherwise the line under the microphone names who hears the words and what goes with them
-("→ Agent · Task: … with text and 1 screenshot").
+(see Who hears the words).
 
 #### Drafts
 
 A field's draft (text, screenshots, options picked for the questions above it, the quoted message)
 lives outside the field, so the microphone reads and writes it and it outlives closing the card.
 Picks count only while the same questions stand. Drafts are kept per tab and canvas in session
-storage as they change, so they survive a canvas switch and a restart.
+storage as they change, so they survive a canvas switch and a reload.
 
 #### The microphone
 
@@ -54,7 +54,7 @@ A sidecar keeps the model loaded. Every backend gets the recording decoded by ff
 from `OBEYA_WHISPER_PYTHON` (a Python with the package) or else from uv.
 
 The default everywhere, the Mac included, is Parakeet TDT 0.6B v3: int8 ONNX through `onnx-asr` on
-the CPU, without PyTorch or MLX, about 640 MB, capped at 4 threads (12 were three times slower). It
+the CPU, without PyTorch or MLX, about 640 MB, capped at 4 threads (more were slower). It
 hears 25 European languages without a language pass, takes no prompt (the Koordinator reads its words
 with the card titles in mind) and does not loop or invent phrases on silence. A recording over a
 minute is heard in parts of at most 60 s, each cut at the quietest moment of its last 20 s: Parakeet's
@@ -104,9 +104,10 @@ transcribed and read, which on a busy CPU took longer.
 
 ### Who hears the words
 
-The line under the mic names who hears ("Agent · Task: …", "Agent · Idea: …", "Obeya · Task:
-…", "Obeya · Project: …"; under a card's text field only when Obeya reads rather than the card's
-agent), and the words go exactly there: label and route follow one rule.
+The line under the mic names who hears and what goes with the words ("→ Agent · Task: … with text
+and 1 screenshot", "Agent · Idea: …", "Obeya · Task: …", "Obeya · Project: …"; under a card's text
+field only when Obeya reads rather than the card's agent), and the words go exactly there: label
+and route follow one rule.
 
 On a card an agent listens on (a worker at work, waiting, in a pull request or finishing after the
 landing; the one a question resumes on a finished card; a prototype's worker; an idea's exploration
@@ -146,14 +147,15 @@ several seconds where the button "Approve" is immediate.
 
 A Koordinator turn reads the transcript as speech that may be misheard (typed words as written, and
 it knows which, and in which field) and either acts or replies. One sentence may give up to 20
-actions: new card, new idea, a review card for a pull request, start, out of the queue, note, answer, feedback, approve, accept,
-dismiss, revise, stop, remember, work retrospective, grouping and ungrouping cards, renaming a group,
-merging and deleting planned tasks,
-`configure` (see The Configuration dialog), `wish` (see Wishes for Obeya's makers), `wait_for` (see A
-step once a card gets somewhere); on ideas discuss, build, plan doc (also for a planned task nobody
-has worked on), prototype, park, drop; on prototypes build on it, discard. Actions are checked
-against the cards' states; one that does not fit goes back to the Koordinator, which may reply
-instead.
+actions: new card, new idea, a review card for a pull request, start, out of the queue, note,
+answer, feedback, approve, accept, dismiss or keep (a proposal its agent withdrew or replaced),
+revise, pause, resume, stop, snooze, wake, remember, work retrospective, grouping and ungrouping
+cards, renaming a group, merging and deleting planned tasks, `configure` (see The Configuration
+dialog), `wish` (see Wishes for Obeya's makers), `wait_for` and its end (see A step once a card gets
+somewhere); on ideas discuss, build, split off a settled part, plan doc (also for a planned task
+nobody has worked on), prototype, park, drop; on prototypes build on it, discard. Actions are
+checked against the cards' states; one that does not fit goes back to the Koordinator, which may
+reply instead.
 
 #### New cards
 
@@ -230,7 +232,7 @@ feedback the Koordinator passes on („sag dem Export, …“) waits for undo li
 What can only follow once a card gets somewhere (starting "Login" once "Export" has landed, a new
 card on another canvas once a task here is done) the Koordinator waits for, as a worker snoozes: `wait_for`
 on a card, or on a new card of the same act, until it is done (default) or waits for the owner, with
-the step written to stand on its own (cards named by title, since another session tags cards anew). A card already there or a step without
+the step written to stand on its own (cards named by title). A card already there or a step without
 text is refused. The waited-on card's agent may read the step in its task; it asks Obeya for it in
 vain (nothing is passed on without the owner's words, and the answer says Obeya takes that step). The
 wait outlives a restart, and the Koordinator sees its waits with every command and drops one on the
@@ -355,9 +357,8 @@ Koordinator's sheet and the line above the mic. Demo narration is separate (see 
 - **A new card starts unless told to wait**: left to judge, the Koordinator kept one in five plainly
   asked-for tasks planned.
 - **A new card for a named later time is snoozed until then** (2026-10-22), in the same action that
-  creates it. Without that, the Koordinator could only start such a card or plan it: it started a
-  follow-up for „Anfang Dezember“, which went into the queue behind other work, and said it was set
-  aside.
+  creates it. Rejected: only starting or planning it (a follow-up for „Anfang Dezember“ went into
+  the queue behind other work).
 - **The Koordinator knows what a card's agent can do on the machine** (2026-10-18): otherwise it told
   the owner to `git init` themselves rather than make a card for it.
 - **A new card lands where the owner looks** (2026-10-14). Rejected: a column right of everything.
@@ -377,17 +378,16 @@ Koordinator's sheet and the line above the mic. Demo narration is separate (see 
   or a workspace holds work a merge would lose or split; a merge keeps every text unchanged under its
   title rather than rewriting them, so nothing the owner said gets lost in a summary. Rejected:
   merging into a new card (it would lose the first card's place, group and history).
-- **Reviews of several pull requests are review cards too** (2026-11-02). Asked for several at once,
-  or for a list it looked up first, the Koordinator made tasks titled "Review PR #…": its own
-  confirmations of earlier review cards read "New task …", its card list did not tell review
-  cards from tasks, and a step it wrote for after a look-up said "task". Once there, such tasks
-  bred more of them. Their agents had no findings to record and nothing to merge from. Fixed by
-  facts the Koordinator reads (review cards marked in its list and history, `review_pr` once for each
-  pull request, the step after a look-up naming its action). Rejected: refusing a new card titled
-  like a review (titles such as a review's follow-up are legitimate); letting a card's agent turn its
-  task into a review card (a review card's safety rests on how it starts: a workspace on the PR's
-  head and a session that reads none of the contributor's settings; a task that already ran in its
-  own workspace needs a new card anyway, which the owner gets by saying "Review PR #…" on it).
-- **The Koordinator's model stays**: Sonnet, Haiku or a shorter prompt saved nothing reliable.
+- **Reviews of several pull requests are review cards too** (2026-11-02): a task titled "Review PR
+  #…" has no findings to record and nothing to merge from, and the Koordinator, seeing such tasks,
+  made more of them. It tells review cards apart by facts it reads (review cards marked in its list
+  and history, `review_pr` once for each pull request, the step after a look-up naming its action).
+  Rejected: refusing a new card titled like a review (titles such as a review's follow-up are
+  legitimate); letting a card's agent turn its task into a review card (a review card's safety rests
+  on how it starts: a workspace on the PR's head and a session that reads none of the contributor's
+  settings; a task that already ran in its own workspace needs a new card anyway, which the owner
+  gets by saying "Review PR #…" on it).
+- **The Koordinator's preset model is the workers'** (Opus): Sonnet, Haiku or a shorter prompt saved
+  nothing reliable.
 - **Obeya does not speak** (2026-10-08): spoken confirmations and answers distracted the owner, who
   reads them anyway.

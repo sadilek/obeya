@@ -19,7 +19,7 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-    # what leaves the running code as it is (as INERT in src/server/self-update.ts); path filters
+    # what leaves the running code as it is (as INERT in src/core/inert.ts); path filters
     # do not apply to tags
     paths-ignore: ['docs/**', 'design/**', 'site/**', '**/*.md', '.github/workflows/pages.yml']
   workflow_dispatch:

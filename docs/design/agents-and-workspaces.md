@@ -90,11 +90,10 @@ unless the repository has `slots`. Clones (for tools that break in a worktree, o
 clone): a pool, each clone leased by one card. `clones` is how many Obeya makes in its own directory
 (`workspaces/<canvas>/<repo>/1..n`), on top of the existing ones `workspaces` lists (on the command
 line `--clones <n>`, `--workspace <path>`); the Configuration dialog shows the sum. Where work lands
-on the local main, the checkout itself is never one of them, even where `workspaces` lists it: work
-lands there, the Lesestand is read there, and a card's branch checked out in it stopped every
-landing (2026-10-30, a tester's report). The dialog does not count it and says why; listed alone,
-the cards work in worktrees, as without the list. A card keeps its
-workspace across stop and restart until its work has landed and its worker finished what remains.
+on the local main, the checkout itself is never one of them, even where `workspaces` lists it (see
+Decisions). The dialog does not count it and says why; listed alone, the cards work in worktrees, as
+without the list. A card keeps its workspace across stop and restart until its work has landed and
+its worker finished what remains.
 
 Starting a card does not block the server: the workspace is taken at once (so slots and the queue
 see it taken), and git makes it ready in the background: `git worktree add` (a minute in a large
@@ -120,7 +119,7 @@ in the queue as when none is free at once. What else Obeya asks git about a card
 the background as well: whether it holds work (uncommitted changes, commits beyond the main branch),
 where its branch left the main branch, and the plan docs its branch adds. A stopped card is planned
 at once and gives its workspace back once git has said that it holds nothing (not if it started
-again meanwhile); an approval ends the owner's turn at once, the card landing (`approved_at`), and
+again meanwhile); an approval ends the owner's turn at once, the card landing, and
 lands the work, opens the pull request or closes the card once git has told which; a handover is
 recorded once git has told whether it changes anything.
 
@@ -418,6 +417,9 @@ for its hooks), and what the repository's work needs.
   and a card finding none goes to another machine, where it stays until its work lands. Rejected:
   clones as the only cap; stacks running until stopped by hand.
 - **Worktrees by default** (2026-10-14); a canvas whose configuration names clones keeps them.
+- **The checkout where work lands is never a workspace** (2026-10-30, a tester's report): work lands
+  there and the Lesestand is read there, and a card's branch checked out in it stopped every
+  landing.
 - **A host's forwarded port reaches a server that answers only narration clips** (2026-10-16).
   Rejected: forwarding to Obeya itself, which let anyone on that machine run commands here.
 - **A finished card's question takes a temporary worktree when no clone is free** (2026-10-15).

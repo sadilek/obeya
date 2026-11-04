@@ -25,7 +25,7 @@ the UI bundle needs `NODE_ENV` defined as production, or it ships React's develo
 
 `package.json` holds Obeya's version, which the settings show, with the commit beside it when Obeya
 runs from a checkout. `bun scripts/check-binary.ts` checks a binary end to end on the machine it
-runs on (voice, a demo render, a real worker on Claude Code and on the SDK); it passes on macOS
+runs on (voice, a demo render, a real worker on the machine's Claude Code); it passes on macOS
 arm64, Windows x64 and Linux x64 and arm64 (2026-10-07).
 
 ### App
@@ -267,7 +267,7 @@ The site's film is a real run recorded with Obeya's own demo pipeline (`scripts/
 README says how to change, re-render and publish it) on a scratch canvas over Tipjar, a small tip
 calculator with its own settings and plan doc. It goes through the main features once, from
 arranging the wall and an idea by voice through a real worker's demo, comments spoken into it and
-the approval to proposals and an idea discussed with its agent. About four minutes, as sharp as the
+the approval to proposals and an idea discussed with its agent. About four and a half minutes, as sharp as the
 app on a Retina screen, narrated in English in the owner's ElevenLabs voice clone after being
 iterated in the Qwen3 clone (see CLAUDE.md). A release's render runs real agents and records them;
 corrections after it play that recording back (Demos: Agents played back), so they take minutes and
@@ -314,8 +314,7 @@ which Chrome leaves stale after a seek. Without JavaScript or the chapters file 
   2026-10-30): such a server left every worker without the local network until the owner quit
   Obeya, and nothing said why. It waits for the workers' turns, so none is cut off. A self-restart of
   the app leaves no such server: one the app started ends for the new build and the new app starts
-  it, and the new app is started through the system; on 2026-10-29 a shell built before that still
-  started its successor as its child, whose server then counted as the ended shell's. Rejected:
+  it, and the new app is started through the system. Rejected:
   having the server disclaim the app (macOS's `responsibility_spawnattrs_setdisclaim`), as a bun
   without a bundle of its own gets no permissions of its own; the shell replacing itself with
   `exec`, which the system start already covers.

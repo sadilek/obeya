@@ -166,7 +166,6 @@ own WebSocket. It shows four lists:
 - **"Planned"**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
   what it does on the canvas ("Start agent", "Later …"), so a task can be started from the phone.
-  Without this list an accepted proposal left the phone until it was started (2026-10-31).
 - **"Done"**: the finished cards that are not archived yet, those the archive's "Archive …
   finished tasks" would take, and none the lists above hold.
 
@@ -208,11 +207,12 @@ The canvas; a reload or restart opens it again); Back (the
 button, the browser's, Esc) returns to the list where it was scrolled. It is the canvas's detail view
 with the same answer options, demo, approve buttons and undo, its page the only thing that scrolls;
 plan docs and the configuration are not opened from there. Its conversation is in the same panel as
-Obeya's, at the card's address with `?talk`, opened by the button left of the microphone, whose number counts the
-messages the conversation shows (not the agent's folded words between steps; a reply and the handover
-under it in the same message count once) since the owner last had it open or wrote there, plus one for the open questions, however many stand in their block (until
-2026-10-22 each question counted). Every card kind gets there the same way, through the
-shared detail view. A working card and one waiting for answers open with the panel up, a working one
+Obeya's, at the card's address with `?talk`, opened by the button left of the microphone, whose
+number counts the messages the conversation shows (not the agent's folded words between steps; a
+reply and the handover under it in the same message count once) since the owner last had it open or
+wrote there, plus one for the open questions, however many stand in their block. Every card kind
+gets there the same way, through the shared detail view. A working card and one waiting for answers
+open with the panel up, a working one
 as a half sheet so title, state line and buttons stay in view; others open on their page. While an
 agent or Obeya is at work, the button carries a working card's moving line. The conversation opens
 with the first unseen message at the top of the panel, else at its end; new messages carry the
@@ -403,15 +403,15 @@ repository).
 
 Obeya runs from a checkout that work lands on, so `live` must mean running (the compiled binary has
 no checkout and never restarts for new code). Without `--dev` the `obeya` process supervises the
-server: when the checkout moves to commits that change code (not only `docs/`, `.md` files, `site/`
-or `.github/`), it restarts the server, running `bun install --frozen-lockfile` first when
-`package.json` or `bun.lock` changed (a failure is logged and the restart goes ahead). Workers resume,
-and an open page reloads when it reconnects to a new server process. What counts as new is measured from
-the commit the server started from, and a restart waits until HEAD has held still for a round (a
-landing under way finishes first), HEAD checked once more after git has told what changed. While
-nothing moves, the watch starts no process: every two seconds it compares the files HEAD stands on
-(HEAD, each ref it names on the way to a commit, a branch possibly naming another, and
-`packed-refs`; refs of a worktree's own, such as `refs/worktree/` and `refs/bisect/`, are in its
+server: when the checkout moves to commits that change code (not only `docs/`, `design/`, `site/`,
+`.github/` or `.md` files), it restarts the server, running `bun install --frozen-lockfile` first
+when `package.json` or `bun.lock` changed (a failure is logged and the restart goes ahead). Workers
+resume, and an open page reloads when it reconnects to a new server process. What counts as new is
+measured from the commit the server started from, and a restart waits until HEAD has held still for
+a round (a landing under way finishes first), HEAD checked once more after git has told what
+changed. While nothing moves, the watch starts no process: every two seconds it compares the files
+HEAD stands on (HEAD, each ref it names on the way to a commit, a branch possibly naming another,
+and `packed-refs`; refs of a worktree's own, such as `refs/worktree/` and `refs/bisect/`, are in its
 own git directory) and asks git what HEAD is only once one of them changed. Where the files cannot
 tell (refs in a reftable, a symbolic ref whose target cannot be read safely), git is asked every
 round.
@@ -511,8 +511,7 @@ workers are busy.
   (2026-11-03, the owner): a web app on the home screen keeps the address it was added at, and
   nothing Obeya serves elsewhere can reach it. Only the app's own page knows it runs as one, so it
   reports that; the address a device last used in its browser would not do, since with a new port the
-  browser follows the new address while the app does not. Devices paired before this record no
-  address until their app connects once.
+  browser follows the new address while the app does not.
 - **"Connect a phone" only in the configuration** (2026-10-16): a phone is connected once, so it
   takes no place in the bar. Rejected: a phone icon in the bar.
 - **The phone view is a view of its own in the same page, not the canvas made touch-capable**
@@ -521,6 +520,8 @@ workers are busy.
   It reuses the canvas's detail view, conversation, drafts and confirmations rather than copies. One
   WebSocket per canvas rather than one stream for all: the server's messages stay as they are, and an owner has a
   handful of canvases.
+- **Planned tasks on the phone** (2026-10-31): without "Planned" an accepted proposal left the phone
+  until it was started.
 - **Done cards on the phone in a list of their own, closed by default** (2026-10-28, the owner):
   the owner wants to see what is done but not archived from the phone, without it pushing what
   waits and what runs further down.
@@ -574,12 +575,13 @@ workers are busy.
   that card's row into a card anew: what the other rows made (their demos and pages, with a look at
   the demos' files) is kept while those rows stay the same, until anything else changes, when the
   files are looked at again (a demo deleted by hand shows as gone then); and the reads each change
-  makes find their cards through indexes rather than going through the archive. A run of thirty
-  landings took a third of a second of CPU on a laptop and a second in CI, now a fifth of that.
-  Rejected: patching only the written card into the canvas's cards (what other cards show depends
-  on it: an idea's prototypes, the waits, a card's place in a queue). The owner's settings file, asked for the
-  language with every text the server writes, is read again only once it changed. Rejected: reacting to each change at once and
-  only making the view cheaper (the reactions still build it once per change).
+  makes find their cards through indexes rather than going through the archive. The owner's
+  settings file, asked for the language with every text the server writes, is read again only once
+  it changed. Together this cut a run of thirty landings from a third of a second of CPU on a laptop
+  (a second in CI) to a fifth of that. Rejected: patching only the written card into the canvas's
+  cards (what other cards show depends on it: an idea's prototypes, the waits, a card's place in a
+  queue); reacting to each change at once and only making the view cheaper (the reactions still
+  build it once per change).
 - **A page's freezes are found by a worker's heartbeat, not by its own timer running late**
   (2026-10-30): the app's webview on macOS runs a page's timers about once a second when its window
   is not in front, with the page still in view, and logged a stall of about a second every second

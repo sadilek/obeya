@@ -60,7 +60,7 @@ describe('check.ts', () => {
       'docs/plan/search.md': '# Search\n\n## Workstreams\n\n- [x] **W1:** Index.\n',
       'docs/plan/rollout.md': '# Rollout\n\n## Phases\n\n- [ ] Vienna\n',
     });
-    expect(out).toContain('plan docs in docs/plan/: 2 are projects (search.md, done: archived; shop.md), 1 is not\n- rollout.md: no `## Workstreams` section');
+    expect(out).toContain('plan docs in docs/plan/: 2 are projects (search.md, done: archived; shop.md), 1 is not\n- rollout.md: no `## Workstreams` (or `## Arbeitspakete`) section');
     expect(code).toBe(0);
   });
 

@@ -99,7 +99,7 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
   owner's Qwen3 voice, and the ElevenLabs render happens after the owner has approved the video.
   Qwen3-TTS references of the owner's voice lie beside the key, each with its transcript (`.txt`):
   `.voice/qwen-reference-de.wav` (a recording) and `qwen-reference-en.wav` (cut from the ElevenLabs
-  voice); the demo settings' `reference` names the one of the narration language. Qwen3 is good
+  voice); the demo settings' `references` name each under its narration language. Qwen3 is good
   enough for demos, ElevenLabs marginally better for the site, so the site stays with ElevenLabs
   (owner, 2026-10-12); `scripts/hero-video/qwen.py` renders the hero narration in Qwen3 to compare.
 - Every release also brings the README's text up to date: like the site, it names what the release

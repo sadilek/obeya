@@ -78,9 +78,9 @@ restart starts again.
 "Accept and start" (and "Accept and discuss", "Discuss as an idea") does not wait for the rework,
 like "Build it like this" on an idea: clicked during one, the proposal is accepted once the new text
 is there, unless it still has questions, in which case it stays a proposal and the conversation says
-why. Meanwhile the button reads "Starts after the rework …" with "Don't accept after all", and
-the canvas card's state line adds "then accepted". Accepting by voice during a rework is refused (see Commands
-to the Koordinator).
+why. Meanwhile the button reads "Starts after the rework …" with "Don't accept after all", and the
+canvas card's state line adds "then accepted". Accepting by voice during a rework is refused (see
+Commands to the Koordinator).
 
 ### At work
 
@@ -153,14 +153,12 @@ Merged (or landed on `main`) → `live`. The demo stays on the card. The worker 
 on main and may finish what waited for that (see After landing).
 
 Work that changed nothing in the repository (a demo, an analysis, an answer) has nothing to land:
-when the handover finds no commits of the card's own (measured as in The Koordinator) and nothing
+when the handover finds no commits of the card's own (measured as in Scheduling) and nothing
 uncommitted, the button reads "Close" with a line that no pull request follows, and approving makes
 the card `done` ("Done"). The handover's answer tells the worker what the button will do, as
-Obeya sees the branch: close the card, or land the files it names. A worker knows the commits it made,
-not those its branch carried from before, and otherwise told the owner the opposite of what the card
-showed. A worker whose
-branch emptied after the approval closes the card with `close_unchanged`, refused while the
-workspace holds changes.
+Obeya sees the branch (close the card, or land the files it names), since a worker knows the commits
+it made, not those its branch carried from before. A worker whose branch emptied after the approval
+closes the card with `close_unchanged`, refused while the workspace holds changes.
 
 A finished card an agent worked on keeps its field: a question there resumes that agent (see
 Questions after the work).
@@ -171,18 +169,19 @@ The owner archives a finished card ("Archive" on it, its archive button on the c
 finished ones at once in the archive); a prototype goes there when it ends (see Prototypes). A
 stopped task ("Stopped") can be archived one at a time, for the owner to come back to, beside "Start
 again" and "Delete"; not while it waits to start, nor while its workspace holds work that has not
-landed, or a clone keeps its branch since its workspace was taken (the button is greyed and says
-why), which would lie unseen in a clone. A stopped card opens
-like a card an agent worked on, the task as its conversation's first message.
+landed or a clone keeps its branch since its workspace was taken, which would lie unseen in a clone
+(the button is greyed and says why). A stopped card opens like a card an agent worked on, the task
+as its conversation's first message.
 
 The archive (its button in the bar, or `A`) drops down like the queue: archived cards on a timeline
-by day, newest first, labelled with their kind or state unless plain tasks. One unfolds as on the canvas and can go
-back to its place; an ended prototype only shows, read-only, how it ended. A search field, focused on
-opening, kept between openings and always in sight (only the list under it scrolls), filters by every typed word (case and accents aside) in title,
-text, summary, last status, open question, a proposal's reason or label, and a project's goal and
-workstreams, marking the words in the titles. The bar's search finds cards on the canvas and in the
-archive the same way (see The bar). The list stays under the dim while a card from it is open, so the card folds back into it;
-a card opened from its address scrolls its row into view first.
+by day, newest first, labelled with their kind or state unless plain tasks. One unfolds as on the
+canvas and can go back to its place; an ended prototype only shows, read-only, how it ended. A
+search field, focused on opening, kept between openings and always in sight (only the list under it
+scrolls), filters by every typed word (case and accents aside) in title, text, summary, last status,
+open question, a proposal's reason or label, and a project's goal and workstreams, marking the words
+in the titles. The bar's search finds cards on the canvas and in the archive the same way (see The
+bar). The list stays under the dim while a card from it is open, so the card folds back into it; a
+card opened from its address scrolls its row into view first.
 
 The archive grows to hundreds of cards and stays quick: the list scrolls through all of them, but
 only the rows in view and a margin around them are on the page, the rest held as space of their
@@ -222,8 +221,8 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
 - **An agent takes back its own proposal** (2026-10-17): an accepted one is only marked, since the
   owner chose it and work may be under way. Rejected: a new proposal saying it replaces an older one;
   the owner started both.
-- **A follow-up due later is a proposal with a start time** (2026-10-21), so it does not go under in a
-  handover. Rejected: the proposal coming back at the time (the owner decides twice); the worker's
+- **A follow-up due later is a proposal with a start time** (2026-10-21), so it does not go under in
+  a handover. Rejected: the proposal coming back at the time (the owner decides twice); the worker's
   card staying snoozed after its handover (the approval would hang for weeks); a calendar entry (it
   only reminds, where the card's agent can check part of it itself).
 - **A proposed task can be taken as an idea** (2026-10-16), to discuss and prototype it first.

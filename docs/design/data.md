@@ -17,8 +17,9 @@ Persistent (SQLite):
   contributor's pull request (author, whether maintainers may push, the head handed over, the
   checks and merge probe, the findings with what came of each, the change request waiting for the
   contributor); an approval held until the work can land; landed work whose worker still finishes;
-  a waiting card's stopped app; the clone that keeps a card's branch since its workspace was taken
-  from it;
+  a waiting card's stopped app, or where its app runs for the owner to try; the clone that keeps a
+  card's branch since its workspace was taken from it; the model its session runs on; the files its
+  worker named as its result, and the demos of earlier handovers;
   proposals waiting for the owner; the new repository a card is to be built in, and that Obeya made
   it; an idea's brief, open questions and picks; a prototype's idea
   and outcome; a project's plan doc as last read and the plan docs its landed work added; its short
@@ -32,20 +33,25 @@ Persistent (SQLite):
 - confirmed commands waiting out their undo window;
 - shared demo pages (slug, link, what the page shows, the change it was published after, whether it
   is publishing or withdrawing) and a running re-share of outdated pages;
-- paired devices (a hash of the cookie, never the cookie itself; name; push subscription);
+- paired devices (a hash of the cookie, never the cookie itself; name; push subscription; the
+  address its home-screen app opens);
+- each repository's commands as the owner last trusted them;
 - the decision log, preferences, the friction noted on each card's runs and the settings changes
   the work retrospective proposed from it.
 
 Files under `~/.obeya/` (the same for the app and a checkout): the database (`obeya.db`), the
 owner's screenshots (`images/<canvas>/`), other files the owner dropped into a field
 (`files/<canvas>/<uuid>/<name>`), the configuration (`canvases.json`), the settings
-(`settings.json`, `demo.json`, `voice.json`), where the running Obeya answers (`server.json`), the
-`tailscale serve` entry Obeya made (`tailscale-serve.json`), the key it signs pushes with
-(`vapid.json`), the app's server log (`app.log`), the stalls of the server and its pages (`stalls.log`, see Running Obeya), voices and models (`voices/`), the workers'
-clones and worktrees (`workspaces/`), the Lesestand's worktrees (`read/`), the cards' undo in
-folders without git (`undo/`), the files of looked-up answers (`answers/<canvas>/<thread>/`), the
-static sites Obeya keeps (`sites/<key>/`), the env files their repositories' settings name
-(relative to the home, `sites/demos/deploy.env`, say), and `share/`, the directory deploys run in.
+(`settings.json`, `demo.json`, `voice.json`, `personal-site.json`), the owner's key (`owner.key`),
+the Claude token the owner gave Obeya (`claude-token`), where the running Obeya answers
+(`server.json`), the `tailscale serve` entry Obeya made (`tailscale-serve.json`), the key it signs
+pushes with (`vapid.json`), the app's server log (`app.log`) and its shell's failed rebuilds
+(`app-build.log`), the stalls of the server and its pages (`stalls.log`, see Running Obeya), voices
+and models (`voices/`), the workers' clones and worktrees (`workspaces/`), copies of demos and
+transcripts from SSH hosts (`hosts/<host>/`), the Lesestand's worktrees (`read/`), the cards' undo
+in folders without git (`undo/`), the files of looked-up answers (`answers/<canvas>/<thread>/`), the
+static sites Obeya keeps (`sites/<key>/`), the env files their repositories' settings name (relative
+to the home, `sites/demos/deploy.env`, say), and `share/`, the directory deploys run in.
 
 Derived, not stored: git, PR and CI state (read from git and GitHub), plan-doc content (read from
 the repository; the copy on the project is only for the archive).

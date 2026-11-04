@@ -383,16 +383,15 @@ usage limit stopped waits for the reset (see Turns that end without a handover).
 A finishing card looks awake: live stock and "Live", not faded, its state line in working ink with
 the moving line ("Live · agent working", "Done · agent working", "Live · agent answering" for
 a follow-up), its status line shown, and a workstream keeps task size instead of becoming a chip.
-While its worker has paused for a due restart, the line says so ("Done · agent waits for
-restart") in muted ink (see Waiting for the workers).
+While its worker has paused for a due restart, the line says so (see Waiting for the workers).
 
 #### Questions after the work
 
 What the owner says on a finished card whose worker has ended (typed, or spoken with the card open)
 resumes that session in a fresh workspace on the card's branch (see A finished card's question).
 The card stays `live` or `done`, "agent answering"; the worker answers with `reply`, and its turn's
-end frees the workspace. One that needs a full clone (`need_clone`) reads "Waiting for a workspace"
-until one is free; "Stop" ends the wait. Commits there do not land: a change becomes a card of its own (`propose_card`).
+end frees the workspace. "Stop" ends a wait for a full clone. Commits there do not land: a change
+becomes a card of its own (`propose_card`).
 A card no agent worked on, a prototype or an archived card has no field.
 
 ### Decisions
