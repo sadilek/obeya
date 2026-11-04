@@ -43,7 +43,7 @@ const fieldValue = (d: Date) => {
 const EDGE = 8;
 
 /** Puts the menu (fixed) below the button where it fits on the screen, else above it, else as low as fits, centred on the button. */
-function placeOnScreen(menu: HTMLElement, button: DOMRect) {
+export function placeOnScreen(menu: HTMLElement, button: DOMRect) {
   const { width, height } = menu.getBoundingClientRect();
   const below = button.bottom + 6;
   const above = button.top - 6 - height;

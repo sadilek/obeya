@@ -415,7 +415,7 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   // Esc closes the open conversation, else the open card, as Back does (a keyboard at the phone, or the view tried at the desk)
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || document.querySelector('.lightbox')) return;
+      if (e.key !== 'Escape' || document.querySelector('.lightbox, .agent-menu')) return;
       if (talkRef.current) closeTalk();
       else back();
     };

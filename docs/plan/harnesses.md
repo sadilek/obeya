@@ -14,12 +14,14 @@ matters: per group of agents, per canvas or project, per card.
 
 Since W1–W4, each group of agents runs on Claude Code or Codex as the owner chose in "Agents and
 models"; the welcome screen accepts either harness; the bar shows the usage limits of every plan
-agents run on (design: Agents and workspaces → Codex, Harnesses, models and effort; The canvas;
-Setup assistant). Since W8 a card's conversation names the harness and model its session runs on
+with a login (design: Agents and workspaces → Codex, Harnesses, models and effort; The canvas;
+Setup assistant). Since W8 a card's conversation names the harness, model and effort its session runs on
 (design: Conversation on the card → The conversation). Since W11, Codex works where Claude Code
 does in daily use: on SSH hosts, with its hooks refusing long foreground waits and following a
 folder's changes before they run, in the work retrospective, and with a login button on a card whose
-session lost its login.
+session lost its login. Since W5, a card can run on another harness, model and effort than its
+group, chosen beside its start button and kept for its run (design: Agents and workspaces →
+Harnesses, models and effort).
 
 ## Workstreams
 
@@ -29,8 +31,8 @@ session lost its login.
 - [x] **W2:** The welcome screen finds Codex beside Claude Code; either one with a login lets the
   owner start.
 - [x] **W3:** "Agents and models" chooses the harness, then the model, then the effort, per group.
-- [x] **W4:** The usage bar shows the limits of each plan agents run on.
-- [ ] **W5:** Choosing the agent on the card: "Start agent" starts the card on the default of its
+- [x] **W4:** The usage bar shows the limits of each plan with a login.
+- [x] **W5:** Choosing the agent on the card: "Start agent" starts the card on the default of its
   group; a menu beside it chooses another harness and model for this card, kept with the card for
   its later turns.
 - [ ] **W6:** Defaults per canvas and per project, over the machine-wide ones of "Agents and

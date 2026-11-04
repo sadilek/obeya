@@ -142,6 +142,30 @@ test("an agent of a group starts on the group's harness with its model and effor
   expect(fake.last.spec.model).toBeUndefined();
 });
 
+test("an agent with a harness, model or effort of its own (a card's) starts on them, the rest its group's, and resumes on its session's harness", () => {
+  const fake = new FakeRuntime();
+  const runtime = withAgentSetting(fake, (role) => (role === 'worker' ? { harness: 'claude', model: 'opus', effort: 'xhigh' } : AGENT_DEFAULTS[role]));
+  const spec = { cwd: '/r', system: '', tools: [], onEvent: () => {}, role: 'worker' as const };
+  runtime.start({ ...spec, agent: { harness: 'codex', model: 'gpt-6.1-sol' } });
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'xhigh' });
+  expect('agent' in fake.last.spec).toBe(false);
+  runtime.start({ ...spec, agent: { harness: 'claude', model: 'default' } });
+  expect(fake.last.spec).toMatchObject({ harness: 'claude', effort: 'xhigh' });
+  expect('model' in fake.last.spec).toBe(false);
+  // its later turns keep the card's model, not the group's
+  runtime.start({ ...spec, agent: { harness: 'claude', model: 'sonnet' }, resume: 'b9e1c0de-claude-session' });
+  expect(fake.last.spec).toMatchObject({ harness: 'claude', model: 'sonnet' });
+  // a session on another harness than the one chosen goes on there, on its default model
+  runtime.start({ ...spec, agent: { harness: 'claude', model: 'sonnet' }, resume: 'codex:01a1a0cf-thread' });
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', effort: 'xhigh' });
+  expect('model' in fake.last.spec).toBe(false);
+  // an effort of its own, on the group's harness and model or on its own
+  runtime.start({ ...spec, agent: { effort: 'low' } });
+  expect(fake.last.spec).toMatchObject({ harness: 'claude', model: 'opus', effort: 'low' });
+  runtime.start({ ...spec, agent: { harness: 'codex', model: 'gpt-6.1-sol', effort: 'medium' } });
+  expect(fake.last.spec).toMatchObject({ harness: 'codex', model: 'gpt-6.1-sol', effort: 'medium' });
+});
+
 test('byHarness starts each agent on the runtime of the harness its spec names, Claude Code where it names none', () => {
   const claude = new FakeRuntime();
   const codex = new FakeRuntime();

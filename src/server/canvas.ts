@@ -195,7 +195,7 @@ const WAKE_EVERY_MS = 15_000;
 /** What waits while a card's new repository is about to be made (`NewRepo.due`): every other way on. */
 const DUE_REFUSES: CardAction['action'][] = ['start', 'force', 'build', 'planDoc', 'splitOff', 'prototype', 'snooze', 'startAt', 'accept'];
 
-const BOARD_ONLY: CardAction['action'][] = ['name', 'dequeue', 'reorder', 'startAt', 'dismiss', 'keep', 'park', 'drop'];
+const BOARD_ONLY: CardAction['action'][] = ['agent', 'name', 'dequeue', 'reorder', 'startAt', 'dismiss', 'keep', 'park', 'drop'];
 
 /** The card's repository does not run on the canvas: nothing goes to its agents (`Item.repoDown`). */
 const repoDown = (card: Item) => new BadRequest('repoDown', `the repository ${card.repo} of the card does not run on this canvas`);
@@ -1668,6 +1668,8 @@ export class CanvasRuntime {
         return void this.koordinator.name(cardId);
       case 'force':
         return this.koordinator.force(cardId);
+      case 'agent':
+        return this.board.chooseAgent(cardId, a.agent);
       case 'dequeue':
         return this.koordinator.dequeue(cardId);
       case 'takeWorkspace':

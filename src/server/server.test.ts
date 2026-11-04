@@ -1013,7 +1013,7 @@ describe('the usage limits in the bar', () => {
   test('a page gets them once fetched for it, and its closing ends the session that fetched them', async () => {
     let closed = 0;
     const meter = new UsageMeter(() => ({ fetch: async () => ({ at: '2026-10-28T08:00:00.000Z', limits: [{ kind: 'session', group: 'session', percent: 7, severity: 'normal' }] }), close: () => void closed++ }), { lingerMs: 10 });
-    const usage = new UsageMeters([{ harness: 'claude', meter }], { on: true, ready: () => true, inUse: () => ['claude'] });
+    const usage = new UsageMeters([{ harness: 'claude', meter }], { on: true, ready: () => true });
     server.stop(true);
     server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, usage);
     const messages: ServerMessage[] = [];
@@ -1022,7 +1022,7 @@ describe('the usage limits in the bar', () => {
     const shown = () => messages.filter((m): m is Extract<ServerMessage, { type: 'usage' }> => m.type === 'usage');
     await until(() => shown().length === 2);
     expect(shown()[0]!.usage).toBeNull();
-    expect(shown()[1]!.usage?.plans).toEqual([{ harness: 'claude', inUse: true, at: '2026-10-28T08:00:00.000Z', limits: [{ kind: 'session', group: 'session', percent: 7, severity: 'normal' }] }]);
+    expect(shown()[1]!.usage?.plans).toEqual([{ harness: 'claude', at: '2026-10-28T08:00:00.000Z', limits: [{ kind: 'session', group: 'session', percent: 7, severity: 'normal' }] }]);
     ws.close();
     await until(() => closed === 1);
     expect(usage.current()).toBeNull();

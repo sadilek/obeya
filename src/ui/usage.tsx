@@ -52,8 +52,8 @@ export function UsagePill({ usage }: { usage: Usage }) {
     };
   }, [open]);
   const plans = usage.plans.filter((p) => p.limits.length);
-  // the bar shows the plans agents run on; the list all with a login
-  const faced = plans.filter((p) => p.inUse);
+  // every plan with a login, whether agents run on it or not: what is left there decides what to start
+  const faced = plans;
   if (!faced.length) return null;
   const hide = () => {
     setStatus('');
@@ -99,7 +99,6 @@ function PlanList({ plan }: { plan: PlanUsage }) {
     <>
       <p>
         <b>{t.usage.plans[plan.harness]}</b>
-        {!plan.inUse && <span className="hint"> · {t.usage.unused}</span>}
       </p>
       <ul className="usage-list">
         {plan.limits.map((l, i) => (

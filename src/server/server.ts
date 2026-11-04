@@ -532,10 +532,7 @@ export function serve(
       '/api/agents': {
         GET: needs(config, async (c) => agentsView(c.home, (await harnesses?.view()) ?? [], harnesses?.preferred())),
         PUT: needs(config, async (c, req) => {
-          const view = saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
-          // the bar shows the plans of the harnesses the groups run on
-          usage?.changed();
-          return view;
+          return saveAgents(c.home, await req.json(), (await harnesses?.view()) ?? [], harnesses?.preferred());
         }),
       },
       // the owner's personal demo site: set up at a host, connected with another machine's code, removed

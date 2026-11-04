@@ -588,7 +588,7 @@ class CodexSession implements AgentSession {
       throw e;
     }
     this.thread = opened.thread.id;
-    this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}`, ...(opened.model ? { model: opened.model } : {}) });
+    this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}`, ...(opened.model ? { model: opened.model } : {}), ...(this.spec.effort ? { effort: this.spec.effort } : {}) });
     this.pump();
     const code = await exited;
     if (this.closed) return;

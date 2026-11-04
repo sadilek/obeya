@@ -20,7 +20,7 @@ import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
 import type { InputContext } from './koordinator';
-import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest } from './runtime';
+import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
@@ -28,7 +28,7 @@ import { readingShared } from '../adapters';
 import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
-import { type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
+import { type CardAgent, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, gitOrNull } from './workspaces';
 import { defaultBranchCommit } from './read-tree';
@@ -107,7 +107,7 @@ export interface WorkerOptions {
   env?: Record<string, string>;
   /** The narration language of the demo settings, for a repository that names none for its demos; the conversation language when left out. */
   demoLanguage?: () => Language;
-  /** The harness workers run on (`withAgentSetting`): how a worker waits differs by it. Claude Code when left out. */
+  /** The harness the workers' group runs on (`withAgentSetting`), where a card chose none: how a worker waits differs by it. Claude Code when left out. */
   harness?: () => Harness;
   /** The directory demos go into on this machine (the demo settings'); `~/demos` when left out. */
   demoDirectory?: () => string;
@@ -3273,13 +3273,17 @@ export class Workers {
     // CLAUDE.md are the contributor's, so the session reads none of them, the default branch's CLAUDE.md instead
     const review = !!contributionOf(row);
     const notes = review ? this.mainNotes() : '';
+    // the harness and model the owner chose for this card, over the group's; a session resumed stays on its own harness
+    const agent = row.agent ? (JSON.parse(row.agent) as CardAgent) : undefined;
+    const harness = resume ? sessionHarness(resume) : (agent?.harness ?? this.o.harness?.() ?? 'claude');
     live.session = this.o.runtime.start(
       {
         cwd: row.workspace,
         role: 'worker',
+        ...(agent ? { agent } : {}),
         ...(plans ? { dirs: [plans] } : {}),
         ...(review ? { untrusted: true } : {}),
-        system: `${this.system(preferences, !!row.prototype_of, this.o.board.item(cardId))}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
+        system: `${this.system(preferences, harness, !!row.prototype_of, this.o.board.item(cardId))}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
         tools: this.tools(cardId, live, !!row.prototype_of),
         plugins: [OBEYA_PLUGIN],
         ...(env ? { env } : {}),
@@ -3566,7 +3570,7 @@ export class Workers {
         // a session that replaces another (none resumed, say) keeps the one before for the Arbeitsrückschau
         const before = this.o.board.row(cardId).session_id;
         if (before && before !== e.id) this.o.board.log(cardId, 'state', 'obeya', this.o.board.t.worker.newSession(this.o.board.t.worker.earlierRun(before)));
-        this.o.board.work(cardId, { session_id: e.id, model: e.model ?? null });
+        this.o.board.work(cardId, { session_id: e.id, model: e.model ?? null, effort: e.effort ?? null });
         break;
       }
       case 'text':
@@ -4901,7 +4905,7 @@ export class Workers {
     return this.o.adapter.demo?.language ?? this.o.demoLanguage?.() ?? this.o.board.conversation();
   }
 
-  private system(preferences: string, prototype = false, card?: Item): string {
+  private system(preferences: string, harness: Harness, prototype = false, card?: Item): string {
     // a task the owner wrote is their first words to the worker; one an agent or a plan doc wrote is not
     const by = card?.body.trim() ? taskAuthor(card) : undefined;
     const language = by === 'owner' ? ownersLanguage(this.o.board.conversation(), "the card's task") : `${ownersLanguage(this.o.board.conversation())}${by ? ` ${TASK_BY[by]}` : ''}`;
@@ -4931,7 +4935,7 @@ ${folder ? '- Others work in the same folder at the same time: leave what your c
 - Follow the repository's own instructions (CLAUDE.md and docs).
 - Owner-facing text (report, reply, ask, ${prototype ? 'propose_build' : 'propose_card'}, ready_for_review) is in the owner's language, short and concrete. What you write between tool calls also shows on the card for the owner, folded under your next message: keep it brief and in the owner's language too. ${language} The docs you read and the owner's standing preferences do not count as the owner's words.
 - ${repositoryLanguage(this.o.adapter.language, folder)} A demo (its narration, report, or an HTML artifact's words) is in ${LANGUAGE_NAMES[this.demoLanguage()]}, whatever language the owner talks in.${this.o.adapter.demo?.language ? ` This repository's settings name ${LANGUAGE_NAMES[this.o.adapter.demo.language]} for its demos, which holds over the narration language of the demo settings.` : ''}
-- ${(this.o.harness?.() ?? 'claude') === 'codex' ? 'Wait for anything external (a deploy, a CI run, a process to finish) in commands that wait 30 seconds at most, run again until it is there: a note from the owner reaches you only once the running command is done. Anything longer, a point in time further off, or another card getting somewhere (its fix on main), you snooze until (snooze): Obeya wakes you then.' : 'Wait for anything external (a deploy, a CI run, a process to finish) in the background: run_in_background or Monitor, then end your turn; Obeya wakes you when it finishes or fires. A point in time further off than a background command can wait (two hours), or another card getting somewhere (its fix on main), you snooze until (snooze). Never wait with sleep or a polling loop in the foreground: a note from the owner reaches you only once the running command is done.'}
+- ${harness === 'codex' ? 'Wait for anything external (a deploy, a CI run, a process to finish) in commands that wait 30 seconds at most, run again until it is there: a note from the owner reaches you only once the running command is done. Anything longer, a point in time further off, or another card getting somewhere (its fix on main), you snooze until (snooze): Obeya wakes you then.' : 'Wait for anything external (a deploy, a CI run, a process to finish) in the background: run_in_background or Monitor, then end your turn; Obeya wakes you when it finishes or fires. A point in time further off than a background command can wait (two hours), or another card getting somewhere (its fix on main), you snooze until (snooze). Never wait with sleep or a polling loop in the foreground: a note from the owner reaches you only once the running command is done.'}
 - When a note or feedback from the owner arrives, answer it with reply. If it is unclear what they want, ask.
 `.trim() + (preferences ? `\n\n${preferences}` : '');
   }

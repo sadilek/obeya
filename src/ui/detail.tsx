@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, modelName, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
@@ -25,6 +25,7 @@ import { Inline, plain, sourceAt } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
 import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
+import { AgentPick, RunsOn } from './agentPick';
 import { CiteButton } from './cite';
 import { Composer } from './composer';
 import { useFitHeight } from './fitHeight';
@@ -405,9 +406,11 @@ export function Detail(p: Props) {
           </div>
           <QueuePlace item={item} items={all} />
           <div className="actions">
-            <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: forcedText(item.queue) })}>
-              {t.queue.force}
-            </button>
+            <StartOn item={item} act={act} primary={false}>
+              <button className="btn" onClick={() => act({ action: 'force' }, { close: true, ack: forcedText(item.queue) })}>
+                {t.queue.force}
+              </button>
+            </StartOn>
             <button className="btn" onClick={() => act({ action: 'dequeue' }, { close: false })}>
               {t.queue.dequeue}
             </button>
@@ -651,14 +654,16 @@ export function Detail(p: Props) {
             <Armed label={t.repoPick.making(choice.name)} undo={t.undo} onUndo={() => act({ action: 'stayHere' }, { close: false })} />
           ) : (
             !item.snoozed && (
-              <button
-                className="btn primary"
-                disabled={!!fresh && !fresh.ready}
-                title={fresh?.hint ?? (inFolder ? t.folder.startHint : t.startHint)}
-                onClick={() => act({ action: 'start' }, { close: false })}
-              >
-                {fresh?.button ?? t.start}
-              </button>
+              <StartOn item={item} act={act} on={!fresh}>
+                <button
+                  className="btn primary"
+                  disabled={!!fresh && !fresh.ready}
+                  title={fresh?.hint ?? (inFolder ? t.folder.startHint : t.startHint)}
+                  onClick={() => act({ action: 'start' }, { close: false })}
+                >
+                  {fresh?.button ?? t.start}
+                </button>
+              </StartOn>
             )
           )}
           <Later item={item} act={act} />
@@ -696,14 +701,18 @@ export function Detail(p: Props) {
       {worked && (running || archivable || halted || rest || snoozable(item)) && (
         <div className="actions">
           {rest && (
-            <button className="btn primary" title={t.landedPart.startHint} onClick={() => act({ action: 'start' }, { close: false })}>
-              {t.landedPart.start}
-            </button>
+            <StartOn item={item} act={act}>
+              <button className="btn primary" title={t.landedPart.startHint} onClick={() => act({ action: 'start' }, { close: false })}>
+                {t.landedPart.start}
+              </button>
+            </StartOn>
           )}
           {halted && !item.archivedAt && (
-            <button className="btn primary" title={t.startAgainHint} onClick={() => act({ action: 'start' }, { close: false })}>
-              {t.startAgain}
-            </button>
+            <StartOn item={item} act={act}>
+              <button className="btn primary" title={t.startAgainHint} onClick={() => act({ action: 'start' }, { close: false })}>
+                {t.startAgain}
+              </button>
+            </StartOn>
           )}
           {review ? prototypeActions || approveButton : (running || (halted && !item.archivedAt)) && prototypeActions}
           <Later item={item} act={act} />
@@ -1127,9 +1136,11 @@ function ProposalView({
           <Armed label={t.acceptWaits(idea || armed === 'idea')} undo={t.unaccept} onUndo={() => act({ action: 'unaccept' }, { close: false })} />
         ) : (
           // one to start later is planned and waits until then: taking it on is all there is to it
-          <button className="btn primary" title={later ? t.startAt.accept : undefined} onClick={() => accept(true)}>
-            {idea ? t.acceptIdea : later ? t.acceptOnly : t.accept}
-          </button>
+          <StartOn item={item} act={act} on={!idea}>
+            <button className="btn primary" title={later ? t.startAt.accept : undefined} onClick={() => accept(true)}>
+              {idea ? t.acceptIdea : later ? t.acceptOnly : t.accept}
+            </button>
+          </StartOn>
         )}
         {!later && (
           <button className="btn" disabled={!!revising} onClick={() => accept(false)}>
@@ -1149,6 +1160,16 @@ function ProposalView({
       </div>
       {answer.questions.length > 0 && <p className="hint">{t.proposalQuestionsHint}</p>}
     </>
+  );
+}
+
+/** A button that starts the card (`children`), with the menu of what its agent runs on joined to it where `on`. */
+function StartOn({ item, act, on = true, primary, children }: { item: Item; act: (a: CardAction, done: ActDone) => Promise<void>; on?: boolean; primary?: boolean; children: ReactNode }) {
+  if (!on || item.kind === 'project') return <>{children}</>;
+  return (
+    <AgentPick item={item} act={(a) => act(a, { close: false })} {...(primary === false ? { primary } : {})}>
+      {children}
+    </AgentPick>
   );
 }
 
@@ -1443,11 +1464,7 @@ function Conversation({
     <>
       <h4 className="p-h">
         {t.talk.heading}
-        {item.runsOn && (
-          <span className="runs-on" title={t.talk.runsOn(t.harnesses[item.runsOn.harness], item.runsOn.model)}>
-            {t.harnesses[item.runsOn.harness]} · {modelName(item.runsOn.model)}
-          </span>
-        )}
+        <RunsOn item={item} />
       </h4>
       <div className="talk conv" ref={box} onScroll={onScroll}>
         {turns.shown.length === 0 && !turns.unread.length && !working && !turns.asked.length && !seed && <div className="hint">{idea ? t.idea.talkEmpty : question ? t.question.empty : proposal ? t.reviseHint : t.talk.empty}</div>}

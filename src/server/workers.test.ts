@@ -1274,17 +1274,42 @@ describe('workers', () => {
     expect(runtime.last.inbox[0]).toContain('Answer to your question');
   });
 
-  test('the card names the harness and model its session runs on, as the harness reported them', async () => {
+  test('the card names the harness, model and effort its session runs on, the model as the harness reported it', async () => {
     const c = manual();
     await workers.start(c.id);
     expect(board.item(c.id)!.runsOn).toBeUndefined();
-    runtime.last.emit({ type: 'session', id: 'sess-1', model: 'claude-opus-5-5' });
-    expect(board.item(c.id)!.runsOn).toEqual({ harness: 'claude', model: 'claude-opus-5-5' });
+    runtime.last.emit({ type: 'session', id: 'sess-1', model: 'claude-opus-5-5', effort: 'high' });
+    expect(board.item(c.id)!.runsOn).toEqual({ harness: 'claude', model: 'claude-opus-5-5', effort: 'high' });
     // a session that replaces it on Codex names its own; one that names none leaves the card without
     runtime.last.emit({ type: 'session', id: 'codex:thread-1', model: 'gpt-5.5' });
     expect(board.item(c.id)!.runsOn).toEqual({ harness: 'codex', model: 'gpt-5.5' });
     runtime.last.emit({ type: 'session', id: 'sess-2' });
     expect(board.item(c.id)!.runsOn).toBeUndefined();
+  });
+
+  test("the harness and model chosen for a card go to each session of its run, its later turns too, and change only while it waits to start", async () => {
+    const c = manual();
+    board.chooseAgent(c.id, { harness: 'codex', model: 'gpt-6.1-sol' });
+    expect(board.item(c.id)!.agent).toEqual({ harness: 'codex', model: 'gpt-6.1-sol' });
+    await workers.start(c.id);
+    expect(runtime.last.spec.agent).toEqual({ harness: 'codex', model: 'gpt-6.1-sol' });
+    // the worker on Codex is told to wait as Codex can
+    expect(runtime.last.spec.system).toContain('commands that wait 30 seconds at most');
+    expect(() => board.chooseAgent(c.id, null)).toThrow('at work');
+    runtime.last.emit({ type: 'session', id: 'codex:thread-1', model: 'gpt-6.1-sol' });
+    workers.shutdown();
+    workers.message(c.id, 'Weiter');
+    expect(runtime.last.spec).toMatchObject({ resume: 'codex:thread-1', agent: { harness: 'codex', model: 'gpt-6.1-sol' } });
+    // an effort alone, with or without a harness and model; the group's again; nothing a harness would not take
+    board.work(c.id, { state: 'planned' });
+    board.chooseAgent(c.id, { effort: 'max' });
+    expect(board.item(c.id)!.agent).toEqual({ effort: 'max' });
+    board.chooseAgent(c.id, { harness: 'claude', model: 'sonnet', effort: 'low' });
+    expect(board.item(c.id)!.agent).toEqual({ harness: 'claude', model: 'sonnet', effort: 'low' });
+    board.chooseAgent(c.id, null);
+    expect(board.item(c.id)!.agent).toBeUndefined();
+    for (const bad of [{ harness: 'codex', model: 'opus' }, { harness: 'gemini', model: 'default' }, { harness: 'claude', model: 'gpt-6.1-sol' }, { harness: 'claude' }, { effort: 'huge' }, {}, { model: 'opus', speed: 1 }])
+      expect(() => board.chooseAgent(c.id, bad as never)).toThrow('harness');
   });
 
   test('after a restart a working card resumes its session; a delivery to an ended session resumes it', async () => {

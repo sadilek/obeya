@@ -43,7 +43,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } fro
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { AGENT_ROLES, type RestartReason } from '../core/types';
+import { type RestartReason } from '../core/types';
 import { type CanvasConfig, Canvases } from './canvas';
 import { Config, CONFIG_FILE, expandConfig, readConfigFile } from './config';
 import { checkPlugin } from './demo';
@@ -337,7 +337,7 @@ const usage = new UsageMeters(
     { harness: 'claude', meter: new UsageMeter(() => claudeUsage(home)) },
     { harness: 'codex', meter: new UsageMeter(() => codexUsage(home)) },
   ],
-  { on: usageMeterView(home).on, ready: (h) => harnesses.ready(h), inUse: () => [...new Set(AGENT_ROLES.map((r) => agentSetting(home, r, harnesses.preferred()).harness))] },
+  { on: usageMeterView(home).on, ready: (h) => harnesses.ready(h) },
 );
 harnesses.onChange(() => (usage.update(), usage.changed()));
 const machine = new MachineSetup({ home, config, voice: voiceSetup, harnesses });

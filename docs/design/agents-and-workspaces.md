@@ -82,6 +82,18 @@ beside it, Claude Code's where none is. Saving restarts nothing; agents starting
 running session keeps its own, except the voice commands' session, which reopens when the
 Koordinator's setting changes (as for another language).
 
+A card may run on another harness, model or effort than its group. Joined to each button that
+starts a card (and "Accept and start" on a proposed task, "Start anyway" in the queue) is a narrow
+part with a triangle that opens a menu: each ready harness's models, as "Agents and models" lists
+them, and the efforts the model takes, with what applies checked (the workers' setting until the
+card has one of its own). Picking what the workers have is no choice of the card's: it follows
+their setting. What the card chose of its own stands small beside the button ("Codex · GPT-6-Sol ·
+effort very high"); without a choice nothing does. The choice is the card's, stored with it, and
+goes with every session of its next run, the ones resumed after a restart included, and with the
+instructions that differ by harness (how a worker waits); what it leaves out is the workers'. It
+changes only while the card waits to start (planned, proposed, in the queue); once it is at work the
+choice stays as it began.
+
 ### Workspaces
 
 A card works in a worktree of its own, unless the repository's settings say clones or its
@@ -394,6 +406,13 @@ for its hooks), and what the repository's work needs.
   Rejected: a terminal with `codex login` (the UI sends the owner to no command line, and on a host
   it would not reach the sign-in's return); the device-code sign-in, which works from a phone but
   has to be switched on in ChatGPT's settings first.
+- **A card's own harness, model and effort are chosen in a narrow menu part of its start button and
+  kept with the card** (2026-11-04): starting stays one click on the group's setting, and a card
+  picked for another (a hard one for a bigger model or more effort, one for Codex to compare) keeps
+  it for every session of its run. Rejected: a part of the button naming the group's setting on
+  every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in a menu that
+  starts the card at once; changing it while the card works (a session cannot move to another
+  harness, and a model changed between turns would not be what the owner saw it start with).
 - **The harness column is called "Runs on"** (owner, 2026-11-03), under the title "Agents and
   models", which names the rows. Rejected: "Harness", jargon beside that title; „Werkzeug“ or
   „Tool“, which agents' commands are called already, and which undersells a coding agent.

@@ -1074,6 +1074,24 @@ span.cl-name { color: inherit; cursor: default; }
 .snooze-pick { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); margin-top: 2px; align-items: center; }
 .snooze-pick input { min-width: 0; font: inherit; font-size: 13px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); color: var(--ink); }
 .snooze-pick .btn { padding: 6px 12px; }
+/* the button that starts a card, joined to a narrow part with a triangle that opens the menu of what its agent runs on (placed by script), and that choice beside them where the card has one */
+.agent-split { display: inline-flex; align-items: stretch; }
+.agent-split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.agent-split > .agent-pick { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding: 0 6px; display: inline-flex; align-items: center; }
+.agent-split > .btn.agent-pick:not(.primary) { box-shadow: inset 1px 0 0 var(--line); }
+.agent-split.saving > .btn:first-child { pointer-events: none; opacity: 0.7; }
+.agent-caret { flex: none; opacity: 0.8; }
+.agent-chosen { align-self: center; margin: 0 0 0 10px; font-size: 12.5px; white-space: nowrap; }
+.agent-menu { position: fixed; z-index: 75; bottom: auto; max-width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
+.agent-menu .snooze-opt { display: flex; align-items: baseline; }
+.agent-check { flex: none; width: 18px; }
+.agent-h { padding-top: 8px; font-weight: 600; }
+.agent-group { display: flex; flex-direction: column; }
+.agent-effort-h { border-top: 1px solid var(--line); margin-top: 4px; }
+.agent-efforts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 10px; }
+.agent-effort { border: 1px solid var(--line); background: none; border-radius: 3px; padding: 4px 9px; font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.agent-effort:hover { background: var(--chip); }
+.agent-effort.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 /* a proposal its agent wants started later: when, with „Ändern“ */
 .start-at { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; margin: 10px 0 2px; font-size: 13px; color: var(--ink); }
 .start-at .clock-mark { vertical-align: -1px; color: var(--muted); }

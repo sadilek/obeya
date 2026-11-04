@@ -161,40 +161,32 @@ test('a source that keeps failing is tried after more and more rounds', async ()
   expect(f.counts.fetched).toBeLessThanOrEqual(6);
 });
 
-test("the meters of the harnesses: each runs while its harness has a login, and the plans say which ones agents run on", async () => {
+test("the meters of the harnesses: each runs while its harness has a login, and its plan is shown then", async () => {
   const claude = fakeSource();
   claude.answers.push(usage(30));
   const codex = fakeSource();
   codex.answers.push(usage(60));
   const ready = { claude: true, codex: false };
-  let used: ('claude' | 'codex')[] = ['claude'];
   const meters = new UsageMeters(
     [
       { harness: 'claude', meter: new UsageMeter(claude.open, { everyMs: 60_000, lingerMs: 0 }) },
       { harness: 'codex', meter: new UsageMeter(codex.open, { everyMs: 60_000, lingerMs: 0 }) },
     ],
-    { on: true, ready: (h) => ready[h], inUse: () => used },
+    { on: true, ready: (h) => ready[h] },
   );
-  let changes = 0;
-  meters.onChange(() => changes++);
   const unwatch = meters.watch();
   await settle();
   expect(codex.counts.opened).toBe(0);
-  expect(meters.current()?.plans.map((p) => [p.harness, p.inUse, p.limits[0]!.percent])).toEqual([['claude', true, 30]]);
+  expect(meters.current()?.plans.map((p) => [p.harness, p.limits[0]!.percent])).toEqual([['claude', 30]]);
   // Codex logged in: its meter starts
   ready.codex = true;
   meters.update();
   await settle();
-  expect(meters.current()?.plans.map((p) => [p.harness, p.inUse])).toEqual([
-    ['claude', true],
-    ['codex', false],
+  // whether agents run on it or not
+  expect(meters.current()?.plans.map((p) => [p.harness, p.limits[0]!.percent])).toEqual([
+    ['claude', 30],
+    ['codex', 60],
   ]);
-  // the workers move to Codex: no new numbers, but the bar changes
-  used = ['claude', 'codex'];
-  const before = changes;
-  meters.changed();
-  expect(changes).toBe(before + 1);
-  expect(meters.current()?.plans.every((p) => p.inUse)).toBe(true);
   // the owner hides them: every meter stops
   meters.setOn(false);
   expect(meters.current()).toBeNull();

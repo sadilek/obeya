@@ -162,8 +162,7 @@ export class UsageMeter {
 
 /**
  * The meters of the harnesses, as one for the bar: each runs while the bar shows the limits and its
- * harness has a login (`ready`), and the bar shows the plans of the harnesses agents run on (`inUse`),
- * the list all of them.
+ * harness has a login (`ready`); the bar shows every plan it has numbers for.
  */
 export class UsageMeters {
   private on: boolean;
@@ -171,7 +170,7 @@ export class UsageMeters {
 
   constructor(
     private meters: { harness: Harness; meter: UsageMeter }[],
-    private o: { on?: boolean; ready: (h: Harness) => boolean; inUse: () => Harness[] },
+    private o: { on?: boolean; ready: (h: Harness) => boolean },
   ) {
     this.on = !!o.on;
     for (const { meter } of meters) meter.onChange(() => this.changed());
@@ -197,10 +196,9 @@ export class UsageMeters {
 
   /** Each plan's limits as last fetched; null while none has any. */
   current(): Usage | null {
-    const used = new Set(this.o.inUse());
     const plans = this.meters.flatMap(({ harness, meter }) => {
       const limits = meter.current();
-      return limits ? [{ harness, ...limits, inUse: used.has(harness) }] : [];
+      return limits ? [{ harness, ...limits }] : [];
     });
     return plans.length ? { plans } : null;
   }
@@ -210,7 +208,7 @@ export class UsageMeters {
     return () => this.listeners.delete(fn);
   }
 
-  /** What the bar shows changed without new numbers: the groups' harnesses. */
+  /** What the bar shows changed without new numbers: a harness's login. */
   changed() {
     for (const fn of this.listeners) fn();
   }

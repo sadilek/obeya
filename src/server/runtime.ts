@@ -27,7 +27,7 @@ import { OWN_GROUP } from './spawn';
 import { withoutHeredocs } from './shell';
 import type { Messages } from '../core/messages';
 import type { ToolCall, ToolWatch } from './folder';
-import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type Harness } from '../core/types';
+import { agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type CardAgent, type Harness } from '../core/types';
 import { messageOf } from '../core/text';
 import { claudeLoginFailed, codexLoginLost } from '../core/login';
 
@@ -41,7 +41,7 @@ export interface AgentTool {
 
 export type AgentEvent =
   /** The session's id, once it started or resumed, and the model it runs on as the harness names it, where it says. */
-  | { type: 'session'; id: string; model?: string }
+  | { type: 'session'; id: string; model?: string; effort?: AgentEffort }
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: Record<string, unknown> }
   /**
@@ -116,6 +116,8 @@ export interface AgentSpec {
   model?: string;
   /** The group the agent belongs to, whose harness, model and effort the owner chooses (`withAgentSetting`). */
   role?: AgentRole;
+  /** The harness, model and effort the owner chose for this one agent (a card's), over its group's where it names them. */
+  agent?: CardAgent;
   /** The harness it runs on (`byHarness`): Claude Code where none is named. */
   harness?: Harness;
   /**
@@ -165,18 +167,21 @@ export const sessionHarness = (session: string): Harness => (session.startsWith(
 
 /**
  * A runtime that starts each agent of a group on its group's harness, model and effort
- * (`agentSetting`), asked at every start; a harness's default model is no model given. A session
- * resumed stays on the harness it began on, with that harness's default model if the group has
+ * (`agentSetting`), asked at every start, or on the harness and model and the effort chosen for that
+ * agent alone (a card's), each where it names one; a harness's default model is no model given. A session
+ * resumed stays on the harness it began on, with that harness's default model if the choice has
  * moved on since, so a card goes on with its conversation.
  */
 export function withAgentSetting(runtime: AgentRuntime, setting: (role: AgentRole) => AgentSetting): AgentRuntime {
   return {
     start(spec, firstMessage, images) {
       if (!spec.role) return runtime.start(spec, firstMessage, images);
-      const chosen = setting(spec.role);
+      const group = setting(spec.role);
+      const own = spec.agent;
+      const chosen: AgentSetting = { ...group, ...(own?.harness && own.model ? { harness: own.harness, model: own.model } : {}), ...(own?.effort ? { effort: own.effort } : {}) };
       const on: Harness = spec.resume ? sessionHarness(spec.resume) : chosen.harness;
       const { harness, model, effort } = on === chosen.harness ? chosen : { ...agentDefault(spec.role, on), effort: chosen.effort };
-      const { model: _, ...rest } = spec;
+      const { model: _, agent: __, ...rest } = spec;
       return runtime.start({ ...rest, harness, effort, ...(model === 'default' ? {} : { model }) }, firstMessage, images);
     },
   };
@@ -423,7 +428,7 @@ export const sdkRuntime: AgentRuntime = {
     const done = (async () => {
       try {
         for await (const m of q) {
-          if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id, model: m.model });
+          if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id, model: m.model, ...(spec.effort ? { effort: spec.effort } : {}) });
           else if (m.type === 'system' && m.subtype === 'background_tasks_changed') {
             const running = backgroundWork(m.tasks);
             if (JSON.stringify(running) !== JSON.stringify(background)) spec.onEvent({ type: 'background', tasks: running });

@@ -34,6 +34,10 @@ export interface CardRow {
   model: string | null;
   /** The size of its change as the server last read it (JSON `ChangeSize`), for the page to lay out before it reads the change. */
   change_size: string | null;
+  /** The effort that session runs with, as Obeya started it (`high`). */
+  effort: string | null;
+  /** JSON: the harness, model and effort the owner chose for the card's agent (`CardAgent`), over its group's. */
+  agent: string | null;
   /** Leased clone and branch while a worker has the card. */
   workspace: string | null;
   branch: string | null;
@@ -498,6 +502,10 @@ export const MIGRATIONS = [
   // when something the owner sees last happened at a card, which the search lists the canvas by;
   // `updated_at` stays the time of any write, which the archive's revision is made of
   'ALTER TABLE cards ADD COLUMN changed_at TEXT; UPDATE cards SET changed_at = updated_at;',
+  // the harness and model the owner chose for a card's agent, over its group's
+  'ALTER TABLE cards ADD COLUMN agent TEXT;',
+  // the effort a card's agent session runs with
+  'ALTER TABLE cards ADD COLUMN effort TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';

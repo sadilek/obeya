@@ -487,8 +487,10 @@ export interface Item {
    * try by hand, once it answers.
    */
   app?: string;
-  /** The harness and model the card's agent session runs on, as the harness named the model when the session started (`claude-opus-5-5`). */
-  runsOn?: { harness: Harness; model: string };
+  /** The harness, model and effort the card's agent session runs on, the model as the harness named it when the session started (`claude-opus-5-5`). */
+  runsOn?: { harness: Harness; model: string; effort?: AgentEffort };
+  /** The harness, model and effort the owner chose for this card's agent, over its group's (`CardAgent`); absent: the group's. */
+  agent?: CardAgent;
   /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
   noChange?: boolean;
   /**
@@ -1537,6 +1539,11 @@ export type CardAction =
   /** Start a queued card although it may collide. */
   | { action: 'force' }
   /**
+   * The harness, model and effort this card's agent runs on, for every session it starts, over the
+   * workers' group's; `null`: the group's again. Only while the card waits to start (planned, or proposed).
+   */
+  | { action: 'agent'; agent: CardAgent | null }
+  /**
    * The Workspaces list: the card's clone goes to the cards waiting for one, after the undo window
    * (EVICT_HOLD_MS); its worker stops, its uncommitted work is kept on its branch, and it goes on
    * there once it has a workspace again. `keepWorkspace` takes it back within the window.
@@ -1689,6 +1696,8 @@ export type ErrorCode =
   | 'notFolder'
   | 'inFolder'
   | 'notProposal'
+  /** Choosing a card's harness and model once it is at work (or done): its agent keeps its own. */
+  | 'agentStarted'
   | 'notSuperseded'
   | 'revising'
   | 'planCard'
@@ -2437,8 +2446,6 @@ export interface PlanUsage {
   limits: UsageLimit[];
   /** When they were fetched (ISO time). */
   at: string;
-  /** At least one group of agents runs on this harness: the bar shows its limits, the list all. */
-  inUse: boolean;
 }
 
 /** The usage limits of each subscription with a login, for the bar while the owner has it show them. */
@@ -2553,6 +2560,15 @@ export interface AgentSetting {
   harness: Harness;
   model: string;
   effort: AgentEffort;
+}
+/**
+ * What the owner chose for one card's agent, over the workers' group's (`Item.agent`): a harness with
+ * a model (`model` as in `AgentSetting`), an effort, or both; what is left out is the group's.
+ */
+export interface CardAgent {
+  harness?: Harness;
+  model?: string;
+  effort?: AgentEffort;
 }
 /** A Codex model id as Codex lists it (`gpt-6.1-sol`): what a setting may name. */
 export const CODEX_MODEL = /^[A-Za-z0-9][\w.:-]{0,79}$/;

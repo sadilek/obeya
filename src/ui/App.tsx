@@ -1755,8 +1755,8 @@ function Canvas({
     }
     if (e.key === 'Escape' && connection) { setConnection(null); return; }
     if (e.key === 'Escape') {
-      // a screenshot or demo shown large closes first, a card's diff, the queue's list and the navigation's; the card stays open
-      if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .nav-menu, .diff-view')) return;
+      // a screenshot or demo shown large closes first, a card's diff, the queue's list, the navigation's and the menu of what a card's agent runs on; the card stays open
+      if (document.querySelector('.lightbox, .demo-zoom, .queue-menu, .nav-menu, .diff-view, .agent-menu')) return;
       // so does the quote of a message the owner was replying to: in the field with the cursor, the open card's, the sidebar's
       const quoting = [focusedDraft(), f?.type === 'card' || f?.type === 'project' ? cardDraft(f.id) : null, kOnRef.current ? OBEYA_DRAFT : null].find((k) => k && fieldOn(k) && replyOn(k));
       if (quoting) return setReply(quoting, null);

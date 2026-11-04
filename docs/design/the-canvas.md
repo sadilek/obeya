@@ -48,13 +48,13 @@ view has no search.
 Right, before the workspace pool: the usage limits of the plans Claude Code and Codex on this
 machine are logged in with, the session's (five hours) and the week's, each a short meter with its
 percentage, the most used limit of each group, coloured in the grade the plan's usage endpoint gives
-it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). The bar shows the plans
-of the harnesses at least one group of agents runs on, each under its name ("Claude", "Codex") when
-it shows two, without one when it shows one. A click lists every limit of every plan with a login
-(the session, the week for all models, the week for a single model), a plan no agent runs on
-marked as such, with when it starts anew, where the numbers come from and as of when, and "Hide",
-which turns the setting off; "Usage limits in the bar" under Configuration → General turns it on
-again (on until then). The phone view shows the same at the right of its bar.
+it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). The bar shows every plan
+with a login, whether agents run on it or not, each under its name ("Claude", "Codex") when it shows
+two, without one when it shows one. A click lists every limit of every plan (the session, the week
+for all models, the week for a single model), with when it starts anew, where the numbers come from
+and as of when, and "Hide", which turns the setting off; "Usage limits in the bar" under
+Configuration → General turns it on again (on until then). The phone view shows the same at the
+right of its bar.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
 answer for a minute) while the setting is on and a page of Obeya is open, and closed once neither
@@ -477,9 +477,10 @@ code, a generic one otherwise.
 - **Codex's limits come from its app server's `account/rateLimits/read`** (2026-11-03), asked of an
   idle app server as Claude Code's are of an idle session; its windows take the session's and the
   week's place by their length.
-- **The bar shows the plans agents run on** (2026-11-03). Rejected: every plan with a login, which
-  crowds the bar with a plan the owner keeps for other work; the owner pinning plans, a setting more
-  for what the groups' harnesses already say.
+- **The bar shows every plan with a login** (owner, 2026-11-04): what is left of a plan is what the
+  owner decides on before starting an agent on it, a card on Codex say, so it shows while no agent
+  runs there yet. Rejected: only the plans agents run on, which hid Codex's limits until a Codex
+  agent ran; the owner pinning plans, a setting more.
 - **The usage limits outlast the last page by half a minute** (2026-10-29). Rejected: closing the
   session and forgetting the numbers with the last page, which left the bar without them for the
   seconds a new session takes after every switch of canvas.

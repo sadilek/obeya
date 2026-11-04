@@ -249,6 +249,16 @@ const de = {
   },
   start: 'Agent starten',
   startHint: 'Ein Agent beginnt auf eigenem Branch und zeigt am Ende eine Demo.',
+  /** Beside the button that starts a card: what its agent runs on, the workers' group's unless chosen for this card. */
+  agentPick: {
+    /** The narrow part beside the start button that opens the menu. */
+    hint: 'Harness, Modell und Effort nur für diese Karte wählen',
+    /** Beside it while the card has a choice of its own. */
+    chosenHint: 'Gilt nur für diese Karte, für jede Sitzung ihres Laufs. Ändern im Menü daneben.',
+    effort: 'Effort',
+    /** The effort chosen, beside the harness and model in the line beside the button. */
+    chosenEffort: (effort: string) => `Effort ${effort}`,
+  },
   /** The state of a task the owner stopped, in place of „Geplant“. */
   stoppedState: 'Gestoppt',
   startAgain: 'Neu starten',
@@ -413,7 +423,9 @@ const de = {
   talk: {
     heading: 'Gespräch',
     /** Beside the heading: what the card's agent runs on, the model's id as its harness names it in the tooltip. */
-    runsOn: (harness: string, model: string) => `Der Agent dieser Karte läuft auf ${harness} mit dem Modell ${model}`,
+    runsOn: (harness: string, model: string, effort?: string) => `Der Agent dieser Karte läuft auf ${harness} mit dem Modell ${model}${effort ? `, Effort ${effort}` : ''}`,
+    /** The same once the card is started, before its agent's session is there: what it will run on. */
+    startsOn: (what: string) => `Der Agent dieser Karte wird darauf laufen: ${what}`,
     empty: 'Noch nichts passiert.',
     working: 'arbeitet …',
     /** After „Obeya“, under the owner's words while the Koordinator reads them. */
@@ -630,6 +642,7 @@ const de = {
     inFolder: 'Das gibt es in einem Ordner ohne git nicht.',
     repoDown: 'Das Repository dieser Karte läuft gerade nicht auf dieser Leinwand.',
     notProposal: 'Das ist kein Vorschlag mehr.',
+    agentStarted: 'Der Agent dieser Karte arbeitet schon und bleibt, worauf er begann.',
     notSuperseded: 'Der Agent hat diese Karte nicht zurückgezogen oder ersetzt.',
     revising: 'Der Vorschlag wird gerade überarbeitet. Gleich ist er da.',
     planCard: 'Das kommt aus dem Plan-Dokument; geändert wird es dort.',
@@ -1935,7 +1948,6 @@ const de = {
     /** A plan's heading in the list. */
     plans: { claude: 'Claude-Abo', codex: 'ChatGPT-Abo (Codex)' } satisfies Record<Harness, string>,
     /** Beside a plan no group of agents runs on, which the bar leaves out. */
-    unused: 'kein Agent läuft darauf, daher nicht in der Leiste',
     /** A limit by its kind, in the list under the bar's button. */
     kinds: { session: 'Sitzung (5 Stunden)', weekly_all: 'Woche, alle Modelle' } as Record<string, string>,
     /** A limit for one model or surface only. */
@@ -2387,6 +2399,12 @@ const en: Strings = {
   },
   start: 'Start agent',
   startHint: 'An agent starts on a branch of its own and shows a demo at the end.',
+  agentPick: {
+    hint: 'Choose harness, model and effort for this card alone',
+    chosenHint: 'Holds for this card alone, for every session of its run. Change it in the menu beside.',
+    effort: 'Effort',
+    chosenEffort: (effort: string) => `effort ${effort}`,
+  },
   stoppedState: 'Stopped',
   startAgain: 'Start again',
   startAgainHint: 'A new agent starts with a new session on the task’s branch; committed work there stays.',
@@ -2526,7 +2544,8 @@ const en: Strings = {
   task: 'Task',
   talk: {
     heading: 'Conversation',
-    runsOn: (harness: string, model: string) => `This card's agent runs on ${harness} with the model ${model}`,
+    runsOn: (harness: string, model: string, effort?: string) => `This card's agent runs on ${harness} with the model ${model}${effort ? `, effort ${effort}` : ''}`,
+    startsOn: (what: string) => `This card's agent will run on ${what}`,
     empty: 'Nothing has happened yet.',
     working: 'working …',
     reading: 'is reading …',
@@ -2721,6 +2740,7 @@ const en: Strings = {
     inFolder: 'A folder without git has no such thing.',
     repoDown: 'This card’s repository does not run on this canvas right now.',
     notProposal: 'This is no longer a proposal.',
+    agentStarted: 'This card’s agent is at work already and stays on what it began on.',
     notSuperseded: 'Its agent has not withdrawn or replaced this card.',
     revising: 'The proposal is being reworked. It will be there in a moment.',
     planCard: 'This comes from the plan doc; it is changed there.',
@@ -3974,7 +3994,6 @@ const en: Strings = {
     title: 'Usage limits of your plans',
     short: { claude: 'Claude', codex: 'Codex' },
     plans: { claude: 'Claude plan', codex: 'ChatGPT plan (Codex)' },
-    unused: 'no agent runs on it, so not in the bar',
     kinds: { session: 'Session (5 hours)', weekly_all: 'Week, all models' },
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,

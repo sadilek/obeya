@@ -28,10 +28,15 @@ message stand where they happened, the agent's last words among them as its mess
 an idea continues the idea's conversation.
 
 Beside the heading, once the card's agent has a session, the conversation names what that session
-runs on, once: the harness and the model as the harness reported it when the session started or
-resumed (Claude's model ids by family and version, "Claude Code · Opus 5.5"; Codex's as Codex names
-them, "Codex · gpt-5.5"; the id itself in the tooltip). It stays after the work is done, and a new
-session (the card started afresh) names its own. The phone, whose conversation panel has no
+runs on, once: the harness, the model as the harness reported it when the session started or
+resumed (Claude's model ids by family and version, "Claude Code · Opus 5.5"; Codex's by the name
+Codex lists them with, "Codex · GPT-6-Sol", as the menu beside the start button does; the id itself
+in the tooltip), and the effort Obeya started it with ("effort high"). It stays after the work is
+done, and a new session (the card started afresh) names its own. From the start until that session
+is there (the Koordinator checks the card, it waits in the queue, its workspace is made ready), the
+same place names what the agent will run on: the card's own choice over the workers' setting (see
+Harnesses, models and effort in Agents and workspaces), with the aliases as "Agents and models"
+names them ("Claude Code · Opus"). The phone, whose conversation panel has no
 heading, leaves it out.
 
 Claude login errors offer "Reauthenticate" in the conversation, or, when a failed start's
