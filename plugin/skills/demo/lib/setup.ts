@@ -1,6 +1,6 @@
 // What a demo needs on this machine, checked: Node, Playwright and a browser to record with,
 // ffmpeg (with libx264) to cut, uv for the Python parts (it brings Python itself), and the voice of
-// the settings. Each missing piece comes with how to install it on this platform. Obeya's configuration dialog shows the check, and a render runs it before anything
+// the settings; a silent demo (voice `none`) needs neither of the last two. Each missing piece comes with how to install it on this platform. Obeya's configuration dialog shows the check, and a render runs it before anything
 // else, so it stops at once with the whole list instead of minutes in.
 //
 // Run on its own (`node setup.ts`), it prints the check and exits 1 when something is missing.
@@ -192,6 +192,9 @@ export async function checkSetup(s: DemoSettings, o: SetupOptions = {}): Promise
   if (!ffmpeg) items.push(missing('ffmpeg'));
   else if (!/\blibx264\b/.test(encoders ?? '')) items.push(missing('ffmpeg', { found: ffmpeg, need: 'libx264' }));
   else items.push({ id: 'ffmpeg', state: 'ok', found: ffmpeg });
+
+  // a silent demo synthesises nothing: neither uv nor a voice
+  if (s.voice === 'none') return { platform, arch, items };
 
   const uv = uvOut?.match(/uv (\S+)/)?.[1];
   items.push(uv ? { id: 'uv', state: 'ok', found: uv } : missing('uv'));

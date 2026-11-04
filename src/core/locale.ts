@@ -1,7 +1,7 @@
 // The languages Obeya speaks: the demo skill's, which runs without Obeya and so holds them.
 import { type Language, LANGUAGE_NAMES } from '../../plugin/skills/demo/lib/locale.ts';
 
-export { FALLBACK_LANGUAGE, LANGUAGE_NAMES, LANGUAGES, type Language, languageOf } from '../../plugin/skills/demo/lib/locale.ts';
+export { FALLBACK_LANGUAGE, knownLanguage, LANGUAGE_NAMES, LANGUAGES, type Language, languageName, languageOf, preferredTrack } from '../../plugin/skills/demo/lib/locale.ts';
 
 /**
  * What a prompt tells an agent that talks with the owner about the language it writes them in

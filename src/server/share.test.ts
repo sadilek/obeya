@@ -1322,6 +1322,20 @@ describe('exporting a demo, where the repository has no demo site', () => {
     writeFileSync(join(d, 'captions.vtt'), 'WEBVTT\n\n00:00.000 --> 00:02.500\nDer Export </script> beginnt.\n');
   }
 
+  test("as a ZIP, a demo with language tracks keeps the narration's captions.vtt beside them", async () => {
+    const c = card('Ohne Ziel');
+    files(c);
+    const d = join(dir, `demo-${c.id}`);
+    writeFileSync(join(d, 'captions.vtt'), 'WEBVTT - subtitles: fr\n\n00:00.000 --> 00:02.500\nThe export starts.\n');
+    writeFileSync(join(d, 'captions.fr.vtt'), 'WEBVTT\n\n00:00.000 --> 00:02.500\nL’export commence.\n');
+    const out = await sharing.export(c.id, 'zip');
+    writeFileSync(join(dir, out.name), out.data);
+    expect(Bun.spawnSync(['unzip', '-o', '-d', join(dir, 'unzipped'), join(dir, out.name)]).exitCode).toBe(0);
+    const at = join(dir, 'unzipped', out.name.replace(/\.zip$/, ''));
+    expect(readFileSync(join(at, 'captions.fr.vtt'), 'utf8')).toContain('L’export commence.');
+    expect(readFileSync(join(at, 'captions.vtt'), 'utf8')).toContain('The export starts.');
+  });
+
   test('the version shown goes into the file: an earlier one by its handover', async () => {
     const c = card('Ohne Ziel', { handover: 1 });
     files(c, 'FIRST');
@@ -1362,7 +1376,8 @@ describe('exporting a demo, where the repository has no demo site', () => {
     // in the demo's language throughout
     expect(html).toContain('<html lang="de">');
     expect(html).toContain('<div class="when">Demo vom ');
-    expect(html).toContain(`v.addTextTrack('captions', "Deutsch", "de")`);
+    expect(html).toContain('<script type="text/vtt" class="captions" data-lang="de" data-label="Deutsch">');
+    expect(readFileSync(join(at, 'captions.vtt'), 'utf8')).toContain('Der Export');
     expect(log(c.id).at(-1)).toBe(`Exportiert als ZIP: ${slug}.zip`);
     // exporting publishes nothing
     expect(calls()).toEqual([]);
@@ -1395,13 +1410,16 @@ describe('exporting a demo, where the repository has no demo site', () => {
     expect(html).toContain('<div class="when">Demo from October 7, 2026</div>');
     expect(html).toContain('<button class="start" aria-label="Play">');
     expect(html).toContain(`>View pull request</a>`);
-    expect(html).toContain(`v.addTextTrack('captions', "English", "en")`);
+    expect(html).toContain('<script type="text/vtt" class="captions" data-lang="en" data-label="English">');
     for (const german of ['Deutsch', 'Abspielen', 'Demo vom', 'ansehen', 'lang="de"']) expect(html).not.toContain(german);
-    // a site's page, with the caption file beside it, names the track in English too
-    const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', video: { src: 'demo.mp4' }, captions: { src: 'captions.vtt' } };
-    expect(demoPageHtml({ ...parts, language: 'en' })).toContain('<track kind="captions" src="captions.vtt" srclang="en" label="English">');
+    // a site's page, with the caption files beside it, names each track in its own language
+    const parts = { title: 'CSV export', text: '', chapters: [], pr: null, when: '', tabTitle: '', video: { src: 'demo.mp4' }, tracks: [{ language: 'en', src: 'captions.en.vtt' }, { language: 'fr', src: 'captions.fr.vtt' }] };
+    expect(demoPageHtml({ ...parts, language: 'en' })).toContain('<track kind="captions" src="captions.en.vtt" srclang="en" label="English"><track kind="captions" src="captions.fr.vtt" srclang="fr" label="French">');
     // without a language the page is German
-    expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.vtt" srclang="de" label="Deutsch">');
+    expect(demoPageHtml(parts)).toContain('<track kind="captions" src="captions.fr.vtt" srclang="fr" label="Französisch">');
+    // a silent video shows its captions from the start
+    expect(demoPageHtml(parts)).not.toContain('data-silent');
+    expect(demoPageHtml({ ...parts, silent: true })).toContain(' data-silent>');
   });
 
   test('a demo without its page gets one written first, kept for the next time', async () => {

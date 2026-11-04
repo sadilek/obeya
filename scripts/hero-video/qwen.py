@@ -87,7 +87,9 @@ def main() -> None:
     video = hero / "demo.mp4"
     ffmpeg("-i", str(video), "-vn", "-ac", "1", "-ar", str(RATE), "-c:a", "pcm_s16le", str(out / "track.wav"))
     track = read(out / "track.wav")
-    texts = {j["id"]: j["text"] for j in json.loads((hero / ".work" / "jobs.json").read_text())}
+    # the texts the clips of tts.json were spoken from (jobs.json in a render from before tts-jobs.json)
+    spoken = next(f for f in (hero / ".work" / "tts-jobs.json", hero / ".work" / "jobs.json") if f.exists())
+    texts = {j["id"]: j["text"] for j in json.loads(spoken.read_text())}
     jobs = json.loads((hero / ".work" / "tts.json").read_text())["clips"]
     at = starts(track, [read(Path(j["file"])) for j in jobs])
 
