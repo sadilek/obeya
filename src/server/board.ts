@@ -1093,16 +1093,14 @@ export class Board {
 
   /**
    * The shared pages the Koordinator's sheet offers to tag („N Seiten ohne Tags“), archived cards'
-   * included: at rest, their demos at hand, on a site with a vocabulary, and lacking tags in one of
-   * its dimensions.
+   * included: at rest, on their repository's site with a vocabulary, and lacking tags in one of its
+   * dimensions. Their demos need not be at hand: the site's copy of a page is tagged in place.
    */
   untaggedRows(shared = this.sharedRows()): CardRow[] {
     return shared.filter((r) => {
       const s = JSON.parse(r.share!) as StoredShare;
       const vocabulary = this.vocabularyOf?.(repoOfRow(r, this.home));
-      if (!s.url || s.state || !vocabulary || !untagged(pageTagsOf(r), vocabulary).length) return false;
-      const demos = sharedDemos(s);
-      return demos.length > 0 && demos.every((d) => demoThere({ dir: d.dir, kind: d.shown.kind }));
+      return !!s.url && !s.state && !s.personal && !!vocabulary && untagged(pageTagsOf(r), vocabulary).length > 0;
     });
   }
 

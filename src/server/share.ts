@@ -115,6 +115,12 @@ export interface ShareTarget {
   pageUrl(slug: string): string;
   /** Deploys again what this machine has, for the pages `audit` found missing. */
   repair(shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
+  /**
+   * Gives pages on the site their tags in one deploy, in place: each keeps its video or artifact as
+   * the site has it (the demo's own files may be gone), and the page around them is written anew.
+   * `shared`: every page shared through the target, those included.
+   */
+  retag(pages: { slug: string; tags: PageTags }[], shared: string[], log?: (text: string) => void): Promise<{ why?: string; said: string; gone?: Gone[] }>;
 }
 
 /**
@@ -164,6 +170,8 @@ export class Sharing {
   private checked = 0;
   /** A page of the run sharing many again is waiting for its turn, or going out. */
   private resharing = false;
+  /** The pages of the run tagging pages whose tags are being chosen, or going out. */
+  private tagging: string[] = [];
   /** Cards whose latest demo goes on their page after the share under way: what that share settles is not the end. */
   private after = new Set<string>();
 
@@ -421,7 +429,8 @@ export class Sharing {
    * "Erneut teilen" for many pages at once, from the Koordinator's sheet: the outdated pages, the
    * newest demos first, `count` of them or all. They go out one after the other, each as it shows
    * now, so a newer demo on a card still waits for its "Neu teilen"; a share the owner starts
-   * meanwhile goes out between two of them.
+   * meanwhile goes out between two of them. With `tags`, the pages without tags instead, tagged
+   * in place a batch at a time (`tagSome`).
    */
   reshareMany(count: number | null, tags = false) {
     const run = this.o.board.reshareRun();
@@ -445,7 +454,7 @@ export class Sharing {
   stopResharing() {
     const run = this.o.board.reshareRun();
     if (!run?.queue.length) return;
-    const going = this.resharing && this.stored(run.queue[0]!)?.state === 'publishing' ? [run.queue[0]!] : [];
+    const going = this.tagging.length ? run.queue.filter((id) => this.tagging.includes(id)) : this.resharing && this.stored(run.queue[0]!)?.state === 'publishing' ? [run.queue[0]!] : [];
     this.o.board.setReshareRun({ ...run, queue: going, stopped: true });
   }
 
@@ -469,30 +478,105 @@ export class Sharing {
   }
 
   private async again() {
-    const id = this.o.board.reshareRun()?.queue[0];
+    const run = this.o.board.reshareRun();
+    const id = run?.queue[0];
     if (!id) return;
     const s = this.stored(id);
-    const tags = !!this.o.board.reshareRun()?.tags;
+    // a page that was going out when Obeya stopped goes on as it was, before the rest
+    if (run.tags && !(s?.state === 'publishing' && s.again)) return this.tagSome();
     let ok: boolean | null = null;
     if (s?.state === 'publishing' && s.again) ok = await this.publish(id);
     else {
       const row = this.find(id) && this.o.board.row(id);
-      // one that got its tags meanwhile, or is up to date, no longer counts
-      const still = row && (tags ? this.o.board.untaggedRows().some((r) => r.id === id) : this.o.board.outdatedBy(row).length > 0);
-      if (s && still) {
+      // one that is up to date meanwhile no longer counts
+      if (s && row && this.o.board.outdatedBy(row).length > 0) {
         this.set(id, { ...s, state: 'publishing', refresh: true, again: true });
-        this.o.board.log(id, 'state', 'owner', tags ? this.o.board.t.share.tagging : this.o.board.t.share.againWithOthers);
+        this.o.board.log(id, 'state', 'owner', this.o.board.t.share.againWithOthers);
         ok = await this.publish(id);
       }
     }
     // shared again meanwhile on its own, withdrawn or gone: it no longer counts
-    const run = this.o.board.reshareRun();
-    if (!run) return;
-    const next: StoredReshare = { ...run, queue: run.queue.filter((x) => x !== id) };
+    const now = this.o.board.reshareRun();
+    if (!now) return;
+    const next: StoredReshare = { ...now, queue: now.queue.filter((x) => x !== id) };
     if (ok === true) next.done++;
     else if (ok === false) next.failed = [...next.failed, id];
     else next.total--;
     this.o.board.setReshareRun(next);
+  }
+
+  /**
+   * The next pages of the run tagging pages, up to a batch on one site: one reading session chooses
+   * the tags they lack, one deploy puts them on their pages in place (`ShareTarget.retag`), so a
+   * page whose demo files are gone from this machine gets its tags too, from the copy on the site.
+   * The card keeps the tags once they are out: a run cut short by a restart chooses them again.
+   * One that got its tags meanwhile drops out; one the session left without tags, or whose deploy
+   * failed, is counted as failed.
+   */
+  private async tagSome() {
+    const run = this.o.board.reshareRun();
+    if (!run?.queue.length) return;
+    const untaggedNow = new Set(this.o.board.untaggedRows().map((r) => r.id));
+    const pages: Tagging[] = [];
+    const dropped: string[] = [];
+    let target: ShareTarget | null = null;
+    for (const id of run.queue) {
+      if (pages.length >= TAG_BATCH) break;
+      const card = this.find(id);
+      const s = this.stored(id);
+      const on = card && s?.url && !s.state && untaggedNow.has(id) ? this.target(card) : null;
+      const lacking = on && this.missingTags(card!);
+      if (!on || !lacking) dropped.push(id);
+      // pages on another site wait for a batch of their own
+      else if (!target || on.key === target.key) {
+        target = on;
+        pages.push({ id, card: card!, slug: pathOf(s!), demos: sharedDemos(s!), lacking });
+      }
+    }
+    this.tagging = pages.map((p) => p.id);
+    const done: string[] = [];
+    const failed: string[] = [];
+    if (target) {
+      const t = this.o.board.t.share;
+      const chosen = await this.chooseTags(target.repo, pages);
+      // the owner may have chosen some meanwhile: the session's choice stands only where the page still lacks
+      const going = pages.flatMap((p) => {
+        const lacking = this.missingTags(p.card);
+        const tags = lacking && chosen.get(p.id) ? Object.fromEntries(Object.entries(chosen.get(p.id)!).filter(([d]) => d in lacking)) : null;
+        if (!lacking) dropped.push(p.id);
+        else if (!tags || !Object.keys(tags).length) failed.push(p.id);
+        return tags && Object.keys(tags).length ? [{ ...p, chosen: tags, tags: tagsOf({ ...pageTagsOf(this.o.board.row(p.id)), ...tags }, this.vocabulary(p.card)) }] : [];
+      });
+      for (const p of pages) if (!chosen.has(p.id)) this.o.board.log(p.id, 'error', 'obeya', `${t.notShared}: ${t.noTags}`);
+      if (going.length) {
+        const r = await target.retag(
+          going.map((p) => ({ slug: p.slug, tags: p.tags })),
+          this.others('', target.key),
+        );
+        this.lost(target.key, r.gone ?? []);
+        for (const p of going) {
+          if (r.why) {
+            this.o.board.log(p.id, 'error', 'obeya', [`${t.notShared}: ${r.why}`, r.said].filter(Boolean).join('\n\n'));
+            failed.push(p.id);
+            continue;
+          }
+          this.chosen(p.id, p.chosen);
+          this.o.board.log(p.id, 'state', 'obeya', t.retagged(this.stored(p.id)?.url ?? target.pageUrl(p.slug)));
+          done.push(p.id);
+        }
+      }
+    }
+    this.tagging = [];
+    const now = this.o.board.reshareRun();
+    if (!now) return;
+    const out = new Set([...pages.map((p) => p.id), ...dropped]);
+    this.o.board.setReshareRun({
+      ...now,
+      queue: now.queue.filter((x) => !out.has(x)),
+      done: now.done + done.length,
+      failed: [...now.failed, ...failed],
+      total: now.total - dropped.filter((id) => now.queue.includes(id)).length,
+    });
   }
 
   /**
@@ -606,7 +690,10 @@ export class Sharing {
     const [first, ...later] = demos as [SharedDemo, ...SharedDemo[]];
     const vocabulary = this.vocabulary(card);
     const lacking = this.missingTags(card);
-    if (lacking) await this.chooseTags(card, demos, lacking);
+    if (lacking) {
+      const tags = (await this.chooseTags(target.repo, [{ id: cardId, card, slug: pathOf(s), demos, lacking }])).get(cardId);
+      if (tags) this.chosen(cardId, tags);
+    }
     const tags = tagsOf(pageTagsOf(this.o.board.row(cardId)), vocabulary);
     const pr = this.prOf(cardId);
     const commit = pr ? null : await this.commitOf(card);
@@ -851,36 +938,46 @@ export class Sharing {
   }
 
   /**
-   * The tags the card's page lacks for the site's vocabulary (each such dimension with its values),
-   * chosen by a short session from the title and text of its demos; it chooses only those, so what
-   * the owner or a worker chose stays. Without an answer they stay lacking.
+   * The tags the pages lack for the site's vocabulary (each such dimension with its values), chosen
+   * by one short session from the title and text of their demos; it chooses only those, so what the
+   * owner or a worker chose stays. A page it gave no answer for is missing from the result.
    */
-  private async chooseTags(card: Item, demos: SharedDemo[], lacking: PageTags) {
-    let tags: PageTags | null = null;
+  private async chooseTags(cwd: string, pages: Tagging[]): Promise<Map<string, PageTags>> {
+    const got = new Map<string, PageTags>();
+    const all: PageTags = {};
+    for (const p of pages) for (const [d, v] of dimensions(p.lacking)) all[d] = v;
+    const asked = (p: Tagging) => Object.keys(p.lacking);
+    const left = () => pages.flatMap((p, i) => (got.has(p.id) ? [] : [i + 1]));
     await readSession(this.o.runtime, {
-      cwd: this.target(card)?.repo ?? this.o.home,
+      cwd,
       role: 'chores',
       system: TAGS_SYSTEM,
       tools: (finish) => [
         {
           name: 'tags',
-          description: `The page's tags: ${TAGS_FIELD}.`,
-          schema: { tags: tagsSchema(lacking) },
-          run: ({ tags: given }) => {
-            if (tags) return 'Already chosen.';
-            tags = picked(given, lacking);
-            return finish('Recorded. End your turn now.');
+          description: `A page's tags: its number (\`page\`${pages.length === 1 ? ', 1' : ''}), and ${TAGS_FIELD}.`,
+          schema: { page: z.number().int().optional(), tags: tagsSchema(all) },
+          run: ({ page, tags }) => {
+            const p = pages[(Number(page) || 1) - 1];
+            if (!p) return `There is no page ${String(page)}.`;
+            if (got.has(p.id)) return 'Already chosen.';
+            got.set(p.id, picked(tags, p.lacking));
+            return left().length ? `Recorded. Still to tag: page ${left().join(', ')}.` : finish('Recorded. End your turn now.');
           },
         },
       ],
       brief: [
-        `The dimensions to choose for, each with its values:\n${dimensions(lacking)
+        `The dimensions to choose for, each with its values:\n${dimensions(all)
           .map(([d, v]) => `- ${d}: ${v.join(', ')}`)
           .join('\n')}`,
-        ...demos.map((d, i) => `${i ? 'A later demo on the page' : 'The page'}: “${d.shown.title}”\n${d.shown.text}`),
+        ...pages.map((p, i) => {
+          const only = asked(p).length < Object.keys(all).length ? ` (only ${asked(p).join(', ')})` : '';
+          const head = pages.length > 1 ? `Page ${i + 1}${only}:\n` : '';
+          return head + p.demos.map((d, j) => `${j ? 'A later demo on the page' : 'The page'}: “${d.shown.title}”\n${d.shown.text}`).join('\n\n');
+        }),
       ].join('\n\n'),
     });
-    if (tags) this.chosen(card.id, tags);
+    return got;
   }
 
   /**
@@ -1113,7 +1210,21 @@ ${dimensions(lacking)
 }
 Then end your turn. Read code only if the summary leaves unclear what the change does for the user.`;
 
-const TAGS_SYSTEM = `You tag the page on which the demo of a change is shared with colleagues, so they find it among many by its tags. Read the page's title and text, and call the tool tags once: for each dimension the brief names, the values that fit the change (an empty list where none does), from its values alone. Then end your turn.`;
+const TAGS_SYSTEM = `You tag pages on which the demos of changes are shared with colleagues, so they find them among many by their tags. For each page the brief names, read its title and text, and call the tool tags once with its number: for each dimension the brief names (or the page's own, where it names some), the values that fit the change (an empty list where none does), from its values alone. Then end your turn.`;
+
+/** How many pages the run tagging pages tags with one session and one deploy. */
+const TAG_BATCH = 20;
+
+/** A page the reading session chooses tags for. */
+interface Tagging {
+  id: string;
+  card: Item;
+  /** Its place on its site (`pathOf`). */
+  slug: string;
+  demos: SharedDemo[];
+  /** The dimensions it lacks, each with its values. */
+  lacking: PageTags;
+}
 
 const TAGS_FIELD = 'for each dimension, the values that fit (an empty list where none does), only from the values given for it';
 

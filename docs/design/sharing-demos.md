@@ -63,10 +63,17 @@ the vocabulary's other values. A change takes effect at once, without a hold: a 
 again with the same demos (one going out goes out once more after it), and the log says so.
 
 Pages without tags are tagged from the Koordinator's sheet: while pages on a site with a vocabulary
-lack tags in a dimension (archived cards' included, their demos at hand), an entry says how many
-(„N Seiten ohne Tags“), and „Alle N taggen und teilen“ tags and shares them again in one run through
+lack tags in a dimension (archived cards' included, also where their demo files are gone), an entry
+says how many („N Seiten ohne Tags“), and „Alle N taggen und teilen“ tags them in one run through
 the queue that shares outdated pages again (one run at a time, with its progress, "Anhalten" and the
-failed ones). Its "Ausblenden" puts away only its own result.
+failed ones). Its "Ausblenden" puts away only its own result. The run tags in place, up to 20 pages
+of one site at a time: one reading session chooses their missing dimensions from the title and text
+of their versions, and one deploy rewrites their pages around the video or artifact the site already
+holds, in the current template with the theme each went out with. So pages whose demos were deleted
+to free space get tags too (a backfill of hundreds of pages takes minutes, where a session and a
+deploy per page took hours), and a page's own files and whether it is outdated stay as they were.
+A card keeps the chosen tags only once its page is out with them; a page the session gave no tags,
+or whose deploy failed, counts as failed and is still offered.
 
 #### Several versions on one page
 

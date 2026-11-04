@@ -273,8 +273,8 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   const manifestAt = opts.unlisted ? `${opts.unlisted.secret}/${MANIFEST}` : MANIFEST;
 
   /** The site lives only in its directory: one that lost pages Obeya has as shared would drop them with the next deployment. */
-  const checkSite = (shared: string[], self: string) => {
-    const missing = shared.filter((s) => s !== self && !existsSync(join(dir, s, 'meta.json')));
+  const checkSite = (shared: string[], self: string[]) => {
+    const missing = shared.filter((s) => !self.includes(s) && !existsSync(join(dir, s, 'meta.json')));
     if (missing.length) throw new Refused(t.siteLacks(dir, missing));
   };
 
@@ -518,48 +518,59 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   };
 
   /**
-   * One change of the site, made safe for several machines: pull, change the page (`apply` writes
-   * its directory, or removes it, and returns its entry), deploy the whole directory, check the
-   * live site shows it. Without a page (`slug` null) the round deploys the directory as it is, for
-   * the pages this machine has as shared that the live site lacks, and checks those. A change
-   * another machine's deployment came in between with (seen before the deploy, or after it without
-   * the change) is undone here and made once more; a failed deploy is undone too. The page's
-   * directory is set aside meanwhile in `backup/`.
+   * One change of the site, made safe for several machines: pull, change the pages (`apply` writes
+   * a page's directory, or removes it, and returns its entry), deploy the whole directory, check the
+   * live site shows it. Without pages the round deploys the directory as it is, for the pages this
+   * machine has as shared that the live site lacks, and checks those. A change another machine's
+   * deployment came in between with (seen before the deploy, or after it without the change) is
+   * undone here and made once more; a failed deploy is undone too. Each page's directory is set
+   * aside meanwhile in `backup/`; with `inPlace`, only the files `apply` rewrites are copied
+   * there, and the page's own files (its video, its artifact) stay where they are.
    */
   const change = async (
-    slug: string | null,
+    slugs: string[],
     shared: string[],
-    apply: ((rev: number, before: Entry | undefined) => Entry) | null,
+    apply: ((slug: string, rev: number, before: Entry | undefined) => Entry) | null,
     log: (text: string) => void,
     gone: Gone[],
+    inPlace = false,
   ): Promise<string> => {
     const env = deployEnv();
     for (let round = 1; ; round++) {
       const live = await readLive(env);
       const local = readLocal();
       const lost = await pull(local, live, env, log);
-      gone.push(...lost.filter((g) => g.slug !== slug));
+      gone.push(...lost.filter((g) => !slugs.includes(g.slug)));
       const away = new Set(gone.map((g) => g.slug));
       const kept = shared.filter((s) => !away.has(s));
-      checkSite(kept, slug ?? '');
-      const before = slug ? local.pages[slug] : undefined;
-      const rev = slug ? Math.max(before?.rev ?? 0, live.pages[slug]?.rev ?? 0) + 1 : 0;
-      const backup = slug ? setAside(slug) : null;
+      checkSite(kept, inPlace ? [] : slugs);
+      const before = new Map(slugs.map((s) => [s, local.pages[s]]));
+      const rev = new Map(slugs.map((s) => [s, Math.max(local.pages[s]?.rev ?? 0, live.pages[s]?.rev ?? 0) + 1]));
+      const backup = new Map(slugs.map((s) => [s, setAside(s, inPlace ? REWRITTEN : undefined)]));
       const undo = () => {
-        if (!slug) return;
-        rmSync(join(dir, slug), { recursive: true, force: true });
-        if (backup) renameSync(backup, join(dir, slug));
-        if (before) local.pages[slug] = before;
-        else delete local.pages[slug];
+        if (!slugs.length) return;
+        for (const s of slugs) {
+          const b = backup.get(s);
+          if (inPlace) {
+            if (b) for (const f of readdirSync(b)) copyFileSync(join(b, f), join(dir, s, f));
+            if (b) rmSync(b, { recursive: true, force: true });
+          } else {
+            rmSync(join(dir, s), { recursive: true, force: true });
+            if (b) renameSync(b, join(dir, s));
+          }
+          const was = before.get(s);
+          if (was) local.pages[s] = was;
+          else delete local.pages[s];
+        }
         writeLocal(local);
         writeOverview();
       };
       let said = '';
       let seen: boolean | null;
       try {
-        if (slug && apply) local.pages[slug] = apply(rev, before);
-        const expect: [string, number][] = slug
-          ? [[slug, rev]]
+        if (apply) for (const s of slugs) local.pages[s] = apply(s, rev.get(s)!, before.get(s));
+        const expect: [string, number][] = slugs.length
+          ? slugs.map((s) => [s, rev.get(s)!])
           : kept.flatMap((s) => (local.pages[s] && !local.pages[s]!.withdrawn ? [[s, local.pages[s]!.rev] as [string, number]] : []));
         const id = writeLocal(local);
         writeOverview();
@@ -580,17 +591,22 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         log(t.cameBetween);
         continue;
       }
-      if (backup) rmSync(backup, { recursive: true, force: true });
+      for (const b of backup.values()) if (b) rmSync(b, { recursive: true, force: true });
       return [said, seen === null ? t.notSeenYet : ''].filter(Boolean).join('\n');
     }
   };
 
-  /** Moves a page's directory out of the site, so a change can be undone. */
-  const setAside = (slug: string): string | null => {
+  /** Moves a page's directory out of the site, or copies only the files named (`only`), so a change can be undone. */
+  const setAside = (slug: string, only?: string[]): string | null => {
     if (!existsSync(join(dir, slug))) return null;
     const backup = join(base, 'backup', `${slug}-${Date.now()}`);
     mkdirSync(dirname(backup), { recursive: true });
-    renameSync(join(dir, slug), backup);
+    if (!only) {
+      renameSync(join(dir, slug), backup);
+      return backup;
+    }
+    mkdirSync(backup, { recursive: true });
+    for (const f of only) if (existsSync(join(dir, slug, f))) copyFileSync(join(dir, slug, f), join(backup, f));
     return backup;
   };
 
@@ -632,9 +648,9 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         );
         const target = join(dir, slug);
         const said = await change(
-          slug,
+          [slug],
           p.shared ?? [],
-          (rev, entry) => {
+          (_, rev, entry) => {
             const before = entry?.withdrawn ? null : entry?.meta;
             // a version keeps its date while its demo's own files stay the same, wherever it was on the page
             const dated = new Map<string, string>(before ? [[before.source, before.at], ...(before.more ?? []).map((m) => [m.source, m.at] as [string, string])] : []);
@@ -695,7 +711,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     withdraw: async (slugArg, shared, log = () => {}) => {
       const r = await attempt(async (gone) => {
         const slug = checkSlug(slugArg, unlisted);
-        const said = await change(slug, shared, (rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }), log, gone);
+        const said = await change([slug], shared, (_, rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }), log, gone);
         return { said };
       });
       return 'why' in r ? { ...r, why: t.notWithdrawn(r.why) } : r;
@@ -719,9 +735,36 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         return { gone: [], missing: [] };
       }
     },
-    repair: async (shared, log = () => {}) => attempt(async (gone) => ({ said: await change(null, shared, null, log, gone) })),
+    retag: (pages, shared, log = () => {}) =>
+      attempt(async (gone) => {
+        const want = new Map(pages.map((p) => [checkSlug(p.slug, unlisted), p.tags]));
+        const said = await change(
+          [...want.keys()],
+          shared,
+          (slug, rev) => {
+            const target = join(dir, slug);
+            if (!existsSync(join(target, 'meta.json'))) throw new Refused(t.siteLacks(dir, [slug]));
+            const { tags: _, ...before } = JSON.parse(readFileSync(join(target, 'meta.json'), 'utf8')) as Meta;
+            const tags = want.get(slug)!;
+            const meta: Meta = { ...before, ...(Object.values(tags).some((v) => v.length) ? { tags } : {}) };
+            writeFileSync(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
+            // the page around its files in today's template, with the theme it went out with
+            const theme = existsSync(join(target, PAGE_THEME)) ? readFileSync(join(target, PAGE_THEME), 'utf8') : undefined;
+            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => existsSync(join(target, sub, 'poster.jpg')), undefined, unlisted, theme));
+            return { ...entryOf(slug), rev };
+          },
+          log,
+          gone,
+          true,
+        );
+        return { said };
+      }),
+    repair: async (shared, log = () => {}) => attempt(async (gone) => ({ said: await change([], shared, null, log, gone) })),
   };
 }
+
+/** What retagging a page in place rewrites of its directory. */
+const REWRITTEN = ['meta.json', 'index.html'];
 
 /** A page's place on the site: its slug, on an unlisted site behind the random part of its address (`<token>/<slug>`). */
 const isPage = (slug: string, unlisted: boolean) => (unlisted ? /^[a-z0-9]{16,40}\/[a-z0-9][a-z0-9-]{0,80}$/ : /^[a-z0-9][a-z0-9-]{0,80}$/).test(slug);

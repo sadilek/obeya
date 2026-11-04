@@ -444,7 +444,7 @@ describe('the tags of a page', () => {
     expect(() => sharing.setTags(c.id, 'Area', ['Billing'])).toThrow(BadRequest);
   });
 
-  test('pages without tags, or with a value struck from the vocabulary, are tagged and shared again in one run; hand-set tags stay', async () => {
+  test('pages without tags, or with a value struck from the vocabulary, are tagged in one run, by one session and one deploy; hand-set tags stay', async () => {
     const a = tagged({ Area: ['Billing'], Audience: ['Admins'] }, 'A');
     const b = tagged({ Area: ['Billing'], Audience: ['Admins'] }, 'B');
     const c = tagged({ Area: ['Reports'], Audience: ['Admins'] }, 'C');
@@ -461,18 +461,21 @@ describe('the tags of a page', () => {
     board.changed();
     expect(board.snapshot().reshare).toEqual({ outdated: 0, untagged: 2 });
     sharing.reshareMany(null, true);
-    for (let i = 0; i < 2; i++) {
-      await until(() => runtime.sessions.length === i + 1);
-      expect(runtime.last.inbox[0]).toContain('- Area: Invoices, Reports, Settings');
-      expect(runtime.last.inbox[0]).not.toContain('- Audience:');
-      runtime.last.call('tags', { tags: { Area: ['Invoices'] } });
-      runtime.last.emit({ type: 'idle' });
-    }
+    await until(() => runtime.sessions.length === 1);
+    expect(runtime.last.inbox[0]).toContain('- Area: Invoices, Reports, Settings');
+    expect(runtime.last.inbox[0]).not.toContain('- Audience:');
+    expect(runtime.last.inbox[0]).toContain('Page 1:\nThe page: “CSV-Export”');
+    expect(runtime.last.inbox[0]).toContain('Page 2:');
+    runtime.last.call('tags', { page: 1, tags: { Area: ['Invoices'] } });
+    runtime.last.call('tags', { page: 2, tags: { Area: ['Invoices'] } });
+    runtime.last.emit({ type: 'idle' });
     await until(() => board.snapshot().reshare?.run?.left === 0);
     expect(board.snapshot().reshare).toEqual({ outdated: 0, run: { total: 2, done: 2, failed: [], left: 0, tags: true } });
+    expect(calls()).toHaveLength(5);
+    expect(calls().at(-1)!.wrote.sort()).toEqual([slug(a.id), slug(b.id)].sort());
     for (const x of [a, b]) {
       expect(meta(x.id).tags).toEqual({ Area: ['Invoices'], Audience: ['Admins'] });
-      expect(log(x.id)).toContain('Seiten ohne Tags taggen: Die Seite bekommt Tags und wird erneut geteilt.');
+      expect(log(x.id)).toContain(`Die geteilte Seite zeigt jetzt ihre neuen Tags: ${SITE_URL}${slug(x.id)}/`);
     }
     // the owner's choice for B was a struck value: the session's stands in for it, and the next owner's choice over that
     sharing.setTags(b.id, 'Area', ['Reports']);
@@ -482,6 +485,57 @@ describe('the tags of a page', () => {
     sharing.dismissResharing();
     expect(board.snapshot().reshare).toBeUndefined();
     expect(board.setting('reshare_dismissed')).toBeNull();
+  });
+
+  test("a page whose demo files are gone is tagged in place: the site's copy of its video stays, the page shows the tags", async () => {
+    vocabulary = { Area: ['Billing', 'Reports'], Audience: ['Admins', 'Customers'] };
+    const a = tagged({ Area: ['Billing'], Audience: [] }, 'Alt A');
+    const b = tagged({ Area: ['Billing'], Audience: [] }, 'Alt B');
+    for (const x of [a, b]) {
+      sharing.share(x.id);
+      await until(() => still(x.id));
+    }
+    // a new dimension: both lack it, and B's demo files were deleted to free space
+    vocabulary = { ...vocabulary, Kind: ['Bug fix', 'New feature'] };
+    board.changed();
+    rmSync(join(dir, `demo-${b.id}`), { recursive: true });
+    expect(board.snapshot().reshare).toEqual({ outdated: 0, untagged: 2 });
+    sharing.reshareMany(null, true);
+    await until(() => runtime.sessions.length === 1);
+    expect(runtime.last.inbox[0]).toContain('- Kind: Bug fix, New feature');
+    expect(runtime.last.inbox[0]).not.toContain('- Area:');
+    runtime.last.call('tags', { page: 1, tags: { Kind: ['Bug fix'] } });
+    runtime.last.call('tags', { page: 2, tags: { Kind: ['New feature'], Area: ['Reports'] } });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => board.snapshot().reshare?.run?.left === 0);
+    expect(board.snapshot().reshare).toEqual({ outdated: 0, run: { total: 2, done: 2, failed: [], left: 0, tags: true } });
+    const tagsOf = (x: string) => calls().at(-1)!.pages[slug(x)]!.meta!.tags;
+    expect([tagsOf(a.id), tagsOf(b.id)].map((t) => t?.Kind?.[0])).toEqual(expect.arrayContaining(['Bug fix', 'New feature']));
+    // asked for Kind alone: the Area it gave for one stays as it was
+    for (const x of [a, b]) expect(tagsOf(x.id)!.Area).toEqual(['Billing']);
+    expect(readFileSync(join(dir, 'deployed', slug(b.id), 'demo.mp4'), 'utf8')).toBe('video');
+    expect(readFileSync(join(dir, 'deployed', slug(b.id), 'index.html'), 'utf8')).toContain('Kind');
+    expect(board.item(b.id)!.tags!.Kind).toEqual([tagsOf(b.id)!.Kind![0]!]);
+    expect(board.snapshot().reshare?.untagged).toBeUndefined();
+  });
+
+  test('a failed deploy leaves the pages as they were, without the tags on their cards', async () => {
+    const a = tagged({ Area: ['Billing'], Audience: ['Admins'] }, 'A');
+    sharing.share(a.id);
+    await until(() => still(a.id));
+    const before = readFileSync(join(dir, 'home', 'sites', siteKey(SITE_URL), 'site', slug(a.id), 'index.html'), 'utf8');
+    vocabulary = { Area: ['Invoices', 'Reports'], Audience: ['Admins', 'Customers'] };
+    board.changed();
+    writeFileSync(join(dir, 'fail'), '');
+    sharing.reshareMany(null, true);
+    await until(() => runtime.sessions.length === 1);
+    runtime.last.call('tags', { tags: { Area: ['Reports'] } });
+    runtime.last.emit({ type: 'idle' });
+    await until(() => board.snapshot().reshare?.run?.left === 0);
+    expect(board.snapshot().reshare).toMatchObject({ untagged: 1, run: { total: 1, done: 0, failed: [{ id: a.id }], left: 0 } });
+    expect(readFileSync(join(dir, 'home', 'sites', siteKey(SITE_URL), 'site', slug(a.id), 'index.html'), 'utf8')).toBe(before);
+    expect(log(a.id).at(-1)).toContain('Nicht geteilt: ');
+    expect(board.item(a.id)!.tags!.Area).toEqual(['Billing']);
   });
 });
 
