@@ -67,6 +67,7 @@ import {
   type Thread,
   isTalkRef,
   STATES,
+  archivedWithDone,
   finished,
   formatQuestion,
   needsYou,
@@ -1487,10 +1488,7 @@ export class Board {
 
   /** Archives every finished card of the owner's on the canvas; returns their ids. */
   archiveDone(): string[] {
-    const ids = this.snapshot()
-      // a Question card is done when the owner says so, not with the finished work
-      .items.filter((i) => i.source === 'manual' && i.kind !== 'question' && finished(i.state) && !i.finishing)
-      .map((i) => i.id);
+    const ids = this.snapshot().items.filter(archivedWithDone).map((i) => i.id);
     if (ids.length) this.archive(ids);
     return ids;
   }

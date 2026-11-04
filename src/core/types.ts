@@ -42,6 +42,11 @@ export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'source' | 
   stopped(i) && i.source === 'manual' && i.kind === 'task' && !i.prototypeOf && !i.queue && !i.workspace && !i.keptIn;
 /** A finished card of the owner's whose agent is done: the archive may take it. */
 export const finishedArchivable = (i: Pick<Item, 'state' | 'source' | 'finishing'>) => finished(i.state) && i.source === 'manual' && !i.finishing;
+/**
+ * A card the canvas's „Erledigte archivieren“ takes, and so counts on its button: a finished one the
+ * archive may take, but no Question card, which is done when the owner says so, not with the work.
+ */
+export const archivedWithDone = (i: Pick<Item, 'state' | 'source' | 'finishing' | 'kind'>) => finishedArchivable(i) && i.kind !== 'question';
 /** A finished card whose agent still works: after the landing, or answering a follow-up question. */
 export const finishingUp = (i: Pick<Item, 'state' | 'finishing'>) => !!i.finishing && finished(i.state);
 /**

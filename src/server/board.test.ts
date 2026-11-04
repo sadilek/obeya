@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, onCanvas, PROJECT_COLLAPSED, sizeOf } from '../core/layout';
+import { archivedWithDone } from '../core/types';
 import type { PlanDoc } from '../core/plan-doc';
 import { BadRequest, Board, pathOfRef, type PlanRead, repoOfRef } from './board';
 import { Store } from './db';
@@ -560,6 +561,20 @@ describe('archive', () => {
     expect(board.snapshot().items.some((i) => i.id === open.id)).toBe(true);
     expect(board.archived()).toHaveLength(2);
     expect(board.archiveDone()).toEqual([]);
+  });
+
+  test('the button counts exactly what archiving everything finished takes', () => {
+    const a = done('A');
+    // one whose agent still finishes after the landing, and a Question card, done when the owner says so
+    const [finishing] = store.insert([
+      { canvas_id: 'shop', kind: 'task', state: 'live', title: 'Landed', body: '', x: 0, y: 0 },
+      { canvas_id: 'shop', kind: 'question', state: 'done', title: 'How many orders?', body: '', x: 400, y: 0 },
+    ]);
+    store.update(finishing!.id, { workspace: '/w', landed: '{}' });
+    expect(board.item(finishing!.id)).toMatchObject({ finishing: true });
+    const counted = board.snapshot().items.filter(archivedWithDone).map((i) => i.id);
+    expect(counted).toEqual([a.id]);
+    expect(board.archiveDone()).toEqual(counted);
   });
 });
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, finished, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
+import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
 import { api, ApiError, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
 import { goTo, onSwitch } from './switch';
 import { GroupNames, growFrom, inside, Lasso, MarkHint, Marked, Ring, TerritoryLayer, useTerritories } from './groups';
@@ -1677,7 +1677,7 @@ function Canvas({
     onObeya: (c: string) => (c === snapshot.canvas.id ? kOnRef.current || toggleKoordinator() : goTo(`${canvasPath(c)}?talk`)),
   };
   const proposalCount = snapshot.preferences.filter((p) => p.state === 'proposed').length + (snapshot.settingProposals?.length ?? 0);
-  const doneCount = items.filter((i) => i.source === 'manual' && finished(i.state)).length;
+  const doneCount = items.filter(archivedWithDone).length;
   async function archiveDone() {
     const { ids } = await api.archiveDone();
     if (ids.length) showAck(t.archive.archivedMany(ids.length), () => Promise.all(ids.map((id) => api.unarchive(id))));
