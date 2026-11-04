@@ -536,37 +536,11 @@ export class Sharing {
     this.tagging = pages.map((p) => p.id);
     const done: string[] = [];
     const failed: string[] = [];
-    if (target) {
-      const t = this.o.board.t.share;
-      const chosen = await this.chooseTags(target.repo, pages);
-      // the owner may have chosen some meanwhile: the session's choice stands only where the page still lacks
-      const going = pages.flatMap((p) => {
-        const lacking = this.missingTags(p.card);
-        const tags = lacking && chosen.get(p.id) ? Object.fromEntries(Object.entries(chosen.get(p.id)!).filter(([d]) => d in lacking)) : null;
-        if (!lacking) dropped.push(p.id);
-        else if (!tags || !Object.keys(tags).length) failed.push(p.id);
-        return tags && Object.keys(tags).length ? [{ ...p, chosen: tags, tags: tagsOf({ ...pageTagsOf(this.o.board.row(p.id)), ...tags }, this.vocabulary(p.card)) }] : [];
-      });
-      for (const p of pages) if (!chosen.has(p.id)) this.o.board.log(p.id, 'error', 'obeya', `${t.notShared}: ${t.noTags}`);
-      if (going.length) {
-        const r = await target.retag(
-          going.map((p) => ({ slug: p.slug, tags: p.tags })),
-          this.others('', target.key),
-        );
-        this.lost(target.key, r.gone ?? []);
-        for (const p of going) {
-          if (r.why) {
-            this.o.board.log(p.id, 'error', 'obeya', [`${t.notShared}: ${r.why}`, r.said].filter(Boolean).join('\n\n'));
-            failed.push(p.id);
-            continue;
-          }
-          this.chosen(p.id, p.chosen);
-          this.o.board.log(p.id, 'state', 'obeya', t.retagged(this.stored(p.id)?.url ?? target.pageUrl(p.slug)));
-          done.push(p.id);
-        }
-      }
+    try {
+      if (target) await this.tagBatch(target, pages, done, failed, dropped);
+    } finally {
+      this.tagging = [];
     }
-    this.tagging = [];
     const now = this.o.board.reshareRun();
     if (!now) return;
     const out = new Set([...pages.map((p) => p.id), ...dropped]);
@@ -577,6 +551,38 @@ export class Sharing {
       failed: [...now.failed, ...failed],
       total: now.total - dropped.filter((id) => now.queue.includes(id)).length,
     });
+  }
+
+  /** Tags a batch of `tagSome` on its site, noting each page as done, failed, or no longer lacking tags (`dropped`). */
+  private async tagBatch(target: ShareTarget, pages: Tagging[], done: string[], failed: string[], dropped: string[]) {
+    const t = this.o.board.t.share;
+    const chosen = await this.chooseTags(target.repo, pages);
+    // the owner may have chosen some meanwhile: the session's choice stands only where the page still lacks
+    const going = pages.flatMap((p) => {
+      const lacking = this.missingTags(p.card);
+      const tags = lacking && chosen.get(p.id) ? Object.fromEntries(Object.entries(chosen.get(p.id)!).filter(([d]) => d in lacking)) : null;
+      if (!lacking) dropped.push(p.id);
+      else if (!tags || !Object.keys(tags).length) failed.push(p.id);
+      return tags && Object.keys(tags).length ? [{ ...p, chosen: tags, tags: tagsOf({ ...pageTagsOf(this.o.board.row(p.id)), ...tags }, this.vocabulary(p.card)) }] : [];
+    });
+    for (const p of pages) if (!chosen.has(p.id)) this.o.board.log(p.id, 'error', 'obeya', `${t.notShared}: ${t.noTags}`);
+    if (going.length) {
+      const r = await target.retag(
+        going.map((p) => ({ slug: p.slug, tags: p.tags })),
+        this.others('', target.key),
+      );
+      this.lost(target.key, r.gone ?? []);
+      for (const p of going) {
+        if (r.why) {
+          this.o.board.log(p.id, 'error', 'obeya', [`${t.notShared}: ${r.why}`, r.said].filter(Boolean).join('\n\n'));
+          failed.push(p.id);
+          continue;
+        }
+        this.chosen(p.id, p.chosen);
+        this.o.board.log(p.id, 'state', 'obeya', t.retagged(this.stored(p.id)?.url ?? target.pageUrl(p.slug)));
+        done.push(p.id);
+      }
+    }
   }
 
   /**
