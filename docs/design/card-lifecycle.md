@@ -254,7 +254,10 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
 - **A finished card keeps a field for questions to its agent** (2026-10-08).
 - **What the owner archives**: only their own finished cards, ideas once parked or dropped (a parked
   idea's result may have been used outside Obeya, 2026-10-15), and stopped tasks (2026-10-15).
-  "All finished ones at once" leaves ideas alone; a workstream goes with its project. Archiving
+  "All finished ones at once" leaves ideas alone, as well as Question cards (done when the owner
+  says so) and a task whose agent still finishes after the landing; its button counts exactly what
+  it takes, by the same rule as the server, or it offers a click that archives nothing (2026-11-04).
+  A workstream goes with its project. Archiving
   keeps the card's position, demo and log.
 - **The archive's list keeps only the rows in view on the page** (2026-11-03): with 800 archived
   cards it held about 4,700 elements, and every change on the canvas (an agent's status line) read
