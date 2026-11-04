@@ -352,7 +352,7 @@ export const WAIT_REFUSED = `Not run: this command sleeps in the foreground for 
 /**
  * Where Codex's hooks reach the session: a server on the loopback that only this session's token
  * opens, which hears of each command and patch before it runs (and, for a folder's watch, after)
- * and answers as a `PreToolUse` hook does. The hook itself is curl, which sends what Codex gives
+ * and answers as a `PreToolUse` hook does. The hook itself is curl (past any proxy the environment names), which sends what Codex gives
  * it and prints the answer; a hook that fails (no curl) lets the call run.
  */
 class Hooks {
@@ -382,7 +382,7 @@ class Hooks {
 
   /** The `-c` overrides that make Codex call the hooks at `port` (where the session's Codex reaches this server): before every command and patch, and after them where `after`. */
   args(port: number, after: boolean, windows: boolean): string[] {
-    const command = `${windows ? 'curl.exe' : 'curl'} -sf --data-binary @- http://127.0.0.1:${port}/${this.token}`;
+    const command = `${windows ? 'curl.exe' : 'curl'} -sf --noproxy 127.0.0.1 --data-binary @- http://127.0.0.1:${port}/${this.token}`;
     const hook = (matcher: string) => `[{matcher=${JSON.stringify(matcher)},hooks=[{type="command",command=${JSON.stringify(command)},timeout=600}]}]`;
     const tools = after ? '^(Bash|apply_patch)$' : '^Bash$';
     return ['-c', `hooks.PreToolUse=${hook(tools)}`, ...(after ? ['-c', `hooks.PostToolUse=${hook(tools)}`] : [])];
@@ -527,6 +527,7 @@ class CodexSession implements AgentSession {
       const files = sessionFiles(host.o.home, roots);
       // a host that cannot be made ready loses the connection rather than failing the session
       const dir = await host.prepare(files);
+      if (this.closed) return;
       roots = roots.map((p) => `${dir}/${basename(p)}`);
       this.carry = (text, images) => carryTo(host, dir, text, images, join(host.o.home, 'files'));
       this.carryable();
