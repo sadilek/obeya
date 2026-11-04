@@ -100,7 +100,7 @@ export function tellers(byId: (id: string) => Item | undefined, told: ReturnType
    */
   const tellAbout = (target: Where, request: () => Promise<Heard>) => {
     const i = target ? byId('card' in target ? target.card : target.project) : undefined;
-    const what = i ? `„${plain(i.title)}“` : t.voice.koordinator;
+    const what = i ? t.quote(plain(i.title)) : t.voice.koordinator;
     return told.tell(listening(target) ? t.voice.transcribing(what) : t.voice.reading(what), toldCard(target), request);
   };
   /**
