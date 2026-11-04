@@ -96,7 +96,7 @@ describe('the files a card shows as its result', () => {
     const named = [{ path: 'out/export.csv', caption: 'Der Export' }];
     const rows = changeRows(d, named);
     expect(rows.at(-1)).toEqual({ kind: 'added', path: 'out/export.csv', uncertain: true });
-    expect(rows.filter((r) => r.uncertain)).toHaveLength(1);
+    expect(rows.filter((r) => r.path === 'out/export.csv')).toHaveLength(1);
     expect(shownFiles(d).map((f) => f.path)).not.toContain('out/export.csv');
     expect(changeSize(d).files).toBe(changeRows(folder).length);
   });

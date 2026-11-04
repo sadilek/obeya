@@ -73,8 +73,8 @@ export function shownFiles(diff: CardDiff | null, named: CardFile[] = []): Shown
     }
   }
   const shown = (f: ShownFile) => f.kind !== 'other' || DOCUMENT.test(f.path);
-  // a named file gone from the folder since has nothing to show either
-  const gone = new Set(diff?.folder?.changes.filter((c) => c.gone).map((c) => c.path));
+  // a named file gone from the folder since has nothing to show either, nor one that may be another program's
+  const gone = new Set([...(diff?.folder?.changes.filter((c) => c.gone).map((c) => c.path) ?? []), ...(diff?.folder?.uncertain?.map((c) => c.path) ?? [])]);
   const first = named.filter((n) => !gone.has(n.path)).map((n) => ({ ...(changed.find((c) => c.path === n.path) ?? { path: n.path, kind: fileKind(n.path), added: true, diff: false }), caption: n.caption }));
   // of the others, documents come before text and code, which is more often what made them
   const rest = changed.filter((c) => shown(c) && !named.some((n) => n.path === c.path));

@@ -22,6 +22,9 @@ describe('writesNothing', () => {
       'cat <<EOF\nnot a write > here\nEOF',
       'ls $(dirname out/export.csv)',
       'FOO=1 env LANG=C wc -l out/export.csv',
+      'wc -l out/export.csv >&2',
+      'ls missing 2>&-',
+      "sed -n '/^## /p' notes.md",
     ])
       expect([c, writesNothing(c)]).toEqual([c, true]);
   });
@@ -50,6 +53,22 @@ describe('writesNothing', () => {
       '$EDITOR notes.md',
       'f() { rm x; }; f',
       'case $x in a) rm y;; esac',
+      'echo hi > 123',
+      "echo hi > '&1'",
+      'cat <<EOF\n$(touch out)\nEOF',
+      'echo $(( $(touch out; echo 1) + 1 ))',
+      'cat <`touch out; echo in`',
+      'awk -f write.awk in',
+      'sed -f write.sed in',
+      "sed 's|a|b|w out' in",
+      "sed --expression='w out' in",
+      "sed -e'w out' in",
+      "sed 's/a/touch x/e' in",
+      './cat',
+      "env --split-string='touch out' echo hi",
+      'echo hi >&out.txt',
+      'rg --pre=./pre a in',
+      'file -C -m magic',
     ])
       expect([c, writesNothing(c)]).toEqual([c, false]);
   });

@@ -268,6 +268,29 @@ describe('another program writing during a call that writes nothing', () => {
     expect((await ws.undo('a')).changedSince).toEqual(['notes.txt']);
   });
 
+  test('what the card recreates leaves the rest of what another program deleted listed apart', async () => {
+    ws.lease('a');
+    writeFileSync(join(folder, 'Nachlass', 'Konto.txt'), 'Bank\n');
+    await call('x', 'Bash', { command: 'true' }, () => {});
+    await call('a', 'Bash', { command: 'sleep 30' }, () => rmSync(join(folder, 'Nachlass'), { recursive: true }));
+    await Bun.sleep(3);
+    await call('a', 'Bash', { command: 'mkdir Nachlass && echo neu > Nachlass/Liste.txt' }, () => {
+      mkdirSync(join(folder, 'Nachlass'));
+      writeFileSync(join(folder, 'Nachlass', 'Liste.txt'), 'neu\n');
+    });
+    expect(await kinds('a')).toEqual(['added Nachlass', 'added Nachlass/Liste.txt']);
+    expect(await uncertain('a')).toEqual(['deleted Nachlass/Konto.txt']);
+  });
+
+  test("another program moving a directory the card changed something in is listed apart, the card's change kept", async () => {
+    ws.lease('a');
+    await call('a', 'Edit', { file_path: 'Nachlass/Liste.txt' }, () => writeFileSync(join(folder, 'Nachlass', 'Liste.txt'), 'Konten und Depots\n'));
+    await Bun.sleep(3);
+    await call('a', 'Bash', { command: 'sleep 30' }, () => renameSync(join(folder, 'Nachlass'), join(folder, 'Erbe')));
+    expect(await kinds('a')).toEqual(['modified Nachlass/Liste.txt']);
+    expect((await ws.diff('a', false))!.folder!.uncertain!.map((c) => `${c.kind} ${c.from} → ${c.path}`)).toEqual(['moved Nachlass → Erbe']);
+  });
+
   test("while another card's command may write, the change is that card's alone", async () => {
     ws.lease('a');
     ws.lease('b');

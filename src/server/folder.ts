@@ -270,16 +270,29 @@ export interface FolderCard {
   uncertain?: Tracked[];
 }
 
-/** Whether the change `c` is at `path`: there, where it came from, or in a directory it is of. */
-const touches = (c: RawChange, path: string) => [c.path, c.from].some((p) => p !== undefined && (path === p || (c.dir && under(path, p))));
+/** Whether the change `c` is at `path`: there, or where it came from. */
+const at = (c: RawChange, path: string) => path === c.path || path === c.from;
 
 /**
  * Folds a change that may not be the card's into its list of those: unless it is at something the
  * card changed itself, which stays as the card left it (undo then finds it changed since).
  */
 export function mergeUncertain(rec: FolderCard, c: RawChange) {
-  if (rec.changes.some((t) => touches(c, t.path) || (t.from !== undefined && touches(c, t.from)))) return;
+  if (rec.changes.some((t) => !!t.dir === !!c.dir && (at(c, t.path) || (t.from !== undefined && at(c, t.from))))) return;
   mergeOne((rec.uncertain ??= []), c);
+}
+
+/**
+ * Folds a change the card made into its list: what it changes was, before, as another program may
+ * have left it, which is no longer listed apart; what such a program changed in a directory the
+ * card moves goes along with it.
+ */
+export function mergeOwn(rec: FolderCard, c: RawChange, shared = false) {
+  if (rec.uncertain) {
+    rec.uncertain = rec.uncertain.filter((t) => !(!!t.dir === !!c.dir && at(c, t.path)));
+    if (c.kind === 'moved' && c.dir) for (const t of rec.uncertain) if (under(t.path, c.from!)) t.path = c.path + t.path.slice(c.from!.length);
+  }
+  merge(rec.changes, c, shared);
 }
 
 /** Folds a change into a card's list: one entry per thing it changed, from before its first change to after its last. */
@@ -762,11 +775,7 @@ export class FolderWorkspaces implements CardWorkspaces {
         const rec = this.rec(card);
         if (!rec) continue;
         if (uncertain) mergeUncertain(rec, c);
-        else {
-          // what the card changes itself is its own, whoever changed it before
-          if (rec.uncertain) rec.uncertain = rec.uncertain.filter((t) => !touches(c, t.path));
-          merge(rec.changes, c, cards.length > 1);
-        }
+        else mergeOwn(rec, c, cards.length > 1);
         this.save(card, rec);
         touched.add(card);
       }

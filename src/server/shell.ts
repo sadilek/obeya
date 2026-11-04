@@ -70,7 +70,11 @@ export function withoutHeredocs(command: string): string {
 type Token = { word: string } | { op: string } | { redirect: string; to: string };
 
 /** Where output may go without writing a file. */
-const NO_FILE = /^(?:\/dev\/(?:null|stdout|stderr|tty|fd\/\d+)|&\d*-?|\d+-?|-)$/;
+const NO_FILE = /^\/dev\/(?:null|stdout|stderr|tty|fd\/\d+)$/;
+/** What `>&` may duplicate or close: a file descriptor, not a file. */
+const DESCRIPTOR = /^(?:\d+-?|-)$/;
+/** A substitution, whose commands run: `$(…)` (not arithmetic `$((…))`) or backticks. */
+const SUBSTITUTION = /\$\((?!\()|`/;
 
 /**
  * The command line as words, separators and redirections, quotes taken off; null for what is not
@@ -108,9 +112,11 @@ function tokens(line: string): Token[] | null {
       const nl = line.indexOf('\n', i);
       i = nl < 0 ? line.length : nl;
     } else if (rest.startsWith('$((')) {
-      // arithmetic: a value, no command
+      // arithmetic: a value, no command, unless a substitution in it runs one
       const close = line.indexOf('))', i);
-      word = (word ?? '') + line.slice(i, close < 0 ? line.length : close + 2);
+      const text = line.slice(i, close < 0 ? line.length : close + 2);
+      if (SUBSTITUTION.test(text.slice(3))) return null;
+      word = (word ?? '') + text;
       i = close < 0 ? line.length : close + 2;
     } else if (rest.startsWith('$(') || c === '`' || rest.startsWith('<(')) {
       end();
@@ -127,7 +133,8 @@ function tokens(line: string): Token[] | null {
         // the target is the next word, read as any word is
         const text = line.slice(i).match(/^(?:'[^']*'|"(?:\\.|[^"\\])*"|\\.|[^\s;&|()<>'"\\])*/)![0];
         const target = tokens(text);
-        if (!target) return null;
+        // a target that runs a command (`< \`…\``) is not read here
+        if (!target || target.some((t) => !('word' in t))) return null;
         i += text.length;
         out.push({ redirect: op.replace(/^\d+/, ''), to: target.map((t) => ('word' in t ? t.word : '')).join('') });
       } else if (/^(?:&&|\|\||\|&)/.test(rest)) {
@@ -153,8 +160,8 @@ function tokens(line: string): Token[] | null {
 
 /** Programs that write no file, whatever their arguments: they read, print, compare or wait. */
 const READERS = new Set(
-  ('sleep wc cat head tail ls pwd echo printf true false test [ [[ ]] : stat file du df date which whoami id uname hostname ' +
-    'grep egrep fgrep rg ag cut tr nl md5 md5sum shasum sha1sum sha256sum sha512sum cksum diff cmp comm basename dirname ' +
+  ('sleep wc cat head tail ls pwd echo printf true false test [ [[ ]] : stat du df date which whoami id uname hostname ' +
+    'grep egrep fgrep ag cut tr nl md5 md5sum shasum sha1sum sha256sum sha512sum cksum diff cmp comm basename dirname ' +
     'realpath readlink tree column jq wait cd pushd popd type seq expr od hexdump strings rev tac paste join fold numfmt ps ' +
     'pgrep uptime read exit return break continue let local declare export unset set shift').split(' '),
 );
@@ -169,18 +176,26 @@ function readOnly(name: string, args: string[]): boolean {
   switch (name) {
     case 'sort':
       return !args.some((a) => /^(?:-o|--output)/.test(a) || /^-[^-]*o/.test(a));
+    case 'rg':
+      // a preprocessor it runs on each file
+      return !args.some((a) => /^--pre(?:=|$)/.test(a));
+    case 'file':
+      // compiling a magic file writes it
+      return !args.some((a) => /^(?:-[^-]*C|--compile)/.test(a));
     case 'uniq':
       // a second operand is where it writes
       return operands.length <= 1;
     case 'find':
       return !args.some((a) => /^-(?:delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)$/.test(a));
     case 'sed':
-      // in place, or a script that writes (`w file`, `s/…/…/w file`)
-      return !args.some((a) => /^(?:-[^-]*[iI]|--in-place)/.test(a) || /(?:^|[\s;}\/\d])[wW]\s/.test(a));
+      // in place, a script from a file, or one that writes or runs a command (`w file`, `s/…/…/w file`, `e`)
+      return !args.some(
+        (a) => /^(?:-[^-]*[iIf]|--in-place|--file)/.test(a) || /(?:^|[^A-Za-z])[wWe](?:\s|$)/.test(a.replace(/^(?:--expression=|-[A-Za-z]*e)/, '')),
+      );
     case 'awk':
     case 'gawk':
-      // a program that redirects or runs a command, or edits in place
-      return !args.some((a) => /[>|]|system\s*\(|^-i/.test(a));
+      // a program from a file, one that redirects or runs a command, or edits in place
+      return !args.some((a) => /[>|]|system\s*\(|^-[if]|^--(?:file|include)/.test(a));
     default:
       return false;
   }
@@ -194,7 +209,11 @@ function readOnly(name: string, args: string[]): boolean {
  * read to its end.
  */
 export function writesNothing(command: string): boolean {
-  const list = tokens(withoutHeredocs(command));
+  const text = withoutHeredocs(command);
+  // a substitution in a heredoc's text runs, though the text itself is only data
+  const runs = (s: string) => s.match(new RegExp(SUBSTITUTION, 'g'))?.length ?? 0;
+  if (runs(text) < runs(command)) return false;
+  const list = tokens(text);
   if (!list?.some((t) => 'word' in t)) return false;
   let words: string[] = [];
   const done = (): boolean => {
@@ -207,21 +226,26 @@ export function writesNothing(command: string): boolean {
       else if (w === 'for' || w === 'select') return true;
       else if (w === 'command' || w === 'builtin' || w === 'nice' || w === 'env') {
         i++;
-        while (words[i]?.startsWith('-')) i += words[i] === '-n' || words[i] === '-u' ? 2 : 1;
+        // of the options, only those that run nothing else (`env -S '…'` runs its string)
+        while (words[i]?.startsWith('-')) {
+          if (!/^-(?:[inpu]|-ignore-environment|-unset=.*)$/.test(words[i]!)) return false;
+          i += words[i] === '-n' || words[i] === '-u' ? 2 : 1;
+        }
       } else if (/^g?timeout$/.test(w)) {
         i++;
         while (words[i]?.startsWith('-')) i += /^-[ks]$/.test(words[i]!) ? 2 : 1;
         i++;
       } else break;
     }
-    const name = words[i]!.replace(/^.*\//, '');
-    return readOnly(name, words.slice(i + 1));
+    // a program by its path may be anything (`./cat`)
+    if (words[i]!.includes('/')) return false;
+    return readOnly(words[i]!, words.slice(i + 1));
   };
   for (const t of list) {
     if ('word' in t) words.push(t.word);
     else if ('redirect' in t) {
       if (/^(?:>|>>|>\||&>|&>>|<>)$/.test(t.redirect) && !NO_FILE.test(t.to)) return false;
-      if (t.redirect === '>&' && !NO_FILE.test(t.to)) return false;
+      if (t.redirect === '>&' && !NO_FILE.test(t.to) && !DESCRIPTOR.test(t.to)) return false;
     } else {
       if (!done()) return false;
       words = [];
