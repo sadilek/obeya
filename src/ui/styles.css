@@ -694,6 +694,8 @@ textarea.p-body:focus { border-color: var(--muted); }
 
 .p-status { color: var(--muted); font-weight: 500; }
 .p-h { margin: 22px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+/* beside the conversation's heading: what its agent runs on, in the heading's colour but not shouted */
+.p-h .runs-on { margin-left: 12px; text-transform: none; letter-spacing: normal; font-weight: 400; font-size: 12px; }
 .p-error { color: var(--error); margin: 12px 0 0; font-size: 13.5px; }
 .question { margin: 18px 0 0; padding: 14px 18px; border-radius: 3px; border: 1.5px solid var(--waiting); max-width: 80ch;
   background: color-mix(in srgb, var(--waiting) 9%, transparent); font-size: 15px; }

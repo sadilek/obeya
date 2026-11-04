@@ -22,7 +22,8 @@ export interface Briefing {
   system: string;
   message: string;
   resume?: string;
-  onSession?: (id: string) => void;
+  /** The session's id and the model it runs on (`AgentEvent` `session`). */
+  onSession?: (id: string, model?: string) => void;
   /** What the agent reads, as it reads it. */
   onTool?: (name: string, input: Record<string, unknown>) => void;
   /** The owner's conversation language: the answer's, unless the owner's words are in another (`ownersLanguage`). */
@@ -126,7 +127,7 @@ export function inform(b: Briefing): Promise<OwnerAnswer> {
           }
           // a turn may also start without a message (finished background work)
           work.stop();
-          if (e.type === 'session') b.onSession?.(e.id);
+          if (e.type === 'session') b.onSession?.(e.id, e.model);
           else if (e.type === 'text') last = e.text;
           else if (e.type === 'tool') b.onTool?.(e.name, e.input);
           else if (e.type === 'error' && !answer) {

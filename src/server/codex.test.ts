@@ -50,8 +50,8 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
   test("starts a thread with Obeya's tools, the instructions and the sandbox, says what the agent says and when its turn ends", async () => {
     const s = start({}, 'hello');
     await until(() => s.idles() === 1);
-    // kept marked as Codex's, so that a resume goes to Codex whatever the group runs on by then
-    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1' });
+    // kept marked as Codex's, so that a resume goes to Codex whatever the group runs on by then; with the model Codex runs it on
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-5.5' });
     expect(s.texts()).toEqual(['echo: hello']);
     const thread = s.requests().find((r) => r.method === 'thread/start')!.params;
     expect(thread).toMatchObject({ developerInstructions: 'You are a test agent.', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', sandbox: 'workspace-write' });
@@ -97,7 +97,7 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
   test('resumes a thread by its id, whose tools Codex keeps', async () => {
     const s = start({ resume: 'codex:thread-7' }, 'again');
     await until(() => s.idles() === 1);
-    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-7' });
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-7', model: 'gpt-5.5' });
     const resume = s.requests().find((r) => r.method === 'thread/resume')!.params;
     expect(resume.threadId).toBe('thread-7');
     expect(resume.dynamicTools).toBeUndefined();

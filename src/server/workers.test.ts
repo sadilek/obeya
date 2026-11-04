@@ -1261,6 +1261,19 @@ describe('workers', () => {
     expect(runtime.last.inbox[0]).toContain('Answer to your question');
   });
 
+  test('the card names the harness and model its session runs on, as the harness reported them', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    expect(board.item(c.id)!.runsOn).toBeUndefined();
+    runtime.last.emit({ type: 'session', id: 'sess-1', model: 'claude-opus-5-5' });
+    expect(board.item(c.id)!.runsOn).toEqual({ harness: 'claude', model: 'claude-opus-5-5' });
+    // a session that replaces it on Codex names its own; one that names none leaves the card without
+    runtime.last.emit({ type: 'session', id: 'codex:thread-1', model: 'gpt-5.5' });
+    expect(board.item(c.id)!.runsOn).toEqual({ harness: 'codex', model: 'gpt-5.5' });
+    runtime.last.emit({ type: 'session', id: 'sess-2' });
+    expect(board.item(c.id)!.runsOn).toBeUndefined();
+  });
+
   test('after a restart a working card resumes its session; a delivery to an ended session resumes it', async () => {
     const c = manual();
     await workers.start(c.id);

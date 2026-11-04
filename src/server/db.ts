@@ -24,6 +24,8 @@ export interface CardRow {
   deleted_at: string | null;
   /** Agent session of the card's worker, or of a project's project agent. */
   session_id: string | null;
+  /** The model that session runs on, as its harness reported it at the start (`claude-opus-5-5`); its harness is the session's (`sessionHarness`). */
+  model: string | null;
   /** Leased clone and branch while a worker has the card. */
   workspace: string | null;
   branch: string | null;
@@ -481,6 +483,8 @@ export const MIGRATIONS = [
   'CREATE INDEX cards_archived ON cards (canvas_id, archived_at) WHERE archived_at IS NOT NULL;',
   // where a paired device's app on the home screen opens Obeya, as it last connected
   'ALTER TABLE devices ADD COLUMN app TEXT;',
+  // the model a card's agent session runs on, as its harness reported it
+  'ALTER TABLE cards ADD COLUMN model TEXT;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';

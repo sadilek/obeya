@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CLONES, type FilledClones, type Item, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
+import { CLONES, type FilledClones, type Item, modelName, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
 
 const card = (over: Partial<Item>): Item => ({ id: 'x', number: 1, kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
 
@@ -111,4 +111,14 @@ describe('withSupplemented', () => {
     expect(along(2)).toEqual([3]);
     expect(along(5)).toEqual([6]);
   });
+});
+
+test('modelName names Claude models by family and version, any other as its harness does', () => {
+  expect(modelName('claude-opus-5-5')).toBe('Opus 5.5');
+  expect(modelName('claude-sonnet-4-5-20250929')).toBe('Sonnet 4.5');
+  expect(modelName('claude-opus-4-20250514')).toBe('Opus 4');
+  expect(modelName('claude-3-5-haiku-20241022')).toBe('Haiku 3.5');
+  expect(modelName('claude-fable-5-1[1m]')).toBe('Fable 5.1');
+  expect(modelName('gpt-5.5')).toBe('gpt-5.5');
+  expect(modelName('claude-next')).toBe('claude-next');
 });

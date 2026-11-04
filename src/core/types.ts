@@ -473,6 +473,8 @@ export interface Item {
    * try by hand, once it answers.
    */
   app?: string;
+  /** The harness and model the card's agent session runs on, as the harness named the model when the session started (`claude-opus-5-5`). */
+  runsOn?: { harness: Harness; model: string };
   /** Waiting for approval, its branch holds no change (checked at the handover): approving makes the card `done`. */
   noChange?: boolean;
   /**
@@ -2541,6 +2543,17 @@ export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
 export function agentDefault(role: AgentRole, harness: Harness): AgentSetting {
   const preset = AGENT_DEFAULTS[role];
   return harness === preset.harness ? preset : { harness, model: 'default', effort: preset.effort };
+}
+
+/**
+ * A model by the name people know it by: Claude's ids by family and version (`claude-opus-5-5` is
+ * Opus 5.5, `claude-3-5-haiku-20241022` Haiku 3.5), any other as its harness names it.
+ */
+export function modelName(model: string): string {
+  const m = /^claude-(?:(\d+)-(?:(\d)-)?)?([a-z]+)(?:-(\d+)(?:-(\d))?)?(?:-\d{8})?(?:\[\w+\])?$/.exec(model);
+  if (!m || (!m[1] && !m[4])) return model;
+  const [major, minor] = m[1] ? [m[1], m[2]] : [m[4], m[5]];
+  return `${m[3]![0]!.toUpperCase()}${m[3]!.slice(1)} ${major}${minor ? `.${minor}` : ''}`;
 }
 
 /** A model a harness offers, as the Konfiguration lists it. */

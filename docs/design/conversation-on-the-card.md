@@ -27,6 +27,13 @@ owner says more. Once no agent works on the card and no question is open, steps 
 message stand where they happened, the agent's last words among them as its message. A card that was
 an idea continues the idea's conversation.
 
+Beside the heading, once the card's agent has a session, the conversation names what that session
+runs on, once: the harness and the model as the harness reported it when the session started or
+resumed (Claude's model ids by family and version, „Claude Code · Opus 5.5“; Codex's as Codex names
+them, „Codex · gpt-5.5“; the id itself in the tooltip). It stays after the work is done, and a new
+session (the card started afresh) names its own. The phone, whose conversation panel has no
+heading, leaves it out.
+
 Claude login errors offer „Erneut anmelden“ in the conversation, or, when a failed start's
 explanation above it shows the error, there alone: one error gets one button.
 It opens the same terminal login as Setup, even when the login check still reports an account
@@ -373,6 +380,9 @@ image.
   stays on its handover** (2026-10-09). Rejected: hiding the demo on feedback; moving the question
   to the newest handover, orange as if open.
 - **Agent words kept long** (2026-10-09). Rejected: a 600-character cut.
+- **The model named once, beside the conversation's heading** (owner, 2026-11-04): what the
+  session reports, not what the settings asked for, since an alias (`opus`) or Codex's default
+  only becomes a model there. Rejected: naming it on each of the agent's messages.
 - **Replies to one message** (2026-10-09; sheet 2026-10-15), the quote part of the draft.
 - **Quoting marked text into the field** (owner, 2026-10-22): the owner often answers single
   sentences or parts of them and did so by copy, paste, quotation marks and „ - “ by hand. The quote

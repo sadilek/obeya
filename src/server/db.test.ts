@@ -97,6 +97,7 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('ALTER TABLE cards DROP COLUMN short');
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
     s.db.run('DROP INDEX cards_archived');
+    s.db.run('ALTER TABLE cards DROP COLUMN model');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
@@ -143,8 +144,9 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('ALTER TABLE cards DROP COLUMN short');
     s.db.run('ALTER TABLE talk DROP COLUMN then_place');
     s.db.run('DROP INDEX cards_archived');
+    s.db.run('ALTER TABLE cards DROP COLUMN model');
     s.db.run('ALTER TABLE devices DROP COLUMN app');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 5}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 6}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -176,8 +178,9 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('DROP INDEX cards_number');
     s.db.run('ALTER TABLE cards DROP COLUMN number');
     s.db.run('DROP INDEX cards_archived');
+    s.db.run('ALTER TABLE cards DROP COLUMN model');
     s.db.run('ALTER TABLE devices DROP COLUMN app');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 3}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 4}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);

@@ -75,6 +75,7 @@ import {
 } from '../core/types';
 import type { CardRow, DecisionRow, Friction, FrictionNote, GroupRow, HeldTalk, Mark, NewRow, RowUpdate, Store, TalkWaitRow } from './db';
 import type { Images } from './images';
+import { sessionHarness } from './runtime';
 import { branchName, CARD_BRANCH } from './workspaces';
 import { clip, messageOf, oneLine } from '../core/text';
 import type { Wish } from '../core/wish';
@@ -3130,6 +3131,7 @@ function work(r: CardRow, themeNow?: ThemeNow): Partial<Item> {
     ...(r.pausing && !r.paused ? { pausing: true } : {}),
     ...(r.snoozed ? { snoozed: JSON.parse(r.snoozed) as Snooze } : {}),
     ...(r.app && r.workspace && !r.parked ? { app: r.app } : {}),
+    ...(r.session_id && r.model ? { runsOn: { harness: sessionHarness(r.session_id), model: r.model } } : {}),
   };
 }
 

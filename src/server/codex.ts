@@ -399,15 +399,15 @@ class CodexSession implements AgentSession {
       developerInstructions: spec.system,
     };
     const opened = spec.resume
-      ? await server.request<{ thread: { id: string } }>('thread/resume', { threadId: spec.resume.replace(CODEX_SESSION, ''), excludeTurns: true, ...settings })
-      : await server.request<{ thread: { id: string } }>('thread/start', {
+      ? await server.request<{ thread: { id: string }; model?: string }>('thread/resume', { threadId: spec.resume.replace(CODEX_SESSION, ''), excludeTurns: true, ...settings })
+      : await server.request<{ thread: { id: string }; model?: string }>('thread/start', {
           ...settings,
           dynamicTools: spec.tools.length
             ? [{ type: 'namespace', name: 'obeya', description: "Obeya's tools: how this agent talks to the owner and to Obeya.", tools: spec.tools.map((t) => ({ type: 'function', name: t.name, description: t.description, inputSchema: jsonSchema(t.schema) })) }]
             : [],
         });
     this.thread = opened.thread.id;
-    this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}` });
+    this.emit({ type: 'session', id: `${CODEX_SESSION}${this.thread}`, ...(opened.model ? { model: opened.model } : {}) });
     this.pump();
     const code = await exited;
     if (!this.closed) this.emit({ type: 'error', message: ended(code, server.stderr) });

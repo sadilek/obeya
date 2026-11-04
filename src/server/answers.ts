@@ -322,7 +322,7 @@ export class Answers {
         onTool: (name, input) => {
           if (!name.startsWith('mcp__')) this.o.board.log(cardId, 'activity', by, describeTool(name, input, this.o.board.t));
         },
-        onSession: (id) => this.o.board.work(cardId, { session_id: id }),
+        onSession: (id, model) => this.o.board.work(cardId, { session_id: id, model: model ?? null }),
         onLimit: (until) => this.o.board.waitsForLimit({ card: cardId }, until),
         resume: this.o.board.row(cardId).session_id ?? undefined,
         message: `${resumed}${followUp(words, undefined, true)}`,
@@ -390,7 +390,7 @@ export class Answers {
     /** The turn waits for the agent's background work, or no longer (`Briefing.onWaiting`). */
     onWaiting?: Briefing['onWaiting'];
     onTool: (name: string, input: Record<string, unknown>) => void;
-    onSession: (id: string) => void;
+    onSession: (id: string, model?: string) => void;
     /** Where it shows that it waits for the usage limit. */
     onLimit: (until: number | undefined) => void;
   }): Promise<OwnerAnswer> {

@@ -84,11 +84,11 @@ process.stdin.setEncoding('utf8').on('data', (d: string) => {
         send({ id: m.id, result: { userAgent: 'fake' } });
         break;
       case 'thread/start':
-        send({ id: m.id, result: { thread: { id: thread } } });
+        send({ id: m.id, result: { thread: { id: thread }, model: m.params.model ?? 'gpt-5.5' } });
         break;
       case 'thread/resume':
         thread = m.params.threadId;
-        send({ id: m.id, result: { thread: { id: thread } } });
+        send({ id: m.id, result: { thread: { id: thread }, model: m.params.model ?? 'gpt-5.5' } });
         break;
       case 'turn/start': {
         const turn = `turn-${++turns}`;

@@ -324,7 +324,7 @@ export class Explorers {
     live.work.stop();
     switch (e.type) {
       case 'session':
-        this.o.board.work(cardId, { session_id: e.id });
+        this.o.board.work(cardId, { session_id: e.id, model: e.model ?? null });
         break;
       case 'text':
         live.lastText = e.text;

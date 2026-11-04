@@ -407,6 +407,8 @@ const de = {
   task: 'Auftrag',
   talk: {
     heading: 'Gespräch',
+    /** Beside the heading: what the card's agent runs on, the model's id as its harness names it in the tooltip. */
+    runsOn: (harness: string, model: string) => `Der Agent dieser Karte läuft auf ${harness} mit dem Modell ${model}`,
     empty: 'Noch nichts passiert.',
     working: 'arbeitet …',
     /** After „Obeya“, under the owner's words while the Koordinator reads them. */
@@ -2477,6 +2479,7 @@ const en: Strings = {
   task: 'Task',
   talk: {
     heading: 'Conversation',
+    runsOn: (harness: string, model: string) => `This card's agent runs on ${harness} with the model ${model}`,
     empty: 'Nothing has happened yet.',
     working: 'working …',
     reading: 'is reading …',

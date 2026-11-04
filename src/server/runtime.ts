@@ -39,7 +39,8 @@ export interface AgentTool {
 }
 
 export type AgentEvent =
-  | { type: 'session'; id: string }
+  /** The session's id, once it started or resumed, and the model it runs on as the harness names it, where it says. */
+  | { type: 'session'; id: string; model?: string }
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: Record<string, unknown> }
   /**
@@ -422,7 +423,7 @@ export const sdkRuntime: AgentRuntime = {
     const done = (async () => {
       try {
         for await (const m of q) {
-          if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id });
+          if (m.type === 'system' && m.subtype === 'init') spec.onEvent({ type: 'session', id: m.session_id, model: m.model });
           else if (m.type === 'system' && m.subtype === 'background_tasks_changed') {
             const running = backgroundWork(m.tasks);
             if (JSON.stringify(running) !== JSON.stringify(background)) spec.onEvent({ type: 'background', tasks: running });
