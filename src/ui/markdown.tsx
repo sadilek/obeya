@@ -344,3 +344,18 @@ export function Doc({ md, mark, markRef }: { md: string; mark?: string; markRef?
     });
   return <div className="doc">{nodes(blocks(md))}</div>;
 }
+
+/**
+ * Where in a markdown source a place in its rendered text lies: `offset` into the `nth` (from 0)
+ * of the rendered text pieces that read `text`, found as the `nth` time `text` stands in the
+ * source. The source's end where it does not stand there as rendered (an empty piece, say).
+ */
+export function sourceAt(md: string, text: string, nth: number, offset: number): number {
+  if (!text) return md.length;
+  let at = -1;
+  for (let i = 0; i <= nth; i++) {
+    at = md.indexOf(text, at + 1);
+    if (at < 0) return md.length;
+  }
+  return at + Math.min(offset, text.length);
+}

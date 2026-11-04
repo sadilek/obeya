@@ -188,6 +188,12 @@ for its first start (planned, snoozed to start later, or in the queue) is a spli
 right. Only a card the owner has just created stays its text alone until it closes or starts, so the
 task goes into the text, not into a note.
 
+A text the owner may edit (a planned task's, a proposal's) shows formatted in the frame of a text
+field, as Markdown everywhere on a card does; a click into it, or Enter on it, turns it into its
+Markdown with the cursor where the click went, and leaving the field shows it formatted again. A
+click on a link, a code block's copy button, or one that ends a marking of text does what it does
+elsewhere. An empty text is the field itself, ready for typing.
+
 On every planned card, a stopped one too, the field takes notes for the agent that takes the card on
 („Hinweis an den Agenten – er bekommt ihn, sobald er startet“). Typed notes stand unread („Noch nicht
 gelesen · sobald der Agent startet“, with a bin to take them back) and go to the worker with the task
@@ -412,6 +418,11 @@ image.
   by its comment. From what the card shows too, artifacts and an idea's brief among it (owner, same
   day): those are what the owner answers most often. Rejected for framed pages: reading the
   selection from Obeya's page, which a sandboxed frame of origin `null` does not allow.
+- **An editable text shows formatted until clicked** (GitHub issue #53, 2026-11-04): an agent's
+  proposal is Markdown with headings, lists and code, which showed as raw source in the field.
+  Rejected: an edit button beside the text (one more control on every planned card, while the
+  field's frame already says it can be typed in); formatting and source side by side (twice the
+  room for the same text).
 - **Code blocks copy at a click and wrap** (owner, 2026-10-22): marking a drafted text by hand was
   fiddly, on the phone above all. At the desk the button shows on hover (owner, same day), so it
   does not sit on every block; on a touch screen always, since there is no hover. The block wraps,

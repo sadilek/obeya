@@ -225,6 +225,8 @@ const de = {
   titlePlaceholder: 'Worum geht es?',
   titleOptional: 'Titel (optional: sonst wählt Obeya einen)',
   bodyPlaceholder: 'Beschreibung',
+  /** On a card's text shown formatted, which a click opens to edit. */
+  editBody: 'Klicken zum Bearbeiten',
   delete: 'Löschen',
   deleted: (title: string) => `„${title}“ gelöscht.`,
   undo: 'Rückgängig',
@@ -2363,6 +2365,8 @@ const en: Strings = {
   titlePlaceholder: 'What is it about?',
   titleOptional: 'Title (optional: otherwise Obeya picks one)',
   bodyPlaceholder: 'Description',
+  /** On a card's text shown formatted, which a click opens to edit. */
+  editBody: 'Click to edit',
   delete: 'Delete',
   deleted: (title: string) => `“${title}” deleted.`,
   undo: 'Undo',

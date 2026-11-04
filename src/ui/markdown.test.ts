@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { blocks, DocImages, excerpt, Inline, plain } from './markdown';
+import { blocks, DocImages, excerpt, Inline, plain, sourceAt } from './markdown';
 
 const html = (md: string) => renderToStaticMarkup(createElement(Inline, { md }));
 
@@ -178,5 +178,23 @@ describe('messages', () => {
       { t: 'list', list: { ordered: false, items: [{ text: 'one wrapped', mark: '', children: [] }, { text: 'two', mark: '', children: [] }] } },
       { t: 'p', text: 'After.' },
     ]);
+  });
+});
+
+describe('a place in the formatted text, in the source', () => {
+  const md = '## Where\n\nAn **Export** button, and an Export menu.\n';
+  test('the clicked words where they stand in the markdown, past its marks', () => {
+    expect(sourceAt(md, ' button, and an ', 0, 3)).toBe(md.indexOf(' button') + 3);
+    expect(sourceAt(md, 'Where', 0, 5)).toBe(md.indexOf('Where') + 5);
+  });
+
+  test('words that stand more than once: the how-manieth they are rendered', () => {
+    expect(sourceAt(md, 'Export', 0, 1)).toBe(md.indexOf('Export') + 1);
+    expect(sourceAt(md, 'Export', 1, 1)).toBe(md.lastIndexOf('Export') + 1);
+  });
+
+  test('the end of the source where the words do not stand in it as rendered', () => {
+    expect(sourceAt(md, 'Export button', 0, 2)).toBe(md.length);
+    expect(sourceAt(md, '', 0, 0)).toBe(md.length);
   });
 });

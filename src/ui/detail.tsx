@@ -21,7 +21,7 @@ import { holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { ACK_MS } from './tell';
-import { Inline, plain } from './markdown';
+import { Inline, plain, sourceAt } from './markdown';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
 import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
@@ -2965,12 +2965,44 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
   );
 }
 
+/** Where in the markdown `md` the click at x, y on its formatted text went: the source's end where it can't tell. */
+function clickedAt(md: string, x: number, y: number): number {
+  const pos = document.caretPositionFromPoint?.(x, y);
+  const range = pos ? null : document.caretRangeFromPoint?.(x, y);
+  const node = pos?.offsetNode ?? range?.startContainer;
+  const offset = pos?.offset ?? range?.startOffset ?? 0;
+  const box = node?.parentElement?.closest('.p-body-shown');
+  if (!node || node.nodeType !== Node.TEXT_NODE || !box) return md.length;
+  // the same words may stand earlier in the text: the how-manieth they are here is the how-manieth there
+  const text = node.textContent ?? '';
+  const walk = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+  let nth = 0;
+  for (let n = walk.nextNode(); n && n !== node; n = walk.nextNode()) if (n.textContent === text) nth++;
+  return sourceAt(md, text, nth, offset);
+}
+
 /** `fresh`: the repository picker offers a new repository (not on a proposal, which starts where it is). */
 function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item; repos: RepoRef[]; choice: RepoChoice; fresh?: boolean; onEdit: (p: CardPatch) => void; grow?: boolean }) {
   const [body, setBody] = useState(item.body);
+  // the text shows formatted, as its agent will read it; a click into it opens its markdown there to edit
+  const [editing, setEditing] = useState(false);
+  const caret = useRef<number | null>(null);
+  const shown = !editing && body.trim() !== '';
   // a proposal's text shows in full as far as the screen allows, the panel growing with it
   const ref = useRef<HTMLTextAreaElement>(null);
-  useFitHeight(ref, body, grow);
+  useFitHeight(ref, body, grow && !shown);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!editing || caret.current === null || !el) return;
+    el.focus();
+    el.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  }, [editing]);
+  const edit = (x?: number, y?: number) => {
+    if (editing) return;
+    caret.current = x === undefined || y === undefined ? body.length : clickedAt(body, x, y);
+    setEditing(true);
+  };
   // a dropped file's path goes in as typed while the field has the cursor, else after the text
   // (the latest, which a path put in just before is part of before React has drawn it)
   const latest = useRef(body);
@@ -2990,18 +3022,41 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item
       <div className={`p-body-field${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
         <ShotStrip shots={shots} />
         <div className="c-field">
-          <textarea
-            ref={ref}
-            className="p-body"
-            value={body}
-            placeholder={t.bodyPlaceholder}
-            maxLength={20000}
-            onPaste={shots.onPaste}
-            onChange={(e) => {
-              setBody(e.target.value);
-              onEdit({ body: e.target.value });
-            }}
-          />
+          {shown ? (
+            <div
+              className="p-body p-body-shown"
+              tabIndex={0}
+              title={t.editBody}
+              // a link, a code block's copy button or text being selected keep their own click
+              onClick={(e) => {
+                if ((e.target as Element).closest('a, button') || !getSelection()?.isCollapsed) return;
+                edit(e.clientX, e.clientY);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
+                e.preventDefault();
+                edit();
+              }}
+            >
+              <Body md={body} />
+            </div>
+          ) : (
+            <textarea
+              ref={ref}
+              className="p-body"
+              value={body}
+              placeholder={t.bodyPlaceholder}
+              maxLength={20000}
+              onPaste={shots.onPaste}
+              onFocus={() => setEditing(true)}
+              // back to the formatted text once the cursor leaves it, not when the window loses focus with it
+              onBlur={() => document.hasFocus() && setEditing(false)}
+              onChange={(e) => {
+                setBody(e.target.value);
+                onEdit({ body: e.target.value });
+              }}
+            />
+          )}
           <AttachButton shots={shots} />
         </div>
         {shots.error && <p className="p-error c-error">{shots.error}</p>}

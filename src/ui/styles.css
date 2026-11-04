@@ -659,12 +659,20 @@ ol.p-list > li::before { content: none; }
 textarea.p-body { display: block; width: 100%; max-width: 76ch; min-height: 180px; margin-top: 16px; padding: 12px 14px;
   border: 1px solid var(--line); border-radius: 3px; background: var(--card); resize: vertical; font-size: 15px; outline: none; }
 textarea.p-body:focus { border-color: var(--muted); }
+/* a card's text the owner may edit, shown formatted in the field's frame, as tall as the field, until a click opens it (detail.tsx) */
+.p-body-shown { max-width: 76ch; min-height: 180px; margin-top: 16px; padding: 12px 40px 12px 14px; border: 1px solid var(--line); border-radius: 3px;
+  background: var(--card); cursor: text; overflow-wrap: break-word; }
+.p-body-shown:hover, .p-body-shown:focus-visible { border-color: var(--muted); outline: none; }
+.p-body-shown > :first-child { margin-top: 0; }
+/* line by line as typed: a blank line is the space between paragraphs */
+.p-body-shown .p-lead { margin-top: 2px; font-size: 15px; max-width: none; }
+.p-body-shown :is(.p-list, .p-table, .p-code-box) { margin-top: 4px; max-width: none; }
 /* a card's task takes screenshots like a message: thumbnails above, the button in the field's corner */
 .p-body-field { max-width: 76ch; }
 .p-body-field .c-shots { margin-top: 16px; }
 .p-body-field .c-field { position: relative; }
 .p-body-field .c-field textarea.p-body { padding-right: 40px; }
-.p-body-field.dropping textarea.p-body { border-color: var(--working); border-style: dashed; background: color-mix(in srgb, var(--working) 6%, var(--card)); }
+.p-body-field.dropping .p-body { border-color: var(--working); border-style: dashed; background: color-mix(in srgb, var(--working) 6%, var(--card)); }
 .p-body-field .c-error { margin-top: 6px; }
 .segs { display: flex; gap: 10px; flex-wrap: wrap; }
 .seg { display: inline-flex; background: var(--chip); border-radius: 3px; padding: 3px; gap: 2px; margin-top: 12px; }
@@ -812,7 +820,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 /* its scrollbar's place stays: a bar coming as an artifact's frame grew narrowed the page in it, which grew anew */
 .split-main { overflow: auto; min-height: 0; padding-right: 4px; scrollbar-gutter: stable; }
 .split-main > :first-child { margin-top: 0; }
-.split-main .question, .split-main .p-body-field, .split-main textarea.p-body { max-width: none; }
+.split-main .question, .split-main .p-body-field, .split-main .p-body { max-width: none; }
 .split-talk { display: flex; flex-direction: column; min-height: 0; }
 .split-talk .p-h { margin-top: 0; }
 /* a workstream's text in its plan doc, above what came of it (detail.tsx) */
@@ -826,6 +834,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .split-talk .composer { margin-top: 10px; max-width: none; }
 /* a proposal's text box grows with the text (detail.tsx) and leaves the reason below it in view */
 .proposal-grid textarea.p-body { min-height: min(360px, calc(100vh - 440px)); max-height: calc(100vh - 440px); resize: none; }
+.proposal-grid .p-body-shown { min-height: min(360px, calc(100vh - 440px)); max-height: calc(100vh - 440px); overflow-y: auto; }
 .question.brief { border-color: var(--idea); background: color-mix(in srgb, var(--idea) 6%, transparent); }
 /* the settled part "Teilaufgabe abtrennen" builds, folded under the brief */
 .question.brief.settled { margin-top: 10px; }
@@ -2158,6 +2167,7 @@ button.link:hover { text-decoration: underline; }
 .ph-view .split:empty { display: none; }
 .ph-view .split-main { overflow: visible; padding-right: 0; }
 .ph-view .proposal-grid textarea.p-body { min-height: 160px; max-height: 50vh; }
+.ph-view .proposal-grid .p-body-shown { min-height: 160px; max-height: 50vh; }
 .ph-view .actions { flex-wrap: wrap; }
 .ph-view .actions .btn { min-height: 42px; }
 /* the change list's lines a finger's size */
