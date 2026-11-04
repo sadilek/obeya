@@ -2031,9 +2031,8 @@ const de = {
     button: ['', 'tippen zum Suchen'] as [string, string],
     /** What a click on it explains. */
     hint: 'Mit der Taste / suchst du Karten auf der Leinwand und im Archiv: Die Suche öffnet sich und listet die Karten, die zuletzt geänderte zuerst. Nach dem ersten Mal verschwindet dieser Button.',
-    field: 'Karten suchen',
-    /** Under the empty field: what the search looks through. */
-    looks: 'Findet Karten auf der Leinwand und im Archiv, die jedes eingegebene Wort enthalten: zuerst die mit allen Wörtern im Titel, dann die übrigen. ↑ ↓ wählen, Enter öffnet.',
+    /** The field's placeholder: what the search looks through. */
+    field: 'Karten auf der Leinwand und im Archiv suchen',
     /** Over the list before the first word: the canvas's cards, in this order. */
     recent: 'Auf der Leinwand, zuletzt geänderte zuerst',
     canvas: 'Auf der Leinwand',
@@ -4046,8 +4045,7 @@ const en: Strings = {
   search: {
     button: ['Type', 'to search'],
     hint: 'The / key searches the cards on the canvas and in the archive: the search opens and lists the cards, the last changed first. After the first time, this button goes away.',
-    field: 'Search cards',
-    looks: 'Finds cards on the canvas and in the archive that hold every word typed: those with all of them in the title first, then the rest. ↑ ↓ to choose, Enter opens.',
+    field: 'Search cards on the canvas and in the archive',
     recent: 'On the canvas, last changed first',
     canvas: 'On the canvas',
     archive: 'In the archive',

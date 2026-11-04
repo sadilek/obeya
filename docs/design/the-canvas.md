@@ -17,13 +17,15 @@ Sheets).
 `/` drops down a field like the archive's, the quick way to a card. The bar has no search button:
 until `/` has been used once (per browser), a button „/ tippen zum Suchen“ stands in the search's
 place, shown only once the canvas holds more than five cards so that it does not distract a new
-owner; a click on it explains the key, and after the first `/` it is gone for good. Before the first
+owner; a click on it explains the key, and after the first `/` it is gone for good once that search
+closes. Opening and closing the search moves nothing else in the bar: without that button the
+search's place takes no room. The empty field's placeholder says what the search looks through;
+no line under it explains more. Only the list scrolls, under the field, which stays in sight. Before the first
 word the search lists every card on the canvas, the one where something happened last first: a
 change the owner sees (its state, its title or text, also in its plan doc, its status, its
 handover, its pull request), or a line in its conversation other than a worker's tool activity.
 Moving a card, grouping it, folding a project and the bookkeeping behind a card (its session, its
-workspace, what was read) do not count. A line above the list says
-what the search looks through. With the first word, it finds the cards on the canvas, and below
+workspace, what was read) do not count. With the first word, it finds the cards on the canvas, and below
 them those in the archive, that hold every typed word, matched as the archive's search does. In each
 part, cards with every word in the title come first, then those holding the words only in their
 text, summary, last status, open question, a proposal's reason, label or a project's goal, with an

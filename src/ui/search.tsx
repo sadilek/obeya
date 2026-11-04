@@ -97,6 +97,9 @@ interface Props {
 export function SearchPill({ on, teach, onTeach, onClose, held, items, archived, onOpen, onLight, els, onCover }: Props) {
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(on, box, () => held || onClose());
+  // the button that teaches the key keeps its place while the search is open, even once the first `/` made it go: nothing in the bar moves under the list
+  const [taught, setTaught] = useState(teach);
+  if (!on && taught !== teach) setTaught(teach);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   // the active row lights its card up once the pointer or an arrow key picked it, until the pointer leaves the list
@@ -171,8 +174,8 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
   let row = 0;
   return (
     <div className="menu-pill search" ref={box}>
-      {teach && !on && (
-        <button className="pill search-hint" onClick={onTeach}>
+      {taught && (
+        <button className="pill search-hint" onClick={onTeach} style={on ? { visibility: 'hidden' } : undefined}>
           {t.search.button[0]} <kbd>/</kbd> {t.search.button[1]}
         </button>
       )}
@@ -196,45 +199,46 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
               </button>
             )}
           </div>
-          {/* what the search looks through stays above the list until the first word */}
-          {!words.length && <p className="hint">{t.search.looks}</p>}
-          {words.length > 0 && !sections.length ? (
-            <p className="hint">{t.search.noMatch(query.trim())}</p>
-          ) : (
-            sections.map((s) => (
-              <section key={s.key}>
-                <h4>{s.heading}</h4>
-                <ol>
-                  {s.hits.slice(0, LIMIT).map((h) => {
-                    const i = h.item;
-                    const k = row++;
-                    const project = i.parent ? byId.get(i.parent) : undefined;
-                    const label = i.archivedAt ? labelOf(i) : stateLabel(i);
-                    const about = [label, project && [i.label, plain(project.title)].filter(Boolean).join(' · '), i.archivedAt && t.archive.day(new Date(i.archivedAt))].filter(Boolean).join(' · ');
-                    return (
-                      <li key={i.id}>
-                        <button
-                          className={k === at ? 's-row active' : 's-row'}
-                          style={{ '--c': `var(--${i.archivedAt ? 'live' : shownState(i)})` } as CSSProperties}
-                          ref={i.archivedAt ? (el) => void (el ? els.set(i.id, el) : els.delete(i.id)) : undefined}
-                          onPointerEnter={() => (setActive(k), setLit(true))}
-                          onClick={() => onOpen(i)}
-                        >
-                          <span className="dot" />
-                          <span className="s-what">
-                            <span className="s-ttl">{marked(plain(i.title), words)}</span>
-                            {!h.byTitle && <span className="s-text">{excerpt(i, words)}</span>}
-                            {about && <span className="hint">{about}</span>}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-                {s.hits.length > LIMIT && <p className="hint">{(words.length ? t.search.more : t.search.moreAll)(s.hits.length - LIMIT)}</p>}
-              </section>
-            ))
-          )}
+          {/* the list scrolls under the field, which stays in sight */}
+          <div className="s-list">
+            {words.length > 0 && !sections.length ? (
+              <p className="hint">{t.search.noMatch(query.trim())}</p>
+            ) : (
+              sections.map((s) => (
+                <section key={s.key}>
+                  <h4>{s.heading}</h4>
+                  <ol>
+                    {s.hits.slice(0, LIMIT).map((h) => {
+                      const i = h.item;
+                      const k = row++;
+                      const project = i.parent ? byId.get(i.parent) : undefined;
+                      const label = i.archivedAt ? labelOf(i) : stateLabel(i);
+                      const about = [label, project && [i.label, plain(project.title)].filter(Boolean).join(' · '), i.archivedAt && t.archive.day(new Date(i.archivedAt))].filter(Boolean).join(' · ');
+                      return (
+                        <li key={i.id}>
+                          <button
+                            className={k === at ? 's-row active' : 's-row'}
+                            style={{ '--c': `var(--${i.archivedAt ? 'live' : shownState(i)})` } as CSSProperties}
+                            ref={i.archivedAt ? (el) => void (el ? els.set(i.id, el) : els.delete(i.id)) : undefined}
+                            onPointerEnter={() => (setActive(k), setLit(true))}
+                            onClick={() => onOpen(i)}
+                          >
+                            <span className="dot" />
+                            <span className="s-what">
+                              <span className="s-ttl">{marked(plain(i.title), words)}</span>
+                              {!h.byTitle && <span className="s-text">{excerpt(i, words)}</span>}
+                              {about && <span className="hint">{about}</span>}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                  {s.hits.length > LIMIT && <p className="hint">{(words.length ? t.search.more : t.search.moreAll)(s.hits.length - LIMIT)}</p>}
+                </section>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

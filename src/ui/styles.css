@@ -1405,15 +1405,20 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .timeline .a-ttl { font-size: 15.5px; line-height: 1.25; }
 .timeline .hint { font-size: 11.5px; }
 /* the search: what it found on the canvas, then in the archive, the best first */
-.search-menu { width: min(520px, calc(100vw - 28px)); padding: 8px 10px 4px; }
+.search-menu { width: min(520px, calc(100vw - 28px)); padding: 8px 10px 0; display: flex; flex-direction: column; overflow: hidden; }
+.search-menu > .a-search { flex: none; }
+/* only the results scroll, out to the menu's edge, so the field stays in sight */
+.s-list { overflow: auto; min-height: 0; margin: 0 -10px; padding: 0 10px 4px; }
 /* the search has no button of its own, only the one that teaches `/`: its list drops from the bar's height, under the others' */
 .menu-pill.search { align-self: stretch; display: flex; align-items: center; }
 .menu-pill.search:empty { display: none; }
+/* without that button its place takes no room, nor the bar's gap after it: opening the search moves nothing in the bar */
+.menu-pill.search:not(:has(> .search-hint)) { margin-inline-end: -10px; }
 .menu-pill.search > .bar-menu { top: calc(50% + 23px); }
 .pill.search-hint kbd { font: inherit; font-weight: 600; color: var(--ink); padding: 0 6px; border-radius: 2px; background: var(--chip); border: 1px solid var(--line); box-shadow: 0 1px 0 var(--line); }
 .search-menu h4 { margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .search-menu ol { list-style: none; padding: 0; margin: 0 0 4px; }
-.search-menu > section > .hint { margin: 2px 8px 6px; font-size: 12px; }
+.s-list > section > .hint { margin: 2px 8px 6px; font-size: 12px; }
 .s-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 7px 8px; text-align: left; font: inherit; color: var(--ink);
   background: none; border: 0; border-radius: 2px; cursor: pointer; }
 .s-row.active { background: var(--chip); }
