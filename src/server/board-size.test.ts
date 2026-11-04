@@ -63,54 +63,75 @@ beforeAll(() => {
   // over a thousand cards and their demo folders take more than the default 5 s on a busy machine
 }, 30_000);
 
+// What a run costs is measured against a rebuild of the canvas view on the same machine, in the
+// CPU time of the thread that runs the server's code: on a CI runner the same run counts four to
+// eight times the CPU time it counts on a laptop, more with other test files beside it
+// (`bun test --parallel`), and the time on the clock also waits for a core. A noisy measurement
+// only makes a run cost more, so the fastest of three rounds counts.
+async function cpuTime(run: () => Promise<void>): Promise<number> {
+  await heard();
+  const start = process.threadCpuUsage();
+  await run();
+  const used = process.threadCpuUsage(start);
+  return (used.user + used.system) / 1000;
+}
+
+/** A rebuild of the canvas view as the server sends it to its pages after a change, the median of five. */
+async function rebuildTime(): Promise<number> {
+  const times: number[] = [];
+  for (let n = 0; n < 5; n++)
+    times.push(await cpuTime(async () => {
+      canvas.board.changed();
+      JSON.stringify(canvas.board.snapshot());
+    }));
+  return times.sort((a, b) => a - b)[2]!;
+}
+
 afterAll(() => {
   canvas.shutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('a canvas with hundreds of archived and shared cards: a run of changes holds the server up for far less than half a second', async () => {
-  await heard();
+test('a canvas with hundreds of archived and shared cards: a run of changes costs a few rebuilds of the canvas view, not one per write', async () => {
   const board = canvas.board;
-  // the time the server's process computes, not the time on the clock: beside other test files
-  // (`bun test --parallel`) on a runner with few cores, it also waits for a core, which says
-  // nothing about the code (a run that takes under 100 ms on a laptop took 700 ms on the clock in CI)
-  let longest = 0;
+  const rebuild = await rebuildTime();
+  const rounds: number[] = [];
   for (let round = 0; round < 3; round++) {
-    const start = process.cpuUsage();
-    // a landing: each card moves on, says so, and is read back between the writes, as the workers do
-    for (const id of onCanvas.slice(round * 30, round * 30 + 30)) {
-      board.work(id, { status_line: `Landing ${round}` });
-      board.item(id);
-      board.log(id, 'state', 'obeya', 'Landed on main.');
-      board.item(id);
-      board.work(id, { landed: JSON.stringify({}) });
-      // its page is looked up among the archived ones
-      board.card(archived[(round * 30 + onCanvas.indexOf(id)) % archived.length]!);
-    }
-    // what listens to the board hears of it once the run is through
-    await heard();
-    const used = process.cpuUsage(start);
-    longest = Math.max(longest, (used.user + used.system) / 1000);
+    rounds.push(await cpuTime(async () => {
+      // a landing: each card moves on, says so, and is read back between the writes, as the workers do
+      for (const id of onCanvas.slice(round * 30, round * 30 + 30)) {
+        board.work(id, { status_line: `Landing ${round}` });
+        board.item(id);
+        board.log(id, 'state', 'obeya', 'Landed on main.');
+        board.item(id);
+        board.work(id, { landed: JSON.stringify({}) });
+        // its page is looked up among the archived ones
+        board.card(archived[(round * 30 + onCanvas.indexOf(id)) % archived.length]!);
+      }
+      // what listens to the board hears of it once the run is through
+      await heard();
+    }));
   }
-  expect(longest).toBeLessThan(500);
+  // 90 writes: about ten rebuilds' worth; with the listeners rebuilding the view after each write, over fifty
+  expect(Math.min(...rounds) / rebuild).toBeLessThan(30);
 });
 
-test('sharing looks up every shared card, archived ones with their prototypes, after a change without holding the server up', async () => {
-  await heard();
+test('sharing looks up every shared card, archived ones with their prototypes, after a change for the cost of a few rebuilds of the canvas view', async () => {
   const board = canvas.board;
   const shared = board.sharedRows().map((r) => r.id);
   expect(shared.length).toBeGreaterThan(400);
-  let longest = 0;
+  const rebuild = await rebuildTime();
+  const rounds: number[] = [];
   for (let round = 0; round < 3; round++) {
-    const start = process.cpuUsage();
-    // a landing shares its demo: the board changed, and the pass over the shared pages looks up each card
-    board.work(onCanvas[round]!, { status_line: `Sharing ${round}` });
-    expect(shared.filter((id) => board.card(id)).length).toBe(shared.length);
-    await heard();
-    const used = process.cpuUsage(start);
-    longest = Math.max(longest, (used.user + used.system) / 1000);
+    rounds.push(await cpuTime(async () => {
+      // a landing shares its demo: the board changed, and the pass over the shared pages looks up each card
+      board.work(onCanvas[round]!, { status_line: `Sharing ${round}` });
+      expect(shared.filter((id) => board.card(id)).length).toBe(shared.length);
+      await heard();
+    }));
   }
-  expect(longest).toBeLessThan(500);
+  // about two rebuilds' worth: a lookup per card that built the archive or its prototypes anew costs one each, hundreds
+  expect(Math.min(...rounds) / rebuild).toBeLessThan(10);
 });
 
 test('an archived card looked up on its own is the card the archive lists, with its prototypes', () => {
