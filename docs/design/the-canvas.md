@@ -7,15 +7,15 @@ edge indicators, minimap, and a frosted top bar the canvas slides under.
 
 ### The bar
 
-Left, after the navigation's button (see The navigation): the search's place, the archive's button (see Card lifecycle), the queue's and "Neue
-Aufgabe". The queue's button counts the waiting cards; a click lists them in turn, each with what it
-waits for, buttons to move it and a × that takes it out of the queue at once, as „Aus der Warteschlange nehmen“ on the card does (back to planned; no
+Left, after the navigation's button (see The navigation): the search's place, the archive's button (see Card lifecycle), the queue's and "New
+task". The queue's button counts the waiting cards; a click lists them in turn, each with what it
+waits for, buttons to move it and a × that takes it out of the queue at once, as "Take out of the queue" on the card does (back to planned; no
 undo, starting it again is the way back); a row opens its card. The navigation's, the archive's and
 the queue's lists close on a click beside them and on Esc. Obeya's button is the rightmost (see
 Sheets).
 
 `/` drops down a field like the archive's, the quick way to a card. The bar has no search button:
-until `/` has been used once (per browser), a button „/ tippen zum Suchen“ stands in the search's
+until `/` has been used once (per browser), a button "Type / to search" stands in the search's
 place, shown only once the canvas holds more than five cards so that it does not distract a new
 owner; a click on it explains the key, and after the first `/` it is gone for good once that search
 closes. Opening and closing the search moves nothing else in the bar: without that button the
@@ -48,12 +48,12 @@ Right, before the workspace pool: the usage limits of the plans Claude Code and 
 machine are logged in with, the session's (five hours) and the week's, each a short meter with its
 percentage, the most used limit of each group, coloured in the grade the plan's usage endpoint gives
 it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). The bar shows the plans
-of the harnesses at least one group of agents runs on, each under its name („Claude“, „Codex“) once
+of the harnesses at least one group of agents runs on, each under its name ("Claude", "Codex") once
 it shows two; with one, no name, as before there were two. A click lists every limit of every plan with a login (the session, the week
 for all models, the week for a single model), a plan no agent runs on marked as such, with when it
 starts anew, where the numbers come from and as of when,
-and „Ausblenden“, which turns the setting off; „Nutzungslimits in der Menüzeile“ under Konfiguration →
-Allgemein turns it on again (on until then). The phone view shows the same at the right of its bar.
+and "Hide", which turns the setting off; "Usage limits in the bar" under Configuration →
+General turns it on again (on until then). The phone view shows the same at the right of its bar.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
 answer for a minute) while the setting is on and a page of Obeya is open, and closed once neither
@@ -63,7 +63,7 @@ too old to answer, or numbers that could not be fetched again for five minutes. 
 machines may use other logins; the bar shows this machine's.
 
 The bar has no hint line. `?` (or the round `?` button) shows the legend of mouse and keys, ending
-with the link „Wunsch oder Fehler melden“ (see Wishes for Obeya's makers). The button only teaches
+with the link "Report a wish or a bug" (see Wishes for Obeya's makers). The button only teaches
 the key: the legend says so, and once the key has been used the button is gone for good (per
 browser).
 
@@ -82,7 +82,7 @@ One element at the bar's left holds the canvases and what waits for the owner on
 place of a canvas switcher, a count of this canvas's cards that need the owner, and an inbox. Its
 button names the canvas and its home branch (or its count of repositories) and counts, in the
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
-them, and per canvas one for Obeya's answers waiting unread. A click lists under it „Braucht dich“, the
+them, and per canvas one for Obeya's answers waiting unread. A click lists under it "Needs you", the
 phone's list (see The phone view), built once for both: the same entries in the same order. Its
 head counts what waits on every canvas, as the button does; a snoozed card is neither listed nor
 counted, being put off, until it comes back. Each entry is a light row, its title and what it waits for since when,
@@ -124,12 +124,12 @@ the window as the bar does; the bar beside it then starts at its own edge.
 
 A double-click or `n` creates a card and unfolds it with the cursor in the text field. The title is
 optional: a card closed or started with text or screenshots but no title gets one from a short
-session of the „Kleine Aufgaben“ group (else the text's first line) before its start is judged;
+session of the "Small jobs" group (else the text's first line) before its start is judged;
 meanwhile the canvas shows the first line, muted, and a title the owner types wins. A card left
 empty is dropped (one left by a closed page on Obeya's next start). Deleting offers undo.
 
 An empty canvas names speaking first (hold Space and say what to build; the card appears at the
-pointer), the double-click second. The bar's "Neue Aufgabe" only teaches the double-click (a note
+pointer), the double-click second. The bar's "New task" only teaches the double-click (a note
 with "Got it") and goes for good (per browser) once a card has been created by double-click.
 
 ### Cards on the canvas
@@ -142,7 +142,7 @@ proposal, follow-up or prototype to its card joins the facing sides and runs abo
 below cards. Where a wait joins the same two cards (a follow-up queued behind the card it came
 from, say), only the wait's arrow shows: both lines would take the same course.
 
-The arrow before a project's title collapses it to its head („Zuklappen“, „Aufklappen“), for
+The arrow before a project's title collapses it to its head ("Collapse", "Expand"), for
 projects the owner does not work on (on a shared repository every colleague's plan docs are
 projects). Collapsed, it shows title, progress, start button, the badge of workstreams that need the
 owner, the bubble of its agent's unread answers (see Asking in a project's sheet), and a mark per workstream in its state's colour that names and opens it. Its workstreams stay
@@ -169,7 +169,7 @@ their first arrow, a line beside the pointer says what it will do while they dra
 be clicked, and once one is under the pointer, that it starts only once the other is done. The arrow
 points from the prerequisite to the card that waits for it and stays on the canvas, as every wait
 does, under the cards: a card it crosses stays clickable and draggable all over. Under the pointer
-it shows a trash button that removes it at once, with „Rückgängig“; the button sits on the arrow's
+it shows a trash button that removes it at once, with "Undo"; the button sits on the arrow's
 middle, or the nearest point along it no card covers. It is grey like the canvas's other remove
 buttons, darker under the pointer, and keeps its size on screen at every zoom, as does the band
 along the arrow that shows it. While the arrow holds a queued card, the
@@ -196,8 +196,8 @@ ones it builds on as waits (see Scheduling), and the project's sheet lists the w
 order with what each builds on.
 
 A project arriving with two or more open workstreams is arranged once read, unless the owner has
-moved one of its cards meanwhile. "Anordnen" in its head (or in its sheet) arranges it again, after a
-new reading if the doc has changed; it takes effect at once, with „Rückgängig“. A project that grows
+moved one of its cards meanwhile. "Arrange" in its head (or in its sheet) arranges it again, after a
+new reading if the doc has changed; it takes effect at once, with "Undo". A project that grows
 into other cards moves to the nearest clear spot.
 
 ### Moving around
@@ -219,8 +219,8 @@ fast enough not to wait on, long enough to keep the context.
 An unfolded card is as large as its content, up to the room between the window's top (over the
 dimmed bar) and the microphone; beyond that it scrolls. Only a window too low for a usable panel lets
 it reach under the microphone, with room for the last row to scroll past it. A card's row of
-decisions stays in view at its foot while a long text scrolls, so a planned workstream shows „Agent
-starten“ without scrolling.
+decisions stays in view at its foot while a long text scrolls, so a planned workstream shows "Start
+agent" without scrolling.
 
 A card whose conversation stands alone is a conversation wide. A card with a conversation beside
 what it is about (an idea, a proposal, a task with a result) is a wide split, the conversation a
@@ -266,7 +266,7 @@ number stands at the start of the card's state line on the canvas (its end is wh
 buttons show under the pointer), at the top right of an entry in the phone's lists (where the state
 line, wrapping on the narrow screen, has no room to set it apart), at the end of a project's head, beside the close
 button of its sheet and at the end of the phone's bar over the card. A click on it (outside the lists, whose entries open the card) puts it on the clipboard and
-says „Kopiert“ for a moment; under the pointer it shows a copy icon, on a touch screen always. The
+says "Copied" for a moment; under the pointer it shows a copy icon, on a touch screen always. The
 form is the same in every language.
 
 The owner names cards by it, to Obeya and to the agents, typed or spoken (speech recognition may
@@ -319,7 +319,7 @@ Index cards pinned to a wall, so that nobody takes Obeya for the stock AI-genera
   count of what waits), approved yellow-green, in PR petrol, proposal violet, idea madder red, live
   and done faded. Dark mode is black stock and white pencil with inks as far apart: blue and green
   never confusable, orange the loudest.
-- *Light or dark*: as the system until the owner picks Hell or Dunkel (or the system again) in Konfiguration (`theme` in
+- *Light or dark*: as the system until the owner picks Light or Dark (or the system again) in Configuration (`theme` in
   Obeya's `settings.json`). The page reads it before its first render and applies a change without
   reload; `color-scheme`
   follows so native controls and framed pages (a worker's HTML artifact, a mock) match. The site and shared demo pages follow the system.
@@ -352,17 +352,17 @@ along the new edge, all in under a second (see the decision on large animations)
 
 Marking: Shift + drag draws a lasso (without Shift it pans), Shift + click toggles a card (a
 workstream: its project; a click beside a project's workstreams marks the project); a lasso adds to what is marked. Marked cards carry drifting dashes and a
-line with their count and „Gruppe …“. Dragging a marked card moves all marked ones, an unmarked one
+line with their count and "Group …". Dragging a marked card moves all marked ones, an unmarked one
 alone. A click on the empty canvas or Esc unmarks. Two hints teach it, each until used once: after a
 card was moved alone, how to mark several; beside two or more marked cards, that dragging one moves
 them all.
 
-Assigning: „Gruppe …“, or a right click on a card (that card, a workstream's project, or all marked ones if it is among
+Assigning: "Group …", or a right click on a card (that card, a workstream's project, or all marked ones if it is among
 them), opens a ring of colour balls: the groups, "+" (a new group, named in place) and "∅" (none).
 Each group's name stands beside its ball with its count of cards still to be done (not finished, archived or a dropped idea; a project by its workstreams); a group at 0 goes
 pale, a candidate for deleting. Behind the ring the canvas steps back under a frosted halo and holds
 still. Moving towards a ball picks it, a click takes it, Esc closes the ring. The picked group's ×
-deletes it (its cards, archived ones too, belong to none), with „Rückgängig“.
+deletes it (its cards, archived ones too, belong to none), with "Undo".
 
 The Koordinator has the tools `group` (by name; a new name creates the group), `ungroup` and
 `rename_group`, and sees each card's group.
@@ -399,8 +399,8 @@ code, a generic one otherwise.
   per canvas, which a card moving to another canvas would lose and which would name two cards where
   the Koordinator or a worker speaks of another canvas's card.
 - **One navigation on the left for canvases and what waits** (owner, 2026-11-02): what waits for the
-  owner was split between „brauchen dich“ (this canvas), the switcher's counts (the others) and the
-  cards themselves; an inbox would have been a fourth place. Its list is the phone's „Braucht dich“, so
+  owner was split between "need you" (this canvas), the switcher's counts (the others) and the
+  cards themselves; an inbox would have been a fourth place. Its list is the phone's "Needs you", so
   the two never drift apart. A click on an entry always leads to another context, so the list is a
   popover that closes, pinned only by choice on a large screen. Rejected: one-click actions on the
   entries (approve, accept, dismiss, keep or remove, an answer option), since a click there is made
@@ -408,10 +408,10 @@ code, a generic one otherwise.
   one the agent should not have asked for; an inbox as a sheet on the right, which competes
   with Obeya's sheet for the same edge; and the phone's card faces in the list, whose orange frames
   say nothing where every entry waits for the owner and make the list loud.
-- **A snoozed card leaves „Braucht dich“** (issue #50, 2026-11-03): the owner put it off, so it
+- **A snoozed card leaves "Needs you"** (issue #50, 2026-11-03): the owner put it off, so it
   waits for nobody until it comes back, and listing it under what needs them (uncounted, at the
   end) only made the list longer. On the canvas it still stands, greyed; on the phone it moves to
-  the end of „Läuft“, which already ended in the snoozed cards there.
+  the end of "Running", which already ended in the snoozed cards there.
 - **Each canvas folds by itself, not as an accordion** (2026-11-03, issue #49): the
   owner folds away canvases they are not attending to while keeping several open side by side; an
   accordion would close one canvas as another opens, hiding what waits there. The counts on the
@@ -426,7 +426,7 @@ code, a generic one otherwise.
   order that a conflict check cannot see, without wanting to turn the cards into a project.
   Rejected: arrows to or from projects and workstreams, whose order the plan doc decides; a trash
   button on inferred waits, which Obeya would infer again at the next start; a confirmation dialog
-  before removing an arrow, where „Rückgängig“ does the same with one click fewer.
+  before removing an arrow, where "Undo" does the same with one click fewer.
 - **Path addresses with short card codes** (owner, 2026-11-01): a card's address is a permalink
   that survives a reload and can be passed on, and paths leave room for views nested deeper. The
   code is stored, not derived from the cards there are at the time, so a later card whose id starts
@@ -459,11 +459,11 @@ code, a generic one otherwise.
 - **A project the owner does not work on collapses** (2026-10-21): it stays in sight and needs no
   second list. Rejected: hiding projects into a list beside the archive, filtered by the plan doc's
   git author („Nur meine Projekte“).
-- **`?` and "Neue Aufgabe" only teach** (2026-10-15). Rejected: a permanent `?` button, and "Neue
-  Aufgabe" creating a card mid-view.
+- **`?` and "New task" only teach** (2026-10-15). Rejected: a permanent `?` button, and "New
+  task" creating a card mid-view.
 - **A card's title is optional** (2026-10-15). Rejected: a required title, which dropped untitled
   cards with their text.
-- **Archive, queue and "Neue Aufgabe" sit left in the bar** (2026-10-09). Rejected: the queue inside
+- **Archive, queue and "New task" sit left in the bar** (2026-10-09). Rejected: the queue inside
   the Koordinator's sheet.
 - **The usage limits come from Claude Code's `/usage` data** (2026-10-28), asked through the
   Agent SDK of an idle session. Rejected: calling the plan's usage endpoint directly with the OAuth
@@ -482,7 +482,7 @@ code, a generic one otherwise.
   seconds a new session takes after every switch of canvas.
 - **The bar's lists open on a click, not on hover** (owner, 2026-11-02 for the usage limits,
   2026-11-03 for the workspace pool), as its other menus do; the pool's pill, like the usage limits,
-  shows no „▾“. Rejected: hovering, which spread the list over the canvas whenever the pointer crossed the
+  shows no "▾". Rejected: hovering, which spread the list over the canvas whenever the pointer crossed the
   bar.
 - **The bar measures what fits** (2026-10-12). Rejected: container queries on the bar's width, which
   let a long branch or a large pool push buttons under the sheet.

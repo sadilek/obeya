@@ -8,7 +8,7 @@ and the repositories already know is read from them, not stored.
 Persistent (SQLite):
 
 - canvases, their per-canvas settings (home repository, whether the owner paused its agents, the card collecting each repository's
-  CLAUDE.md rules, the Rückschau's and Arbeitsrückschau's counts and when they last ran), groups
+  CLAUDE.md rules, the retrospective's and work retrospective's counts and when they last ran), groups
   and each card's group; owner-drawn dependencies between cards;
 - cards with everything shown on them or needed to resume them: kind, state, position, parent, the
   card they came from; the agent session, workspace, branch and status line; the open question or
@@ -34,7 +34,7 @@ Persistent (SQLite):
   is publishing or withdrawing) and a running re-share of outdated pages;
 - paired devices (a hash of the cookie, never the cookie itself; name; push subscription);
 - the decision log, preferences, the friction noted on each card's runs and the settings changes
-  the Arbeitsrückschau proposed from it.
+  the work retrospective proposed from it.
 
 Files under `~/.obeya/` (the same for the app and a checkout): the database (`obeya.db`), the
 owner's screenshots (`images/<canvas>/`), other files the owner dropped into a field

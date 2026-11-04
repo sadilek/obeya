@@ -23,10 +23,10 @@ before a recording would count (600 ms in all) it is typed after all. While Spac
 is read-only: Chrome on the Mac hides the pointer at every key pressed into an editable field, and
 the repeating key made it flicker.
 
-A field being spoken into is framed, and the line under it and the microphone says „→ ins Feld ·
-abschicken mit Enter“, then „Wird aufgeschrieben …“; nothing heard leaves the field as it was and
+A field being spoken into is framed, and the line under it and the microphone says "→ into the
+field · send with Enter", then "Writing it down …"; nothing heard leaves the field as it was and
 says so. Otherwise the line under the microphone names who hears the words and what goes with them
-(„→ Agent · Aufgabe: … mit Text und 1 Screenshot“).
+("→ Agent · Task: … with text and 1 screenshot").
 
 #### Drafts
 
@@ -38,12 +38,12 @@ storage as they change, so they survive a canvas switch and a restart.
 #### The microphone
 
 The log has each recording's length and level beside its transcript. While the key is held, a level
-flat for 1.5 s shows „Das Mikrofon liefert keinen Ton.“. The first press after a page load opens
+flat for 1.5 s shows "The microphone gives no sound.". The first press after a page load opens
 the microphone (0.2–0.3 s); released before it is open, nothing is recorded (rather than a recording running on unheld) and the owner is told
-„Das Mikrofon war noch nicht bereit“.
+"The microphone was not ready yet".
 
-A recording without audible speech gives „Ich habe nichts gehört.“, one Whisper cannot make sense of
-„Das habe ich nicht verstanden.“; the Koordinator gets neither to guess from. Whisper fails on such
+A recording without audible speech gives "I heard nothing.", one Whisper cannot make sense of
+"I did not understand that."; the Koordinator gets neither to guess from. Whisper fails on such
 recordings in recognisable ways (the card titles talk it into loops or guesses; it writes its
 phrases for silence), and where the titles may have misled it, it hears the recording again without
 them (`voice/transcribe_sidecar.py`).
@@ -73,29 +73,29 @@ one encoder pass; its own `multilingual` picks from all languages and hears shor
 
 #### A cloud service
 
-Where the machine is too slow, the recordings go to a cloud service (see The Spracheingabe settings)
+Where the machine is too slow, the recordings go to a cloud service (see The Voice input settings)
 as they came from the browser, with the card titles as a prompt where it takes one. A failure,
-refusal or no answer within 30 s says so under the mic („Groq hat die Aufnahme nicht erkannt (401:
-Invalid API Key).“), and the words stay in the field.
+refusal or no answer within 30 s says so under the mic ("Groq did not transcribe the recording (401:
+Invalid API Key)."), and the words stay in the field.
 
-#### The Spracheingabe settings
+#### The Voice input settings
 
-The configuration dialog's section „Spracheingabe“ checks the recognition (package, model), ffmpeg
-and uv, each missing piece with how to install it here. „Installieren“ fetches and loads the
+The configuration dialog's section "Voice input" checks the recognition (package, model), ffmpeg
+and uv, each missing piece with how to install it here. "Install" fetches and loads the
 recognition (about 710 MB for Parakeet, 1.8 GB for Whisper), so the first command does not wait for
 it, then times it on a short German sentence Obeya ships, twice, the faster run counting (the first
-after loading is slower). The line reads „Parakeet · 0,3 s für einen kurzen Satz“, or, over one
-second per second of speech, „zu langsam“, which opens the cloud offer; „Erneut messen“ measures
-again. The setup assistant's „Sprachbefehle“ shows the same line.
+after loading is slower). The line reads "Parakeet · 0.3 s for a short sentence", or, over one
+second per second of speech, "too slow", which opens the cloud offer; "Measure again" measures
+again. The setup assistant's "Voice commands" shows the same line.
 
-The cloud offer („Über einen Cloud-Dienst erkennen“, a link under the line also when the machine is
+The cloud offer ("Recognise through a cloud service", a link under the line also when the machine is
 fast enough) is one client for the OpenAI-style
 `/audio/transcriptions` endpoint with three presets: Groq (whisper-large-v3-turbo, first: a free tier
 without a card, takes a prompt), Mistral (Voxtral Mini Transcribe, EU-hosted, no prompt), and any
 OpenAI-compatible endpoint by address and model. Each says that recordings leave the machine and
-links to where its key is had; „Testen“ sends the shipped sentence and, once it comes back written,
+links to where its key is had; "Test" sends the shipped sentence and, once it comes back written,
 uses the service from the next recording on. With a service in use nothing local is needed; the line
-names it, with „Wieder auf diesem Rechner erkennen“. The measurement (per backend), base URL, model
+names it, with "Recognise on this machine again". The measurement (per backend), base URL, model
 and key are kept per machine in `voice.json` in Obeya's home (readable by the owner alone), never in
 a repository; the page only learns that there is a key.
 
@@ -104,8 +104,8 @@ transcribed and read, which on a busy CPU took longer.
 
 ### Who hears the words
 
-The line under the mic names who hears ("Agent · Aufgabe: …", "Agent · Idee: …", "Obeya · Aufgabe:
-…", "Obeya · Projekt: …"; under a card's text field only when Obeya reads rather than the card's
+The line under the mic names who hears ("Agent · Task: …", "Agent · Idea: …", "Obeya · Task:
+…", "Obeya · Project: …"; under a card's text field only when Obeya reads rather than the card's
 agent), and the words go exactly there: label and route follow one rule.
 
 On a card an agent listens on (a worker at work, waiting, in a pull request or finishing after the
@@ -114,7 +114,7 @@ agent; the agent reworking a proposal), typed words go straight to it at once, s
 written down, with their screenshots, as do clicks on answer options. By the card's state that is
 talk to an idea, an answer, or words the worker takes in (see Waiting for approval and Questions
 after the work). Spoken words carry the remark that speech recognition may have misheard them. They
-stand in the conversation under „Du“ at once; nothing waits for „Rückgängig“.
+stand in the conversation under "You" at once; nothing waits for "Undo".
 
 On any other card (planned, queued, finished without an agent), with a project open or nothing, the
 Koordinator reads the words with that card or project in focus. What is typed into a planned card's
@@ -134,22 +134,22 @@ already waits on the card for that step (see A step once a card gets somewhere).
 proposal is no such task: words an agent read in a proposal, a file or a pull request comment are no
 request of the owner's.
 
-The result is actions with a confirmation and „Rückgängig“ (above the mic, as a notice on every open
+The result is actions with a confirmation and "Undo" (above the mic, as a notice on every open
 page, in the card's conversation), a reply or a look-up, returned as the tool's result. Nothing goes
 back to the agent as a note, answer or feedback (refused if it tries): it has the words. In the card's
 conversation Obeya's reply stands under the agent's message its passing-on leads to (see The
 conversation). An agent at
 work may see the words only at its next tool call, so "gib frei" typed on a card costs a turn of
-several seconds where the button „Freigeben“ is immediate.
+several seconds where the button "Approve" is immediate.
 
 ### Commands to the Koordinator
 
 A Koordinator turn reads the transcript as speech that may be misheard (typed words as written, and
 it knows which, and in which field) and either acts or replies. One sentence may give up to 20
 actions: new card, new idea, a review card for a pull request, start, out of the queue, note, answer, feedback, approve, accept,
-dismiss, revise, stop, remember, Arbeitsrückschau, grouping and ungrouping cards, renaming a group,
+dismiss, revise, stop, remember, work retrospective, grouping and ungrouping cards, renaming a group,
 merging and deleting planned tasks,
-`configure` (see The Konfiguration dialog), `wish` (see Wishes for Obeya's makers), `wait_for` (see A
+`configure` (see The Configuration dialog), `wish` (see Wishes for Obeya's makers), `wait_for` (see A
 step once a card gets somewhere); on ideas discuss, build, plan doc (also for a planned task nobody
 has worked on), prototype, park, drop; on prototypes build on it, discard. Actions are checked
 against the cards' states; one that does not fit goes back to the Koordinator, which may reply
@@ -157,7 +157,7 @@ instead.
 
 #### New cards
 
-A new card, a follow-up too, starts at once like "Agent starten" (conflict check, queue), unless the
+A new card, a follow-up too, starts at once like "Start agent" (conflict check, queue), unless the
 owner says it should wait („nur notieren“, „für später“, „noch nicht starten“). One the owner names a
 time for („Anfang Dezember“, „in zwei Wochen“) is planned and snoozed until then, starting by itself
 at the time like a planned card the owner snoozed (see Snoozing a card); a day without an hour means
@@ -188,7 +188,7 @@ worker's whole summary, so "lege eine Folgeaufgabe für den ambient-Ton an" gets
 
 #### Other commands
 
-Start on a queued card starts it now despite the conflict, like "Trotzdem starten"; the Koordinator
+Start on a queued card starts it now despite the conflict, like "Start anyway"; the Koordinator
 sees what queued cards wait for ("starte alle wartenden Aufgaben"); "nimm sie aus der Warteschlange"
 takes a card back to planned. Replies answer questions ("Was ist seit gestern passiert?") as far as
 the cards and their history do.
@@ -205,12 +205,12 @@ other cards; not a proposal, an idea, a workstream of a plan doc or a prototype)
 only within one repository; for anything else Obeya refuses with the reason. Like every command they
 run after the undo window.
 
-„Review PR #5“ (or a pull request's link, „schau dir den PR an“) makes a review card for a
+"Review PR #5" (or a pull request's link, „schau dir den PR an“) makes a review card for a
 contributor's pull request and starts it; a number is the PR of the card's repository (the first on
 a canvas with several, unless the owner names one). Several pull requests in one sentence („Reviews
 für 5, 6 und 7“), or a list the Koordinator looks up first („für die neuen Pull Requests“), get a
 review card each; a task from a new card never stands in for one. The Koordinator's list of the
-cards marks review cards with their PR, and its history says „new review card“ for each, so a task
+cards marks review cards with their PR, and its history says "new review card" for each, so a task
 merely titled like a review is told apart. What the owner adds („schau besonders auf
 Security“) becomes its task. A PR with a card already opens that card, unless the owner has another
 one open, and the words go to its worker; one Obeya cannot read, or closed, gets none, and the owner
@@ -227,7 +227,7 @@ feedback the Koordinator passes on („sag dem Export, …“) waits for undo li
 
 #### A step once a card gets somewhere
 
-What can only follow once a card gets somewhere (starting „Login“ once „Export“ has landed, a new
+What can only follow once a card gets somewhere (starting "Login" once "Export" has landed, a new
 card on another canvas once a task here is done) the Koordinator waits for, as a worker snoozes: `wait_for`
 on a card, or on a new card of the same act, until it is done (default) or waits for the owner, with
 the step written to stand on its own (cards named by title, since another session tags cards anew). A card already there or a step without
@@ -241,11 +241,11 @@ itself (stopped, archived, removed, dropped), are taken up by an exchange withou
 owner's: the Koordinator hears what it meant to do and what became of the card (a card done also
 counts for a wait until it waits for the owner), and acts or replies. The wait goes only once that
 is decided, so a restart retries it and dropping it meanwhile takes back the decision; several steps
-on one card each stand, and the usage limit holds such a turn as it holds the owner's words. The reply reaches the owner as a notice, „Rückgängig“ where it
+on one card each stand, and the usage limit holds such a turn as it holds the owner's words. The reply reaches the owner as a notice, "Undo" where it
 acts, and stands where the waiting exchange was (the sheet, or the card then open). In the sheet the
-announcing reply carries „◷ Wartet, bis „Repository anlegen“ erledigt ist“ (or „… auf dich wartet“)
-with „Nicht mehr warten“; the exchange that takes it up opens with „„Repository anlegen“ ist
-erledigt“ (or what else happened) in place of the owner's words.
+announcing reply carries "◷ Waiting until “Create repository” is done" (or "… waits for you")
+with "Stop waiting"; the exchange that takes it up opens with "“Create repository”
+is done" (or what else happened) in place of the owner's words.
 
 #### A step once something is looked up
 
@@ -257,7 +257,7 @@ Aufgabe an.“); the look-up agent hears the step, so its answer brings what the
 issue's number, title, link and what it asks for), but takes no action itself. Once the answer is
 in, the Koordinator takes the step up as it takes up a wait: an exchange without words of the
 owner's, after the answer, where the asking one was (the sheet, or the card then open), its actions
-with one confirmation as a notice with „Rückgängig“, its new cards starting like any new card. Where
+with one confirmation as a notice with "Undo", its new cards starting like any new card. Where
 the answer does not allow the step (the look-up failed, or found nothing), it replies instead. The
 step stands until it is decided, so a restart takes it up again; the answer does not come to the
 Koordinator a second time as news with the next command.
@@ -265,32 +265,33 @@ Koordinator a second time as news with the next command.
 #### Confirmation and undo
 
 One confirmation covers all actions of a command; they run in order a few seconds after it reached
-the owner, so „Rückgängig“ takes back anything, an approval included. A page opened in that window
-shows the confirmation with „Rückgängig“ for the rest of it. Only talk to an idea goes on at once: it
+the owner, so "Undo" takes back anything, an approval included. A page opened in that window
+shows the confirmation with "Undo" for the rest of it. Only talk to an idea goes on at once: it
 changes nothing.
 
-The owner's words to the Koordinator show at once (spoken ones once written down) in the conversation
-of the open card, or else in the sheet, with „Obeya liest …“ until the confirmation follows (folded
-away on a card), and „Zurückgenommen.“ when taken back. A reply that answers without acting stands in
-the conversation, also for words an agent passed on. Words being read when Obeya stopped get a reply
-that says so.
+The owner's words to the Koordinator show at once (spoken ones once written down) in the
+conversation of the open card, or else in the sheet, with "Obeya is reading …" until the
+confirmation follows (folded away on a card), and "Taken back." when taken back. A reply that
+answers without acting stands in the conversation, also for words an agent passed on. Words being
+read when Obeya stopped get a reply that says so.
 
 Words the usage limit keeps from the Koordinator wait as a worker does (see Turns that end without a
-handover): the reply says when („Ich lese das um 19:20 von selbst.“), the sheet shows „Nutzungslimit
-· liest das um 19:20 von selbst“, and after the reset they are read knowing when they were said, the
-reply coming as a notice. Later words queue behind held ones. Held words survive a restart.
+handover): the reply says when ("I will read this by myself at 19:20."), the sheet shows "Usage
+limit · reads this by itself at 19:20", and after the reset they are read knowing when they were
+said, the reply coming as a notice. Later words queue behind held ones. Held words survive a
+restart.
 
 #### Commands on their way
 
 The microphone is free at once after letting go, and the owner may navigate or speak again: the
-target is fixed when the key goes down. Each recording gets a line above the microphone („„Export“ ·
-wird verstanden …“, for a card's agent „… · wird aufgeschrieben …“) that becomes its confirmation with
-„Rückgängig“, or disappears when the words went to the open card's agent. Several stack, oldest
+target is fixed when the key goes down. Each recording gets a line above the microphone ("“Export” ·
+being understood …", for a card's agent "… · being written down …") that becomes its confirmation
+with "Undo", or disappears when the words went to the open card's agent. Several stack, oldest
 first; the server reads them in order. A typed command gets no line while read (its conversation
 shows it), except one typed in the configuration dialog. A confirmation for a card other than the
 open one, for a request an agent passed on, or an answer looked up starts with the card it is about.
-A reply standing in the open sheet gets no line, unless it has „Rückgängig“, which the sheet lacks;
-nor does an answer Obeya looked up while the conversation of the card it stands on is open (on the
+A reply standing in the open sheet gets no line, unless it has "Undo", which the sheet lacks; nor
+does an answer Obeya looked up while the conversation of the card it stands on is open (on the
 phone, that card's conversation panel).
 
 ### Voice latency
@@ -325,7 +326,7 @@ Koordinator's sheet and the line above the mic. Demo narration is separate (see 
   in the Windows webview; silently sends audio to Google). Too slow even so: a cloud service, Groq
   first (free), Mistral (EU), or any OpenAI-compatible endpoint.
 - **Whisper hears the spoken language, not the interface's** (2026-10-08): told to expect English it
-  translated German into broken English, and long dictations ended in „not understood“.
+  translated German into broken English, and long dictations ended in "not understood".
 - **Python sidecars come through uv on first use**, for voice and demos, app and checkout alike
   (2026-10-06). Rejected: bundling Python (hundreds of MB per platform, different per GPU, every
   native library signed and notarised), while the models, the large part, download on first use
@@ -377,16 +378,16 @@ Koordinator's sheet and the line above the mic. Demo narration is separate (see 
   title rather than rewriting them, so nothing the owner said gets lost in a summary. Rejected:
   merging into a new card (it would lose the first card's place, group and history).
 - **Reviews of several pull requests are review cards too** (2026-11-02). Asked for several at once,
-  or for a list it looked up first, the Koordinator made tasks titled „Review PR #…“: its own
-  confirmations of earlier review cards read „Neue Aufgabe …“, its card list did not tell review
-  cards from tasks, and a step it wrote for after a look-up said „Aufgabe“. Once there, such tasks
+  or for a list it looked up first, the Koordinator made tasks titled "Review PR #…": its own
+  confirmations of earlier review cards read "New task …", its card list did not tell review
+  cards from tasks, and a step it wrote for after a look-up said "task". Once there, such tasks
   bred more of them. Their agents had no findings to record and nothing to merge from. Fixed by
   facts the Koordinator reads (review cards marked in its list and history, `review_pr` once for each
   pull request, the step after a look-up naming its action). Rejected: refusing a new card titled
   like a review (titles such as a review's follow-up are legitimate); letting a card's agent turn its
   task into a review card (a review card's safety rests on how it starts: a workspace on the PR's
   head and a session that reads none of the contributor's settings; a task that already ran in its
-  own workspace needs a new card anyway, which the owner gets by saying „Review PR #…“ on it).
+  own workspace needs a new card anyway, which the owner gets by saying "Review PR #…" on it).
 - **The Koordinator's model stays**: Sonnet, Haiku or a shorter prompt saved nothing reliable.
 - **Obeya does not speak** (2026-10-08): spoken confirmations and answers distracted the owner, who
   reads them anyway.

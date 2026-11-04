@@ -4,15 +4,14 @@ Obeya runs on any git repository as it is. What it cannot know by itself is how 
 works: how its app starts and stops, which checks a change must pass, how approved work lands, how
 a worker records a demo and where demos are shared. A repository says that in its settings,
 `.obeya/settings.json`, versioned with the code it describes (like `.vscode/settings.json`).
-"Konfiguration" shows them with the repository on its canvas's page and changes them without a line of
-code, for one machine or, with „Für alle ins Repository übernehmen“, for everyone.
+"Configuration" shows them with the repository on its canvas's page and changes them without a line of
+code, for one machine or, with "Take over into the repository for everyone", for everyone.
 
-The quickest way to get them: in "Konfiguration", a repository without settings of its own has
-„Von einem Agenten ausfüllen lassen“ ("Have an agent fill them in"). It puts a card on the
-repository's canvas whose worker writes them with the `obeya:settings` skill: it reads the
-repository, starts the app, records a demo with it to prove the recipe, and asks you what it
-cannot find out (a login, test data). This page is the reference for what it writes, and for
-writing or changing them yourself.
+The quickest way to get them: in "Configuration", a repository without settings of its own has
+"Have an agent fill them in". It puts a card on the repository's canvas whose worker writes them
+with the `obeya:settings` skill: it reads the repository, starts the app, records a demo with it to
+prove the recipe, and asks you what it cannot find out (a login, test data). This page is the
+reference for what it writes, and for writing or changing them yourself.
 
 ## A complete example
 
@@ -61,7 +60,7 @@ them there, and the agents on that machine tick their workstreams off there, out
 each top-level item is a workstream (`- [ ] **W1:** Title. Details`), a ticked one has landed,
 and once every one is ticked the project goes into the archive. Its goal is the first paragraph
 under `## Goal` (or `## Ziel`). Any other file there shows on the canvas in a note, with the
-reason it is not a project and "Als Projekt aufbereiten", which has an agent add the checklist; a
+reason it is not a project and "Prepare as a project", which has an agent add the checklist; a
 file that is meant to stay as it is (a template, an index) goes into `exclude`. Default:
 `{ "dir": "docs/plan", "exclude": ["TEMPLATE.md"] }`. The skill's check script
 (`plugin/skills/settings/lib/check.ts`) lists which docs in the directory are projects and why the
@@ -88,7 +87,7 @@ else `main`, since a pull request needs somewhere to go.
 
 ### `direct` — boolean
 
-With `land: "pr"`: the owner may approve a card with its button "Direkt auf main" instead, without a
+With `land: "pr"`: the owner may approve a card with its button "Straight to main" instead, without a
 pull request (never by word to the Koordinator).
 Obeya rebases onto `origin`'s default branch and pushes there (never forced); a protected branch
 refuses it and the card stays in review. Default: `false`.
@@ -110,10 +109,10 @@ Default: `["docs/plan/"]`.
 ### `workspaces` — `"clones"` or `"worktrees"`
 
 Where workers work. `clones`: a pool of full clones per repository, leased by one card at a time;
-the number comes from "Konfiguration" (clones to create, or existing ones to use). Use it when
+the number comes from "Configuration" (clones to create, or existing ones to use). Use it when
 every workspace runs its own app (ports, a database, Docker) or the tools break in a git
 worktree. `worktrees`: a git worktree of the configured checkout per card, any number in parallel
-unless "Konfiguration" gives the repository slots. Default: `worktrees`. A repository whose
+unless "Configuration" gives the repository slots. Default: `worktrees`. A repository whose
 configuration names clones (clones to create, existing ones, or other machines) works in clones
 whatever the settings say.
 
@@ -125,10 +124,10 @@ their comments do not go to the worker. Default: none.
 ### `language` — `"en"` or `"de"`
 
 The language of what lands in the repository and lasts: code, comments, commit messages, docs,
-plan docs, the CLAUDE.md lines the Arbeitsrückschau proposes. Workers and idea agents are told it
+plan docs, the CLAUDE.md lines the work retrospective proposes. Workers and idea agents are told it
 beside the language they talk to the owner in, so a German conversation does not make German docs.
 What agents write to the owner follows the owner instead (their latest words, else the conversation
-language of the Konfiguration), and demos follow `demo.language`. Default: `en`.
+language of the Configuration), and demos follow `demo.language`. Default: `en`.
 
 ### `app` — `{ run?, stop?, keep? }`
 
@@ -148,8 +147,8 @@ them itself; how the app starts and where it is, the workers find from the recip
   nothing running and five minutes have passed: it runs `stop` in the workspace (through `sh -c`,
   `cmd /c` on Windows), so a waiting card costs disk, not memory. The worker's next message tells
   it the app was stopped; it starts it again as the recipe says when it needs it. A stop that
-  fails is an error on the card. An app the owner opened from the card to try it by hand („App
-  öffnen“, offered while it runs) is stopped no sooner than 30 minutes after.
+  fails is an error on the card. An app the owner opened from the card to try it by hand ("Open
+  app", offered while it runs) is stopped no sooner than 30 minutes after.
 - `keep`: run before `stop`; exiting 0 means the app holds what must not be lost (a restored
   database, say), and Obeya leaves it running and says so on the card. The owner who wants it
   stopped anyway tells the worker.
@@ -165,16 +164,16 @@ page for something to look at; the worker picks which, and runs the app for it a
 
 - `language`: `"de"` or `"en"`, the language of the repository's demos: their narration, chapters
   and report, the pages they are shared on and the site's overview. It goes before the narration
-  language of the demo settings (each machine's, in "Konfiguration"), which applies without it. Obeya
+  language of the demo settings (each machine's, in "Configuration"), which applies without it. Obeya
   gives it to its workers as `DEMO_LANGUAGE`, which the demo skill reads; a session without Obeya
   finds it in the repository's `.obeya/settings.json`. A voice that clones a clip uses the clip of
   this language, so each machine's demo settings name one per language.
 
-- `site`: a static site Obeya keeps and deploys itself, so that "Teilen" puts a demo on a page for
+- `site`: a static site Obeya keeps and deploys itself, so that "Share" puts a demo on a page for
   colleagues, for a host that takes a directory (Cloudflare Pages, Netlify, an S3 bucket, a
   directory a web server serves, GitHub Pages). Without a site (or without its credentials on this
-  machine), "Teilen" puts the demo on your personal demo site (Konfiguration → Demos), unlisted,
-  and without that exports it as a file. „Demo-Seite einrichten …“ in the repository's settings
+  machine), "Share" puts the demo on your personal demo site (Configuration → Demos), unlisted,
+  and without that exports it as a file. "Set up a demo site …" in the repository's settings
   creates a site at Cloudflare Pages or GitHub Pages and fills this in:
 
   ```json
@@ -198,7 +197,7 @@ page for something to look at; the worker picks which, and runs the app for it a
   `KEY=value` lines relative to Obeya's home; `headers`, for reading the live site behind a login,
   `${KEY}` from `env`; `maxFile`, the largest file the host takes in bytes (25 MiB without it);
   `publish`, when a demo goes on the site: `"approved"` puts a card's latest demo there as you
-  approve its work, without it a demo goes there only when you click "Teilen". The overview is
+  approve its work, without it a demo goes there only when you click "Share". The overview is
   in `demo.language`. A `language` of the site, which named the overview's language
   until 2026-10-19, is no longer read: `demo.language` names it now.
 
@@ -207,7 +206,7 @@ page for something to look at; the worker picks which, and runs the app for it a
   beside them where its worker said the demo only supplements the one before. It goes out like
   any share; the landing does not wait for it, and a deploy that fails goes into the card's log
   without holding up the landing. Where work lands on the main branch itself (`land: "main"`, or
-  approved "Direkt auf main"), the commit that lands for a card with a page names it in a trailer,
+  approved "Straight to main"), the commit that lands for a card with a page names it in a trailer,
   `Demo-Video: <url>` (`Demo-Page: <url>` for an HTML artifact); a pull request gets a line in its
   description instead.
 
@@ -215,7 +214,7 @@ page for something to look at; the worker picks which, and runs the app for it a
   (in its demo's language) and the overview with its own templates, and after each share or
   withdrawal runs `deploy` with the `env` file's values in its environment. Credentials go into
   the `env` file on each publishing machine, never into git; a machine without it exports demos
-  instead, and "Teilen" names the file it lacks. Without `env`, the deploy uses the machine's own
+  instead, and "Share" names the file it lacks. Without `env`, the deploy uses the machine's own
   login.
 
   Several machines may publish to one site. Before each change Obeya reads the live site's
@@ -227,7 +226,7 @@ page for something to look at; the worker picks which, and runs the app for it a
   The pages get a look of the repository's own from `.obeya/theme.css` beside this file, a
   stylesheet put into every page after Obeya's own (as the default branch has it): its colour
   variables, fonts, a logo as a `data:`-embedded file of `.obeya/`. It is a file, not a setting;
-  which parts of the pages it can style is in the design doc's chapter „Sharing demos“ (A
+  which parts of the pages it can style is in the design doc's chapter "Sharing demos" (A
   repository's theme). A changed theme leaves the pages shared before it outdated, to share again.
 
 A site from the file is deployed to and read only once you trusted it (see Commands you trust).
@@ -236,7 +235,7 @@ Each of the two is a setting of its own. Default: the demo settings' language, n
 
 ### Not in the file: the canvas
 
-The canvas a repository is on, its name and id, are in "Konfiguration" too. Without a name, a
+The canvas a repository is on, its name and id, are in "Configuration" too. Without a name, a
 canvas is named after its first repository (the name in its `origin` URL, else its directory's).
 
 ## Which value applies
@@ -244,13 +243,13 @@ canvas is named after its first repository (the name in its `origin` URL, else i
 Every machine that runs Obeya on the repository reads `.obeya/settings.json`, a fresh clone
 included. Which value applies, highest first:
 
-1. The one set for this machine in "Konfiguration" (a repository's settings on its canvas's page; kept in
+1. The one set for this machine in "Configuration" (a repository's settings on its canvas's page; kept in
    `canvases.json` in Obeya's home, never in the repository).
 2. `.obeya/settings.json` **as the default branch has it**.
 3. What Obeya detects (`land`, the main branch).
 4. Obeya's default.
 
-"Konfiguration" shows each value with where it comes from („aus dem Repository“ for the file).
+"Configuration" shows each value with where it comes from ("from the repository" for the file).
 The file is read from the default branch (the local one when it has all of `origin`'s commits,
 else `origin`'s as last fetched), not from the checkout: the clones a canvas works in are on
 cards' branches most of the time. So **a change committed on a branch does nothing yet**; it
@@ -260,10 +259,10 @@ it reads the default branch anew: a landing, a merged pull request, a fetch). Th
 restarts that repository's agents once they paused; Obeya and the other repositories work on.
 
 The main branch is not in the file, since it says where the file is read from: a fresh clone has
-it from `origin`'s HEAD, and a machine that needs another sets it in "Konfiguration".
+it from `origin`'s HEAD, and a machine that needs another sets it in "Configuration".
 
-**From "Konfiguration".** Below a repository's settings, „Für alle ins Repository
-übernehmen“ takes the values set for this machine (all but the main branch) into the file. It
+**From "Configuration".** Below a repository's settings, "Take over into the repository for
+everyone" takes the values set for this machine (all but the main branch) into the file. It
 shows the file as it will be and where it goes; where work lands on the main branch, Obeya commits
 it there (beside the checkout, which keeps everything else as it is; a change of its own to the
 file is refused), and the values then come from the repository on this machine too. Where work
@@ -280,37 +279,37 @@ Obeya checks every field of the file. A field it does not know (`check:` for `ch
 wrong type (`"checks": "pnpm test"` instead of a list) does not count, and a mistake inside one
 (`app.stp` for `stop`) takes the whole field along: Obeya's default stands in
 its place, and the rest of the settings work. Each one shows as a problem at the repository in
-"Konfiguration", starting with `.obeya/settings.json`, with the field and, for a misspelt one,
+"Configuration", starting with `.obeya/settings.json`, with the field and, for a misspelt one,
 what it probably meant (`check: no such field (did you mean checks?)` under "Details").
 
 A demo site without a title, an http(s) URL or a deploy command, or whose deploy program is not
-there, shows the same way; until it is complete, "Teilen" exports demos. A `.obeya/adapter/` on the
-main branch, from before Obeya read everything from the settings, shows as a problem with „Von
-einem Agenten ausfüllen lassen“ beside it, whose worker moves what it says into the settings and
+there, shows the same way; until it is complete, "Share" exports demos. A `.obeya/adapter/` on the
+main branch, from before Obeya read everything from the settings, shows as a problem with "Have
+an agent fill them in" beside it, whose worker moves what it says into the settings and
 deletes it. These problems keep nothing from being saved, since they are fixed in the repository;
-Obeya's log names them when it starts. "Aufgabe zum Beheben anlegen" beside a problem has Obeya
+Obeya's log names them when it starts. "Create a task to fix this" beside a problem has Obeya
 create a task that fixes it.
 
 ## Commands you trust
 
 Some fields are commands Obeya runs on your machine itself, or addresses it contacts without a
 click: `app.stop` and `app.keep`, and the demo site's `deploy`, `env`, `url`, `headers` and
-`publish` (which deploys without a click on "Teilen"). Beside
+`publish` (which deploys without a click on "Share"). Beside
 them, the agents' sessions run what the repository's own Claude Code configuration names
 (everything under `.claude/` and `.mcp.json`: hooks, MCP servers, helpers) without asking. A repository cloned from someone else, or a change a colleague merged, can change
 them without you noticing, so Obeya holds each of them that is new on the default branch, or
 changed there, until you trust it:
 
 - a held `stop` or `keep` does not run: a waiting card's app keeps running;
-- a held demo site is neither deployed to nor read: "Teilen" exports demos;
+- a held demo site is neither deployed to nor read: "Share" exports demos;
 - a held Claude Code configuration is not read: the agents work in the repository without it (and
   get its CLAUDE.md in their instructions, since Claude Code reads that with the configuration).
 
-"Konfiguration" shows them as a problem at the repository, counted on its button in the bar: what
-each does, a diff against what you trusted last, and „Diesen Befehlen vertrauen“ („Trust these
-commands“), which lets them run from then on, as long as the default branch has them so. What you
-set for this machine needs no trust, and neither do values you take into the file with „Für alle
-ins Repository übernehmen“.
+"Configuration" shows them as a problem at the repository, counted on its button in the bar: what
+each does, a diff against what you trusted last, and "Trust these commands",
+which lets them run from then on, as long as the default branch has them so. What you set for this
+machine needs no trust, and neither do values you take into the file with "Take over into the
+repository for everyone".
 
 ## Testing the settings
 
@@ -322,7 +321,7 @@ ins Repository übernehmen“.
    ```
 
    It prints what Obeya makes of them (setup, checks, landing, workspaces, the plan docs, the
-   app's recipe and commands, the demo site) and every problem "Konfiguration" would report for them, and
+   app's recipe and commands, the demo site) and every problem "Configuration" would report for them, and
    exits with 1 when there is one. A worker runs it as `bun ${CLAUDE_SKILL_DIR}/lib/check.ts`.
 2. **The commands work.** Run `setup` and each of `checks` in a fresh clone; start the app as
    `app.run` says and open it; run `app.stop` and see it stop.
@@ -330,5 +329,5 @@ ins Repository übernehmen“.
    nothing else. This is what the settings skill does before it hands over.
 4. **On a canvas, once it is merged.** A canvas reads the settings from the default branch only,
    so steps 1–3 are what can be tried before the merge. Once they are on the default branch, the
-   next card started gets its brief from them; new or changed commands wait in "Konfiguration"
+   next card started gets its brief from them; new or changed commands wait in "Configuration"
    until you trust them.

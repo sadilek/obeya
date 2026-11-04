@@ -51,7 +51,7 @@ into the chapters under `docs/design/` (or the index) and the doc goes.
 - UI strings live in one place, `src/ui/strings.ts`, in German and English (two tables of one shape).
   German UI texts and docs call a button "Button" or "Schaltfläche", never "Knopf".
 - An interaction that several kinds of card share (answering questions with comments and one Send
-  button, the conversation history, starting („So bauen“, „Übernehmen und starten“) while the agent
+  button, the conversation history, starting ("Build it like this", "Accept and start") while the agent
   is still working) is built once in shared code and works the same on each of them; no card kind
   gets its own variant.
 - The phone view stays as simple as possible: not every desktop view belongs on it (the workspaces

@@ -67,10 +67,10 @@ of the change as Codex reports it, which may be after it began.
 ### Harnesses, models and effort
 
 Every agent belongs to one of four groups: the Koordinator (voice commands, estimates and schedules,
-look-ups, project agents, learner, Rückschau, proposal rewrites), workers, ideas' exploration agents,
-and small jobs (the Arbeitsrückschau's notes and proposals, a shared demo page's text, a card's
-title). The Konfiguration dialog's „Agenten und Modelle“ sets for each group, in this order, the
-harness (column „Läuft auf“: Claude Code or Codex; one not installed or not logged in is shown, not offered), the model
+look-ups, project agents, learner, retrospective, proposal rewrites), workers, ideas' exploration agents,
+and small jobs (the work retrospective's notes and proposals, a shared demo page's text, a card's
+title). The Configuration dialog's "Agents and models" sets for each group, in this order, the
+harness (column "Runs on": Claude Code or Codex; one not installed or not logged in is shown, not offered), the model
 (for Claude Code its default or an alias: Fable, Opus, Sonnet, Haiku; for Codex its default or a
 model it lists for the login, by name) and the effort (low to max, for a Codex model those it
 takes), and marks the presets: Claude Code with Opus throughout, high effort for workers and
@@ -89,7 +89,7 @@ configuration names some (`clones`, `workspaces` or `hosts`). Worktrees: any num
 unless the repository has `slots`. Clones (for tools that break in a worktree, or an app stack per
 clone): a pool, each clone leased by one card. `clones` is how many Obeya makes in its own directory
 (`workspaces/<canvas>/<repo>/1..n`), on top of the existing ones `workspaces` lists (on the command
-line `--clones <n>`, `--workspace <path>`); the Konfiguration dialog shows the sum. Where work lands
+line `--clones <n>`, `--workspace <path>`); the Configuration dialog shows the sum. Where work lands
 on the local main, the checkout itself is never one of them, even where `workspaces` lists it: work
 lands there, the Lesestand is read there, and a card's branch checked out in it stopped every
 landing (2026-10-30, a tester's report). The dialog does not count it and says why; listed alone,
@@ -100,7 +100,7 @@ Starting a card does not block the server: the workspace is taken at once (so sl
 see it taken), and git makes it ready in the background: `git worktree add` (a minute in a large
 repository on Windows), or a clone's fetch and checkout of the card's branch (over SSH on a host),
 the temporary worktree of a finished card's question likewise. Meanwhile the card is at work, its
-status line „Bereitet den Workspace vor …“; it holds a slot, a restart waits for it, and the
+status line "Preparing the workspace …"; it holds a slot, a restart waits for it, and the
 owner's words wait unread until the worker starts with its task. A card stopped meanwhile gives
 the workspace back once git is done. Where git fails, the workspace goes back, the card returns to
 where it was (planned, its snooze gone, the words kept for its next start) and its conversation
@@ -132,8 +132,8 @@ detached HEAD with commits on no branch of `origin` (fetched with pruning) unles
 change is as on `origin`'s main branch, so a branch squashed or rebased in its pull request counts as
 landed (where work lands on the local main, `origin` is the Obeya checkout). The folder is moved
 aside first, so a clone named again meanwhile (here or by another canvas) is never removed under a
-card. Otherwise it stays: the log says once what lies in it, the pool's list shows „bleibt: nicht
-gelandete Arbeit in <Pfad>“, and a later start looks again; raising the number takes it back as it
+card. Otherwise it stays: the log says once what lies in it, the pool's list shows "stays: work not
+landed in <path>", and a later start looks again; raising the number takes it back as it
 is. Clones the owner listed, and folders on a host no longer configured, are never touched. A
 workspace on this machine whose folder is gone (moved or deleted by hand) and that the configuration
 no longer names leaves at once, clone or worktree, held or not: its card names no workspace any
@@ -150,12 +150,12 @@ brought back with the undo takes its clone back if still free, else another at i
 #### Taking a card's workspace
 
 While every clone of a repository is taken (or blocked) and a card waits for one (or a finished
-card's question for a clone), the pool's list has a faint „⋯“ beside each card that holds a clone
+card's question for a clone), the pool's list has a faint "⋯" beside each card that holds a clone
 and is at work, waits for the owner, or was stopped with work in it (not a card whose work landed,
-nor a prototype). It opens „An wartende Karte abgeben“ with a sentence on what that does. A click
-there gives that clone to the card waiting longest: after eight seconds in which „Rückgängig“ (in
-the confirmation, and in the row, which says „gibt ihn ab“) takes it back, the card's worker stops
-as with „Stoppen“, the app in the clone stops (`app.stop`, whatever `app.keep` says, since another
+nor a prototype). It opens "Give to the waiting card" with a sentence on what that does. A click
+there gives that clone to the card waiting longest: after eight seconds in which "Undo" (in
+the confirmation, and in the row, which says "giving it up") takes it back, the card's worker stops
+as with "Stop", the app in the clone stops (`app.stop`, whatever `app.keep` says, since another
 card works there next), and what is uncommitted there (untracked files too, ignored ones aside)
 goes into a commit of Obeya's on the branch, marked by the trailer `Obeya-Kept: uncommitted work`.
 The clone is then free and clean; the card is planned without a workspace and remembers the clone
@@ -165,7 +165,7 @@ Its next start takes that clone if it is free, else another on the same machine 
 branch from one clone to another only there, so the card waits for one of that machine's): the
 clone fetches the branch from the one that kept it, which then drops its copy, and the commit of
 Obeya's is taken apart again, its work uncommitted as before. The worker is a new session, as with
-„Neu starten“, told that the branch holds earlier work, perhaps uncommitted. The undo window is not
+"Start again", told that the branch holds earlier work, perhaps uncommitted. The undo window is not
 kept across a restart of Obeya: the card then keeps its workspace. Repositories in worktrees have
 no such button: a worktree is the card's own, and a card waiting for a slot gets one when a busy
 worker is paused or stopped.
@@ -186,10 +186,10 @@ main branch the same way, without blocking.
 Workers in clones are capped by slots, not clones: a slot is room for one busy worker (in a turn or
 waiting for background work), counted per machine and repository (`slots` here, per host for the
 others; as many as clones when left out). A new card takes a clean free clone on the first machine
-(this one, then the hosts in order) with a slot left; with none, it waits („Wartet auf freien Slot“)
+(this one, then the hosts in order) with a slot left; with none, it waits ("Waiting for a free slot")
 until a turn ends somewhere. A card holds its clone until its work lands, a slot only while its
 worker is at work. A message to a waiting card is never held back for a slot, so a machine may go
-over its slots for a while. A repository in worktrees can have slots too (in the Konfiguration
+over its slots for a while. A repository in worktrees can have slots too (in the Configuration
 dialog under its row), which cap its busy workers the same way; left out, there is no cap.
 
 #### A finished card's question
@@ -200,20 +200,20 @@ branch, from the clone here that holds the branch or else the configured checkou
 copy of the branch, else the default branch), under
 `follow-up/<card>` in the repository's workspaces directory, removed when the follow-up ends. Its
 worker is told the app stack may not run there; if it needs it, it calls `need_clone`, tells the
-owner with `reply` and ends its turn, and the card waits for the next clean free clone („Wartet auf
-Workspace“), ahead of queued cards, where its session resumes by itself; what the owner says
+owner with `reply` and ends its turn, and the card waits for the next clean free clone ("Waiting for a
+workspace"), ahead of queued cards, where its session resumes by itself; what the owner says
 meanwhile waits for it.
 
 #### The pool in the bar
 
-For each repository in clones the top bar shows the pool („Workspaces“): per machine (named once
+For each repository in clones the top bar shows the pool ("Workspaces"): per machine (named once
 there is more than one) a dot per clone, solid while its card's worker is at work, pale while merely
-held, orange while free but blocked, and how many new cards could start („2 frei“, „alle belegt“,
-„keiner frei · 1 blockiert“). A click (a tap) drops down a list, closed again by a click beside it,
+held, orange while free but blocked, and how many new cards could start ("2 free", "all taken",
+"none free · 1 blocked"). A click (a tap) drops down a list, closed again by a click beside it,
 Escape or another click on the pill: per machine its slots at work and clones taken, then each workspace on a line of its own, free ones included, with its path
 (cut at the front where too long, so its end stays readable), the dot the pill shows for it, and
-the card in it, „frei“ or „blockiert“; then how many cards wait for a workspace or a slot. While
-none is free and a card waits, „⋯“ beside the cards whose clone may go to it (see Taking a card's
+the card in it, "free" or "blocked"; then how many cards wait for a workspace or a slot. While
+none is free and a card waits, "⋯" beside the cards whose clone may go to it (see Taking a card's
 workspace). The card
 is a link: a click closes the list, flies to the card and opens it; for a card on another canvas
 the page switches to that canvas at the card's address (see Addresses in The canvas), which opens
@@ -236,15 +236,15 @@ the pill for the reason.
 
 A repository may be a folder that is to stay without git: a family archive in a cloud drive, where a
 `.git` would mean sync conflicts and copies of every scan. Its configuration entry says `"git":
-false`; the first canvas and „+ Repository“ offer it beside setting up git (see Setting up git in a
+false`; the first canvas and "+ Repository" offer it beside setting up git (see Setting up git in a
 folder). It has no branch, landing, pull requests, prototypes, hosts or clones, and the UI offers
-none of them (nor „Für alle ins Repository übernehmen“: `.obeya/settings.json` is written into the
-folder like any file). The folder is its own Lesestand, its plan docs, settings and Claude Code
-configuration read as they are; a plan doc „Als Projekt planen“ writes is named at the start, as in
-a plan folder outside the repository, since nothing of it lands.
+none of them (nor "Take over into the repository for everyone": `.obeya/settings.json` is written
+into the folder like any file). The folder is its own Lesestand, its plan docs, settings and Claude
+Code configuration read as they are; a plan doc "Plan as a project" writes is named at the start, as
+in a plan folder outside the repository, since nothing of it lands.
 
 Every card works in the folder itself, any number at once. Nothing lands: approving makes the card
-`done` („Freigegeben. Die Änderungen bleiben im Ordner: erledigt.“). The worker is told others work
+`done` ("Approved. The changes stay in the folder: done."). The worker is told others work
 in the folder at the same time and that the card lists what it changed; a demo is needed only where
 something can be seen (an HTML artifact for a draft).
 
@@ -258,8 +258,8 @@ one during two cards' calls is listed by both and undone by neither. A shell com
 writes no file (each of its commands only reads, prints or waits, such as `sleep 30; wc -l
 out/export.csv`, and no output goes into a file) opens a window too, but what changes in it alone may
 come from another program (a nightly export landing while the agent waits for it): the card keeps it
-apart as uncertain, below its own changes under „Zugleich geändert, vielleicht von einem anderen
-Programm“, never as its result, its size or what discarding puts back. A writing call open at the
+apart as uncertain, below its own changes under "Changed meanwhile, perhaps by another
+program", never as its result, its size or what discarding puts back. A writing call open at the
 same time, of any card, takes the change instead; the card's own later change of such a file makes
 it the card's, from as it was then; an uncertain change of a file the card changed leaves its entry
 as it was, so undo finds it changed since. A command that may write keeps all it changes, whoever
@@ -273,14 +273,14 @@ moved, deleted; a moved directory is one move), with a hash of what it wrote, ke
 done. Agents that only read (the Koordinator, project agents) are not followed. A Codex worker's calls are
 followed through its hooks the same way (see Codex).
 
-The card shows the list in the place of its branch („Im Ordner geändert: 4 Dateien +12 −1 ·
-Rückgängig: vollständig“), whose size shows it over the page with diffs of the text files whose
+The card shows the list in the place of its branch ("Changed in the folder: 4 files +12 −1 ·
+Undo: full"), whose size shows it over the page with diffs of the text files whose
 earlier version Obeya kept, and in full as the change list at the top of its left column (see The
 files beside the demo), with what discarding would leave. Where the card shows no files beside its
 conversation (before its first handover), the same list stands above the conversation, a click on a
-file's name or line counts opening its diff, with „Ganzes Diff ansehen“ beside it.
+file's name or line counts opening its diff, with "See the whole diff" beside it.
 
-**Undo.** „Änderungen verwerfen“ on a card waiting for approval puts back what the card changed after
+**Undo.** "Discard changes" on a card waiting for approval puts back what the card changed after
 eight seconds in which the button counts down and a hint beside it says a second click calls it
 off, since this undo cannot
 itself be undone. Before a card's first write, Obeya prepares it under `undo/<canvas>/<repo>/<card>`
@@ -313,7 +313,7 @@ waiting cards are parked the same way. Only processes go; the workspace stays th
 
 Other machines a repository's workers run on, over SSH. The configuration lists them per repository
 (`hosts`: name, SSH target, directory for the clones, number of clones and of slots); the
-Konfiguration dialog edits them as table rows under the clones, as the Koordinator's `configure` does
+Configuration dialog edits them as table rows under the clones, as the Koordinator's `configure` does
 by voice. Only a repository in clones that lands through its remote can have them; a name means one
 machine across the configuration. Obeya clones the repository there in the background (retrying an
 unreachable host every two minutes, logging a failure once until it changes) and registers each clone
@@ -353,13 +353,13 @@ session's server here through a port of their own forwarded the same way.
 
 Codex there runs on the host's own Codex login: none travels, since Codex keeps its login as a file
 whose refresh token it renews, and one login used on two machines would end the other's. When it
-lost it, the card's „Bei Codex anmelden“ renews it there (see Conversation on the card).
+lost it, the card's "Log in to Codex" renews it there (see Conversation on the card).
 
 Screenshots in the owner's message are copied to `~/.obeya/remote/images` there and named by those
 paths, as are the copies of dropped files whose paths the message holds (to `~/.obeya/remote/files`;
 a file named by its own path stays on this machine, out of the worker's reach); a demo named in a handover is copied here (`<home>/hosts/<host>/<path>`) afresh at each
 handover and served and shared from that copy (a path with `.` or `..` is refused, since the copy
-replaces what lies at its place); the Arbeitsrückschau reads
+replaces what lies at its place); the work retrospective reads
 transcripts from there; gh runs here, on the pull request's URL.
 
 #### A dropped connection
@@ -395,8 +395,8 @@ for its hooks), and what the repository's work needs.
   Rejected: a terminal with `codex login` (the UI sends the owner to no command line, and on a host
   it would not reach the sign-in's return); the device-code sign-in, which works from a phone but
   has to be switched on in ChatGPT's settings first.
-- **The harness column is called „Läuft auf“** (owner, 2026-11-03), under the title „Agenten und
-  Modelle“, which names the rows. Rejected: „Harness“, jargon beside that title; „Werkzeug“ or
+- **The harness column is called "Runs on"** (owner, 2026-11-03), under the title "Agents and
+  models", which names the rows. Rejected: "Harness", jargon beside that title; „Werkzeug“ or
   „Tool“, which agents' commands are called already, and which undersells a coding agent.
 - **Codex in its sandbox with its automatic reviewer** (2026-11-03): the counterpart of Claude Code's
   auto mode, and what Codex's own users get by default. Rejected: full access without approvals,
@@ -431,7 +431,7 @@ for its hooks), and what the repository's work needs.
   cloning works).
 - **A change during a command that writes nothing is uncertain, not the card's** (2026-11-04): a
   Codex worker counting the rows of an export that a background process wrote while it waited in
-  `sleep 30` steps got the export as its result, and „Änderungen verwerfen“ would have deleted it.
+  `sleep 30` steps got the export as its result, and "Discard changes" would have deleted it.
   The command line tells which commands cannot write (a fixed list of readers, options that write
   excluded, no output redirected into a file); anything not known may write. Rejected: telling the
   writing process apart (macOS `fs_usage`, Endpoint Security and Linux fanotify need root or an
@@ -454,7 +454,7 @@ for its hooks), and what the repository's work needs.
   and cleaning it afterwards (another card could take it half cleaned).
 - **The pool shows why a free clone goes to no card** (2026-10-26, GitHub issue #9): a clone with
   uncommitted changes counted as free in the pill while cards waited for one, with nothing saying
-  why; the card's own line („Die freien Workspaces haben nicht committete Änderungen“) named
+  why; the card's own line ("The free workspaces have uncommitted changes") named
   neither the clone nor the files.
 - **The pool lists each workspace with its path and card** (2026-10-26, GitHub issue #10): a summary
   of counts and titles did not say which folder a card works in, nor which clone is free, and gave
@@ -468,7 +468,7 @@ for its hooks), and what the repository's work needs.
   uncommitted work at each click; refusing while the clone holds uncommitted work (a worker at work
   nearly always has some). It shows only while no clone is free and a card waits (the card it was
   taken from queues again and would otherwise take the clone straight back), and behind a faint
-  „⋯“ rather than a button per row (owner, 2026-10-27: a rare action whose label alone did not
+  "⋯" rather than a button per row (owner, 2026-10-27: a rare action whose label alone did not
   say what it is for, and buttons in every row crowded the list).
 - **Free clones are chosen by their last look, the one taken looked at again** (2026-10-21): in a
   large repository (GitHub issue #2: 9,188 files, on Windows) or over SSH, `git status` in every free

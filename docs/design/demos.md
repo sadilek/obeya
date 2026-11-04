@@ -97,7 +97,7 @@ candidates, the words its hearing back found said differently (see A voice that 
 of them are the recognition's own mishearings of names, which no respelling mends.
 
 Voices are not labelled as generated, a clone included: the whole demo is generated, and that is
-clear from where it is shown. „Das ist meine eigene Stimme“ in the settings decides the person: the
+clear from where it is shown. "This is my own voice" in the settings decides the person: the
 first person only in the owner's own voice, otherwise (and without a voice) the narration presents the work without "I".
 `DEMO_VOICE` overrides the voice for one render (another provider, never the owner's own, or a
 `.wav` that Qwen3-TTS clones, or `none`). A clone of the owner's voice never leaves the machine. Each clip is
@@ -147,7 +147,7 @@ track languages with the demo.
 #### The demo directory
 
 Demos go into the demo directory, each into a directory of its own: `~/demos` unless the demo
-settings name another (`directory` in `demo.json`, „Verzeichnis“ at the top of the dialog's Demos
+settings name another (`directory` in `demo.json`, "Directory" at the top of the dialog's Demos
 section, which shows the path that applies). It is an absolute path or one from `~` (`~` is the
 user's home on every platform, so `~/demos` holds on Windows too); a relative one would land
 wherever the agent works, so it counts as none and the dialog says so. The skill reads it from the
@@ -160,7 +160,7 @@ wherever that is. A worker on a host puts its demos into the host's `~/demos` (s
 
 A render keeps the frames its video is cut from in its work directory (`.work/frames`, with their
 list `.work/frames.txt`), about half a gigabyte a demo, which only re-voicing needs once the video
-is made. Obeya deletes them a set time after the demo's last render: „Einzelbilder behalten“ in the
+is made. Obeya deletes them a set time after the demo's last render: "Keep frames" in the
 dialog's Demos section (`keepFrames` in `demo.json`: whole days, or `always`), two weeks unless set.
 A render's last time is the newest change in its work directory (a re-voicing or a retake counts),
 and a demo a render still holds (its `render.pid` names a running process) is left alone, checked
@@ -195,7 +195,7 @@ Obeya's home, Qwen3's models in the Hugging Face cache, where one downloaded bef
 installed; without Obeya the skill installs them the same way from the command line). Qwen3's
 environment holds the speech recognition it hears its sentences back with (onnx-asr); one installed
 with fewer packages than today's counts as missing, and installing it again adds the rest. A render
-refuses a voice that is not installed and says how to install it. „Anhören“
+refuses a voice that is not installed and says how to install it. "Listen"
 plays a sentence in the chosen voice and narration language. For Qwen3-TTS the dialog has a field
 per language for the clip to clone, each saying what keeps it from working (no such file, no
 transcript beside it).
@@ -203,7 +203,7 @@ transcript beside it).
 #### A voice that stays loaded
 
 A voice that can stay loaded (so far Qwen3-TTS) is started on the first uncached clip of a render
-(or an „Anhören“) and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
+(or an "Listen") and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
 once the model is loaded, a line per sentence done, then `ok` or `error` per clip. So the model and
 the reference load once (a warm load costs about 2 s, a cold one 17 s, a clip 2–4 s). The libraries
 print on stdout too, so the voice moves its stdout to stderr and keeps a duplicate for the protocol;
@@ -277,8 +277,8 @@ holds takes no lock: renders go through Obeya turn by turn, with one model in me
 A setup check lists what a render needs: Node 22.18 or newer (TypeScript without flags), Playwright
 and a browser, ffmpeg with libx264, uv (which brings Python) and the voice, each missing piece with
 how to install it on this platform (Homebrew, winget, the Linux family's package manager, else a
-page). The configuration dialog shows it below the demo settings („Was Demos auf diesem Rechner
-brauchen“), again after an installation and on „Erneut prüfen“, naming what a voice lacks in the
+page). The configuration dialog shows it below the demo settings ("What demos need on this
+machine"), again after an installation and on "Check again", naming what a voice lacks in the
 narration language. A render runs the check first and stops with the whole list; an agent installs a
 voice itself but asks the owner for system software. The machine setup guide is
 `docs/demo-setup.md`. Not tried yet (2026-10-05): Edge as the fallback, a voice command through
@@ -310,7 +310,7 @@ the director holds `caffeinate -i` against idle sleep; a closed lid on battery s
 #### Cutting waits
 
 A scene wraps a wait in `d.skip`: the page fades to white, the cut falls while it is white, and it
-fades back in with how much later it is („31 Sekunden später“), about two seconds in all. The cut
+fades back in with how much later it is ("31 seconds later"), about two seconds in all. The cut
 comes out of frames, narration, chapters and captions alike; a clip the cut falls into goes on
 across it, so a skip belongs after the scene's narration, and the next scene says the jump („Kurz
 darauf“). The first five seconds of a wait are cut without a trace, only the rest falls into the
@@ -502,7 +502,7 @@ when it arrives.
 
 A worker's question may bring a demo too (`ask`'s `demo`, a video or an HTML artifact): drafts or
 variants the owner is to choose from before the worker goes on, shown where a handover's demo would
-be, with a hint that it belongs to the question („Zur Frage des Agenten.“), without autoplay and
+be, with a hint that it belongs to the question ("For the agent's question."), without autoplay and
 without sharing, since it is not the result of the work: no page shows it, nor counts it as a demo
 the page lacks. It replaces the demo on the card like a new handover's and stays in view after the
 answer while the worker goes on, among the earlier demos once a handover brings its own (a folder
@@ -535,18 +535,18 @@ and the video keeps the focus. Hints for Z and the arrows show until first used.
 
 What the owner types or says while the video stands in the middle is about that place. Space or the
 microphone held while it plays pauses it, so the speech recognition does not hear the narration, and
-letting go plays on; typing pauses it too, with the place quoted above the field („1:23 · chapter“,
-× to remove it), and Enter sends and plays on. „Hier kommentieren“ beside the magnifier (both shown
+letting go plays on; typing pauses it too, with the place quoted above the field ("1:23 · chapter",
+× to remove it), and Enter sends and plays on. "Comment here" beside the magnifier (both shown
 on hover only, so they do not cover the picture) pauses and focuses the field; the legend (`?`) has
 a section for the video. At the start or the end, words are about the work as a whole.
 
 The browser uploads the frame as a screenshot; the server adds the chapter and the narration's
 sentence at that time (its caption; in a demo with a cue per scene, estimated by its share of the cue). The conversation shows the
-words with the frame and „▶ 1:23 · chapter“, which plays the video from there.
+words with the frame and "▶ 1:23 · chapter", which plays the video from there.
 
 On a card waiting for approval, Obeya holds such comments until the owner has finished watching, so
 the worker reworks the demo once. They show at once, with a line under the last that they go to the
-agent once the owner has watched, and „Jetzt senden“; they go when the owner sends them, the video
+agent once the owner has watched, and "Send now"; they go when the owner sends them, the video
 ends, the card closes, the video stands still for three minutes, the owner writes without a place
 (in the same message, after them), or approves (the worker hears them with the approval, to propose
 as a card what still matters); otherwise ten minutes after the last. Approving as the card folds
@@ -556,15 +556,15 @@ worker gets them in one message, each as `[Demo video at 1:23, chapter „…“
 the words with its frame. Such a comment is no answer to the report's question. Comments still held
 once the card no longer waits for approval (the worker, taking in earlier words, asked a question or
 went back to work) are never dropped: with a question open they go with the answer or a note (the
-line under them says so, without „Jetzt senden“); otherwise they go as a note when they would have.
+line under them says so, without "Send now"); otherwise they go as a note when they would have.
 On a card at work or finished, a comment with a place goes at once.
 
 #### Earlier demos
 
 A new demo replaces the one on the card, but the card keeps those before: a demo after feedback
-often shows only what changed. A line above the video, left of „Teilen“, says which is shown
-(„Neueste Demo 2 von 2 · 13:37“), with ‹ and › and „Zur neuesten“; an earlier one is marked in
-colour („Frühere Demo 1 von 2“). Sharing is about the demo shown (see Several versions on one page).
+often shows only what changed. A line above the video, left of "Share", says which is shown
+("Latest demo 2 of 2 · 13:37"), with ‹ and › and "To the latest"; an earlier one is marked in
+colour ("Earlier demo 1 of 2"). Sharing is about the demo shown (see Several versions on one page).
 Stepping does not count as having finished watching, and a new handover leaves the owner on the demo
 they look at. A demo whose directory a later one reused, or whose files are gone, is not offered. A
 comment on a place keeps its demo: a click shows that demo, and the worker hears it as about the
@@ -716,8 +716,8 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   with "no frame for 20 s" to the second when the Mac went to sleep (lid closed, on battery); a
   sleeping display or locked screen costs a render nothing.
 - **Waits are cut, but not short ones**: a demo of real agents had half a minute where nothing
-  happened, and a flash for „2 Sekunden später“ disturbed more than the wait. A wait that is only
-  the app's latency gets no label (2026-10-14): „5 seconds later“ over Obeya reading a command made
+  happened, and a flash for "2 seconds later" disturbed more than the wait. A wait that is only
+  the app's latency gets no label (2026-10-14): "5 seconds later" over Obeya reading a command made
   its replies look slow.
 - **Frames are timed by a clock painted into the page** (2026-10-08): on a busy machine the
   screencast handed frames over 1 to 5 s after they were painted, stamped with the hand-over, so the
@@ -740,7 +740,7 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   a task message scrolled out of view and covered half the card.
 - **A held voice that stops answering fails its clip** (2026-10-21): one sat at 0 % CPU for 40
   minutes, and every render and the dialog's sample waited behind it until it was killed by hand.
-  Holding the voice saves a model load per render or „Anhören“, at 3–4 GB held for 5 minutes.
+  Holding the voice saves a model load per render or "Listen", at 3–4 GB held for 5 minutes.
 - **Respelling only for voices that need it** (2026-10-21). Rejected: English phonemes for Piper
   (Thorsten hardly has *w* and *ɹ*; Whisper heard "Pull Equest" and "Benz"), and recognising English
   words by themselves ("Demo", "Team", "Agent" belong to both languages).

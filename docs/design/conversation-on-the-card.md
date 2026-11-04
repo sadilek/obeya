@@ -4,22 +4,22 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 
 ### The conversation
 
-Every kind of card shows its exchanges as one conversation („Gespräch“), built once
+Every kind of card shows its exchanges as one conversation ("Conversation"), built once
 (`src/ui/talk.ts`). Messages are the owner's words (spoken or typed, with screenshots, once, as the
 agent got them); the agent's questions with their options and the owner's pick marked on them; its
 replies; its handovers (the one a demo came with carries the report's question, with its options
 and the owner's pick marked, muted once answered; a handover in the same turn as a reply stands
-under it after a dashed line as „Übergabe“); and what the Koordinator looked up. Small lines between
+under it after a dashed line as "Handover"); and what the Koordinator looked up. Small lines between
 them mark state changes (waiting for other cards before the start, and why; started, pull request, approved, landed, the demo's link put on the pull
 request, stopped, errors, usage limit); an address in them is a link (the comment on the pull
 request, say). Everything else (tool calls, thoughts, status
-lines, Obeya's notes) folds away as „Verlauf“ under the agent's next message. Obeya's reply to what
-the agent passed on (`to_obeya`) answers a step in that „Verlauf“, so it stands under that message,
+lines, Obeya's notes) folds away as "History" under the agent's next message. Obeya's reply to what
+the agent passed on (`to_obeya`) answers a step in that "History", so it stands under that message,
 with what Obeya says after it until then (the answer it looked up); while that message has not come
 yet, below the agent at work. The owner's words or a state line before the message keep it where it
 came, below the agent's steps up to there. What Obeya reads to look a question up on a card (asked
 there by voice, or passed on by its agent) is not the agent's work: it stays out of the agent's
-„Verlauf“ and its bubble at work, and folds under the answer Obeya looked up; while Obeya still
+"History" and its bubble at work, and folds under the answer Obeya looked up; while Obeya still
 looks, under its reply that it does, where that reply stands. On a Question card Obeya's agent is
 the card's own, so its reading is the card's agent at work. A note the worker
 answered without `reply` counts as answered by its next words, unless a reply follows before the
@@ -29,18 +29,18 @@ an idea continues the idea's conversation.
 
 Beside the heading, once the card's agent has a session, the conversation names what that session
 runs on, once: the harness and the model as the harness reported it when the session started or
-resumed (Claude's model ids by family and version, „Claude Code · Opus 5.5“; Codex's as Codex names
-them, „Codex · gpt-5.5“; the id itself in the tooltip). It stays after the work is done, and a new
+resumed (Claude's model ids by family and version, "Claude Code · Opus 5.5"; Codex's as Codex names
+them, "Codex · gpt-5.5"; the id itself in the tooltip). It stays after the work is done, and a new
 session (the card started afresh) names its own. The phone, whose conversation panel has no
 heading, leaves it out.
 
-Claude login errors offer „Erneut anmelden“ in the conversation, or, when a failed start's
+Claude login errors offer "Reauthenticate" in the conversation, or, when a failed start's
 explanation above it shows the error, there alone: one error gets one button.
 It opens the same terminal login as Setup, even when the login check still reports an account
 after a session failed to refresh. The error stays visible. The action reports whether a terminal
 opened, offers the manual command, and tells the owner to send the message again after signing in.
 A session that signed in with a token instead of this machine's account (on another machine, or
-here on `CLAUDE_CODE_OAUTH_TOKEN`), which its error records, gets „Neuen Token erstellen“ there
+here on `CLAUDE_CODE_OAUTH_TOKEN`), which its error records, gets "Create a new token" there
 instead, since a new login here would leave the token expired: the terminal runs
 `claude setup-token`, and the token it prints goes into a field beside the error, which Obeya keeps
 as `claude-token` for the sessions that start from then on. The field is not kept as an unsent
@@ -51,14 +51,14 @@ offers no button, only the hint that the login happens at that computer, where t
 offers it.
 
 A Claude login error is one in Claude Code's own words: its `/login` or `claude auth login` hints,
-„Failed to authenticate“ with an OAuth or 401 API error, or „not logged in“ on the stderr of its
-process's exit. The server words a session's failure by the same rule („Claude is not logged in on
-this machine …“). Another tool's login error (gh's, an expired OAuth token of some API) offers no
+"Failed to authenticate" with an OAuth or 401 API error, or "not logged in" on the stderr of its
+process's exit. The server words a session's failure by the same rule ("Claude is not logged in on
+this machine …"). Another tool's login error (gh's, an expired OAuth token of some API) offers no
 Claude login.
 
-A Codex session that lost its login (an `unauthorized` turn, Codex's „401 Unauthorized“) fails as
-„Codex is not logged in on this machine.“ or „… on <host>.“, and that error offers „Bei Codex
-anmelden“ in the same places. It needs no terminal: Obeya asks a Codex app server for ChatGPT's
+A Codex session that lost its login (an `unauthorized` turn, Codex's "401 Unauthorized") fails as
+"Codex is not logged in on this machine." or "… on <host>.", and that error offers "Log in to
+Codex" in the same places. It needs no terminal: Obeya asks a Codex app server for ChatGPT's
 sign-in (on the machine the session ran on), opens its page in a new tab, and the line says once
 Codex is logged in again, and that the message is to be sent again (or the agent started again). The
 sign-in returns to a port on the machine Obeya runs on, so the phone and other devices get the hint
@@ -67,28 +67,28 @@ that port forwarded to it.
 
 Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its
-background work that runs („Im Hintergrund“, each with how long it has run). Once the card waits for
+background work that runs ("In the background", each with how long it has run). Once the card waits for
 the owner (handed over, asked) and the worker's turn has ended, nobody is at work on it, even while
 its background work runs on (the app served for the owner to try): the conversation then shows only
-that work, under „Im Hintergrund“, without the agent at work or its step, and there is nothing to
+that work, under "In the background", without the agent at work or its step, and there is nothing to
 pause. Until 2026-10-22 it showed the agent at work as long as such work ran, which read as if it
 were still working on the change while the card waited for the owner. A card that waits on a
 question ends with it, its options and the card's one field.
 
 How a question ended is one rule for every kind of card, read from what came after it: picked
 options stand ticked (an answer in the owner's own words ticks the options it names); asked again in
-the same words, it reads „Weiter unten erneut gefragt. ↓“, linking there, options greyed; passed
-over by the owner's words and then a reply that does not ask it again, „Durch deine Nachricht
-erledigt.“ without options (nothing while that reply is still being written); left without a word
-when the card went on (built, taken on, parked, archived), „Offen geblieben.“, options greyed. A
+the same words, it reads "Asked again below. ↓", linking there, options greyed; passed
+over by the owner's words and then a reply that does not ask it again, "Settled by your
+message." without options (nothing while that reply is still being written); left without a word
+when the card went on (built, taken on, parked, archived), "Left open.", options greyed. A
 rephrased question counts as settled. An answered question keeps only its orange label, not the
 orange edge.
 
 Which questions are open is one rule too (`openQuestions` in `src/core/types.ts`): an idea's while
 its agent is not replying, a proposal's while not being reworked, a worker's while the card waits
 for it, a demo report's until answered; a parked or dropped idea has none. Open questions move to
-the conversation's end under „Frage an dich“ („Fragen an dich“), and only then does the field read
-„Eigene Antwort oder Anmerkung – optional“ and „Antworten“. The owner's words the agent read only
+the conversation's end under "Question for you" ("Questions for you"), and only then does the field read
+"Your own answer or a remark – optional" and "Answer". The owner's words the agent read only
 after it asked (said while it worked, they reached it after the question) go along and stay below
 the question, as everywhere in reading order: above it they would read as words the question took
 into account, and once it is answered and back in place they would jump below it. Anything of an
@@ -103,10 +103,10 @@ A code block in a message (and in any Markdown text a card shows) wraps its line
 button in its corner: agents put there what the owner is to take elsewhere as it is (a command, a
 message to send). At the desk the button shows while the pointer is on the block, for newcomers too; on a
 touch screen, which has no hover, always. The button puts the block's exact text on the
-clipboard and reads „Kopiert“ for a moment. Where the page may not write the clipboard (served over
+clipboard and reads "Copied" for a moment. Where the page may not write the clipboard (served over
 plain HTTP to another machine, as through a VPN, where browsers offer no clipboard API) it selects
 the block's text and copies the selection; where even that fails, the text stays selected and the
-button reads „Markiert: zum Kopieren lange drücken“.
+button reads "Selected: press and hold to copy".
 
 A conversation scrolled to its end follows it as it grows; scrolled up, it stays put, and only the
 owner's own words or actions take it to the end. Obeya's sheet does the same.
@@ -116,11 +116,11 @@ owner's own words or actions take it to the end. Obeya's sheet does the same.
 A conversation shows things in the order the agent saw them: the owner's words stand where the agent
 read them, not where they were sent. Obeya holds them while the agent is in a turn and records after
 which log line it took them in; the steps before close above them, the rest below. Until read, they
-stand below the agent's work, muted and dashed, „Noch nicht gelesen · beim nächsten Schritt“ (on an
-idea, proposal or Question card „… · nach der laufenden Antwort“). Each has a bin: taking it back
+stand below the agent's work, muted and dashed, "Not read yet · at its next step" (on an idea,
+proposal or Question card "… · after its current reply"). Each has a bin: taking it back
 removes it, no agent hears it, and its text and screenshots return to the field if that is empty. No
 undo. A page that lost its connection reloads each open card's log on reconnect, else words would
-stay „Noch nicht gelesen“.
+stay "Not read yet".
 
 A worker reads them with the result of its next tool step, through the hook that also passes it
 preferences and decisions, screenshots as file paths (a tool result carries no images); a turn that
@@ -148,7 +148,7 @@ Koordinator always gets the quote whole; in the sheet a looked-up answer by its 
 
 To answer a part of a message, the owner marks it in the conversation, in anyone's message, their
 own included; on a card with a field and in Obeya's sheet a small button with a quotation-mark icon
-appears beside the marking (named „Zitieren“ beside the icon until used once). The same holds for
+appears beside the marking (named "Quote" beside the icon until used once). The same holds for
 what such a card shows beside its conversation (an idea's brief and mocks, a task's text, an HTML
 artifact, a file the card shows, formatted or as a page) and for a page an answer in the sheet comes
 with: the quote goes into that card's field, on the phone opening the panel the field is in. A
@@ -160,7 +160,7 @@ page's, a press on Obeya's page the frame's, as one page's marking would. At the
 stands at the end where the pointer let go, outside the marking; on a touch screen below the middle
 of the marking's last line, clear of the selection handles and of the system's menu above. A press
 puts the marked text, on one line, in quotation marks of the UI language into the field, followed by
-„ - “, with the cursor behind it and the focus in the field (on the phone the keyboard opens at the
+" - ", with the cursor behind it and the focus in the field (on the phone the keyboard opens at the
 first tap). Where it goes depends on where the cursor stood when it left the field: at the end of
 the text (or never in this field since it was shown), at the end, after a line break unless that is
 the start of a line; anywhere else, as the line after the cursor's line. It is typed in as by hand,
@@ -170,10 +170,9 @@ reads it as the owner's words.
 ### The task as first message
 
 Once the agent starts, a task's text and screenshots stand as the conversation's first message,
-labelled by origin: „Du“, „Idee“ (a prototype), „Vorschlag“ (an accepted proposal), „Obeya“ (from
-the Arbeitsrückschau). A long text folds under „mehr“, and „Voraussichtlich betroffen“ folds under
-it. A card that was an idea shows its brief on the left instead; a workstream its plan-doc text
-under „Plan-Doc“ (see Plan docs).
+labelled by origin: "You", "Idea" (a prototype), "Proposal" (an accepted proposal), "Obeya" (from
+the work retrospective). A long text folds under "more". A card that was an idea shows its brief on
+the left instead; a workstream its plan-doc text under "Plan doc" (see Plan docs).
 
 ### Card layout
 
@@ -196,8 +195,8 @@ indentation, so nothing moves as it switches. A click on a link, a code block's 
 elsewhere. An empty text is the field itself, ready for typing.
 
 On every planned card, a stopped one too, the field takes notes for the agent that takes the card on
-(„Hinweis an den Agenten – er bekommt ihn, sobald er startet“). Typed notes stand unread („Noch nicht
-gelesen · sobald der Agent startet“, with a bin to take them back) and go to the worker with the task
+("A note to the agent – it gets it once it starts"). Typed notes stand unread ("Not read yet ·
+once the agent starts", with a bin to take them back) and go to the worker with the task
 when it starts, by the owner's click, at the time it was snoozed to, or out of the queue; a stopped
 card's worker gets them with the message it resumes with. Planned as a project, the card's worker
 gets them with its task; discussed as an idea, its exploration agent opens the discussion with them.
@@ -210,15 +209,15 @@ high as the three stacked (three lines on the phone), they stack in a narrow col
 gets the width; the switch is judged at the stacked width, so it does not flip back and forth. The
 placeholder shows in full, on two lines where needed, since it often says what the agent does with a
 message (the owner, 2026-10-17). Send is an arrow in a dark circle, as in chat apps; a button that
-starts something rather than sends keeps its words („Prototyp starten“).
+starts something rather than sends keeps its words ("Start prototype").
 
 A review card's findings (see Review cards) stand above its demo, each with its choice; what the
 owner chose stands above the field like a quote and goes out with its one Send, the words beside it.
 
-Under a task's title stand its branch (and plan doc) and the size of its change („+120 −30 in 5
-Dateien“; where the card shows its change list, the size stands below the list instead): before landing the workspace against where its base branch was, uncommitted and new files
+Under a task's title stand its branch (and plan doc) and the size of its change ("+120 −30 in 5
+files"; where the card shows its change list, the size stands below the list instead): before landing the workspace against where its base branch was, uncommitted and new files
 included; after, what the landing put on the default branch (an archived card keeps it). A click
-shows the whole diff over the page; „Pfad kopieren“ copies the workspace's directory (`host:/dir` on
+shows the whole diff over the page; "Copy path" copies the workspace's directory (`host:/dir` on
 another machine). The owner rarely reads code, so it stays a quiet line.
 
 #### The files beside the demo
@@ -227,7 +226,7 @@ What a card's work made or changed is its result, shown on the left for folder a
 The change list at the top of the column is also its row of tabs, so each file shows once: a line
 per file with its sign (＋ added, ✎ changed, ↪ moved or renamed, ✕ deleted), its path cut at the
 front so the name stays, its lines added and removed, and on a folder card what discarding would
-leave. The demo comes first, named by its kind („Demo-Video“, „Demo-Artefakt“; „Demo“ where the
+leave. The demo comes first, named by its kind ("Demo video", "Demo artifact"; "Demo" where the
 card's demos are of both) and without a play mark: it is a tab, not a player, and a ▶ there made
 it read as a button that ought to start a video (a colleague's report, 2026-11-02). Then the files the worker named at its handover (`ready_for_review`'s
 `files`, the caption under the path), then other changed files that can be shown, documents first;
@@ -237,19 +236,19 @@ a line shows its file below, a click on its line counts its changes there. Where
 (the line marked already too) lies out of sight, below the column's visible part or under the card's
 buttons in a low window, the click scrolls it into view: otherwise it seemed to do nothing. Beside a demo, and while
 the agent is at work (working, stopped, or asking), the list shows the demo and the named files
-only, the other changed files folded under „N geänderte Dateien ▾“ (or „und N weitere ▾“ below named
+only, the other changed files folded under "N changed files ▾" (or "and N more ▾" below named
 files), and no file is picked until the owner picks one; handed over without a demo, the list is
-open and its first file shows, so there is always a result to see. Unfolded, past eight lines „und
-N weitere ▾“ unfolds the rest. The file picked stays in view when folded. Beside the toggle stands
-the size of the whole change („+120 −30“), which shows the whole diff over the page. On a git card the lines are
+open and its first file shows, so there is always a result to see. Unfolded, past eight lines "and
+N more ▾" unfolds the rest. The file picked stays in view when folded. Beside the toggle stands
+the size of the whole change ("+120 −30"), which shows the whole diff over the page. On a git card the lines are
 the branch's files, on a folder card its change list. The phone shows the same list with lines tall
 enough to tap. Markdown shows formatted (with its images), a PDF in the browser's
 viewer (on a phone, and where the browser has none, its pages drawn by pdf.js one under the other
 as wide as the column), an image as is, an HTML page as an HTML artifact, text and code as text; anything else as a
-tile with „Auf dem Rechner öffnen“. A changed file first shows „Änderungen“, with „Formatiert“ or
-„Ganze Datei“ beside. „Auf dem Rechner öffnen“ and „Im Ordner zeigen“ act on the machine Obeya runs
+tile with "Open on the computer". A changed file first shows "Changes", with "Formatted" or
+"Whole file" beside. "Open on the computer" and "Show in folder" act on the machine Obeya runs
 on (a non-document only in its folder, since opening would run it), and only for a request from that
-machine; from another device the file downloads and „Im Ordner zeigen“ says it works only there.
+machine; from another device the file downloads and "Show in folder" says it works only there.
 The column keeps its tallest height so the card does not jump; a PDF's viewer is as high as the
 column shows, so its scrollbar is the only one; a video left for another file stops.
 
@@ -286,7 +285,7 @@ under the address of its version, so a browser caches it for good.
 
 #### Trying the app by hand
 
-„App öffnen ↗“ at the end of the branch line opens the app running in the card's workspace in a new
+"Open app ↗" at the end of the branch line opens the app running in the card's workspace in a new
 tab; a plain link, as it is rarely wanted. The worker reports the address with `app_running(url)`
 (an empty url when it stops it); the card keeps it until cleared, parked or the workspace goes. The
 link shows only while the app answers (any HTTP answer, probed by the open card). It goes through
@@ -309,7 +308,7 @@ image button, scaled to at most 2000 px in the browser and uploaded at once. The
 in field and conversation and reach the agent as images in the message, with their paths. A click
 enlarges one over the greyed page; Esc or a click shrinks it back. After the first screenshot picked
 by file dialog, a hint under the thumbnails names the paste and capture keys (⌘V / Ctrl+V, ⌃⇧⌘4 /
-Win+Shift+S), across sends and reloads, until „Verstanden“ or the first paste; never on a device
+Win+Shift+S), across sends and reloads, until "Got it" or the first paste; never on a device
 without mouse or trackpad.
 
 A planned card's description takes screenshots too; its worker (or idea agent) gets them with the
@@ -343,14 +342,14 @@ microphone with no field to take it, the path waits beside the microphone under 
 removes it) and goes with the next recording; it moves into Obeya's field when the sidebar opens,
 and back beside the microphone when it closes, as the screenshots do, while it still stands in the
 field's text (the words around it stay there).
-While a file is looked for or uploads the field shows „lädt …“ and does not send, and a recording
+While a file is looked for or uploads the field shows "uploading …" and does not send, and a recording
 waits for it (and for screenshots still uploading) before it goes. The image button's picker stays
 for screenshots; its tooltip names dropping other files.
 
 A recording nothing came of, or that Obeya refused, leaves the screenshots where they were. When the
 connection breaks before the answer, the page asks Obeya by the recording's id whether it arrived,
-and returns words and screenshots to the field only if not; the command's line then says „Obeya hat
-es; nur die Antwort kam nicht an.“ instead of „Das hat nicht geklappt“.
+and returns words and screenshots to the field only if not; the command's line then says "Obeya has
+it; only its answer did not come through." instead of "That did not work".
 
 ### Skills by `/`
 
@@ -366,7 +365,7 @@ fits. The arrow keys mark, Enter, Tab or a click picks, Esc closes the menu and 
 open. Picking types `/name ` over the word, as if by hand (⌘Z takes it back). The words reach the
 agent as they are: Claude Code's skill tool takes `/name` in a message as the owner asking for that
 skill, at the start or in the middle of a sentence. Until the owner has used the menu once (moved
-through it with the arrow keys or picked a skill), a hint under the field says so while it has the cursor („„/“ ruft einen Skill des Agenten auf.“).
+through it with the arrow keys or picked a skill), a hint under the field says so while it has the cursor ("“/” asks the agent for one of its skills.").
 
 Claude Code says which skills there are: Obeya starts it in the repository's Lesestand with the
 agent's plugins and settings, asks for its commands and skills, and ends it without a message (no
@@ -403,7 +402,7 @@ image.
 - **One layout for every card with a conversation** (2026-10-07). Rejected: a task stacking demo,
   buttons, feedback and conversation in one column, with the demo's question its own field and Send.
 - **The task is the conversation's first message** (2026-10-08), so the conversation reads from the
-  start (asked, done, added) and every card kind's starting point is in it. Rejected: an „Auftrag“
+  start (asked, done, added) and every card kind's starting point is in it. Rejected: a "Task"
   section on the left.
 - **The last demo stays while the worker works again** (2026-10-08); **a demo report's question
   stays on its handover** (2026-10-09). Rejected: hiding the demo on feedback; moving the question
@@ -414,7 +413,7 @@ image.
   only becomes a model there. Rejected: naming it on each of the agent's messages.
 - **Replies to one message** (2026-10-09; sheet 2026-10-15), the quote part of the draft.
 - **Quoting marked text into the field** (owner, 2026-10-22): the owner often answers single
-  sentences or parts of them and did so by copy, paste, quotation marks and „ - “ by hand. The quote
+  sentences or parts of them and did so by copy, paste, quotation marks and " - " by hand. The quote
   is text in the field rather than a reply chip, so several can stand in one message, each followed
   by its comment. From what the card shows too, artifacts and an idea's brief among it (owner, same
   day): those are what the owner answers most often. Rejected for framed pages: reading the
@@ -477,7 +476,7 @@ image.
   (owner): more would need the worker to name them and keep their numbers here.
 - **A card's files are its result, in tabs beside the demo** (owner, 2026-10-21), named files first.
   Rejected: an open button per change-list entry (no place for the result, Markdown unread in the
-  browser), Markdown formatted only in the diff overlay (the result hidden behind „Ansehen“), a
+  browser), Markdown formatted only in the diff overlay (the result hidden behind "Show"), a
   bundled pdf.js everywhere. A file opened from another device downloads; an answer's files do the same.
 - **On a phone, pdf.js draws a PDF** (2026-10-22): Chrome on Android shows an empty frame for a PDF,
   so the owner saw nothing of a PDF on the phone; Safari on the iPhone is no more reliable in a frame.
@@ -486,7 +485,7 @@ image.
   runs on every platform). The desktop keeps the browser's viewer, which searches and selects text.
 - **The change list is the row of tabs** (owner, 2026-10-21): files showed twice before, as a list
   across the card and as tabs below it. Rejected: tabs alone with the list folded away (what stays
-  before „Änderungen verwerfen“ would no longer show at a glance, files without a view would be
+  before "Discard changes" would no longer show at a glance, files without a view would be
   hidden) and tabs down the side of the file (they take the document's width).
 - **Beside a demo and during the work, the changed files start folded** (owner, 2026-10-21): the
   owner works on requirements and judges the result by its demo and the files named as the result,

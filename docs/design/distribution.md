@@ -37,7 +37,7 @@ on Windows (no admin rights), an AppImage and a .deb on Linux (`app/linux.Docker
 checks them in a container on a Mac).
 
 The shell opens a window on the Obeya already running on the home, or starts the server (on 4417,
-else a free port) and shows „Obeya startet …“ until it answers. Quitting the app (Cmd+Q, the menu,
+else a free port) and shows "Obeya is starting …" until it answers. Quitting the app (Cmd+Q, the menu,
 the Dock) stops that server as Ctrl-C would (`POST /api/stop`), whoever started it (the app, in this
 run or an earlier one, or `bun start` in a terminal, which then ends too), and the window shows what
 the stop waits for; quitting again goes ahead at once. The app ends when its server does; a server
@@ -45,7 +45,7 @@ it started in this run that ends unasked shows the last lines of its log in a di
 brings the window to the front. On a Mac, closing the window keeps the app in the Dock, and the
 window has no title bar: the canvas's bar holds the traffic lights, centred on its height, and drags the
 window (the pinned navigation's head, as tall, while it is pinned). Links
-leaving the canvas and new windows open in the default browser, as does „Im Browser öffnen“ in the
+leaving the canvas and new windows open in the default browser, as does "Open in browser" in the
 settings (and the Mac's File menu). The shell itself opens them, a plain click on a link with
 `target=_blank` included; Tauri's opener plugin stays unregistered, since its link script takes such
 a click and hands it to the plugin over IPC, which the page may not call, so the click did nothing
@@ -88,12 +88,12 @@ unprefixed property alone, dragging a card selects some of its text in the app, 
 
 `bun run app` builds the shell alone and runs it from the terminal on the checkout's server (`bun
 src/server/main.ts`, run in the checkout), which follows the checkout as `bun start` does. `bun run
-app install` installs that shell as an app of its own, „Obeya (checkout)“: in `~/Applications` on a
+app install` installs that shell as an app of its own, "Obeya (checkout)": in `~/Applications` on a
 Mac (a bundle, so Spotlight, Launchpad and the Dock know it and the system asks its permissions for
 it), in the Start menu on Windows, in the applications menu on Linux, and opens it. Its identifier is
 not the release's, so its permissions and its single instance stay apart from an installed release.
 Started from the desktop it gets no environment, so the checkout, the bun that ran the install and
-the version of `app/` on HEAD are compiled in, and the commit, which its settings show under „App“;
+the version of `app/` on HEAD are compiled in, and the commit, which its settings show under "App";
 the server it starts adds the directory of its bun to the PATH, for the workers' `bun`. A checkout's
 Obeya in a browser shows `bun run app install` in its settings.
 
@@ -136,7 +136,7 @@ voice's tests). A run takes about ten minutes.
 Builds and tests use Bun 1.4.3. Obeya needs Bun 1.3.14 or later: in 1.3.12 on Linux, a closed
 `fs.watch` can deadlock Bun's work pool, after which every page bundle hangs for good (2026-10-13).
 `bun start` from a checkout runs on the machine's Bun; on Linux with a Bun before 1.3.14 Obeya still
-starts, but warns in the log and with a pill in the bar („Bun 1.3.12 ist zu alt“, the hover saying
+starts, but warns in the log and with a pill in the bar ("Bun 1.3.12 is too old", the hover saying
 what may happen and to run `bun upgrade`).
 
 The build runs on a push to `main` that changes code (the same paths the self-update ignores are
@@ -196,13 +196,13 @@ counts) are in `app/tauri.conf.json`; the private key signs in CI (see Builds). 
 six hours the shell checks; a newer version is downloaded and its signature checked at once, so
 installing takes seconds. The shell keeps reporting it to the server it started (`POST
 /api/app-update`), and the bar shows "Update 0.4.0" with the release notes on hover and
-„Installieren“.
+"Install".
 
 The app never installs by itself. The owner's click (`POST /api/app-update/install`) asks for an
-update restart, which waits as a restart for new code does (see Self-update; here „Jetzt
-aktualisieren“ goes ahead at once), takes the place of a restart already waiting, and gives way to a
+update restart, which waits as a restart for new code does (see Self-update; here "Update
+now" goes ahead at once), takes the place of a restart already waiting, and gives way to a
 stop. The server then exits with code 77, which its supervisor passes on; the shell, seeing its
-server end so, shows „Obeya wird aktualisiert …“, installs (the bundle swapped on macOS, asking for
+server end so, shows "Obeya is updating …", installs (the bundle swapped on macOS, asking for
 an administrator only where the app's folder is not writable; the NSIS installer in passive mode on
 Windows, which restarts the app itself as the desktop's user, so without an environment set for the
 app's process alone; the AppImage file replaced) and starts the app again, whose server resumes the

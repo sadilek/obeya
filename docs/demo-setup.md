@@ -7,7 +7,7 @@ to install each piece.
 
 ## Check first
 
-- In Obeya: "Konfiguration", section "Demos", then "Was Demos auf diesem Rechner brauchen" beside the demo settings.
+- In Obeya: "Configuration", section "Demos", then "What demos need on this machine" beside the demo settings.
   Each missing piece shows with the commands that install it on this platform.
 - In a terminal, in the Obeya checkout: `node plugin/skills/demo/lib/setup.ts`. It prints the same
   list and exits with 1 while something is missing.
@@ -34,7 +34,7 @@ Chrome, Edge, Playwright's own Chromium.
 
 ## Voices
 
-The voice is chosen in Obeya's settings ("Demos"); "Anhören" plays a sentence in it first.
+The voice is chosen in Obeya's settings ("Demos"); "Listen" plays a sentence in it first.
 
 - **None (subtitles only)**: silent videos whose subtitles tell the narration, on from the start;
   each scene lasts as long as its text takes to read. Nothing to install. `DEMO_VOICE=none` renders
@@ -54,7 +54,7 @@ The voice is chosen in Obeya's settings ("Demos"); "Anhören" plays a sentence i
   key file named in the settings. ElevenLabs uses `eleven_v4`, which reads audio tags such as `[short pause]`;
   `DEMO_ELEVENLABS_MODEL` names another (`eleven_v3` reads them too, `eleven_multilingual_v2` does not).
 - **Your own**: a command (the text on stdin, the WAV written to `$DEMO_WAV`) or an HTTP endpoint
-  (POST `{"text", "language"}` as JSON, audio back). Tick "Das ist meine eigene Stimme" when it
+  (POST `{"text", "language"}` as JSON, audio back). Tick "This is my own voice" when it
   speaks in your voice; the narration is then in the first person.
 
 Piper and `say` read every word by the rules of the narration language, so in German narration
@@ -65,10 +65,10 @@ into the lexicon and listen to a clip of it in Piper first.
 
 ## Subtitles in other languages
 
-Every demo has subtitles in its narration's language. "Zusätzliche Untertitelsprachen" ("Additional
-subtitle languages") in the same settings lists further ones (`fr, pt-BR`, any BCP 47 code). Each
-becomes a track the viewer switches in the player. The agent that renders a demo translates its
-narration into them, so they need nothing installed.
+Every demo has subtitles in its narration's language. "Additional subtitle languages" in the same
+settings lists further ones (`fr, pt-BR`, any BCP 47 code). Each becomes a track the viewer
+switches in the player. The agent that renders a demo translates its narration into them, so they
+need nothing installed.
 
 ## Without Obeya
 

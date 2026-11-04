@@ -11,17 +11,17 @@ A worker proposes a card with `propose_card` (see A worker's tools). Its text is
 agent that will take the card on, as the owner would write a card (no "I", other cards named by
 their title). Apart from it come a reason, for the owner only, beside the card that proposed it, and
 what the owner has to decide, as questions with options. The owner can edit the proposal and pick
-options on it. „Übernehmen und starten“ starts it like a started planned card, through the
-Koordinator; „Übernehmen“ only plans it. Accepting writes the questions into the text, picked ones
-under „Entschieden:“, the rest under „Offene Fragen:“, so the new worker reads what is settled and
+options on it. "Accept and start" starts it like a started planned card, through the
+Koordinator; "Accept" only plans it. Accepting writes the questions into the text, picked ones
+under "Decided:", the rest under "Open questions:", so the new worker reads what is settled and
 asks the rest.
 
-Obeya proposes cards of its own too („Vorschlag von Obeya“): the Arbeitsrückschau's, and the card
-that fills in the settings of a repository that has none (see Leinwände).
+Obeya proposes cards of its own too ("Proposed by Obeya"): the work retrospective's, and the card
+that fills in the settings of a repository that has none (see Canvases).
 
-A proposed idea ("✦ Vorschlag · Idee") is for something to think through first: „Übernehmen und
-besprechen“ makes it an open idea whose exploration agent opens the discussion with the text and its
-questions; „Als Aufgabe übernehmen“ plans it as a task. „Als Idee besprechen“ on a proposed task
+A proposed idea ("✦ Proposal · Idea") is for something to think through first: "Accept and
+discuss" makes it an open idea whose exploration agent opens the discussion with the text and its
+questions; "Accept as a task" plans it as a task. "Discuss as an idea" on a proposed task
 makes it an open idea the same way, whose agent hears that it was proposed to be built and the owner
 wants to think it through first; by voice, „erst als Idee besprechen“.
 
@@ -30,8 +30,8 @@ wants to think it through first; by voice, „erst als Idee besprechen“.
 A follow-up that can only be done later (whether a bank has registered a form, two weeks on) is a
 proposal with a start time (`start_at`), not a sentence in a handover where it goes under. The owner
 decides on it now, and the card starts by itself at the time. The time stands under the proposal's
-text with „Ändern“ (the „Später …“ menu, with „Ohne Zeitpunkt“), and on the canvas card after its
-state („startet …“). Its one button, „Übernehmen“, plans the card and snoozes it until then, the
+text with "Change" (the "Later …" menu, with "No set time"), and on the canvas card after its
+state ("starts …"). Its one button, "Accept", plans the card and snoozes it until then, the
 proposal's reason as what it does then; at the time it starts like a started planned card (see
 Snoozing a card), at once if the time has passed. Its worker hears when the card was set to start
 and that it is that time now, so "in two weeks" reads as due; it checks what it can and asks the
@@ -44,15 +44,15 @@ A worker takes back its own proposal with `withdraw_proposal`, or replaces it wi
 `replaces`, naming it by title (Obeya matches the card's latest proposal of that title, case, quotes
 and markdown aside, and otherwise answers with the list of its proposals). A proposal still open goes
 from the canvas at once, also mid-rework, and the proposing card's conversation says so. It is kept
-as deleted with the mark, so the Rückschau does not read it as dismissed by the owner. One the owner
-accepted already is only marked until it is finished: its card reads „Ersetzt durch „…““ or „Vom
-Agenten zurückgezogen“ and needs the owner, and its panel says by what and why, with „Entfernen“ (as
-„Löschen“, with an undo) and „Behalten“. A finished card stays as it is.
+as deleted with the mark, so the retrospective does not read it as dismissed by the owner. One the
+owner accepted already is only marked until it is finished: its card reads "Replaced by “…”" or
+"Withdrawn by its agent" and needs the owner, and its panel says by what and why, with "Remove" (as
+"Delete", with an undo) and "Keep". A finished card stays as it is.
 
 #### Reworking a proposal by words
 
-Instead of editing a proposal by hand, the owner may say or type what should change (its field „Was
-soll anders werden?“). With the proposal open, the words go straight to a read-only agent of its own
+Instead of editing a proposal by hand, the owner may say or type what should change (its field "What
+should change?"). With the proposal open, the words go straight to a read-only agent of its own
 in the card's repository, the reviser, without the Koordinator or an undo window. It rewrites title,
 text, reason and questions by those words and keeps the rest; a question the words settle goes, its
 decision into the text. What the words ask of Obeya (accept or dismiss it, a rule, another card) it
@@ -66,20 +66,20 @@ that go with the task (dropping one it kept before, if the words make it obsolet
 with the proposal's text and are the task's once accepted.
 
 The conversation stands beside the proposal as on an idea, its open questions at the end, a settled
-question where it was asked (see The conversation). Options picked and sent („Antworten“) go to the
+question where it was asked (see The conversation). Options picked and sent ("Answer") go to the
 reviser at once; accepting instead takes the picks into the text. While the rework runs the proposal
-shows „Wird überarbeitet“ (on the canvas card in place of its state, which the kind line already
-names), cannot be edited or accepted with „Übernehmen“ alone, and does not count
+shows "Being reworked" (on the canvas card in place of its state, which the kind line already
+names), cannot be edited or accepted with "Accept" alone, and does not count
 as needing the owner; words said meanwhile wait for the next rework. Then the conversation shows the
-reviser's reply, „Vorschlag überarbeitet.“ when the text changed, and any new questions. A reviser
+reviser's reply, "Proposal revised." when the text changed, and any new questions. A reviser
 that ends without a text leaves the proposal as it was, with the error; a rework running at a
 restart starts again.
 
-„Übernehmen und starten“ (and „Übernehmen und besprechen“, „Als Idee besprechen“) does not wait for
-the rework, like "So bauen" on an idea: clicked during one, the proposal is accepted once the new text
+"Accept and start" (and "Accept and discuss", "Discuss as an idea") does not wait for the rework,
+like "Build it like this" on an idea: clicked during one, the proposal is accepted once the new text
 is there, unless it still has questions, in which case it stays a proposal and the conversation says
-why. Meanwhile the button reads „Startet nach der Überarbeitung …“ with „Doch nicht übernehmen“, and
-the canvas card's state line adds „danach übernommen“. Accepting by voice during a rework is refused (see Commands
+why. Meanwhile the button reads "Starts after the rework …" with "Don't accept after all", and
+the canvas card's state line adds "then accepted". Accepting by voice during a rework is refused (see Commands
 to the Koordinator).
 
 ### At work
@@ -91,16 +91,16 @@ and records the demo.
 
 `waiting: demo`: the card carries the demo (see The demo on the card); the owner approves or gives
 feedback. Whatever the owner writes or says on the card goes to the worker at once, and the work
-still waits for approval: while the worker takes the words in, the card is at work („Agent arbeitet
-an deiner Nachricht“, not counted as needing the owner), „Freigeben“ stays, and a change the words
+still waits for approval: while the worker takes the words in, the card is at work ("Agent works
+on your message", not counted as needing the owner), "Approve" stays, and a change the words
 call for comes as a new handover. Words asking Obeya for something (gib frei, a follow-up) the worker
 passes on with `to_obeya`.
 
-When the turn ends, the card is the owner's again. Without a new demo it reads „Agent hat
-geantwortet, wartet auf dich“ instead of „Demo bereit“; a new demo reads „Demo bereit“ again. Only
+When the turn ends, the card is the owner's again. Without a new demo it reads "Agent
+answered, waiting for you" instead of "Demo ready"; a new demo reads "Demo ready" again. Only
 words for the owner count as an answer (a reply, what the worker says, Obeya's result of
 `to_obeya`), from this turn; an answer to earlier words does not count. A turn that ends without any
-(an error, the session ended) leaves the card at „Demo bereit“, and the conversation says the agent
+(an error, the session ended) leaves the card at "Demo ready", and the conversation says the agent
 stopped without answering. A turn that ends with words for the owner while only the app it serves
 for them to try runs on also gives the card back: only that app shows as running. Background work
 the worker waits for (a test run, a render it said a new handover waits for) keeps the card at work
@@ -122,26 +122,26 @@ first says what changed for the user and what the owner needs to know, in a few 
 most; a later one only what the conversation has not said yet, often a sentence. A reply to a note
 that changes nothing ends the turn by itself, without a new handover. Whoever reads the card's report
 outside its conversation (a follow-up's worker, the Koordinator, a prototype's idea, a shared page)
-gets the whole of it: the first handover, then „Danach im Gespräch:“ with the replies and later
+gets the whole of it: the first handover, then "Later in the conversation:" with the replies and later
 handovers in order. A problem beyond the task is a proposal, not a line in the report.
 
 ### Approval and landing
 
-Where work lands through pull requests, the approve button reads "Freigeben (PR)": the card goes
-`in PR`, its worker opens the PR (until then „Freigegeben · Agent öffnet den PR“), and Obeya carries
+Where work lands through pull requests, the approve button reads "Approve (PR)": the card goes
+`in PR`, its worker opens the PR (until then "Approved · agent opening the PR"), and Obeya carries
 it through to the merge, which it does itself unless the settings leave the merge to people on the
 forge (see PR loop).
 
-Where the settings allow it (`direct`), "Direkt auf main" beside it pushes the work onto the
+Where the settings allow it (`direct`), "Straight to main" beside it pushes the work onto the
 default branch without a pull request, review or the PR's CI (see How work lands); only the button
 does, never words to the Koordinator. Where work lands on `main`, approval lands it at once.
 
-A review card, a contributor's pull request (see Review cards), reads „Mergen (PR #5)“: Obeya merges
+A review card, a contributor's pull request (see Review cards), reads "Merge (PR #5)": Obeya merges
 the head its worker reviewed, and the card is `live`; while a change request waits for the
-contributor it is `in PR`, „Wartet auf Beitragenden“.
+contributor it is `in PR`, "Waiting for the contributor".
 
 An approve click folds the card at once without waiting for the server: the canvas card says what is
-under way („wird freigegeben …“, „wird direkt auf main gepusht …“), no longer counts as needing the
+under way ("being approved …", "being pushed straight to main …"), no longer counts as needing the
 owner and is skipped by Tab, which goes on from the place of the card it opened last. A message with
 a spinner stands above the microphone, which the answer turns into the confirmation or, when the
 landing is refused, into the reason, with the card waiting for review again; a restart that cut the
@@ -154,8 +154,8 @@ on main and may finish what waited for that (see After landing).
 
 Work that changed nothing in the repository (a demo, an analysis, an answer) has nothing to land:
 when the handover finds no commits of the card's own (measured as in The Koordinator) and nothing
-uncommitted, the button reads "Beenden" with a line that no pull request follows, and approving makes
-the card `done` ("Erledigt"). The handover's answer tells the worker what the button will do, as
+uncommitted, the button reads "Close" with a line that no pull request follows, and approving makes
+the card `done` ("Done"). The handover's answer tells the worker what the button will do, as
 Obeya sees the branch: close the card, or land the files it names. A worker knows the commits it made,
 not those its branch carried from before, and otherwise told the owner the opposite of what the card
 showed. A worker whose
@@ -167,10 +167,10 @@ Questions after the work).
 
 ### Archive
 
-The owner archives a finished card ("Archivieren" on it, its archive button on the canvas, or all
+The owner archives a finished card ("Archive" on it, its archive button on the canvas, or all
 finished ones at once in the archive); a prototype goes there when it ends (see Prototypes). A
-stopped task („Gestoppt“) can be archived one at a time, for the owner to come back to, beside „Neu
-starten“ and „Löschen“; not while it waits to start, nor while its workspace holds work that has not
+stopped task ("Stopped") can be archived one at a time, for the owner to come back to, beside "Start
+again" and "Delete"; not while it waits to start, nor while its workspace holds work that has not
 landed, or a clone keeps its branch since its workspace was taken (the button is greyed and says
 why), which would lie unseen in a clone. A stopped card opens
 like a card an agent worked on, the task as its conversation's first message.
@@ -230,14 +230,14 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
   Rejected: only the proposing worker deciding whether a proposal is an idea.
 - **Feedback keeps the approval** (2026-10-08): the owner's words reach the worker at once and the
   approval stays at hand. Rejected: sending the card back to `working` until the next handover,
-  which took the approval away and held the feedback for „Rückgängig“ like a command.
+  which took the approval away and held the feedback for "Undo" like a command.
 - **Only words for the owner count as an answer** (2026-10-19). Rejected: counting any end of a
-  turn, which left „Agent hat geantwortet“ under a question no agent had seen.
+  turn, which left "Agent answered" under a question no agent had seen.
 - **An answer given while only the app it started runs on gives the card back** (2026-10-28,
   narrowed 2026-10-29). Rejected: keeping the card at work as long as any background work of that
   turn ran, which showed an agent at work on the owner's words for hours while only the test server
   it had restarted for them ran; and giving the card back whatever background work ran, which read
-  „wartet auf dich“ while the tests and render the agent had said it would hand over after still
+  "waiting for you" while the tests and render the agent had said it would hand over after still
   ran. The app is told apart by `app_running` rather than by the work's duration or the agent's
   words: the SDK says neither which task serves what nor whether the agent waits for it.
 - **A demo a worker reworks after an answer is at work, not the owner's** (2026-10-07). Rejected:
@@ -254,7 +254,7 @@ sheet), lists its decisions and links the idea or task its plan doc came from (s
 - **A finished card keeps a field for questions to its agent** (2026-10-08).
 - **What the owner archives**: only their own finished cards, ideas once parked or dropped (a parked
   idea's result may have been used outside Obeya, 2026-10-15), and stopped tasks (2026-10-15).
-  "All finished ones at once" leaves ideas alone, as well as Question cards (done when the owner
+  "Archive n finished tasks" leaves ideas alone, as well as Question cards (done when the owner
   says so) and a task whose agent still finishes after the landing; its button counts exactly what
   it takes, by the same rule as the server, or it offers a click that archives nothing (2026-11-04).
   A workstream goes with its project. Archiving

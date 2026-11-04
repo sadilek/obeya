@@ -23,8 +23,8 @@ How this document is written:
 - Each chapter first says how its part of Obeya works now, in the present tense, then lists its
   **decisions**.
 - A rule is described in one place; other chapters refer to it by its heading (see Landing).
-- UI texts are quoted in German as the owner sees them („Freigeben“) where the wording matters or
-  names the control; settings and API paths are in backticks.
+- UI texts are quoted in English as the English UI shows them ("Approve") where the wording matters
+  or names the control; settings and API paths are in backticks.
 - Work in progress is planned in plan docs under `docs/plan/`, which Obeya shows as projects; when
   one is done, what passes the test above moves into a chapter and the plan doc goes.
 
@@ -56,8 +56,8 @@ touches, and keep those current in the same change.
   request (own changes wait for the approval, unpushed commits it collides with), after landing
   (restarts for landed code, finishing, questions after the work).
 - [The Koordinator](design/the-koordinator.md) — the per-canvas agent the UI calls Obeya:
-  scheduling and the queue, learning the owner's rules (Rückschau, rules for a CLAUDE.md), its
-  sheet, Arbeitsrückschau, looked-up questions and threads, Question cards, its memory, wishes for
+  scheduling and the queue, learning the owner's rules (retrospective, rules for a CLAUDE.md), its
+  sheet, work retrospective, looked-up questions and threads, Question cards, its memory, wishes for
   Obeya's makers.
 - [Voice](design/voice.md) — voice in (dictating or sending, drafts, the microphone), speech
   recognition (Parakeet, Whisper, a cloud service, the settings), who hears the words, commands to
@@ -71,7 +71,7 @@ touches, and keep those current in the same change.
   and the pull request, export without a site, a repository's theme, static sites, several machines on one site.
 - [Repositories and configuration](design/repositories-and-configuration.md) — canvases and
   repositories, main branch, Lesestand, plan docs (and how Obeya reads them), repository settings
-  (`.obeya/settings.json`, problems, trusting commands, writing them), the Konfiguration dialog,
+  (`.obeya/settings.json`, problems, trusting commands, writing them), the Configuration dialog,
   live configuration, language.
 - [Running Obeya](design/running-obeya.md) — the server (who may talk to it, other devices, the
   phone view, notifications on the phone, stalls), setup assistant, setting up git in a folder,
@@ -120,8 +120,9 @@ on the walls and decisions are made in front of the wall.
   whose workstreams are its child cards. Tasks have no further kind: fixing a bug or adding
   something is worked on the same way, so the owner picks none and a task's card names none; the
   other cards say what they are (idea, prototype, workstream number, project). The UI and the
-  Koordinator call a task *Aufgabe* and a follow-up *Folgeaufgabe*, never *Karte*; *Karte* is only a
-  card on the canvas as such (moving, grouping, „Karte oder Projekt schließen“).
+  Koordinator call a task *Aufgabe* and a follow-up *Folgeaufgabe*, never *Karte* (in English:
+  *task*, *follow-up*, never *card*); *Karte* is only a card on the canvas as such (moving,
+  grouping, „Karte oder Projekt schließen“).
 - **Groups** — besides by place, the owner sorts the canvas by group: a group has a name and a
   colour, and a card belongs to none or one; a project belongs as a whole, with its workstreams. A
   proposal, a follow-up and a prototype come into the group of the card they come from, a project
@@ -146,7 +147,7 @@ on the walls and decisions are made in front of the wall.
     so that cards likely to conflict on merge are queued rather than run together (see Scheduling).
     The UI calls it *Obeya* in both languages: its replies, its sheet, the line under the microphone
     and its log lines on cards; its button at the top right is a speech-bubble icon with its counts,
-    tooltip „Obeya (C)“. Prompts tell the agents the owner knows it as Obeya.
+    tooltip "Obeya (C)". Prompts tell the agents the owner knows it as Obeya.
 - **Preference memory** — rules distilled from the owner's answers and corrections ("questions to me
   with at most three options", "solve rebase conflicts yourself") or said outright ("Merk dir: …"),
   shared by all agents and kept by the Koordinator. A learned rule is a proposal until the owner

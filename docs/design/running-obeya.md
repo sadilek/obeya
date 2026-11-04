@@ -44,8 +44,8 @@ path made up at every start, fetched from there once the request passed.
 *The owner's key.* 32 random bytes in `owner.key` in the home, readable by the owner alone. The
 app's shell and Obeya's scripts send it as `X-Obeya-Key`; the page carries it in an
 `HttpOnly; SameSite=Strict` cookie `obeya-<port>` (browsers keep cookies per host, not port).
-Without it the API answers 401 `notOwner`, the page says „Dieser Browser ist nicht bei Obeya
-angemeldet“ with how to sign in, and no WebSocket opens. A page opened by a link from another site
+Without it the API answers 401 `notOwner`, the page says "This browser is not signed in
+to Obeya" with how to sign in, and no WebSocket opens. A page opened by a link from another site
 lacks the `Strict` cookie: it gets a page that opens the same address again, now with it.
 
 A browser gets the cookie from a link, as in Jupyter: `/login?token=…` (optionally `&next=<path>`)
@@ -53,8 +53,8 @@ sets it and goes on from a page of its own, since a redirect in a cross-site nav
 app, the app shell's `tauri:` page) carries no `Strict` cookie. The token is made at every server
 start and signs in any number of browsers until it stops; an older link says it no longer holds. Only
 a holder of the key gets it (`POST /api/login-link`, local only): Obeya prints it at every start, and
-a second start prints the running one's; the app's window signs in through it; „Im Browser
-öffnen“ (File menu on a Mac, the configuration) opens the default browser with a one-time token
+a second start prints the running one's; the app's window signs in through it; "Open in
+browser" (File menu on a Mac, the configuration) opens the default browser with a one-time token
 (`once`), through the system's `open`, whose command line other accounts see;
 `scripts/scratch-obeya.ts` prints it as `url` (`--login <port>` again). Once signed in, the address
 alone opens Obeya: the cookie lives as long as browsers allow (400 days). Workers hold no key: their
@@ -71,10 +71,10 @@ another account on the machine would see it.
 #### Other devices
 
 The owner's phone reaches Obeya over the owner's own private network; Obeya runs no service of its
-own for it and is never on the open internet. „Von anderen Geräten erreichbar“ (`remote` in
+own for it and is never on the open internet. "Reachable from other devices" (`remote` in
 `settings.json`) is off by default (Obeya answers only on this machine). On, it is one of:
 
-- *Über Tailscale*: Obeya stays on `127.0.0.1` and runs `tailscale serve --bg --https=<port>
+- *Through Tailscale*: Obeya stays on `127.0.0.1` and runs `tailscale serve --bg --https=<port>
   http://127.0.0.1:<its port>`, proxying HTTPS and WebSockets from `https://<machine>.<tailnet>.ts.net`.
   It takes 443, else 8443, else 10000, whichever no entry serves, and touches no other entry; it notes
   its own in `tailscale-serve.json` in the home, so it can move or remove exactly that one, after a
@@ -86,11 +86,11 @@ own for it and is never on the open internet. „Von anderen Geräten erreichbar
   stay. `tailscale serve --https=<port> off` reaches only entries under the current name, so Obeya
   removes entries through `tailscale serve set-raw`, with the configuration it read minus its own. Bun's dev server answers for scripts only under the name it listens on, so an Obeya with
   `--dev` shows a blank page through `tailscale serve`.
-- *Über eine Adresse*: Obeya also listens, in plain HTTP, on an address of one of the machine's
+- *At an address*: Obeya also listens, in plain HTTP, on an address of one of the machine's
   interfaces (another VPN's). The section says a phone's browser allows microphone and push only over
   HTTPS.
 
-The configuration's section „Von anderen Geräten“ and the dialog „Telefon verbinden“ show what the
+The configuration's section "Other devices" and the dialog "Connect a phone" show what the
 network lacks, each with its one step: Tailscale missing (how to install it per platform), not
 running, logged out, HTTPS off in the tailnet (a link to the admin console's DNS page), on Linux the
 operator right `tailscale serve` needs (`sudo tailscale set --operator=$USER`), all three ports
@@ -104,20 +104,20 @@ reach Obeya only while it runs here.
 A request is *local* when it comes from loopback under one of this machine's names, unforwarded (no
 `X-Forwarded-For`, `-Host`, `Forwarded`); through `tailscale serve` it is forwarded and counts as
 remote, as does anything on the other address. A remote request needs a paired device; without one
-the page is „Dieses Gerät ist nicht mit Obeya verbunden“ with how to connect and a field for the code
+the page is "This device is not connected to Obeya" with how to connect and a field for the code
 (401), the API answers 401 `notPaired`, and no WebSocket opens.
 
-*Pairing.* „Telefon verbinden“, below the paired devices in the section, opens a dialog with a QR
+*Pairing.* "Connect a phone", below the paired devices in the section, opens a dialog with a QR
 code of `<address>/pair?code=<code>`, the address and the code in large digits. The code has six
 digits, holds five minutes (renewed while the dialog is open) and only while the address stays the
 one it was made at, and pairs one device; five wrong tries
 spend it (counted only from Obeya's own page or without `Sec-Fetch-Site: cross-site`, so another site
 cannot spend them). The phone gets the device cookie `obeya-device` (32 random bytes; the database
-keeps its SHA-256, a name from the user agent such as „iPhone · Safari“, and when it was paired and
-last seen) and goes on to the phone view, and the dialog says „iPhone · Safari ist verbunden.“. The cookie is `HttpOnly`, over HTTPS
+keeps its SHA-256, a name from the user agent such as "iPhone · Safari", and when it was paired and
+last seen) and goes on to the phone view, and the dialog says "iPhone · Safari is connected.". The cookie is `HttpOnly`, over HTTPS
 `Secure; SameSite=None`, over HTTP `SameSite=Lax`.
 
-*Devices.* The section lists them with when paired and last seen, each with „Entfernen“, which acts
+*Devices.* The section lists them with when paired and last seen, each with "Remove", which acts
 at once without undo: its open pages lose their WebSocket and reload to the page that says how to
 connect. A device stays paired until removed or unused for 90 days. Pairing, devices and the setting
 are managed only on this machine (`/api/access…` answers another device 403 `onlyHere`, and the
@@ -128,18 +128,18 @@ address it was added at, which Obeya cannot change afterwards; once Obeya's addr
 machine renamed in the tailnet, another port, another address picked), that app gets no answer. Its
 page says, whenever it connects, that it runs as that app (`?app` on its WebSocket), and Obeya keeps
 per device the address it came under (`X-Forwarded-Proto`/`-Host` behind `tailscale serve`). While
-that address is not the one other devices reach Obeya at now, the dialog „Telefon verbinden“ and the
-section say so above all else: „Die Adresse hat sich geändert“, which device's app still opens which
+that address is not the one other devices reach Obeya at now, the dialog "Connect a phone" and the
+section say so above all else: "The address has changed", which device's app still opens which
 address, and to delete it, scan the code and add Obeya to the home screen anew. A browser keeps its
 cookie per name, so a new name means pairing anew: the new pairing replaces the entry of the same
 device name whose app keeps another address (the most recently seen one), and the dialog then says to
 add Obeya to the home screen anew and delete the old app. A new port keeps the cookie and the entry;
-the notice goes once the new app has connected. The phone's own „Obeya antwortet nicht“ names a
-changed address as one of the reasons and points to „Telefon verbinden“.
+the notice goes once the new app has connected. The phone's own "Obeya is not answering" names a
+changed address as one of the reasons and points to "Connect a phone".
 
 *Keeping the machine awake.* While the setting is on, Obeya keeps its machine from idle sleep per the
-switch „Rechner wach halten“: *Solange ein Agent arbeitet* (default), while a worker is in a turn,
-waits for its background work or lands, until two minutes after the last; or *Immer*, so the phone
+switch "Keep this computer awake": *While an agent works* (default), while a worker is in a turn,
+waits for its background work or lands, until two minutes after the last; or *Always*, so the phone
 can give tasks while no agent works (`awake: "always"` in `remote`). Per platform:
 `caffeinate -i -w <pid>` on macOS, `systemd-inhibit --what=idle:sleep` around `tail --pid=<pid>` on
 Linux (both end with Obeya), `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` through
@@ -154,23 +154,23 @@ a tablet and a narrow window at the desk keep the canvas. `?view=phone` or `?vie
 instead. The view is settled at load; turning the phone does not switch it. It uses each canvas's
 own WebSocket. It shows four lists:
 
-- **„Braucht dich“**: what waits for the owner across every canvas, canvas by canvas and within one in
-  Tab's order, then „Obeya hat geantwortet“ where an answer waits unread. Each card says what it waits
-  for (its state line: „Demo bereit“, „Frage an dich“ …) and since when (the server keeps that across
+- **"Needs you"**: what waits for the owner across every canvas, canvas by canvas and within one in
+  Tab's order, then "Obeya answered" where an answer waits unread. Each card says what it waits
+  for (its state line: "Demo ready", "Question for you" …) and since when (the server keeps that across
   restarts). A card the owner snoozed leaves it until it comes back (see Snoozing a card). Its heading counts what waits, as
   the navigation's head does. The canvas's navigation shows the same entries in the same order,
   built once for both, as light rows (see The navigation).
-- **„Läuft“**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
+- **"Running"**: the cards an agent or Obeya is at that wait for nobody (working, taking in the owner's
   words, landing, queued, in a PR, an idea's agent thinking …), with their status line, snoozed ones
-  at the end, those the owner snoozed while they waited for them among them. Every card that leaves „Braucht dich“ without being done stands here.
-- **„Geplant“**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
+  at the end, those the owner snoozed while they waited for them among them. Every card that leaves "Needs you" without being done stands here.
+- **"Planned"**: the tasks no agent has started yet and that wait for nobody: planned ones (a follow-up
   the owner accepted, say), stopped ones, and those set to start at a time. Opened, a card offers
-  what it does on the canvas („Agent starten“, „Später …“), so a task can be started from the phone.
+  what it does on the canvas ("Start agent", "Later …"), so a task can be started from the phone.
   Without this list an accepted proposal left the phone until it was started (2026-10-31).
-- **„Erledigt“**: the finished cards that are not archived yet, those the archive's „… erledigte
-  Aufgaben archivieren“ would take, and none the lists above hold.
+- **"Done"**: the finished cards that are not archived yet, those the archive's "Archive …
+  finished tasks" would take, and none the lists above hold.
 
-„Geplant“ and „Erledigt“ are closed until their head (with the count) is tapped, since either may
+"Planned" and "Done" are closed until their head (with the count) is tapped, since either may
 hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar so its
 cards show; it stays open while a card is open and over a reload, and is closed again in a new tab.
 Without such cards it is not there.
@@ -180,8 +180,8 @@ the canvas's name where there are several; where two of at least
 340 px fit (the phone turned) they stand side by side.
 
 *Obeya's conversation* is a panel over the list, opened by the canvas's speech-bubble button with its
-unread count across canvases, left of the microphone at a finger's size, or by the card „Obeya hat
-geantwortet“. With several canvases a picker right of the microphone names whose Obeya it is, which
+unread count across canvases, left of the microphone at a finger's size, or by the card "Obeya
+answered". With several canvases a picker right of the microphone names whose Obeya it is, which
 is also whom the microphone speaks to with no card open (none with one canvas or a card open). The
 button opens the conversation an answer waits in when the picked one has none, and the picker
 follows. The panel holds the conversation, its field and below it room for the microphone, which
@@ -197,9 +197,9 @@ let go while moving it glides on, slowing evenly, so a short swipe up fills the 
 closes it, while a finger still for 50 ms before lifting leaves it where it is. It opens at the full
 height (half beside a demo video). The button, Back and Esc close it.
 
-The lines above the microphone (Obeya's reply, a confirmation with „Rückgängig“, a command still being
+The lines above the microphone (Obeya's reply, a confirmation with "Undo", a command still being
 read) are swiped aside to either side: past a third of their width or flicked they fly out, else
-spring back. Swiping takes nothing back: „Rückgängig“ goes unused, a command being read is carried out
+spring back. Swiping takes nothing back: "Undo" goes unused, a command being read is carried out
 without its confirmation. Until the owner has swiped one in this browser, each line nudges aside once
 as a hint. The canvas has no such gesture.
 
@@ -217,7 +217,7 @@ as a half sheet so title, state line and buttons stay in view; others open on th
 agent or Obeya is at work, the button carries a working card's moving line. The conversation opens
 with the first unseen message at the top of the panel, else at its end; new messages carry the
 orange edge (see The conversation). Beside a demo video the panel is a half sheet and the video
-scrolls into the upper half, so a comment at a place in the video („Hier kommentieren“ brings the
+scrolls into the upper half, so a comment at a place in the video ("Comment here" brings the
 panel up with the cursor in the field) is written with the video in view, as on the canvas; turned
 sideways the panel opens at the full height there too.
 
@@ -227,8 +227,8 @@ go).
 
 *The microphone* at the bottom is held by a finger (pointer events, no long-press menu, no text
 selection; lifting or the browser taking the gesture ends it) and speaks to the open card's agent,
-else to Obeya. No line names whom (what is in view fills the screen), nor shows „→ ins Feld“ or „abschicken mit
-Enter“; the line under it says when it hears only silence. While the
+else to Obeya. No line names whom (what is in view fills the screen), nor shows "→ into the field" or "send with
+Enter"; the line under it says when it hears only silence. While the
 keyboard is up it hides, with the conversation button and the picker, and the field's own microphone
 dictates. The keyboard counts as up while a text field has the focus and the page is more than 150
 px shorter than the tallest it had at that width (the phone's own button closes the keyboard but
@@ -263,8 +263,8 @@ while the screen may still report the old orientation, so turning sometimes ends
 screen wrongly); Obeya holds the lock until full screen ends. Where only the video can go full screen
 (Safari on an iPhone) there is no button and the video's own controls stay.
 
-*When the server does not answer* for 3 s, a line at the top says „Obeya antwortet nicht · seit
-14:02“ and why that may be; the page reconnects by itself, at once when it comes back into view, and
+*When the server does not answer* for 3 s, a line at the top says "Obeya is not answering · since
+14:02" and why that may be; the page reconnects by itself, at once when it comes back into view, and
 the 3 s count from then (a phone back from its lock screen reconnects within them). A sleeping
 machine refuses nothing, so a connection not open within 3 s counts as not answering, and one not
 open after 10 s is tried anew.
@@ -278,16 +278,16 @@ title nor text. The key is made at the first start and kept in `vapid.json` in t
 
 *Turning them on.* A paired device holds at most one subscription; removing the device removes it,
 and one the push service answers with 404 or 410 goes. An iPhone gets pushes only from the home
-screen (iOS 16.4+): in Safari the phone view says how („Teilen“, „Zum Home-Bildschirm“). There, and
-in a phone's Chrome, a box at the top asks „Benachrichtigungen einschalten“; its button asks for the
+screen (iOS 16.4+): in Safari the phone view says how ("Share", "Add to Home Screen"). There, and
+in a phone's Chrome, a box at the top asks "Turn on notifications"; its button asks for the
 permission (iOS asks only after a tap), and the box stays until it is given or refused. Given, the
 page hands its subscription to the server (`PUT /api/push`) at every load. Over plain HTTP there are
-no pushes; the section „Von anderen Geräten“ says so and which devices have them on.
+no pushes; the section "Other devices" says so and which devices have them on.
 
-*What is pushed:* a card that starts waiting for the owner, with what it waits for as the text („Demo
-bereit“, „Frage an dich“ …), its title and, with several canvases, its canvas; a failed landing
-(„Landen fehlgeschlagen“); a stuck worker (its turn failed or ended twice without a handover and
-Obeya made a question of it: „Agent kommt nicht weiter“). Not Obeya's answers in its conversation (the
+*What is pushed:* a card that starts waiting for the owner, with what it waits for as the text ("Demo
+ready", "A question for you" …), its title and, with several canvases, its canvas; a failed landing
+("Landing failed"); a stuck worker (its turn failed or ended twice without a handover and
+Obeya made a question of it: "The agent is stuck"). Not Obeya's answers in its conversation (the
 owner asked from where they are), nor cards waiting already when Obeya starts.
 
 *Not while the owner uses Obeya:* nothing is pushed while a page on this machine was in use in the
@@ -300,9 +300,9 @@ is silent for 45 s. What starts waiting while the owner is there is not pushed l
 Pushes go `Urgency: high`, which lets the push service wake a sleeping phone; whether it does is the
 phone's choice (Android held Chrome's messages until unlock on the owner's Pixel, 2026-10-16).
 *Several at once:* the first goes out at once; what starts waiting within the minute after goes out
-as one push at its end („3 Karten warten auf dich“, the titles as text, leaving out what no longer
+as one push at its end ("3 cards wait for you", the titles as text, leaving out what no longer
 waits), and a further minute starts. *Tapping a push* opens its card in the phone view
-(at its address), „Braucht dich“ for several, in the open app if there is one; a later push for the same
+(at its address), "Needs you" for several, in the open app if there is one; a later push for the same
 card replaces the earlier.
 
 *The web app.* The page names a manifest (standalone, icons `/icons/180.png`, `/icons/512.png`), and
@@ -348,19 +348,19 @@ on, so that such a page cannot push the server's own stalls out of `stalls.log`.
 
 ### Setup assistant
 
-One list of what Obeya needs on this machine, in four parts: *Agenten* (Claude Code and its login,
+One list of what Obeya needs on this machine, in four parts: *Agents* (Claude Code and its login,
 Codex and its login, git, and git's name and e-mail, without which an agent's commit fails; either
 harness with its login is enough, the other one's pieces then marked as not needed, and while
-neither is ready Claude Code is the one asked for, Codex offered instead); *Pull Requests* (gh and its login,
-needed at the first approval in a repository on GitHub); *Sprachbefehle* and *Demos* (the
+neither is ready Claude Code is the one asked for, Codex offered instead); *Pull requests* (gh and its login,
+needed at the first approval in a repository on GitHub); *Voice commands* and *Demos* (the
 configuration dialog's checks, each with the size still to download; uv above the speech recognition,
-whose "Installieren" waits for it; see The Spracheingabe settings). Where agents run on the
+whose "Install" waits for it; see The Voice input settings). Where agents run on the
 machine's own Claude Code (see Agents), the list names the version Obeya was checked with when that
 differs. Logins come from `claude auth status`, `codex login status` and `gh auth status`. What a
 check finds of the harnesses also decides which one a group the owner chose none for runs on (see
 Harnesses, models and effort); Obeya looks once as it starts.
 
-"Installieren" installs what needs no admin rights: Claude Code and uv with their official installers,
+"Install" installs what needs no admin rights: Claude Code and uv with their official installers,
 the speech recognition, a demo's voice. System software (git, gh, ffmpeg, Node, a browser) comes with
 the command for this platform and a copy button, installed at a click where that needs no password
 (Homebrew, winget). Codex has no installer of its own: Homebrew's cask on a Mac, else npm's package,
@@ -373,27 +373,27 @@ rereads `PATH` from the registry.
 
 #### The first canvas
 
-On the first start the page ends with "Wo liegt dein Projekt?": two cards with a radio button each,
-"Schon auf diesem Rechner" (a folder: a path or the system's folder dialog) and "Auf GitHub / einem
-Server" (a clone: `owner/name` through `gh repo clone` where gh is logged in, else by URL; any git
+On the first start the page ends with "Where is your project?": two cards with a radio button each,
+"Already on this computer" (a folder: a path or the system's folder dialog) and "On GitHub / a
+server" (a clone: `owner/name` through `gh repo clone` where gh is logged in, else by URL; any git
 URL; into the home directory unless another is given). It shows the main branch Obeya found there. A
 folder without git gets the offer to set it up (see Setting up git in a folder), whose confirmation
 also creates the canvas. Obeya writes `canvases.json` (worktrees, or two clones when the repository's
 settings say clones), starts the canvas at once (see Live configuration) and the page opens it, with
-a first card that says what to try. Later „Einrichtung prüfen“ in the Konfiguration dialog opens the
+a first card that says what to try. Later "Check setup" in the Configuration dialog opens the
 same list over the canvas, without the first canvas. A scratch Obeya with `"setup": true` starts like
 a first start.
 
 ### Setting up git in a folder
 
 Where the first canvas or "+ Repository" is given a folder in which git finds no repository, it
-offers „Ohne git verwenden“ (`"git": false` in its entry; see Folders without git) and „Hier ein
-git-Repository einrichten“, each with a line on what it means. The latter first shows what the first
+offers "Use without git" (`"git": false` in its entry; see Folders without git) and "Set up a
+git repository here", each with a line on what it means. The latter first shows what the first
 commit would hold: the folder's entries with file counts and sizes, files from 1 MB listed as large,
 what stays out, and the default `.gitignore` (build output, dependencies, secrets: `node_modules/`,
 `dist/`, `.env*` but `.env.example`, keys) Obeya writes where the folder has none. The preview uses a
 git directory of its own in the temp directory, so looking changes nothing; the owner keeps more out
-with a `.gitignore` and "Neu ansehen". Confirming runs `git init` on git's `init.defaultBranch`, else
+with a `.gitignore` and "Look again". Confirming runs `git init` on git's `init.defaultBranch`, else
 `main`, and commits every file not ignored (workers see only committed files) under git's name and
 e-mail (none: it says so and does nothing). A failed step undoes the ones before. Building a card
 in a new repository sets git up the same way, without the preview (see Building in a new
@@ -428,8 +428,8 @@ the work until it is resumed and ends the turn at once. A resumed worker hears t
 stopped (exit code 137). A worker waiting for its landed work's restart is not in a turn.
 
 While the restart is due, a card whose worker paused for it, with no background work left that the
-restart waits for, says so in place of „Agent arbeitet“ („Agent wartet auf Neustart“, „Erledigt ·
-Agent wartet auf Neustart“), in muted ink without the moving line, and offers no pause; a turn that
+restart waits for, says so in place of "Agent at work" ("Agent waits for restart", "Done ·
+agent waits for restart"), in muted ink without the moving line, and offers no pause; a turn that
 starts before the restart shows it at work again.
 
 #### Waiting for the owner
@@ -439,9 +439,9 @@ the press until the words are in the field or Obeya has read them): the page rep
 WebSocket, and a page that closes lets go. The server itself holds the restart while it transcribes a
 recording, and while a command is in its undo window until it has run.
 
-While a restart waits, the bar shows it ("Neustart wartet auf N Agenten", "… auf dein Video", "… auf
-dein Diktat"; with agents only, until when at most); hovering names why and the cards it waits for,
-across canvases, and "Jetzt neu starten" (`POST /api/restart`) has it go ahead at once, its hover
+While a restart waits, the bar shows it ("Restart waits for N agents", "… for your video", "… for
+your dictation"; with agents only, until when at most); hovering names why and the cards it waits for,
+across canvases, and "Restart now" (`POST /api/restart`) has it go ahead at once, its hover
 saying what that cuts off.
 
 #### Keeping the page
@@ -456,7 +456,7 @@ camera is kept anyway.
 Obeya from a clone of its repository moves only when its owner pulls. So the supervised server
 fetches its branch's upstream at start and every hour (only that branch, into its remote-tracking
 ref). While the upstream has commits that change code (the restart's test), the bar shows "Update: 12
-neue Commits", the newest ten on hover, and a "git pull" button, which fetches again and
+new commits", the newest ten on hover, and a "git pull" button, which fetches again and
 fast-forwards; the restart follows as after a landing. Where Obeya cannot fast-forward there is no
 button, and the hover says why and what to do: commits of the checkout's own, uncommitted changes to
 files the new commits change (named), or git's message for anything else. Back on the page, Obeya
@@ -467,8 +467,8 @@ compiled binary (the app has its own updates) have nothing to pull.
 
 Ctrl-C, SIGTERM or `POST /api/stop` (the app; Windows has no SIGTERM) stops Obeya the way a restart
 goes, only nothing starts again: workers in a turn are told Obeya is about to stop and pause at a
-safe point, and Obeya ends once none is in a turn (at most 15 minutes). The bar shows it ("Beenden
-wartet auf N Agenten", "Jetzt beenden"), and a second Ctrl-C ends it at once (supervisor and server
+safe point, and Obeya ends once none is in a turn (at most 15 minutes). The bar shows it ("Shutdown
+waits for N agents", "Shut down now"), and a second Ctrl-C ends it at once (supervisor and server
 both get the terminal's Ctrl-C, so signals within a second count as one press). A stop does not wait
 for the owner's video or dictation (the owner asked for it), and turns a waiting restart into a stop. The next start resumes
 the stopped workers.
@@ -492,8 +492,8 @@ workers are busy.
 
 ### Decisions
 
-- **Other devices over the owner's private network, paired by a QR code** (2026-10-16, plan „Obeya
-  from the phone“). Rejected: a public tunnel (agents with shell rights on the open internet), a relay
+- **Other devices over the owner's private network, paired by a QR code** (2026-10-16, plan "Obeya
+  from the phone"). Rejected: a public tunnel (agents with shell rights on the open internet), a relay
   of Obeya's own (a cloud service), a messenger bot (a third party sees all, and it is only a chat). A
   device stays paired until removed or unused for 90 days, not for a fixed time (a phone in daily use need not pair again, one forgotten
   drops out by itself); devices are managed
@@ -513,10 +513,10 @@ workers are busy.
   reports that; the address a device last used in its browser would not do, since with a new port the
   browser follows the new address while the app does not. Devices paired before this record no
   address until their app connects once.
-- **„Telefon verbinden“ only in the configuration** (2026-10-16): a phone is connected once, so it
+- **"Connect a phone" only in the configuration** (2026-10-16): a phone is connected once, so it
   takes no place in the bar. Rejected: a phone icon in the bar.
 - **The phone view is a view of its own in the same page, not the canvas made touch-capable**
-  (2026-10-16, plan „Obeya from the phone“): readable cards on 390 px mean mostly panning. It goes by
+  (2026-10-16, plan "Obeya from the phone"): readable cards on 390 px mean mostly panning. It goes by
   coarse pointer and short side, not window width, so a narrow window at the desk keeps the canvas.
   It reuses the canvas's detail view, conversation, drafts and confirmations rather than copies. One
   WebSocket per canvas rather than one stream for all: the server's messages stay as they are, and an owner has a
@@ -532,7 +532,7 @@ workers are busy.
   Android shows „… zum Beenden des Vollbildmodus: von oben ziehen“ each time, and no page can turn it
   off. Rejected: a player covering the page without full screen (Chrome's bars stay, and Chrome locks
   the orientation only in full screen).
-- **Pushes by Web Push to the web app on the home screen** (2026-10-16, plan „Obeya from the phone“).
+- **Pushes by Web Push to the web app on the home screen** (2026-10-16, plan "Obeya from the phone").
   Rejected: ntfy or a messenger (a third party for nothing Web Push lacks); a native app (nothing a
   home-screen web app cannot do here). WebCrypto rather than a library: the two RFCs are a few dozen
   lines, checked against RFC 8291's example. A page at the machine holds pushes off while in use, not
@@ -599,7 +599,7 @@ workers are busy.
   its step: a worker sent back for a conflict landed its work before pausing, and one woken by its
   render went on rendering, holding the restart all along.
 - **A worker paused for a due restart shows as waiting for it, not at work** (2026-11-02): a card
-  approved while a restart waited for other workers read „Erledigt · Agent arbeitet“ for minutes
+  approved while a restart waited for other workers read "Done · agent working" for minutes
   while its agent had long said there was nothing left. Rejected: ending a finished card's session
   at its paused turn (the worker may have left real work for after the restart, which the message
   told it to).

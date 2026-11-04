@@ -4,14 +4,14 @@ A chapter of the [design doc](../design.md), whose header says how it is written
 
 ### Sharing a demo
 
-Every demo, video or HTML artifact, has a compact "Teilen" button at the right end of its own line
+Every demo, video or HTML artifact, has a compact "Share" button at the right end of its own line
 (see Earlier demos), on waiting, done and archived cards alike; prototypes are not shared. Once
-shared, the line holds the link, "Link kopieren" and "Nicht mehr teilen".
+shared, the line holds the link, "Copy link" and "Stop sharing".
 
 #### Where a demo goes
 
-Where a site takes the demo, "Teilen" publishes it on a page there at once, without a hold; "Nicht
-mehr teilen" withdraws it as easily. The site is the repository's own (see Static sites) where this
+Where a site takes the demo, "Share" publishes it on a page there at once, without a hold; "Stop
+sharing" withdraws it as easily. The site is the repository's own (see Static sites) where this
 machine can deploy to it, else the owner's personal one (see The personal site) where the repository
 may share there. Without either, it exports a file (see Export without a site). A page stays on the
 site it went out on: later versions, a withdrawal and the link to the PR or commit go there, even once the other
@@ -37,7 +37,7 @@ workers and the reading session choose from it, and the owner picks from it by h
 per dimension zero or more of its values; a dimension it has no key for has none chosen yet.
 
 The vocabulary need not be thought up by hand: under the field in the repository's settings,
-„Tags von einem Agenten vorschlagen lassen“ (shown once the repository runs on a canvas) starts a
+"Have an agent propose the tags" (shown once the repository runs on a canvas) starts a
 read-only session in the repository. It reads how the app is built (README, docs, the source tree)
 and the repository's cards on every canvas it is on, finished and open, archived ones included,
 each with its task and what its demos' pages say (or their chapters, or the handover's summary where
@@ -58,11 +58,11 @@ it writes the text, else in one of its own from the title and text of the page's
 chooses only those dimensions, kept on the card from then on, so a later worker's tags come before
 it and the owner's before both.
 
-The share box shows the page's tags as chips, before sharing and after: × takes one off, „+“ offers
+The share box shows the page's tags as chips, before sharing and after: × takes one off, "+" offers
 the vocabulary's other values. A change takes effect at once, without a hold: a shared page goes out
 again with the same demos (one going out goes out once more after it), and the log says so. A tag
-taken off stays in its place for a few seconds, struck through, with „Rückgängig“, which puts it
-back. On a touch screen the first tap on × only turns it into „Entfernen“ (for a few seconds, or
+taken off stays in its place for a few seconds, struck through, with "Undo", which puts it
+back. On a touch screen the first tap on × only turns it into "Remove" (for a few seconds, or
 until a tap elsewhere); the second takes the tag off. A mouse click or a key takes it off at once.
 Why: the row stands right above the demo video, and on a phone a card's layout can still move as it
 opens, so a tap aimed at the video's fullscreen button landed on a tag's × and took the tag off
@@ -70,9 +70,9 @@ opens, so a tap aimed at the video's fullscreen button landed on a tag's × and 
 
 Pages without tags are tagged from the Koordinator's sheet: while pages on a site with a vocabulary
 lack tags in a dimension (archived cards' included, also where their demo files are gone), an entry
-says how many („N Seiten ohne Tags“), and „Alle N taggen und teilen“ tags them in one run through
-the queue that shares outdated pages again (one run at a time, with its progress, "Anhalten" and the
-failed ones). Its "Ausblenden" puts away only its own result. The run tags in place, up to 20 pages
+says how many ("N pages without tags"), and "Tag and share all N" tags them in one run through
+the queue that shares outdated pages again (one run at a time, with its progress, "Stop" and the
+failed ones). Its "Hide" puts away only its own result. The run tags in place, up to 20 pages
 of one site at a time: one reading session chooses their missing dimensions from the title and text
 of their versions, and one deploy rewrites their pages around the video or artifact the site already
 holds, in the current template with the theme each went out with. So pages whose demos were deleted
@@ -84,33 +84,33 @@ or whose deploy failed, counts as failed and is still offered.
 #### Several versions on one page
 
 A card has one page under one link, holding the demo versions the owner shared, in order of
-handover: the first on top with the page's title and text, each later one below as „Ergänzung vom
-16.10., 13:37“ (its handover's time, formatted by Obeya, since ICU joins the parts differently on
+handover: the first on top with the page's title and text, each later one below as "Addendum of
+Oct 16 at 13:37" (its handover's time, formatted by Obeya, since ICU joins the parts differently on
 macOS and Linux) with its own title, text, chapters and demo. With two or more, a list of them stands
 under the title.
 
 The share box is about the version shown in the demo's line. On a version on the page: its link,
-"Link kopieren" and "Nicht mehr teilen" (the page goes out again without it; the last one takes the
-page down). With earlier demos on the card, a line says which versions the page holds („Auf der
-Seite: Demo 1 und 2“). On an earlier version not on the page, "Teilen" adds it in its place by
-handover. On the latest, not on the page, the hint „Die geteilte Seite zeigt Demo 1.“ offers „Auf
-der Seite ersetzen“ and „Zur Seite dazunehmen“. Which comes first is the worker's word:
+"Copy link" and "Stop sharing" (the page goes out again without it; the last one takes the
+page down). With earlier demos on the card, a line says which versions the page holds ("On the
+page: demos 1 and 2"). On an earlier version not on the page, "Share" adds it in its place by
+handover. On the latest, not on the page, the hint "The shared page shows demo 1." offers "Replace
+on the page" and "Add to the page". Which comes first is the worker's word:
 `ready_for_review` says of a later demo whether it was recorded afresh (`follows: replaces`) or
 supplements the one before (`supplements`), the demo skill asks for it, and a sentence under the
-buttons repeats it („Laut Agent ergänzt dieses Video Demo 1.“); without it, replacing comes first.
+buttons repeats it ("The agent says this video supplements demo 1."); without it, replacing comes first.
 Nothing goes out without the owner's click.
 
 A supplement never goes on a page without what it supplements: shared on a new page, added, or put
 there by an approval, it takes along the demo before it, and that one the demo before it while it
 supplements too, back to the first or one recorded afresh, also where those were never shared. Before
-a page exists, a line under "Teilen" names them („Kommt mit Demo 1 auf die Seite, die diese Demo laut
-Agent ergänzt.“). „Auf der Seite ersetzen“ puts the demo there alone, as the owner chose.
+a page exists, a line under "Share" names them ("Goes on the page with demo 1, which the agent says this
+demo supplements."). "Replace on the page" puts the demo there alone, as the owner chose.
 
 #### A shared artifact
 
 An artifact's page shows the title and text above the artifact in a sandboxed frame that grows to
 the artifact's reported height (`postMessage`, at most 30 steps, as an artifact as high as its window
-would grow on). „In eigenem Fenster öffnen“ shows the same page with the frame filling the window
+would grow on). "Open in its own window" shows the same page with the frame filling the window
 (`?alone`). The artifact may open no window: a popup could leave the sandbox or reach any server.
 
 The frame's origin is `null`, and a static site cannot hand out keyed addresses as Obeya does (see
@@ -148,8 +148,8 @@ disk.
 What changes on the pages is written down as it changes (`PAGE_CHANGES` in
 `src/core/page-changes.ts`): each change a viewer sees, with the kinds of page it shows on (video,
 artifact, both) and its words. A share keeps the newest change at publishing; later changes that show
-on its versions' kinds make it outdated. Its card lists them with their days, beside "Erneut
-teilen" (same versions, same link) and "Nicht mehr teilen"; the latest demo not yet on the page
+on its versions' kinds make it outdated. Its card lists them with their days, beside "Share
+again" (same versions, same link) and "Stop sharing"; the latest demo not yet on the page
 brings them with replacing or adding. A change that shows nowhere gets no entry. A test pins a hash
 of sample pages (both languages, both kinds, several versions) and fails once they differ, asking to
 add an entry where a viewer sees it and to take the new hash. A change that shows only on pages with
@@ -159,25 +159,25 @@ publish without marking pages. A page whose demo files are gone (demos get delet
 neither offered nor counted.
 
 Many at once go from the Koordinator's sheet: while pages are outdated, an entry says how many
-(„N geteilte Demos sind veraltet“, archived cards' included), lists the changes with their days and
+("N shared demos are outdated", archived cards' included), lists the changes with their days and
 how many pages lack each, and shares again the newest 20 (or 10, 50, 100, all). They go through the
 same queue as the share kept them (a newer demo on the card still waits for the owner), a share the
 owner starts slipping in between. The entry shows progress and the failed ones with their cards;
-"Anhalten" stops after the current page; "Ausblenden" hides the entry until a newer change outdates
+"Stop" stops after the current page; "Hide" hides the entry until a newer change outdates
 pages. The run survives a restart; a page shared again on its own, withdrawn or deleted meanwhile
-drops out of it. It is not counted on the Koordinator button: each card offers "Erneut teilen", and
+drops out of it. It is not counted on the Koordinator button: each card offers "Share again", and
 nothing is lost by leaving them.
 
 A page is outdated by its repository's theme too (see A repository's theme): the share keeps the
 theme's hash, and once the repository's current one differs (a new theme, a changed one, one taken
-away), the card lists „Theme geändert“ without a day beside the page changes, and the Koordinator's
-entry counts its pages with them. „Ausblenden“ hides each of them until its repository's theme
+away), the card lists "Theme changed" without a day beside the page changes, and the Koordinator's
+entry counts its pages with them. "Hide" hides each of them until its repository's theme
 changes again or the page is shared again. The theme is read with the repository's settings, when
 its default branch moves (in a folder without git, when Obeya next reads the settings), not each
 time the canvas is drawn. The overview has no flag of its own: it is outdated exactly while the
 pages it takes its theme from are, and sharing any of them again brings the new theme to it.
 
-A page published again with the same video keeps its date („Geteilt am“), so the overview keeps its
+A page published again with the same video keeps its date ("Shared on"), so the overview keeps its
 order; a new video dates it anew.
 
 #### What the worker hears of its page
@@ -195,7 +195,7 @@ fact. What a message tells of the page anyway (approval into a PR, the landing) 
 A demo shared before approval goes into the worker's approval message with "link it in the
 description". Once a PR exists and the page is out, in either order, Obeya adds to the PR description
 (unless it already contains the URL) a line `Demo-Video: <url> <!-- obeya:demo -->` (`Demo-Seite:`
-for an artifact; „Demo video:“/„Demo page:“ in English), replacing its own earlier line by the
+for an artifact; "Demo video:"/"Demo page:" in English), replacing its own earlier line by the
 marker. A page shared before the PR existed is republished with the PR's link, as it showed then; a PR
 reported while the page is going out gets a second round after it. A failure goes into the card's log; the page stays shared. Withdrawing leaves the line. A review card's pull request is the contributor's: its
 description stays as it is, and once the owner approved, the page's link goes into a comment on it
@@ -220,16 +220,16 @@ there yet, or never will be if the deploy fails (decided 2026-10-26).
 #### Publishing on approval
 
 A site may publish every approved demo by itself (`demo.site.publish: "approved"`, a choice in
-Konfiguration); Obeya's own repository does, onto `demos.obeya.si`. There, until approval, the
-latest demo not on the page has a checkbox „Mit der Freigabe teilen“ (ticked) beside the button,
-which then reads „Jetzt teilen“. Unticked, approving shares nothing and the log says so. The choice
+Configuration); Obeya's own repository does, onto `demos.obeya.si`. There, until approval, the
+latest demo not on the page has a checkbox "Share on approval" (ticked) beside the button,
+which then reads "Share now". Unticked, approving shares nothing and the log says so. The choice
 stays with the card and takes effect at once.
 
 A repository that shares on the personal site does the same once the owner ticks it for that, a
 choice of the owner's that stays on this machine, not in the repository's settings (colleagues share
-on their own personal sites): Konfiguration → Demos lists, under the personal site, the repositories
-of the canvases that share there, each with „Mit der Freigabe teilen“ (one whose site publishes on
-approval ticked and fixed, „laut seinen Einstellungen“). Until it is ticked, its cards show the same
+on their own personal sites): Configuration → Demos lists, under the personal site, the repositories
+of the canvases that share there, each with "Share on approval" (one whose site publishes on
+approval ticked and fixed, "by its settings"). Until it is ticked, its cards show the same
 checkbox unticked where the ticked one would be; ticking it there ticks the repository. A page that
 went out on the repository's own site stays out of it. The connection code does not carry the ticks,
 and connecting again keeps them.
@@ -238,7 +238,7 @@ On approval, before landing, the latest demo goes on the page as the owner's cli
 or beside the versions where its worker said it supplements (with what it supplements, see Several
 versions on one page), else in their place, after any share
 still going out; a log line says so. It goes through the queue, so landing does not wait; a failed
-deploy is logged and the card keeps "Teilen". The same holds for approved PR work, work closed
+deploy is logged and the card keeps "Share". The same holds for approved PR work, work closed
 without a change, and a held approval landed by the worker's next handover (the newer demo goes).
 
 Where a repository lands on `main` directly, the landing commit of a card with a page names it in a
@@ -251,19 +251,19 @@ public page for work not on `main`; accepted, since the next handover lands it.
 #### The page and the commit
 
 Work that lands on `main` without a pull request (landing on `main`, or pushed there directly) is
-linked from its page the way a PR is: „Commit ansehen“ („View commit“) where the PR's link would be,
-or „Commits ansehen“ („View commits“) over the comparison of several commits. The address is built
+linked from its page the way a PR is: "View commit" where the PR's link would be,
+or "View commits" over the comparison of several commits. The address is built
 from the checkout's `origin`, `<web address of the repository>/commit/<sha>` or
 `/compare/<before>...<last>` (GitHub's, Forgejo's and Gitea's path; GitLab puts it below `/-/`); an
 `origin` that is a path gives no link. The page goes out on approval before the commit exists, so
 once the work landed Obeya publishes it again as it is with the link, or gives a share still going
-out a second round, as for a PR opened late; the log says „Die geteilte Seite verlinkt jetzt den
-Commit auf main“. A card with a PR links the PR only. Where `main` is pushed later than it lands, the
+out a second round, as for a PR opened late; the log says "The shared page now links the
+commit on main". A card with a PR links the PR only. Where `main` is pushed later than it lands, the
 link answers once it is pushed; accepted, since nothing else names the commit before.
 
 #### Export without a site
 
-Without a site, "Teilen" exports the page (`GET …/cards/<id>/export?as=zip|html`): a ZIP with a
+Without a site, "Share" exports the page (`GET …/cards/<id>/export?as=zip|html`): a ZIP with a
 folder named by the slug, the video, poster and captions beside `index.html`, or one HTML file with
 the video in base64, played from a blob so it seeks, for videos up to 15 MiB so it still goes by mail
 (the button says so otherwise). An artifact goes into the ZIP under `artifact/`, or into one HTML file
@@ -276,7 +276,7 @@ its `index.html` names, else the demo settings' narration language, else German)
 under a big play button; a click anywhere on it but the controls starts it. No autoplay: browsers
 play sound only after a click on the page, and the owner did not want it muted.
 
-Every page and every overview ends in „Aufgenommen mit Obeya“ ("Recorded with Obeya") linking
+Every page and every overview ends in "Recorded with Obeya" linking
 https://obeya.si, without a setting to turn it off; `?alone` leaves it out.
 
 #### A repository's theme
@@ -320,7 +320,7 @@ What a theme styles is the pages' markup, which is its interface and changes onl
   `.bar` with the count and `.copy-all`, `ul.demos` whose entries are links holding `b` (the
   title), `span` (the line under it) and `i` with `em` tags, each with a `.copy` button.
 
-A logo goes in as a `background-image` on an element there or a `::before`. „Aufgenommen mit Obeya“
+A logo goes in as a `background-image` on an element there or a `::before`. "Recorded with Obeya"
 stays in the markup of every page; a theme may hide it.
 
 #### Static sites
@@ -340,9 +340,9 @@ browser cannot seek in it otherwise.
   cannot send the machine's secrets anywhere;
 - `headers`: for reading the live site behind a login; `maxFile`: the host's file limit (25 MiB
   default); `publish`: see Publishing on approval; `tags`: the vocabulary (see Tags), which
-  Konfiguration writes as a line per dimension (`Area: Billing, Reports`).
+  Configuration writes as a line per dimension (`Area: Billing, Reports`).
 
-The overview is in `demo.language`, else the narration language. Konfiguration has a field for each.
+The overview is in `demo.language`, else the narration language. Configuration has a field for each.
 A site counts once it has a title, an http(s) URL and a deploy command; an unusable one (incomplete,
 deploy program missing) is a problem shown at the repository.
 
@@ -357,12 +357,12 @@ all repositories naming it. `site/` holds a directory per page (demo files, `ind
 `meta.json`: kind, title, text, chapters, PR (or without one the commit: its address, and whether it is a comparison over several), first shared, last changed, a hash of the demo's own
 files, language, who shared it, its tags, and under `more` the later versions, their files in `2/`, `3/` …),
 the overview, dated by each page's newest version, and an Atom feed (`feed.xml`, linked from the
-overview as „Feed abonnieren“ and by `<link rel="alternate">`) with one entry per page in the overview's order (title,
+overview as "Subscribe to the feed" and by `<link rel="alternate">`) with one entry per page in the overview's order (title,
 first sentence as summary, the whole text as content, the page's address as link and id, the
 overview's date, the page's language, who shared it as author), written together and so equally
 current. A page keeps its date while its demo's own files stay the same.
 
-Each page names who shared it („Geteilt von Ada Lovelace am 20. Oktober 2026“), and the overview
+Each page names who shared it ("Shared by Ada Lovelace on October 20, 2026"), and the overview
 after the date, as colleagues publish to one site from their own Obeya: git's `user.name` in the
 card's repository, left out where none is set.
 
@@ -372,7 +372,7 @@ overview starts with a search over the pages' titles and texts and, where the si
 vocabulary, a row of chips per dimension (the values some page has): any chip of a dimension, and
 every dimension with one chosen. The filter stands in the URL (`?Area=Billing&Area=Reports&q=pdf`),
 so a filtered list can be passed on. Each entry shows its tags and, on hover (always on a touch
-screen), an icon copying the page's URL. Above the list, „N von M“ and „Links kopieren“: the pages
+screen), an icon copying the page's URL. Above the list, "N of M" and "Copy links": the pages
 shown as a list of titles and URLs, put on the clipboard as `text/html` (links in a mail or a
 document) and as Markdown (`- [Title](URL)`) in `text/plain`, as text alone where the browser lacks
 `ClipboardItem`. It all runs in an inline script; the site stays static.
@@ -382,15 +382,15 @@ a line naming the missing file; once placed, it counts when the owner comes back
 
 #### Setting up a repository's site
 
-Where a repository has no site, its settings offer „Demo-Seite einrichten …“, and the site's fields
-(title, URL, deploy command, env file and the rest) only behind „Anderer Hoster, von Hand eingetragen
-…“: the personal site has no such fields, as Obeya sets it up itself, and a repository's site needs
+Where a repository has no site, its settings offer "Set up a demo site …", and the site's fields
+(title, URL, deploy command, env file and the rest) only behind "Another host, entered by hand
+…": the personal site has no such fields, as Obeya sets it up itself, and a repository's site needs
 them only for a host Obeya does not set up. The owner picks the host (GitHub first, then Cloudflare,
 as for the personal site), Obeya creates the site there in the background (the dialog shows its last line, a login in the
-browser may take minutes) and fills in `demo.site`, which „Speichern“ then takes over. Such a site is
+browser may take minutes) and fills in `demo.site`, which "Save" then takes over. Such a site is
 listed, like any repository's. Cloudflare Pages: a project `<repository>-demos` (with a suffix where
 the name is taken), through wrangler in the account of a site this machine deploys to already, as the
-owner picks it („wie bei demos.example.dev“, each account once; its credentials go into the new site's
+owner picks it ("as for demos.example.dev", each account once; its credentials go into the new site's
 env file), or with the machine's own `wrangler login`, which opens the browser. The choice is shown,
 since a machine may deploy to sites of several accounts, a work account among them. wrangler runs in an
 empty directory of its own and creates a Pages project with `--force`: without it, wrangler 4.15x
@@ -425,8 +425,8 @@ Obeya keeps the forge's last answer across restarts and starts from it until the
 again, so workers resumed in that time get the tools and brief of a repository that shares; a
 question that fails leaves the last answer standing.
 A private one, or one whose forge cannot tell (no remote, a folder), shares there only once the owner
-ticks it: the export box on its cards says the repository is private and offers „Demos dieses
-Repositorys auf meiner persönlichen Seite teilen“, and the configuration lists the private
+ticks it: the export box on its cards says the repository is private and offers "Share this
+repository's demos on my personal site", and the configuration lists the private
 repositories of the canvases (and those ticked) with a checkbox each, ticked or not, to change it
 there too. A repository whose site publishes on approval does so on the personal site too; one
 without a site the owner may tick for it on the personal site (see Publishing on approval).
@@ -447,7 +447,7 @@ repository's site is listed, always. Unlisted means:
   owner's machines know: at the root it would list every page;
 - every page says `noindex, nofollow` and `no-referrer` in meta tags (GitHub Pages sends no headers
   of the site's), and `_headers` sends `X-Robots-Tag` and `Referrer-Policy` for every file where the
-  host reads it, so a click on „Aufgenommen mit Obeya“ does not pass the address on. No `robots.txt`:
+  host reads it, so a click on "Recorded with Obeya" does not pass the address on. No `robots.txt`:
   a `Disallow` keeps search engines from reading the `noindex`, so a link found in a public PR could
   still show as a bare address.
 
@@ -455,38 +455,38 @@ Unlisted is not protected: whoever has a link can pass it on (and a link in a pu
 the forge's search). The setup says the first in one sentence; for real protection a project's site
 stays behind a login (Cloudflare Access).
 
-Konfiguration → Demos sets it up („Persönliche Demo-Seite“, the host to choose, „Einrichten“), and a
-card's export box, while there is none, offers „Persönliche Demo-Seite einrichten“, which opens it
+Configuration → Demos sets it up ("Personal demo site", the host to choose, "Set up"), and a
+card's export box, while there is none, offers "Set up a personal demo site", which opens it
 there. The switcher offers, in this order, each with a line under it:
 
-- „GitHub, öffentliches Repository“ („Geht mit jedem GitHub-Konto.“): a public repository
+- "GitHub, public repository" ("Works with any GitHub account."): a public repository
   `obeya-demos` (a number where the name is taken; an existing one is never reused) under gh's
   account, with Pages turned on, deployed by the built-in deploy. First, since anyone's demo
   repository seen by chance makes Obeya known; what public means for finding the demos goes unsaid,
   as it is plain.
-- „GitHub, privates Repository“ („Braucht GitHub Pro.“): the same in a private repository, unlisted.
+- "GitHub, private repository" ("Needs GitHub Pro."): the same in a private repository, unlisted.
   Obeya creates it with `--private`, checks GitHub's answer on its visibility before anything goes
   in, and again before every deploy (a repository made public since, or one named by a connection
   code, would show every page's token), and stops otherwise. An account on the free plan is refused
   before anything is created, and a refusal when Pages is turned on gives GitHub's reason (the
   repository stays, private); both offer Cloudflare instead.
-- „Cloudflare“ (free account, unlisted): a project `obeya-<user name>` (a suffix where taken), as
+- "Cloudflare" (free account, unlisted): a project `obeya-<user name>` (a suffix where taken), as
   for a repository's site; its address is the one Cloudflare names (`…pages.dev`). Besides the
-  account of a site this machine deploys to and the machine's own login, „anderes Konto: API-Token“
-  takes another account's token (with „Cloudflare Pages: Bearbeiten“; its account's id where the
+  account of a site this machine deploys to and the machine's own login, "another account: API token"
+  takes another account's token (with "Cloudflare Pages: Edit"; its account's id where the
   token covers several) into the new site's env file, so the login other sites deploy with stays.
 
 The setup runs in the background and shows its last line. The sentence that unlisted is not
 protected shows only for the two unlisted hosts.
 
-Another machine of the owner's joins with a connection code: „Verbindungscode kopieren“ (under
-„Weitere Rechner“, with a line saying where to paste it) on one gives
+Another machine of the owner's joins with a connection code: "Copy connection code" (under
+"Other computers", with a line saying where to paste it) on one gives
 `obeya-site:` and the site, its secret directory and the env file's values, base64url-encoded;
-„Mit vorhandener Seite verbinden“ on the other (with a line beside it saying where the code comes
+"Connect to an existing site" on the other (with a line beside it saying where the code comes
 from) takes it and writes them under its home. Without
 credentials in it (a site deploying with the machine's own login), the other machine deploys with its
 own `wrangler login` or `gh auth login`. Its first share pulls the pages from the live site as any
-machine's does (see Several machines on one site). „Von diesem Rechner entfernen“ asks once more: the
+machine's does (see Several machines on one site). "Remove from this machine" asks once more: the
 pages and the project stay, and only a connected machine can withdraw them.
 
 #### Several machines on one site
@@ -520,7 +520,7 @@ another machine withdrew loses its link here, with a line naming the machine.
   short correction leaves colleagues without the change it corrects; approval had published a card's
   second demo alone, its first never shared. Rejected: always every demo of the card (one recorded
   afresh would sit beside the one it replaces).
-- **"Teilen" sits on the demo's own line** (2026-10-14). Rejected: a full-width button under the
+- **"Share" sits on the demo's own line** (2026-10-14). Rejected: a full-width button under the
   chapters, out of sight under many chapters or a tall artifact.
 - **A shared artifact's pages load no file beside them** (2026-10-16, 2026-10-20): behind Cloudflare
   Access the frame's requests lack the login's cookie (Firefox showed only alt texts), and from disk
@@ -538,13 +538,13 @@ another machine withdrew loses its link here, with a line naming the machine.
   had answered the owner that its demo lay only on this machine minutes after they shared it.
   Nothing waits on the news, so a turn for it would cost the owner time and tokens; heard late, it
   is still there when the worker next speaks.
-- **Sharing takes effect at once** (2026-10-02). Rejected: an 8 s hold with "Doch nicht";
+- **Sharing takes effect at once** (2026-10-02). Rejected: an 8 s hold with "Don't share after all";
   withdrawing is as easy.
 - **Sharing on approval on the personal site is the owner's choice per repository** (owner,
   2026-10-29): the site is theirs, so their colleagues need not follow it. Rejected: the repository's
   settings (it would go for everyone who works in it), one choice for the whole personal site.
-- **On approval, sharing only when „Mit der Freigabe teilen“ stays ticked** (2026-10-20), with
-  „Jetzt teilen“ beside it, so a demo can go to colleagues for review before approval. Rejected:
+- **On approval, sharing only when "Share on approval" stays ticked** (2026-10-20), with
+  "Share now" beside it, so a demo can go to colleagues for review before approval. Rejected:
   approval always sharing.
 - **Deploys run in `share/` under Obeya's home** (2026-10-05): run in the checkout, wrangler's cache
   blocked the pool workspace from being leased.
@@ -573,7 +573,7 @@ another machine withdrew loses its link here, with a line naming the machine.
 - **The overview's language is the repository's `demo.language`** (2026-10-19). Rejected: a
   `language` of the site's own, a second setting for one need; a file that still has it is read
   without it, and the configuration flags it.
-- **Static sites are built in from a few settings, and the demo site is the only place "Teilen"
+- **Static sites are built in from a few settings, and the demo site is the only place "Share"
   publishes to** (2026-10-09, 2026-10-15). Rejected: a kit library for per-repository share scripts
   (a script per repository), hosting providers in the core (one deploy line covers them all), a
   share command receiving each page as JSON (unused once sites existed; two unconnected settings for
