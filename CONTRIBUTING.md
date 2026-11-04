@@ -52,8 +52,8 @@ Issues and pull requests against `main` are welcome. A pull request that changes
 updates the design doc and shows the change: a demo video linked from the pull request, or
 screenshots.
 
-With Obeya, set up a personal demo site once (Konfiguration → Demos → „Persönliche Demo-Seite“:
+With Obeya, set up a personal demo site once (Configuration → Demos → "Personal demo site":
 GitHub Pages from a public repository with any GitHub account, from a private one with GitHub
 Pro, or Cloudflare Pages with a free account; a few minutes). Your Obeya cannot deploy to the
-project's own demo site, so "Teilen" puts your demo there instead, and Obeya writes the link into
+project's own demo site, so "Share" puts your demo there instead, and Obeya writes the link into
 your pull request's description by itself.
