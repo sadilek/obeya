@@ -982,6 +982,8 @@ span.cl-name { color: inherit; cursor: default; }
 .cl-row.on { border-left-color: var(--waiting); background: color-mix(in srgb, var(--waiting) 12%, transparent); }
 .cl-row.on .cl-name { color: var(--ink); font-weight: 600; }
 .cl-row.off { color: var(--muted); }
+/* the heading of what changed meanwhile and may not be the card's */
+.cl-apart td { padding: 8px 6px 2px 0; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
 .cl-foot { margin: 4px 0 0 6px; font-size: 12.5px; }
 .r-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 12px; font-size: 13px; }
 .r-mode { display: inline-flex; background: var(--chip); border-radius: 3px; padding: 2px; gap: 2px; }

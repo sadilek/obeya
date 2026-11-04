@@ -177,6 +177,14 @@ export function DiffView({ item, file, onClose, onRead }: { item: Item; file?: s
           {diff === 'failed' && <p className="hint">{t.diff.failed}</p>}
           {folder && !one && folder.undo && <p className="hint">{t.folder.undoHint[folder.undo]}</p>}
           {folder && !one && <ChangeTable changes={shownChanges(folder.changes)} diffed={(c) => all.some((p) => p.file === c.path)} onFile={go} />}
+          {folder?.uncertain && !one && (
+            <>
+              <p className="hint" title={t.folder.uncertainHint}>
+                {t.folder.uncertainHead}
+              </p>
+              <ChangeTable changes={shownChanges(folder.uncertain)} diffed={() => false} onFile={go} />
+            </>
+          )}
           {got && (
             <>
               {!folder && !one && <table className="d-files">
@@ -289,10 +297,18 @@ export function numbered(lines: string[]): Line[] {
 /** The sign of what happened to a file: moved, added, changed, deleted. */
 export const MARK: Record<FolderChange['kind'], string> = { moved: '↪', added: '＋', modified: '✎', deleted: '✕' };
 
-/** What else the folder's change list says of a file: that the card also changed one it moved, and what discarding would leave. */
-export function ChangeNote({ c }: { c: Pick<FolderChange, 'changed' | 'undo'> }) {
+/**
+ * What else the folder's change list says of a file: that the card also changed one it moved, what
+ * discarding would leave, and that it may not be the card's change at all.
+ */
+export function ChangeNote({ c }: { c: Pick<FolderChange, 'changed' | 'undo'> & { uncertain?: true } }) {
   return (
     <>
+      {c.uncertain && (
+        <span className="f-left" title={t.folder.uncertainHint}>
+          {t.folder.uncertain}
+        </span>
+      )}
       {c.changed && <span className="hint"> {t.folder.alsoChanged}</span>}
       {c.undo && c.undo !== 'yes' && (
         <span className="f-left" title={c.undo === 'lost' ? t.folder.lostHint : c.undo === 'shared' ? t.folder.sharedHint : t.folder.changedSinceHint}>

@@ -207,3 +207,80 @@ describe('undo', () => {
     expect(await kinds('a')).toEqual(['modified Sortierung.md']);
   });
 });
+
+describe('another program writing during a call that writes nothing', () => {
+  const uncertain = async (cardId: string) => ((await ws.diff(cardId, false))!.folder!.uncertain ?? []).map((c) => `${c.kind} ${c.path}`);
+
+  test("is kept apart as uncertain: neither the card's change, nor its result, nor undone", async () => {
+    ws.lease('a');
+    await call('a', 'Edit', { file_path: 'Sortierung.md' }, () => writeFileSync(join(folder, 'Sortierung.md'), 'eins\nzwei\ndrei\n'));
+    // the nightly export lands while the agent waits and counts its rows
+    await call('a', 'Bash', { command: 'sleep 90; wc -l out/export.csv' }, () => {
+      mkdirSync(join(folder, 'out'));
+      writeFileSync(join(folder, 'out', 'export.csv'), 'row,1\nrow,2\n');
+    });
+    expect(await kinds('a')).toEqual(['modified Sortierung.md']);
+    expect(await uncertain('a')).toEqual(['added out', 'added out/export.csv']);
+    expect(await ws.changedFiles('a')).toEqual(['Sortierung.md']);
+    expect(ws.changed('a')).toEqual([{ file: 'Sortierung.md', regions: [] }]);
+    const d = (await ws.diff('a', true))!;
+    expect(d.files.map((f) => f.file)).toEqual(['Sortierung.md']);
+    const report = await ws.undo('a');
+    expect(report.undone).toEqual(['Sortierung.md']);
+    expect(readFileSync(join(folder, 'out', 'export.csv'), 'utf8')).toBe('row,1\nrow,2\n');
+    expect(await uncertain('a')).toEqual(['added out', 'added out/export.csv']);
+  });
+
+  test('a card with nothing but uncertain changes has no work of its own', async () => {
+    ws.lease('a');
+    await call('a', 'Bash', { command: 'ls out 2>/dev/null || echo none' }, () => writeFileSync(join(folder, 'export.csv'), 'row,1\n'));
+    expect(await ws.hasWork('a')).toBe(false);
+    expect(await uncertain('a')).toEqual(['added export.csv']);
+  });
+
+  test('what a command that may write changes stays the card’s', async () => {
+    ws.lease('a');
+    await call('a', 'Bash', { command: 'python3 count.py > counts.txt' }, () => writeFileSync(join(folder, 'counts.txt'), '2\n'));
+    expect(await kinds('a')).toEqual(['added counts.txt']);
+    expect(await uncertain('a')).toEqual([]);
+  });
+
+  test('a file the card then writes itself becomes its change, from as the other program left it', async () => {
+    ws.lease('a');
+    await call('a', 'Bash', { command: 'sleep 30' }, () => writeFileSync(join(folder, 'export.csv'), 'row,1\n'));
+    await Bun.sleep(3);
+    await call('a', 'Bash', { command: "sed -i '' s/row/line/ export.csv" }, () => writeFileSync(join(folder, 'export.csv'), 'line,1\n'));
+    expect(await kinds('a')).toEqual(['modified export.csv']);
+    expect(await uncertain('a')).toEqual([]);
+    // undo has no copy from before the card's change: it leaves the file
+    const report = await ws.undo('a');
+    expect(report.lost).toEqual(['export.csv']);
+    expect(readFileSync(join(folder, 'export.csv'), 'utf8')).toBe('line,1\n');
+  });
+
+  test('another program changing what the card wrote leaves the card’s change as it was: undo finds it changed since', async () => {
+    ws.lease('a');
+    await call('a', 'Bash', { command: 'echo eins > notes.txt' }, () => writeFileSync(join(folder, 'notes.txt'), 'eins\n'));
+    await Bun.sleep(3);
+    await call('a', 'Bash', { command: 'sleep 30' }, () => writeFileSync(join(folder, 'notes.txt'), 'eins\nzwei\n'));
+    expect(await kinds('a')).toEqual(['added notes.txt']);
+    expect(await uncertain('a')).toEqual([]);
+    expect((await ws.undo('a')).changedSince).toEqual(['notes.txt']);
+  });
+
+  test("while another card's command may write, the change is that card's alone", async () => {
+    ws.lease('a');
+    ws.lease('b');
+    const ca: ToolCall = { id: 'r1', name: 'Bash', input: { command: 'sleep 30' } };
+    const cb: ToolCall = { id: 'r2', name: 'Bash', input: { command: 'make report' } };
+    await ws.watch('a').before(ca);
+    await ws.watch('b').before(cb);
+    writeFileSync(join(folder, 'report.pdf'), bytes(200, 7));
+    await ws.watch('b').after(cb);
+    await ws.watch('a').after(ca);
+    expect(await kinds('b')).toEqual(['added report.pdf']);
+    expect((await ws.diff('b', false))!.folder!.changes[0]!.undo).toBe('yes');
+    expect(await kinds('a')).toEqual([]);
+    expect(await uncertain('a')).toEqual([]);
+  });
+});

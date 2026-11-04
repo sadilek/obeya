@@ -3,7 +3,8 @@
 // changes is told from a manifest of the folder (path, size, mtime, inode; a hash only of what
 // changed), taken again after each of its tool calls that may write: a change goes to the card
 // whose call ran when it happened (its ctime, which no tool sets), so the changes of the others
-// stay theirs. Undo puts back what the card changed: from a clone of the folder taken at its start
+// stay theirs; one during a call that writes nothing (a command that only reads or waits) is kept
+// apart as uncertain, as another program may have made it. Undo puts back what the card changed: from a clone of the folder taken at its start
 // where the file system clones (APFS, btrfs, XFS), else from copies of what its editing tools
 // overwrote and of the folder's text files.
 
@@ -16,6 +17,7 @@ import type { PoolHost } from '../core/types';
 import { messageOf } from '../core/text';
 import type { Store } from './db';
 import { spawnOutput } from './spawn';
+import { writesNothing } from './shell';
 import { type CardWorkspaces, type Change, type FileAt, GIT, ownFile, type LandProblem, type Landed, type Lease, WorkspaceError } from './workspaces';
 
 /** A file or directory as the manifest has it. */
@@ -261,6 +263,23 @@ export interface FolderCard {
   /** The undo it has, once Obeya made it ready (`snapshot/`, or `text/`); none before, and once done. */
   undo: 'full' | 'partial' | null;
   changes: Tracked[];
+  /**
+   * What changed during its calls that write nothing (a command that only reads or waits): not its
+   * change, as another program may have made it; listed apart, never undone.
+   */
+  uncertain?: Tracked[];
+}
+
+/** Whether the change `c` is at `path`: there, where it came from, or in a directory it is of. */
+const touches = (c: RawChange, path: string) => [c.path, c.from].some((p) => p !== undefined && (path === p || (c.dir && under(path, p))));
+
+/**
+ * Folds a change that may not be the card's into its list of those: unless it is at something the
+ * card changed itself, which stays as the card left it (undo then finds it changed since).
+ */
+export function mergeUncertain(rec: FolderCard, c: RawChange) {
+  if (rec.changes.some((t) => touches(c, t.path) || (t.from !== undefined && touches(c, t.from)))) return;
+  mergeOne((rec.uncertain ??= []), c);
 }
 
 /** Folds a change into a card's list: one entry per thing it changed, from before its first change to after its last. */
@@ -356,13 +375,18 @@ const EDITS: Record<string, string> = { Edit: 'file_path', MultiEdit: 'file_path
 
 const writes = (name: string) => !READS.has(name) && !name.startsWith('mcp__obeya__');
 
-/** A tool call's window: from just before it ran until Obeya has read what it changed. `only`: the paths it can change, for a call that writes one file. */
+/**
+ * A tool call's window: from just before it ran until Obeya has read what it changed. `only`: the
+ * paths it can change, for a call that writes one file; `reads`: a command that writes nothing, so
+ * what changes meanwhile is no change of its own.
+ */
 interface Window {
   card: string;
   id: string;
   start: number;
   end?: number;
   only?: Set<string>;
+  reads?: true;
 }
 
 /**
@@ -613,7 +637,8 @@ export class FolderWorkspaces implements CardWorkspaces {
         }
         // nor is what changed since the folder was last read, before a call that may write anywhere
         else await this.scanAll();
-        this.windows.push({ card: cardId, id: call.id, start: this.clock(), ...(only ? { only } : {}) });
+        const reads = !field && call.name === 'Bash' && typeof call.input.command === 'string' && writesNothing(call.input.command);
+        this.windows.push({ card: cardId, id: call.id, start: this.clock(), ...(only ? { only } : {}), ...(reads ? { reads: true as const } : {}) });
       },
       after: async (call) => {
         const w = this.windows.find((x) => x.card === cardId && x.id === call.id && x.end === undefined);
@@ -729,14 +754,19 @@ export class FolderWorkspaces implements CardWorkspaces {
     this.last = next;
     const touched = new Set<string>();
     for (const c of raw) {
-      const cards = this.cardsFor(c);
+      const { cards, uncertain } = this.cardsFor(c);
       if (!cards.length) continue;
       // what a card changed is hashed, to tell later whether someone changed it again
-      if (c.after && !c.after.dir && !c.after.cloud && c.kind !== 'deleted') c.after.hash = await hashFile(join(this.root, c.path), c.after.size);
+      if (!uncertain && c.after && !c.after.dir && !c.after.cloud && c.kind !== 'deleted') c.after.hash = await hashFile(join(this.root, c.path), c.after.size);
       for (const card of cards) {
         const rec = this.rec(card);
         if (!rec) continue;
-        merge(rec.changes, c, cards.length > 1);
+        if (uncertain) mergeUncertain(rec, c);
+        else {
+          // what the card changes itself is its own, whoever changed it before
+          if (rec.uncertain) rec.uncertain = rec.uncertain.filter((t) => !touches(c, t.path));
+          merge(rec.changes, c, cards.length > 1);
+        }
         this.save(card, rec);
         touched.add(card);
       }
@@ -744,15 +774,20 @@ export class FolderWorkspaces implements CardWorkspaces {
     for (const card of touched) this.o.onChange?.(card);
   }
 
-  /** The cards a change belongs to: those whose call ran when it happened; a call that writes one file only takes that one. */
-  private cardsFor(c: RawChange): string[] {
+  /**
+   * The cards a change belongs to: those whose call ran when it happened; a call that writes one
+   * file only takes that one. Where only calls that write nothing ran, it is theirs as `uncertain`.
+   */
+  private cardsFor(c: RawChange): { cards: string[]; uncertain: boolean } {
     const coarse = c.at % 1000 === 0 ? 1000 : 0;
     const inside = (w: { start: number; end?: number }) => w.start - coarse <= c.at && (w.end === undefined || c.at <= w.end + SLACK_MS + coarse);
-    if (this.quiet.has(c.path) || (c.from !== undefined && this.quiet.has(c.from))) return [];
+    if (this.quiet.has(c.path) || (c.from !== undefined && this.quiet.has(c.from))) return { cards: [], uncertain: false };
     const during = this.windows.filter(inside);
     const claims = during.filter((w) => w.only && (w.only.has(c.path) || (c.from !== undefined && w.only.has(c.from))));
-    const by = claims.length ? claims : during.filter((w) => !w.only);
-    return [...new Set(by.map((w) => w.card))];
+    const broad = during.filter((w) => !w.only);
+    const writing = broad.filter((w) => !w.reads);
+    const by = claims.length ? claims : writing.length ? writing : broad;
+    return { cards: [...new Set(by.map((w) => w.card))], uncertain: !claims.length && !writing.length };
   }
 
   // ---------------------------------------------------------------- undo
@@ -992,7 +1027,13 @@ export class FolderWorkspaces implements CardWorkspaces {
       }
       changes.push(c);
     }
-    const folder: FolderChanges = { undo, changes };
+    const uncertain: FolderChange[] = [];
+    for (const t of rec.uncertain ?? []) {
+      const c: FolderChange = { kind: t.kind, path: t.path, ...(t.from ? { from: t.from } : {}), ...(t.dir ? { dir: true as const } : {}) };
+      if (!t.dir && t.kind !== 'deleted' && !(await lstat(join(this.root, t.path)).then(() => true, () => false))) c.gone = true;
+      uncertain.push(c);
+    }
+    const folder: FolderChanges = { undo, changes, ...(uncertain.length ? { uncertain } : {}) };
     return { ...cardDiff('folder', patches.join('\n'), full), folder };
   }
 

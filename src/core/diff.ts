@@ -36,6 +36,11 @@ export interface FolderChanges {
    */
   undo: 'full' | 'partial' | null;
   changes: FolderChange[];
+  /**
+   * What changed while only calls of the card ran that write nothing (a command that only reads or
+   * waits): another program may have made it, so it is no change of the card's, nor undone with them.
+   */
+  uncertain?: FolderChange[];
 }
 
 export interface FolderChange {

@@ -101,12 +101,15 @@ export interface ChangeRow {
   changed?: true;
   gone?: true;
   undo?: FolderChange['undo'];
+  /** In a folder: changed while the card's calls wrote nothing, so maybe by another program; no change of the card's. */
+  uncertain?: true;
 }
 
 /**
  * The card's change list, a line per file: first the files the left column can show, in their order
  * (`shownFiles`), then the rest of the change as it comes, which has no view. On a branch, git's
- * list of files; in a folder, its changes as the owner reads them.
+ * list of files; in a folder, its changes as the owner reads them, and last, apart, what changed
+ * meanwhile that may not be the card's (`uncertain`).
  */
 export function changeRows(diff: CardDiff | null, named: CardFile[] = []): ChangeRow[] {
   const all: ChangeRow[] = diff?.folder
@@ -119,11 +122,12 @@ export function changeRows(diff: CardDiff | null, named: CardFile[] = []): Chang
       }));
   const strip = (r: ChangeRow) => Object.fromEntries(Object.entries(r).filter(([, v]) => v !== undefined)) as ChangeRow;
   const shown = shownFiles(diff, named).map((file) => strip({ ...(all.find((r) => r.path === file.path) ?? { path: file.path }), caption: file.caption, file }));
-  return [...shown, ...all.filter((r) => !shown.some((s) => s.path === r.path)).map(strip)];
+  const apart = shownChanges(diff?.folder?.uncertain ?? []).map(({ kind, path, from, dir, gone }) => strip({ kind, path, from, dir, gone, uncertain: true }));
+  return [...shown, ...all.filter((r) => !shown.some((s) => s.path === r.path)).map(strip), ...apart];
 }
 
 /** The size of the card's change (`Item.changeSize`): as many files as its change list has lines without named ones, and its lines. */
-export const changeSize = (diff: CardDiff): ChangeSize => ({ files: changeRows(diff).length, ...diffSize(diff.files) });
+export const changeSize = (diff: CardDiff): ChangeSize => ({ files: changeRows(diff).filter((r) => !r.uncertain).length, ...diffSize(diff.files) });
 
 /** A path as the change list writes it: relative, with `/`, without `.` and `..` steps; null for one that leaves the root. */
 export function normalPath(path: string): string | null {

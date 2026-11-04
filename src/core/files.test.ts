@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CardDiff } from './diff';
-import { changeRows, docImages, fileKind, imageAt, normalPath, shownFiles } from './files';
+import { changeRows, changeSize, docImages, fileKind, imageAt, normalPath, shownFiles } from './files';
 
 const folder: CardDiff = {
   source: 'folder',
@@ -85,6 +85,20 @@ describe('the files a card shows as its result', () => {
     // the lines stay with the file, and a moved one says where it was
     expect(rows[0]).toMatchObject({ added: 69, removed: 0 });
     expect(rows[4]).toMatchObject({ from: 'a.pdf' });
+  });
+
+  test('what may not be the card\'s comes last in the change list, apart, never as the result nor in its size', () => {
+    const uncertain = [
+      { kind: 'added' as const, path: 'out', dir: true as const },
+      { kind: 'added' as const, path: 'out/export.csv' },
+    ];
+    const d = { ...folder, folder: { ...folder.folder!, uncertain } };
+    const named = [{ path: 'out/export.csv', caption: 'Der Export' }];
+    const rows = changeRows(d, named);
+    expect(rows.at(-1)).toEqual({ kind: 'added', path: 'out/export.csv', uncertain: true });
+    expect(rows.filter((r) => r.uncertain)).toHaveLength(1);
+    expect(shownFiles(d).map((f) => f.path)).not.toContain('out/export.csv');
+    expect(changeSize(d).files).toBe(changeRows(folder).length);
   });
 
   test('on a branch, the change list is the list git gives, a named file it does not hold with no sign', () => {

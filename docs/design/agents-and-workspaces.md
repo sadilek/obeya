@@ -254,7 +254,16 @@ Read, Grep, Glob and the like) opens a window from its `PreToolUse` to its `Post
 folder is read before and after, and each change goes to the cards whose windows were open at its
 ctime, which no tool sets (a deleted file by its directory's). So a change is a card's own even while
 others, a scanner or the sync client change the folder; one outside every window is no card's, and
-one during two cards' calls is listed by both and undone by neither. The window opens at a time read
+one during two cards' calls is listed by both and undone by neither. A shell command whose line
+writes no file (each of its commands only reads, prints or waits, such as `sleep 30; wc -l
+out/export.csv`, and no output goes into a file) opens a window too, but what changes in it alone may
+come from another program (a nightly export landing while the agent waits for it): the card keeps it
+apart as uncertain, below its own changes under „Zugleich geändert, vielleicht von einem anderen
+Programm“, never as its result, its size or what discarding puts back. A writing call open at the
+same time, of any card, takes the change instead; the card's own later change of such a file makes
+it the card's, from as it was then; an uncertain change of a file the card changed leaves its entry
+as it was, so undo finds it changed since. A command that may write keeps all it changes, whoever
+else wrote meanwhile. The window opens at a time read
 off the ctime of a file Obeya writes then, since Linux stamps ctime from a coarse clock up to 10 ms
 behind the system clock. An editing tool's call reads only its file; a script's call reads the whole
 folder (0.3 s for 4,615 files). Background work keeps a window open; the end of a turn closes any
@@ -420,6 +429,14 @@ for its hooks), and what the repository's work needs.
   full where the file system clones. Rejected: a shadow git outside the folder (copies every file
   into git and the folder into each worktree); a copy per card applied on approval (cheap only where
   cloning works).
+- **A change during a command that writes nothing is uncertain, not the card's** (2026-11-04): a
+  Codex worker counting the rows of an export that a background process wrote while it waited in
+  `sleep 30` steps got the export as its result, and „Änderungen verwerfen“ would have deleted it.
+  The command line tells which commands cannot write (a fixed list of readers, options that write
+  excluded, no output redirected into a file); anything not known may write. Rejected: telling the
+  writing process apart (macOS `fs_usage`, Endpoint Security and Linux fanotify need root or an
+  entitlement, Windows has no counterpart reachable from Bun); hiding such a change entirely, since a
+  command misread as writing nothing would then lose the card's own change from its list.
 - **The pool follows the configuration; a clone leaving it is deleted** (2026-10-21), so a lowered
   number gives disk space and app stacks back. Rejected: clones staying once registered; leaving the
   folder; asking when saving (a step more, and a leased clone is freed only later).

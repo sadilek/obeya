@@ -4,7 +4,7 @@
 // HTML artifact, text as it is, anything else as a tile; each to open on the computer, show in its
 // folder, or download. Folder and git cards alike.
 
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type CardDiff, diffSize, shownChanges, splitDiff } from '../core/diff';
 import { type ChangeRow, changeRows, imageAt, type ShownFile } from '../core/files';
 import type { DemoKind, Item } from '../core/types';
@@ -195,7 +195,7 @@ export function ChangeList({
           <col className="cl-n" />
         </colgroup>
         <tbody>
-          {visible.map((l) =>
+          {visible.map((l, i) =>
             l === DEMO ? (
               <tr key="demo" className={current === DEMO ? 'cl-row on' : 'cl-row'} onClick={() => pick?.(DEMO)}>
                 <td />
@@ -217,14 +217,24 @@ export function ChangeList({
                 <td />
               </tr>
             ) : (
-              <Line
-                key={`${l.kind ?? ''}:${l.from ?? ''}:${l.path}`}
-                row={l}
-                on={current === l.path}
-                onPick={pick && l.file ? (changes) => pick(l.path, changes) : undefined}
-                onDiff={l.added || l.removed ? () => setOpen(l.path) : undefined}
-                tabs={!!pick}
-              />
+              <Fragment key={`${l.uncertain ? '?' : ''}${l.kind ?? ''}:${l.from ?? ''}:${l.path}`}>
+                {/* what may not be the card's stands apart, under a line of its own */}
+                {l.uncertain && !visible.slice(0, i).some((x) => x !== DEMO && 'path' in x && x.uncertain) && (
+                  <tr className="cl-apart">
+                    <td />
+                    <td colSpan={3} title={t.folder.uncertainHint}>
+                      {t.folder.uncertainHead}
+                    </td>
+                  </tr>
+                )}
+                <Line
+                  row={l}
+                  on={current === l.path}
+                  onPick={pick && l.file ? (changes) => pick(l.path, changes) : undefined}
+                  onDiff={l.added || l.removed ? () => setOpen(l.path) : undefined}
+                  tabs={!!pick}
+                />
+              </Fragment>
             ),
           )}
         </tbody>
@@ -267,9 +277,9 @@ function Line({ row, on, onPick, onDiff, tabs }: { row: ChangeRow; on: boolean; 
     ) : (
       text
     );
-  const note = row.caption || row.changed || (row.undo && row.undo !== 'yes');
+  const note = row.caption || row.changed || (row.undo && row.undo !== 'yes') || row.uncertain;
   return (
-    <tr className={['cl-row', on && 'on', tabs && !onPick && 'off'].filter(Boolean).join(' ')} onClick={onPick && (() => onPick())}>
+    <tr className={['cl-row', on && 'on', ((tabs && !onPick) || row.uncertain) && 'off'].filter(Boolean).join(' ')} onClick={onPick && (() => onPick())}>
       <td className="f-mark" aria-label={row.kind}>
         {row.kind && MARK[row.kind]}
       </td>

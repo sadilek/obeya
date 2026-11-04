@@ -486,6 +486,10 @@ const de = {
     sharedHint: 'Als sich das änderte, war auch der Agent einer anderen Karte am Werk; von wem es kam, ist nicht zu sagen: Verwerfen lässt es, wie es ist.',
     lostHint: 'Obeya hat keine Kopie von vorher: Verwerfen lässt sie, wie sie ist.',
     alsoChanged: 'und geändert',
+    uncertainHead: 'Zugleich geändert, vielleicht von einem anderen Programm',
+    uncertain: 'unsicher, bleibt',
+    uncertainHint:
+      'Das hat sich geändert, während der Agent nur Befehle ausführte, die lesen oder warten (wc, sleep …). Wahrscheinlich hat es ein anderes Programm geschrieben: Es zählt nicht zu den Änderungen der Karte, und „Änderungen verwerfen“ lässt es, wie es ist.',
     discard: 'Änderungen verwerfen',
     discardHint: (n: number) => `Setzt ${n === 1 ? '1 Datei' : `${n} Dateien`} zurück, wie sie vor der Karte waren. Die Karte wartet danach weiter auf dich.`,
     seconds: (s: number) => `${s} s`,
@@ -2584,6 +2588,10 @@ const en: Strings = {
     sharedHint: "When this changed, another card's agent was at work too, and whose change it was cannot be told: discarding leaves it as it is.",
     lostHint: 'Obeya kept no copy from before: discarding leaves it as it is.',
     alsoChanged: 'and changed',
+    uncertainHead: 'Changed meanwhile, perhaps by another program',
+    uncertain: 'uncertain, stays',
+    uncertainHint:
+      'This changed while the agent only ran commands that read or wait (wc, sleep, …). Another program probably wrote it: it does not count among the card’s changes, and “Discard changes” leaves it as it is.',
     discard: 'Discard changes',
     discardHint: (n: number) => `Puts ${n === 1 ? '1 file' : `${n} files`} back as they were before the card. The card then still waits for you.`,
     seconds: (s: number) => `${s} s`,
