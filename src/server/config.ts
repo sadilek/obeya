@@ -257,6 +257,7 @@ const demoShape = z
     keyFile: z.string().optional(),
     directory: z.string().optional(),
     keepFrames: z.union([z.number().int().positive(), z.literal('always')]).optional(),
+    subtitles: z.array(z.string()).optional(),
   })
   .strict();
 

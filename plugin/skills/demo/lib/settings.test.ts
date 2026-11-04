@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { demoDirectory, describeDemoSettings, inLanguage, narrationPerson, readDemoSettings, referenceOf, repositoryLanguage, tidyDemoSettings, withVoice, writeDemoSettings } from './settings.ts';
+import { demoDirectory, describeDemoSettings, inLanguage, narrationPerson, readDemoSettings, referenceOf, repositoryLanguage, subtitleLanguages, tidyDemoSettings, withVoice, writeDemoSettings } from './settings.ts';
 
 let home: string;
 beforeEach(() => (home = mkdtempSync(join(tmpdir(), 'obeya-demo-settings-'))));
@@ -85,10 +85,38 @@ describe('demo settings', () => {
     expect(withVoice(saved, undefined)).toBe(saved);
     expect(withVoice(saved, 'gemini')).toEqual({ language: 'en', voice: 'gemini', command: 'speak' });
     expect(withVoice(saved, '/tmp/someone.wav')).toEqual({ language: 'en', voice: 'qwen3', references: { en: '/tmp/someone.wav' } });
+    // what is not the voice's stays
+    expect(withVoice({ ...saved, subtitles: ['de', 'fr'], directory: '~/d', keepFrames: 3 }, '/tmp/someone.wav')).toEqual({
+      language: 'en',
+      voice: 'qwen3',
+      references: { en: '/tmp/someone.wav' },
+      directory: '~/d',
+      keepFrames: 3,
+      subtitles: ['de', 'fr'],
+    });
     expect(() => withVoice(saved, 'robot')).toThrow('unknown voice');
   });
 
+  test('name the languages of the subtitles: the narration first, then the known codes given, in their order', () => {
+    const s = tidyDemoSettings({ language: 'de', voice: 'none', subtitles: ['en', 'pt-br', 'xx', 'en', 'de', 7] });
+    expect(s).toEqual({ language: 'de', voice: 'none', subtitles: ['en', 'pt-BR', 'de'] });
+    expect(subtitleLanguages(s)).toEqual(['de', 'en', 'pt-BR']);
+    expect(describeDemoSettings(s, undefined)).toContain('subtitles: de, en, pt-BR — the render asks for a translation of the narration into en, pt-BR');
+    expect(subtitleLanguages({ language: 'en', subtitles: ['de', 'fr'] })).toEqual(['en', 'de', 'fr']);
+    expect(tidyDemoSettings({ language: 'en', voice: 'piper', subtitles: [] })).toEqual({ language: 'en', voice: 'piper' });
+    expect(withVoice({ language: 'en', voice: 'piper' }, 'none')).toEqual({ language: 'en', voice: 'none' });
+  });
+
+  test('with no further languages, the narration is the only track, with a voice or without', () => {
+    expect(subtitleLanguages({ language: 'en', subtitles: [] })).toEqual(['en']);
+    expect(describeDemoSettings({ language: 'en', voice: 'none' }, undefined)).toContain("subtitles: en (the narration's alone)");
+    expect(describeDemoSettings({ language: 'en', voice: 'piper' }, undefined)).toContain("subtitles: en (the narration's alone)");
+  });
+
   test("speak in the first person only in the owner's own voice", () => {
+    // without a voice nobody speaks: the subtitles present the work
+    expect(narrationPerson({ voice: 'none', ownVoice: true })).toBe('third');
+    expect(describeDemoSettings({ language: 'en', voice: 'none' }, undefined)).toContain('voice: none');
     expect(narrationPerson({ ownVoice: true })).toBe('first');
     expect(narrationPerson({})).toBe('third');
     expect(describeDemoSettings({ language: 'en', voice: 'piper' }, undefined)).toContain('in English');

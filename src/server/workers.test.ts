@@ -608,6 +608,19 @@ describe('workers', () => {
     expect(board.item(c.id)!.question!.text).toBe('Ich komme nicht an die Datenbank.');
   });
 
+  test("the nudge repeats a refusal of Obeya's tools the worker may never have read", async () => {
+    const c = manual();
+    await workers.start(c.id);
+    expect(await runtime.last.call('ready_for_review', { summary: 'Fertig.' })).toStartWith('Not handed over: every handover brings a demo');
+    expect(await runtime.last.call('report', { status: 'Fertig' })).toBe('Shown on the card.');
+    runtime.last.emit({ type: 'text', text: 'Fertig.' });
+    runtime.last.emit({ type: 'idle' });
+    expect(runtime.last.inbox.at(-1)).toContain('Your last call of ready_for_review came back with: Not handed over: every handover brings a demo');
+    // the nudge has said it: ending again goes to the owner as before
+    runtime.last.emit({ type: 'idle' });
+    expect(state(c.id)).toBe('waiting:question');
+  });
+
   test('a session that fails again after the nudge goes to the owner with the reason', async () => {
     const c = manual();
     await workers.start(c.id);

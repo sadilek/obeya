@@ -9,13 +9,13 @@ import { type Language, LANGUAGE_NAMES, LANGUAGES, ownersLanguage, repositoryLan
 import { MESSAGES, type Messages, type Pause } from '../core/messages';
 import { realpathSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
-import { type CardFile, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
+import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
 import { BadRequest, type Board, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
-import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters } from './demo';
+import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, videoFacts } from './demo';
 import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
@@ -352,6 +352,11 @@ interface Live {
    */
   acted: boolean;
   nudged: boolean;
+  /**
+   * The last of Obeya's tools that refused the worker's call, with its words, until the same tool
+   * takes a call: the nudge at the turn's end repeats them, for a worker that never read them.
+   */
+  refused?: { tool: string; text: string };
   lastText: string;
   /** The error the worker's last turn failed with (not logged in, say); gone once it says or does something. */
   failed?: string;
@@ -2276,12 +2281,19 @@ export class Workers {
    * What the card's work changes: once it landed, what the landing put on the default branch;
    * before, its branch in its workspace so far. Null when neither is there to read.
    */
-  diff(cardId: string, full: boolean): Promise<CardDiff | null> {
+  async diff(cardId: string, full: boolean): Promise<CardDiff | null> {
     const row = this.o.board.row(cardId);
     const shipped = row.shipped ? (JSON.parse(row.shipped) as Shipped) : null;
     // landed work's workspace, while its worker finishes, has nothing left against the default branch
-    if (row.state === 'live' && shipped?.commit && shipped.base) return this.o.workspaces.landedDiff(shipped.base, shipped.commit, full);
-    return this.o.workspaces.diff(cardId, full);
+    const diff = row.state === 'live' && shipped?.commit && shipped.base ? await this.o.workspaces.landedDiff(shipped.base, shipped.commit, full) : await this.o.workspaces.diff(cardId, full);
+    // its size, for the page to lay out the card's change list before it has read the change
+    const size = diff && JSON.stringify(changeSize(diff));
+    try {
+      if (size && size !== this.o.board.row(cardId).change_size) this.o.board.work(cardId, { change_size: size });
+    } catch {
+      // the card went while its change was read
+    }
+    return diff;
   }
 
   /** The files of the card's change as they are now, as `diff` reads it, by a list no file name can pass for another in (`CardWorkspaces.changedFiles`). */
@@ -2322,23 +2334,29 @@ export class Workers {
 
   /**
    * The files a worker names as its result at its handover, as paths of its change relative to the
-   * workspace (or folder); what is wrong instead, for the worker to fix.
+   * workspace (or folder), and what the worker hears of those it named outside its change, which
+   * are left out: refusing the handover for them held back the rest of it, also from a worker that
+   * never read the refusal (Codex's code mode drops a result its script does not print).
+   * `named` is undefined where none of them is of the change, so that earlier ones stand.
    */
-  private async namedFiles(cardId: string, files: { path: string; caption: string }[]): Promise<CardFile[] | string> {
+  private async namedFiles(cardId: string, files: { path: string; caption: string }[]): Promise<{ named?: CardFile[]; left?: string }> {
     const ws = (this.o.board.row(cardId).workspace ?? '').replace(/^ssh:\/\/[^/]+/, '');
     const roots = [ws, ...(ws && !hostName(this.o.board.row(cardId).workspace) ? [realpathOr(ws)] : [])].filter(Boolean);
     const changed = await this.changedFiles(cardId);
     const out: CardFile[] = [];
+    const outside: string[] = [];
     for (const f of files) {
       let given = String(f.path).trim();
       const root = roots.find((r) => given.startsWith(`${r}/`));
       if (root) given = given.slice(root.length + 1);
       const path = isAbsolute(given) ? null : normalPath(given);
-      if (!path || !changed.includes(path))
-        return `${f.path} is not among the files your card made or changed${changed.length ? ` (${changed.slice(0, 30).join(', ')}${changed.length > 30 ? ', …' : ''})` : ' (none so far)'}`;
-      if (!out.some((o) => o.path === path)) out.push({ path, caption: clip(String(f.caption ?? '').replace(/\s+/g, ' ').trim(), 200) });
+      if (!path || !changed.includes(path)) outside.push(String(f.path));
+      else if (!out.some((o) => o.path === path)) out.push({ path, caption: clip(String(f.caption ?? '').replace(/\s+/g, ' ').trim(), 200) });
     }
-    return out;
+    if (!outside.length) return { named: out };
+    const list = changed.length ? `(${changed.slice(0, 30).join(', ')}${changed.length > 30 ? ', …' : ''})` : '(none)';
+    const left = `${outside.join(', ')} ${outside.length === 1 ? 'is' : 'are'} not among the files your card made or changed ${list}, so the card does not show ${outside.length === 1 ? 'it' : 'them'}.`;
+    return { named: out.length ? out : files.length ? undefined : out, left };
   }
 
   /**
@@ -3714,11 +3732,14 @@ export class Workers {
     if (!live.nudged) {
       live.nudged = true;
       this.setBusy(live, true);
+      // a refusal its worker never read (Codex's code mode drops a result its script does not print) reaches it here
+      const refused = live.refused ? `\n\nYour last call of ${live.refused.tool} came back with: ${clip(live.refused.text, 1500)}` : '';
       live.session.send(
-        card.state === 'inPr'
+        (card.state === 'inPr'
           ? 'Your turn ended, and Obeya has no pull request for this card yet (pr_opened), nor did you close it as needing none (close_unchanged).'
-          : 'Your turn ended without a handover (ready_for_review) or a question (ask), so the card still shows you at work. Should you end your turn again like this, Obeya passes your last words to the owner as a question.',
+          : 'Your turn ended without a handover (ready_for_review) or a question (ask), so the card still shows you at work. Should you end your turn again like this, Obeya passes your last words to the owner as a question.') + refused,
       );
+      live.refused = undefined;
       return;
     }
     live.nudged = false;
@@ -4120,7 +4141,19 @@ export class Workers {
     };
     // a session the owner stopped or replaced may still call its tools: those calls change nothing
     const current = (tools: AgentTool[]): AgentTool[] =>
-      tools.map((t) => ({ ...t, run: (args) => (this.live.get(cardId) === live || live.standIn ? t.run(args) : 'This session has ended. Stop working and end your turn.') }));
+      tools.map((t) => ({
+        ...t,
+        run: (args) => {
+          if (this.live.get(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
+          const heard = (text: string) => {
+            if (/^Not [a-z ]+:/.test(text)) live.refused = { tool: t.name, text };
+            else if (live.refused?.tool === t.name) live.refused = undefined;
+            return text;
+          };
+          const result = t.run(args);
+          return typeof result === 'string' ? heard(result) : result.then(heard);
+        },
+      }));
     // a review card's tools to the contributor's pull request
     const review = contributionOf(this.o.board.row(cardId));
     return current([
@@ -4385,7 +4418,7 @@ export class Workers {
                 .enum(['video', 'html'])
                 .optional()
                 .describe("'video' (the default): a recording made with the demo skill; 'html': a page to look at, for results that are seen rather than watched happening"),
-              dir: z.string().describe('absolute path of the demo: a video holds demo.mp4 and captions.vtt, an HTML artifact holds index.html and the files it loads'),
+              dir: z.string().describe('absolute path of the demo: a video holds demo.mp4 and captions.vtt (and a captions.<language>.vtt per subtitle language), an HTML artifact holds index.html and the files it loads'),
               chapters: z.array(z.string()).optional().describe('video only: scene titles, in order'),
               question: z
                 .object({
@@ -4452,7 +4485,7 @@ export class Workers {
             .max(MAX_RESULT_FILES)
             .optional()
             .describe(
-              `the files ${this.folder ? 'in the folder' : 'of your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. Without them, the ones named at your last handover stand.`,
+              `the files your card made or changed ${this.folder ? 'in the folder' : 'on your branch'} that are the result for the owner (a document, a report, a spreadsheet, a page; not the code or configuration behind it), each with its path and a one-line caption in ${language}. The card shows them beside the demo: Markdown formatted, a PDF in the browser's viewer, any other file to open on the owner's computer. Without them, the ones named at your last handover stand.`,
             ),
         },
         run: ({ summary, demo, files, review: results, pr_draft: draft }) => {
@@ -4528,7 +4561,7 @@ export class Workers {
               } else {
                 const chapters = readChapters(d.dir, d.chapters ?? []);
                 if (typeof chapters === 'string') return `Not handed over: ${chapters}. Fix the demo, then call ready_for_review again.`;
-                demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...report, ...(page ? { page } : {}) });
+                demoJson = JSON.stringify({ kind, dir: d.dir, chapters, ...videoFacts(d.dir), ...report, ...(page ? { page } : {}) });
               }
             }
             handOver();
@@ -4569,6 +4602,8 @@ export class Workers {
                     ? { files: null }
                     : {}),
             });
+            // the size of the change handed over, for the page to lay out its change list from the first time it opens the card
+            void this.diff(cardId, false).catch(() => {});
             const card = this.o.board.item(cardId);
             if (card?.prototypeOf) this.o.onPrototype?.(card, report, demoJson);
             if (approved)
@@ -4602,9 +4637,10 @@ export class Workers {
           };
           // the files named as the result, checked against what the card changed before anything is handed over
           if (files !== undefined)
-            return this.namedFiles(cardId, files as { path: string; caption: string }[]).then((named) =>
-              typeof named === 'string' ? `Not handed over: ${named}. Name only files your card made or changed, then call ready_for_review again.` : handOverWith(named),
-            );
+            return this.namedFiles(cardId, files as { path: string; caption: string }[]).then(async ({ named, left }) => {
+              const result = await handOverWith(named);
+              return left && !result.startsWith('Not ') ? `${result}\n\n${left}` : result;
+            });
           return handOverWith();
         },
       },
@@ -5066,7 +5102,7 @@ ${idea.idea.brief}` : '',
     if (this.o.adapter.checks?.length) parts.push(`Before ready_for_review, run: ${this.o.adapter.checks.map((c) => `\`${c}\``).join(', ')}.`);
     parts.push(
       [
-        'Then hand it over with ready_for_review: your summary says what you did and what the owner needs to know, and its files name the files that are the result for the owner (a document, a report, a spreadsheet), which the card shows first. The card shows the owner what you changed in the folder, file by file (added, changed, moved, deleted, with the changed lines of text files), and they may discard those changes before approving.',
+        'Then hand it over with ready_for_review: your summary says what you did and what the owner needs to know, and its files name the files your card made or changed that are the result for the owner (a document, a report, a spreadsheet), which the card shows first. The card shows the owner what you changed in the folder, file by file (added, changed, moved, deleted, with the changed lines of text files), and they may discard those changes before approving.',
         `A demo is needed only where something can be seen: a draft or an overview to look at as an HTML artifact (an index.html in a new directory under ${this.demosDir(cardId)}, outside the folder, self-contained or with the files it loads beside it, made for the owner to decide on), handed over with kind 'html'; something that happens on screen as a video, recorded with ${this.demoSkill(cardId)}.`,
       ].join(' '),
     );

@@ -4,8 +4,8 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pagePolicy } from '../core/frame';
-import { artifactFiles } from './demo-page';
-import { checkPlugin, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, OBEYA_PLUGIN, readChapters, serveDemoFile, serveMockFrame } from './demo';
+import { artifactFiles, captionTracks, silentVideo, videoSize } from './demo-page';
+import { checkPlugin, DEMO_SKILL, DEMO_SKILL_FILE, demoFiles, demoSkillName, OBEYA_PLUGIN, placeIn, readChapters, serveDemoFile, serveMockFrame, videoFacts } from './demo';
 
 const dir = mkdtempSync(join(tmpdir(), 'obeya-demo-'));
 writeFileSync(join(dir, 'demo.mp4'), '0123456789');
@@ -23,6 +23,84 @@ describe('readChapters', () => {
   test('says what is wrong', () => {
     expect(readChapters(dir, ['Nur eins'])).toContain('2 cues but 1 chapter');
     expect(readChapters(join(dir, 'nope'), [])).toContain('demo.mp4 is missing');
+  });
+});
+
+describe('a demo with a caption track per language', () => {
+  const tracked = mkdtempSync(join(tmpdir(), 'obeya-demo-tracks-'));
+  afterAll(() => rmSync(tracked, { recursive: true, force: true }));
+  const en = 'WEBVTT\n\n00:00:00.350 --> 00:00:02.000\nOne.\n\n00:00:02.000 --> 00:00:04.000\nTwo.\n\n00:00:05.350 --> 00:00:07.000\nThree.\n';
+  // an MP4's track list as the director writes it (`+faststart`): a video handler, and an audio one unless silent
+  const box = (type: string) => `\0\0\0!${type}`;
+  const mp4 = (sound: boolean) => Buffer.from(`${box('ftyp')}isom${box('moov')}${box('hdlr')}\0\0\0\0\0\0\0\0vide${sound ? `${box('hdlr')}\0\0\0\0\0\0\0\0soun` : ''}${box('mdat')}`, 'latin1');
+  writeFileSync(join(tracked, 'demo.mp4'), mp4(false));
+  // the narration's captions name the tracks, in the settings' order; the narration's own is not among them
+  writeFileSync(join(tracked, 'captions.vtt'), en.replace('WEBVTT', 'WEBVTT - subtitles: pt-BR de'));
+  writeFileSync(join(tracked, 'captions.de.vtt'), en.replace('One.', 'Eins.'));
+  writeFileSync(join(tracked, 'captions.en.vtt'), en);
+  writeFileSync(join(tracked, 'captions.pt-BR.vtt'), en.replace('One.', 'Um.'));
+  writeFileSync(join(tracked, 'chapters.vtt'), 'WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nBefore\n\n00:00:05.000 --> 00:00:08.000\nAfter\n');
+
+  test('its chapters come from chapters.vtt: a scene has a cue per sentence in the captions', () => {
+    expect(readChapters(tracked, ['Before', 'After'])).toEqual([
+      [0, 'Before'],
+      [5, 'After'],
+    ]);
+    expect(readChapters(tracked, ['Only'])).toContain('2 scenes but 1 chapter');
+  });
+
+  test('the tracks its captions.vtt names, in their order, are served, and the player learns whether it is silent', async () => {
+    expect(captionTracks(tracked).map((t) => t.language)).toEqual(['pt-BR', 'de']);
+    expect(captionTracks(dir)).toEqual([{ file: 'captions.vtt' }]);
+    expect(videoFacts(tracked)).toEqual({ tracks: ['pt-BR', 'de'], silent: true });
+    expect(videoFacts(dir)).toEqual({});
+    expect(demoFiles(tracked).sort()).toEqual(['captions.de.vtt', 'captions.pt-BR.vtt', 'captions.vtt', 'demo.mp4']);
+    const served = serveDemoFile({ dir: tracked, kind: 'video' }, 'captions.pt-BR.vtt', new Request('http://x/'));
+    expect(await served.text()).toContain('Um.');
+    expect(serveDemoFile({ dir: tracked, kind: 'video' }, 'chapters.vtt', new Request('http://x/')).status).toBe(404);
+  });
+
+  test('one whose captions.vtt names no tracks offers none, though it keeps the narration for placing comments', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'obeya-demo-bare-'));
+    try {
+      writeFileSync(join(bare, 'captions.vtt'), en.replace('WEBVTT', 'WEBVTT - subtitles: none'));
+      expect(captionTracks(bare)).toEqual([]);
+      expect(videoFacts(bare)).toEqual({ tracks: [] });
+      expect(placeIn(bare, [[0, 'Before']], 1).narration).toBe('One.');
+    } finally {
+      rmSync(bare, { recursive: true, force: true });
+    }
+  });
+
+  test('a video is silent without an audio handler in its track list; one whose list comes after the media counts as sounding', () => {
+    const file = join(tracked, 'probe.mp4');
+    writeFileSync(file, mp4(true));
+    expect(silentVideo(file)).toBe(false);
+    writeFileSync(file, mp4(false));
+    expect(silentVideo(file)).toBe(true);
+    writeFileSync(file, Buffer.from('\0\0\0 ftypisom\0\0\0\0mdat', 'latin1'));
+    expect(silentVideo(file)).toBe(false);
+  });
+
+  test("a video's width and height come from the first track in its list with a picture, for the player's shape before it loads", () => {
+    // a `tkhd` box: version and flags, times, track and duration (wider in version 1), then 52 bytes to width and height in 16.16
+    const tkhd = (version: 0 | 1, w: number, h: number) => {
+      const b = Buffer.alloc(4 + 4 + (version ? 32 : 20) + 52 + 8);
+      b.write('tkhd', 0, 'latin1');
+      b[4] = version;
+      b.writeUInt32BE(w * 65536, b.length - 8);
+      b.writeUInt32BE(h * 65536, b.length - 4);
+      return b;
+    };
+    const file = join(tracked, 'sized.mp4');
+    // the sound's track, without a picture, comes first
+    writeFileSync(file, Buffer.concat([Buffer.from('\0\0\0 ftypisom\0\0\0\0moov', 'latin1'), tkhd(0, 0, 0), tkhd(0, 1440, 900)]));
+    expect(videoSize(file)).toEqual([1440, 900]);
+    writeFileSync(file, Buffer.concat([Buffer.from('\0\0\0 ftypisom\0\0\0\0moov', 'latin1'), tkhd(1, 860, 1640)]));
+    expect(videoSize(file)).toEqual([860, 1640]);
+    expect(videoFacts(tracked).size).toBeUndefined();
+    writeFileSync(file, Buffer.from('\0\0\0 ftypisom\0\0\0\0mdat', 'latin1'));
+    expect(videoSize(file)).toBeNull();
   });
 });
 

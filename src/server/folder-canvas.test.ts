@@ -141,9 +141,9 @@ describe('a canvas over a folder without git', () => {
       mkdirSync(join(docs, 'Estate', '__pycache__'));
       writeFileSync(join(docs, 'Estate', '__pycache__', 'model.pyc'), bytes(100, 3));
     });
+    // a file it only read is left out; the card still shows what it changed, beside its conversation
     expect(await a.call('ready_for_review', { summary: 'Done.', files: [{ path: 'Estate/Inventory.md', caption: 'x' }] })).toContain('Estate/Inventory.md is not among the files your card made or changed');
-    // without files named, the card still shows what it changed, beside its conversation
-    expect(await a.call('ready_for_review', { summary: 'Done.' })).toContain('Recorded');
+    expect(item(plan.id).state).toBe('waiting');
     expect(item(plan.id).files).toEqual([]);
     workers.message(plan.id, 'Name the plan.');
     expect(await a.call('ready_for_review', { summary: 'Done.', files: [{ path: join(docs, 'Estate', 'Plan.md'), caption: 'The plan' }] })).toContain('Recorded');

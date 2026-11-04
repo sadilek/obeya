@@ -54,10 +54,10 @@ import type { Messages } from '../core/messages';
 import { dimensions } from '../core/page-tags';
 import type { PageTags } from '../core/types';
 import { readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
-import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, credit, day, demoFile, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
+import { ARTIFACT_DIR, artifactFiles, artifactPageHtml, type CaptionTrack, captionTracks, credit, day, demoPageHtml, esc, OBEYA_URL, ON_DISK, PAGE_STYLE, type PageCommit, paragraphs, PAGE_WORDS, type PageLanguage, silentVideo, type StackedDemo, stackedPageHtml, themeStyle } from './demo-page';
 import { artifactCopy } from './artifact-copy';
 import { pagePolicy, sealed, withHeightReport } from '../core/frame';
-import { DEMO_FILES, OWN_CONNECTIONS } from './demo';
+import { demoFiles, OWN_CONNECTIONS } from './demo';
 import { BUN_ENV } from './resources';
 import { spawnOutput } from './spawn';
 import { HERE, isFolder } from './workspaces';
@@ -634,7 +634,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
           parts.map(async (d) => {
             if (!d.title?.trim() || !d.text?.trim() || !d.dir) throw new Refused(t.pageIncomplete);
             const html = d.kind === 'html';
-            const files = html ? artifactFiles(d.dir) : DEMO_FILES.filter((f) => demoFile(d.dir, f));
+            const files = html ? artifactFiles(d.dir) : demoFiles(d.dir);
             for (const f of html ? ['index.html'] : ['demo.mp4', 'captions.vtt']) if (!files.includes(f)) throw new Refused(t.fileMissing(f, d.dir));
             // what the artifact loads in CORS mode goes into its copy (artifact-copy.ts)
             const copy = html ? await artifactCopy(d.dir, files, new URL(site.url).origin) : new Map<string, string>();
@@ -700,7 +700,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             };
             writeFileSync(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             if (p.theme) writeFileSync(join(target, PAGE_THEME), p.theme.css);
-            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => existsSync(join(target, sub, 'poster.jpg')), undefined, unlisted, p.theme?.css));
+            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, p.theme?.css));
             return { ...entryOf(slug), rev };
           },
           log,
@@ -750,7 +750,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             writeFileSync(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             // the page around its files in today's template, with the theme it went out with
             const theme = existsSync(join(target, PAGE_THEME)) ? readFileSync(join(target, PAGE_THEME), 'utf8') : undefined;
-            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => existsSync(join(target, sub, 'poster.jpg')), undefined, unlisted, theme));
+            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, theme));
             return { ...entryOf(slug), rev };
           },
           log,
@@ -822,15 +822,16 @@ export function pagesHash(): { video: string; html: string; stacked: string } {
   // without a pull request, the commit (the commits) the work landed as
   const commit = { url: 'https://github.com/o/r/commit/b' };
   const commits = { url: 'https://github.com/o/r/compare/a...b', several: true as const };
-  const video = hash(languages.flatMap((language) => [pageHtml(site, { ...sample, language }, () => true), pageHtml(site, { ...sample, language, pr: null, commit }, () => true)]));
-  const html = hash(languages.map((language) => pageHtml(site, { ...sample, kind: 'html', chapters: [], language }, () => false) + sealed(withHeightReport('<body></body>'), new URL(site.url).origin)));
+  const files = () => ({ poster: true, tracks: [{ file: 'captions.vtt' }] });
+  const video = hash(languages.flatMap((language) => [pageHtml(site, { ...sample, language }, files), pageHtml(site, { ...sample, language, pr: null, commit }, files)]));
+  const html = hash(languages.map((language) => pageHtml(site, { ...sample, kind: 'html', chapters: [], language }, () => ({ poster: false, tracks: [] })) + sealed(withHeightReport('<body></body>'), new URL(site.url).origin)));
   // a page with several versions: a video, then an artifact and a video as addenda
   const more: MoreMeta[] = [
     { kind: 'html', title: 'Second', text: 'A detail.', chapters: [], dir: '2', handed: at, at, source: '' },
     { title: 'Third', text: 'Another detail.', chapters: [[0, 'Only']], dir: '3', handed: at, at, source: '' },
   ];
   // the same on every machine: the time of an addendum is said in the machine's time zone
-  const stacked = hash(languages.flatMap((language) => [pageHtml(site, { ...sample, language, more }, () => true, 'UTC'), pageHtml(site, { ...sample, language, more, pr: null, commit: commits }, () => true, 'UTC')]));
+  const stacked = hash(languages.flatMap((language) => [pageHtml(site, { ...sample, language, more }, files, 'UTC'), pageHtml(site, { ...sample, language, more, pr: null, commit: commits }, files, 'UTC')]));
   return { video, html, stacked };
 }
 
@@ -867,12 +868,25 @@ export function artifactHeaders(site: DemoSite, unlisted = false): string {
     .join('');
 }
 
+/** What a video version's directory on the site holds beside its video: a poster, its caption tracks, and whether the video is silent. */
+interface VersionFiles {
+  poster: boolean;
+  tracks: CaptionTrack[];
+  silent?: boolean;
+}
+
+function versionFiles(dir: string): VersionFiles {
+  const video = join(dir, 'demo.mp4');
+  return { poster: existsSync(join(dir, 'poster.jpg')), tracks: captionTracks(dir), silent: existsSync(video) && silentVideo(video) };
+}
+
 /**
- * A page of the site, in its language; `poster`: whether a version's directory (the page's own: '')
- * holds a poster. A page of an unlisted site links no overview and no tags, and keeps itself out of
- * search engines. `theme`: the CSS of the card's repository's theme.
+
+ * A page of the site, in its language; `files`: what a version's directory (the page's own: '')
+ * holds. A page of an unlisted site links no overview and no tags, and keeps itself out of search
+ * engines. `theme`: the CSS of the card's repository's theme.
  */
-function pageHtml(site: DemoSite, m: Meta, poster: (dir: string) => boolean, timeZone?: string, unlisted = false, theme?: string): string {
+function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles, timeZone?: string, unlisted = false, theme?: string): string {
   const { language } = m;
   const w = PAGE_WORDS[language];
   const parts = {
@@ -892,18 +906,25 @@ function pageHtml(site: DemoSite, m: Meta, poster: (dir: string) => boolean, tim
           tags: Object.entries(m.tags ?? {}).flatMap(([dimension, values]) => values.map((value) => ({ dimension, value, href: `../?${new URLSearchParams({ [dimension]: value })}` }))),
         }),
   };
+  // a track from before the tracks is in the demo's language
+  const tracks = (f: VersionFiles) => f.tracks.map((t) => ({ file: t.file, language: t.language ?? language }));
   if (m.more?.length) {
-    const demo = (d: { kind?: 'html'; title: string; text: string; chapters: [number, string][] }, dir: string): StackedDemo =>
-      d.kind === 'html' ? { kind: 'html', title: d.title, text: d.text, base: dir ? `${dir}/` : '' } : { kind: 'video', title: d.title, text: d.text, base: dir ? `${dir}/` : '', chapters: d.chapters, poster: poster(dir) };
+    const demo = (d: { kind?: 'html'; title: string; text: string; chapters: [number, string][] }, dir: string): StackedDemo => {
+      if (d.kind === 'html') return { kind: 'html', title: d.title, text: d.text, base: dir ? `${dir}/` : '' };
+      const f = files(dir);
+      return { kind: 'video', title: d.title, text: d.text, base: dir ? `${dir}/` : '', chapters: d.chapters, poster: f.poster, tracks: tracks(f), ...(f.silent ? { silent: true } : {}) };
+    };
     return stackedPageHtml({ ...parts, demos: [demo(m, ''), ...m.more.map((x) => ({ ...demo(x, x.dir), at: x.handed }))], ...(timeZone ? { timeZone } : {}) });
   }
   if (m.kind === 'html') return artifactPageHtml({ ...parts, artifact: { src: `${ARTIFACT_DIR}/index.html` } });
+  const own = files('');
   return demoPageHtml({
     ...parts,
     chapters: m.chapters,
     video: { src: 'demo.mp4' },
-    ...(poster('') ? { poster: 'poster.jpg' } : {}),
-    captions: { src: 'captions.vtt' },
+    ...(own.poster ? { poster: 'poster.jpg' } : {}),
+    tracks: tracks(own).map((t) => ({ language: t.language, src: t.file })),
+    ...(own.silent ? { silent: true } : {}),
   });
 }
 

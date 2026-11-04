@@ -3,7 +3,8 @@
 // server checks what it serves against.
 
 import { version as pdfjsVersion } from 'pdfjs-dist/package.json';
-import { type CardDiff, type FolderChange, shownChanges } from './diff';
+import { type CardDiff, diffSize, type FolderChange, shownChanges } from './diff';
+import type { ChangeSize } from './types';
 
 /** Where the server serves pdf.js and the files it loads: under its version, so that a browser takes no other version's from its cache. */
 export const PDFJS_BASE = `/pdfjs/${pdfjsVersion}/`;
@@ -120,6 +121,9 @@ export function changeRows(diff: CardDiff | null, named: CardFile[] = []): Chang
   const shown = shownFiles(diff, named).map((file) => strip({ ...(all.find((r) => r.path === file.path) ?? { path: file.path }), caption: file.caption, file }));
   return [...shown, ...all.filter((r) => !shown.some((s) => s.path === r.path)).map(strip)];
 }
+
+/** The size of the card's change (`Item.changeSize`): as many files as its change list has lines without named ones, and its lines. */
+export const changeSize = (diff: CardDiff): ChangeSize => ({ files: changeRows(diff).length, ...diffSize(diff.files) });
 
 /** A path as the change list writes it: relative, with `/`, without `.` and `..` steps; null for one that leaves the root. */
 export function normalPath(path: string): string | null {

@@ -29,11 +29,15 @@ async function reportCard() {
 describe('the files a card names as its result', () => {
   test('the worker names them at its handover, paths of its change only; they stand until a later handover names others', async () => {
     const { c, ws } = await reportCard();
-    const refused = await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact(), files: [{ path: 'notes.md', caption: 'Notizen' }] });
-    expect(refused).toContain('Not handed over: notes.md is not among the files your card made or changed');
-    expect(board.item(c.id)!.state).toBe('working');
+    // a file outside the change does not hold the handover back: the card leaves it out, and the worker hears so
+    const without = await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact(), files: [{ path: 'notes.md', caption: 'Notizen' }] });
+    expect(without).toContain('Recorded');
+    expect(without).toContain('notes.md is not among the files your card made or changed (README.md, docs/report.md), so the card does not show it.');
+    expect(board.item(c.id)!.state).toBe('waiting');
+    expect(board.item(c.id)!.files).toBeUndefined();
+    workers.message(c.id, 'Und der Bericht?');
     // an absolute path in the workspace counts as the path in the repository
-    const done = await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact(), files: [{ path: join(ws, 'docs', 'report.md'), caption: 'Der  Bericht\n' }] });
+    const done = await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact(), files: [{ path: join(ws, 'docs', 'report.md'), caption: 'Der  Bericht\n' }, { path: 'notes.md', caption: 'Notizen' }] });
     expect(done).toContain('Recorded');
     expect(board.item(c.id)!.files).toEqual([{ path: 'docs/report.md', caption: 'Der Bericht' }]);
     workers.message(c.id, 'Noch die Einleitung kürzen.');
@@ -43,6 +47,18 @@ describe('the files a card names as its result', () => {
     workers.message(c.id, 'Doch kein Bericht.');
     expect(await runtime.last.call('ready_for_review', { summary: 'Gut.', files: [] })).toContain('Recorded');
     expect(board.item(c.id)!.files).toBeUndefined();
+  });
+
+  test('the size of the change goes with the card from its handover on, and is kept as the change is read again', async () => {
+    const { c, ws } = await reportCard();
+    expect(board.item(c.id)!.changeSize).toBeUndefined();
+    expect(await runtime.last.call('ready_for_review', { summary: 'Fertig.', demo: artifact() })).toContain('Recorded');
+    // read beside the handover, so the page has it from the first time it opens the card
+    for (let i = 0; i < 100 && !board.item(c.id)!.changeSize; i++) await Bun.sleep(20);
+    expect(board.item(c.id)!.changeSize).toEqual({ files: 2, added: 4, removed: 1 });
+    writeFileSync(join(ws, 'docs', 'more.md'), 'more\n');
+    await workers.diff(c.id, false);
+    expect(board.item(c.id)!.changeSize).toEqual({ files: 3, added: 5, removed: 1 });
   });
 
   test('Obeya serves a file the card made or changed, and an image a Markdown file of it shows; no other file of the workspace', async () => {

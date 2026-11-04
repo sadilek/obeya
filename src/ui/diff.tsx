@@ -29,16 +29,17 @@ export function Branch({ item, sizeBelow }: { item: Item; sizeBelow?: boolean })
       gone = true;
     };
   }, [item.id, item.state, item.need, item.statusLine, item.workspace, item.summary]);
-  const size = diff && diffSize(diff.files);
+  // until the change is read, its size as last read: the line keeps its length, and what is under it its place
+  const size = diff ? { ...diffSize(diff.files), files: diff.files.length } : item.changeSize;
   return (
     <>
       {t.branch} <code>{item.branch}</code>
-      {diff && size && !(sizeBelow && diff.files.length) && (
+      {size && !(sizeBelow && size.files) && (
         <>
           {' · '}
-          {diff.files.length ? (
+          {size.files ? (
             <button className="link diff-size" title={t.diff.show} onClick={() => setOpen(true)}>
-              <Lines n={size} /> {t.diff.size(diff.files.length)}
+              <Lines n={size} /> {t.diff.size(size.files)}
             </button>
           ) : (
             t.diff.none
@@ -65,12 +66,13 @@ const APP_LOOK_MS = 10_000;
  * the owner to try it by hand, opened through Obeya, which keeps it running a while after.
  */
 function AppLink({ item }: { item: Item }) {
-  const [up, setUp] = useState(false);
+  // null until the first look has answered: the link holds its place meanwhile, unseen, so the line does not grow when it shows
+  const [up, setUp] = useState<boolean | null>(null);
   useEffect(() => {
-    setUp(false);
+    setUp(null);
     if (!item.app) return;
     let alive = true;
-    const look = () => api.appUp(item.id).then((u) => alive && setUp(u), () => {});
+    const look = () => api.appUp(item.id).then((u) => alive && setUp(u), () => alive && setUp((u) => u ?? false));
     void look();
     const timer = setInterval(look, APP_LOOK_MS);
     return () => {
@@ -78,7 +80,7 @@ function AppLink({ item }: { item: Item }) {
       clearInterval(timer);
     };
   }, [item.id, item.app]);
-  if (!item.app || !up) return null;
+  if (!item.app || up === false) return null;
   let where = item.app;
   try {
     where = new URL(item.app).host;
@@ -87,12 +89,12 @@ function AppLink({ item }: { item: Item }) {
   const host = /^([^/:\\]{2,}):\//.exec(item.workspace ?? '')?.[1];
   if (host) where = `${host}, ${where}`;
   return (
-    <>
+    <span style={up ? undefined : { visibility: 'hidden' }} aria-hidden={up ? undefined : true}>
       {' · '}
-      <a className="app-link" href={api.appOpen(item.id)} target="_blank" rel="noreferrer" title={t.app.hint(where)}>
+      <a className="app-link" href={api.appOpen(item.id)} target="_blank" rel="noreferrer" title={t.app.hint(where)} tabIndex={up ? undefined : -1}>
         {t.app.open} ↗
       </a>
-    </>
+    </span>
   );
 }
 

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type Contribution, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, modelName, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
+import { languageName, preferredTrack } from '../core/locale';
 import { answerText, toggle } from './answer';
 import { ApiError, api, cardAt, type Field, holdRestart, onCardEvent, onCardEventGone, onReconnect } from './api';
 import { cardPath } from './address';
@@ -34,7 +35,7 @@ import { newRepoWords, type RepoChoice, RepoPick, useRepoChoice } from './repoPi
 import { dismissPlace, type Place, seekTo, showsVersions, usePlace, videoOf, watch } from './spot';
 import { cameInView, useSeen } from './seen';
 import { ClockMark, contributorChoice, SnoozeLine, SnoozeMenu, snoozeWho } from './snooze';
-import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen, stateLabel, t } from './strings';
+import { becomesLabel, clock as time, errorText, failText, shortDay, snoozeWhen, stateLabel, t, uiLanguage } from './strings';
 import { agentWorks, cardTalk, demoHandover, talkState, koordinatorReads, ownerField, parseQuestion, snoozeLine, talkAlone, type Turn, unseenTurns, waitsFirstStart, worked as isWorked } from './talk';
 import { PageChangeList } from './page-changes';
 import { WishReplyLink } from './wish';
@@ -1803,8 +1804,8 @@ function DemoView({
   const artifact = useRef<HTMLIFrameElement>(null);
   const artifactHeight = useReportedHeight(artifact, ARTIFACT_CAP);
   const [now, setNow] = useState(0);
-  // the video's shape once its metadata is in: until it first plays, Chrome sizes the element by its poster, and
-  // by its default 300 × 150 when the poster does not load, a flat strip at full width
+  // the video's shape once its metadata is in, where the handover did not read it: until it first plays, Chrome sizes the
+  // element by its poster, and by its default 300 × 150 when the poster does not load, a flat strip at full width
   const [shape, setShape] = useState<string>();
   // the earlier demo shown (its `n`), or the latest; a new handover leaves the owner where they are
   const [shownN, setShownN] = useState<number | null>(null);
@@ -1923,7 +1924,7 @@ function DemoView({
                 preload="metadata"
                 poster={demo.noPoster ? undefined : src('poster.jpg')}
                 src={src('demo.mp4')}
-                style={shape ? { aspectRatio: shape } : undefined}
+                style={demo.size || shape ? { aspectRatio: demo.size ? `${demo.size[0]} / ${demo.size[1]}` : shape } : undefined}
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   if (v.videoWidth && v.videoHeight) setShape(`${v.videoWidth} / ${v.videoHeight}`);
@@ -1941,7 +1942,21 @@ function DemoView({
                   watching.ended();
                 }}
               >
-                <track kind="captions" src={src('captions.vtt')} srcLang="de" label="Deutsch" />
+                {demo.tracks ? (
+                  // a track per language, named in the interface's (none: no subtitles); a silent video shows one from the start, in the interface's language where it has a track in it, else the first
+                  demo.tracks.map((l) => (
+                    <track
+                      key={src(`captions.${l}.vtt`)}
+                      kind="captions"
+                      src={src(`captions.${l}.vtt`)}
+                      srcLang={l}
+                      label={languageName(l, uiLanguage())}
+                      default={!!demo.silent && l === preferredTrack(demo.tracks!, [uiLanguage()])}
+                    />
+                  ))
+                ) : (
+                  <track key={src('captions.vtt')} kind="captions" src={src('captions.vtt')} label={t.demo.captions} default={!!demo.silent} />
+                )}
               </video>
               {seek.hint && (
                 <span className="seek-hint">

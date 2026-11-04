@@ -47,8 +47,9 @@ plugin's manifest or the demo skill is missing.
 ### The demo settings and voices
 
 The demo settings (`demo.json` in Obeya's home) are the machine's, for every canvas: the narration
-language (for narration, captions and report page; which one applies is under Language) and the
-voice, a provider that takes text and gives a WAV. A repository's `demo.language` reaches the skill
+language (for narration, captions and report page; which one applies is under Language), the
+voice, a provider that takes text and gives a WAV, or none (see Subtitles and silent demos), and the
+subtitle languages. A repository's `demo.language` reaches the skill
 as `DEMO_LANGUAGE` from Obeya, else from the `.obeya/settings.json` of the repository the skill runs
 in. `node lib/settings.ts` prints what applies and where it came from, for the agent writing the
 narration.
@@ -97,11 +98,51 @@ of them are the recognition's own mishearings of names, which no respelling mend
 
 Voices are not labelled as generated, a clone included: the whole demo is generated, and that is
 clear from where it is shown. „Das ist meine eigene Stimme“ in the settings decides the person: the
-first person only in the owner's own voice, otherwise the narration presents the work without "I".
+first person only in the owner's own voice, otherwise (and without a voice) the narration presents the work without "I".
 `DEMO_VOICE` overrides the voice for one render (another provider, never the owner's own, or a
-`.wav` that Qwen3-TTS clones). A clone of the owner's voice never leaves the machine. Each clip is
+`.wav` that Qwen3-TTS clones, or `none`). A clone of the owner's voice never leaves the machine. Each clip is
 synthesised once and kept as it comes, but for Qwen3's sentences, which are heard back and made
 again where they ran on or stumbled (see A voice that stays loaded, and Decisions).
+
+#### Subtitles and silent demos
+
+Every demo has subtitles: a caption track in the narration's language, first, and one in each
+further language of the settings' `subtitles`, in their order (BCP 47 codes such as `fr` or `pt-BR`,
+any language `Intl` names, not only those Obeya speaks; the configuration dialog refuses a code it
+does not know). An empty list means the narration's track alone. The voice is set apart from them:
+a voiced demo has its subtitles too. Each track is a file of its own,
+`captions.<language>.vtt`, a cue per sentence of the narration. A sentence ends at `.`, `!`, `?` or
+`…` before a space and a capital, not after a single letter or a common abbreviation, nor in German
+narration after a number an article or preposition comes before or a month follows (an ordinal:
+„am 1. November“, „Freitag, 1. November“); anywhere else a number ends its sentence („There are 3. Then save.“).
+
+`captions.vtt` holds the narration's cues as well: Obeya reads there what the narration says at a
+place a comment refers to, and the chapters of a demo without `chapters.vtt`. Its first line names
+the tracks the demo offers, in order (`WEBVTT - subtitles: en de fr`); every player offers those and
+only those, so the order does not depend on the file system. A `captions.vtt` whose first
+line names none is from before the tracks and is its demo's one track (old demos, the hero video's
+scripts).
+
+The agent that renders translates the narration into each further language: before recording, the render writes the sentences
+per scene (`.work/subtitles/source.json`), and while a language lacks its translation
+(`.work/subtitles/<language>.json`) it stops (exit 2) and says where each goes, as re-voicing does.
+A translation keeps the sentences one to one, or it is refused, so every track shares the cue times.
+After the narration changes, a translation made for the old one is set aside
+(`<language>.stale.json`) and asked for again.
+
+With a voice, a scene's clip is shared out over its sentences by their length. With the voice
+`none` there is no synthesis, no audio track and nothing to install: each sentence stays as long as
+it takes to read in the slowest to read of its tracks' languages (15 characters a second, a wide character as in
+Chinese counting twice, at least 2 s), and `untilSpoken` waits for that, so demo scripts are the same
+for both.
+
+Every player (the card, the report page, a shared page online and as one file, a ZIP) offers the
+demo's tracks, none where it has none, each with its language and named in the language of the
+interface or page (French is „Französisch“ on a German one). A silent video shows its captions from
+the start: the track in the interface's language on the card, the browser's preferred languages on a
+page (by the language alone where no track has the very variant), else the narration's. Obeya
+tells a silent video by its MP4's track list (no audio handler), read at the handover, and keeps the
+track languages with the demo.
 
 #### The demo directory
 
@@ -348,20 +389,25 @@ records as before.
 A demo that kept its frames (`.work/`) can be narrated anew in another language without recording it
 again (`node demo.ts --revoice en`, or `node lib/revoice.ts <dir> en` when its script no longer
 runs). It reads only what the render left in the directory (narration, chapters, caption timings,
-report, whether it was sharp), so it works on a demo of any director version.
+report, whether it was sharp), so it works on a demo of any director version, a silent one included.
+The narration and the frames it reads are those of one take: a render that stops before recording
+(for missing translations, or with only the narration, `--narration`) leaves both as they were.
 
 1. The first run writes the words to translate (`.work/revoice/source.json`: title, per scene its
    chapter title and narration, the report) and asks the agent running the skill for them in the
    language (`.work/revoice/en.json`, same shape). The agent reads the labels from the stills: the
    screen keeps its language, so the narration quotes a label as it appears with its meaning as an
    aside („Teilen“, share), which Qwen3 spoke more reliably than parentheses. A translation that
-   drops a scene, an audio tag or a paragraph of the summary is refused with what is missing.
+   drops a scene, an audio tag, a sentence or a paragraph of the summary is refused with what is missing.
 2. The clips are synthesised in that language's voice.
 3. Each scene's narrated stretch is stretched or squeezed to its new clip, so an action timed with
    `untilSpoken` lands on the same word; leads, gaps and the cuts' flashes keep their length. A scene
    whose words change length by more than a third is flagged for a look at its stills.
 4. Video, captions, chapters, stills, poster and report are rebuilt in place by the render's own
-   code. The demo as recorded stays in `.work/revoice/original/`, which every later run reads from.
+   code. The new narration's track comes first, and the demo keeps its other tracks (one from
+   before the tracks had its narration's alone), all on the new clips' times sentence by sentence:
+   the old narration's with its sentences, every other with its own cues. The demo as recorded stays in
+   `.work/revoice/original/`, which every later run reads from.
 
 The card then shows it (`POST …/cards/<id>/demo-rebuilt`): the chapters are read again and the share
 page's text is written anew in the report's language. A demo on a shared page is withdrawn first,
@@ -403,7 +449,8 @@ relabel an element, a scene clears its highlights first.
 ### The demo on the card
 
 The card shows the demo on the left, beside the conversation (see Card layout). Obeya serves video,
-poster and captions (with range requests) and takes the chapter times from the captions. A range is
+poster and caption tracks (with range requests) and takes the chapter times from `chapters.vtt`
+(from the captions of a demo without it, rendered when they had a cue per scene). A range is
 read from disk at once and answered in one piece, up to 8 MiB per answer, the player asking for the
 rest, and so is a whole file of up to 8 MiB (the poster, the captions). An answer carries only what
 the file holds when it is read, with headers to match: a file a retake cuts meanwhile gives a
@@ -494,7 +541,7 @@ on hover only, so they do not cover the picture) pauses and focuses the field; t
 a section for the video. At the start or the end, words are about the work as a whole.
 
 The browser uploads the frame as a screenshot; the server adds the chapter and the narration's
-sentence at that time (estimated by its share of the scene's caption). The conversation shows the
+sentence at that time (its caption; in a demo with a cue per scene, estimated by its share of the cue). The conversation shows the
 words with the frame and „▶ 1:23 · chapter“, which plays the video from there.
 
 On a card waiting for approval, Obeya holds such comments until the owner has finished watching, so
@@ -557,6 +604,20 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
 
 ### Decisions
 
+- **Subtitles are switchable tracks in a free list of languages** (owner, 2026-11-01): a colleague
+  who reads another language picks their track. Rejected: subtitles burnt into the picture, and a
+  video per language; switchable tracks do the same with one video.
+- **No voice is a voice among the others, and the subtitle languages are the machine's, for every
+  demo** (2026-11-01): a silent demo needs no other switch, and one more track costs a voiced demo
+  only a translation. Captions come a sentence per cue for every demo, so all tracks share their
+  times; a scene as one block was too long to read along.
+- **The narration's language is always a track; the setting adds further ones** (owner, after
+  the maintainer's review, 2026-11-04): one rule for voiced and silent demos alike, and nothing to
+  explain about when the narration's track is there. Rejected: the list as the only tracks, an empty
+  one meaning none except for silent demos (2026-11-01), which allowed a voiced video without
+  subtitles but needed that exception. `captions.vtt` names the tracks in its first line, so the
+  order is the settings' and old demos (no names there) keep their one track; a separate manifest
+  would have been one more file to serve and publish.
 - **A demo is a video or an HTML artifact, chosen by the worker** (2026-10-01): drafts to choose
   from (a logo) say more side by side on a page than in a recording.
 - **A question can bring a demo** (owner, 2026-11-03): drafts to choose a direction from (three
