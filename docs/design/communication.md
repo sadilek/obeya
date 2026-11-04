@@ -47,7 +47,10 @@ landing), not what to do next: whether to record a demo again after feedback is 
 
 A turn that ends without `ask` or `ready_for_review` gets one nudge, then its last words become a
 question to the owner; a turn that failed (an SDK error result, e.g. Claude not logged in) becomes
-the error in words instead. A worker that then works on by itself takes that question back.
+the error in words instead. A worker that then works on by itself takes that question back. Where
+one of Obeya's tools refused the worker's last call of it (a handover without its demo, say), the
+nudge repeats that refusal: a worker on Codex may never have read it, since Codex's code mode drops
+a tool's result its script does not print (2026-11-04).
 
 A turn that ends while the worker's own background work runs (a render, a test suite, a watcher) is
 not such a turn: the work wakes the worker, so Obeya waits, also after the landing, where an ended

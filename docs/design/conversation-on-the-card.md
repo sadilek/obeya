@@ -248,8 +248,11 @@ column shows, so its scrollbar is the only one; a video left for another file st
 
 A card with named files, or a folder card handed over without a demo but with files to show, is a
 split even without a demo; the server decides at the handover so the layout does not jump. A worker
-names only files of its change, at most twelve, or is asked again; without `files` later the earlier
-ones stand, an empty list removes them. An open view reads its file afresh when a handover arrives
+names files of its change, at most twelve; a file it names outside its change (one it only read) is
+left out, and the handover's result says so, instead of refusing the handover: a refusal held the
+whole result back, also from a worker that never read it (Codex's code mode drops a tool's result its
+script does not print; 2026-11-04). Without `files` later the earlier ones stand, as they do where
+none named is of the change; an empty list removes them. An open view reads its file afresh when a handover arrives
 or the work changes it.
 
 Obeya serves only the files the card made or changed and images their Markdown shows, nothing else
