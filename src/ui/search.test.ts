@@ -38,3 +38,9 @@ test('before the first word, every card on the canvas is listed, the one changed
   ];
   expect(recentCards(cards).map((h) => h.item.title)).toEqual(['Newest', 'Middle', 'Old', 'Never changed']);
 });
+
+test('a line that came into a card’s log since the snapshot moves it up by its time', () => {
+  const cards = [card('Old', { changedAt: '2026-10-01T08:00:00.000Z' }), card('Newer', { changedAt: '2026-10-20T08:00:00.000Z' })];
+  const lines = new Map([['Old', '2026-10-31T09:00:00.000Z'], ['Newer', '2026-10-02T09:00:00.000Z']]);
+  expect(recentCards(cards, lines).map((h) => h.item.title)).toEqual(['Old', 'Newer']);
+});

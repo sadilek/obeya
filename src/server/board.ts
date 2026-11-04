@@ -649,8 +649,20 @@ export class Board {
     });
     for (const fn of this.eventListeners) fn(e);
     // a line other than tool activity is a change at the card, which the search lists by (`changedAt`)
-    if (kind !== 'activity') this.changed();
+    if (kind !== 'activity') this.stamp(cardId, e.at);
     return e;
+  }
+
+  /**
+   * A line came into the card's log at `at`: the cards as built hold it as their last change. The
+   * pages have the line already (`onEvent`) and order their search by it, so the canvas is neither
+   * built afresh nor sent again; a page that connects later gets it with the snapshot.
+   */
+  private stamp(cardId: string, at: string) {
+    const items = this.itemsCache;
+    const k = items ? items.findIndex((i) => i.id === cardId) : -1;
+    const i = items?.[k];
+    if (i && (i.changedAt ?? '') < at) items![k] = { ...i, changedAt: at };
   }
 
   /** Takes a line out of the card's log: a comment the owner deleted before anyone read it. */
@@ -2928,7 +2940,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         y: r.y,
         source: 'manual',
         repo: r.repo ?? home,
-        changedAt: r.updated_at,
+        changedAt: r.changed_at ?? r.updated_at,
         ...work(r),
         ...(r.state === 'idea' ? { idea: ideaOf(r) } : r.idea ? decided(r) : {}),
         ...(r.thread ? { thread: threadOf(r) } : {}),
@@ -2959,7 +2971,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         y: r.y,
         source: 'plan',
         repo: repoOfRef(doc.file, home),
-        changedAt: r.updated_at,
+        changedAt: r.changed_at ?? r.updated_at,
         plan: { file: doc.file, goal: doc.goal },
         ...(depsOf.get(r.id)?.reading ? { arranging: true as const } : {}),
         ...(r.collapsed ? { collapsed: true } : {}),
@@ -2995,7 +3007,7 @@ export function toItems(rows: CardRow[], docs: PlanDoc[], home: string, worked?:
         parent: r.parent_id,
         source: 'plan',
         repo: repoOfRef(r.plan_ref, home),
-        changedAt: r.updated_at,
+        changedAt: r.changed_at ?? r.updated_at,
         ...(w.label ? { label: w.label } : {}),
         ...work(r),
         ...(shipped ? { landedPart: { ...(shipped.commit ? { commit: shipped.commit } : {}), ...(shipped.pr ? { pr: shipped.pr } : {}) } } : {}),

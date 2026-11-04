@@ -390,6 +390,8 @@ function Canvas({
   const [sOn, setSOn, sOnRef] = useLive(false);
   // the card whose row in the search is under the pointer or picked by the arrow keys
   const [foundId, setFoundId] = useState<string | null>(null);
+  // where the search's list stands while open: a card behind it is out of sight
+  const [searchCover, setSearchCover] = useState<DOMRect | undefined>(undefined);
   const [cOn, setCOn, cOnRef] = useLive(false);
   // the navigation pinned as a sidebar on the left (src/ui/nav.tsx)
   const [pinned, setPinned, pinnedRef] = useLive(loadPinned);
@@ -539,7 +541,11 @@ function Canvas({
    * workstream of a collapsed project in its project's sheet); an archived one from its row.
    */
   function openFound(i: Item) {
-    if (i.archivedAt) return open(i);
+    if (i.archivedAt) {
+      // the search's field stays under the dim, where what is typed would change the list the card folds back into
+      (document.activeElement as HTMLElement | null)?.blur();
+      return open(i);
+    }
     setSOn(false);
     const p = i.parent ? byId(i.parent) : undefined;
     return open(p?.collapsed ? p : i);
@@ -1966,7 +1972,7 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} lit={litEdge?.item.id} cover={sOn ? document.querySelector('.search-menu')?.getBoundingClientRect() : undefined} />}
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} lit={litEdge?.item.id} cover={sOn ? searchCover : undefined} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
@@ -1992,6 +1998,7 @@ function Canvas({
             onOpen={openFound}
             onLight={setFoundId}
             els={archiveEls}
+            onCover={setSearchCover}
           />
           <ArchivePill
             on={aOn}

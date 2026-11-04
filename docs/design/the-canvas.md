@@ -32,9 +32,9 @@ excerpt that shows the words there. Each list shows 30 cards and counts the rest
 The row under the pointer, or the one the arrow keys pick, lights its card up on the canvas with a
 ring in its state's colour that breathes; the camera stays where it is. A card out of sight lights
 up its edge indicator instead (shown for it even when it does not need the owner), a workstream of a
-collapsed project its project; an archived row lights up nothing. A card behind the open list counts
-as out of sight: its indicator stands beside the list and points under it, as does any edge
-indicator that would stand under the list. Leaving the list or closing the
+collapsed project its project; an archived row lights up nothing. A card half or more behind the
+open list counts as out of sight: its indicator stands beside the list and points under it, as does
+any edge indicator that would stand under the list. Leaving the list or closing the
 search ends it. Enter opens the picked row, as a click does. A card on the canvas opens in place and
 the search closes (a workstream of a collapsed project opens its project). An archived card unfolds
 from its row, and the list stays under the dim to fold back into, as in the archive. The search

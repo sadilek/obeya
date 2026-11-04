@@ -1309,8 +1309,8 @@ export function Sheet({
 /**
  * Chips at the edge of the canvas pointing at off-screen cards that need the owner, and at the one
  * picked in the search (`lit`, which lights up); `side`: the panels docked at the window's edges.
- * `cover`: the search's list, open over the canvas: a card behind it is out of sight too, and a chip
- * that would stand under it stands beside it instead.
+ * `cover`: the search's list, open over the canvas: a card half or more behind it is out of sight
+ * too, and its chip, or one that would stand under the list, stands beside it instead.
  */
 export function Edges({ cam, targets, side, onOpen, lit, cover }: { cam: Cam; targets: { item: Item; b: Bounds }[]; side: Sides; onOpen: (i: Item) => void; lit?: string | undefined; cover?: DOMRect | undefined }) {
   const top = 64;
@@ -1323,10 +1323,16 @@ export function Edges({ cam, targets, side, onOpen, lit, cover }: { cam: Cam; ta
         const cx = cam.x + (b.x + b.w / 2) * cam.s;
         const cy = cam.y + (b.y + b.h / 2) * cam.s;
         const under = (x: number, y: number) => !!cover && x >= cover.left && x <= cover.right && y >= cover.top && y <= cover.bottom;
-        if (cx > m && cx < right && cy > top && cy < bottom && !under(cx, cy)) return null;
+        // half or more of the card behind the list: what shows of it beside the list is no help to find it
+        const w = b.w * cam.s;
+        const h = b.h * cam.s;
+        const left = cam.x + b.x * cam.s;
+        const up = cam.y + b.y * cam.s;
+        const covered = !!cover && 2 * Math.max(0, Math.min(left + w, cover.right) - Math.max(left, cover.left)) * Math.max(0, Math.min(up + h, cover.bottom) - Math.max(up, cover.top)) >= w * h;
+        if (cx > m && cx < right && cy > top && cy < bottom && !covered) return null;
         let x = Math.min(right, Math.max(m, cx));
         const y = Math.min(bottom, Math.max(top + 10, cy));
-        const beside = under(x, y);
+        const beside = covered || under(x, y);
         if (beside) x = cover!.right + 12;
         const ang = (Math.atan2(cy - y, cx - x) * 180) / Math.PI;
         // anchored on the side it points to, so it stays on screen; beside the list, on its left

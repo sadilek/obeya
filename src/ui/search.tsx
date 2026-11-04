@@ -5,8 +5,9 @@
 // cards, the one changed last first. The row under the pointer or picked by the arrow keys lights
 // its card up on the canvas.
 
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Item } from '../core/types';
+import { onCardEvent } from './api';
 import { fold, labelOf, marked, matches, searchWords } from './archive';
 import { plain } from './markdown';
 import { shownState } from './parts';
@@ -30,12 +31,20 @@ export function findCards(query: string, cards: Item[]): Hit[] {
   return [...hits.filter((h) => h.byTitle), ...hits.filter((h) => !h.byTitle)];
 }
 
-/** Before the first word: every card on the canvas, the one where something happened last first. */
-export function recentCards(cards: Item[]): Hit[] {
+/**
+ * Before the first word: every card on the canvas, the one where something happened last first;
+ * `lines`: when a line last came into a card's log, since the snapshot its `changedAt` is from.
+ */
+export function recentCards(cards: Item[], lines: ReadonlyMap<string, string> = new Map()): Hit[] {
+  const at = (i: Item) => {
+    const line = lines.get(i.id) ?? '';
+    const changed = i.changedAt ?? '';
+    return line > changed ? line : changed;
+  };
   return cards
     .filter((i) => i.title || i.body)
-    .map((item, n) => ({ item, n }))
-    .sort((a, b) => (b.item.changedAt ?? '').localeCompare(a.item.changedAt ?? '') || a.n - b.n)
+    .map((item, n) => ({ item, n, at: at(item) }))
+    .sort((a, b) => b.at.localeCompare(a.at) || a.n - b.n)
     .map(({ item }) => ({ item, byTitle: true }));
 }
 
@@ -77,13 +86,15 @@ interface Props {
   onLight: (id: string | null) => void;
   /** Where an archived card unfolds from and folds back to. */
   els: Map<string, HTMLElement>;
+  /** Where the open list stands on the screen, as it changes, for what it covers on the canvas; `undefined` once it closed. */
+  onCover: (r: DOMRect | undefined) => void;
 }
 
 /**
  * The search in the bar: `/` (in App) shows a field and, under it, the cards it finds; a click beside
  * it or Esc closes it. Until `/` has been used, a button there teaches the key.
  */
-export function SearchPill({ on, teach, onTeach, onClose, held, items, archived, onOpen, onLight, els }: Props) {
+export function SearchPill({ on, teach, onTeach, onClose, held, items, archived, onOpen, onLight, els, onCover }: Props) {
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(on, box, () => held || onClose());
   const [query, setQuery] = useState('');
@@ -95,6 +106,30 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
   useEffect(() => void (on && field.current?.select()), [on]);
   useEffect(() => (setActive(0), setLit(false)), [query, on]);
   const words = useMemo(() => searchWords(query), [query]);
+  // a line in a card's log comes on its own, not with a new snapshot (Board.log): its time orders the list too
+  const [lines, setLines] = useState<ReadonlyMap<string, string>>(new Map());
+  // a line sent again later (one read out to the agent, say) keeps its own time: the latest stays
+  useEffect(() => onCardEvent((e) => void (e.kind !== 'activity' && setLines((m) => ((m.get(e.cardId) ?? '') >= e.at ? m : new Map(m).set(e.cardId, e.at))))), []);
+  const menu = useRef<HTMLDivElement>(null);
+  const measured = useRef('');
+  const measure = () => {
+    const r = menu.current?.getBoundingClientRect();
+    const key = r ? `${r.left} ${r.top} ${r.width} ${r.height}` : '';
+    if (key === measured.current) return;
+    measured.current = key;
+    onCover(r);
+  };
+  // the list as it stands once drawn, after each change around it (the bar shifting with the
+  // navigation pinned, say), when its size changes with the words and when the window does
+  useLayoutEffect(measure);
+  useEffect(() => {
+    const el = menu.current;
+    if (!on || !el) return;
+    const seen = new ResizeObserver(measure);
+    seen.observe(el);
+    addEventListener('resize', measure);
+    return () => (seen.disconnect(), removeEventListener('resize', measure));
+  }, [on]);
   const byId = useMemo(() => new Map([...items, ...archived].map((i) => [i.id, i])), [items, archived]);
   // the archive joins with the first word, so the list before it stays short; worked out once per
   // words and cards, not on every move of the pointer over the list, which lights a card up
@@ -106,9 +141,9 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
               { key: 'canvas', heading: t.search.canvas, hits: findCards(query, items) },
               { key: 'archive', heading: t.search.archive, hits: findCards(query, archived) },
             ].filter((s) => s.hits.length)
-          : [{ key: 'recent', heading: t.search.recent, hits: recentCards(items) }].filter((s) => s.hits.length)
+          : [{ key: 'recent', heading: t.search.recent, hits: recentCards(items, lines) }].filter((s) => s.hits.length)
         : [],
-    [on, query, words, items, archived],
+    [on, query, words, items, archived, lines],
   );
   const shown = sections.flatMap((s) => s.hits.slice(0, LIMIT));
   // a list that grew shorter while open (a card archived meanwhile) keeps a row picked: the last
@@ -119,6 +154,8 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
   useEffect(() => onLight(litId), [litId, onLight]);
   const pick = (h: Hit | undefined) => h && onOpen(h.item);
   const onKey = (e: KeyboardEvent) => {
+    // the keys confirm or pick a character of an input method then, not a row
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const n = shown.length;
@@ -140,7 +177,7 @@ export function SearchPill({ on, teach, onTeach, onClose, held, items, archived,
         </button>
       )}
       {on && (
-        <div className="bar-menu search-menu" onPointerLeave={() => setLit(false)}>
+        <div className="bar-menu search-menu" ref={menu} onPointerLeave={() => setLit(false)}>
           <div className="a-search">
             <input
               ref={field}

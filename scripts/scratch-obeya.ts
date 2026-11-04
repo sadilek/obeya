@@ -707,7 +707,8 @@ for (const [i, c] of stage.cards.entries()) {
   if (c.prototypeOf !== undefined) row.prototype_of = ids[c.prototypeOf] ?? fail(`card ${c.key ?? i}: prototypeOf names ${c.prototypeOf}, which does not exist`);
   if (c.createdAgo !== undefined) row.created_at = ago(c.createdAgo);
   if (c.archivedAgo !== undefined) row.archived_at = ago(c.archivedAgo);
-  if (c.changedAgo !== undefined) row.updated_at = ago(c.changedAgo);
+  // code from before `changed_at` ordered by `updated_at`
+  if (c.changedAgo !== undefined) row[columns.has('changed_at') ? 'changed_at' : 'updated_at'] = ago(c.changedAgo);
   Object.assign(row, c.row ?? {});
   // a review card handed over has reviewed its PR's head, which is all Obeya merges
   const contribution = row.contribution as { number?: number; reviewed?: string } | undefined;
