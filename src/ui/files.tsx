@@ -277,7 +277,7 @@ function Line({ row, on, onPick, onDiff, tabs }: { row: ChangeRow; on: boolean; 
     ) : (
       text
     );
-  const note = row.caption || row.changed || (row.undo && row.undo !== 'yes') || row.uncertain;
+  const note = row.caption || row.changed || (row.undo && row.undo !== 'yes');
   return (
     <tr className={['cl-row', on && 'on', ((tabs && !onPick) || row.uncertain) && 'off'].filter(Boolean).join(' ')} onClick={onPick && (() => onPick())}>
       <td className="f-mark" aria-label={row.kind}>

@@ -297,18 +297,10 @@ export function numbered(lines: string[]): Line[] {
 /** The sign of what happened to a file: moved, added, changed, deleted. */
 export const MARK: Record<FolderChange['kind'], string> = { moved: '↪', added: '＋', modified: '✎', deleted: '✕' };
 
-/**
- * What else the folder's change list says of a file: that the card also changed one it moved, what
- * discarding would leave, and that it may not be the card's change at all.
- */
-export function ChangeNote({ c }: { c: Pick<FolderChange, 'changed' | 'undo'> & { uncertain?: true } }) {
+/** What else the folder's change list says of a file: that the card also changed one it moved, and what discarding would leave. */
+export function ChangeNote({ c }: { c: Pick<FolderChange, 'changed' | 'undo'> }) {
   return (
     <>
-      {c.uncertain && (
-        <span className="f-left" title={t.folder.uncertainHint}>
-          {t.folder.uncertain}
-        </span>
-      )}
       {c.changed && <span className="hint"> {t.folder.alsoChanged}</span>}
       {c.undo && c.undo !== 'yes' && (
         <span className="f-left" title={c.undo === 'lost' ? t.folder.lostHint : c.undo === 'shared' ? t.folder.sharedHint : t.folder.changedSinceHint}>
