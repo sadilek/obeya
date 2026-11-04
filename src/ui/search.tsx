@@ -1,9 +1,11 @@
 // The search over every card: the canvas's first, the archive's below. It matches as the archive's
 // filter does (every typed word, case and accents aside); a card whose title holds the words comes
 // before one that holds them only in its text (description, summary, last status, open question,
-// a proposal's reason, a project's goal) or label.
+// a proposal's reason, a project's goal) or label. Before the first word it lists the canvas's
+// cards, the one changed last first. The row under the pointer or picked by the arrow keys lights
+// its card up on the canvas.
 
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import type { Item } from '../core/types';
 import { fold, labelOf, marked, matches, searchWords } from './archive';
 import { plain } from './markdown';
@@ -28,6 +30,15 @@ export function findCards(query: string, cards: Item[]): Hit[] {
   return [...hits.filter((h) => h.byTitle), ...hits.filter((h) => !h.byTitle)];
 }
 
+/** Before the first word: every card on the canvas, the one where something happened last first. */
+export function recentCards(cards: Item[]): Hit[] {
+  return cards
+    .filter((i) => i.title || i.body)
+    .map((item, n) => ({ item, n }))
+    .sort((a, b) => (b.item.changedAt ?? '').localeCompare(a.item.changedAt ?? '') || a.n - b.n)
+    .map(({ item }) => ({ item, byTitle: true }));
+}
+
 /** A short excerpt of the card's text around the first searched word in it, the words marked. */
 export function excerpt(i: Item, words: string[], width = 110): ReactNode {
   for (const line of [i.body, i.summary, i.statusLine, i.question?.text, i.proposal?.reason, i.plan?.goal].filter(Boolean).flatMap((s) => plain(s!).split('\n'))) {
@@ -50,7 +61,10 @@ export function excerpt(i: Item, words: string[], width = 110): ReactNode {
 
 interface Props {
   on: boolean;
-  onToggle: () => void;
+  /** The button that teaches the key shows: the owner has not used `/` yet, and the canvas has enough cards to search. */
+  teach: boolean;
+  /** A click on that button: how to open the search. */
+  onTeach: () => void;
   onClose: () => void;
   /** A card unfolded from the list is open: the list stays under the dim, for the card to fold back into. */
   held: boolean;
@@ -59,52 +73,74 @@ interface Props {
   /** The archive as the server sends it. */
   archived: Item[];
   onOpen: (i: Item) => void;
+  /** The canvas's card whose row is under the pointer or picked by the arrow keys, to light it up there; `null` for none. */
+  onLight: (id: string | null) => void;
   /** Where an archived card unfolds from and folds back to. */
   els: Map<string, HTMLElement>;
-  icon: ReactNode;
 }
 
-/** The bar's search button; a click (or `S`) shows a field and, under it, the cards it finds. A click beside it or Esc (in App) closes it. */
-export function SearchPill({ on, onToggle, onClose, held, items, archived, onOpen, els, icon }: Props) {
+/**
+ * The search in the bar: `/` (in App) shows a field and, under it, the cards it finds; a click beside
+ * it or Esc closes it. Until `/` has been used, a button there teaches the key.
+ */
+export function SearchPill({ on, teach, onTeach, onClose, held, items, archived, onOpen, onLight, els }: Props) {
   const box = useRef<HTMLDivElement>(null);
   useMenuClose(on, box, () => held || onClose());
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  // the active row lights its card up once the pointer or an arrow key picked it, until the pointer leaves the list
+  const [lit, setLit] = useState(false);
   const field = useRef<HTMLInputElement>(null);
   // what was searched last stays, selected, so typing starts a new search
   useEffect(() => void (on && field.current?.select()), [on]);
-  useEffect(() => setActive(0), [query]);
-  const words = searchWords(query);
-  const byId = new Map([...items, ...archived].map((i) => [i.id, i]));
-  const sections = on
-    ? [
-        { key: 'canvas', heading: t.search.canvas, hits: findCards(query, items) },
-        { key: 'archive', heading: t.search.archive, hits: findCards(query, archived) },
-      ].filter((s) => s.hits.length)
-    : [];
+  useEffect(() => (setActive(0), setLit(false)), [query, on]);
+  const words = useMemo(() => searchWords(query), [query]);
+  const byId = useMemo(() => new Map([...items, ...archived].map((i) => [i.id, i])), [items, archived]);
+  // the archive joins with the first word, so the list before it stays short; worked out once per
+  // words and cards, not on every move of the pointer over the list, which lights a card up
+  const sections = useMemo(
+    () =>
+      on
+        ? words.length
+          ? [
+              { key: 'canvas', heading: t.search.canvas, hits: findCards(query, items) },
+              { key: 'archive', heading: t.search.archive, hits: findCards(query, archived) },
+            ].filter((s) => s.hits.length)
+          : [{ key: 'recent', heading: t.search.recent, hits: recentCards(items) }].filter((s) => s.hits.length)
+        : [],
+    [on, query, words, items, archived],
+  );
   const shown = sections.flatMap((s) => s.hits.slice(0, LIMIT));
+  // a list that grew shorter while open (a card archived meanwhile) keeps a row picked: the last
+  const at = Math.max(0, Math.min(active, shown.length - 1));
+  const litItem = on && lit ? shown[at]?.item : undefined;
+  // an archived card is nowhere on the canvas to light up
+  const litId = litItem && !litItem.archivedAt ? litItem.id : null;
+  useEffect(() => onLight(litId), [litId, onLight]);
   const pick = (h: Hit | undefined) => h && onOpen(h.item);
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const n = shown.length;
-      if (n) setActive((a) => (a + (e.key === 'ArrowDown' ? 1 : n - 1)) % n);
+      if (n) setActive((at + (e.key === 'ArrowDown' ? 1 : n - 1)) % n);
+      setLit(true);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      pick(shown[active]);
+      pick(shown[at]);
     }
   };
   // the row picked by the arrow keys stays in sight
-  useEffect(() => void box.current?.querySelector('.s-row.active')?.scrollIntoView({ block: 'nearest' }), [active]);
+  useEffect(() => void box.current?.querySelector('.s-row.active')?.scrollIntoView({ block: 'nearest' }), [at]);
   let row = 0;
   return (
     <div className="menu-pill search" ref={box}>
-      <button className={on ? 'pill kpill on' : 'pill kpill'} title={t.search.title} aria-expanded={on} onClick={onToggle}>
-        {icon}
-        <span className="lbl">{t.search.button}</span>
-      </button>
+      {teach && !on && (
+        <button className="pill search-hint" onClick={onTeach}>
+          {t.search.button[0]} <kbd>/</kbd> {t.search.button[1]}
+        </button>
+      )}
       {on && (
-        <div className="bar-menu search-menu">
+        <div className="bar-menu search-menu" onPointerLeave={() => setLit(false)}>
           <div className="a-search">
             <input
               ref={field}
@@ -123,9 +159,9 @@ export function SearchPill({ on, onToggle, onClose, held, items, archived, onOpe
               </button>
             )}
           </div>
-          {!query.trim() ? (
-            <p className="hint">{t.search.hint}</p>
-          ) : !sections.length ? (
+          {/* what the search looks through stays above the list until the first word */}
+          {!words.length && <p className="hint">{t.search.looks}</p>}
+          {words.length > 0 && !sections.length ? (
             <p className="hint">{t.search.noMatch(query.trim())}</p>
           ) : (
             sections.map((s) => (
@@ -141,10 +177,10 @@ export function SearchPill({ on, onToggle, onClose, held, items, archived, onOpe
                     return (
                       <li key={i.id}>
                         <button
-                          className={k === active ? 's-row active' : 's-row'}
+                          className={k === at ? 's-row active' : 's-row'}
                           style={{ '--c': `var(--${i.archivedAt ? 'live' : shownState(i)})` } as CSSProperties}
                           ref={i.archivedAt ? (el) => void (el ? els.set(i.id, el) : els.delete(i.id)) : undefined}
-                          onPointerEnter={() => setActive(k)}
+                          onPointerEnter={() => (setActive(k), setLit(true))}
                           onClick={() => onOpen(i)}
                         >
                           <span className="dot" />
@@ -158,7 +194,7 @@ export function SearchPill({ on, onToggle, onClose, held, items, archived, onOpe
                     );
                   })}
                 </ol>
-                {s.hits.length > LIMIT && <p className="hint">{t.search.more(s.hits.length - LIMIT)}</p>}
+                {s.hits.length > LIMIT && <p className="hint">{(words.length ? t.search.more : t.search.moreAll)(s.hits.length - LIMIT)}</p>}
               </section>
             ))
           )}

@@ -70,14 +70,20 @@ export const HELP_KEY_KNOWN = 'obeya-help-key-known';
 /** Set once the owner created a task by double-click on the canvas: the bar's button for a new task goes. */
 export const DOUBLE_CLICK_KNOWN = 'obeya-double-click-known';
 
-/** What the bar's button for a new task opens: a task is created by double-click; a click beside it, Esc or the button closes it. */
-export function NewCardHint({ onClose }: { onClose: () => void }) {
+/** Set once the owner opened the search with `/`: the bar's button that teaches the key goes. */
+export const SEARCH_KEY_KNOWN = 'obeya-search-key-known';
+
+/**
+ * What a bar's button that teaches a way of doing something opens (a task by double-click, the
+ * search by `/`): how, and that the button goes after the first time; a click beside it, Esc or its button closes it.
+ */
+export function HowToHint({ label, text, onClose }: { label: string; text: string; onClose: () => void }) {
   return (
     <div id="help" onClick={onClose}>
-      <div className="box hint-box" role="dialog" aria-label={t.newCard} onClick={(e) => e.stopPropagation()}>
-        <p>{t.newCardHint.text}</p>
+      <div className="box hint-box" role="dialog" aria-label={label} onClick={(e) => e.stopPropagation()}>
+        <p>{text}</p>
         <button className="btn primary" autoFocus onClick={onClose}>
-          {t.newCardHint.ok}
+          {t.gotIt}
         </button>
       </div>
     </div>

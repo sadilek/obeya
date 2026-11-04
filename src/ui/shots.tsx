@@ -229,7 +229,7 @@ export function ShotStrip({ shots }: { shots: ShotInput }) {
         <div className="c-paste-hint" role="note">
           <p>{t.shots.pasteHint(pasteKeys())}</p>
           <button className="btn small primary" onClick={confirmPasteHint}>
-            {t.newCardHint.ok}
+            {t.gotIt}
           </button>
         </div>
       )}

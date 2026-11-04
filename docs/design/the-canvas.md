@@ -7,22 +7,39 @@ edge indicators, minimap, and a frosted top bar the canvas slides under.
 
 ### The bar
 
-Left, after the navigation's button (see The navigation): „Suchen“, the archive's button (see Card lifecycle), the queue's and "Neue
+Left, after the navigation's button (see The navigation): the search's place, the archive's button (see Card lifecycle), the queue's and "Neue
 Aufgabe". The queue's button counts the waiting cards; a click lists them in turn, each with what it
 waits for, buttons to move it and a × that takes it out of the queue at once, as „Aus der Warteschlange nehmen“ on the card does (back to planned; no
 undo, starting it again is the way back); a row opens its card. The navigation's, the archive's and
 the queue's lists close on a click beside them and on Esc. Obeya's button is the rightmost (see
 Sheets).
 
-„Suchen“ (or `S`) drops down a field like the archive's: it finds the cards on the canvas, and
-below them those in the archive, that hold every typed word, matched as the archive's search does.
-In each part, cards with every word in the title come first, then those holding the words only in
-their text, summary, last status, open question, a proposal's reason, label or a project's goal,
-with an excerpt that shows the words there. Under the empty field, a line says what it searches. The
-arrow keys pick a result and Enter opens it, as a click does. A card on the canvas opens in place and
+`/` drops down a field like the archive's, the quick way to a card. The bar has no search button:
+until `/` has been used once (per browser), a button „/ tippen zum Suchen“ stands in the search's
+place, shown only once the canvas holds more than five cards so that it does not distract a new
+owner; a click on it explains the key, and after the first `/` it is gone for good. Before the first
+word the search lists every card on the canvas, the one where something happened last first: a
+change the owner sees (its state, its title or text, also in its plan doc, its status, its
+handover, its pull request), or a line in its conversation other than a worker's tool activity.
+Moving a card, grouping it, folding a project and the bookkeeping behind a card (its session, its
+workspace, what was read) do not count. A line above the list says
+what the search looks through. With the first word, it finds the cards on the canvas, and below
+them those in the archive, that hold every typed word, matched as the archive's search does. In each
+part, cards with every word in the title come first, then those holding the words only in their
+text, summary, last status, open question, a proposal's reason, label or a project's goal, with an
+excerpt that shows the words there. Each list shows 30 cards and counts the rest.
+
+The row under the pointer, or the one the arrow keys pick, lights its card up on the canvas with a
+ring in its state's colour that breathes; the camera stays where it is. A card out of sight lights
+up its edge indicator instead (shown for it even when it does not need the owner), a workstream of a
+collapsed project its project; an archived row lights up nothing. A card behind the open list counts
+as out of sight: its indicator stands beside the list and points under it, as does any edge
+indicator that would stand under the list. Leaving the list or closing the
+search ends it. Enter opens the picked row, as a click does. A card on the canvas opens in place and
 the search closes (a workstream of a collapsed project opens its project). An archived card unfolds
 from its row, and the list stays under the dim to fold back into, as in the archive. The search
-keeps its words between openings. The archive and the search drop down one at a time.
+keeps its words between openings. The archive and the search drop down one at a time. The phone
+view has no search.
 
 Right, before the workspace pool: the usage limits of the plans Claude Code and Codex on this
 machine are logged in with, the session's (five hours) and the week's, each a short meter with its
@@ -355,6 +372,16 @@ code, a generic one otherwise.
 
 ### Decisions
 
+- **The search stays in the bar and is the quick way to a card** (2026-11-01, owner): before the
+  first word it lists the canvas's cards, the last changed first, and the archive joins only with
+  the first word so the list stays short; a row under the pointer lights its card up where it
+  stands instead of flying there, since the view would jump with every movement of the mouse.
+  It opens with `/`, the key that searches on GitHub and elsewhere, and the bar teaches the key with
+  a button that goes once the key is known, as `?` does, instead of a search button there for good
+  (sadilek, 2026-11-04). Rejected: a sidebar on the right like Obeya's conversation (it would take
+  the edge Obeya's sheet docks at, for a list that is closed again after one pick); a button beside the microphone (the bottom middle is for what goes to agents, and the
+  list would open over the middle of the canvas); the archive's filter for active cards too (no one
+  looks for an active card in the archive).
 - **The search across canvas and archive matches as the archive's filter does, with no fuzzy
   matching library** (2026-10-30, owner). Rejected: fuzzysort, whose subsequence matching tolerates
   left-out letters but, over a card's long text, finds nearly any scattered letters and needs score

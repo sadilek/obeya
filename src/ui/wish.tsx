@@ -219,7 +219,7 @@ export function WishDialog() {
               <p key={line}>{line}</p>
             ))}
             <button className="btn primary" autoFocus onClick={closeWish}>
-              {t.newCardHint.ok}
+              {t.gotIt}
             </button>
           </div>
         ) : (

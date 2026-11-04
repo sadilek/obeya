@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { findCards } from './search';
+import { findCards, recentCards } from './search';
 
 const card = (title: string, more: Partial<Item> = {}) => ({ id: title, kind: 'task', state: 'done', title, body: '', x: 0, y: 0, source: 'manual', ...more }) as Item;
 const titles = (q: string, cards: Item[]) => findCards(q, cards).map((h) => h.item.title);
@@ -26,4 +26,15 @@ test('cards with every word in the title come before those that hold them in the
 test('words split between title and text find the card, after the title matches', () => {
   const cards = [card('Voice', { body: 'Parakeet through uv is the default.' }), card('Voice and Parakeet')];
   expect(titles('voice parakeet', cards)).toEqual(['Voice and Parakeet', 'Voice']);
+});
+
+test('before the first word, every card on the canvas is listed, the one changed last first', () => {
+  const cards = [
+    card('Old', { changedAt: '2026-10-01T08:00:00.000Z' }),
+    card('Newest', { changedAt: '2026-10-31T17:00:00.000Z' }),
+    card('Never changed'),
+    card('', { body: '' }),
+    card('Middle', { changedAt: '2026-10-15T12:00:00.000Z' }),
+  ];
+  expect(recentCards(cards).map((h) => h.item.title)).toEqual(['Newest', 'Middle', 'Old', 'Never changed']);
 });

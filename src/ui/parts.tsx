@@ -60,6 +60,8 @@ interface CardProps {
   lifted: boolean;
   dragging: boolean;
   pop: boolean;
+  /** Its row in the search is under the pointer or picked: it lights up where it stands. */
+  lit?: boolean;
   /** A prototype of this idea is on the canvas, which keeps the idea from the archive. */
   prototyped: boolean;
   els: Map<string, HTMLElement>;
@@ -235,7 +237,7 @@ export function CardFace({ item, where, underway, since, chip, inButton }: { ite
 }
 
 export const CardView = memo(
-  function CardView({ item, b, lifted, dragging, pop, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
+  function CardView({ item, b, lifted, dragging, pop, lit, prototyped, showRepo, els, onStart, onArchive, dep, onHover, underway }: CardProps) {
     const shape = shapeOf(item);
     // a card the Koordinator is checking has nothing to start yet
     const startable = item.state === 'planned' && (!item.queue || 'behind' in item.queue);
@@ -248,7 +250,7 @@ export const CardView = memo(
       'item',
       cardClass(item, underway),
       shape,
-      dep && `dep-${dep}`, lifted && 'lifted', dragging && 'dragging', pop && 'pop'].filter(Boolean).join(' ');
+      dep && `dep-${dep}`, lifted && 'lifted', dragging && 'dragging', pop && 'pop', lit && 'lit'].filter(Boolean).join(' ');
     return (
       <div
         className={cls}
@@ -297,7 +299,7 @@ export const CardView = memo(
     );
   },
   (a, b) =>
-    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
+    a.item === b.item && sameBounds(a.b, b.b) && a.lifted === b.lifted && a.dragging === b.dragging && a.pop === b.pop && a.lit === b.lit && a.prototyped === b.prototyped && a.showRepo === b.showRepo && a.onStart === b.onStart && a.onArchive === b.onArchive && a.dep === b.dep && a.onHover === b.onHover && a.underway === b.underway,
 );
 
 /**
@@ -842,6 +844,7 @@ export const ProjectView = memo(
     onArrange,
     onCollapse,
     onOpen,
+    lit,
   }: {
     item: Item;
     b: Bounds;
@@ -853,6 +856,8 @@ export const ProjectView = memo(
     onArrange: (project: Item) => void;
     onCollapse: (project: Item, collapsed: boolean) => void;
     onOpen: (i: Item) => void;
+    /** It, or a workstream it holds folded, has its row in the search under the pointer or picked. */
+    lit?: boolean;
   }) {
     const live = kids.filter((k) => finished(k.state)).length;
     const waiting = kids.filter(needsYou).length;
@@ -861,7 +866,7 @@ export const ProjectView = memo(
     // the canvas would take the press as the start of a drag or a click that opens the project
     const own = (e: React.PointerEvent) => e.stopPropagation();
     return (
-      <div className={`item project s-${item.state}${collapsed ? ' collapsed' : ''}`} data-id={item.id} style={{ left: b.x, top: b.y, width: b.w, height: b.h, zIndex: 0 }}>
+      <div className={`item project s-${item.state}${collapsed ? ' collapsed' : ''}${lit ? ' lit' : ''}`} data-id={item.id} style={{ left: b.x, top: b.y, width: b.w, height: b.h, zIndex: 0 }}>
         <div className="head">
           <button
             className="fold"
@@ -959,6 +964,7 @@ export const ProjectView = memo(
   },
   (a, b) =>
     a.item === b.item &&
+    a.lit === b.lit &&
     a.replies === b.replies &&
     a.onStartAll === b.onStartAll &&
     a.onArrange === b.onArrange &&
@@ -1300,8 +1306,13 @@ export function Sheet({
 
 // ------------------------------------------------------------------ overlays
 
-/** Chips at the edge of the canvas pointing at off-screen cards that need the owner; `side`: the panels docked at the window's edges. */
-export function Edges({ cam, targets, side, onOpen }: { cam: Cam; targets: { item: Item; b: Bounds }[]; side: Sides; onOpen: (i: Item) => void }) {
+/**
+ * Chips at the edge of the canvas pointing at off-screen cards that need the owner, and at the one
+ * picked in the search (`lit`, which lights up); `side`: the panels docked at the window's edges.
+ * `cover`: the search's list, open over the canvas: a card behind it is out of sight too, and a chip
+ * that would stand under it stands beside it instead.
+ */
+export function Edges({ cam, targets, side, onOpen, lit, cover }: { cam: Cam; targets: { item: Item; b: Bounds }[]; side: Sides; onOpen: (i: Item) => void; lit?: string | undefined; cover?: DOMRect | undefined }) {
   const top = 64;
   const bottom = innerHeight - 60;
   const m = side.left + 30;
@@ -1311,15 +1322,18 @@ export function Edges({ cam, targets, side, onOpen }: { cam: Cam; targets: { ite
       {targets.map(({ item, b }) => {
         const cx = cam.x + (b.x + b.w / 2) * cam.s;
         const cy = cam.y + (b.y + b.h / 2) * cam.s;
-        if (cx > m && cx < right && cy > top && cy < bottom) return null;
-        const x = Math.min(right, Math.max(m, cx));
+        const under = (x: number, y: number) => !!cover && x >= cover.left && x <= cover.right && y >= cover.top && y <= cover.bottom;
+        if (cx > m && cx < right && cy > top && cy < bottom && !under(cx, cy)) return null;
+        let x = Math.min(right, Math.max(m, cx));
         const y = Math.min(bottom, Math.max(top + 10, cy));
+        const beside = under(x, y);
+        if (beside) x = cover!.right + 12;
         const ang = (Math.atan2(cy - y, cx - x) * 180) / Math.PI;
-        // anchored on the side it points to, so it stays on screen
-        const tx = cx >= right ? '-100%' : cx <= m ? '0%' : '-50%';
+        // anchored on the side it points to, so it stays on screen; beside the list, on its left
+        const tx = beside ? '0%' : cx >= right ? '-100%' : cx <= m ? '0%' : '-50%';
         const title = plain(item.title);
         return (
-          <button key={item.id} className={`edge s-${item.state}`} style={{ left: x, top: y, transform: `translate(${tx}, -50%)` }} onClick={() => onOpen(item)}>
+          <button key={item.id} className={`edge s-${item.state}${item.id === lit ? ' lit' : ''}`} style={{ left: x, top: y, transform: `translate(${tx}, -50%)` }} onClick={() => onOpen(item)}>
             <span className="arr" style={{ transform: `rotate(${ang}deg)` }}>
               ➜
             </span>

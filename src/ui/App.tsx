@@ -28,7 +28,7 @@ import { SearchPill } from './search';
 import { depsOf, handleAt, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
-import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
+import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, HowToHint, SEARCH_KEY_KNOWN } from './help';
 import { know, known } from './known';
 import { addAll, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, movesWith, shifted, toggle } from './selection';
 import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
@@ -388,6 +388,8 @@ function Canvas({
   const [kOn, setKOn, kOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
   const [sOn, setSOn, sOnRef] = useLive(false);
+  // the card whose row in the search is under the pointer or picked by the arrow keys
+  const [foundId, setFoundId] = useState<string | null>(null);
   const [cOn, setCOn, cOnRef] = useLive(false);
   // the navigation pinned as a sidebar on the left (src/ui/nav.tsx)
   const [pinned, setPinned, pinnedRef] = useLive(loadPinned);
@@ -436,6 +438,9 @@ function Canvas({
   // the bar's button for a new task stays until the owner created one by double-click; it only says how
   const [dblKnown, setDblKnown] = useState(() => known(DOUBLE_CLICK_KNOWN));
   const [newHintOn, setNewHintOn] = useState(false);
+  // the bar's button that teaches `/`, until the owner used it, and the hint it opens
+  const [searchKnown, setSearchKnown] = useState(() => known(SEARCH_KEY_KNOWN));
+  const [searchHintOn, setSearchHintOn] = useState(false);
   const [setupOn, setSetupOn] = useState(false);
   // what is wrong in the configuration as saved, marked on its button; read when the page loads,
   // after a save in the dialog, when a repository's settings change on its default branch, which
@@ -716,7 +721,8 @@ function Canvas({
     setFocus(null);
     addressCloses(undefined);
     setSheetOn(false);
-    if (toArchive && archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
+    // one opened from the search goes back to the search's list, which stayed open; the two never show at once
+    if (toArchive && !sOnRef.current && archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
     await fly(back(f), 600);
     recover();
   }
@@ -1706,8 +1712,8 @@ function Canvas({
       return;
     }
     // so does the hint on how to create a task; Space and Enter press its button
-    if (newHintOn) {
-      if (e.key === 'Escape') setNewHintOn(false);
+    if (newHintOn || searchHintOn) {
+      if (e.key === 'Escape') setNewHintOn(false), setSearchHintOn(false);
       return;
     }
     // the draft for Obeya's makers takes the keys until it closes, Esc closing it
@@ -1768,13 +1774,18 @@ function Canvas({
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
-    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a' || e.key === 's') {
+    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a' || e.key === '/') {
       // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter, the search)
       e.preventDefault();
       if (e.key === 'n') createAtCentre();
       else if (e.key === 'c') talkKoordinator();
-      else if (e.key === 's') toggleSearch();
-      else toggleArchive();
+      else if (e.key === '/') {
+        toggleSearch();
+        if (!searchKnown) {
+          know(SEARCH_KEY_KNOWN);
+          setSearchKnown(true);
+        }
+      } else toggleArchive();
     }
   };
   useEffect(() => {
@@ -1795,10 +1806,15 @@ function Canvas({
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
+  // the card picked in the search lights up where it stands: on its folded project, or its edge indicator while out of sight
+  const found = foundId ? byId(foundId) : undefined;
+  const litId = found && standsFor(found).id;
   const edgeTargets = items.flatMap((item) => {
     const b = at.get(standsFor(item).id);
     return b && yours(item) && (focus?.type !== 'project' || item.parent === focus.id) ? [{ item, b }] : [];
   });
+  let litEdge = litId ? edgeTargets.find((e) => standsFor(e.item).id === litId) : undefined;
+  if (found && litId && !litEdge && at.has(litId)) edgeTargets.push((litEdge = { item: found, b: at.get(litId)! }));
 
   // the button for the conversation with Obeya: the rightmost in the bar; while its sidebar is open it
   // belongs to the sidebar, at its top corner, and closes it. It is one element that never moves to
@@ -1868,7 +1884,7 @@ function Canvas({
             </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
-                <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
+                <ProjectView key={item.id} item={item} b={b} lit={item.id === litId} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
               ) : (
                 <CardView
                   key={item.id}
@@ -1877,6 +1893,7 @@ function Canvas({
                   lifted={item.id === openId}
                   dragging={item.id === dragId || dragWith.includes(item.id)}
                   pop={item.id === popId}
+                  lit={item.id === litId}
                   prototyped={prototyped.has(item.id)}
                   showRepo={snapshot.canvas.repos.length > 1}
                   els={els}
@@ -1949,7 +1966,7 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} />}
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} lit={litEdge?.item.id} cover={sOn ? document.querySelector('.search-menu')?.getBoundingClientRect() : undefined} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
@@ -1966,14 +1983,15 @@ function Canvas({
           )}
           <SearchPill
             on={sOn}
-            onToggle={toggleSearch}
+            teach={!searchKnown && items.length > 5}
+            onTeach={() => focusRef.current?.type !== 'card' && setSearchHintOn(true)}
             onClose={() => setSOn(false)}
             held={focus?.type === 'card'}
             items={items}
             archived={archived}
             onOpen={openFound}
+            onLight={setFoundId}
             els={archiveEls}
-            icon={<BarIcon d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.3 15.3 20 20" />}
           />
           <ArchivePill
             on={aOn}
@@ -2040,7 +2058,8 @@ function Canvas({
         <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
         {helpOn && <Help note={helpNote} onClose={() => setHelpOn(false)} />}
         <WishDialog />
-        {newHintOn && <NewCardHint onClose={() => setNewHintOn(false)} />}
+        {newHintOn && <HowToHint label={t.newCard} text={t.newCardHint.text} onClose={() => setNewHintOn(false)} />}
+        {searchHintOn && <HowToHint label={t.search.field} text={t.search.hint} onClose={() => setSearchHintOn(false)} />}
         <div id="panel" ref={panelRef}>
           {openItem && <CardNumber n={openItem.number} className="sheet-no" />}
           <button className="close" title={t.close} onClick={() => closeCard()}>

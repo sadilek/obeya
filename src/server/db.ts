@@ -20,6 +20,10 @@ export interface CardRow {
   /** `docs/plan/x.md` for a project, `docs/plan/x.md#W3` for a workstream; null for manual cards. */
   plan_ref: string | null;
   created_at: string;
+  /**
+   * When something last happened at the card: a change the owner sees (`SEEN`) or a line in its log
+   * other than a worker's tool activity. Moving it, grouping it, folding a project or bookkeeping do not count.
+   */
   updated_at: string;
   deleted_at: string | null;
   /** Agent session of the card's worker, or of a project's project agent. */
@@ -524,6 +528,13 @@ export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
   Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro' | 'proposal' | 'group_id'>>;
 
 /** What `Store.update` may change on a card: all but what is set once at its creation, and its times. */
+/**
+ * The columns whose change the owner sees happen at the card (`updated_at`): its state, its words,
+ * what its agent reports and hands over. Its place, its group, its folding and the bookkeeping behind
+ * it (session, workspace, queue, what was read or heard) do not count.
+ */
+const SEEN = new Set<string>(['state', 'need', 'title', 'body', 'status_line', 'detail', 'demo', 'idea', 'proposal', 'images', 'pr', 'contribution', 'thread', 'shipped', 'landed', 'archived_at', 'paused', 'snoozed', 'share', 'app', 'plan']);
+
 export type RowUpdate = Partial<Omit<CardRow, 'id' | 'canvas_id' | 'parent_id' | 'plan_ref' | 'prototype_of' | 'retro' | 'created_at' | 'updated_at'>>;
 
 /** A database this Obeya cannot open as it is: it leaves it alone. */
@@ -744,16 +755,22 @@ export class Store {
     this.db.query('UPDATE cards SET waiting_since = $since WHERE id = $id').run({ id, since });
   }
 
+  /** Something the owner sees happened at the card with this plan reference, outside its row (its text in the plan doc). */
+  touch(canvasId: string, planRef: string) {
+    this.db.query('UPDATE cards SET updated_at = $now WHERE canvas_id = $c AND plan_ref = $ref AND deleted_at IS NULL').run({ c: canvasId, ref: planRef, now: now() });
+  }
+
   update(id: string, fields: RowUpdate) {
     const keys = Object.keys(fields) as (keyof typeof fields)[];
     if (!keys.length) return;
     const set = keys.map((k) => `${k} = $${k}`).join(', ');
-    this.db.query(`UPDATE cards SET ${set}, updated_at = $now WHERE id = $id`).run({ ...fields, id, now: now() });
+    const seen = keys.some((k) => SEEN.has(k));
+    this.db.query(`UPDATE cards SET ${set}${seen ? ', updated_at = $now' : ''} WHERE id = $id`).run({ ...fields, id, ...(seen ? { now: now() } : {}) });
   }
 
   /** Puts the card on another workstream (`planRef`, in project `parentId`), or takes it out of its project (both null). */
   replan(id: string, planRef: string | null, parentId: string | null) {
-    this.db.query('UPDATE cards SET plan_ref = $ref, parent_id = $parent, updated_at = $now WHERE id = $id').run({ id, ref: planRef, parent: parentId, now: now() });
+    this.db.query('UPDATE cards SET plan_ref = $ref, parent_id = $parent WHERE id = $id').run({ id, ref: planRef, parent: parentId });
   }
 
   /** The last line of the card's log that names a branch of its own (`obeya/<slug>-<id>…`). */
@@ -792,8 +809,8 @@ export class Store {
 
   /** Puts the cards into the group, or with `null` into none. */
   setGroup(cardIds: string[], groupId: string | null) {
-    const stmt = this.db.query('UPDATE cards SET group_id = $g, updated_at = $now WHERE id = $id');
-    this.db.transaction(() => cardIds.forEach((id) => stmt.run({ id, g: groupId, now: now() })))();
+    const stmt = this.db.query('UPDATE cards SET group_id = $g WHERE id = $id');
+    this.db.transaction(() => cardIds.forEach((id) => stmt.run({ id, g: groupId })))();
   }
 
   /** Removes the groups no card belongs to, on the canvas or in the archive; returns how many. */
@@ -834,6 +851,7 @@ export class Store {
         token: e.token ? 1 : null,
         at,
       }) as { id: number };
+    if (e.kind !== 'activity') this.db.query('UPDATE cards SET updated_at = max(updated_at, $at) WHERE id = $id').run({ id: e.cardId, at });
     return { ...e, id, at };
   }
 

@@ -188,3 +188,26 @@ test('the migration numbers the cards there are in the order they were made, acr
     expect(after.setting('d', 'card_numbers_since')).not.toBeNull();
     after.db.close();
   }));
+
+test('a card counts as changed when something happens at it, not when it moves', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    const [card] = s.insert([{ canvas_id: 'c', kind: 'task', state: 'planned', x: 0, y: 0 }]);
+    const id = card!.id;
+    const old = '2026-01-01T00:00:00.000Z';
+    const changed = () => s.card(id)!.updated_at;
+    const reset = () => s.db.run(`UPDATE cards SET updated_at = '${old}' WHERE id = '${id}'`);
+    reset();
+    s.update(id, { x: 40, y: 80 });
+    s.update(id, { session_id: 's1', workspace: '/w', page_heard: '[]', waiting_since: '2026-01-02T00:00:00.000Z' });
+    s.setGroup([id], s.addGroup('c', 'G', 0).id);
+    s.addEvent({ cardId: id, kind: 'activity', author: 'worker', text: 'Read a file' });
+    expect(changed()).toBe(old);
+    s.update(id, { title: 'Renamed' });
+    expect(changed() > old).toBe(true);
+    reset();
+    s.addEvent({ cardId: id, kind: 'report', author: 'worker', text: 'Tests pass' });
+    expect(changed() > old).toBe(true);
+    s.db.close();
+  }));
