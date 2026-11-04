@@ -69,6 +69,15 @@ describe('writesNothing', () => {
       'echo hi >&out.txt',
       'rg --pre=./pre a in',
       'file -C -m magic',
+      "sed 'wout' /dev/null",
+      "sed 's/x/y/wout' in",
+      "sed $'w\\x20out' /dev/null",
+      'sort --out=out in',
+      'file --com -m magic',
+      "let 'a[$(touch out)]=0'",
+      "declare -a 'a[$(touch out)]=x'",
+      'rg --hostname-bin=./writer x in',
+      'cat <<"E\'OF"\nhello\nE\'OF\ntouch out',
     ])
       expect([c, writesNothing(c)]).toEqual([c, false]);
   });

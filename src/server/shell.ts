@@ -175,23 +175,22 @@ function readOnly(name: string, args: string[]): boolean {
   const operands = args.filter((a) => !a.startsWith('-'));
   switch (name) {
     case 'sort':
-      return !args.some((a) => /^(?:-o|--output)/.test(a) || /^-[^-]*o/.test(a));
+      // `--o` is as good as `--output`
+      return !args.some((a) => /^(?:-[^-]*o|--o)/.test(a));
     case 'rg':
       // a preprocessor it runs on each file
-      return !args.some((a) => /^--pre(?:=|$)/.test(a));
+      return !args.some((a) => /^--(?:pre|hostname-bin)(?:=|$)/.test(a));
     case 'file':
       // compiling a magic file writes it
-      return !args.some((a) => /^(?:-[^-]*C|--compile)/.test(a));
+      return !args.some((a) => /^(?:-[^-]*C|--c)/.test(a));
     case 'uniq':
       // a second operand is where it writes
       return operands.length <= 1;
     case 'find':
       return !args.some((a) => /^-(?:delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)$/.test(a));
     case 'sed':
-      // in place, a script from a file, or one that writes or runs a command (`w file`, `s/…/…/w file`, `e`)
-      return !args.some(
-        (a) => /^(?:-[^-]*[iIf]|--in-place|--file)/.test(a) || /(?:^|[^A-Za-z])[wWe](?:\s|$)/.test(a.replace(/^(?:--expression=|-[A-Za-z]*e)/, '')),
-      );
+      // in place, a script from a file, or one that may write or run a command (`w file`, `s/…/…/wfile`, `e`)
+      return !args.some((a) => /^(?:-[^-]*[iIf]|--in-place|--file)/.test(a) || /(?:^|[^A-Za-z])[wWe]/.test(a.replace(/^(?:--expression=|-[A-Za-z]*e)/, '')));
     case 'awk':
     case 'gawk':
       // a program from a file, one that redirects or runs a command, or edits in place
@@ -213,6 +212,8 @@ export function writesNothing(command: string): boolean {
   // a substitution in a heredoc's text runs, though the text itself is only data
   const runs = (s: string) => s.match(new RegExp(SUBSTITUTION, 'g'))?.length ?? 0;
   if (runs(text) < runs(command)) return false;
+  // a heredoc's delimiter with a quote inside its quotes is not read here
+  if (/<<-?\s*(?:"[^"\n]*'|'[^'\n]*")/.test(command)) return false;
   const list = tokens(text);
   if (!list?.some((t) => 'word' in t)) return false;
   let words: string[] = [];
@@ -242,6 +243,8 @@ export function writesNothing(command: string): boolean {
     return readOnly(words[i]!, words.slice(i + 1));
   };
   for (const t of list) {
+    // a substitution even in quotes may run (`let 'a[$(…)]=0'`)
+    if ('word' in t && SUBSTITUTION.test(t.word)) return false;
     if ('word' in t) words.push(t.word);
     else if ('redirect' in t) {
       if (/^(?:>|>>|>\||&>|&>>|<>)$/.test(t.redirect) && !NO_FILE.test(t.to)) return false;
