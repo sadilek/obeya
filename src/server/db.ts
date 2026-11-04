@@ -21,6 +21,12 @@ export interface CardRow {
   plan_ref: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * When something last happened at the card: a change the owner sees (`SEEN`) or a line in its log
+   * other than a worker's tool activity. Moving it, grouping it, folding a project or bookkeeping do
+   * not count. Null only on rows from before it was kept.
+   */
+  changed_at: string | null;
   deleted_at: string | null;
   /** Agent session of the card's worker, or of a project's project agent. */
   session_id: string | null;
@@ -489,6 +495,9 @@ export const MIGRATIONS = [
   'ALTER TABLE cards ADD COLUMN model TEXT;',
   // the size of a card's change as last read (JSON `ChangeSize`): the page lays out its change list with it before reading the change
   'ALTER TABLE cards ADD COLUMN change_size TEXT;',
+  // when something the owner sees last happened at a card, which the search lists the canvas by;
+  // `updated_at` stays the time of any write, which the archive's revision is made of
+  'ALTER TABLE cards ADD COLUMN changed_at TEXT; UPDATE cards SET changed_at = updated_at;',
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -527,8 +536,15 @@ const eventOf = ({ code, images, mocks, replyTo, spot, answer, picks, unread, re
 export type NewRow = Pick<CardRow, 'canvas_id' | 'kind' | 'x' | 'y'> &
   Partial<Pick<CardRow, 'state' | 'title' | 'body' | 'parent_id' | 'plan_ref' | 'from_id' | 'repo' | 'idea' | 'prototype_of' | 'prototype' | 'images' | 'retro' | 'proposal' | 'group_id'>>;
 
+/**
+ * The columns whose change the owner sees happen at the card (`changed_at`): its state, its words,
+ * what its agent reports and hands over. Its place, its group, its folding and the bookkeeping behind
+ * it (session, workspace, queue, what was read or heard) do not count.
+ */
+const SEEN = new Set<string>(['state', 'need', 'title', 'body', 'status_line', 'detail', 'demo', 'files', 'idea', 'proposal', 'prototype', 'images', 'pr', 'contribution', 'thread', 'shipped', 'landed', 'archived_at', 'paused', 'snoozed', 'share', 'app', 'plan']);
+
 /** What `Store.update` may change on a card: all but what is set once at its creation, and its times. */
-export type RowUpdate = Partial<Omit<CardRow, 'id' | 'canvas_id' | 'parent_id' | 'plan_ref' | 'prototype_of' | 'retro' | 'created_at' | 'updated_at'>>;
+export type RowUpdate = Partial<Omit<CardRow, 'id' | 'canvas_id' | 'parent_id' | 'plan_ref' | 'prototype_of' | 'retro' | 'created_at' | 'updated_at' | 'changed_at'>>;
 
 /** A database this Obeya cannot open as it is: it leaves it alone. */
 export class UnusableDatabase extends Error {}
@@ -697,8 +713,8 @@ export class Store {
 
   insert(rows: NewRow[]): CardRow[] {
     const stmt = this.db.query(
-      `INSERT INTO cards (id, short, number, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at)
-       VALUES ($id, $short, (SELECT coalesce(max(number), 0) + 1 FROM cards), $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now)`,
+      `INSERT INTO cards (id, short, number, canvas_id, kind, state, title, body, x, y, parent_id, plan_ref, from_id, repo, idea, prototype_of, prototype, images, retro, proposal, group_id, created_at, updated_at, changed_at)
+       VALUES ($id, $short, (SELECT coalesce(max(number), 0) + 1 FROM cards), $canvas_id, $kind, $state, $title, $body, $x, $y, $parent_id, $plan_ref, $from_id, $repo, $idea, $prototype_of, $prototype, $images, $retro, $proposal, $group_id, $now, $now, $now)`,
     );
     const taken = this.db.query('SELECT 1 FROM cards WHERE short = $s');
     const ids = this.db.transaction(() =>
@@ -748,11 +764,17 @@ export class Store {
     this.db.query('UPDATE cards SET waiting_since = $since WHERE id = $id').run({ id, since });
   }
 
+  /** Something the owner sees happened at the card with this plan reference, outside its row (its text in the plan doc). */
+  touch(canvasId: string, planRef: string) {
+    this.db.query('UPDATE cards SET changed_at = $now WHERE canvas_id = $c AND plan_ref = $ref AND deleted_at IS NULL').run({ c: canvasId, ref: planRef, now: now() });
+  }
+
   update(id: string, fields: RowUpdate) {
     const keys = Object.keys(fields) as (keyof typeof fields)[];
     if (!keys.length) return;
     const set = keys.map((k) => `${k} = $${k}`).join(', ');
-    this.db.query(`UPDATE cards SET ${set}, updated_at = $now WHERE id = $id`).run({ ...fields, id, now: now() });
+    const seen = keys.some((k) => SEEN.has(k));
+    this.db.query(`UPDATE cards SET ${set}, updated_at = $now${seen ? ', changed_at = $now' : ''} WHERE id = $id`).run({ ...fields, id, now: now() });
   }
 
   /** Puts the card on another workstream (`planRef`, in project `parentId`), or takes it out of its project (both null). */
@@ -838,6 +860,7 @@ export class Store {
         token: e.token ? 1 : null,
         at,
       }) as { id: number };
+    if (e.kind !== 'activity') this.db.query('UPDATE cards SET changed_at = max(coalesce(changed_at, updated_at), $at) WHERE id = $id').run({ id: e.cardId, at });
     return { ...e, id, at };
   }
 

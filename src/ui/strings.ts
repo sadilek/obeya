@@ -55,7 +55,9 @@ const de = {
   progress: (live: number, all: number) => `${live} von ${all} live`,
   newCard: 'Neue Aufgabe',
   /** What the button for a new task says until the owner has double-clicked a task into being once. */
-  newCardHint: { text: 'Eine neue Aufgabe legst du mit einem Doppelklick auf die Fläche an, an der Stelle, wo sie hin soll. Nach dem ersten Mal verschwindet dieser Button.', ok: 'Verstanden' },
+  newCardHint: { text: 'Eine neue Aufgabe legst du mit einem Doppelklick auf die Fläche an, an der Stelle, wo sie hin soll. Nach dem ersten Mal verschwindet dieser Button.' },
+  /** The button that closes a hint on how to do something. */
+  gotIt: 'Verstanden',
   /** The draft of a wish or a bug for Obeya's makers, opened on GitHub as an issue (`wish.tsx`). */
   wish: {
     link: 'Wunsch oder Fehler melden',
@@ -121,6 +123,7 @@ const de = {
         rows: [
           { keys: [['Doppelklick']], text: 'Neue Aufgabe an dieser Stelle' },
           { keys: [['N']], text: 'Neue Aufgabe in der Mitte' },
+          { keys: [['/']], text: 'Karten suchen, auf der Leinwand und im Archiv' },
           { keys: [['Tab']], text: 'Zur nächsten Karte, die dich braucht, oder zu Obeyas Antwort' },
           { keys: [['Esc']], text: 'Karte, Projekt oder Obeya-Chat schließen' },
         ],
@@ -2020,6 +2023,25 @@ const de = {
     projectGone: (d: Date) => `Das Plan-Dokument ist weg (${de.archive.when(d)}). So stand es zuletzt; kommt die Datei zurück, kehrt das Projekt an seinen Platz zurück.`,
     workstreams: (n: number) => (n === 1 ? '1 Workstream' : `${n} Workstreams`),
   },
+  search: {
+    /** The bar's button that teaches the key, around the key itself. */
+    button: ['', 'tippen zum Suchen'] as [string, string],
+    /** What a click on it explains. */
+    hint: 'Mit der Taste / suchst du Karten auf der Leinwand und im Archiv: Die Suche öffnet sich und listet die Karten, die zuletzt geänderte zuerst. Nach dem ersten Mal verschwindet dieser Button.',
+    field: 'Karten suchen',
+    /** Under the empty field: what the search looks through. */
+    looks: 'Findet Karten auf der Leinwand und im Archiv, die jedes eingegebene Wort enthalten: zuerst die mit allen Wörtern im Titel, dann die übrigen. ↑ ↓ wählen, Enter öffnet.',
+    /** Over the list before the first word: the canvas's cards, in this order. */
+    recent: 'Auf der Leinwand, zuletzt geänderte zuerst',
+    canvas: 'Auf der Leinwand',
+    archive: 'Im Archiv',
+    /** No card on the canvas or in the archive matches what the owner typed. */
+    noMatch: (q: string) => `Keine Karte passt zu „${q}“.`,
+    /** Under a section's results, the ones beyond the shown. */
+    more: (n: number) => (n === 1 ? '1 weitere: genauer suchen, um sie zu sehen' : `${n} weitere: genauer suchen, um sie zu sehen`),
+    /** Under the list before the first word, the cards beyond the shown. */
+    moreAll: (n: number) => (n === 1 ? '1 weitere: ein Wort eingeben, um sie zu finden' : `${n} weitere: ein Wort eingeben, um sie zu finden`),
+  },
   idea: {
     status: { open: 'Idee', parked: 'Idee · geparkt', dropped: 'Idee · verworfen' } satisfies Record<Idea['status'], string>,
     yourTurn: 'Idee · du bist dran',
@@ -2177,7 +2199,8 @@ const en: Strings = {
   proposalMark: '✦ Proposal',
   progress: (live: number, all: number) => `${live} of ${all} live`,
   newCard: 'New task',
-  newCardHint: { text: 'To create a task, double-click on the canvas where it should go. After the first time, this button goes away.', ok: 'Got it' },
+  newCardHint: { text: 'To create a task, double-click on the canvas where it should go. After the first time, this button goes away.' },
+  gotIt: 'Got it',
   wish: {
     link: 'Report a wish or a bug',
     draftOpen: 'draft open',
@@ -2237,6 +2260,7 @@ const en: Strings = {
         rows: [
           { keys: [['Double-click']], text: 'New task right there' },
           { keys: [['N']], text: 'New task in the middle' },
+          { keys: [['/']], text: 'Search cards, on the canvas and in the archive' },
           { keys: [['Tab']], text: 'Next card that needs you, or Obeya’s answer' },
           { keys: [['Esc']], text: 'Close the card, project or Obeya chat' },
         ],
@@ -4013,6 +4037,18 @@ const en: Strings = {
     time: (d: Date) => clock(d),
     projectGone: (d: Date) => `The plan doc is gone (${en.archive.when(d)}). This is how it last stood; if the file comes back, the project returns to its place.`,
     workstreams: (n: number) => (n === 1 ? '1 workstream' : `${n} workstreams`),
+  },
+  search: {
+    button: ['Type', 'to search'],
+    hint: 'The / key searches the cards on the canvas and in the archive: the search opens and lists the cards, the last changed first. After the first time, this button goes away.',
+    field: 'Search cards',
+    looks: 'Finds cards on the canvas and in the archive that hold every word typed: those with all of them in the title first, then the rest. ↑ ↓ to choose, Enter opens.',
+    recent: 'On the canvas, last changed first',
+    canvas: 'On the canvas',
+    archive: 'In the archive',
+    noMatch: (q: string) => `No card matches “${q}”.`,
+    more: (n: number) => (n === 1 ? '1 more: search more precisely to see it' : `${n} more: search more precisely to see them`),
+    moreAll: (n: number) => (n === 1 ? '1 more: type a word to find it' : `${n} more: type a word to find them`),
   },
   idea: {
     status: { open: 'Idea', parked: 'Idea · parked', dropped: 'Idea · dropped' },

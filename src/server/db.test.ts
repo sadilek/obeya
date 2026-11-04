@@ -99,11 +99,14 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('DROP INDEX cards_archived');
     s.db.run('ALTER TABLE cards DROP COLUMN model');
     s.db.run('ALTER TABLE cards DROP COLUMN change_size');
+    s.db.run('ALTER TABLE cards DROP COLUMN changed_at');
     s.db.run(`PRAGMA user_version = ${RELEASED}`);
     s.db.close();
 
     const after = new Store(path);
     expect(JSON.parse(after.card(video!.id)!.demo!)).toEqual({ dir: '/d', chapters: [], kind: 'video' });
+    // a card's last visible change starts as its last write
+    expect(after.card(video!.id)!.changed_at).toBe(after.card(video!.id)!.updated_at);
     expect(JSON.parse(after.card(video!.id)!.detail!)).toEqual({ answering: true });
     expect(after.events(video!.id).find((e) => e.id === paused.id)!.text).toBe('Paused.');
     expect(JSON.parse(after.card(answered!.id)!.demo!).handover).toBe(first.id);
@@ -147,8 +150,9 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('DROP INDEX cards_archived');
     s.db.run('ALTER TABLE cards DROP COLUMN model');
     s.db.run('ALTER TABLE cards DROP COLUMN change_size');
+    s.db.run('ALTER TABLE cards DROP COLUMN changed_at');
     s.db.run('ALTER TABLE devices DROP COLUMN app');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 7}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 8}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -182,12 +186,38 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('DROP INDEX cards_archived');
     s.db.run('ALTER TABLE cards DROP COLUMN model');
     s.db.run('ALTER TABLE cards DROP COLUMN change_size');
+    s.db.run('ALTER TABLE cards DROP COLUMN changed_at');
     s.db.run('ALTER TABLE devices DROP COLUMN app');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 5}`);
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 6}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);
     expect(after.setting('c', 'card_numbers_since')).toMatch(/^\d{4}-\d\d-\d\dT/);
     expect(after.setting('d', 'card_numbers_since')).not.toBeNull();
     after.db.close();
+  }));
+
+test('a card counts as changed when something happens at it, not when it moves', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    const [card] = s.insert([{ canvas_id: 'c', kind: 'task', state: 'planned', x: 0, y: 0 }]);
+    const id = card!.id;
+    const old = '2026-01-01T00:00:00.000Z';
+    const changed = () => s.card(id)!.changed_at!;
+    const reset = () => s.db.run(`UPDATE cards SET changed_at = '${old}', updated_at = '${old}' WHERE id = '${id}'`);
+    reset();
+    s.update(id, { x: 40, y: 80 });
+    // any write still moves `updated_at`, which the archive's revision is made of
+    expect(s.card(id)!.updated_at > old).toBe(true);
+    s.update(id, { session_id: 's1', workspace: '/w', page_heard: '[]', waiting_since: '2026-01-02T00:00:00.000Z' });
+    s.setGroup([id], s.addGroup('c', 'G', 0).id);
+    s.addEvent({ cardId: id, kind: 'activity', author: 'worker', text: 'Read a file' });
+    expect(changed()).toBe(old);
+    s.update(id, { title: 'Renamed' });
+    expect(changed() > old).toBe(true);
+    reset();
+    s.addEvent({ cardId: id, kind: 'report', author: 'worker', text: 'Tests pass' });
+    expect(changed() > old).toBe(true);
+    s.db.close();
   }));

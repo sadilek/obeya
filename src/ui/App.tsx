@@ -24,10 +24,11 @@ import { Setup } from './setup';
 import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { forcedText, QueuePill } from './queue';
+import { SearchPill } from './search';
 import { depsOf, handleAt, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
-import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, NewCardHint } from './help';
+import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, HowToHint, SEARCH_KEY_KNOWN } from './help';
 import { know, known } from './known';
 import { addAll, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, movesWith, shifted, toggle } from './selection';
 import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
@@ -386,6 +387,11 @@ function Canvas({
   sheetWRef.current = sheetW;
   const [kOn, setKOn, kOnRef] = useLive(false);
   const [aOn, setAOn, aOnRef] = useLive(false);
+  const [sOn, setSOn, sOnRef] = useLive(false);
+  // the card whose row in the search is under the pointer or picked by the arrow keys
+  const [foundId, setFoundId] = useState<string | null>(null);
+  // where the search's list stands while open: a card behind it is out of sight
+  const [searchCover, setSearchCover] = useState<DOMRect | undefined>(undefined);
   const [cOn, setCOn, cOnRef] = useLive(false);
   // the navigation pinned as a sidebar on the left (src/ui/nav.tsx)
   const [pinned, setPinned, pinnedRef] = useLive(loadPinned);
@@ -414,7 +420,9 @@ function Canvas({
     toggleKoordinator();
     if (!kOn) requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#ksheet .tell textarea')?.focus({ preventScroll: true }));
   };
-  const toggleArchive = () => setAOn(!aOnRef.current);
+  // the archive and the search drop down from the bar one at a time
+  const toggleArchive = () => (setSOn(false), setAOn(!aOnRef.current));
+  const toggleSearch = () => (setAOn(false), setSOn(!sOnRef.current));
   // the configuration is a dialog over the page: what is open behind it stays as it was
   const toggleConfig = () => setCOn(!cOnRef.current);
   // asking Obeya about the configuration: its conversation in place of the dialog, ready to type into
@@ -432,6 +440,9 @@ function Canvas({
   // the bar's button for a new task stays until the owner created one by double-click; it only says how
   const [dblKnown, setDblKnown] = useState(() => known(DOUBLE_CLICK_KNOWN));
   const [newHintOn, setNewHintOn] = useState(false);
+  // the bar's button that teaches `/`, until the owner used it, and the hint it opens
+  const [searchKnown, setSearchKnown] = useState(() => known(SEARCH_KEY_KNOWN));
+  const [searchHintOn, setSearchHintOn] = useState(false);
   const [setupOn, setSetupOn] = useState(false);
   // what is wrong in the configuration as saved, marked on its button; read when the page loads,
   // after a save in the dialog, when a repository's settings change on its default branch, which
@@ -440,7 +451,7 @@ function Canvas({
   const [configProblems, setConfigProblems] = useState(0);
   const configRevs = [...snapshot.canvas.repos.map((r) => `${r.id}:${r.configRev ?? 0}`), ...canvases.map((c) => `${c.id}:${c.configRev ?? 0}`), `${snapshot.canvas.configRev ?? 0}`].join(' ');
   useEffect(() => void api.configCheck().then((c) => setConfigProblems(c.problems.length), console.error), [configRevs]);
-  // the archive, read while its list is open; archived cards unfold from their row there
+  // the archive, read while its list or the search is open; archived cards unfold from their row there
   const [archived, setArchived] = useState<Item[]>([]);
   const archivedRef = useRef(archived);
   archivedRef.current = archived;
@@ -460,7 +471,7 @@ function Canvas({
   // newest cards come first, for the list to show at once while the rest loads
   const archiveRead = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!aOn || (archiveRead.current !== undefined && archiveRead.current === snapshot.archive)) return;
+    if ((!aOn && !sOn) || (archiveRead.current !== undefined && archiveRead.current === snapshot.archive)) return;
     let current = true;
     let all = false;
     const rev = snapshot.archive;
@@ -472,7 +483,7 @@ function Canvas({
       setArchived(a);
     }, console.error);
     return () => void (current = false);
-  }, [aOn, snapshot.archive]);
+  }, [aOn, sOn, snapshot.archive]);
   const [popId, setPopId] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>()).current;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -524,6 +535,21 @@ function Canvas({
     clearTimeout(e.timer);
     e.timer = setTimeout(() => flushEdit().catch(console.error), 400);
   };
+
+  /**
+   * Opens a card the search found: one on the canvas where it stands, the search closing (a
+   * workstream of a collapsed project in its project's sheet); an archived one from its row.
+   */
+  function openFound(i: Item) {
+    if (i.archivedAt) {
+      // the search's field stays under the dim, where what is typed would change the list the card folds back into
+      (document.activeElement as HTMLElement | null)?.blur();
+      return open(i);
+    }
+    setSOn(false);
+    const p = i.parent ? byId(i.parent) : undefined;
+    return open(p?.collapsed ? p : i);
+  }
 
   /** Unfolds the card `i`; `quick` without the flight and the unfold, as after a reload. */
   async function open(i: Item, quick = false) {
@@ -701,7 +727,8 @@ function Canvas({
     setFocus(null);
     addressCloses(undefined);
     setSheetOn(false);
-    if (toArchive && archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
+    // one opened from the search goes back to the search's list, which stayed open; the two never show at once
+    if (toArchive && !sOnRef.current && archivedRef.current.some((i) => i.id === f.id) && !itemsRef.current.some((i) => i.id === f.id)) setAOn(true);
     await fly(back(f), 600);
     recover();
   }
@@ -1691,8 +1718,8 @@ function Canvas({
       return;
     }
     // so does the hint on how to create a task; Space and Enter press its button
-    if (newHintOn) {
-      if (e.key === 'Escape') setNewHintOn(false);
+    if (newHintOn || searchHintOn) {
+      if (e.key === 'Escape') setNewHintOn(false), setSearchHintOn(false);
       return;
     }
     // the draft for Obeya's makers takes the keys until it closes, Esc closing it
@@ -1735,6 +1762,7 @@ function Canvas({
       if (quoting) return setReply(quoting, null);
       // the archive's list closes after a card unfolded from it
       if (f?.type !== 'card' && aOnRef.current) return setAOn(false);
+      if (f?.type !== 'card' && sOnRef.current) return setSOn(false);
       // what is marked lets go before a sheet closes, once the colour ring for it has closed
       if (f?.type !== 'card' && !typing && !ring && marked.length) return setSelection([]);
       if (typing) (e.target as HTMLElement).blur();
@@ -1752,12 +1780,18 @@ function Canvas({
     } else if (e.key === 'Tab') {
       e.preventDefault();
       nextAttention();
-    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a') {
-      // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter)
+    } else if (e.key === 'n' || e.key === 'c' || e.key === 'a' || e.key === '/') {
+      // the key is the shortcut's alone: its character would land in the field the shortcut focuses (the archive's filter, the search)
       e.preventDefault();
       if (e.key === 'n') createAtCentre();
       else if (e.key === 'c') talkKoordinator();
-      else toggleArchive();
+      else if (e.key === '/') {
+        toggleSearch();
+        if (!searchKnown) {
+          know(SEARCH_KEY_KNOWN);
+          setSearchKnown(true);
+        }
+      } else toggleArchive();
     }
   };
   useEffect(() => {
@@ -1778,10 +1812,15 @@ function Canvas({
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
+  // the card picked in the search lights up where it stands: on its folded project, or its edge indicator while out of sight
+  const found = foundId ? byId(foundId) : undefined;
+  const litId = found && standsFor(found).id;
   const edgeTargets = items.flatMap((item) => {
     const b = at.get(standsFor(item).id);
     return b && yours(item) && (focus?.type !== 'project' || item.parent === focus.id) ? [{ item, b }] : [];
   });
+  let litEdge = litId ? edgeTargets.find((e) => standsFor(e.item).id === litId) : undefined;
+  if (found && litId && !litEdge && at.has(litId)) edgeTargets.push((litEdge = { item: found, b: at.get(litId)! }));
 
   // the button for the conversation with Obeya: the rightmost in the bar; while its sidebar is open it
   // belongs to the sidebar, at its top corner, and closes it. It is one element that never moves to
@@ -1851,7 +1890,7 @@ function Canvas({
             </svg>
             {placed.map(({ item, b }) =>
               item.kind === 'project' ? (
-                <ProjectView key={item.id} item={item} b={b} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
+                <ProjectView key={item.id} item={item} b={b} lit={item.id === litId} kids={kidsOf.get(item.id) ?? []} replies={repliesIn.get(item.id) ?? 0} els={els} onStartAll={startAll} onArrange={arrange} onCollapse={collapse} onOpen={openCard} />
               ) : (
                 <CardView
                   key={item.id}
@@ -1860,6 +1899,7 @@ function Canvas({
                   lifted={item.id === openId}
                   dragging={item.id === dragId || dragWith.includes(item.id)}
                   pop={item.id === popId}
+                  lit={item.id === litId}
                   prototyped={prototyped.has(item.id)}
                   showRepo={snapshot.canvas.repos.length > 1}
                   els={els}
@@ -1932,7 +1972,7 @@ function Canvas({
             onClose={() => setRing(null)}
           />
         )}
-        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} />}
+        {(!focus || focus.type === 'project') && <Edges cam={cam} targets={edgeTargets} side={side} onOpen={open} lit={litEdge?.item.id} cover={sOn ? searchCover : undefined} />}
         {/* in the app on a Mac the bar is the window's title bar: it moves the window (app/src/main.rs); beside the pinned navigation, the traffic lights sit in that */}
         <header id="bar" ref={barRef} {...(window.obeyaApp?.platform === 'macos' ? { className: side.left ? 'titlebar beside-nav' : 'titlebar', 'data-tauri-drag-region': '' } : {})}>
           <Wordmark height={22} />
@@ -1947,6 +1987,19 @@ function Canvas({
           ) : (
             <NavPill {...nav} />
           )}
+          <SearchPill
+            on={sOn}
+            teach={!searchKnown && items.length > 5}
+            onTeach={() => focusRef.current?.type !== 'card' && setSearchHintOn(true)}
+            onClose={() => setSOn(false)}
+            held={focus?.type === 'card'}
+            items={items}
+            archived={archived}
+            onOpen={openFound}
+            onLight={setFoundId}
+            els={archiveEls}
+            onCover={setSearchCover}
+          />
           <ArchivePill
             on={aOn}
             onToggle={toggleArchive}
@@ -2012,7 +2065,8 @@ function Canvas({
         <div id="dim" className={dim ? 'on' : undefined} onClick={() => closeCard()} />
         {helpOn && <Help note={helpNote} onClose={() => setHelpOn(false)} />}
         <WishDialog />
-        {newHintOn && <NewCardHint onClose={() => setNewHintOn(false)} />}
+        {newHintOn && <HowToHint label={t.newCard} text={t.newCardHint.text} onClose={() => setNewHintOn(false)} />}
+        {searchHintOn && <HowToHint label={t.search.field} text={t.search.hint} onClose={() => setSearchHintOn(false)} />}
         <div id="panel" ref={panelRef}>
           {openItem && <CardNumber n={openItem.number} className="sheet-no" />}
           <button className="close" title={t.close} onClick={() => closeCard()}>

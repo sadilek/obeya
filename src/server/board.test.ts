@@ -830,3 +830,30 @@ test('owner-drawn dependencies cannot connect projects or their workstreams', ()
     expect(refusal(() => board.connect(plan.id, own.id))).toBe('planDependency');
   }
 });
+
+test("a line in a card's log shows in the snapshot as its last change at once; moving it or a workstream's text left alone does not", async () => {
+  const c = board.create({ title: 'Own', x: 0, y: 0 });
+  const w2 = board.snapshot().items.find((i) => i.label === 'W2')!;
+  const old = '2026-01-01T00:00:00.000Z';
+  store.db.run(`UPDATE cards SET changed_at = '${old}'`);
+  board.changed();
+  const at = (id: string) => board.snapshot().items.find((i) => i.id === id)!.changedAt!;
+  board.patch(c.id, { x: 300, y: 200 });
+  board.log(c.id, 'activity', 'worker', 'Read a file');
+  board.docsChanged();
+  expect([at(c.id), at(w2.id)]).toEqual([old, old]);
+  // the pages have the line already: the canvas is not built or sent afresh for it
+  const built = board.snapshot();
+  await Bun.sleep(0);
+  let told = 0;
+  const off = board.onChange(() => told++);
+  board.log(c.id, 'report', 'worker', 'Tests pass');
+  expect(at(c.id) > old).toBe(true);
+  expect(board.snapshot()).toBe(built);
+  await Bun.sleep(0);
+  expect(told).toBe(0);
+  off();
+  docs = [{ ...docA, workstreams: [ws('W1', true), { ...ws('W2'), body: 'Reworded' }, ws('W3')] }];
+  board.docsChanged();
+  expect(at(w2.id) > old).toBe(true);
+});
