@@ -20,7 +20,8 @@ place, shown only once the canvas holds more than five cards so that it does not
 owner; a click on it explains the key, and after the first `/` it is gone for good once that search
 closes. Opening and closing the search moves nothing else in the bar: without that button the
 search's place takes no room. The empty field's placeholder says what the search looks through;
-no line under it explains more. Only the list scrolls, under the field, which stays in sight. Before the first
+no line under it explains more. Only the list scrolls, under the field, which stays in sight; it ends above the microphone at
+the bottom middle instead of covering it. Before the first
 word the search lists every card on the canvas, the one where something happened last first: a
 change the owner sees (its state, its title or text, also in its plan doc, its status, its
 handover, its pull request), or a line in its conversation other than a worker's tool activity.
