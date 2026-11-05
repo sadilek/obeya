@@ -751,7 +751,8 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
     expect(state(w.id)).toBe('live');
     runtime.last.emit({ type: 'idle' });
     const commit = git(main, 'rev-parse', 'HEAD');
-    expect(state(w.id)).toBe('planned');
+    // git tells in the background that the Lesestand holds it
+    await until(() => state(w.id) === 'planned');
     expect(w1().landedPart).toEqual({ commit });
     expect(board.events(w.id).at(-1)).toMatchObject({ author: 'obeya', text: 'Teil gelandet, im Plan-Doc weiter offen.' });
     // the handover stays in the log, the summary with it
@@ -806,7 +807,7 @@ describe('a workstream merged as a pull request, its box still empty', () => {
 
     git(main, 'merge', '--quiet', '--ff-only', 'merged');
     board.docsChanged();
-    expect(state(w.id)).toBe('planned');
+    await until(() => state(w.id) === 'planned');
     expect(w1().landedPart).toEqual({ commit, pr: { url: 'https://github.com/acme/app/pull/821', number: 821 } });
     // the pull request is history now: starting again opens a new one
     expect(w1().pr).toBeUndefined();
@@ -821,7 +822,7 @@ describe('a workstream merged as a pull request, its box still empty', () => {
     board.docsChanged();
     expect(state(w.id)).toBe('live');
     board.lesestandMoved('home', git(main, 'rev-parse', 'HEAD'));
-    expect(state(w.id)).toBe('planned');
+    await until(() => state(w.id) === 'planned');
     expect(w1().landedPart).toEqual({ commit: git(main, 'rev-parse', 'HEAD'), pr: { url: 'https://github.com/acme/app/pull/821', number: 821 } });
   });
 });

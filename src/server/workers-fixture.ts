@@ -11,9 +11,10 @@ import type { RepoAdapter } from '../adapters/types';
 import type { PlanDoc } from '../core/plan-doc';
 import { Board } from './board';
 import { Store } from './db';
+import { ReadTree } from './read-tree';
 import { FakeRuntime, gitRepo, identify } from './testing';
 import { Workers } from './workers';
-import { GIT, git, Workspaces } from './workspaces';
+import { git, Workspaces } from './workspaces';
 
 export const ws = (key: string) => ({ key, label: key, title: `Title ${key}`, body: 'Body', done: false, inReview: false });
 export const doc: PlanDoc = { file: 'docs/plan/a.md', title: 'A', goal: 'Goal', workstreams: [ws('W1')], markdown: '' };
@@ -51,7 +52,8 @@ export async function setup(adapter: RepoAdapter, withOrigin = false) {
   store = new Store(':memory:');
   docs = [doc];
   // the checkout is the Lesestand: work lands on its main
-  const holds = (_repo: string, commit: string) => Bun.spawnSync([GIT, '-C', main, 'merge-base', '--is-ancestor', commit, 'HEAD'], { stderr: 'ignore' }).exitCode === 0;
+  const read = new ReadTree({ repoPath: main, dir: null, remote: false, onChange: () => {} });
+  const holds = (_repo: string, commit: string) => read.holds(commit, () => board.docsChanged());
   language = 'de';
   conversation = undefined;
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }), undefined, holds, () => language, () => conversation ?? language);

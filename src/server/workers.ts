@@ -20,7 +20,7 @@ import { artifactFiles } from './demo-page';
 import { imageNote } from './images';
 import { outsidePlanDir, remoteHost } from './repo';
 import type { InputContext } from './koordinator';
-import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness } from './runtime';
+import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentSpec, type AgentTool, BACKGROUND_GRACE, BACKGROUND_LIMIT, failureReason, LIMIT_LIFTED, limitLifts, type PermissionAnswer, type PermissionRequest, sessionHarness, startingLater } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { type Forward, HOST_DIR, hostName, remote } from './hosts';
 import { runAppCommand } from './app-command';
@@ -30,8 +30,8 @@ import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
 import { type CardAgent, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
-import { gitAsync, gitOrNull } from './workspaces';
-import { defaultBranchCommit } from './read-tree';
+import { gitAsync, type GitSteps, isFolder } from './workspaces';
+import { readingDefaultBranch, refsSeal } from './read-tree';
 import type { CardRow } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
@@ -819,12 +819,28 @@ export class Workers {
     return `${ref.base}/${ref.owner}/${ref.repo}.git`;
   }
 
-  /** The CLAUDE.md of the repository's default branch, as the checkout has it; empty where it has none. */
-  private mainNotes(): string {
-    if (!this.o.repoPath) return '';
-    const { commit } = defaultBranchCommit(this.o.repoPath);
-    return (commit && gitOrNull(this.o.repoPath, 'show', `${commit}:CLAUDE.md`)?.trim()) || '';
+  /**
+   * The CLAUDE.md of the repository's default branch, as the checkout has it; empty where it has
+   * none. Git reads it without the server waiting; what was read stands while the refs do (`refsSeal`).
+   */
+  private mainNotes(): string | Promise<string> {
+    const path = this.o.repoPath;
+    // a folder without git has no default branch
+    if (!path || isFolder(path)) return '';
+    const seal = refsSeal(path);
+    const known = this.notesRead;
+    if (seal && known?.seal === seal) return known.notes;
+    const read = gitSteps(path, readingNotes(path)).catch(() => '');
+    if (seal) {
+      const entry: { seal: string; notes: string | Promise<string> } = { seal, notes: read };
+      this.notesRead = entry;
+      void read.then((notes) => this.notesRead === entry && (this.notesRead = { seal, notes }));
+    }
+    return read;
   }
+
+  /** What `mainNotes` read last (or is reading), under the seal the refs had before. */
+  private notesRead: { seal: string; notes: string | Promise<string> } | null = null;
 
   /** Where a review card's forge calls run: its workspace on this machine, else the repository's checkout. */
   private forgeCwd(cardId: string): string {
@@ -3287,28 +3303,27 @@ export class Workers {
     // the harness and model the owner chose for this card, over the group's; a session resumed stays on its own harness
     const agent = row.agent ? (JSON.parse(row.agent) as CardAgent) : undefined;
     const harness = resume ? sessionHarness(resume) : (agent?.harness ?? this.o.harness?.() ?? 'claude');
-    live.session = this.o.runtime.start(
-      {
-        cwd: row.workspace,
-        role: 'worker',
-        ...(agent ? { agent } : {}),
-        ...(plans ? { dirs: [plans] } : {}),
-        ...(review ? { untrusted: true } : {}),
-        system: `${this.system(preferences, harness, !!row.prototype_of, this.o.board.item(cardId))}${notes ? `\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` : ''}`,
-        tools: this.tools(cardId, live, !!row.prototype_of),
-        plugins: [OBEYA_PLUGIN],
-        ...(env ? { env } : {}),
-        contextUpdate: () =>
-          [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
-        askOwner: (request, signal) => this.askOwner(cardId, live, request, signal),
-        ...(this.folder ? { watch: this.folder.watch(cardId) } : {}),
-        ...(resume ? { resume } : {}),
-        ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
-        onEvent: (e) => this.onEvent(cardId, live, e),
-      },
-      message,
-      images,
-    );
+    const spec: AgentSpec = {
+      cwd: row.workspace,
+      role: 'worker',
+      ...(agent ? { agent } : {}),
+      ...(plans ? { dirs: [plans] } : {}),
+      ...(review ? { untrusted: true } : {}),
+      system: this.system(preferences, harness, !!row.prototype_of, this.o.board.item(cardId)),
+      tools: this.tools(cardId, live, !!row.prototype_of),
+      plugins: [OBEYA_PLUGIN],
+      ...(env ? { env } : {}),
+      contextUpdate: () =>
+        [this.restartStillDue(cardId, live), this.pauseStillDue(live), this.pageNewsNow(cardId, live), this.unheardNow(cardId, live), this.preferencesUpdate(live), this.decisionsUpdate(cardId, live)].filter(Boolean).join('\n\n') || undefined,
+      askOwner: (request, signal) => this.askOwner(cardId, live, request, signal),
+      ...(this.folder ? { watch: this.folder.watch(cardId) } : {}),
+      ...(resume ? { resume } : {}),
+      ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
+      onEvent: (e) => this.onEvent(cardId, live, e),
+    };
+    const start = (notes: string) => this.o.runtime.start(notes ? { ...spec, system: `${spec.system}\n\nThe repository's CLAUDE.md, as its default branch has it:\n\n${notes}` } : spec, message, images);
+    // what git still reads of the default branch, the session starts once it has; what it is sent meanwhile reaches it then
+    live.session = typeof notes === 'string' ? start(notes) : startingLater(notes.then((n) => () => start(n)), spec);
     live.session.done.then(() => {
       if (this.live.get(cardId) !== live) return;
       this.live.delete(cardId);
@@ -5213,3 +5228,9 @@ const code = (text: string) =>
 
 const permissionKey = (p: AskedPermission) => JSON.stringify([p.name, p.input]);
 
+/** The CLAUDE.md of the default branch of the repository at `path`, as git steps; empty where it has none. */
+function* readingNotes(path: string): GitSteps<string> {
+  const { commit } = yield* readingDefaultBranch(path);
+  const [notes] = yield [['show', `${commit}:CLAUDE.md`]];
+  return notes ?? '';
+}

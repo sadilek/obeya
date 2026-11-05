@@ -7,12 +7,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { branchSetting, type Branches, CARD_BRANCH, detachedTree, detectingBranch, GIT, gitCalls, type GitSteps, gitOrNull, gitSteps, gitStepsSync, isFolder, readingBranches } from './workspaces';
-
-const gitIn =
-  (path: string) =>
-  (...args: string[]) =>
-    gitOrNull(path, ...args);
+import { branchSetting, type Branches, CARD_BRANCH, detachedTree, detectingBranch, GIT, gitCalls, type GitSteps, gitSteps, gitStepsSync, isFolder, readingBranches } from './workspaces';
 
 /**
  * The default branch (`defaultBranch`) and its commit as Obeya reads it: the local branch where it
@@ -87,6 +82,30 @@ export function refsSeal(repoPath: string): string | null {
     return null;
   }
   return seal.sort().join('\n');
+}
+
+/**
+ * A seal of the commit the checkout at `repoPath` is on, taken without git: its HEAD, and where
+ * that names a branch, the file git wrote the branch in last and the packed refs. Null where it
+ * cannot be told (refs in a reftable, a branch that names another ref, no git directory found).
+ */
+export function headSeal(repoPath: string): string | null {
+  const dirs = gitDirs(repoPath);
+  if (!dirs || existsSync(join(dirs.common, 'reftable'))) return null;
+  try {
+    const head = readFileSync(join(dirs.own, 'HEAD'), 'utf8').trim();
+    const ref = head.match(/^ref: (\S+)$/)?.[1];
+    if (!ref) return head;
+    const at = (path: string) => {
+      const s = statSync(path, { bigint: true, throwIfNoEntry: false });
+      return s ? `${s.ino}:${s.size}:${s.mtimeNs}` : '-';
+    };
+    const loose = join(dirs.common, ref);
+    if (existsSync(loose) && readFileSync(loose, 'utf8').startsWith('ref:')) return null;
+    return `${head} ${at(loose)} ${at(join(dirs.common, 'packed-refs'))}`;
+  } catch {
+    return null;
+  }
 }
 
 /** The directory the cards' branches are in, under a repository's branches and `origin`'s. */
@@ -219,9 +238,46 @@ export class ReadTree {
     return (await gitSteps(this.path, gitCalls(['rev-parse', 'HEAD'])))[0] ?? '';
   }
 
-  /** Whether the Lesestand holds `commit`: it is the commit the Lesestand is on, or an ancestor of it. */
-  holds(commit: string): boolean {
-    return gitIn(this.path)('merge-base', '--is-ancestor', commit, 'HEAD') !== null;
+  /**
+   * Whether the Lesestand holds `commit` (it is the commit the Lesestand is on, or an ancestor of
+   * it), as far as known already: git is asked in the background what is not, which counts as not
+   * held meanwhile, and `then` hears once it is. What was found stands while the Lesestand does
+   * (`standing`).
+   */
+  holds(commit: string, then?: () => void): boolean {
+    const at = this.standing();
+    if (at !== this.heldAt) {
+      this.held.clear();
+      this.heldAt = at;
+    }
+    const known = this.held.get(commit);
+    if (typeof known === 'boolean') return known;
+    if (!known) {
+      const asked = gitSteps(this.path, gitCalls(['merge-base', '--is-ancestor', commit, 'HEAD'])).then(([r]) => r !== null);
+      this.held.set(commit, asked);
+      void asked.then((held) => {
+        // the Lesestand moved meanwhile: what it holds now is asked afresh
+        if (this.held.get(commit) !== asked) return;
+        this.held.set(commit, held);
+        if (held && !this.stopped) then?.();
+      });
+    }
+    return false;
+  }
+
+  /** By commit, what `holds` found (or is finding) while the Lesestand stood at `heldAt`. */
+  private held = new Map<string, boolean | Promise<boolean>>();
+  private heldAt: string | null = null;
+  /** How often the worktree moved: only this tree moves it. */
+  private moved = 0;
+
+  /**
+   * Where the Lesestand stands, without git: the worktree by its moves, the checkout by its HEAD
+   * and the branch that names (`headSeal`), which work landing there moves. Where that cannot be
+   * told, by its moves alone.
+   */
+  private standing(): string {
+    return `${this.path}\n${this.moved}\n${this.path === this.o.repoPath ? (headSeal(this.path) ?? '') : ''}`;
   }
 
   private async fetch() {
@@ -269,6 +325,7 @@ export class ReadTree {
     if (state === 'failed') return this.readCheckout();
     const was = this.path;
     this.path = dir;
+    if (state !== 'same') this.moved++;
     return state !== 'same' || was !== dir;
   }
 

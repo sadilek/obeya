@@ -490,7 +490,11 @@ export class Board {
     private readDocs: () => PlanRead,
     /** The owner's screenshots, which a card's images must be among. */
     private images?: Pick<Images, 'resolve'>,
-    /** Whether the Lesestand of the repository holds the commit; without it, every commit counts as held. */
+    /**
+     * Whether the Lesestand of the repository holds the commit, as known now: without the server
+     * waiting for git, which reads the plan docs again (`docsChanged`) once it does. Without it, every
+     * commit counts as held.
+     */
     private holds?: (repo: string, commit: string) => boolean,
     /** The language of Obeya's interface now (`ownerLanguage`): what the server writes itself; the tests speak German. */
     readonly language: () => Language = () => 'de',

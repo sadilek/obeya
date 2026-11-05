@@ -581,6 +581,12 @@ workers are busy.
   for all of them at once first, then applied in one go; configurations saved meanwhile apply one
   after the other. The save answers once its canvases took it over. Rejected: reading lazily where a
   value is used (a canvas would start on half-read repositories, its ids and Lesestand unsettled).
+  Two reads that came at each reading of the plan docs and at each review card's agent start go the
+  same way: whether the Lesestand holds what a live workstream landed is asked in the background
+  (not held meanwhile; the card is planned again once git says it is) and known while the Lesestand
+  stands where it was (its own moves, the checkout's HEAD and branch by `stat`); the default
+  branch's CLAUDE.md for a review card's session is read while the session waits to start, and
+  stands while the refs do.
 - **Programs run without a window on Windows by default, not by an option at each call**
   (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
   for its window.

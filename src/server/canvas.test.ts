@@ -408,6 +408,26 @@ test('canvases start, take a new configuration and restart a repository without 
   canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: join(dir, 'again'), runtime: new FakeRuntime(), forge: noForge });
 });
 
+test('a canvas starting with a workstream whose work landed while its box stays open plans it again without the server waiting for git', async () => {
+  const web = join(dir, 'web');
+  const w1 = canvas.board.snapshot().items.find((i) => i.label === 'W1' && i.repo === 'web')!;
+  canvas.shutdown();
+  // its work on main, which the Lesestand (a worktree, for work that goes out as pull requests) is on
+  identify(web);
+  writeFileSync(join(web, 'export.ts'), 'export {}\n');
+  git(web, 'add', '.');
+  git(web, 'commit', '--quiet', '-m', 'Export');
+  store.update(w1.id, { state: 'live', shipped: JSON.stringify({ commit: git(web, 'rev-parse', 'HEAD').trim() }) });
+  const synced = syncGitCalls();
+  canvas = await CanvasRuntime.start(
+    { name: 'Produkt', repos: [{ path: web, clones: 1, settings: { land: 'pr' } }, { path: join(dir, 'api'), clones: 1, settings: { land: 'pr' } }] },
+    { store, home: dir, runtime, forge: noForge },
+  );
+  await until(() => item(w1.id).state === 'planned');
+  expect(item(w1.id).landedPart).toEqual({ commit: expect.any(String) });
+  expect(synced.stop()).toEqual([]);
+});
+
 test('a repository whose clones cannot be made does not run: another one leaves its canvas, the home one keeps the canvas from starting', async () => {
   canvas.shutdown();
   fresh();

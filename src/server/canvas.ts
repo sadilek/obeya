@@ -304,7 +304,7 @@ export class CanvasRuntime {
       { id, name, repos: [] },
       () => this.planDocs(),
       images,
-      (repo, commit) => !!this.repos.find((r) => r.ref.id === repo)?.read.holds(commit),
+      (repo, commit) => !!this.repos.find((r) => r.ref.id === repo)?.read.holds(commit, () => this.board.docsChanged()),
       deps.language,
       deps.conversation,
     );

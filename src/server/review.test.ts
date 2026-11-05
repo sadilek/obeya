@@ -14,7 +14,7 @@ import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import type { ContributionInfo, Forge, PrStatus } from './forge';
 import { PrWatcher } from './pr-watcher';
-import { artifact, FakeRuntime, gitRepo, identify, until } from './testing';
+import { artifact, FakeRuntime, gitRepo, identify, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
 import { git, Workspaces } from './workspaces';
 
@@ -60,6 +60,8 @@ let origin: string;
 let board: Board;
 let runtime: FakeRuntime;
 let workers: Workers;
+/** Workers as Obeya makes them for the repository, again after a restart. */
+let makeWorkers: () => Workers;
 let watcher: PrWatcher;
 let fake: ReturnType<typeof fakeForge>;
 let approvals: string[];
@@ -95,7 +97,8 @@ beforeEach(async () => {
   approvals = [];
   followed = [];
   const settings: RepoAdapter = { ...generic, land: 'main', workspaces: 'clones', checks: ['bun test'] };
-  workers = new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, pulls: workspaces, pushHold: 10, pushSettle: 1, onApproval: (id) => (approvals.push(id), null), onFollowUpTask: (task, review) => followed.push([task, review]) });
+  makeWorkers = () => new Workers({ board, runtime, workspaces, adapter: settings, forge: fake.forge, repoPath: main, remote: origin, pulls: workspaces, pushHold: 10, pushSettle: 1, onApproval: (id) => (approvals.push(id), null), onFollowUpTask: (task, review) => followed.push([task, review]) });
+  workers = makeWorkers();
   watcher = new PrWatcher(board, workers, fake.forge, () => main, () => settings);
 });
 afterEach(() => {
@@ -181,6 +184,35 @@ describe('a review card', () => {
     await reviewCard();
     expect(runtime.last.spec.untrusted).toBe(true);
     expect(runtime.last.spec.system).toContain('Reviews bring in a second reviewer.');
+  });
+
+  test('resuming after a restart, its session gets the default branch’s CLAUDE.md without the server waiting for git, read again once main moved', async () => {
+    git(main, 'checkout', '-q', 'main');
+    const notes = (text: string) => {
+      writeFileSync(join(main, 'CLAUDE.md'), `${text}\n`);
+      git(main, 'add', '.');
+      git(main, 'commit', '--quiet', '-m', text);
+    };
+    notes('Reviews bring in a second reviewer.');
+    const id = await reviewCard();
+    runtime.last.emit({ type: 'session', id: 'sess-1' });
+    const restart = async () => {
+      workers.shutdown();
+      workers = makeWorkers();
+      const sessions = runtime.sessions.length;
+      const synced = syncGitCalls();
+      workers.resumeAll();
+      expect(synced.stop()).toEqual([]);
+      await until(() => runtime.sessions.length > sessions);
+      expect(runtime.last.spec).toMatchObject({ resume: 'sess-1', untrusted: true });
+      return runtime.last.spec.system;
+    };
+    expect(await restart()).toContain('Reviews bring in a second reviewer.');
+    expect(board.item(id)!.state).toBe('working');
+    notes('Reviews name the head they reviewed.');
+    const system = await restart();
+    expect(system).toContain('Reviews name the head they reviewed.');
+    expect(system).not.toContain('second reviewer');
   });
 
   test('a branch name a shell would run is not handed to the worker as a command', async () => {

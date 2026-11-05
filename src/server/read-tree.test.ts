@@ -210,6 +210,28 @@ describe('the Lesestand', () => {
     expect(fresh.path).toBe(read);
   });
 
+  test('tells whether it holds a commit without the server waiting for git, and asks again once it moved', async () => {
+    const read = join(dir, 'read');
+    const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+    await tree.ready;
+    const held = git(read, 'rev-parse', 'HEAD');
+    push({ 'docs/plan/import.md': doc('Import') });
+    const ahead = git(origin, 'rev-parse', 'HEAD');
+    let told = 0;
+    const tell = () => void told++;
+    const synced = syncGitCalls();
+    // not known yet: not held, until git says it is
+    expect([tree.holds(held, tell), tree.holds(ahead, tell)]).toEqual([false, false]);
+    await until(() => told === 1);
+    // known while it stands where it was
+    expect([tree.holds(held, tell), tree.holds(ahead, tell)]).toEqual([true, false]);
+    await tree.refresh();
+    expect([tree.holds(held, tell), tree.holds(ahead, tell)]).toEqual([false, false]);
+    await until(() => told === 3);
+    expect([tree.holds(held), tree.holds(ahead)]).toEqual([true, true]);
+    expect(synced.stop()).toEqual([]);
+  });
+
   test('keeps its commit when the fetch fails, and catches up once it works again', async () => {
     let changes = 0;
     const read = join(dir, 'read');
