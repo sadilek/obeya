@@ -46,15 +46,16 @@ keeps its words between openings. The archive and the search drop down one at a 
 view has no search.
 
 Right, before the workspace pool: the usage limits of the plans Claude Code and Codex on this
-machine are logged in with, the session's (five hours) and the week's, each a short meter with its
-percentage, the most used limit of each group, coloured in the grade the plan's usage endpoint gives
-it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). The bar shows every plan
-with a login, whether agents run on it or not, each under its name ("Claude", "Codex") when it shows
-two, without one when it shows one. A click lists every limit of every plan (the session, the week
-for all models, the week for a single model), with when it starts anew, where the numbers come from
-and as of when, and "Hide", which turns the setting off; "Usage limits in the bar" under
-Configuration → General turns it on again (on until then). The phone view shows the same at the
-right of its bar.
+machine are logged in with, as two thin meters one above the other, without labels or numbers: the
+session's (five hours) above, the week's below, each the most used limit of its group, coloured in
+the grade the plan's usage endpoint gives it (warning, critical; for Codex, which gives none, from
+80 % and at 100 %). A plan without one of the two leaves its place empty, so the week is always
+below. The bar shows every plan with a login, whether agents run on it or not, each beside its name
+("Claude", "Codex") when it shows two, without one when it shows one. A click lists every limit of
+every plan (the session, the week for all models, the week for a single model) with its meter and
+percentage, when it starts anew, and where the numbers come from and as of when. "Usage limits in
+the bar" under Configuration → General turns them off and on (on until then). The phone view shows
+the same at the right of its bar; its list hangs from the bar as wide as the screen.
 The numbers come from the data behind Claude Code's `/usage`: one idle Claude Code session, which
 sends no prompt and so uses none of the limits, is asked a little over every minute (it keeps an
 answer for a minute) while the setting is on and a page of Obeya is open, and closed once neither
@@ -481,6 +482,13 @@ code, a generic one otherwise.
   owner decides on before starting an agent on it, a card on Codex say, so it shows while no agent
   runs there yet. Rejected: only the plans agents run on, which hid Codex's limits until a Codex
   agent ran; the owner pinning plans, a setting more.
+- **The bar's usage limits are two meters without labels or numbers** (owner, 2026-11-05), on the
+  desktop as on the phone: a meter with its label and percentage per group took much of the bar and
+  ran off a phone's screen, the list under it cut off with it. The numbers are in the list. Rejected:
+  only the most used limit's percentage per plan, with or without a meter under it, and a ring per
+  plan, which fit as well but merge the session and the week into one value. The list has no "Hide":
+  the phone has no configuration to show the limits again, and the setting is where turning them off
+  belongs.
 - **The usage limits outlast the last page by half a minute** (2026-10-29). Rejected: closing the
   session and forgetting the numbers with the last page, which left the bar without them for the
   seconds a new session takes after every switch of canvas.

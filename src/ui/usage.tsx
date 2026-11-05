@@ -1,13 +1,11 @@
-// The plans' usage limits in the bar: the session's and the week's, each as a short meter with how
-// much of it is used, in the grade the usage endpoint gives it, for each plan whose harness agents
-// run on, under the harness's name once the bar shows two. A click (a tap on the phone) lists every
-// limit of every plan with a login with when it starts anew, where the numbers come from, and the
-// button that hides them again (the setting in Konfiguration → Allgemein shows them again).
+// The plans' usage limits in the bar: the session's above the week's, each as a thin meter in the
+// grade the usage endpoint gives it, without labels or numbers, for each plan with a login, under the
+// harness's name once the bar shows two. A click (a tap on the phone) lists every limit of every plan
+// with how much of it is used, when it starts anew and where the numbers come from.
 
 import { useEffect, useRef, useState } from 'react';
 import type { PlanUsage, Usage, UsageLimit } from '../core/types';
-import { api } from './api';
-import { clock, failText, snoozeWhen, t } from './strings';
+import { clock, snoozeWhen, t } from './strings';
 
 /** The limit of a group the bar shows: the one most used, the first of those on a tie. */
 export function headline(limits: UsageLimit[]): UsageLimit[] {
@@ -19,6 +17,16 @@ export function headline(limits: UsageLimit[]): UsageLimit[] {
   return [...groups.values()];
 }
 
+/** The groups in the bar's order, top to bottom: the session, the week, then any the endpoint adds. */
+const ORDER = ['session', 'weekly'];
+
+/** The bar's rows of a plan: the headline of each group in `ORDER`, `null` where the plan has none (its row stays empty, so the week is always below). */
+export function stacked(limits: UsageLimit[]): (UsageLimit | null)[] {
+  const shown = headline(limits);
+  const known = ORDER.map((g) => shown.find((l) => l.group === g) ?? null);
+  return [...known, ...shown.filter((l) => !ORDER.includes(l.group))];
+}
+
 /** A limit as the list names it. */
 export function limitName(l: UsageLimit): string {
   if (l.scope) return t.usage.scoped(l.scope);
@@ -27,7 +35,8 @@ export function limitName(l: UsageLimit): string {
 
 const percent = (n: number) => `${Math.round(n)} %`;
 
-function Meter({ limit }: { limit: UsageLimit }) {
+function Meter({ limit }: { limit: UsageLimit | null }) {
+  if (!limit) return <span className="meter none" aria-hidden />;
   return (
     <span className={`meter ${limit.severity}`} aria-hidden>
       <i style={{ width: `${Math.min(100, Math.max(0, limit.percent))}%` }} />
@@ -38,7 +47,6 @@ function Meter({ limit }: { limit: UsageLimit }) {
 export function UsagePill({ usage }: { usage: Usage }) {
   // open by a click (a tap) until one elsewhere or Escape
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState('');
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -55,10 +63,6 @@ export function UsagePill({ usage }: { usage: Usage }) {
   // every plan with a login, whether agents run on it or not: what is left there decides what to start
   const faced = plans;
   if (!faced.length) return null;
-  const hide = () => {
-    setStatus('');
-    api.saveUsageMeter(false).catch((e) => setStatus(failText(e)));
-  };
   // the bar names a plan only beside another; the list names each
   const named = faced.length > 1;
   return (
@@ -67,13 +71,11 @@ export function UsagePill({ usage }: { usage: Usage }) {
         {faced.map((p) => (
           <span key={p.harness} className="plan">
             {named && <span className="harness">{t.usage.short[p.harness]}</span>}
-            {headline(p.limits).map((l) => (
-              <span key={l.group} className={`group ${l.severity}`}>
-                <span className="lbl">{t.usage.groups[l.group] ?? limitName(l)}</span>
-                <Meter limit={l} />
-                <b>{percent(l.percent)}</b>
-              </span>
-            ))}
+            <span className="stack">
+              {stacked(p.limits).map((l, i) => (
+                <Meter key={l?.group ?? i} limit={l} />
+              ))}
+            </span>
           </span>
         ))}
       </button>
@@ -81,13 +83,6 @@ export function UsagePill({ usage }: { usage: Usage }) {
         {plans.map((p) => (
           <PlanList key={p.harness} plan={p} />
         ))}
-        <p className="hint">
-          <button className="btn" onClick={hide}>
-            {t.usage.hide}
-          </button>{' '}
-          {t.usage.hideHint}
-        </p>
-        {status && <p className="warn">{status}</p>}
       </div>
     </div>
   );

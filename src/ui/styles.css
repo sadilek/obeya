@@ -379,30 +379,31 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill:is(.workspaces, .usage) .tip > :last-child, .pill.workspaces .tip > div:last-child > :last-child,
   .pill.workspaces .tip > div:last-child > div:last-child > :last-child { margin-bottom: 0; }
 .pill:is(.workspaces, .usage).open .tip { display: block; }
-/* the plan's usage limits: a short meter per group, in the usage endpoint's grade */
+/* the plan's usage limits: two thin meters stacked (the session above the week), in the usage endpoint's grade */
 .pill.usage .tip { width: 380px; }
-.pill.usage .face { gap: 16px; }
+.pill.usage .face { gap: 12px; }
 /* on the phone at the bar's right end; the list as wide as the screen allows */
 .ph-home .pill.usage { margin-left: auto; }
+/* on the phone the list hangs from the bar, as wide as the screen: the pill is its own width, the list the bar's */
+.ph-home .pill.usage { position: static; }
 .ph-home .pill.usage .face { padding: 6px 10px; gap: 10px; font-size: 13px; }
-.ph-home .pill.usage .tip { width: min(380px, calc(100vw - 28px)); }
-.pill.usage .group { display: flex; align-items: center; gap: 6px; }
-.pill.usage .plan { display: flex; align-items: center; gap: 12px; }
-.pill.usage .plan + .plan { padding-left: 14px; border-left: 1px solid var(--line); }
+.ph-home .pill.usage .tip { top: calc(100% + 4px); left: 8px; right: 8px; width: auto; }
+.pill.usage .plan { display: flex; align-items: center; gap: 6px; }
+.pill.usage .plan + .plan { padding-left: 12px; border-left: 1px solid var(--line); }
 .pill.usage .harness { font-weight: 600; }
+.pill.usage .stack { display: flex; flex-direction: column; gap: 3px; }
+.pill.usage .stack .meter { width: 30px; height: 4px; }
+.pill.usage .meter.none { visibility: hidden; }
 .pill.usage .tip .usage-list + .hint { margin-bottom: 12px; }
-.pill.usage .group b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .pill.usage .meter { position: relative; width: 34px; height: 5px; border-radius: 3px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex: none; }
 .pill.usage .meter i { position: absolute; inset: 0 auto 0 0; background: var(--muted); border-radius: inherit; }
 .pill.usage .warning .meter i, .pill.usage .meter.warning i { background: var(--waiting); }
 .pill.usage .critical .meter i, .pill.usage .meter.critical i { background: var(--error); }
-.pill.usage .group.critical b { color: var(--error); }
 .pill.usage .usage-list { list-style: none; margin: 0 0 8px; padding: 0; }
 .pill.usage .usage-list li { display: grid; grid-template-columns: minmax(0, 1fr) 60px 42px; column-gap: 8px; align-items: center; padding: 3px 0; }
 .pill.usage .usage-list .meter { width: 60px; }
 .pill.usage .usage-list b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pill.usage .usage-list .when { grid-column: 1 / -1; font-size: 12px; }
-.pill.usage .tip .btn { padding: 2px 9px; font-size: 12px; margin-right: 4px; }
 /* a workspace per line: its dot, its path cut at the front where too long (its end matters most), and the card in it below */
 .pill.workspaces .ws-list { list-style: none; margin: 0 0 8px; padding: 0; }
 .pill.workspaces .ws-list li { display: grid; grid-template-columns: 8px minmax(0, 1fr); column-gap: 8px; align-items: center; padding: 3px 0; }
@@ -2233,7 +2234,9 @@ button.link:hover { text-decoration: underline; }
     padding: env(safe-area-inset-top) var(--ph-side) calc(24px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
   .ph-view::after { display: none; }
   .ph-bar { min-height: 42px; padding: 3px 14px; margin-right: calc(-1 * var(--ph-side)); padding-right: max(14px, env(safe-area-inset-right)); }
-  .ph-home.ph-bar { position: static; }
+  .ph-home.ph-bar { position: relative; }
+  /* the usage list ends where the cards do, clear of the microphone's strip */
+  .ph-home .pill.usage .tip { right: calc(var(--ph-side) - 6px); }
   .ph-home .ph-word { font-size: 19px; }
   .ph-back { min-height: 36px; }
   .ph-quiet { top: 50px; }

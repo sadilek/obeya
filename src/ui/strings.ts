@@ -1942,7 +1942,7 @@ const de = {
   /** The harnesses agents run on, by their names. */
   harnesses: { claude: 'Claude Code', codex: 'Codex' } satisfies Record<Harness, string>,
   usage: {
-    /** The bar's short names of the two groups of limits. */
+    /** The two groups of limits by name, for a limit of a kind the list does not know. */
     groups: { session: 'Sitzung', weekly: 'Woche' } as Record<string, string>,
     title: 'Nutzungslimits deiner Abos',
     /** Beside a plan's meters in the bar, once there are two plans. */
@@ -1956,8 +1956,6 @@ const de = {
     scoped: (scope: string) => `Woche, nur ${scope}`,
     resets: (when: string) => `neu ab ${when}`,
     source: (harness: string, time: string) => `Von ${harness} auf diesem Rechner, jede Minute neu; Stand ${time}.`,
-    hide: 'Ausblenden',
-    hideHint: 'Wieder einblenden unter Konfiguration → Allgemein.',
     setting: {
       title: 'Nutzungslimits in der Menüzeile',
       label: 'Anzeigen',
@@ -4001,8 +3999,6 @@ const en: Strings = {
     scoped: (scope: string) => `Week, ${scope} only`,
     resets: (when: string) => `resets ${when}`,
     source: (harness: string, time: string) => `From ${harness} on this machine, every minute; as of ${time}.`,
-    hide: 'Hide',
-    hideHint: 'Show it again under Configuration → General.',
     setting: {
       title: 'Usage limits in the bar',
       label: 'Show',
