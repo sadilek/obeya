@@ -75,8 +75,8 @@ const de = {
     /** The worker sent the owner's change request to the contributor as a review on the PR. */
     changesRequested: (n: number, author: string) => `Änderungswunsch als Review-Kommentar an PR #${n}. Wartet auf ${author}.`,
     /** On the owner's approval, Obeya pushed the worker's own commits onto the contributor's PR and posted their text, with a request to them or without. */
-    pushedHeld: (n: number, commits: number, author?: string) =>
-      `${commits === 1 ? '1 Commit' : `${commits} Commits`} auf den Branch von PR #${n} gepusht und ${author ? `mit dem Änderungswunsch an ${author} geschickt. Wartet auf ${author}.` : 'kommentiert.'}`,
+    pushedHeld: (n: number, commits: number, author?: string, uncommented?: boolean) =>
+      `${commits === 1 ? '1 Commit' : `${commits} Commits`} auf den Branch von PR #${n} gepusht${author ? ` und mit dem Änderungswunsch an ${author} geschickt. Wartet auf ${author}.` : uncommented ? ', ohne Kommentar.' : ' und kommentiert.'}`,
     /** The worker's own commits could not go onto the PR's branch. */
     pushRefused: (reason: string) => `Nicht gepusht: ${reason}`,
     /** The contributor pushed after the handover: the worker's own commits are not pushed, posted or merged. */
@@ -85,6 +85,7 @@ const de = {
     postFailed: (reason: string) => `Gepusht, aber der Text dazu ließ sich nicht posten: ${reason}`,
     /** The owner rewrote the text that goes onto the PR with the approval of the worker's own changes. */
     heldEdited: (n: number) => `Text für PR #${n} bearbeitet.`,
+    heldRemoved: (n: number) => `Text für PR #${n} entfernt: Die Commits gehen ohne Kommentar an den PR.`,
     /** Approving a review card: Obeya merges the PR. */
     approvedMerge: (n: number) => `Freigegeben. Obeya mergt PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} gemergt. Live.`,
@@ -595,12 +596,13 @@ const en: Messages = {
     started: (branch: string) => `Agent started on ${branch}.`,
     reviewStarted: (n: number, author: string) => `Agent started: it reviews PR #${n} by ${author}.`,
     changesRequested: (n: number, author: string) => `Change request sent as a review comment on PR #${n}. Waiting for ${author}.`,
-    pushedHeld: (n: number, commits: number, author?: string) =>
-      `Pushed ${commits === 1 ? '1 commit' : `${commits} commits`} onto the branch of PR #${n} and ${author ? `sent the change request to ${author}. Waiting for ${author}.` : 'commented.'}`,
+    pushedHeld: (n: number, commits: number, author?: string, uncommented?: boolean) =>
+      `Pushed ${commits === 1 ? '1 commit' : `${commits} commits`} onto the branch of PR #${n}${author ? ` and sent the change request to ${author}. Waiting for ${author}.` : uncommented ? ', without a comment.' : ' and commented.'}`,
     pushRefused: (reason: string) => `Not pushed: ${reason}`,
     heldMoved: (head: string) => `Not pushed: the PR is at another commit than at the handover (${head}). The agent puts its commits on top and reviews what is new.`,
     postFailed: (reason: string) => `Pushed, but the text with it could not be posted: ${reason}`,
     heldEdited: (n: number) => `Edited the text for PR #${n}.`,
+    heldRemoved: (n: number) => `Removed the text for PR #${n}: the commits go onto the PR without a comment.`,
     approvedMerge: (n: number) => `Approved. Obeya merges PR #${n}.`,
     mergedContribution: (n: number) => `PR #${n} merged. Live.`,
     unreviewedHead: (head: string) => `Not merged: the PR is at another commit than at the handover (${head}). The agent reviews it.`,

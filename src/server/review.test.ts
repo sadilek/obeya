@@ -332,7 +332,6 @@ describe('a review card', () => {
     const head = commitOwn(id, 'shortcut.ts');
     await runtime.last.call('ready_for_review', { summary: 'Fixed 2.', demo: artifact(), review: results, pr_draft: 'I added the shortcut.' });
     runtime.last.emit({ type: 'idle' });
-    expect(() => workers.editHeld(id, '  ')).toThrow(expect.objectContaining({ code: 'emptyText' }));
     workers.editHeld(id, 'Thanks! I added a keyboard shortcut on top of your branch.');
     workers.editHeld(id, 'Thanks a lot! I added a keyboard shortcut on top of your branch.');
     expect(board.item(id)!.contribution!.held).toEqual({ body: 'Thanks a lot! I added a keyboard shortcut on top of your branch.', commits: 1, asks: [] });
@@ -367,6 +366,41 @@ describe('a review card', () => {
     expect(runtime.last.inbox.at(-1)).not.toContain('edited the text');
     // nothing held any more: nothing to edit
     expect(() => workers.editHeld(id, 'Too late.')).toThrow(expect.objectContaining({ code: 'notReady' }));
+  });
+
+  test('the owner empties the held text: the commits go without a comment, and a handover keeps it empty', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 2: 'self' });
+    runtime.last.emit({ type: 'idle' });
+    const head = commitOwn(id, 'shortcut.ts');
+    await runtime.last.call('ready_for_review', { summary: 'Fixed 2.', demo: artifact(), review: results, pr_draft: 'I added the shortcut.' });
+    runtime.last.emit({ type: 'idle' });
+    workers.editHeld(id, '  ');
+    expect(board.item(id)!.contribution!.held!.body).toBe('');
+    expect(board.events(id).some((e) => e.text === board.t.worker.heldRemoved(5))).toBe(true);
+    workers.message(id, 'Look at the menu too.', [], false);
+    expect(runtime.last.inbox.at(-1)).toContain('They removed it: your commits go onto the pull request without a comment.');
+    expect(await runtime.last.call('ready_for_review', { summary: 'Menu.', review: results })).not.toContain('Not handed over');
+    expect(board.item(id)!.contribution!.held!.body).toBe('');
+    runtime.last.emit({ type: 'idle' });
+    await workers.approve(id);
+    expect(git(origin, 'rev-parse', 'contrib').trim()).toBe(head);
+    expect(fake.said.comments).toEqual([]);
+    expect(fake.said.merges).toEqual([head]);
+    expect(board.events(id).some((e) => e.text === board.t.worker.pushedHeld(5, 1, undefined, true))).toBe(true);
+  });
+
+  test('a held text that asks the contributor for changes cannot be emptied', async () => {
+    const id = await reviewCard();
+    await handOver();
+    workers.message(id, '', [], false, undefined, undefined, { 1: 'contributor', 2: 'self' });
+    runtime.last.emit({ type: 'idle' });
+    commitOwn(id, 'shortcut.ts');
+    await runtime.last.call('ready_for_review', { summary: 'Fixed 2.', demo: artifact(), review: results, pr_draft: 'I pushed a shortcut. Please keep the file in its folder (#1).' });
+    runtime.last.emit({ type: 'idle' });
+    expect(() => workers.editHeld(id, '')).toThrow(expect.objectContaining({ code: 'emptyText' }));
+    expect(board.item(id)!.contribution!.held!.body).toBe('I pushed a shortcut. Please keep the file in its folder (#1).');
   });
 
   test('an edit the worker hears mid-turn comes with its next tool step', async () => {

@@ -244,6 +244,8 @@ export function uploaded(key: string): Promise<void> {
 
 /** The draft, live. */
 export const useDraft = (key: string): Draft => useSyncExternalStore(subscribe, () => draftOf(key));
+/** Whether there is a draft under `key` at all, even an empty one (until `dropDraft`). */
+export const hasDraft = (key: string): boolean => drafts.has(key);
 /** Whether there is a draft under `key` at all, even an empty one (until `dropDraft`), live. */
 export const useDrafting = (key: string): boolean => useSyncExternalStore(subscribe, () => drafts.has(key));
 

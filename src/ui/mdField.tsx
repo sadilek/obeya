@@ -1,4 +1,4 @@
-import { type ClipboardEvent, type RefObject, useLayoutEffect, useRef, useState } from 'react';
+import { type ClipboardEvent, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDraftField } from './draft';
 import { useFitHeight } from './fitHeight';
 import { sourceAt } from './markdown';
@@ -23,7 +23,8 @@ function clickedAt(md: string, box: Element, x: number, y: number): number {
 /**
  * A markdown text the owner may edit: it shows formatted, as its reader will see it; a click into it
  * (or Enter on it) opens its markdown in a text field with the cursor where the click went, and
- * leaving the field shows it formatted again (`onLeave`), not when the window loses focus with it.
+ * leaving the field shows it formatted again (`onLeave`), not when the window loses focus with it;
+ * the field going from the page with the cursor in it (its card closing) is leaving it too.
  * An empty text is the field itself. `field`: the text field while it shows; `grow`: the field is
  * as tall as its text; `draft`: the draft the text is kept in, whose field it is while it shows.
  */
@@ -59,6 +60,15 @@ export function MdField({
   const own = useRef<HTMLTextAreaElement>(null);
   const ref = field ?? own;
   const shown = !editing && text.trim() !== '';
+  // what the field going away has to know: a removed field gets no blur
+  const leaving = useRef({ editing, onLeave });
+  leaving.current = { editing, onLeave };
+  useEffect(
+    () => () => {
+      if (leaving.current.editing) leaving.current.onLeave?.();
+    },
+    [],
+  );
   useFitHeight(ref, text, !!grow && !shown);
   useDraftField(draft ?? '', () => (draft ? ref.current : null), false, !shown);
   useLayoutEffect(() => {
@@ -103,6 +113,7 @@ export function MdField({
       onFocus={() => setEditing(true)}
       onBlur={() => {
         if (!document.hasFocus()) return;
+        leaving.current.editing = false;
         setEditing(false);
         onLeave?.();
       }}

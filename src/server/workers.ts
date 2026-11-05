@@ -266,7 +266,10 @@ export const proposalTask = (unseen: string) =>
 
 /** How the worker hears that the owner rewrote the text that goes onto the PR with its own changes. */
 const HELD_EDITED = 'While your handover waits, the owner edited the text that goes onto the pull request with the approval.';
-const heldEdited = (body: string) => `${HELD_EDITED} It reads now:\n\n${body}\n\nThat is the text that goes out with your commits. Should you hand over again with pr_draft, start from it and keep the owner's wording where nothing calls for a change.`;
+const heldEdited = (body: string) =>
+  body
+    ? `${HELD_EDITED} It reads now:\n\n${body}\n\nThat is the text that goes out with your commits. Should you hand over again with pr_draft, start from it and keep the owner's wording where nothing calls for a change.`
+    : `${HELD_EDITED} They removed it: your commits go onto the pull request without a comment. Should you hand over again, leave pr_draft out, unless the owner asks for a text.`;
 
 /** How the worker hears that the owner ignored findings of its review, and nothing else; until it has, its list keeps them dropped. */
 const FINDINGS_IGNORED = 'The owner ignored findings of your review, on the card:';
@@ -1664,20 +1667,21 @@ export class Workers {
    * The owner's own wording of the text that goes onto the PR with the worker's held changes: it is
    * the held text from now on, posted with the approval and kept by a handover without pr_draft. The
    * worker hears it with its next message or step, an earlier edit's news replaced, so that a
-   * pr_draft it gives later starts from the owner's words.
+   * pr_draft it gives later starts from the owner's words. An empty text sends the commits without a
+   * comment, but not with requests to the contributor, which are that text.
    */
   editHeld(cardId: string, body: unknown) {
     const card = this.card(cardId);
     const c = contributionOf(this.o.board.row(cardId));
     if (!c?.held || !handedOver(card) || this.approving.has(cardId)) throw new BadRequest('notReady', 'no text waits for the approval on this card');
     const text = typeof body === 'string' ? clip(body.trim(), 20000) : '';
-    if (!text) throw new BadRequest('emptyText', 'the text for the pull request is empty');
+    if (!text && c.held.asks.length) throw new BadRequest('emptyText', 'the text for the pull request asks the contributor for changes and cannot be empty');
     if (text === c.held.body) return;
     this.o.board.work(cardId, {
       contribution: JSON.stringify({ ...c, held: { ...c.held, body: text } } satisfies StoredContribution),
       unheard: JSON.stringify([...this.unheardBut(cardId, HELD_EDITED), { said: [], text: heldEdited(text), images: [] }] satisfies Unheard[]),
     });
-    this.o.board.log(cardId, 'state', 'owner', this.o.board.t.worker.heldEdited(c.number));
+    this.o.board.log(cardId, 'state', 'owner', (text ? this.o.board.t.worker.heldEdited : this.o.board.t.worker.heldRemoved)(c.number));
   }
 
   /**
@@ -1749,8 +1753,8 @@ export class Workers {
 
   /**
    * Once the worker's own commits are on the PR's branch, their text goes onto the PR in the owner's
-   * name: a comment, or with requests to the contributor one review asking for changes, after which
-   * the card waits for them. The findings it fixed and those it asks for link it. A text the forge
+   * name: a comment (none where the owner emptied it), or with requests to the contributor one review
+   * asking for changes, after which the card waits for them. The findings it fixed and those it asks for link it. A text the forge
    * refuses leaves the card with the owner, its commits pushed and nothing merged, and the findings
    * it asked for open, to be decided anew.
    */
@@ -1761,7 +1765,7 @@ export class Workers {
     let url: string | undefined;
     let failed: string | undefined;
     try {
-      url = (await (asks ? this.o.forge!.requestChanges(this.forgeCwd(cardId), c.url, held.body) : this.o.forge!.comment(this.forgeCwd(cardId), c.url, held.body))) || undefined;
+      if (asks || held.body) url = (await (asks ? this.o.forge!.requestChanges(this.forgeCwd(cardId), c.url, held.body) : this.o.forge!.comment(this.forgeCwd(cardId), c.url, held.body))) || undefined;
     } catch (e) {
       failed = messageOf(e);
     }
@@ -1789,7 +1793,7 @@ export class Workers {
       this.o.board.log(cardId, 'error', 'obeya', t.postFailed(failed));
       throw new BadRequest('mergeRefused', `pushed, but the forge refused the text that goes with it (${failed})`);
     }
-    this.o.board.log(cardId, 'state', 'owner', `${t.pushedHeld(c.number, held.commits, asks ? c.author : undefined)}${url ? ` ${url}` : ''}`);
+    this.o.board.log(cardId, 'state', 'owner', `${t.pushedHeld(c.number, held.commits, asks ? c.author : undefined, !held.body)}${url ? ` ${url}` : ''}`);
   }
 
   /**
@@ -1933,8 +1937,9 @@ export class Workers {
       this.o.board.work(cardId, { unheard: JSON.stringify(this.unheardBut(cardId, HELD_EDITED)) });
       return `Not handed over: ${edited.text.replace(HELD_EDITED, 'the owner edited the text that goes onto the pull request with the approval.')}\n\nThen call ready_for_review again.`;
     }
-    const body = clip((draft ?? '').trim() || c.held?.body || '', 20000);
-    if (!body)
+    // a text the owner emptied stays empty: the commits go without a comment
+    const body = draft?.trim() ? clip(draft.trim(), 20000) : (c.held?.body ?? '');
+    if (!body && (!c.held || asks.length))
       return `Not handed over: your branch holds ${mine.commits === 1 ? 'a commit' : `${mine.commits} commits`} of your own that ${mine.commits === 1 ? 'is' : 'are'} not on the pull request yet. Give pr_draft: the text Obeya posts on the PR once the owner approves, after pushing them (what you changed and why${asks.length ? `, and the request for ${asks.map((f) => `#${f.id}`).join(', ')} to ${c.author}` : ''}). Then call ready_for_review again.`;
     return { body, commits: mine.commits, asks: asks.map((f) => f.id), base: mine.base };
   }

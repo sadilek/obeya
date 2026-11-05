@@ -24,7 +24,7 @@ import { ACK_MS } from './tell';
 import { Inline, plain } from './markdown';
 import { MdField } from './mdField';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
-import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDrafting } from './draft';
+import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, hasDraft, typeAtCursor, updateDraft, useDraft, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { AgentPick, RunsOn } from './agentPick';
 import { CiteButton } from './cite';
@@ -779,8 +779,8 @@ function ApproveReview({ c, act }: { c: Contribution; act: (a: CardAction, done:
         {label}
       </button>
       {c.held && (
-        <button className="btn" title={t.review.pushOnlyHint} onClick={() => act({ action: 'pushChanges' }, { close: true, ack: t.review.pushed(c.number), pending: t.review.pushingHeld })}>
-          {t.review.pushOnly}
+        <button className="btn" title={c.held.body ? t.review.pushOnlyHint : t.review.pushOnlyQuietHint} onClick={() => act({ action: 'pushChanges' }, { close: true, ack: c.held!.body ? t.review.pushed(c.number) : t.review.pushedQuiet(c.number), pending: t.review.pushingHeld })}>
+          {c.held.body ? t.review.pushOnly : t.review.pushOnlyQuiet}
         </button>
       )}
     </>
@@ -2498,19 +2498,19 @@ function PrBox({ pr, held, author, card, save }: { pr: PullRequest; held?: HeldC
 /** The draft of the text for the PR the owner is rewriting on card `id`, kept like the card's field. */
 const heldDraft = (id: string) => `${cardDraft(id)}:pr-text`;
 
-/** Saves what the owner wrote into the text for the PR on card `id` and has not saved yet. */
+/** Saves what the owner wrote into the text for the PR on card `id` and has not saved yet; emptied, it is no comment. */
 async function saveHeld(id: string) {
-  const { text } = draftOf(heldDraft(id));
-  if (!text.trim()) return;
-  await api.act(id, { action: 'editHeld', body: text });
+  if (!hasDraft(heldDraft(id))) return;
+  await api.act(id, { action: 'editHeld', body: draftOf(heldDraft(id)).text });
   dropDraft(heldDraft(id));
 }
 
 /**
  * The text that goes onto the PR with the approval, which the owner rewrites as they do a card's
- * text: a click into it opens its markdown, and leaving the field makes their wording the text that
- * goes out, as does the approval with the cursor still in it. What is typed waits in a draft of its
- * own until then, through closing the card and a reload; words dictated with the cursor in it go in.
+ * text: a click into it opens its markdown, and leaving the field (closing the card with it, too)
+ * makes their wording the text that goes out, as does the approval with the cursor still in it;
+ * emptied, the commits go without a comment. What is typed waits in a draft of its own until then,
+ * through a reload; words dictated with the cursor in it go in.
  */
 function HeldText({ card, body, save }: { card: string; body: string; save: (body: string) => Promise<void> }) {
   const key = heldDraft(card);
@@ -2522,8 +2522,7 @@ function HeldText({ card, body, save }: { card: string; body: string; save: (bod
   useEffect(() => setSent(null), [body]);
   const leave = async () => {
     const words = draftOf(key).text;
-    // an emptied text is no text for the PR: it stays as it was
-    if (!drafting || !words.trim() || words.trim() === body) return dropDraft(key);
+    if (!hasDraft(key) || words.trim() === body) return dropDraft(key);
     setError('');
     try {
       await save(words);
@@ -2542,6 +2541,7 @@ function HeldText({ card, body, save }: { card: string; body: string; save: (bod
         fieldClass="pr-held-field"
         shownClass="pr-held-text"
         title={t.review.heldEditHint}
+        placeholder={t.review.heldNone}
         onChange={(v) => updateDraft(key, { text: v })}
         onLeave={() => void leave()}
       />

@@ -274,9 +274,11 @@ of its own, the handover brings the text that goes onto the PR with them, and th
 the PR's block under "Goes to PR #5 with the approval" with the number of commits; the owner's words
 to the worker change it, and it hands over the new text, the demo standing where nothing else
 changed. The owner may also rewrite the text themselves, as they edit a card's text (see Conversation on
-the card): a click into it opens its Markdown, and leaving the field, or the approval with the cursor
-still in it, makes their wording the text that goes out; what they typed survives closing the card
-and a reload until then. A text emptied stays as it was. The
+the card): a click into it opens its Markdown, and leaving the field (closing the card with the
+cursor in it, too), or the approval, makes their wording the text that goes out; what they typed
+survives a reload until then. Emptied, the commits go onto the PR without a comment ("Push only"
+beside the merge), and a later handover without a new text keeps it empty; a text that asks the
+contributor for changes cannot be emptied, since it is that request. The
 worker hears the owner's text with its next message or tool step (only the latest edit), so that a
 later handover starts from it; a handover with a new text the worker gave before it heard of the
 edit is refused with the owner's text, and one without a new text keeps theirs. Findings decided for the contributor in the same Send as "Change it myself", or while the
