@@ -677,6 +677,9 @@ textarea.p-body:focus { border-color: var(--muted); }
 .p-body-field .c-field textarea.p-body { padding-right: 40px; }
 .p-body-field.dropping .p-body { border-color: var(--working); border-style: dashed; background: color-mix(in srgb, var(--working) 6%, var(--card)); }
 .p-body-field .c-error { margin-top: 6px; }
+.p-body-tools { position: absolute; right: 6px; bottom: 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.p-body-tools .c-attach { position: static; }
+.p-body-field > .c-listener { margin-top: 4px; }
 .segs { display: flex; gap: 10px; flex-wrap: wrap; }
 .seg { display: inline-flex; background: var(--chip); border-radius: 3px; padding: 3px; gap: 2px; margin-top: 12px; }
 .seg button { border: 0; background: transparent; border-radius: 2px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: var(--muted); }
@@ -1266,7 +1269,7 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .c-mic { border: 0; background: none; color: var(--muted); padding: 4px; border-radius: 50%; cursor: pointer; line-height: 0; touch-action: none; }
 .c-mic:hover { color: var(--ink); background: var(--chip); }
 .c-mic.on, .c-mic.on:hover { color: var(--on-ink); background: var(--working); }
-.composer.dictating .c-field, .composer.dictating .c-field:focus-within { border-color: var(--working); box-shadow: 0 0 0 1px var(--working); }
+.composer.dictating .c-field, .composer.dictating .c-field:focus-within, textarea.dictating, textarea.dictating:focus { border-color: var(--working); box-shadow: 0 0 0 1px var(--working); }
 .c-shots { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
 .c-shot { position: relative; height: 64px; min-width: 64px; border-radius: 2px; border: 1px solid var(--line); background: var(--chip);
   display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); }

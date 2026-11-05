@@ -1,5 +1,6 @@
 import { type ClipboardEvent, type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useDraftField } from './draft';
+import { dictating, useSpaceToTalk } from './dictation';
+import { useDraft, useDraftField } from './draft';
 import { useFitHeight } from './fitHeight';
 import { sourceAt } from './markdown';
 import { Body } from './message';
@@ -26,7 +27,9 @@ function clickedAt(md: string, box: Element, x: number, y: number): number {
  * leaving the field shows it formatted again (`onLeave`), not when the window loses focus with it;
  * the field going from the page with the cursor in it (its card closing) is leaving it too.
  * An empty text is the field itself. `field`: the text field while it shows; `grow`: the field is
- * as tall as its text; `draft`: the draft the text is kept in, whose field it is while it shows.
+ * as tall as its text; `draft`: the draft whose field it is while it shows, which the text may be
+ * kept in: with one, Space held in the field dictates into it, and the field stays until the words
+ * are in (`DictationLine` under it says how far that is).
  */
 export function MdField({
   text,
@@ -59,7 +62,9 @@ export function MdField({
   const caret = useRef<number | null>(null);
   const own = useRef<HTMLTextAreaElement>(null);
   const ref = field ?? own;
-  const shown = !editing && text.trim() !== '';
+  const spoken = dictating(useDraft(draft ?? ''));
+  const shown = !editing && text.trim() !== '' && !spoken;
+  const space = useSpaceToTalk(ref);
   // what the field going away has to know: a removed field gets no blur
   const leaving = useRef({ editing, onLeave });
   leaving.current = { editing, onLeave };
@@ -70,7 +75,7 @@ export function MdField({
     [],
   );
   useFitHeight(ref, text, !!grow && !shown);
-  useDraftField(draft ?? '', () => (draft ? ref.current : null), false, !shown);
+  useDraftField(draft ?? '', () => (draft ? ref.current : null), false, !shown, false);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!editing || caret.current === null || !el) return;
@@ -105,13 +110,16 @@ export function MdField({
   return (
     <textarea
       ref={ref}
-      className={fieldClass}
+      className={spoken ? `${fieldClass} dictating` : fieldClass}
       value={text}
       placeholder={placeholder}
       maxLength={maxLength}
       onPaste={onPaste}
       onFocus={() => setEditing(true)}
+      onKeyDown={(e) => draft && space.keyDown(e)}
+      onKeyUp={space.keyUp}
       onBlur={() => {
+        space.blur();
         if (!document.hasFocus()) return;
         leaving.current.editing = false;
         setEditing(false);

@@ -9,23 +9,29 @@ audio with its focus (the open card, the project in view).
 
 #### Dictating or sending
 
-The cursor decides. In a text field under a conversation (a card's, Obeya's sidebar's) the words are
-dictated into it at the cursor and nothing is sent; the owner adds to them and sends with Enter.
+The cursor decides. In a text field the owner writes into (under a conversation, a card's or Obeya's
+sidebar's; a planned task's text; the text for a pull request; a rule in the preferences) the words
+are dictated into it at the cursor and nothing is sent; the owner adds to them and sends with Enter
+where Enter sends.
 Elsewhere they go out at once, with what stands in the field of the card in view (or of the sidebar
 with no card open): its words before the spoken ones, its screenshots, the message it quotes; the
 field empties, and gets them back when nothing was heard. A click into the field or beside it
 switches.
 
-A dictation starts from the microphone in the field, the microphone at the bottom (pressing it keeps
-the cursor where it is), or Space held in the field. Space in a field is held back: released within
+A dictation starts from the microphone in the field (under a conversation and in a task's text),
+the microphone at the bottom (pressing it keeps the cursor where it is), or Space held in the field.
+Every such field takes Space the same way: until 2026-11-05 only the fields under a conversation
+did, and Space held in a task's text or a new rule typed spaces. Space in a field is held back: released within
 250 ms or overlapped by another key (fast typing), it is typed; held longer it records, and released
 before a recording would count (600 ms in all) it is typed after all. While Space is down the field
 is read-only: Chrome on the Mac hides the pointer at every key pressed into an editable field, and
 the repeating key made it flicker.
 
 A field being spoken into is framed, and the line under it and the microphone says "→ into the
-field · send with Enter", then "Writing it down …"; nothing heard leaves the field as it was and
-says so. Otherwise the line under the microphone names who hears the words and what goes with them
+field · send with Enter" (without the second part where Enter does not send), then "Writing it down
+…"; nothing heard leaves the field as it was and says so. The words go into the field even if the
+cursor has left it meanwhile, as long as it is on the page: a task's text stays a text field until
+they are in. Otherwise the line under the microphone names who hears the words and what goes with them
 (see Who hears the words).
 
 #### Drafts

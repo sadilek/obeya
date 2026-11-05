@@ -69,6 +69,8 @@ const drafts = new Map<string, Draft>();
 const fields = new Map<string, HTMLTextAreaElement>();
 /** The fields that take no screenshots. */
 const noImages = new Set<string>();
+/** The fields where Enter does not send what is written (a task's text, say). */
+const noEnter = new Set<string>();
 /** Where the cursor stood when a dictation started, for when the field has lost it by the time the words come. */
 const carets = new Map<string, [number, number]>();
 /** Where the cursor stood when the field on the page last lost it, for a quote put in from the conversation (`cite`). */
@@ -251,14 +253,16 @@ export const useDrafting = (key: string): boolean => useSyncExternalStore(subscr
 
 /**
  * Makes `el` the text field of the draft while it is on the page; `images`: whether it takes
- * screenshots; `on`: whether the field shows, where it comes and goes.
+ * screenshots; `on`: whether the field shows, where it comes and goes; `sends`: whether Enter sends
+ * what is written in it.
  */
-export function useDraftField(key: string, el: () => HTMLTextAreaElement | null, images: boolean, on = true) {
+export function useDraftField(key: string, el: () => HTMLTextAreaElement | null, images: boolean, on = true, sends = true) {
   useEffect(() => {
     const f = el();
     if (!f) return;
     fields.set(key, f);
     if (!images) noImages.add(key);
+    if (!sends) noEnter.add(key);
     changed();
     const blur = () => left.set(key, f.selectionEnd);
     f.addEventListener('blur', blur);
@@ -269,10 +273,14 @@ export function useDraftField(key: string, el: () => HTMLTextAreaElement | null,
       left.delete(key);
       fields.delete(key);
       noImages.delete(key);
+      noEnter.delete(key);
       changed();
     };
-  }, [key, images, on]);
+  }, [key, images, on, sends]);
 }
+
+/** Whether Enter sends what is written in the draft's field. */
+export const sendsWithEnter = (key: string) => !noEnter.has(key);
 
 /** Whether screenshots may go into the draft: its field takes them, or it has none. */
 export const takesImages = (key: string) => !noImages.has(key);
@@ -313,18 +321,23 @@ const spaced = (before: string, words: string, after: string) => `${before && !/
 /**
  * Words dictated into the draft, at the cursor: typed into the field as if by hand while it has the
  * focus (⌘Z takes them back), else where the cursor stood. A space parts them from the words beside them.
+ * A field still on the page gets them as typed words, whether its text is the draft's or its own (a
+ * task's text, a rule's).
  */
 export function dictate(key: string, words: string) {
   const el = fields.get(key);
   const text = el?.value ?? draftOf(key).text;
   const focused = !!el && el === document.activeElement;
-  const [start, end] = focused ? [el.selectionStart, el.selectionEnd] : (carets.get(key) ?? [text.length, text.length]).map((n) => Math.min(n, text.length));
+  const [start, end] = focused ? [el.selectionStart, el.selectionEnd] : ((carets.get(key) ?? [text.length, text.length]).map((n) => Math.min(n, text.length)) as [number, number]);
   carets.delete(key);
   const before = text.slice(0, start);
   const after = text.slice(end);
   const piece = spaced(before, words, after);
   if (focused) typeInto(el, piece);
-  else updateDraft(key, { text: before + piece + after });
+  else if (el) {
+    el.setRangeText(piece, start, end, 'end');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  } else updateDraft(key, { text: before + piece + after });
 }
 
 /**

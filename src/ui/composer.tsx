@@ -8,8 +8,9 @@
 // the bottom, or Space. Under a card's conversation, `/` at the start of a word opens the menu of the
 // skills of the card's agent (`skills.ts`).
 
-import { type MouseEvent, type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
+import { type MouseEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { api } from './api';
+import { DictateButton, dictating, dictationLine, useSpaceToTalk } from './dictation';
 import { dropDraft, typeInto, updateDraft, useDraft, useDraftField } from './draft';
 import { setHeight, textHeight, useFitHeight } from './fitHeight';
 import { Quote } from './message';
@@ -18,13 +19,6 @@ import { knowsSkills, matching, type Slash, skillWord, slashAt, useSkills, usedS
 import { AttachButton, ShotStrip, useShotInput } from './shots';
 import { t } from './strings';
 import type { Skill } from '../core/types';
-import { HoldToTalk, MicIcon, TAP_MS, useHeldByTouch } from './voice';
-
-/**
- * How long Space stays down before it is held to speak rather than typed. Typing presses it for
- * well under this, and a key pressed meanwhile (fast typing overlaps keys) makes it a typed space at once.
- */
-const HOLD_MS = 250;
 
 /** Whether Enter sends what is written (Shift+Enter breaks the line), as at the desk. */
 let enterSends = true;
@@ -108,7 +102,8 @@ export function Composer({
   const own = useId();
   const key = draft ?? `field:${own}`;
   useEffect(() => (draft ? undefined : () => dropDraft(key)), [key]);
-  const { text, dictation, note } = useDraft(key);
+  const d = useDraft(key);
+  const { text } = d;
   const setText = (text: string) => updateDraft(key, { text });
   const [busy, setBusy] = useState(false);
   const shots = useShotInput({ draft: key, off: noImages });
@@ -156,24 +151,7 @@ export function Composer({
     if (reply && reply.quote.ev !== quoted.current) field.current?.focus();
     quoted.current = reply?.quote.ev;
   }, [reply?.quote.ev]);
-  const talk = useContext(HoldToTalk);
-  const mic = useHeldByTouch<HTMLButtonElement>();
-  // Space pressed in the field: typed, or held to speak once it stays down (`held`)
-  const space = useRef<number | 'held' | null>(null);
-  const spaceDown = useRef(0);
-  // While Space is down the field is read-only: the browser on the Mac hides the pointer at every key
-  // pressed into a text field, so the key repeating while held made it flicker as the mouse moved.
-  const spaceUp = () => {
-    space.current = null;
-    if (field.current) field.current.readOnly = false;
-  };
-  const typeSpace = () => {
-    const s = space.current;
-    if (s === null || s === 'held') return;
-    clearTimeout(s);
-    spaceUp();
-    if (field.current) typeInto(field.current, ' ');
-  };
+  const space = useSpaceToTalk(field);
   const ready = (!!text.trim() || images.length > 0 || allowEmpty) && !busy && !shots.uploading && !shots.marking.length;
   const send = async () => {
     if (!ready) return;
@@ -191,7 +169,7 @@ export function Composer({
    */
   const keepFocus = (e: MouseEvent) => e.preventDefault();
   return (
-    <div className={['composer', className, shots.dropping && 'dropping', dictation && 'dictating'].filter(Boolean).join(' ')} {...shots.drop}>
+    <div className={['composer', className, shots.dropping && 'dropping', dictating(d) && 'dictating'].filter(Boolean).join(' ')} {...shots.drop}>
       <ShotStrip shots={shots} />
       {menuOn && <SkillMenu skills={menu} marked={marked} onPick={pick} />}
       <div className="c-field">
@@ -213,33 +191,11 @@ export function Composer({
           onPaste={shots.onPaste}
           onBlur={() => {
             setFocused(false);
-            if (typeof space.current === 'number') clearTimeout(space.current);
-            spaceUp();
+            space.blur();
           }}
-          onKeyUp={(e) => {
-            if (e.code !== 'Space') return;
-            // a held Space ends the recording wherever it is let go (App); too short for one, it was typed
-            if (space.current !== 'held') return typeSpace();
-            spaceUp();
-            if (e.timeStamp - spaceDown.current < HOLD_MS + TAP_MS && field.current) typeInto(field.current, ' ');
-          }}
+          onKeyUp={space.keyUp}
           onKeyDown={(e) => {
-            if (talk && e.code === 'Space' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.nativeEvent.isComposing) {
-              // the key repeating while held types nothing
-              if (space.current !== null) return e.preventDefault();
-              if (!e.repeat) {
-                e.preventDefault();
-                e.currentTarget.readOnly = true;
-                spaceDown.current = e.timeStamp;
-                space.current = window.setTimeout(() => {
-                  space.current = 'held';
-                  talk();
-                }, HOLD_MS);
-              }
-              return;
-            }
-            // another key while Space is down: Space was typed, before it
-            typeSpace();
+            if (space.keyDown(e)) return;
             if (menuOn && slash && !e.nativeEvent.isComposing) {
               const n = menu?.length ?? 0;
               if (e.key === 'Escape') {
@@ -264,23 +220,7 @@ export function Composer({
         />
         <div className="c-tools" ref={tools}>
           <AttachButton shots={shots} />
-          {talk && (
-            <button
-              ref={mic}
-              className={dictation === 'listening' ? 'c-mic on' : 'c-mic'}
-              title={t.voice.dictate}
-              aria-label={t.voice.dictate}
-              onPointerDown={(e) => {
-                // the cursor stays in the field, or goes there: what is said is written into it
-                e.preventDefault();
-                field.current?.focus();
-                talk();
-              }}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              <MicIcon size={18} />
-            </button>
-          )}
+          <DictateButton draft={key} field={field} />
           {action ? (
             <button className="btn primary c-send" disabled={!ready} onMouseDown={keepFocus} onClick={send}>
               {action}
@@ -295,20 +235,12 @@ export function Composer({
         </div>
       </div>
       {shots.error && <p className="p-error c-error">{shots.error}</p>}
-      {dictation === 'listening' ? (
-        <div className="c-listener c-dictation">
-          → <b>{t.voice.intoField}</b>
-          {t.voice.sendWithEnter && ` · ${t.voice.sendWithEnter}`}
-        </div>
-      ) : dictation === 'writing' ? (
-        <div className="c-listener c-dictation">{t.voice.writing}</div>
-      ) : note ? (
-        <div className="c-listener c-note">{note}</div>
-      ) : typeof obeya === 'string' ? (
-        <div className="c-listener">→ {obeya}</div>
-      ) : (
-        focused && !!skillList?.length && !knowsSkills() && <div className="c-listener c-skills-hint">{t.skills.hint}</div>
-      )}
+      {dictationLine(d, key) ??
+        (typeof obeya === 'string' ? (
+          <div className="c-listener">→ {obeya}</div>
+        ) : (
+          focused && !!skillList?.length && !knowsSkills() && <div className="c-listener c-skills-hint">{t.skills.hint}</div>
+        ))}
     </div>
   );
 }

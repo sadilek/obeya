@@ -23,8 +23,9 @@ import { dimensions, shownTags } from '../core/page-tags';
 import { ACK_MS } from './tell';
 import { Inline, plain } from './markdown';
 import { MdField } from './mdField';
+import { DictateButton, DictationLine } from './dictation';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
-import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, hasDraft, typeAtCursor, updateDraft, useDraft, useDrafting } from './draft';
+import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, hasDraft, typeAtCursor, updateDraft, useDraft, useDrafting, useFieldOn } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { AgentPick, RunsOn } from './agentPick';
 import { CiteButton } from './cite';
@@ -2545,6 +2546,7 @@ function HeldText({ card, body, save }: { card: string; body: string; save: (bod
         onChange={(v) => updateDraft(key, { text: v })}
         onLeave={() => void leave()}
       />
+      <DictationLine draft={key} />
       {error && <div className="p-error">{error}</div>}
     </>
   );
@@ -2963,6 +2965,11 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
 function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item; repos: RepoRef[]; choice: RepoChoice; fresh?: boolean; onEdit: (p: CardPatch) => void; grow?: boolean }) {
   const [body, setBody] = useState(item.body);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // the field's draft holds no text, the card has it: it is where words dictated into the field go
+  const key = `body:${item.id}`;
+  useEffect(() => () => dropDraft(key), [key]);
+  // the field's microphone shows while the field does, not over the formatted text
+  const editing = useFieldOn(key);
   // a dropped file's path goes in as typed while the field has the cursor, else after the text
   // (the latest, which a path put in just before is part of before React has drawn it)
   const latest = useRef(body);
@@ -2986,6 +2993,7 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item
           <MdField
             text={body}
             field={ref}
+            draft={key}
             grow={grow}
             fieldClass="p-body"
             shownClass="p-body p-body-shown"
@@ -2996,8 +3004,12 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item
               onEdit({ body: v });
             }}
           />
-          <AttachButton shots={shots} />
+          <div className="p-body-tools">
+            {editing && <DictateButton draft={key} field={ref} />}
+            <AttachButton shots={shots} />
+          </div>
         </div>
+        <DictationLine draft={key} />
         {shots.error && <p className="p-error c-error">{shots.error}</p>}
       </div>
     </>
