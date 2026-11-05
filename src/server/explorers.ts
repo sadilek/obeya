@@ -15,7 +15,7 @@ import { type AgentEvent, type AgentRuntime, type AgentSession, type AgentTool, 
 import { imageNote } from './images';
 import { describeTool, SPOKEN } from './workers';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
-import { clip } from '../core/text';
+import { clip, tooLong } from '../core/text';
 import { folderPath } from './new-repo';
 
 export interface ExplorerOptions {
@@ -440,9 +440,11 @@ export class Explorers {
         },
         run: ({ text, questions, next, mocks }) => {
           if (live.replied) return 'Already replied. End your turn now.';
+          const long = tooLong(String(text), 12000, 'reply');
+          if (long) return long;
           live.replied = true;
           const asked = ((questions as Asked[] | undefined) ?? []).map(withPick).filter((q) => q.text);
-          this.answer(cardId, clip(String(text), 12000), asked, nextStep(next, asked, !!this.o.board.idea(cardId).split), mocksOf(mocks));
+          this.answer(cardId, String(text), asked, nextStep(next, asked, !!this.o.board.idea(cardId).split), mocksOf(mocks));
           return 'Shown to the owner. End your turn now; their next message arrives as a new one.';
         },
       },

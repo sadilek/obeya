@@ -70,7 +70,10 @@ sign-in returns to a port on the machine Obeya runs on, so the phone and other d
 that it happens at that computer. A host's login is renewed there: its app server runs over SSH with
 that port forwarded to it.
 
-Agent words are kept whole up to 12 000 characters (a worker's `reply` is cut at 2000). While the
+Agent words are kept whole up to 12 000 characters. What an agent hands a tool for the owner (a
+reply, a handover's summary, up to 6000) is never cut: a call longer than that is refused, saying
+so, and the agent shortens or splits it. A cut once ended replies mid-sentence ("… and (c) only, …")
+without the agent knowing, so it never sent the rest unless asked (2026-11-05). While the
 worker works, the conversation ends with it at work and its latest step on one line, with its
 background work that runs ("In the background", each with how long it has run). Once the card waits for
 the owner (handed over, asked) and the worker's turn has ended, nobody is at work on it, even while

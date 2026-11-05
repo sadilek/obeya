@@ -114,6 +114,19 @@ describe('an idea', () => {
     ]);
   });
 
+  test('a reply longer than the card shows is refused, never cut off, and the agent may reply again', () => {
+    const i = idea();
+    canvas.act(i.id, { action: 'discuss', text: 'Was meinst du?' });
+    const s = explorer();
+    expect(s.call('reply', { text: 'x'.repeat(12001) })).toContain('Not shown: at 12001 characters');
+    expect(talk(i.id)).toEqual([['owner', 'Was meinst du?']]);
+    expect(s.call('reply', { text: 'Kürzer.' })).toContain('Shown to the owner.');
+    expect(talk(i.id)).toEqual([
+      ['owner', 'Was meinst du?'],
+      ['explorer', 'Kürzer.'],
+    ]);
+  });
+
   test('its conversation goes on in the same session, and what the owner says during a turn waits for it', () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });

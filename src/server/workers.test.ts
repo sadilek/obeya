@@ -342,6 +342,18 @@ describe('workers', () => {
     expect(runtime.last.inbox.length).toBe(before + 1);
   });
 
+  test('a long reply shows whole; one longer than the card shows is refused, never cut off', async () => {
+    const c = manual();
+    await workers.start(c.id);
+    workers.message(c.id, 'Was empfiehlst du?');
+    const long = `${'Ich empfehle (a) und (b) jetzt. '.repeat(100)}Und (c) erst, wenn der Export steht.`;
+    expect(runtime.last.call('reply', { text: long })).toBe('Shown to the owner.');
+    expect(board.events(c.id).at(-1)).toMatchObject({ kind: 'talk', text: long });
+    const before = board.events(c.id).length;
+    expect(runtime.last.call('reply', { text: 'x'.repeat(12001) })).toContain('Not shown: at 12001 characters this is longer than the 12000');
+    expect(board.events(c.id).length).toBe(before);
+  });
+
   test("a card number in the owner's note reaches the worker with the card it names", async () => {
     const c = manual();
     const other = board.create({ title: 'Login', x: 0, y: 400 });

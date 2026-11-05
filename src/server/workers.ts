@@ -34,7 +34,7 @@ import { gitAsync, type GitSteps, isFolder } from './workspaces';
 import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
 import type { CardRow } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
-import { clip, messageOf } from '../core/text';
+import { clip, messageOf, tooLong } from '../core/text';
 import { holdsNotes } from '../core/queue';
 
 export interface WorkerOptions {
@@ -4212,8 +4212,10 @@ export class Workers {
         description: `Answer a note or feedback from the owner in your card's conversation: a sentence or two in ${language}, what you change because of it or why nothing. The reply does not end your turn: if work remains, carry on with it; if none does (your work is handed over and the note changes nothing), your turn ends with the reply, and the card goes on waiting for the owner's approval.`,
         schema: { text: z.string() },
         run: ({ text }) => {
-          const s = clip(String(text).trim(), 2000);
+          const s = String(text).trim();
           if (!s) return 'Not shown: the reply is empty.';
+          const long = tooLong(s, 12000, 'reply');
+          if (long) return long;
           // a reply may end the turn on a handover: what the owner chose for later is made before it
           const owed = this.owedTasks(cardId);
           if (owed) return `Not shown: first make the follow-up tasks the owner chose, for ${owed}; then reply.`;
@@ -4529,6 +4531,8 @@ export class Workers {
         },
         run: ({ summary, demo, files, review: results, pr_draft: draft }) => {
           // a stopped pull this worker resolved lands as it hands it over, without the owner
+          const long = tooLong(String(summary), 6000, 'ready_for_review');
+          if (long) return long;
           const resolving = landedOf(this.o.board.row(cardId))?.resolve;
           if (resolving) return this.landResolved(cardId, resolving);
           type Demo = { kind?: DemoKind; dir: string; chapters?: string[]; question?: { text: string } & Omit<Asked, 'question'>; page?: DemoPage; follows?: 'replaces' | 'supplements' };
@@ -4553,7 +4557,7 @@ export class Workers {
           ): string => {
             // reading what the change shows takes a while, in which the owner may stop or replace the session
             if (this.live.get(cardId) !== live && !live.standIn) return 'This session has ended. Stop working and end your turn.';
-            const s = clip(String(summary), 6000);
+            const s = String(summary);
             const row = this.o.board.row(cardId);
             if (row.landed) return 'Not handed over: your work is on main already.';
             if (row.pr && !review) return 'Not handed over: the work is in its pull request, where Obeya follows it.';
