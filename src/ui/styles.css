@@ -379,7 +379,7 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill:is(.workspaces, .usage) .tip > :last-child, .pill.workspaces .tip > div:last-child > :last-child,
   .pill.workspaces .tip > div:last-child > div:last-child > :last-child { margin-bottom: 0; }
 .pill:is(.workspaces, .usage).open .tip { display: block; }
-/* the plan's usage limits: two thin meters stacked (the session above the week), in the usage endpoint's grade */
+/* the plan's usage limits: a thin meter per limit, stacked in the list's order, in the usage endpoint's grade */
 .pill.usage .tip { width: 380px; }
 .pill.usage .face { gap: 12px; }
 /* on the phone at the bar's right end; the list as wide as the screen allows */
@@ -391,7 +391,7 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.usage .plan { display: flex; align-items: center; gap: 6px; }
 .pill.usage .plan + .plan { padding-left: 12px; border-left: 1px solid var(--line); }
 .pill.usage .harness { font-weight: 600; }
-.pill.usage .stack { display: flex; flex-direction: column; gap: 3px; }
+.pill.usage .stack { display: flex; flex-direction: column; gap: 2px; }
 .pill.usage .stack .meter { width: 30px; height: 4px; }
 .pill.usage .tip .usage-list + .hint { margin-bottom: 12px; }
 .pill.usage .meter { position: relative; width: 34px; height: 5px; border-radius: 3px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex: none; }

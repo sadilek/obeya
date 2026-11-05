@@ -1,30 +1,11 @@
-// The plans' usage limits in the bar: the session's above the week's, each as a thin meter in the
-// grade the usage endpoint gives it, without labels or numbers, for each plan with a login, under the
-// harness's name once the bar shows two. A click (a tap on the phone) lists every limit of every plan
+// The plans' usage limits in the bar: every limit of each plan with a login as a thin meter, one
+// above the other in the list's order, in the grade the usage endpoint gives it, without labels or
+// numbers, beside the harness's name once the bar shows two. A click (a tap on the phone) lists every limit of every plan
 // with how much of it is used, when it starts anew and where the numbers come from.
 
 import { useEffect, useRef, useState } from 'react';
 import type { PlanUsage, Usage, UsageLimit } from '../core/types';
 import { clock, snoozeWhen, t } from './strings';
-
-/** The limit of a group the bar shows: the one most used, the first of those on a tie. */
-export function headline(limits: UsageLimit[]): UsageLimit[] {
-  const groups = new Map<string, UsageLimit>();
-  for (const l of limits) {
-    const shown = groups.get(l.group);
-    if (!shown || l.percent > shown.percent) groups.set(l.group, l);
-  }
-  return [...groups.values()];
-}
-
-/** The groups in the bar's order, top to bottom: the session, the week, then any the endpoint adds. */
-const ORDER = ['session', 'weekly'];
-
-/** The bar's rows of a plan: the headline of each group, in `ORDER`; a plan with one group gets one row, centred. */
-export function stacked(limits: UsageLimit[]): UsageLimit[] {
-  const rank = (l: UsageLimit) => (ORDER.includes(l.group) ? ORDER.indexOf(l.group) : ORDER.length);
-  return headline(limits).sort((a, b) => rank(a) - rank(b));
-}
 
 /** A limit as the list names it. */
 export function limitName(l: UsageLimit): string {
@@ -70,8 +51,8 @@ export function UsagePill({ usage }: { usage: Usage }) {
           <span key={p.harness} className="plan">
             {named && <span className="harness">{t.usage.short[p.harness]}</span>}
             <span className="stack">
-              {stacked(p.limits).map((l) => (
-                <Meter key={l.group} limit={l} />
+              {p.limits.map((l, i) => (
+                <Meter key={i} limit={l} />
               ))}
             </span>
           </span>

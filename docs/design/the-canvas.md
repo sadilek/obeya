@@ -46,10 +46,10 @@ keeps its words between openings. The archive and the search drop down one at a 
 view has no search.
 
 Right, before the workspace pool: the usage limits of the plans Claude Code and Codex on this
-machine are logged in with, as two thin meters one above the other, without labels or numbers: the
-session's (five hours) above, the week's below, each the most used limit of its group, coloured in
-the grade the plan's usage endpoint gives it (warning, critical; for Codex, which gives none, from
-80 % and at 100 %); a plan with only one of the two shows that one alone, centred. The bar shows
+machine are logged in with, every limit of a plan as a thin meter, one above the other in the
+order of the list below, without labels or numbers (the session's, five hours, above the week's for
+all models and the week's for a single model), coloured in the grade the plan's usage endpoint gives
+it (warning, critical; for Codex, which gives none, from 80 % and at 100 %). The bar shows
 every plan with a login, whether agents run on it or not, each beside its name ("Claude", "Codex")
 when it shows two, without one when it shows one. A click lists every limit of
 every plan (the session, the week for all models, the week for a single model) with its meter and
@@ -482,11 +482,12 @@ code, a generic one otherwise.
   owner decides on before starting an agent on it, a card on Codex say, so it shows while no agent
   runs there yet. Rejected: only the plans agents run on, which hid Codex's limits until a Codex
   agent ran; the owner pinning plans, a setting more.
-- **The bar's usage limits are two meters without labels or numbers** (owner, 2026-11-05), on the
-  desktop as on the phone: a meter with its label and percentage per group took much of the bar and
-  ran off a phone's screen, the list under it cut off with it. The numbers are in the list. Rejected:
-  only the most used limit's percentage per plan, with or without a meter under it, and a ring per
-  plan, which fit as well but merge the session and the week into one value. The list has no "Hide":
+- **The bar's usage limits are a meter per limit without labels or numbers** (owner, 2026-11-05), on
+  the desktop as on the phone: a meter with its label and percentage per group took much of the bar
+  and ran off a phone's screen, the list under it cut off with it. The numbers are in the list.
+  Every limit has its meter, not only the most used of its group, so the bar shows what the list
+  shows. Rejected: only the most used limit's percentage per plan, with or without a meter under
+  it, and a ring per plan, which fit as well but merge the limits into one value. The list has no "Hide":
   the phone has no configuration to show the limits again, and the setting is where turning them off
   belongs.
 - **The usage limits outlast the last page by half a minute** (2026-10-29). Rejected: closing the
