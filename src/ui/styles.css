@@ -1867,14 +1867,18 @@ button.link:hover { text-decoration: underline; }
 /* while the pointer is on a card with waits: the cards it waits for and those waiting for it, over every step */
 #deps { position: absolute; left: 0; top: 0; z-index: 1; overflow: visible; pointer-events: none; }
 /* every wait as a faint line under the cards; those around the card under the pointer in the waiting
-   colour, as wide as the faint one (the width comes with the path) */
-#deps .faint { fill: none; stroke: var(--dep-line); }
-#deps .lit { fill: none; stroke: var(--waiting); }
-#deps marker.faint path { fill: var(--dep-line); }
-#deps marker.lit path { fill: var(--waiting); }
-.card.dep-self, .card.dep-before, .card.dep-after { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
+   colour, as wide as the faint one (the width comes with the path); a loop in red. Each line fades in
+   along its gradient towards its head. */
+#deps path:is(.faint, .lit, .loop) { fill: none; }
+#deps .faint { --c: var(--dep-line); }
+#deps .lit { --c: var(--waiting); }
+#deps .loop { --c: var(--error); }
+#deps marker path { fill: var(--c); }
+#deps linearGradient stop { stop-color: var(--c); }
+.card.dep-loop .dep-tag { background: var(--error); }
+.card.dep-self, .card.dep-before, .card.dep-after, .card.dep-loop { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
 /* over a snoozed card's own shadow, hovered or not, in any state (the last `:is` weighs as its heaviest selector, and `*` matches all) */
-.card.snoozed:is(.dep-self, .dep-before, .dep-after):is(:hover, .s-waiting, .s-idea.your-turn, *) { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
+.card.snoozed:is(.dep-self, .dep-before, .dep-after, .dep-loop):is(:hover, .s-waiting, .s-idea.your-turn, *) { box-shadow: 0 0 0 2.5px var(--waiting), var(--lift); }
 .card .dep-tag { position: absolute; left: 14px; top: -10px; padding: 1px 8px; border-radius: 2px; font-size: 11px; font-weight: 600;
   background: var(--waiting); color: var(--on-ink); white-space: nowrap; pointer-events: none; }
 
@@ -2341,6 +2345,13 @@ button.link:hover { text-decoration: underline; }
   transition: color .12s, border-color .12s; }
 .manual-edge button svg { width: 54%; height: 54%; }
 .manual-edge button:hover, .manual-edge button:focus-visible { color: var(--ink); border-color: var(--muted); }
+/* a loop of waits: a red button on one of its lines, the same size on screen at every zoom (scaled back from the zoom) */
+.loop-fix { overflow: visible; pointer-events: auto; }
+.loop-fix button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; width: 132px; height: 26px; padding: 0 10px;
+  transform-origin: 0 0; border: 1px solid var(--error); border-radius: 13px; background: var(--card); color: var(--error);
+  font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; transition: background .12s, color .12s; }
+.loop-fix button svg { width: 14px; height: 14px; flex: none; }
+.loop-fix button:hover, .loop-fix button:focus-visible { background: var(--error); color: var(--card); }
 .connection-handles { position: absolute; z-index: 4; pointer-events: none; }
 .connection-handles.target { pointer-events: auto; outline: 3px solid var(--waiting); outline-offset: 3px; border-radius: 4px; }
 .connection-dot { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid var(--c); border-radius: 50%; background: var(--card); opacity: 0; pointer-events: none; cursor: pointer; transform: translate(-50%, -50%); }

@@ -70,7 +70,7 @@ interface CardProps {
   /** Takes a finished card or a parked or dropped idea off the canvas into the archive. */
   onArchive: (item: Item) => void;
   /** While the pointer is on a card with waits: this one is it, comes before it, or waits for it. */
-  dep?: 'self' | 'before' | 'after';
+  dep?: 'self' | 'before' | 'after' | 'loop';
   /** The pointer came onto the card (its id) or left it (null). */
   onHover: (id: string | null) => void;
   /** What the server is still doing with the card after the owner's click (pushing it onto main, say). */
@@ -260,7 +260,7 @@ export const CardView = memo(
         onPointerEnter={() => onHover(item.id)}
         onPointerLeave={() => onHover(null)}
       >
-        {(dep === 'before' || dep === 'after') && <div className="dep-tag">{t.deps[dep]}</div>}
+        {(dep === 'before' || dep === 'after' || dep === 'loop') && <div className="dep-tag">{t.deps[dep]}</div>}
         <CardFace item={item} where={showRepo ? item.repo : undefined} underway={underway} chip={shape === 'chip'} />
         {!underway && <CardTurn item={item} />}
         {startable && (
@@ -979,24 +979,33 @@ export const ProjectView = memo(
  * A curve between the facing sides of two cards: left and right when they stand more beside each
  * other than above each other, else bottom and top. It leaves and enters the cards square to their
  * sides. With a `head`, it stops that far short of `b`, where the base of an arrow head drawn along
- * its last direction goes, so the head ends on `b`'s side however sharply the curve bends.
+ * its last direction goes, so the head ends on `b`'s side however sharply the curve bends. `shift`
+ * moves its ends along their sides from the middle (`linkShifts`).
  */
-export function linkPath(a: Bounds, b: Bounds, head = 0): string {
-  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+export function linkPath(a: Bounds, b: Bounds, head = 0, shift?: Shift): string {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head, shift);
   return `M${p0.x},${p0.y} C${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
 }
 
 type Pt = { x: number; y: number };
+/** How far a link's ends sit from the middle of their sides, along them. */
+export type Shift = { from: number; to: number };
 
-/** The cubic Bézier curve `linkPath` draws: its start, its two control points and its end. */
-function linkCurve(a: Bounds, b: Bounds, head: number): [Pt, Pt, Pt, Pt] {
+/** Whether the link from `a` to `b` runs between their left and right sides, and which way along that axis. */
+function facing(a: Bounds, b: Bounds): { across: boolean; dir: number } {
   const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w));
   const gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
   const across = gapX > gapY;
-  // The direction of travel along the axis the cards face each other on, and the ends on it.
   const dir = across ? Math.sign(b.x + b.w / 2 - (a.x + a.w / 2)) || 1 : Math.sign(b.y + b.h / 2 - (a.y + a.h / 2)) || 1;
-  const [x1, y1] = across ? [dir > 0 ? a.x + a.w : a.x, a.y + a.h / 2] : [a.x + a.w / 2, dir > 0 ? a.y + a.h : a.y];
-  const [x2, y2] = across ? [(dir > 0 ? b.x : b.x + b.w) - dir * head, b.y + b.h / 2] : [b.x + b.w / 2, (dir > 0 ? b.y : b.y + b.h) - dir * head];
+  return { across, dir };
+}
+
+/** The cubic Bézier curve `linkPath` draws: its start, its two control points and its end. */
+function linkCurve(a: Bounds, b: Bounds, head: number, shift: Shift = { from: 0, to: 0 }): [Pt, Pt, Pt, Pt] {
+  // The direction of travel along the axis the cards face each other on, and the ends on it.
+  const { across, dir } = facing(a, b);
+  const [x1, y1] = across ? [dir > 0 ? a.x + a.w : a.x, a.y + a.h / 2 + shift.from] : [a.x + a.w / 2 + shift.from, dir > 0 ? a.y + a.h : a.y];
+  const [x2, y2] = across ? [(dir > 0 ? b.x : b.x + b.w) - dir * head, b.y + b.h / 2 + shift.to] : [b.x + b.w / 2 + shift.to, (dir > 0 ? b.y : b.y + b.h) - dir * head];
   // How far the control points reach out from the cards: half the way, but with a head at least its
   // length (less where the curve hardly goes sideways), so that a short link still runs square into
   // the head instead of meeting it from the side.
@@ -1007,12 +1016,52 @@ function linkCurve(a: Bounds, b: Bounds, head: number): [Pt, Pt, Pt, Pt] {
   return [{ x: x1, y: y1 }, c1, c2, { x: x2, y: y2 }];
 }
 
+/** The widest gap between the ends of two links on one side of a card, in canvas pixels. */
+const PORT_GAP = 26;
+
+/**
+ * Where the ends of `links` sit on their cards' sides, by `from to`: several links meeting one side
+ * spread along it instead of all ending in its middle, ordered by where the card at their other end
+ * stands, so that they do not cross on the way, and an arrow coming in stays apart from a line going out.
+ */
+export function linkShifts(links: [from: string, to: string][], at: (id: string) => Bounds | undefined): Map<string, Shift> {
+  const sides = new Map<string, { key: string; end: 'from' | 'to'; other: number; tie: number }[]>();
+  for (const [from, to] of links) {
+    const a = at(from);
+    const b = at(to);
+    if (!a || !b) continue;
+    const { across, dir } = facing(a, b);
+    const key = `${from} ${to}`;
+    // the other card's middle along the side, the side's own direction as a tie-break for lines to one card
+    const mid = (c: Bounds) => (across ? c.y + c.h / 2 : c.x + c.w / 2);
+    const add = (id: string, side: number, end: 'from' | 'to', other: Bounds, tie: number) => {
+      const k = `${id} ${across ? 'x' : 'y'}${side}`;
+      sides.set(k, [...(sides.get(k) ?? []), { key, end, other: mid(other), tie }]);
+    };
+    add(from, dir, 'from', b, 1);
+    add(to, -dir, 'to', a, 0);
+  }
+  const shifts = new Map<string, Shift>();
+  for (const [k, ends] of sides) {
+    const card = at(k.slice(0, k.lastIndexOf(' ')))!;
+    const length = k.slice(k.lastIndexOf(' ') + 1).startsWith('x') ? card.h : card.w;
+    const gap = Math.min(PORT_GAP, (length * 0.7) / ends.length);
+    ends.sort((p, q) => p.other - q.other || p.tie - q.tie);
+    ends.forEach((e, i) => {
+      const s = shifts.get(e.key) ?? { from: 0, to: 0 };
+      s[e.end] = (i - (ends.length - 1) / 2) * gap;
+      shifts.set(e.key, s);
+    });
+  }
+  return shifts;
+}
+
 /**
  * Where on the link from `a` to `b` its button goes: the middle, or the point nearest the middle that
  * keeps `room` clear of every card in `cards`, so that a card the link passes under never covers it.
  */
-export function linkSpot(a: Bounds, b: Bounds, head: number, cards: Bounds[], room: number): Pt {
-  const [p0, p1, p2, p3] = linkCurve(a, b, head);
+export function linkSpot(a: Bounds, b: Bounds, head: number, cards: Bounds[], room: number, shift?: Shift): Pt {
+  const [p0, p1, p2, p3] = linkCurve(a, b, head, shift);
   const at = (t: number) => {
     const u = 1 - t;
     const [k0, k1, k2, k3] = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
@@ -1059,16 +1108,23 @@ export const depWidth = (s: number) => Math.max(2, 1.6 / s);
 /** The length of the arrow head at the end of a wait's line, in canvas pixels: six widths of its line. */
 export const depHead = (s: number) => 6 * depWidth(s);
 
+/** How strongly a wait shows under the pointer, by its steps from the card there: its own waits fully, those further along fainter. */
+export const stepOpacity = (step: number) => [1, 1, 0.6, 0.42][step] ?? 0.3;
+
 /**
  * Every direct wait between cards on the canvas as a faint line, from the card waited for to the
- * card waiting; while the pointer is on a card, the waits around it (`lit`) in the waiting colour
- * instead. A workstream of a collapsed project stands for its project (`standsFor`). `children` go on
- * top: what the pointer can reach on a line.
+ * card waiting, fading in towards its arrow head, so that the end it points to shows even where lines
+ * meet; while the pointer is on a card, the waits around it (`lit`) in the waiting colour instead,
+ * fainter the more `steps` they lie from it. Waits that close a loop (`loops`) are red at all times.
+ * A workstream of a collapsed project stands for its project (`standsFor`). `children` go on top:
+ * what the pointer can reach on a line, placed with the shift of the line's ends.
  */
 export function DepLinks({
   placed,
   waits,
   lit,
+  steps,
+  loops = [],
   standsFor,
   s,
   children,
@@ -1076,38 +1132,62 @@ export function DepLinks({
   placed: { item: Item; b: Bounds }[];
   waits: [string, string][];
   lit: [string, string][];
+  steps?: Map<string, number>;
+  loops?: [string, string][];
   standsFor: (id: string) => string;
   s: number;
-  children?: ReactNode;
+  children?: (shift: (from: string, to: string) => Shift | undefined) => ReactNode;
 }) {
   const byId = new Map(placed.map((p) => [p.item.id, p.b]));
-  // each wait once between the cards that show it, none from a project to its own workstream
-  const shown = (edges: [string, string][]) =>
-    new Map(
-      edges.flatMap(([from, to]): [string, [string, string]][] => {
-        const e: [string, string] = [standsFor(from), standsFor(to)];
-        return e[0] !== e[1] && byId.has(e[0]) && byId.has(e[1]) ? [[e.join(' '), e]] : [];
-      }),
-    );
+  // each wait once between the cards that show it, none from a project to its own workstream; the
+  // fewest steps of the waits it shows
+  const shown = (edges: [string, string][]) => {
+    const out = new Map<string, { e: [string, string]; step: number }>();
+    for (const [from, to] of edges) {
+      const e: [string, string] = [standsFor(from), standsFor(to)];
+      if (e[0] === e[1] || !byId.has(e[0]) || !byId.has(e[1])) continue;
+      const k = e.join(' ');
+      const step = steps?.get(`${from} ${to}`) ?? 1;
+      out.set(k, { e, step: Math.min(step, out.get(k)?.step ?? Infinity) });
+    }
+    return out;
+  };
   const hot = shown(lit);
-  const faint = [...shown(waits)].filter(([k]) => !hot.has(k));
-  const path = (cls: string) => ([k, [from, to]]: [string, [string, string]]) => (
-    <path key={`${cls} ${k}`} className={cls} d={linkPath(byId.get(from)!, byId.get(to)!, depHead(s))} strokeWidth={depWidth(s)} markerEnd={`url(#${cls}-arrow)`} />
-  );
+  const red = shown(loops);
+  const all = shown(waits);
+  const shifts = linkShifts([...all.values()].map((x) => x.e), (id) => byId.get(id));
+  const head = depHead(s);
+  const lines = [...all].map(([k, { e }], i) => {
+    const cls = red.has(k) ? 'loop' : hot.has(k) ? 'lit' : 'faint';
+    const [a, b] = [byId.get(e[0])!, byId.get(e[1])!];
+    const shift = shifts.get(k);
+    const [p0, , , p3] = linkCurve(a, b, head, shift);
+    return { k, cls, i, a, b, shift, p0, p3, opacity: cls === 'lit' ? stepOpacity(hot.get(k)!.step) : 1 };
+  });
+  // the loops, then those under the pointer, over the faint ones
+  const order = { faint: 0, lit: 1, loop: 2 } as const;
+  lines.sort((x, y) => order[x.cls as keyof typeof order] - order[y.cls as keyof typeof order]);
   return (
     <svg id="deps" width="1" height="1">
       <defs>
         {/* The line stops at the head's base (refX 0, a hair inside so no seam shows) and the head points
             on to the card; measured in the line's width, as `depHead` is. */}
-        {['lit', 'faint'].map((cls) => (
+        {['lit', 'faint', 'loop'].map((cls) => (
           <marker key={cls} id={`${cls}-arrow`} className={cls} viewBox="0 0 9 8" refX="0.3" refY="4" markerUnits="strokeWidth" markerWidth={6} markerHeight={(6 * 8) / 9} orient="auto">
             <path d="M0,0 L9,4 L0,8 z" />
           </marker>
         ))}
+        {lines.map(({ k, cls, i, p0, p3 }) => (
+          <linearGradient key={k} id={`dep-fade-${i}`} className={cls} gradientUnits="userSpaceOnUse" x1={p0.x} y1={p0.y} x2={p3.x} y2={p3.y}>
+            <stop offset="0" stopOpacity={0.3} />
+            <stop offset="1" />
+          </linearGradient>
+        ))}
       </defs>
-      {faint.map(path('faint'))}
-      {[...hot].map(path('lit'))}
-      {children}
+      {lines.map(({ k, cls, i, a, b, shift, opacity }) => (
+        <path key={`${cls} ${k}`} className={cls} d={linkPath(a, b, head, shift)} strokeWidth={depWidth(s)} markerEnd={`url(#${cls}-arrow)`} style={{ stroke: `url(#dep-fade-${i})`, ...(opacity < 1 && { opacity }) }} />
+      ))}
+      {children?.((from, to) => shifts.get(`${standsFor(from)} ${standsFor(to)}`))}
     </svg>
   );
 }

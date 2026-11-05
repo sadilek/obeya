@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { depsOf, nearestHandle, waitsAmong } from './deps';
+import { depsOf, loopsAmong, nearestHandle, waitKinds, waitsAmong } from './deps';
 
 const card = (id: string, ...behind: string[]) =>
   ({ id, kind: 'task', state: behind.length ? 'planned' : 'working', title: id, body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...(behind.length && { queue: { behind, reason: '' } }) }) as Item;
@@ -82,4 +82,30 @@ test('the dot nearest the pointer shows, only within reach', () => {
   // in the middle of a card, and beside an edge but far from its middle, no dot
   expect(nearestHandle(cards, { x: 100, y: 50 }, 16)).toBeNull();
   expect(nearestHandle(cards, { x: 20, y: 100 }, 16)).toBeNull();
+});
+
+test('each wait under the pointer counts its steps from the hovered card, the fewest there are', () => {
+  const d = depsOf('A', items)!;
+  // B and D wait for A directly; C for B, and D also for B, one step further
+  expect(d.steps.get('A B')).toBe(1);
+  expect(d.steps.get('A D')).toBe(1);
+  expect(d.steps.get('B C')).toBe(2);
+  expect(d.steps.get('B D')).toBe(2);
+  expect(depsOf('C', items)!.steps.get('A B')).toBe(2);
+});
+
+test('cards waiting for each other form a loop; the waits into and out of it are not part of it', () => {
+  // X ← Y ← Z ← X, Z ← Q, R ← X
+  const all = [card('X', 'Z'), card('Y', 'X'), card('Z', 'Y', 'Q'), card('Q'), card('R', 'X')];
+  const loops = loopsAmong(waitsAmong(all));
+  expect(loops.length).toBe(1);
+  expect([...loops[0]!.cards].sort()).toEqual(['X', 'Y', 'Z']);
+  expect(loops[0]!.edges.map((e) => e.join(' ')).sort()).toEqual(['X Y', 'Y Z', 'Z X']);
+  expect(loopsAmong(waitsAmong(items))).toEqual([]);
+});
+
+test('a wait names what holds it', () => {
+  const both = { ...card('B', 'A'), manualDependsOn: ['C'], queue: { behind: ['A', 'C'], reason: '', manualWait: ['C'] } } as Item;
+  expect(waitKinds(both, 'A')).toEqual(['queue']);
+  expect(waitKinds(both, 'C')).toEqual(['arrow']);
 });

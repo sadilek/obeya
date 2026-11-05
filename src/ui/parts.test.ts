@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Item } from '../core/types';
-import { CardFace, Links, linkPath, linkSpot } from './parts';
+import { CardFace, Links, linkPath, linkShifts, linkSpot } from './parts';
 
 const ws: Item = { id: 'w', number: 7, kind: 'task', state: 'live', title: 'Cart model', body: '', x: 0, y: 0, parent: 'p', source: 'plan', repo: 'shop', label: 'W1' };
 const face = (item: Item, chip?: boolean) => renderToStaticMarkup(createElement(CardFace, { item, chip }));
@@ -59,4 +59,26 @@ test("an arrow's button sits in its middle, or beside a card the arrow passes un
   const c = { x: 340, y: 170, w: 300, h: 136 };
   const p = linkSpot(a, b, 15, [a, b, c], 14);
   expect(p.x < c.x - 14 || p.x > c.x + c.w + 14 || p.y < c.y - 14 || p.y > c.y + c.h + 14).toBe(true);
+});
+
+test('links meeting one side of a card spread along it, in the order of the cards at their other ends', () => {
+  const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {
+    hub: { x: 0, y: 200, w: 300, h: 136 },
+    up: { x: 500, y: 0, w: 300, h: 136 },
+    level: { x: 500, y: 200, w: 300, h: 136 },
+    down: { x: 500, y: 400, w: 300, h: 136 },
+  };
+  // one line out of the hub to each card on its right, and one back in from the middle one
+  const shifts = linkShifts([['hub', 'down'], ['hub', 'up'], ['hub', 'level'], ['level', 'hub']], (id) => boxes[id]);
+  const out = (to: string) => shifts.get(`hub ${to}`)!.from;
+  expect(out('up')).toBeLessThan(out('level'));
+  expect(out('level')).toBeLessThan(out('down'));
+  // the arrow coming back in ends apart from the line going out to the same card
+  expect(shifts.get('level hub')!.to).not.toBe(out('level'));
+  // all within the side, the spread centred on its middle
+  const ends = [out('up'), out('level'), out('down'), shifts.get('level hub')!.to].sort((a, b) => a - b);
+  expect(ends[0]! + ends[3]!).toBeCloseTo(0);
+  expect(Math.max(...ends.map(Math.abs))).toBeLessThan(136 / 2);
+  // a side with a single link keeps it in the middle
+  expect(shifts.get('hub up')!.to).toBe(0);
 });

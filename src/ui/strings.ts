@@ -590,11 +590,21 @@ const de = {
     removed: 'Abhängigkeit entfernt.',
     before: 'kommt zuerst',
     after: 'wartet darauf',
+    /** A card that both waits for the one under the pointer and is waited for by it. */
+    loop: 'wartet im Kreis',
     /** While the owner draws their first arrow: what it will do. */
     pick: (from: string) => `Klick auf die Karte, die warten soll: Sie beginnt erst, wenn „${from}“ erledigt ist. Esc bricht ab.`,
     waits: (from: string, to: string) => `„${to}“ beginnt erst, wenn „${from}“ erledigt ist.`,
     /** The arrow refused because the two cards would wait for each other. */
     cycle: (from: string, to: string) => `Kein Pfeil: „${from}“ wartet schon auf „${to}“, direkt oder über andere Karten. Die beiden würden aufeinander warten.`,
+    /** The button on a loop of waits, and its tooltip. */
+    loopFix: 'Schleife auflösen',
+    loopTitle: (cards: string[]) => `${listOf(cards.map((c) => `„${c}“`), 'und')} warten aufeinander, so kann keine davon beginnen. Obeya ordnet ihre Abhängigkeiten neu.`,
+    /** What Obeya gets from that button: the loop, and each wait in it with what holds it. */
+    loopWait: (waiting: string, on: string, kinds: ('queue' | 'snooze' | 'arrow' | 'plan')[]) =>
+      `„${waiting}“ wartet auf „${on}“${kinds.length ? ` (${kinds.map((k) => ({ queue: 'in der Warteschlange dahinter', snooze: 'schläft, bis sie so weit ist', arrow: 'ein Pfeil, den ich gezogen habe', plan: 'baut laut Plan-Doc darauf auf' })[k]).join(', ')})` : ''}`,
+    loopAsk: (cards: string[], waits: string[]) =>
+      `${listOf(cards.map((c) => `„${c}“`), 'und')} warten im Kreis aufeinander, so kann keine davon beginnen: ${waits.join('; ')}. Löse die Schleife auf: Ordne ihre Abhängigkeiten so, dass sie nicht mehr aufeinander warten, in der Reihenfolge, die am meisten Sinn ergibt.`,
   },
   /** A card whose repository does not run on the canvas (`Item.repoDown`): on the card, and in its panel. */
   repoDown: {
@@ -2692,9 +2702,16 @@ const en: Strings = {
     removed: 'Dependency removed.',
     before: 'comes first',
     after: 'waits for it',
+    loop: 'waits in a loop',
     pick: (from: string) => `Click the card that is to wait: it starts only once “${from}” is done. Esc cancels.`,
     waits: (from: string, to: string) => `“${to}” starts only once “${from}” is done.`,
     cycle: (from: string, to: string) => `No arrow: “${from}” already waits for “${to}”, directly or through other cards. The two would wait for each other.`,
+    loopFix: 'Resolve loop',
+    loopTitle: (cards: string[]) => `${listOf(cards.map((c) => `“${c}”`), 'and')} wait for each other, so none of them can start. Obeya reorders their dependencies.`,
+    loopWait: (waiting: string, on: string, kinds: ('queue' | 'snooze' | 'arrow' | 'plan')[]) =>
+      `“${waiting}” waits for “${on}”${kinds.length ? ` (${kinds.map((k) => ({ queue: 'queued behind it', snooze: 'snoozed until it gets there', arrow: 'an arrow I drew', plan: 'builds on it by the plan doc' })[k]).join(', ')})` : ''}`,
+    loopAsk: (cards: string[], waits: string[]) =>
+      `${listOf(cards.map((c) => `“${c}”`), 'and')} wait for each other in a loop, so none of them can start: ${waits.join('; ')}. Resolve the loop: reorder their dependencies so they no longer wait for each other, in the order that makes the most sense.`,
   },
   repoDown: {
     short: 'Repository not running',

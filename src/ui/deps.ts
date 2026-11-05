@@ -15,6 +15,8 @@ export interface Deps {
   after: Set<string>;
   /** Each wait on the way, from the card waited for to the card waiting. */
   edges: [from: string, to: string][];
+  /** How many steps from the hovered card each of `edges` lies, by `from to`: 1 for its own waits. */
+  steps: Map<string, number>;
 }
 
 const queued = (i: Item) => (i.queue && 'behind' in i.queue ? i.queue.behind : []);
@@ -42,16 +44,22 @@ export function depsOf(id: string, items: Item[]): Deps | undefined {
   const waiters = new Map<string, string[]>();
   for (const i of items) for (const b of behind(i)) waiters.set(b, [...(waiters.get(b) ?? []), i.id]);
   const edges = new Map<string, [string, string]>();
+  const steps = new Map<string, number>();
+  // breadth first, so that each card and wait counts the fewest steps from the hovered card
   const walk = (next: (x: string) => string[], edge: (x: string, y: string) => [string, string]) => {
     const seen = new Set<string>();
+    const depth = new Map([[id, 0]]);
     const todo = [id];
     while (todo.length) {
-      const x = todo.pop()!;
+      const x = todo.shift()!;
       for (const y of next(x)) {
         const e = edge(x, y);
-        edges.set(e.join(' '), e);
+        const k = e.join(' ');
+        edges.set(k, e);
+        steps.set(k, Math.min(steps.get(k) ?? Infinity, depth.get(x)! + 1));
         if (y === id || seen.has(y)) continue;
         seen.add(y);
+        depth.set(y, depth.get(x)! + 1);
         todo.push(y);
       }
     }
@@ -60,7 +68,59 @@ export function depsOf(id: string, items: Item[]): Deps | undefined {
   const before = walk((x) => behind(byId.get(x)!), (x, y) => [y, x]);
   const after = walk((x) => waiters.get(x) ?? [], (x, y) => [x, y]);
   if (!before.size && !after.size) return undefined;
-  return { before, after, edges: [...edges.values()] };
+  return { before, after, edges: [...edges.values()], steps };
+}
+
+/**
+ * The loops among `waits`: cards that wait for each other, directly or through others, so that none
+ * of them can ever start. Each loop with its cards and the waits that close it.
+ */
+export function loopsAmong(waits: [from: string, to: string][]): { cards: string[]; edges: [from: string, to: string][] }[] {
+  const next = new Map<string, string[]>();
+  for (const [a, b] of waits) next.set(a, [...(next.get(a) ?? []), b]);
+  // Tarjan's strongly connected components
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const stack: string[] = [];
+  const on = new Set<string>();
+  const parts: string[][] = [];
+  const visit = (v: string) => {
+    index.set(v, index.size);
+    low.set(v, index.get(v)!);
+    stack.push(v);
+    on.add(v);
+    for (const w of next.get(v) ?? []) {
+      if (!index.has(w)) {
+        visit(w);
+        low.set(v, Math.min(low.get(v)!, low.get(w)!));
+      } else if (on.has(w)) low.set(v, Math.min(low.get(v)!, index.get(w)!));
+    }
+    if (low.get(v) === index.get(v)) {
+      const part: string[] = [];
+      let w: string;
+      do {
+        w = stack.pop()!;
+        on.delete(w);
+        part.push(w);
+      } while (w !== v);
+      if (part.length > 1) parts.push(part.reverse());
+    }
+  };
+  for (const v of next.keys()) if (!index.has(v)) visit(v);
+  return parts.map((cards) => {
+    const of = new Set(cards);
+    return { cards, edges: waits.filter(([a, b]) => of.has(a) && of.has(b)) };
+  });
+}
+
+/** Why `waiting` waits for `on`: the kinds of wait between the two, as `waitsFor` counts them. */
+export function waitKinds(waiting: Item, on: string): ('queue' | 'snooze' | 'arrow' | 'plan')[] {
+  return [
+    ...(queued(waiting).includes(on) && !(waiting.queue && 'behind' in waiting.queue && waiting.queue.manualWait?.includes(on)) ? (['queue'] as const) : []),
+    ...(snoozedOn(waiting).includes(on) ? (['snooze'] as const) : []),
+    ...((waiting.manualDependsOn ?? []).includes(on) || (waiting.queue && 'behind' in waiting.queue && waiting.queue.manualWait?.includes(on)) ? (['arrow'] as const) : []),
+    ...((waiting.buildsOn ?? []).includes(on) ? (['plan'] as const) : []),
+  ];
 }
 
 // ---------------------------------------------------------------- the dots an owner draws an arrow from
