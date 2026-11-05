@@ -155,7 +155,8 @@ add an entry where a viewer sees it and to take the new hash. A change that show
 tags (the chips under the title) marks no page: none published before it had tags, and those get it
 with their tags (see Tags). A new site title shows with the next
 publish without marking pages. A page whose demo files are gone (demos get deleted to free space) is
-neither offered nor counted.
+neither offered nor counted; the Koordinator's count follows within a minute of the files going, as
+Obeya looks at them again (see Running Obeya).
 
 Many at once go from the Koordinator's sheet: while pages are outdated, an entry says how many
 ("N shared demos are outdated", archived cards' included), lists the changes with their days and

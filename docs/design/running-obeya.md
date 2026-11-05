@@ -582,6 +582,22 @@ workers are busy.
   cards (what other cards show depends on it: an idea's prototypes, the waits, a card's place in a
   queue); reacting to each change at once and only making the view cheaper (the reactions still
   build it once per change).
+- **The notice of outdated pages is made anew only when what it is made of changes, and never
+  waits for the disk** (2026-11-05): it went through every shared card of the canvas, archived ones
+  included, with every change, and for each outdated page looked whether its demo's files were still
+  on disk; once a new theme left nearly every page outdated, that was hundreds of looks at the disk
+  per change, and the server stood still for up to seven seconds at a time. Now the database keeps a
+  mark per canvas that moves whenever a shared card changes in what the notice reads (its page,
+  title, repository, demos), one stops being shared or goes, and the notice is made again only when
+  that mark, the run sharing pages again, what the owner hid, or a theme or vocabulary of tags of a
+  repository with shared pages differs. The demos' files are looked at in the background: those the
+  notice meets for the first time count as there until that look a moment later, and all of them
+  are looked at again once a minute (demos are deleted by hand, outside Obeya), so the count follows
+  a deletion within a minute. What a card on the canvas offers, and each page a run shares again,
+  still looks at the disk directly: a few cards, not hundreds. Rejected: watching the demo directories for changes (hundreds of watches, or a
+  recursive one over folders holding thousands of recordings, and not the same on every system);
+  a mark made of the shared cards' times of last write (a status line on a shared card at work
+  would move it, and two writes within a millisecond would not).
 - **A page's freezes are found by a worker's heartbeat, not by its own timer running late**
   (2026-10-30): the app's webview on macOS runs a page's timers about once a second when its window
   is not in front, with the page still in view, and logged a stall of about a second every second

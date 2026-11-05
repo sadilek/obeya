@@ -15,7 +15,7 @@ import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
 import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { holdsNotes } from '../core/queue';
-import { BadRequest, Board, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
+import { BadRequest, Board, DEMO_LOOK_MS, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
 import { type Command, Commander } from './commands';
 import type { Config } from './config';
@@ -441,6 +441,9 @@ export class CanvasRuntime {
     this.wakeDue();
     this.waker = setInterval(() => this.wakeDue(), WAKE_EVERY_MS);
     this.waker.unref?.();
+    // the owner deletes demos outside Obeya: the notice of outdated pages offers none whose files are gone
+    this.demoLook = setInterval(() => void board.lookAtDemos(), DEMO_LOOK_MS);
+    this.demoLook.unref?.();
     // a card another waits on may pass through the state it waits for between two ticks (asked, and answered at once)
     const unwake = board.onChange(() => {
       if (this.wakeSoon) return;
@@ -459,6 +462,8 @@ export class CanvasRuntime {
 
   /** Looks for snoozed cards whose time has come. */
   private waker: ReturnType<typeof setInterval>;
+  /** Looks whether the demos of outdated pages are still on disk (`Board.lookAtDemos`). */
+  private demoLook: ReturnType<typeof setInterval>;
   /** A look for snoozed cards to wake after the board changed, and the subscription to its changes. */
   private wakeSoon: ReturnType<typeof setTimeout> | undefined;
   private unwatch: () => void;
@@ -2655,6 +2660,7 @@ export class CanvasRuntime {
   shutdown() {
     this.shutDown = true;
     clearInterval(this.waker);
+    clearInterval(this.demoLook);
     clearTimeout(this.wakeSoon);
     this.unwatch();
     this.pending?.stop();

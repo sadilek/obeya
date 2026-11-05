@@ -506,6 +506,22 @@ export const MIGRATIONS = [
   'ALTER TABLE cards ADD COLUMN agent TEXT;',
   // the effort a card's agent session runs with
   'ALTER TABLE cards ADD COLUMN effort TEXT;',
+  // a mark per canvas that moves whenever a shared card changes in what its notice of outdated pages
+  // is made of (`Store.shareRev`): the canvas makes that notice anew only then, not with every change
+  `CREATE TABLE share_revs (
+    canvas_id TEXT PRIMARY KEY,
+    rev INTEGER NOT NULL
+  );
+  CREATE TRIGGER share_rev AFTER UPDATE OF share, title, repo, plan_ref, demo, demos, deleted_at, canvas_id ON cards
+    WHEN OLD.share IS NOT NULL OR NEW.share IS NOT NULL
+  BEGIN
+    INSERT INTO share_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
+    INSERT INTO share_revs (canvas_id, rev) VALUES (NEW.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
+  END;
+  CREATE TRIGGER share_rev_gone AFTER DELETE ON cards WHEN OLD.share IS NOT NULL
+  BEGIN
+    INSERT INTO share_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
+  END;`,
 ];
 
 const EVENT_COLUMNS = 'id, card_id AS cardId, at, kind, author, text, code, images, mocks, reply_to AS replyTo, spot, answer, picks, unread, read_after AS readAfter, wish, reply, forwarded, token';
@@ -631,6 +647,14 @@ export class Store {
   /** The canvas's cards, archived ones too, that were ever shared or are about to be. */
   shared(canvasId: string): CardRow[] {
     return this.db.query('SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND share IS NOT NULL').all({ c: canvasId }) as CardRow[];
+  }
+
+  /**
+   * A mark of the canvas's shared cards that moves whenever one changes in what their pages' notice
+   * is made of (their page, title, repository, demos), one stops being shared or goes.
+   */
+  shareRev(canvasId: string): number {
+    return (this.db.query('SELECT rev FROM share_revs WHERE canvas_id = $c').get({ c: canvasId }) as { rev: number } | null)?.rev ?? 0;
   }
 
   /** The canvas's archive, the most recently archived first; `first`: only that many. */

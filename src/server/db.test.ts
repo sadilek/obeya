@@ -63,6 +63,9 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.setSetting('c', 'work_retro_since:app', '2026-10-01T00:00:00Z');
     // the schema as released: without the columns and indexes later migrations add
     for (const index of ['cards_open', 'cards_plan_docs', 'cards_prototypes', 'cards_waiting', 'cards_shared']) s.db.run(`DROP INDEX ${index}`);
+    s.db.run('DROP TRIGGER share_rev');
+    s.db.run('DROP TRIGGER share_rev_gone');
+    s.db.run('DROP TABLE share_revs');
     s.db.run('ALTER TABLE talk DROP COLUMN reply_to');
     s.db.run('ALTER TABLE cards DROP COLUMN app');
     s.db.run('DROP TABLE devices');
@@ -156,7 +159,10 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('ALTER TABLE cards DROP COLUMN agent');
     s.db.run('ALTER TABLE cards DROP COLUMN effort');
     s.db.run('ALTER TABLE devices DROP COLUMN app');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 10}`);
+    s.db.run('DROP TRIGGER share_rev');
+    s.db.run('DROP TRIGGER share_rev_gone');
+    s.db.run('DROP TABLE share_revs');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 11}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -194,7 +200,10 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('ALTER TABLE cards DROP COLUMN agent');
     s.db.run('ALTER TABLE cards DROP COLUMN effort');
     s.db.run('ALTER TABLE devices DROP COLUMN app');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 8}`);
+    s.db.run('DROP TRIGGER share_rev');
+    s.db.run('DROP TRIGGER share_rev_gone');
+    s.db.run('DROP TABLE share_revs');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 9}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);

@@ -8,6 +8,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { arrangeWorkstreams, type Bounds, boundsOf, CARD_SIZE, freeSpotNear, GAP, type Place, PROJECT_HEAD, placeProjects, planDirNoteBox, placeWorkstreams, projectSize, sizeOf, unionBounds } from '../core/layout';
 import { cardNumbersIn, cardTag } from '../core/card-number';
@@ -267,8 +268,14 @@ export function pageTagsOf(r: CardRow): PageTags {
 /** The demo versions on a stored page, in order of handover. */
 export const sharedDemos = (s: StoredShare): SharedDemo[] => s.demos ?? (s.dir && s.shown ? [{ dir: s.dir, shown: s.shown }] : []);
 
-/** The file that shows a demo is there: its video, or its artifact's page. */
-export const demoThere = (d: { dir: string; kind: DemoKind }) => existsSync(join(d.dir, d.kind === 'html' ? 'index.html' : 'demo.mp4'));
+/** The file that shows a demo: its video, or its artifact's page. */
+const demoFile = (d: { dir: string; kind: DemoKind }) => join(d.dir, d.kind === 'html' ? 'index.html' : 'demo.mp4');
+
+/** The file that shows a demo is there. */
+export const demoThere = (d: { dir: string; kind: DemoKind }) => existsSync(demoFile(d));
+
+/** How often Obeya looks again whether the demos of outdated pages are still on disk (`Board.lookAtDemos`): the owner deletes them outside it. */
+export const DEMO_LOOK_MS = 60_000;
 
 /** Sharing many outdated pages again at once (share.ts), kept so a restart goes on with it. */
 export interface StoredReshare {
@@ -338,11 +345,11 @@ function earlierDemos(r: CardRow): EarlierDemo[] {
  * the card, or the one it showed, kept with the share, and its files still on disk (demos are
  * deleted to free space; a page whose files are gone stays as it is, with nothing to offer).
  */
-export function reshareable(r: CardRow, theme?: string | null): OutdatedBy[] {
+export function reshareable(r: CardRow, theme?: string | null, there = demoThere): OutdatedBy[] {
   const s = r.share ? (JSON.parse(r.share) as StoredShare) : null;
   const missed: OutdatedBy[] = s ? [...missedBy(s).map((c) => c.id), ...(themeChanged(s, theme) ? [THEME_CHANGED as OutdatedBy] : [])] : [];
   const demos = s ? sharedDemos(s) : [];
-  if (!missed.length || !demos.length || !demos.every((d) => demoThere({ dir: d.dir, kind: d.shown.kind }))) return [];
+  if (!missed.length || !demos.length || !demos.every((d) => there({ dir: d.dir, kind: d.shown.kind }))) return [];
   return missed;
 }
 
@@ -451,6 +458,21 @@ export class Board {
   private archiveItems: Item[] | null = null;
   /** The canvas's prototypes, and those `withPrototypes` handed out so far; gone with `cache`. */
   private prototypeItems: Prototypes | null = null;
+  /**
+   * The notice of outdated pages as `reshare` made it last, with what it was made from (`noticeOf`):
+   * it is made anew only once one of those changed, not with every change of the canvas.
+   */
+  private notice: { of: string; reshare: Reshare | null; repos: string[] } | null = null;
+  /**
+   * Whether the file showing each demo of an outdated page is on disk, by its path, as Obeya last
+   * looked (`lookAtDemos`): the notice reads this instead of the disk. One not looked at yet counts
+   * as there until the look a moment later.
+   */
+  private lookedFiles = new Map<string, boolean>();
+  /** A look at the demos' files under way, and whether another is due once it is through. */
+  private looking: Promise<void> | null = null;
+  private lookAgain = false;
+  private lookDue = false;
   private eventListeners = new Set<(e: CardEvent) => void>();
   private goneListeners = new Set<(cardId: string, id: number) => void>();
   private noticeListeners = new Set<(n: Notice) => void>();
@@ -1087,13 +1109,68 @@ export class Board {
       return !!was && JSON.stringify(was) === JSON.stringify(this.themePair(r));
     };
     return shared
-      .map((r) => ({ r, missed: this.outdatedBy(r) }))
+      .map((r) => ({ r, missed: this.outdatedAsLooked(r) }))
       .filter(({ r, missed }) => missed.some((id) => (id === THEME_CHANGED ? !hidden(r) : at(id) > dismissed)));
   }
 
   /** What leaves the card's page outdated (`reshareable`), its repository's theme included. */
   outdatedBy(r: CardRow): OutdatedBy[] {
     return reshareable(r, this.themeNow(r));
+  }
+
+  /** `outdatedBy` with the demos' files as Obeya last looked at them (`lookedFiles`), without the disk. */
+  private outdatedAsLooked(r: CardRow): OutdatedBy[] {
+    return reshareable(r, this.themeNow(r), this.lookedThere);
+  }
+
+  private lookedThere = (d: { dir: string; kind: DemoKind }): boolean => {
+    const file = demoFile(d);
+    const there = this.lookedFiles.get(file);
+    if (there !== undefined) return there;
+    this.lookedFiles.set(file, true);
+    this.lookSoon();
+    return true;
+  };
+
+  /** A look at the demos' files once the code running now is through. */
+  private lookSoon() {
+    if (this.lookDue) return;
+    this.lookDue = true;
+    queueMicrotask(() => {
+      this.lookDue = false;
+      void this.lookAtDemos();
+    });
+  }
+
+  /**
+   * Looks whether the demos' files the notice of outdated pages knows of are on disk, without the
+   * server waiting for the disk: a file come or gone makes the notice anew. New ones are looked at
+   * as the notice meets them, all of them again every `DEMO_LOOK_MS` (the canvas's timer).
+   */
+  lookAtDemos(): Promise<void> {
+    if (this.looking) {
+      this.lookAgain = true;
+      return this.looking;
+    }
+    this.looking = (async () => {
+      do {
+        this.lookAgain = false;
+        const files = [...this.lookedFiles.keys()];
+        const there = await Promise.all(files.map((f) => access(f).then(() => true, () => false)));
+        let moved = false;
+        files.forEach((f, n) => {
+          if (this.lookedFiles.get(f) === there[n]) return;
+          this.lookedFiles.set(f, there[n]!);
+          moved = true;
+        });
+        if (moved) {
+          this.notice = null;
+          this.cache = null;
+          this.tell();
+        }
+      } while (this.lookAgain);
+    })().finally(() => (this.looking = null));
+    return this.looking;
   }
 
   /** The current theme of each repository (its hash, null for none), by its id; for the pages it leaves outdated. */
@@ -1144,7 +1221,7 @@ export class Board {
     this.setSetting(RESHARE_DISMISSED, pagesVersion());
     // the pages outdated by a theme now; one no longer is needs no entry
     const themes: Record<string, ThemePair> = {};
-    for (const r of this.sharedRows()) if (this.outdatedBy(r).includes(THEME_CHANGED)) themes[r.id] = this.themePair(r);
+    for (const r of this.sharedRows()) if (this.outdatedAsLooked(r).includes(THEME_CHANGED)) themes[r.id] = this.themePair(r);
     this.setSetting(RESHARE_DISMISSED_THEMES, JSON.stringify(themes));
     this.setReshareRun(null);
   }
@@ -1980,9 +2057,30 @@ export class Board {
     }));
   }
 
-  /** The outdated pages, archived cards' included, and the run sharing them again. */
+  /** The outdated pages, archived cards' included, and the run sharing them again; made anew only once what it is made of changed (`noticeOf`). */
   private reshare(): Reshare | null {
-    const rows = this.sharedRows();
+    if (this.notice?.of !== this.noticeOf(this.notice?.repos ?? [])) {
+      const rows = this.sharedRows();
+      const repos = [...new Set(rows.map((r) => repoOfRow(r, this.home)))];
+      this.notice = { reshare: this.makeReshare(rows), repos, of: this.noticeOf(repos) };
+      // what changed may have come with files come or gone
+      this.lookSoon();
+    }
+    return this.notice.reshare;
+  }
+
+  /**
+   * What the notice of outdated pages is made of, but for the demos' files (`lookAtDemos`): the
+   * shared cards (`Store.shareRev`), the run, what the owner put away, and the theme and vocabulary
+   * of tags of the repositories with shared pages (`repos`; a theme is asked for of those alone).
+   */
+  private noticeOf(repos: string[]): string {
+    const settings = [RESHARE_SETTING, RESHARE_DISMISSED, RESHARE_DISMISSED_THEMES].map((k) => this.setting(k));
+    const looks = repos.map((id) => ({ id, theme: this.themeOf?.(id), tags: this.vocabularyOf?.(id) }));
+    return JSON.stringify([this.store.shareRev(this.canvas.id), settings, looks]);
+  }
+
+  private makeReshare(rows: CardRow[]): Reshare | null {
     const run = this.reshareRun();
     const queued = new Set(run?.queue);
     const left = this.outdatedRows(rows).filter(({ r }) => !queued.has(r.id));

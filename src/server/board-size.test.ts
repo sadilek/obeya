@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test';
+import * as fs from 'node:fs';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -144,4 +145,35 @@ test('an archived card looked up on its own is the card the archive lists, with 
   expect(alone[1]!.ideaTitle).toBe('Idea 3');
   const archive = board.archived();
   expect(alone).toEqual([archive.find((i) => i.id === idea), archive.find((i) => i.id === prototype)]);
+});
+
+test('a rebuild of the canvas view reads the shared cards again only after one changed, and never looks at their demos’ files', async () => {
+  const board = canvas.board;
+  const shared = new Set(board.sharedRows().map((r) => r.id));
+  // the archived cards' pages, outdated by the newest page changes: only the notice of outdated pages looks at them
+  const files = new Set(archived.filter((id) => shared.has(id)).map((id) => join(dir, 'demos', id, 'demo.mp4')));
+  board.changed();
+  expect(board.snapshot().reshare!.outdated).toBeGreaterThan(400);
+  await board.lookAtDemos();
+  const looked = spyOn(fs, 'existsSync');
+  const read = spyOn(store, 'shared');
+  const lookedAtPages = () => looked.mock.calls.filter(([path]) => files.has(String(path))).length;
+  try {
+    // a card without a page moves on, and something else changes
+    const plain = onCanvas.find((id) => !shared.has(id))!;
+    board.work(plain, { status_line: 'Working' });
+    board.snapshot();
+    board.changed();
+    board.snapshot();
+    expect(read).not.toHaveBeenCalled();
+    expect(lookedAtPages()).toBe(0);
+    // a shared card renamed: the notice is made anew, from the files as last looked at
+    board.work(onCanvas.find((id) => shared.has(id))!, { title: 'Renamed' });
+    expect(board.snapshot().reshare!.outdated).toBeGreaterThan(400);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(lookedAtPages()).toBe(0);
+  } finally {
+    looked.mockRestore();
+    read.mockRestore();
+  }
 });
