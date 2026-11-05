@@ -20,11 +20,10 @@ export function headline(limits: UsageLimit[]): UsageLimit[] {
 /** The groups in the bar's order, top to bottom: the session, the week, then any the endpoint adds. */
 const ORDER = ['session', 'weekly'];
 
-/** The bar's rows of a plan: the headline of each group in `ORDER`, `null` where the plan has none (its row stays empty, so the week is always below). */
-export function stacked(limits: UsageLimit[]): (UsageLimit | null)[] {
-  const shown = headline(limits);
-  const known = ORDER.map((g) => shown.find((l) => l.group === g) ?? null);
-  return [...known, ...shown.filter((l) => !ORDER.includes(l.group))];
+/** The bar's rows of a plan: the headline of each group, in `ORDER`; a plan with one group gets one row, centred. */
+export function stacked(limits: UsageLimit[]): UsageLimit[] {
+  const rank = (l: UsageLimit) => (ORDER.includes(l.group) ? ORDER.indexOf(l.group) : ORDER.length);
+  return headline(limits).sort((a, b) => rank(a) - rank(b));
 }
 
 /** A limit as the list names it. */
@@ -35,8 +34,7 @@ export function limitName(l: UsageLimit): string {
 
 const percent = (n: number) => `${Math.round(n)} %`;
 
-function Meter({ limit }: { limit: UsageLimit | null }) {
-  if (!limit) return <span className="meter none" aria-hidden />;
+function Meter({ limit }: { limit: UsageLimit }) {
   return (
     <span className={`meter ${limit.severity}`} aria-hidden>
       <i style={{ width: `${Math.min(100, Math.max(0, limit.percent))}%` }} />
@@ -72,8 +70,8 @@ export function UsagePill({ usage }: { usage: Usage }) {
           <span key={p.harness} className="plan">
             {named && <span className="harness">{t.usage.short[p.harness]}</span>}
             <span className="stack">
-              {stacked(p.limits).map((l, i) => (
-                <Meter key={l?.group ?? i} limit={l} />
+              {stacked(p.limits).map((l) => (
+                <Meter key={l.group} limit={l} />
               ))}
             </span>
           </span>

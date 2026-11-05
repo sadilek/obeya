@@ -49,9 +49,9 @@ Right, before the workspace pool: the usage limits of the plans Claude Code and 
 machine are logged in with, as two thin meters one above the other, without labels or numbers: the
 session's (five hours) above, the week's below, each the most used limit of its group, coloured in
 the grade the plan's usage endpoint gives it (warning, critical; for Codex, which gives none, from
-80 % and at 100 %). A plan without one of the two leaves its place empty, so the week is always
-below. The bar shows every plan with a login, whether agents run on it or not, each beside its name
-("Claude", "Codex") when it shows two, without one when it shows one. A click lists every limit of
+80 % and at 100 %); a plan with only one of the two shows that one alone, centred. The bar shows
+every plan with a login, whether agents run on it or not, each beside its name ("Claude", "Codex")
+when it shows two, without one when it shows one. A click lists every limit of
 every plan (the session, the week for all models, the week for a single model) with its meter and
 percentage, when it starts anew, and where the numbers come from and as of when. "Usage limits in
 the bar" under Configuration → General turns them off and on (on until then). The phone view shows

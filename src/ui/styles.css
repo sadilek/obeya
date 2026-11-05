@@ -393,7 +393,6 @@ button.nav-fold:hover { color: var(--ink); background: color-mix(in srgb, var(--
 .pill.usage .harness { font-weight: 600; }
 .pill.usage .stack { display: flex; flex-direction: column; gap: 3px; }
 .pill.usage .stack .meter { width: 30px; height: 4px; }
-.pill.usage .meter.none { visibility: hidden; }
 .pill.usage .tip .usage-list + .hint { margin-bottom: 12px; }
 .pill.usage .meter { position: relative; width: 34px; height: 5px; border-radius: 3px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; flex: none; }
 .pill.usage .meter i { position: absolute; inset: 0 auto 0 0; background: var(--muted); border-radius: inherit; }
