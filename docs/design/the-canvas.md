@@ -83,14 +83,14 @@ One element at the bar's left holds the canvases and what waits for the owner on
 place of a canvas switcher, a count of this canvas's cards that need the owner, and an inbox. Its
 button names the canvas and its home branch (or its count of repositories) and counts, in the
 orange of a waiting card, everything that waits for the owner on every canvas: the cards that need
-them, and per canvas one for Obeya's answers waiting unread. A click lists under it "Needs you", the
-phone's list (see The phone view), built once for both: the same entries in the same order. Its
-head counts what waits on every canvas, as the button does; a snoozed card is neither listed nor
-counted until it comes back (see Snoozing a card). Each entry is a light row, its title and what it
-waits for since when, without the waiting card's orange frame, set apart from the next by a line,
-and the card open now is marked in it. With several canvases, each canvas in the configuration's
-order heads what waits on it, in a shaded head row that sets the canvases apart, the open one in
-full ink; a click on the row switches there, it counts what waits on that canvas, and it carries
+them, and per canvas one for Obeya's answers waiting unread; the app's icon carries the same number
+(see App). A click lists under it "Needs you", the phone's list (see The phone view), built once
+for both: the same entries in the same order. Its head counts what waits on every canvas, as the
+button does; a snoozed card is neither listed nor counted until it comes back (see Snoozing a
+card). Each entry is a light row, its title and what it waits for since when, without the waiting
+card's orange frame, set apart from the next by a line, and the card open now is marked in it.
+With several canvases, each canvas in the configuration's order heads what waits on it, in a
+shaded head row that sets the canvases apart, the open one in full ink; a click on the row switches there, it counts what waits on that canvas, and it carries
 its agents' pause (see Pausing a canvas's agents). An arrow at the head's left folds the canvas's
 entries away and back; folded, the head keeps its count, and which canvases are folded holds per
 browser, in the list and the pinned sidebar alike. With one canvas the list has no such heads. A

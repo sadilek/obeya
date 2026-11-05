@@ -51,6 +51,15 @@ settings (and the Mac's File menu). The shell itself opens them, a plain click o
 a click and hands it to the plugin over IPC, which the page may not call, so the click did nothing
 (2026-10-29). Downloads go to the Downloads folder.
 
+The app's icon carries the number on the bar's navigation button (see The navigation): the cards that
+need the owner on every canvas, and one per canvas whose Obeya answers wait unread; none at 0. A Mac
+shows it as the Dock's badge, a Linux desktop as its launcher's where it has one (the Unity launcher
+API: KDE, Ubuntu's dock; untried, 2026-11-05), Windows as an overlay on the taskbar button, a disc in
+the colour of waiting with the number, "9+" past nine (untried on Windows, 2026-11-05). The shell
+asks the server for the count (`GET /api/waiting-count?seen=<shown>`), which answers once the count
+is another than the one shown, or after 50 s with the same, so the badge follows at once also while
+the window is closed.
+
 The page gets the microphone without a webview prompt (the system asks once for the app).
 
 macOS grants the local network and the microphone to the app a process counts as part of (its
@@ -328,6 +337,12 @@ which Chrome leaves stale after a seek. Without JavaScript or the chapters file 
   2026-10-29): to the owner, quitting the app means quitting Obeya, as Ctrl-C does in the terminal.
   Rejected: leaving a server started from a terminal running, which made Cmd+Q close only the window
   while the workers went on, with nothing to say so.
+- **The shell, not the page, keeps the icon's count** (2026-11-05): on a Mac a closed window is
+  hidden, and its page may sleep then, exactly when the badge matters. The server holds the answer
+  until the count changes, so the badge moves at once without being asked every second. Rejected:
+  the page setting the badge through the webview, which would also have needed the page to be
+  allowed a call into the shell. The count is the bar's, so the icon and the canvas never disagree;
+  rejected: counting cards alone, which the bar's button does not.
 - **DMG, NSIS installer, AppImage and .deb** (2026-10-06). Rejected: Flatpak and Snap, whose
   sandboxes get in the way of git, agents and the repositories. Windows on ARM once there is a
   machine to try it on.

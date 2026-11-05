@@ -4,7 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
-import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PageTags, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn } from '../core/types';
+import { agentListens, type CanvasInfo, type CardAction, type ClientMessage, type CardPatch, type Item, type NewCard, type PageTags, type PendingRestart, type ServerMessage, type SpotInput, type TalkRef, isTalkRef, MAX_FILE_BYTES, needsYou, type Waiting, waitingIn, waitingOn } from '../core/types';
 import index from '../ui/index.html';
 import { guarded, LOCAL_HOSTS, refusal } from './access';
 import { BadRequest } from './board';
@@ -46,6 +46,8 @@ import { pageStall, type Stalls } from './stalls';
 
 type Req = Request & { params: Record<string, string> };
 
+/** How long `/api/waiting-count` holds an answer that would bring nothing new, well within the server's idle timeout. */
+const WAITING_COUNT_HOLD_MS = 50_000;
 const notFound = () => new Response('Not found', { status: 404 });
 
 /** `?replyTo=` of a recording: a card's event (`7`), or a message of the sheet (`12.answer`). */
@@ -209,6 +211,15 @@ export function serve(
   /** Each canvas's part of it as last sent, to send it again only when it changed. */
   const waitingSent: Record<string, string> = {};
   const waitingMessage = () => JSON.stringify({ type: 'waiting', waiting } satisfies ServerMessage);
+  /** How much waits for the owner on every canvas, counted as the bar's button counts it: the app shows it on its icon (app/src/badge.rs). */
+  const waitingCount = () => canvases.all().reduce((n, c) => n + (waiting[c.id] ? waitingOn(waiting[c.id]!) : 0), 0);
+  /** Who waits for that count to change (`/api/waiting-count`). */
+  const countWatchers = new Set<() => void>();
+  /** What waits for the owner changed: every page hears of it, and whoever waits for the count. */
+  const waitingChanged = () => {
+    everyone(waitingMessage());
+    for (const w of [...countWatchers]) w();
+  };
   /** Takes in what waits on `c` now; whether that changed. */
   const counted = (c: CanvasRuntime, snapshot = c.board.snapshot()) => {
     const w = waitingIn(snapshot);
@@ -264,7 +275,7 @@ export function serve(
         send({ type: 'snapshot', snapshot });
         // what the switchers show of it (its repositories, whether they run as configured) may have changed
         relist();
-        if (counted(c, snapshot)) everyone(waitingMessage());
+        if (counted(c, snapshot)) waitingChanged();
       }),
       c.board.onEvent((event) => send({ type: 'event', event })),
       c.board.onEventGone((cardId, id) => send({ type: 'eventGone', cardId, id })),
@@ -288,7 +299,7 @@ export function serve(
     listed = list;
     if (first) return;
     everyone(JSON.stringify({ type: 'canvases', canvases: now } satisfies ServerMessage));
-    everyone(waitingMessage());
+    waitingChanged();
   };
   for (const c of canvases.all()) attach(c);
   relist();
@@ -476,6 +487,26 @@ export function serve(
         DELETE: (req) => {
           const device = access.deviceOf(req);
           return device ? handle(() => push.unsubscribe(device)) : onlyDevices();
+        },
+      },
+      // what waits for the owner, counted as the bar's button counts it, for the app's icon (app/src/badge.rs);
+      // `seen`: the count shown there, and the answer waits until it is another (at most 50 s)
+      '/api/waiting-count': {
+        GET: (req) => {
+          const seen = Number(new URL(req.url).searchParams.get('seen') ?? NaN);
+          if (waitingCount() !== seen) return Response.json({ count: waitingCount() });
+          return new Promise<Response>((resolve) => {
+            const done = () => {
+              if (waitingCount() === seen && !req.signal.aborted && Date.now() < until) return;
+              countWatchers.delete(done);
+              clearTimeout(timer);
+              resolve(Response.json({ count: waitingCount() }));
+            };
+            const until = Date.now() + WAITING_COUNT_HOLD_MS;
+            const timer = setTimeout(done, WAITING_COUNT_HOLD_MS);
+            countWatchers.add(done);
+            req.signal.addEventListener('abort', done);
+          });
         },
       },
       '/api/canvases': { GET: () => Response.json(canvases.all().map((c) => c.board.canvas) satisfies CanvasInfo[]) },

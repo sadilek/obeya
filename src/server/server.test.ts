@@ -1161,6 +1161,23 @@ describe('cards that need the owner', () => {
     expect(titles(3)).toEqual({ main: [], other: ['C1'] });
     ws.close();
   });
+  test('are counted for the app\'s icon, and an answer for the count shown waits until it changed', async () => {
+    const count = async (seen?: number) => ((await (await fetch(new URL(`/api/waiting-count${seen === undefined ? '' : `?seen=${seen}`}`, server.url))).json()) as { count: number }).count;
+    expect(await count()).toBe(0);
+    const a = card();
+    let heard: number | undefined;
+    const held = count(0).then((n) => (heard = n));
+    await sleep(50);
+    expect(heard).toBeUndefined();
+    // a change that leaves the count as it was keeps the answer waiting
+    board.patch(a.id, { title: 'A1' });
+    await sleep(50);
+    expect(heard).toBeUndefined();
+    board.work(a.id, { state: 'waiting', need: 'review' });
+    expect(await held).toBe(1);
+    // one that shows another count hears at once
+    expect(await count(0)).toBe(1);
+  });
 });
 
 describe('canvases that start and stop while Obeya runs', () => {

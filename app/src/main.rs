@@ -21,6 +21,7 @@
 // - Downloads go into the Downloads folder and are shown there.
 // - A newer release is downloaded in the background, shown in the bar and installed when the owner
 //   says so, once the workers paused (update.rs).
+// - What waits for the owner shows as a number on the app's icon: the Dock's badge on a Mac (badge.rs).
 // - OBEYA_APP_CHECK=<url of a module>: the page imports it once the canvas has loaded
 //   (scripts/check-app.ts checks the microphone and video in the webview that way).
 // - OBEYA_CHECKOUT=<checkout>: started from a checkout (`bun run app`, scripts/app.ts), the shell
@@ -36,6 +37,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod badge;
 mod update;
 
 use std::{
@@ -166,6 +168,16 @@ pub(crate) fn post(port: u16, path: &str, body: &serde_json::Value) -> Option<se
   };
   let res = req.set("content-type", "application/json").send_string(&body.to_string()).ok()?;
   Some(serde_json::from_str(&res.into_string().ok()?).unwrap_or(serde_json::Value::Null))
+}
+
+/// A GET from the server that names the owner's key and may take up to `patience`; its answer, or none when it fails.
+pub(crate) fn get(port: u16, path: &str, patience: Duration) -> Option<serde_json::Value> {
+  let req = ureq::get(&format!("http://127.0.0.1:{port}{path}")).timeout(patience);
+  let req = match key() {
+    Some(key) => req.set(KEY_HEADER, &key),
+    None => req,
+  };
+  serde_json::from_str(&req.call().ok()?.into_string().ok()?).ok()
 }
 
 fn answers(port: u16) -> bool {
@@ -787,6 +799,7 @@ fn main() {
       });
       window(&handle, for_setup.clone(), placed.as_ref())?;
       let updates = update::start(&handle, for_setup.clone());
+      badge::start(&handle, for_setup.clone());
       let obeya = for_setup.clone();
       thread::spawn(move || serve(handle, obeya, updates));
       Ok(())
