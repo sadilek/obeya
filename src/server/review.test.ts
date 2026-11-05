@@ -78,7 +78,7 @@ function push(file: string) {
   git(origin, 'checkout', '--quiet', 'main');
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-review-'));
   origin = gitRepo(join(dir, 'acme', 'app'));
   main = join(dir, 'main');
@@ -88,7 +88,7 @@ beforeEach(() => {
   const store = new Store(':memory:');
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
   const workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
-  workspaces.ensureClones(main, 1);
+  await workspaces.ensureClones(main, 1);
   runtime = new FakeRuntime();
   // the PR's branch in the contributor's repository, where Obeya pushes the worker's own commits
   fake = fakeForge(() => git(origin, 'rev-parse', 'contrib'));
@@ -806,11 +806,11 @@ describe('a review card', () => {
 
 describe('„Review PR #5“ on a canvas', () => {
   let canvas: CanvasRuntime;
-  beforeEach(() => {
+  beforeEach(async () => {
     const store = new Store(':memory:');
     const home = join(dir, 'home');
     mkdirSync(home);
-    canvas = new CanvasRuntime({ name: 'Produkt', repos: [{ path: main, clones: 1, settings: { land: 'main' } }] }, { store, home, runtime, forge: fake.forge });
+    canvas = await CanvasRuntime.start({ name: 'Produkt', repos: [{ path: main, clones: 1, settings: { land: 'main' } }] }, { store, home, runtime, forge: fake.forge });
   });
   afterEach(() => canvas.shutdown());
 

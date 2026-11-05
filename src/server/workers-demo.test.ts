@@ -225,7 +225,7 @@ describe('handing over with a demo', () => {
 
   test('the worker gets the demo skill from the plugin that comes with Obeya, its brief names it, and it knows where Obeya is', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
+    await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const c = manual();
     await workers.start(c.id);
     expect(runtime.last.spec.plugins).toEqual([OBEYA_PLUGIN]);
@@ -238,7 +238,7 @@ describe('handing over with a demo', () => {
 
   test("a repository that names the language of its demos gives it to the worker's demo skill", async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones', demo: { language: 'en' } });
+    await setup({ ...generic, land: 'main', workspaces: 'clones', demo: { language: 'en' } });
     await workers.start(manual().id);
     expect(runtime.last.spec.env).toEqual({ OBEYA_URL: 'http://127.0.0.1:4417', DEMO_LANGUAGE: 'en' });
     // named in its instructions too: an HTML artifact is written without the skill, which reads it
@@ -248,11 +248,11 @@ describe('handing over with a demo', () => {
 
   test("a repository that names no language for its demos has its worker demo in the demo settings' narration language, else the conversation's", async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
     await workers.start(manual().id);
     expect(runtime.last.spec.system).toContain("A demo (its narration, report, or an HTML artifact's words) is in German, whatever language the owner talks in.");
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, demoLanguage: () => 'en' }));
     await workers.start(manual().id);
     expect(runtime.last.spec.system).toContain("A demo (its narration, report, or an HTML artifact's words) is in English, whatever language the owner talks in.");
@@ -262,7 +262,7 @@ describe('handing over with a demo', () => {
     await workers.start(manual().id);
     expect(runtime.last.inbox[0]).toContain('an index.html in a new directory under ~/demos (never in git)');
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, demoDirectory: () => '/opt/work/demos' }));
     await workers.start(manual().id);
     expect(runtime.last.inbox[0]).toContain('an index.html in a new directory under /opt/work/demos (never in git)');
@@ -589,7 +589,7 @@ describe('handing over with a demo', () => {
 
   test('after feedback, the worker may hand over again without a new demo: the one on the card stands', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
+    await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const c = manual();
     await workers.start(c.id);
     await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir()) });
@@ -690,7 +690,7 @@ describe('handing over with a demo', () => {
 
   test('where demos are shared, a video or an artifact comes with its page for colleagues, kept with the demo', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
+    await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}' } } });
     const c = manual();
     await workers.start(c.id);
     expect(runtime.last.inbox[0]).toContain('share the demo, a video or an HTML artifact, with colleagues');
@@ -730,7 +730,7 @@ describe('handing over with a demo', () => {
   test("where the site names tags, the page comes with them, each dimension's from its values alone", async () => {
     rmSync(dir, { recursive: true, force: true });
     const tags = { Area: ['Billing', 'Reports'], Audience: ['Admins', 'Customers'] };
-    setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}', tags } } });
+    await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' }, demo: { site: { title: 'Demos', url: 'https://demos.example.dev', deploy: 'deploy {dir}', tags } } });
     const c = manual();
     await workers.start(c.id);
     expect(runtime.last.inbox[0]).toContain('hand it over with that page (title, text, tags)');
@@ -754,7 +754,7 @@ describe('handing over with a demo', () => {
     expect(await runtime.last.call('ready_for_review', { summary: 'S', demo: demo(demoDir(), ['Nur eins']) })).toContain('Not handed over');
     expect(state(c.id)).toBe('working');
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
+    await setup({ ...generic, land: 'main', workspaces: 'clones', app: { run: 'bun start' } });
     const d = manual();
     await workers.start(d.id);
     expect(runtime.last.inbox[0]).toContain('How to run the app: bun start');
@@ -780,7 +780,7 @@ describe('handing over with a demo', () => {
 
   test('every handover brings a demo: one without is refused; without a recipe the worker finds out how to run the app', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
     const c = manual();
     await workers.start(c.id);
     expect(runtime.last.inbox[0]).toContain('Then show the owner the result with a demo');

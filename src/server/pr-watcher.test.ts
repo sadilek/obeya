@@ -35,7 +35,7 @@ let opened: string[];
 let language: Language;
 const URL_ = 'https://github.com/acme/app/pull/42';
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-pr-'));
   main = join(dir, 'main');
   gitRepo(main);
@@ -43,7 +43,7 @@ beforeEach(() => {
   language = 'de';
   board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs: [], dirs: [] }), undefined, undefined, () => language);
   workspaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: main, dir: join(dir, 'ws') });
-  workspaces.ensureClones(main, 1);
+  await workspaces.ensureClones(main, 1);
   runtime = new FakeRuntime();
   opened = [];
   settings = { ...generic, land: 'pr', workspaces: 'clones', prNoise: ['deploy-bot'] };
@@ -679,7 +679,7 @@ describe('gh slow to answer', () => {
   });
 
   test('a PR gh does not answer for holds up neither the other cards nor the round past its timeout', async () => {
-    workspaces.ensureClones(main, 2);
+    await workspaces.ensureClones(main, 2);
     const slow = await inPr();
     runtime.last.call('pr_opened', { url: URL_ });
     runtime.last.emit({ type: 'idle' });

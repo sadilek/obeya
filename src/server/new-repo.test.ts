@@ -20,7 +20,7 @@ let notices: Notice[];
 
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-new-repo-'));
   // git's name and e-mail, which the first commit of a new repository is made under
   globalConfig = process.env.GIT_CONFIG_GLOBAL;
@@ -40,7 +40,7 @@ beforeEach(() => {
     server: { port: 4417, home: dir, permissionMode: 'auto' },
     apply: (configs, ids) => set.apply(configs, ids),
   });
-  set = new Canvases(configs, { store, home: join(dir, 'home'), runtime, forge: noForge, config, newRepoHoldMs: 30, restartIntervalMs: 5 });
+  set = await Canvases.start(configs, { store, home: join(dir, 'home'), runtime, forge: noForge, config, newRepoHoldMs: 30, restartIntervalMs: 5 });
   notices = [];
   docsCanvas().board.onNotice((n) => notices.push(n));
 });

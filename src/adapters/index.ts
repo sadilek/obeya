@@ -1,7 +1,7 @@
-import { defaultBranchCommit } from '../server/read-tree';
+import { defaultBranchCommit, readingDefaultBranch } from '../server/read-tree';
 import { onGitHub } from '../server/repo';
 import { type ClaudeFile, isNested, SHARED_FIELDS, type NESTED_SETTINGS, type NestedSetting, type RepoSettings, type RepoValues, type SharedSettings } from '../core/types';
-import { detectedBranch, type GitSteps, gitStepsSync, isFolder } from '../server/workspaces';
+import { detectedBranch, type GitSteps, gitSteps, gitStepsSync, isFolder } from '../server/workspaces';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { generic } from './generic';
@@ -119,6 +119,13 @@ export function parseShared(text: string): SharedRead {
 export function readShared(repoPath: string, commit = defaultBranchCommit(repoPath).commit): SharedRead {
   if (isFolder(repoPath)) return readSharedFiles(repoPath);
   return gitStepsSync(repoPath, readingShared(commit));
+}
+
+/** `readShared` without the server waiting for git. */
+export async function readSharedAsync(repoPath: string): Promise<SharedRead> {
+  if (isFolder(repoPath)) return readSharedFiles(repoPath);
+  const { commit } = await gitSteps(repoPath, readingDefaultBranch(repoPath));
+  return gitSteps(repoPath, readingShared(commit));
 }
 
 /** `readShared` of a folder without git: its `.obeya/settings.json` and Claude Code configuration as the folder has them. */

@@ -13,7 +13,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { type CardDiff, cardDiff } from '../core/diff';
 import type { BlockedClone, PoolHost, WorkspaceShortage } from '../core/types';
 import type { Store } from './db';
-import { HostError, hostName, LOST, onHost, remote, sh as shWord, type SshHost, TOKEN_HELPER, TOKEN_HELPER_ARGS } from './hosts';
+import { type GithubLogin, HostError, hostName, LOST, onHost, remote, sh as shWord, type SshHost, TOKEN_HELPER, TOKEN_HELPER_ARGS } from './hosts';
 import { runAppCommand } from './app-command';
 import { messageOf } from '../core/text';
 import { oneAtATime } from '../core/one-at-a-time';
@@ -568,14 +568,15 @@ export class Workspaces implements CardWorkspaces {
     return this.o.dir;
   }
 
-  /** Registers a clone; with `origins`, only when its `origin` is one of them (or it is the repository itself). */
-  register(path: string, origins?: string[]) {
-    git(path, 'rev-parse', '--git-dir');
+  /**
+   * Registers a clone, which has a git directory; with `origins`, only when its `origin` is one of
+   * them (or it is the repository itself), as git read it before (`found`: null where it is no git
+   * repository, an `origin` of null where it has none), so that the server does not wait for git.
+   */
+  register(path: string, origins?: string[], found?: { origin: string | null } | null) {
+    if (found === null || !existsSync(join(path, '.git'))) throw new WorkspaceError(`${path} is not a git repository`);
     if (origins?.length && resolve(path) !== resolve(this.o.repoPath)) {
-      let origin = '';
-      try {
-        origin = git(path, 'remote', 'get-url', 'origin');
-      } catch {}
+      const origin = found?.origin ?? '';
       if (!origins.some((o) => sameRemote(o, origin))) throw new WorkspaceError(`${path} is not a clone of ${origins.join(' or ')} (its origin is ${origin || 'unset'})`);
     }
     this.store.addWorkspace(this.canvasId, path, this.o.repo ?? null);
@@ -584,17 +585,27 @@ export class Workspaces implements CardWorkspaces {
     if (kept.delete(path)) this.o.changed?.();
   }
 
-  /** Makes sure `n` clones of `source` exist and are registered; returns their paths. */
-  ensureClones(source: string, n: number): string[] {
+  /** The paths of the `n` clones Obeya makes (`ensureClones`). */
+  clonePaths(n: number): string[] {
+    return Array.from({ length: n }, (_, i) => join(this.o.dir, String(i + 1)));
+  }
+
+  /**
+   * Makes sure `n` clones of `source` exist and are registered, without blocking the server: those
+   * there at once (one that is no git repository throws), those still to be made as git has made
+   * them, while `wanted` holds (a restart since may want others). Settles with their paths.
+   */
+  ensureClones(source: string, n: number, wanted: () => boolean = () => true): Promise<string[]> {
     mkdirSync(this.o.dir, { recursive: true });
-    const paths: string[] = [];
-    for (let i = 1; i <= n; i++) {
-      const path = join(this.o.dir, String(i));
-      if (!existsSync(path)) git(this.o.dir, 'clone', '--quiet', source, path);
-      this.register(path);
-      paths.push(path);
-    }
-    return paths;
+    const paths = this.clonePaths(n);
+    const missing = paths.filter((path) => !existsSync(path));
+    for (const path of paths) if (!missing.includes(path)) this.register(path);
+    // a folder being removed is made afresh once it is gone
+    const made = missing.map((path) => onPath(path, async () => void (existsSync(path) || (await gitAsync(this.o.dir, 'clone', '--quiet', source, path)))));
+    return Promise.all(made).then(() => {
+      if (wanted()) for (const path of missing) this.register(path);
+      return paths;
+    });
   }
 
   /**
@@ -749,7 +760,7 @@ export class Workspaces implements CardWorkspaces {
    * the background, so that an unreachable host does not hold up the start; a clone is leased only
    * once it is registered. `token` is the repository's GitHub login. Settles with what went wrong, if anything.
    */
-  async ensureHostClones(host: SshHost, root: string, source: string, n: number, token: () => string | undefined): Promise<string | null> {
+  async ensureHostClones(host: SshHost, root: string, source: string, n: number, token: GithubLogin): Promise<string | null> {
     try {
       const dir = await host.resolveDir(root);
       this.hostDirs.set(host.name, dir);
@@ -2015,6 +2026,12 @@ export const branchSetting = (path: string): string | undefined => branchSetting
 export function defaultBranch(path: string): string {
   if (isFolder(path)) return '';
   return branchSetting(path) || detectedBranch(path);
+}
+
+/** `defaultBranch` without the server waiting for git. */
+export async function defaultBranchAsync(path: string): Promise<string> {
+  if (isFolder(path)) return '';
+  return branchSetting(path) || (await gitSteps(path, detectingBranch()));
 }
 
 /**

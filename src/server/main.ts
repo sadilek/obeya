@@ -288,7 +288,7 @@ const harnesses = new Harnesses({
 });
 // the agents that start right away (a canvas's cards resuming) start on what is there; a slow look is not waited for long
 await Promise.race([harnesses.refresh().catch((e) => console.warn(`Obeya: looking at the harnesses failed: ${e instanceof Error ? e.message : e}`)), Bun.sleep(5000)]);
-canvases = new Canvases(
+canvases = await Canvases.start(
   configs,
   {
     store,

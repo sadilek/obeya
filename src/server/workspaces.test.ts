@@ -56,7 +56,7 @@ describe('a leased clone', () => {
     const store = new Store(':memory:');
     const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws') });
-    const [clone] = spaces.ensureClones(repo, 1);
+    const [clone] = await spaces.ensureClones(repo, 1);
     // its origin is gone: the fetch fails
     git(clone!, 'remote', 'set-url', 'origin', join(dir, 'gone'));
     const [a, b] = [board.create({ title: 'A', x: 0, y: 0 }).id, board.create({ title: 'B', x: 0, y: 0 }).id];
@@ -74,18 +74,18 @@ describe('a leased clone', () => {
 });
 
 describe('free clones', () => {
-  const setup = () => {
+  const setup = async () => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
     const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     let changed = 0;
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: repo, dir: join(dir, 'ws'), changed: () => changed++ });
-    const clones = spaces.ensureClones(repo, 2);
+    const clones = await spaces.ensureClones(repo, 2);
     return { board, spaces, clones, changed: () => changed };
   };
 
   test('are chosen by their last look, taken in the background; one dirty now gives way to the next', async () => {
-    const { board, spaces, clones, changed } = setup();
+    const { board, spaces, clones, changed } = await setup();
     const [one, two] = clones as [string, string];
     // not looked at yet: either may be taken; the looks run in the background and change the board once they find them
     expect(spaces.leasable()).toBe(true);
@@ -106,7 +106,7 @@ describe('free clones', () => {
   });
 
   test('no card gets are named in the pool, with why: the files changed, git failing, the folder gone', async () => {
-    const { spaces, clones, changed } = setup();
+    const { spaces, clones, changed } = await setup();
     const [one, two] = clones as [string, string];
     for (let i = 1; i <= 7; i++) writeFileSync(join(one, `stray ${i}.txt`), 'x');
     writeFileSync(join(one, 'README.md'), 'changed');
@@ -126,7 +126,7 @@ describe('free clones', () => {
   });
 
   test('a clone git fails in is blocked with its error, and counts as dirty', async () => {
-    const { board, spaces, clones, changed } = setup();
+    const { board, spaces, clones, changed } = await setup();
     for (const c of clones) writeFileSync(join(c, '.git', 'index'), 'garbage');
     spaces.pool([]);
     await until(() => changed() === 2);
@@ -135,7 +135,7 @@ describe('free clones', () => {
   });
 
   test('where the one taken is dirty now and no other is left, the lease fails with that shortage', async () => {
-    const { board, spaces, clones } = setup();
+    const { board, spaces, clones } = await setup();
     for (const c of clones) writeFileSync(join(c, 'stray.txt'), 'x');
     const lease = spaces.lease(board.create({ title: 'A', x: 0, y: 0 }).id, 'obeya/a');
     await expect(lease.ready!).rejects.toMatchObject({ code: 'dirtyWorkspaces' });
@@ -145,17 +145,17 @@ describe('free clones', () => {
 });
 
 describe('a workspace git frees', () => {
-  const setup = (mode: 'clones' | 'worktrees') => {
+  const setup = async (mode: 'clones' | 'worktrees') => {
     const repo = gitRepo(join(dir, 'repo'));
     const store = new Store(':memory:');
     const board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: repo, branch: 'main' }] }, () => ({ docs: [], dirs: [] }));
     const spaces = new Workspaces(store, 'c', { mode, repoPath: repo, dir: join(dir, 'ws') });
-    if (mode === 'clones') spaces.ensureClones(repo, 1);
+    if (mode === 'clones') await spaces.ensureClones(repo, 1);
     return { repo, spaces, card: (title: string) => board.create({ title, x: 0, y: 0 }).id };
   };
 
   test('a discarded clone is no other card’s until git has cleaned it; freeing it meanwhile waits for git', async () => {
-    const { spaces, card } = setup('clones');
+    const { spaces, card } = await setup('clones');
     const a = card('A');
     const { path, ready } = spaces.lease(a, 'obeya/a');
     await ready;
@@ -172,7 +172,7 @@ describe('a workspace git frees', () => {
   });
 
   test("a card's worktree made again while git removes the one it had is added once git is done", async () => {
-    const { repo, spaces, card } = setup('worktrees');
+    const { repo, spaces, card } = await setup('worktrees');
     const a = card('A');
     const first = spaces.lease(a, 'obeya/a');
     await first.ready;
@@ -187,7 +187,7 @@ describe('a workspace git frees', () => {
   });
 
   test('a worktree given back and taken again by its card while git removes it (the card deleted and brought back) is made again once git is done', async () => {
-    const { spaces, card } = setup('worktrees');
+    const { spaces, card } = await setup('worktrees');
     const a = card('A');
     const { path, ready } = spaces.lease(a, 'obeya/a');
     await ready;
@@ -201,7 +201,7 @@ describe('a workspace git frees', () => {
   });
 
   test('a workspace handed over is not, where the card it comes from gave it up while git renamed the branch', async () => {
-    const { repo, spaces, card } = setup('worktrees');
+    const { repo, spaces, card } = await setup('worktrees');
     const [a, b] = [card('A'), card('B')];
     const { path, ready } = spaces.lease(a, 'obeya/a');
     await ready;
@@ -510,9 +510,9 @@ describe('clones the configuration no longer names', () => {
   let store: Store;
   let board: Board;
   let ws: string;
-  const make = (n: number) => {
+  const make = async (n: number) => {
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo "$PWD" >> ../stopped' });
-    const paths = spaces.ensureClones(origin, n);
+    const paths = await spaces.ensureClones(origin, n);
     for (const p of paths) identify(p);
     return { spaces, paths };
   };
@@ -529,7 +529,7 @@ describe('clones the configuration no longer names', () => {
   });
 
   test('a free clone Obeya made leaves the pool at once, and its folder goes once its app is stopped', async () => {
-    const { spaces, paths } = make(3);
+    const { spaces, paths } = await make(3);
     spaces.keepOnly(null, paths.slice(0, 2));
     expect(spaces.list().map((w) => w.path)).toEqual(paths.slice(0, 2));
     await until(() => !existsSync(paths[2]!));
@@ -538,7 +538,7 @@ describe('clones the configuration no longer names', () => {
   });
 
   test('its folder stays while something in it would be lost, and goes once nothing would', async () => {
-    const { paths } = make(4);
+    const { paths } = await make(4);
     const [changed, untracked, stashed, unpushed] = paths as [string, string, string, string];
     writeFileSync(join(changed, 'README.md'), 'changed\n');
     writeFileSync(join(untracked, 'notes.txt'), 'mine\n');
@@ -570,7 +570,7 @@ describe('clones the configuration no longer names', () => {
   });
 
   test('commits a tag holds, a branch deleted on origin, or files with odd names stay; a branch squashed onto main counts as landed', async () => {
-    const { spaces, paths } = make(4);
+    const { spaces, paths } = await make(4);
     const [tagged, deleted, squashed, odd] = paths as [string, string, string, string];
     const commit = (clone: string, file: string) => {
       writeFileSync(join(clone, file), `${file}\n`);
@@ -608,10 +608,10 @@ describe('clones the configuration no longer names', () => {
 
   test('a clone named again while its folder is looked at stays, with what a card does in it', async () => {
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'sleep 0.3' });
-    const [path] = spaces.ensureClones(origin, 1) as [string];
+    const [path] = (await spaces.ensureClones(origin, 1)) as [string];
     spaces.keepOnly(null, []);
     await Bun.sleep(150);
-    expect(spaces.ensureClones(origin, 1)).toEqual([path]);
+    expect(await spaces.ensureClones(origin, 1)).toEqual([path]);
     const a = board.create({ title: 'A', x: 0, y: 0 }).id;
     const lease = spaces.lease(a, 'obeya/a');
     expect(lease.path).toBe(path);
@@ -624,7 +624,7 @@ describe('clones the configuration no longer names', () => {
 
   test('what the stop command leaves behind keeps the folder', async () => {
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, stop: 'echo snapshot > saved.txt' });
-    const [path] = spaces.ensureClones(origin, 1) as [string];
+    const [path] = (await spaces.ensureClones(origin, 1)) as [string];
     spaces.keepOnly(null, []);
     await until(() => spaces.pool([])[0]!.kept?.length === 1);
     expect(readFileSync(join(path, 'saved.txt'), 'utf8')).toBe('snapshot\n');
@@ -634,7 +634,7 @@ describe('clones the configuration no longer names', () => {
     const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws, origins: [origin] });
     const stranger = gitRepo(join(dir, 'stranger'));
     git(dir, 'clone', '--quiet', stranger, join(ws, '7'));
-    const [mine] = spaces.ensureClones(origin, 1) as [string];
+    const [mine] = (await spaces.ensureClones(origin, 1)) as [string];
     spaces.keepOnly(null, []);
     spaces.sweep();
     await until(() => !existsSync(mine));
@@ -643,18 +643,18 @@ describe('clones the configuration no longer names', () => {
   });
 
   test('a folder that stayed is back in the pool once the number is raised again', async () => {
-    const { spaces, paths } = make(2);
+    const { spaces, paths } = await make(2);
     writeFileSync(join(paths[1]!, 'notes.txt'), 'mine\n');
     spaces.keepOnly(null, paths.slice(0, 1));
     await until(() => spaces.pool([])[0]!.kept?.length === 1);
-    expect(spaces.ensureClones(origin, 2)).toEqual(paths);
+    expect(await spaces.ensureClones(origin, 2)).toEqual(paths);
     expect(spaces.list().map((w) => w.path)).toEqual(paths);
     expect(spaces.pool([])[0]!.kept).toBeUndefined();
     expect(readFileSync(join(paths[1]!, 'notes.txt'), 'utf8')).toBe('mine\n');
   });
 
   test('a clone a card holds stays with it until the card gives it back, then goes', async () => {
-    const { spaces, paths } = make(2);
+    const { spaces, paths } = await make(2);
     const a = board.create({ title: 'A', x: 0, y: 0 }).id;
     const lease = spaces.lease(a, 'obeya/a');
     expect(lease.path).toBe(paths[0]!);
@@ -672,11 +672,21 @@ describe('clones the configuration no longer names', () => {
     expect(spaces.retake(a, paths[0]!)).toBe(false);
   });
 
+  test('clones made after their pool no longer wants them stay out of it', async () => {
+    const spaces = new Workspaces(store, 'c', { mode: 'clones', repoPath: join(dir, 'main'), dir: ws });
+    let wanted = true;
+    const made = spaces.ensureClones(origin, 2, () => wanted);
+    // a restart since wants other clones
+    wanted = false;
+    expect(await made).toHaveLength(2);
+    expect(spaces.list()).toEqual([]);
+  });
+
   test('a clone the owner listed only leaves the pool: Obeya never touches its folder', async () => {
     const own = join(dir, 'own');
     git(dir, 'clone', '--quiet', origin, own);
-    const { spaces, paths } = make(1);
-    spaces.register(own, [origin]);
+    const { spaces, paths } = await make(1);
+    spaces.register(own, [origin], { origin });
     spaces.keepOnly(null, []);
     expect(spaces.list()).toEqual([]);
     await until(() => !existsSync(paths[0]!));
@@ -689,12 +699,12 @@ describe('clones the configuration no longer names', () => {
   test('one whose folder is gone leaves at once, held or not, and its card takes another at its next start', async () => {
     const own = join(dir, 'own');
     git(dir, 'clone', '--quiet', origin, own);
-    const { spaces, paths } = make(3);
+    const { spaces, paths } = await make(3);
     const [a, b, c] = ['A', 'B', 'C'].map((title) => board.create({ title, x: 0, y: 0 }).id) as [string, string, string];
     const held = spaces.lease(a, 'obeya/a');
     expect(held.path).toBe(paths[0]!);
     await held.ready;
-    spaces.register(own, [origin]);
+    spaces.register(own, [origin], { origin });
     // a worktree from before the repository went over to clones, under the home Obeya had then
     const old = join(dir, 'old-home', 'a7d7c689');
     store.addWorkspace('c', old);

@@ -812,7 +812,7 @@ describe('sharing to a site', () => {
   });
 });
 
-test("a repository whose settings name a site: the canvas says the env file it lacks, until it is there", () => {
+test("a repository whose settings name a site: the canvas says the env file it lacks, until it is there", async () => {
   const shop = gitRepo(join(dir, 'shop'), {
     'docs/plan/plan.md': '# Laden\n\n## Goal\n\nG.\n',
     '.obeya/settings.json': JSON.stringify({ app: { run: 'bun dev' }, demo: { site: SITE() } }),
@@ -821,7 +821,7 @@ test("a repository whose settings name a site: the canvas says the env file it l
   // the owner trusted the site
   const store = new Store(':memory:');
   store.trustCommands(shop, commandsOf(readShared(shop)));
-  const canvas = new CanvasRuntime({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), forge: noForge });
+  const canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), forge: noForge });
   try {
     expect(canvas.repos[0]!.site).toEqual(SITE());
     expect(canvas.board.canvas.repos[0]).toMatchObject({ shareNeeds: { site: siteName(SITE()), file: 'sites/demos/deploy.env' } });

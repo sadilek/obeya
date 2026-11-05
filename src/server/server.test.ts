@@ -32,13 +32,13 @@ let warmed: number;
 const DELAY_MS = 200;
 
 // A canvas in clone mode without any clone registered: every start fails for want of a workspace.
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-server-'));
   const main = join(dir, 'main');
   // settings of its own that work in clones, none registered; the canvas is named after the directory
   gitRepo(main, { 'README.md': 'hi\n', '.obeya/settings.json': '{ "workspaces": "clones" }\n' });
   runtime = new FakeRuntime();
-  canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, commandDelayMs: DELAY_MS });
+  canvas = await CanvasRuntime.start({ repos: [{ path: main }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge, commandDelayMs: DELAY_MS });
   board = canvas.board;
   executed = [];
   heardAudio = [];
@@ -1046,7 +1046,7 @@ describe('a restart that waits', () => {
   test('shows on the canvas with the cards it waits for, here and by title on the others, and goes ahead at the owner\'s word', async () => {
     const other = join(dir, 'other');
     gitRepo(other);
-    const second = new CanvasRuntime({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    const second = await CanvasRuntime.start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
     const there = second.board.create({ title: 'Export als CSV', x: 0, y: 0 });
     let busy = [
       { canvas: 'main', card: 'k1' },
@@ -1134,7 +1134,7 @@ describe('cards that need the owner', () => {
   test('reach every canvas\'s pages, so each page lists those of the others too', async () => {
     const other = join(dir, 'other');
     gitRepo(other);
-    const second = new CanvasRuntime({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    const second = await CanvasRuntime.start({ repos: [{ path: other }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
     const waiting = second.board.create({ title: 'B', x: 0, y: 0 });
     second.board.work(waiting.id, { state: 'waiting', need: 'review' });
     server.stop(true);
@@ -1167,7 +1167,7 @@ describe('canvases that start and stop while Obeya runs', () => {
   test('a new canvas is served at once and every page hears of it; the pages of one that stopped go elsewhere', async () => {
     const other = join(dir, 'other');
     gitRepo(other);
-    const set = new Canvases([], { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge, restartIntervalMs: 5 });
+    const set = await Canvases.start([], { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge, restartIntervalMs: 5 });
     const list = [canvas];
     server.stop(true);
     server = serve({ all: () => [...list, ...set.all()], onChange: (fn) => set.onChange(fn) }, { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
@@ -1176,7 +1176,7 @@ describe('canvases that start and stop while Obeya runs', () => {
     ws.onmessage = (e) => messages.push(JSON.parse(e.data));
     await until(() => messages.some((m) => m.type === 'snapshot'));
 
-    set.apply([{ name: 'Andere', repos: [{ path: other }] }], ['andere']);
+    await set.apply([{ name: 'Andere', repos: [{ path: other }] }], ['andere']);
     await until(() => messages.some((m) => m.type === 'canvases'));
     expect(messages.find((m) => m.type === 'canvases')).toMatchObject({ canvases: [{ id: 'main' }, { id: 'andere', name: 'Andere' }] });
     const listed = (await (await fetch(new URL('/api/canvases', server.url))).json()) as { id: string }[];
@@ -1187,7 +1187,7 @@ describe('canvases that start and stop while Obeya runs', () => {
     await until(() => theirs.readyState === WebSocket.OPEN);
 
     // it leaves the configuration: nobody works on it, so it stops at once and its page is closed
-    set.apply([], []);
+    await set.apply([], []);
     await until(() => closed);
     expect(messages.filter((m) => m.type === 'canvases').at(-1)).toMatchObject({ canvases: [{ id: 'main' }] });
     expect((await post('/api/c/andere/cards', JSON.stringify({ title: 'X', x: 0, y: 0 }))).status).toBe(404);
@@ -1206,7 +1206,7 @@ describe('landing approved work', () => {
     git(repo, 'fetch', '--quiet', 'origin');
     const pushing = join(dir, 'pushing');
     writeFileSync(join(origin, 'hooks/pre-receive'), `#!/bin/sh\ntouch '${pushing}'\nsleep 1\n`, { mode: 0o755 });
-    const pushed = new CanvasRuntime({ repos: [{ path: repo, clones: 2, settings: { land: 'pr', direct: true, workspaces: 'clones' } }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
+    const pushed = await CanvasRuntime.start({ repos: [{ path: repo, clones: 2, settings: { land: 'pr', direct: true, workspaces: 'clones' } }] }, { store: new Store(':memory:'), home: join(dir, 'home2'), runtime, forge: noForge });
     server.stop(true);
     server = serve([canvas, pushed], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0);
     const handedOver = async (title: string) => {
@@ -1257,8 +1257,8 @@ describe('starting a card', () => {
     const uploadPack = join(dir, 'slow-upload-pack');
     writeFileSync(uploadPack, slow('fetch', 'exec git-upload-pack "$@"\n'), { mode: 0o755 });
     const deps = (home: string) => ({ store: new Store(':memory:'), home: join(dir, home), runtime, forge: noForge });
-    const worktrees = new CanvasRuntime({ name: 'Worktrees', repos: [{ path: trees, settings: { workspaces: 'worktrees' } }] }, deps('home-trees'));
-    const clones = new CanvasRuntime({ name: 'Clones', repos: [{ path: cloned, clones: 1, settings: { workspaces: 'clones' } }] }, deps('home-clones'));
+    const worktrees = await CanvasRuntime.start({ name: 'Worktrees', repos: [{ path: trees, settings: { workspaces: 'worktrees' } }] }, deps('home-trees'));
+    const clones = await CanvasRuntime.start({ name: 'Clones', repos: [{ path: cloned, clones: 1, settings: { workspaces: 'clones' } }] }, deps('home-clones'));
     const [clone] = clones.repos[0]!.workspaces.list();
     git(clone!.path, 'config', 'remote.origin.uploadpack', uploadPack);
     server.stop(true);
@@ -1306,7 +1306,7 @@ describe('the Lesestand and the free clones', () => {
     const checkout = join(dir, 'checkout');
     git(dir, 'clone', '--quiet', origin, checkout);
     // work goes out as pull requests: the Lesestand is a worktree of the checkout, apart from the pool's clone
-    const shop = new CanvasRuntime(
+    const shop = await CanvasRuntime.start(
       { name: 'Shop', repos: [{ path: checkout, clones: 1, settings: { land: 'pr', workspaces: 'clones' } }] },
       { store: new Store(':memory:'), home: join(dir, 'home-shop'), runtime, forge: noForge },
     );
@@ -1394,11 +1394,11 @@ describe('freeing and discarding workspaces', () => {
     go('status');
     // a prototype in the pool's only clone, and a card in a worktree of its own
     const origin = gitRepo(join(dir, 'shop'), { 'guide.md': 'Guide\n', '.gitattributes': '*.md filter=slow\n' });
-    const shop = new CanvasRuntime(
+    const shop = await CanvasRuntime.start(
       { name: 'Shop', repos: [{ path: origin, clones: 1, settings: { land: 'pr', workspaces: 'clones' } }] },
       { store: new Store(':memory:'), home: join(dir, 'home-shop'), runtime, forge: noForge },
     );
-    const tools = new CanvasRuntime(
+    const tools = await CanvasRuntime.start(
       { name: 'Tools', repos: [{ path: gitRepo(join(dir, 'tools')), settings: { land: 'main', workspaces: 'worktrees' } }] },
       { store: new Store(':memory:'), home: join(dir, 'home-tools'), runtime, forge: noForge },
     );

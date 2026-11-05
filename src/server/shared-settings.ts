@@ -11,7 +11,7 @@ import { parseShared, REPO_SETTINGS_FILE } from '../adapters';
 import { layerSettings, SHARED_FIELDS, type SettingsShared, type SharedSettings } from '../core/types';
 import { BadRequest } from './board';
 import type { Forge } from './forge';
-import { defaultBranch, GIT } from './workspaces';
+import { defaultBranchAsync, GIT } from './workspaces';
 import { messageOf } from '../core/text';
 import { spawnOutput } from './spawn';
 import { canonical } from './trust';
@@ -85,7 +85,7 @@ const subjectOf = (mine: SharedSettings) => `Obeya settings for everyone: ${Obje
  * the file holds them already.
  */
 export async function commitShared(repoPath: string, mine: SharedSettings): Promise<SettingsShared & { before?: SharedSettings; after: SharedSettings }> {
-  const branch = defaultBranch(repoPath);
+  const branch = await defaultBranchAsync(repoPath);
   const parent = (await gitRun(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`])).out;
   if (!parent) throw new BadRequest('settingsShare', `the repository has no local branch ${branch}`);
   const onIt = (await gitRun(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).out === branch;
@@ -102,7 +102,7 @@ export async function commitShared(repoPath: string, mine: SharedSettings): Prom
 
 /** A commit with `mine` in `.obeya/settings.json` on top of `origin`'s main branch, as just fetched; none where it holds them already. */
 async function onOrigin(repoPath: string, mine: SharedSettings) {
-  const branch = defaultBranch(repoPath);
+  const branch = await defaultBranchAsync(repoPath);
   await must(repoPath, ['fetch', '--quiet', '--no-write-fetch-head', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`]);
   const parent = await must(repoPath, ['rev-parse', '--verify', `refs/remotes/origin/${branch}^{commit}`]);
   const { text, same, after } = await sharedText(repoPath, parent, mine);

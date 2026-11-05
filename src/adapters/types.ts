@@ -10,6 +10,8 @@ export interface RepoInfo {
   path: string;
   /** `origin` URL, if any. */
   remote: string | null;
+  /** `origin`'s URL as the repository's configuration has it, before git's `insteadOf` rewrites it into `remote`. */
+  origin?: string;
   /** Its main branch, where cards start from and work lands (`defaultBranch`); empty in a folder without git. */
   branch: string;
   /** A folder without git (`RepoConfig.git` false): cards work in it directly. */

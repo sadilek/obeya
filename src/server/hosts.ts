@@ -100,7 +100,7 @@ export interface HostOptions {
 export class SshHost {
   private prepared?: Promise<string>;
   /** Tokens by the workspace root they are for (a repository's clones there): its GitHub login. */
-  private tokens: { root: string; token: () => string | undefined }[] = [];
+  private tokens: { root: string; token: GithubLogin }[] = [];
   /** When the connection last failed, while the host has not answered since; whether it is being asked again. */
   private down?: { at: number; asking?: boolean };
   /** Who hears that the host answers again after it did not. */
@@ -120,13 +120,23 @@ export class SshHost {
   }
 
   /** The workspaces under `root` (a repository's clones) use this GitHub login for git and gh. */
-  tokenFor(root: string, token: () => string | undefined) {
+  tokenFor(root: string, token: GithubLogin) {
     this.tokens.push({ root, token });
   }
 
   /** The GitHub login for a path there, by the root it is under. */
+  private login(path: string): GithubLogin | undefined {
+    return this.tokens.find((t) => path === t.root || path.startsWith(`${t.root}/`))?.token;
+  }
+
+  /** The GitHub login for a path there, as last read. */
   private token(path: string): string | undefined {
-    return this.tokens.find((t) => path === t.root || path.startsWith(`${t.root}/`))?.token();
+    return this.login(path)?.();
+  }
+
+  /** Settles once the GitHub login for a path there was read for the first time: a command waits for it rather than going without. */
+  private loginRead(path: string | undefined): Promise<unknown> {
+    return (path && this.login(path)?.ready?.()) || Promise.resolve();
   }
 
   /**
@@ -203,6 +213,7 @@ export class SshHost {
 
   /** Runs a program (or a shell line) there without blocking the server; `input` is its stdin, after the environment line. */
   async run(command: string[] | string, o: { cwd?: string; timeout?: number; input?: string } = {}): Promise<{ code: number; stdout: string; stderr: string }> {
+    await this.loginRead(o.cwd);
     const r = await spawnOutput(this.argv(command, { cwd: o.cwd, env: true }), {
       stdin: new Blob([this.envLine(o.cwd), o.input ?? '']),
       ...(o.timeout ? { timeout: o.timeout } : {}),
@@ -405,7 +416,7 @@ export class SshHost {
    * command there and ssh say on stderr.
    */
   session(o: { cwd: string; files: HostFiles; login?: boolean; forwards?: string[]; onExit?: (code: number | null) => void; onStderr?: (text: string) => void }): (s: SpawnOptions) => SpawnedProcess {
-    const ready = this.prepare(o.files);
+    const ready = Promise.all([this.prepare(o.files), this.loginRead(o.cwd)]).then(([dir]) => dir);
     return (s) => {
       const p = deferred(ready, (dir) => {
         const token = o.login === false ? undefined : this.o.claudeToken?.();
@@ -633,25 +644,37 @@ export const TOKEN_HELPER_ARGS = TOKEN_HELPER.flatMap((h) => ['-c', `credential.
 const TOKEN_TTL = 10 * 60_000;
 
 /**
+ * A GitHub login for a host's workspaces (`SshHost.tokenFor`): as last read, and `ready`, which
+ * settles once it is read for the first time.
+ */
+export interface GithubLogin {
+  (): string | undefined;
+  ready?: () => Promise<unknown>;
+}
+
+/**
  * The GitHub login git uses for a repository here (`git credential fill` in its checkout, so the
  * account its own configuration picks), for its clones on a host; none for a remote not on HTTPS.
+ * Read in the background, without the server waiting for git: from the start, and again once it is
+ * older than `TOKEN_TTL`, the login read before standing meanwhile.
  */
-export function githubToken(repoPath: string, remoteUrl: string | undefined, git: string = 'git'): () => string | undefined {
+export function githubToken(repoPath: string, remoteUrl: string | undefined, git: string = 'git'): GithubLogin {
+  const url = remoteUrl?.match(/^https:\/\/([^/]+)\//);
   let cached: { token: string | undefined; at: number } | undefined;
-  return () => {
-    if (cached && Date.now() - cached.at < TOKEN_TTL) return cached.token;
-    let token: string | undefined;
-    const url = remoteUrl?.match(/^https:\/\/([^/]+)\//);
-    if (url) {
-      const r = Bun.spawnSync([git, '-C', repoPath, 'credential', 'fill'], {
-        stdin: Buffer.from(`protocol=https\nhost=${url[1]}\n\n`),
-        stdout: 'pipe',
-        stderr: 'pipe',
+  let reading: Promise<void> | undefined;
+  const read = () =>
+    (reading ??= (async () => {
+      const r = await spawnOutput([git, '-C', repoPath, 'credential', 'fill'], {
+        stdin: new Blob([`protocol=https\nhost=${url![1]}\n\n`]),
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      });
-      token = r.exitCode === 0 ? /^password=(.*)$/m.exec(r.stdout.toString())?.[1] : undefined;
-    }
-    cached = { token, at: Date.now() };
-    return token;
+      }).catch(() => null);
+      cached = { token: r?.code === 0 ? /^password=(.*)$/m.exec(r.stdout)?.[1] : undefined, at: Date.now() };
+    })().finally(() => (reading = undefined)));
+  if (url) void read();
+  const login: GithubLogin = () => {
+    if (url && (!cached || Date.now() - cached.at >= TOKEN_TTL)) void read();
+    return cached?.token;
   };
+  login.ready = () => (url && !cached ? read() : Promise.resolve());
+  return login;
 }

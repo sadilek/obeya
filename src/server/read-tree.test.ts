@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { CanvasRuntime } from './canvas';
 import { Store } from './db';
 import { ReadTree, refsSeal } from './read-tree';
-import { artifact, FakeRuntime, gitRepo, identify, noForge, until } from './testing';
+import { artifact, FakeRuntime, gitRepo, identify, noForge, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 const doc = (title: string, ticked = '') =>
@@ -52,8 +52,8 @@ function push(files: Record<string, string | null>) {
 }
 
 // its `origin` stands in for one on GitHub, where work goes out as pull requests
-function open(land: 'main' | 'pr' = 'pr') {
-  canvas = new CanvasRuntime({ name: 'Shop', repos: [{ path: checkout, settings: { land } }] }, { store: new Store(':memory:'), home: join(dir, 'home'), runtime: new FakeRuntime(), forge: noForge });
+async function open(land: 'main' | 'pr' = 'pr') {
+  canvas = await CanvasRuntime.start({ name: 'Shop', repos: [{ path: checkout, settings: { land } }] }, { store: new Store(':memory:'), home: join(dir, 'home'), runtime: new FakeRuntime(), forge: noForge });
   return canvas;
 }
 
@@ -65,11 +65,11 @@ const projects = (c: CanvasRuntime) =>
     .sort();
 
 describe('the Lesestand', () => {
-  test("is a worktree on the default branch: a card's branch in the checkout without the plan doc leaves the project on the canvas", () => {
+  test("is a worktree on the default branch: a card's branch in the checkout without the plan doc leaves the project on the canvas", async () => {
     git(checkout, 'checkout', '--quiet', '-b', 'obeya/card');
     git(checkout, 'rm', '--quiet', 'docs/plan/export.md');
     git(checkout, 'commit', '--quiet', '-m', 'card');
-    const c = open();
+    const c = await open();
     // named after the repository, which is named after its remote
     expect(c.repos[0]!.read.path).toBe(join(dir, 'home', 'read', 'shop', 'origin'));
     expect(projects(c)).toEqual(['Export']);
@@ -82,20 +82,20 @@ describe('the Lesestand', () => {
     expect(projects(c)).toEqual(['Export']);
   });
 
-  test('of a repository on master without a remote is on master, while the checkout is on a card\'s branch', () => {
+  test('of a repository on master without a remote is on master, while the checkout is on a card\'s branch', async () => {
     checkout = origin;
     git(checkout, 'branch', '-m', 'master');
     git(checkout, 'checkout', '--quiet', '-b', 'obeya/card');
     git(checkout, 'rm', '--quiet', 'docs/plan/export.md');
     git(checkout, 'commit', '--quiet', '-m', 'card');
-    const c = open();
+    const c = await open();
     expect(c.repos[0]!.read.path).toBe(join(dir, 'home', 'read', 'shop', 'origin'));
     expect(projects(c)).toEqual(['Export']);
     expect(c.board.snapshot().canvas.repos[0]!.branch).toBe('master');
   });
 
   test('shows a doc that reached origin once it refreshes, and lets a deleted one go', async () => {
-    const c = open();
+    const c = await open();
     push({ 'docs/plan/import.md': doc('Import') });
     expect(projects(c)).toEqual(['Export']);
     await c.repos[0]!.read.refresh();
@@ -106,7 +106,7 @@ describe('the Lesestand', () => {
   });
 
   test('a workstream ticked off in a merged pull request goes live with the merge', async () => {
-    const c = open();
+    const c = await open();
     const ws = (label: string) => c.board.snapshot().items.find((i) => i.label === label)!;
     expect([ws('W1').state, ws('W2').state]).toEqual(['planned', 'planned']);
     c.board.work(ws('W1').id, { state: 'inPr', pr: JSON.stringify({ url: 'https://example.com/pr/1' }) });
@@ -117,9 +117,9 @@ describe('the Lesestand', () => {
     expect([ws('W1').state, ws('W2').state]).toEqual(['live', 'planned']);
   });
 
-  test('is the checkout itself where work lands on the local main, uncommitted docs included', () => {
+  test('is the checkout itself where work lands on the local main, uncommitted docs included', async () => {
     writeFileSync(join(checkout, 'docs/plan/draft.md'), doc('Entwurf'));
-    const c = open('main');
+    const c = await open('main');
     expect(c.repos[0]!.read.path).toBe(checkout);
     expect(projects(c)).toEqual(['Entwurf', 'Export']);
     expect(existsSync(join(dir, 'home', 'read'))).toBe(false);
@@ -128,6 +128,7 @@ describe('the Lesestand', () => {
   test('takes the local main where it has everything of origin, else origin', async () => {
     const read = join(dir, 'read');
     const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+    await tree.ready;
     writeFileSync(join(checkout, 'local.md'), 'x\n');
     git(checkout, 'add', '.');
     git(checkout, 'commit', '--quiet', '-m', 'local');
@@ -139,34 +140,38 @@ describe('the Lesestand', () => {
     expect([existsSync(join(read, 'local.md')), existsSync(join(read, 'remote.md'))]).toEqual([false, true]);
   });
 
-  test('makes a missing, broken or foreign worktree afresh', () => {
+  test('makes a missing, broken or foreign worktree afresh', async () => {
     const read = join(dir, 'read');
-    const make = () => new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+    const make = async () => {
+      const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+      await tree.ready;
+      return tree;
+    };
     const head = git(checkout, 'rev-parse', 'main');
     const on = () => git(read, 'rev-parse', 'HEAD');
-    make();
+    await make();
     expect(on()).toBe(head);
     // reused as it is
     writeFileSync(join(read, 'marker'), '');
-    make();
+    await make();
     expect(existsSync(join(read, 'marker'))).toBe(true);
     // gone
     rmSync(read, { recursive: true, force: true });
-    expect(make().path).toBe(read);
+    expect((await make()).path).toBe(read);
     expect(on()).toBe(head);
     // broken: its link to the repository points nowhere
     writeFileSync(join(read, '.git'), 'gitdir: /nowhere\n');
-    make();
+    await make();
     expect(on()).toBe(head);
     expect(git(checkout, 'worktree', 'list').split('\n')).toHaveLength(2);
     // another repository's
     rmSync(read, { recursive: true, force: true });
     git(origin, 'worktree', 'add', '--quiet', '--detach', read);
-    make();
+    await make();
     expect(git(read, 'rev-parse', '--path-format=absolute', '--git-common-dir')).toBe(git(checkout, 'rev-parse', '--path-format=absolute', '--git-common-dir'));
   });
 
-  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('reads the checkout while its directory cannot be made afresh', () => {
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('reads the checkout while its directory cannot be made afresh', async () => {
     // a directory that is no worktree and whose files cannot go, as one an agent works in on Windows
     const read = join(dir, 'read');
     mkdirSync(read);
@@ -174,17 +179,42 @@ describe('the Lesestand', () => {
     chmodSync(read, 0o555);
     try {
       const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+      await tree.ready;
       expect(tree.path).toBe(checkout);
     } finally {
       chmodSync(read, 0o755);
     }
-    expect(new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} }).path).toBe(read);
+    const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+    await tree.ready;
+    expect(tree.path).toBe(read);
+  });
+
+  test('is read where it was at once, without the server waiting for git, and brought up to date', async () => {
+    const read = join(dir, 'read');
+    await new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} }).ready;
+    const before = git(read, 'rev-parse', 'HEAD');
+    git(checkout, 'commit', '--quiet', '--allow-empty', '-m', 'moved on');
+    let changes = 0;
+    const synced = syncGitCalls();
+    const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => void changes++ });
+    expect(synced.stop()).toEqual([]);
+    expect([tree.path, git(read, 'rev-parse', 'HEAD')]).toEqual([read, before]);
+    await tree.ready;
+    // no fetch moved it: cards waiting for one are not told it came (`onChange`)
+    expect([changes, git(read, 'rev-parse', 'HEAD')]).toEqual([0, git(checkout, 'rev-parse', 'HEAD')]);
+    // where there was none, the checkout is read until it is made
+    rmSync(read, { recursive: true, force: true });
+    const fresh = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => {} });
+    expect(fresh.path).toBe(checkout);
+    await fresh.ready;
+    expect(fresh.path).toBe(read);
   });
 
   test('keeps its commit when the fetch fails, and catches up once it works again', async () => {
     let changes = 0;
     const read = join(dir, 'read');
     const tree = new ReadTree({ repoPath: checkout, dir: read, remote: true, onChange: () => void changes++ });
+    await tree.ready;
     push({ 'docs/plan/import.md': doc('Import') });
     renameSync(origin, `${origin}-away`);
     await tree.refresh();
@@ -250,8 +280,8 @@ describe("the seal of a repository's refs", () => {
 
 describe("a repository's settings for everyone", () => {
   const settings = (o: object) => `${JSON.stringify(o)}\n`;
-  const openWatched = (repo: string, runtime = new FakeRuntime(), clones?: number) => {
-    canvas = new CanvasRuntime(
+  const openWatched = async (repo: string, runtime = new FakeRuntime(), clones?: number) => {
+    canvas = await CanvasRuntime.start(
       { name: 'Shop', repos: [{ path: repo, ...(clones ? { clones } : {}) }] },
       { store: new Store(':memory:'), home: join(dir, 'home'), runtime, forge: noForge, restartIntervalMs: 10 },
     );
@@ -262,7 +292,7 @@ describe("a repository's settings for everyone", () => {
     // its `origin` stands in for one on GitHub: the settings say that work goes out as pull requests
     push({ '.obeya/settings.json': settings({ land: 'pr' }) });
     git(checkout, 'pull', '--quiet');
-    const c = openWatched(checkout);
+    const c = await openWatched(checkout);
     const repo = c.repos[0]!;
     expect(repo.adapter.land).toBe('pr');
     push({ 'docs/plan/import.md': doc('Import') });
@@ -278,7 +308,7 @@ describe("a repository's settings for everyone", () => {
     // where its workers work changes: with none of them at work, they restart at once, in clones
     push({ '.obeya/settings.json': settings({ land: 'pr', workspaces: 'clones' }) });
     await repo.read.refresh();
-    expect(c.repos[0]).not.toBe(repo);
+    await until(() => c.repos[0] !== repo);
     expect(c.repos[0]!.workspaces.mode).toBe('clones');
   });
 
@@ -286,7 +316,7 @@ describe("a repository's settings for everyone", () => {
     // a repository without a remote whose settings land work on its main
     const repo = gitRepo(join(dir, 'local'), { '.obeya/settings.json': settings({ land: 'main', workspaces: 'worktrees' }) });
     const runtime = new FakeRuntime();
-    const c = openWatched(repo, runtime);
+    const c = await openWatched(repo, runtime);
     const land = async (title: string, files: Record<string, string>) => {
       const card = c.board.create({ title, x: 0, y: 0 });
       await c.repos[0]!.workers.start(card.id);
@@ -333,7 +363,7 @@ describe("a repository's settings for everyone", () => {
     push({ '.obeya/settings.json': settings({ land: 'pr', direct: true, workspaces: 'clones' }) });
     git(checkout, 'pull', '--quiet');
     const runtime = new FakeRuntime();
-    const c = openWatched(checkout, runtime, 1);
+    const c = await openWatched(checkout, runtime, 1);
     for (const w of c.repos[0]!.workspaces.list()) identify(w.path);
     const workers = c.repos[0]!.workers;
     const pushed = async (title: string, file: string, text: string) => {

@@ -15,16 +15,16 @@ let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 
 const open = (clones = 1) =>
-  new CanvasRuntime({ repos: [{ path: main, clones, settings: { land: 'pr' } }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 });
+  CanvasRuntime.start({ repos: [{ path: main, clones, settings: { land: 'pr' } }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 });
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-ideas-'));
   main = join(dir, 'main');
   gitRepo(main);
   mkdirSync(join(main, 'docs/plan'), { recursive: true });
   store = new Store(':memory:');
   runtime = new FakeRuntime();
-  canvas = open();
+  canvas = await open();
 });
 afterEach(async () => {
   // git freeing a workspace in the background is done before its repository goes
@@ -548,7 +548,7 @@ describe('an idea', () => {
     mkdirSync(plans);
     writeFileSync(join(plans, 'export-fur-vermieter.md'), '# Schon da\n');
     canvas.shutdown();
-    canvas = new CanvasRuntime(
+    canvas = await CanvasRuntime.start(
       { repos: [{ path: main, clones: 1, settings: { land: 'pr', planDocs: { dir: plans, exclude: [] } } }] },
       { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 },
     );
@@ -617,12 +617,12 @@ describe('an idea', () => {
     expect(runtime.sessions).toHaveLength(1);
   });
 
-  test('after a restart an idea whose agent was answering gets its reply', () => {
+  test('after a restart an idea whose agent was answering gets its reply', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Frage.' });
     explorer().emit({ type: 'session', id: 'sess-9' });
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     const s = explorer();
     expect(s.spec.resume).toBe('sess-9');
     expect(s.inbox[0]).toContain('Obeya was restarted');
@@ -712,7 +712,7 @@ describe('an idea', () => {
     expect(item(i.id).idea!.buildAfterReply).toBeUndefined();
   });
 
-  test('parked or dropped during a turn, what its agent has not answered goes to it first when the conversation goes on, across a restart', () => {
+  test('parked or dropped during a turn, what its agent has not answered goes to it first when the conversation goes on, across a restart', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
     const first = explorer();
@@ -723,7 +723,7 @@ describe('an idea', () => {
     expect(first.closed).toBe(true);
     expect(item(i.id).idea).toMatchObject({ status: 'parked', thinking: false });
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     expect(runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief'))).toHaveLength(1);
     canvas.act(i.id, { action: 'discuss', text: 'Drittens.' });
     const later = explorer();
@@ -745,7 +745,7 @@ describe('an idea', () => {
     expect(explorer().inbox).toEqual(['The owner says:\n\nFünftens.']);
   });
 
-  test('its agent paused during a reply keeps what it has not answered, stays paused across a restart, and answers it once resumed', () => {
+  test('its agent paused during a reply keeps what it has not answered, stays paused across a restart, and answers it once resumed', async () => {
     const i = idea();
     expect(() => canvas.act(i.id, { action: 'pause' })).toThrow('not working on anything');
     canvas.act(i.id, { action: 'discuss', text: 'Erstens.' });
@@ -756,7 +756,7 @@ describe('an idea', () => {
     expect(item(i.id)).toMatchObject({ paused: true, idea: { status: 'open', thinking: false } });
     expect(() => canvas.act(i.id, { action: 'pause' })).toThrow('paused already');
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     const explorers = () => runtime.sessions.filter((x) => x.spec.tools.some((t) => t.name === 'update_brief')).length;
     expect(explorers()).toBe(1);
     expect(item(i.id).paused).toBe(true);
@@ -873,14 +873,14 @@ describe('an idea', () => {
     ]);
   });
 
-  test('its agent the usage limit stops when Obeya restarts runs into it again and waits anew; parked meanwhile, it waits no more', () => {
+  test('its agent the usage limit stops when Obeya restarts runs into it again and waits anew; parked meanwhile, it waits no more', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Frage.' });
     explorer().emit({ type: 'session', id: 'sess-9' });
     explorer().emit({ type: 'error', message: "You've hit your session limit", limit: { resetsAt: Date.now() + 10_000 } });
     explorer().emit({ type: 'idle' });
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     expect(item(i.id).limitedUntil).toBeUndefined();
     const s = explorer();
     expect(s.inbox[0]).toContain('Obeya was restarted');
@@ -892,13 +892,13 @@ describe('an idea', () => {
     expect(item(i.id).limitedUntil).toBeUndefined();
   });
 
-  test('what waited for its agent’s turn when Obeya stopped reaches it after the restart', () => {
+  test('what waited for its agent’s turn when Obeya stopped reaches it after the restart', async () => {
     const i = idea();
     canvas.act(i.id, { action: 'discuss', text: 'Frage.' });
     explorer().emit({ type: 'session', id: 'sess-9' });
     canvas.act(i.id, { action: 'discuss', text: 'Noch eine.' });
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     const s = explorer();
     expect(s.spec.resume).toBe('sess-9');
     expect(s.inbox[0]).toContain('Noch eine.');
@@ -993,7 +993,7 @@ describe('a prototype', () => {
 
   test('several run side by side, each with its approach, and the idea shows every demo', async () => {
     canvas.shutdown();
-    canvas = open(3);
+    canvas = await open(3);
     const i = idea('Logo für Obeya');
     canvas.act(i.id, { action: 'prototype', text: 'Wortmarke: der Name in eigener Schrift' });
     canvas.act(i.id, { action: 'prototype', text: 'Bildmarke' });
@@ -1022,7 +1022,7 @@ describe('a prototype', () => {
 
   test('a second prototype with the same approach is numbered', async () => {
     canvas.shutdown();
-    canvas = open(2);
+    canvas = await open(2);
     const i = idea();
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
     await settle();
@@ -1034,7 +1034,7 @@ describe('a prototype', () => {
 
   test('the variants its agent planned start at once, one prototype each, and none twice', async () => {
     canvas.shutdown();
-    canvas = open(4);
+    canvas = await open(4);
     const i = idea('Leinwand ordnen');
     canvas.act(i.id, { action: 'discuss', text: 'Zeig mir alle drei.' });
     turn(explorer(), 'Drei Prototypen geplant.', () =>
@@ -1074,7 +1074,7 @@ describe('a prototype', () => {
 
   test('"Diesen Prototyp bauen" builds the idea on its branch; the others are discarded', async () => {
     canvas.shutdown();
-    canvas = open(3);
+    canvas = await open(3);
     const i = idea();
     board().setIdea(i.id, { brief: '**Ziel:** CSV-Export.' });
     canvas.act(i.id, { action: 'prototype', text: 'Knopf' });
@@ -1182,7 +1182,7 @@ describe('a prototype', () => {
 
   test('"Als Projekt planen" keeps the prototypes; once the project stands, one of its workstreams is built on one', async () => {
     canvas.shutdown();
-    canvas = open(3);
+    canvas = await open(3);
     const i = idea('Webseite');
     board().setIdea(i.id, { brief: '**Ziel:** Eine Seite. Über die Variante entscheiden die Prototypen.' });
     canvas.act(i.id, { action: 'prototype', text: 'Film zuerst' });
@@ -1265,7 +1265,7 @@ describe('a prototype', () => {
 
   test('"Teilaufgabe abtrennen" starts the settled part as a task of its own; the idea stays with its conversation and prototypes', async () => {
     canvas.shutdown();
-    canvas = open(3);
+    canvas = await open(3);
     const i = idea('Lese-Lern-App');
     const shot = canvas.images.save(new Uint8Array([1]), 'image/png');
     canvas.act(i.id, { action: 'discuss', text: 'So soll das Spiel aussehen.', images: [shot] });

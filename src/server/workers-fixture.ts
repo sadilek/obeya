@@ -42,7 +42,7 @@ export const setLanguage = (l: 'de' | 'en') => void (language = l);
 export const setConversation = (l: 'de' | 'en') => void (conversation = l);
 
 /** `withOrigin`: clones come from a bare `origin`, as from a remote, instead of from the checkout. */
-export function setup(adapter: RepoAdapter, withOrigin = false) {
+export async function setup(adapter: RepoAdapter, withOrigin = false) {
   dir = mkdtempSync(join(tmpdir(), 'obeya-workers-'));
   main = join(dir, 'main');
   gitRepo(main);
@@ -58,7 +58,7 @@ export function setup(adapter: RepoAdapter, withOrigin = false) {
   const workspaces = new Workspaces(store, 'c', { mode: adapter.workspaces, repoPath: main, dir: join(dir, 'ws') });
   spaces = workspaces;
   if (adapter.workspaces === 'clones') {
-    workspaces.ensureClones(withOrigin ? origin : main, 1);
+    await workspaces.ensureClones(withOrigin ? origin : main, 1);
     for (const w of workspaces.list()) identify(w.path);
   }
   runtime = new FakeRuntime();

@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { readShared, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
+import { readSharedAsync, REPO_ADAPTER_DIR, REPO_SETTINGS_FILE } from '../adapters';
 import { settingsShape, withoutGone as goneSettings } from '../adapters/schema';
 import { LANGUAGES } from '../core/locale';
 import { blocksSaving, type CanvasConfig, type DemoSite, type ConfigChecked, type ConfigProblem, type ConfigSaved, type ConfigView, type RepoSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type SettingsShared, type SharedSettings, type DemoSettingsProblem, type DemoSettingsView, type DemoVoiceCheck, type ResolvedCanvas, type VoiceInstallJob, layerSettings, type ProposedSetting, type RepoTrust, type RepoValues, settingPatch, commandLines } from '../core/types';
@@ -30,7 +30,7 @@ import {
 import { checkSetup, type SetupCheck } from '../../plugin/skills/demo/lib/setup.ts';
 import { installState, installVoice, KEY_ENV, sample } from '../../plugin/skills/demo/lib/voices.ts';
 import { BadRequest } from './board';
-import { ConfigError, readingRepo, resolveCanvas, type StartFailure } from './canvas';
+import { ConfigError, readRepos, resolveCanvas, type StartFailure } from './canvas';
 import type { Store } from './db';
 import { freshPath } from './path';
 import { sameRemote } from './repo';
@@ -226,7 +226,7 @@ export interface ConfigOptions {
    * The running canvases take the saved configuration over without a restart (`Canvases.apply`):
    * `ids` are its canvases' ids, null where one does not resolve.
    */
-  apply?: (canvases: CanvasConfig[], ids: (string | null)[]) => void;
+  apply?: (canvases: CanvasConfig[], ids: (string | null)[]) => void | Promise<void>;
   /** The canvases, and repositories of those that run, that do not run as the configuration has them (`Canvases.failures`). */
   failures?: () => StartFailure[];
   /** Repositories' settings for everyone were committed: the running canvases read them again. */
@@ -455,7 +455,7 @@ export class Config {
       const { after, ...done } = await pushShared(repoPath, mine);
       console.log(`Obeya: settings of ${repoPath} for everyone, ${'unchanged' in done ? 'which origin\'s ' + done.branch + ' had already' : `pushed onto origin's ${done.branch}`}`);
       // origin's had them already: only what the main branch Obeya reads has goes (the local one may be ahead of origin's)
-      this.takenOver(repoPath, undefined, 'unchanged' in done ? readShared(repoPath).settings : after);
+      this.takenOver(repoPath, undefined, 'unchanged' in done ? (await readSharedAsync(repoPath)).settings : after);
       this.o.onSettings?.();
       return done;
     }
@@ -480,7 +480,7 @@ export class Config {
       }
       console.log(`Obeya: ${what} of ${path} for everyone, which origin's ${'branch' in done ? done.branch : ''} had already`);
       // only what the main branch Obeya reads has: the local one may be ahead of origin's
-      this.takenOver(path, undefined, readShared(path).settings);
+      this.takenOver(path, undefined, (await readSharedAsync(path)).settings);
       return done;
     }
     const { before: _, after, ...done } = await commitShared(path, patch);
@@ -496,12 +496,12 @@ export class Config {
    * groups `held` of `seen` (`RepoTrust`), which count from now on, as long as its default branch
    * has them so. Commands that changed there since are refused (`trustChanged`).
    */
-  trust(input: unknown) {
+  async trust(input: unknown) {
     const parsed = z.object({ path: z.string().min(1), seen: z.unknown(), held: z.array(z.enum(['app', 'site', 'claude'])) }).safeParse(input);
     if (!parsed.success) throw new BadRequest('invalid', 'expected { path, seen, held }');
     const repoPath = resolve(expandHome(parsed.data.path));
     if (!existsSync(repoPath)) throw new BadRequest('invalid', `no repository at ${parsed.data.path}`);
-    const now = commandsOf(readShared(repoPath));
+    const now = commandsOf(await readSharedAsync(repoPath));
     if (canonical(now) !== canonical(parsed.data.seen)) throw new BadRequest('trustChanged', `${repoPath}: its commands changed on the default branch since they were shown`);
     // only the groups the dialog showed: one this machine's values (saved or in the draft) stand in for it did not
     this.o.store.trustCommands(repoPath, trustHeld(this.o.store.trustedCommands(repoPath), now, parsed.data.held.filter((g) => now[g] !== undefined)));
@@ -547,28 +547,17 @@ export class Config {
     if (!parsed.success) return { canvases: [], resolved: [], problems: [{ code: 'invalid', detail: z.prettifyError(parsed.error) }] };
     const canvases = tidy(parsed.data);
     const expanded = expandConfig(canvases);
-    // a repository whose path is still empty is read nowhere (`resolveCanvas` finds its path missing)
-    const repos = expanded.flatMap((c) => c.repos).filter((r) => r.path);
-    // a workspace needs only to be a repository; one that is also a repository of the configuration is read as that
-    const paths = new Set(repos.map((r) => resolve(r.path)));
-    // a folder without git is read as it is
-    const folders = new Set(repos.filter((r) => r.git === false).map((r) => resolve(r.path)));
-    const workspaces = new Set(repos.flatMap((r) => (r.workspaces ?? []).map((w) => resolve(w))).filter((w) => !paths.has(w)));
-    const branches = repos.flatMap((r) => (r.settings?.branch && existsSync(r.path) ? [{ path: resolve(r.path), branch: r.settings.branch }] : []));
-    const [reads, clones, found] = await Promise.all([
-      Promise.all([...paths].map(async (p) => [p, await gitSteps(p, readingRepo(p, folders.has(p)))] as const)).then((x) => new Map(x)),
-      Promise.all(
-        [...workspaces].map(async (w) => {
-          const [dir, origin] = await gitSteps(w, gitCalls(['rev-parse', '--git-dir'], ['remote', 'get-url', 'origin']));
-          return [w, dir != null ? { origin: origin ?? null } : null] as const;
-        }),
-      ).then((x) => new Map(x)),
+    const repos = expanded.flatMap((c) => c.repos);
+    const branches = repos.flatMap((r) => (r.path && r.settings?.branch && existsSync(r.path) ? [{ path: resolve(r.path), branch: r.settings.branch }] : []));
+    const [reads, found] = await Promise.all([
+      readRepos(repos),
       Promise.all(branches.map(async (b) => [`${b.path}\0${b.branch}`, await hasBranch(b.path, b.branch)] as const)).then((x) => new Map(x)),
     ]);
-    const isRepo = (path: string) => !!(clones.get(path) ?? reads.get(path));
+    // a workspace needs only to be a git repository
+    const isRepo = (path: string) => !!reads.workspaces.get(path);
     /** The `origin` of a workspace that is a git repository. */
-    const originOf = (path: string) => clones.get(path)?.origin ?? reads.get(path)?.info.remote ?? null;
-    const read = (path: string) => reads.get(path) ?? null;
+    const originOf = (path: string) => reads.workspaces.get(path)?.origin ?? null;
+    const read = (path: string) => reads.repos.get(path)?.read ?? null;
     const problems: ConfigProblem[] = [];
     if (!canvases.length) problems.push({ code: 'noCanvas', detail: 'Obeya needs at least one canvas' });
     // a host's name stands for one machine across the configuration: its workspaces are named by it
@@ -779,7 +768,7 @@ export class Config {
   async retry(): Promise<{}> {
     if (!this.o.apply) throw new BadRequest('config', 'this Obeya does not apply its configuration while it runs');
     const { canvases, resolved } = await this.check(this.current());
-    this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
+    await this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
     return {};
   }
 
@@ -792,7 +781,8 @@ export class Config {
     this.read = undefined;
     if (this.o.source === 'file' && !this.restarting && this.o.apply) {
       console.log(`Obeya: configuration saved to ${this.o.file}; it applies at once`);
-      this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
+      // settles once the canvases took it over, git read without the server waiting
+      await this.o.apply(expandConfig(canvases), resolved.map((r) => r?.id ?? null));
       return { restarting: false, applied: true };
     }
     console.log(`Obeya: configuration saved to ${this.o.file}`);

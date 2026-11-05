@@ -10,7 +10,7 @@ import { clipProblems, Config, demoSettingsProblems, readConfigFile } from './co
 import { Store } from './db';
 import { serve } from './server';
 import { ownerLanguage } from './settings';
-import { asOwner, FakeRuntime, noForge, gitRepo, until } from './testing';
+import { asOwner, FakeRuntime, noForge, gitRepo, syncGitCalls, until } from './testing';
 import { git } from './workspaces';
 
 let dir: string;
@@ -54,7 +54,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe("Obeya's configuration", async () => {
+describe("Obeya's configuration", () => {
   test('says what each canvas amounts to: its id, name, repositories and where their workers work', async () => {
     api = gitRepo(join(dir, 'api-own'), { '.obeya/settings.json': '{ "workspaces": "clones" }\n' });
     const c = config('args', [{ name: 'Produkt', repos: [{ path: web }, { path: api }] }], ['produkt']);
@@ -353,8 +353,11 @@ describe("Obeya's configuration", async () => {
     expect(checked.resolved[0]!.repos[0]!.values.app.run.held).toBeUndefined();
 
     // what the dialog showed is trusted; commands that changed since are not
-    await expect(async () => c.trust({ path: own, seen: { app: { stop: 'other' } }, held: ['app'] })).toThrow(expect.objectContaining({ code: 'trustChanged' }));
-    c.trust({ path: own, seen: trust.now, held: trust.held });
+    await expect(c.trust({ path: own, seen: { app: { stop: 'other' } }, held: ['app'] })).rejects.toThrow(expect.objectContaining({ code: 'trustChanged' }));
+    // git reads the commands without the server waiting for it
+    const synced = syncGitCalls();
+    await c.trust({ path: own, seen: trust.now, held: trust.held });
+    expect(synced.stop()).toEqual([]);
     expect(applied).toBe(1);
     checked = await c.checkSaved();
     expect(checked.problems).toEqual([]);
@@ -374,7 +377,7 @@ describe("Obeya's configuration", async () => {
     writeFileSync(file, JSON.stringify([{ repos: [{ path: own, settings: mine }] }]));
     const shown = (await c.checkSaved()).resolved[0]!.repos[0]!.trust!;
     expect(shown.held).toEqual(['claude']);
-    c.trust({ path: own, seen: shown.now, held: shown.held });
+    await c.trust({ path: own, seen: shown.now, held: shown.held });
     expect(store.trustedCommands(own)).toEqual({ app: { stop: app.stop }, claude: { '.mcp.json': { id: expect.any(String), text: '{"mcpServers":{"x":{}}}' } } });
   });
 
@@ -384,9 +387,9 @@ describe("Obeya's configuration", async () => {
     const draft = [{ repos: [{ path: own }] }];
     const trust = (await c.check(draft)).resolved[0]!.repos[0]!.trust!;
     expect(trust.held).toEqual(['app']);
-    c.trust({ path: own, seen: trust.now, held: trust.held });
+    await c.trust({ path: own, seen: trust.now, held: trust.held });
     expect((await c.check(draft)).problems).toEqual([]);
-    expect(() => c.trust({ path: join(dir, 'nowhere'), seen: {}, held: [] })).toThrow(expect.objectContaining({ code: 'invalid' }));
+    await expect(c.trust({ path: join(dir, 'nowhere'), seen: {}, held: [] })).rejects.toThrow(expect.objectContaining({ code: 'invalid' }));
   });
 
   test("commands this machine's values put into the repository's settings are the owner's own: no trust step for them", async () => {
@@ -605,6 +608,9 @@ describe("Obeya's configuration", async () => {
     const c = config('file', []);
     const clone = join(dir, 'web-clone');
     git(dir, 'clone', '--quiet', web, clone);
+    // an origin on a server, as configured before git's insteadOf rewrites it, is read with the rest
+    git(api, 'remote', 'add', 'origin', 'https://github.com/acme/api.git');
+    git(api, 'config', `url.${web}.insteadOf`, 'https://github.com/acme/api.git');
     const calls: string[] = [];
     const { spawn, spawnSync } = Bun;
     const bun = Bun as unknown as Record<'spawn' | 'spawnSync', (cmd: string[], ...rest: unknown[]) => unknown>;
@@ -632,9 +638,9 @@ describe("Obeya's configuration", async () => {
 describe('the configuration over HTTP', () => {
   let server: ReturnType<typeof serve>;
   let canvas: CanvasRuntime;
-  beforeEach(() => {
+  beforeEach(async () => {
     const c = config('args', [{ repos: [{ path: web }] }], ['web']);
-    canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c });
+    canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c });
     server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, c);
   });
   afterEach(() => {
@@ -750,7 +756,7 @@ describe('the configuration over HTTP', () => {
     mkdirSync(join(dir, 'home'));
     writeFileSync(file, JSON.stringify([{ repos: [{ path: web, settings: { checks: ['bun test'] } }] }]));
     const c = config('file', []);
-    const live = new CanvasRuntime({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c, settings: (p) => c.repoSettings(p) });
+    const live = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge, config: c, settings: (p) => c.repoSettings(p) });
     const at = serve([live], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, c);
     const post = async (path: string, body?: unknown) => {
       const res = await asOwner(() => at).fetch(new URL(path, at.url), { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }) });
@@ -809,7 +815,7 @@ describe('a change the Koordinator makes', () => {
     mkdirSync(join(dir, 'home'));
     writeFileSync(file, JSON.stringify(saved));
     const runtime = new FakeRuntime();
-    const canvas = new CanvasRuntime({ repos: [{ path: web }] }, { store, home: dir, runtime, forge: noForge, config: config('file', saved, ['web', 'dokumente']), commandDelayMs: 0 });
+    const canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store, home: dir, runtime, forge: noForge, config: config('file', saved, ['web', 'dokumente']), commandDelayMs: 0 });
     try {
       const heard = canvas.commander.hear('Nimm api auf die Leinwand web.', {});
       await until(() => runtime.sessions.some((s) => s.spec.tools.some((t) => t.name === 'configure')));

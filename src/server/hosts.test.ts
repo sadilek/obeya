@@ -11,11 +11,11 @@ import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { generic } from '../adapters/generic';
 import { Board } from './board';
 import { Store } from './db';
-import { HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
+import { githubToken, HostError, hostName, onHost, registerHost, remote, sessionFiles, type SshHost } from './hosts';
 import { runAppCommand } from './app-command';
 import { codexRuntime } from './codex';
 import { type AgentEvent, sdkRuntime } from './runtime';
-import { FakeRuntime, fakeSsh, gitRepo, identify, until } from './testing';
+import { FakeRuntime, fakeSsh, gitRepo, identify, syncGitCalls, until } from './testing';
 import { Workers } from './workers';
 import { git, gitAsync, HERE, RECHECK_MS, Workspaces } from './workspaces';
 
@@ -57,6 +57,32 @@ describe('a workspace on a host', () => {
     expect((await host.run('printf %s "$GH_TOKEN"', { cwd: dir })).stdout).toBe('');
     expect(log()).toContain('me@box');
     expect(log()).not.toContain('ghp_secret');
+  });
+
+  test("reads the repository's GitHub login in the background, a command there waiting for it the first time", async () => {
+    const repo = gitRepo(join(dir, 'repo'));
+    // git's credential helper as a stand-in: each read gives a new login, and is counted
+    const fakeGit = join(dir, 'fake-git');
+    writeFileSync(fakeGit, `#!/bin/sh\necho x >> ${join(dir, 'reads')}\necho password=ghp_$(wc -l < ${join(dir, 'reads')} | tr -d ' ')\n`, { mode: 0o755 });
+    const reads = () => (existsSync(join(dir, 'reads')) ? readFileSync(join(dir, 'reads'), 'utf8').split('\n').length - 1 : 0);
+    const synced = syncGitCalls();
+    const login = githubToken(repo, 'https://github.com/acme/repo.git', fakeGit);
+    host.tokenFor(repo, login);
+    expect((await host.run('printf %s "$GH_TOKEN"', { cwd: repo })).stdout).toBe('ghp_1');
+    expect(login()).toBe('ghp_1');
+    expect(reads()).toBe(1);
+    // read again in the background once it is old: the one before stands meanwhile
+    setSystemTime(new Date(Date.now() + 11 * 60_000));
+    try {
+      expect(login()).toBe('ghp_1');
+      await until(() => login() === 'ghp_2');
+    } finally {
+      setSystemTime();
+    }
+    expect(synced.stop()).toEqual([]);
+    // a remote not on HTTPS has none, and nothing is read for it
+    expect(githubToken(repo, 'git@github.com:acme/repo.git', fakeGit)()).toBeUndefined();
+    expect(reads()).toBe(2);
   });
 
   test("runs the stack commands of the settings there", async () => {
@@ -205,7 +231,7 @@ describe('clones on a host', () => {
   });
 
   test('are made there, leased after those here, and land through the remote', async () => {
-    spaces.ensureClones(origin, 1);
+    await spaces.ensureClones(origin, 1);
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 2, () => 'ghp_x')).toBeNull();
     // made once: a second call finds them
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 2, () => 'ghp_x')).toBeNull();
@@ -246,7 +272,7 @@ describe('clones on a host', () => {
       machines: [{ host: null, slots: 1 }, { host: name, slots: 1 }],
       busy: (h) => workers.busyOn(h),
     });
-    spaces.ensureClones(origin, 2);
+    await spaces.ensureClones(origin, 2);
     expect(await spaces.ensureHostClones(host, join(dir, 'far'), origin, 2, () => undefined)).toBeNull();
     const runtime = new FakeRuntime();
     workers = new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, workspaces: 'clones', land: 'pr' } });

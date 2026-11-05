@@ -345,7 +345,8 @@ when it answers, waiting cards look again.
 
 #### Logins and files
 
-Nothing secret is stored there: the repository's GitHub login (from `git credential fill` here) and
+Nothing secret is stored there: the repository's GitHub login (from `git credential fill` here, read
+in the background, see Stalls) and
 the Claude login (`claude-token` in Obeya's home, from `claude setup-token`, else
 `CLAUDE_CODE_OAUTH_TOKEN`) travel as the first line
 of stdin of each command and session (a Codex session gets no Claude login); the clones' credential helper reads `GH_TOKEN` (after an empty

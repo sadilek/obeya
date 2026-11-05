@@ -19,20 +19,20 @@ let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 let notices: Notice[];
 
-const open = () => {
-  const c = new CanvasRuntime({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 });
+const open = async () => {
+  const c = await CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 });
   c.board.onNotice((n) => notices.push(n));
   return c;
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-answers-'));
   main = join(dir, 'main');
   gitRepo(main, { 'docs/plan/pr-loop.md': '# PR-Loop\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [x] **W1:** PR-Phase.\n- [ ] **W4:** Live im Shop. Mit dem Go des Owners.\n' });
   store = new Store(':memory:');
   runtime = new FakeRuntime();
   notices = [];
-  canvas = open();
+  canvas = await open();
 });
 afterEach(() => {
   canvas.shutdown();
@@ -182,7 +182,7 @@ describe('a question the Koordinator looks up', () => {
     // a fresh session gets the newest five answers in full, older ones clipped
     for (let n = 1; n <= 4; n++) asked(`frage ${n}`, `Antwort ${n}.`);
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     const fresh = await say('und?', {}, 'reply', { confirm: 'Ja.' });
     expect(fresh.brief).toContain(answer);
     expect(fresh.brief).toContain('Antwort 4.');
@@ -195,7 +195,7 @@ describe('a question the Koordinator looks up', () => {
     await say('was würde der agent tun?', { card: w4.id }, 'look_up', { question: 'What would the worker do?', confirm: 'Ich schaue nach.' });
     canvas.shutdown();
     const before = runtime.sessions.length;
-    canvas = open();
+    canvas = await open();
     await settle();
     expect(runtime.sessions.length).toBe(before + 1);
     expect(answerer().inbox[0]).toContain('What would the worker do?');
@@ -282,7 +282,7 @@ describe('a look-up the usage limit stops', () => {
     expect(a.closed).toBe(false);
     // Obeya restarts: the question is looked up again, runs into the limit again and waits anew
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     await settle();
     expect(answerer()).not.toBe(a);
     a = answerer();
@@ -560,7 +560,7 @@ describe('a thread on a Question card', () => {
     // nothing answered it: the question stands last
     expect(board().events(card.id).filter((e) => e.kind === 'talk').at(-1)!.text).toBe('und im Oktober?');
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     await settle();
     expect(answerer()).toBe(a);
     expect(board().item(card.id)!.paused).toBe(true);
@@ -728,7 +728,7 @@ describe('a thread on a Question card', () => {
     const { card } = await moved();
     canvas.tell(card.id, 'und im Oktober?', [], false);
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     await settle();
     const a = answerer();
     expect(a.inbox[0]).toContain('und im Oktober?');
@@ -835,7 +835,7 @@ describe("a question asked in a project's sheet", () => {
     canvas.press(project().id, { action: 'consult', text: 'Was fehlt noch?' });
     await settle();
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     await settle();
     const talk = board().talk().at(-1)!;
     // Obeya never read the words, so they get no reply of its own at the restart

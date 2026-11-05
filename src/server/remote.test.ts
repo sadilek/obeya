@@ -26,14 +26,14 @@ let push: Push;
 /** What went to the push service: to where. */
 let pushed: string[];
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-remote-'));
   const main = gitRepo(join(dir, 'main'), { 'README.md': 'hi\n', '.obeya/settings.json': '{ "workspaces": "clones" }\n' });
   ts = join(dir, 'ts');
   store = new Store(':memory:');
   clock = Date.now();
   access = new Access({ store, home: dir, tailscale: new Tailscale(fakeTailscale(ts)), now: () => clock });
-  canvas = new CanvasRuntime({ repos: [{ path: main }] }, { store, home: dir, runtime: undefined as never, forge: noForge });
+  canvas = await CanvasRuntime.start({ repos: [{ path: main }] }, { store, home: dir, runtime: undefined as never, forge: noForge });
   pushed = [];
   push = new Push({
     store,

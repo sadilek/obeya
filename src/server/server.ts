@@ -620,7 +620,7 @@ export function serve(
       // „Für alle ins Repository übernehmen“: a repository's settings for this machine into its .obeya/settings.json
       '/api/config/share-settings': { POST: needs(config, async (c, req) => c.shareSettings(await req.json())) },
       // a repository's commands, new or changed on its default branch, confirmed by the owner: they count from now on
-      '/api/config/trust': { POST: needs(config, async (c, req) => (c.trust(await req.json()), {})) },
+      '/api/config/trust': { POST: needs(config, async (c, req) => (await c.trust(await req.json()), {})) },
       // what the configuration amounts to and what is wrong with it: as saved, or a draft as the owner edits it
       // „Erneut versuchen“: what did not start as the configuration has it tries again
       '/api/config/retry': { POST: needs(config, (c) => c.retry()) },

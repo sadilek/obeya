@@ -326,13 +326,19 @@ that called it, by file and line), and each process the server waited for longer
 command line. A pause the thread did not run in at all (the machine slept) is no stall.
 
 What happens often or many times at once therefore never waits for a process: starting an agent and
-landing work read git without blocking, and of the processes Obeya waits for without blocking, a few
-start per turn of the event loop, the rest in the next; starting one takes the thread a moment, under
-load many milliseconds. Sharing on a demo site Obeya keeps reads and writes its files without
-blocking, and touches only the page it changes: what it has read of the site's directory (each
-page's `meta.json`, which pages hold their files) it keeps while it runs, since only Obeya changes
-that directory, and lists the directory afresh to notice a page that went. A site of a few hundred
-pages read page by page held the server up for up to a second with every share (2026-11-05).
+landing work read git without blocking, and so do starting the canvases, applying a saved
+configuration, restarting a repository's agents, checking the configuration and confirming a
+repository's commands, whatever the number of canvases and repositories. A repository's `origin` as
+configured (before git's `insteadOf`) is read with the rest of it, and a host's GitHub login is read
+in the background from the start and again once it is ten minutes old, the one before standing
+meanwhile; a command on the host waits only for the first. Of the processes Obeya waits for without
+blocking, a few start per turn of the event loop, the rest in the next; starting one takes the
+thread a moment, under load many milliseconds. Sharing on a demo site Obeya keeps reads and writes
+its files without blocking, and touches only the page it changes: what it has read of the site's
+directory (each page's `meta.json`, which pages hold their files) it keeps while it runs, since only
+Obeya changes that directory, and lists the directory afresh to notice a page that went. A site of a
+few hundred pages read page by page held the server up for up to a second with every share
+(2026-11-05).
 
 A page reports its own freezes of half a second or more over its WebSocket, and the server logs them
 in the same places, naming the device and the canvas: where the browser says where the time went
@@ -568,6 +574,13 @@ workers are busy.
   changes (the event comes after a commit made just before the start); a cap on git processes
   running at once (a fetch or clone taking minutes would hold a place, and the trust check of an
   agent start would queue behind it).
+- **Canvases start and take a configuration with git read ahead, never waited for** (2026-11-05,
+  from `stalls.log`): reading every repository of every canvas one git call after the other held the
+  server up for up to 4.7 s on a save, and the origin URL asked again at each configuration check
+  for up to 0.7 s. What a configuration needs of git (each repository, each listed workspace) is read
+  for all of them at once first, then applied in one go; configurations saved meanwhile apply one
+  after the other. The save answers once its canvases took it over. Rejected: reading lazily where a
+  value is used (a canvas would start on half-read repositories, its ids and Lesestand unsettled).
 - **Programs run without a window on Windows by default, not by an option at each call**
   (2026-11-01): one call forgotten brings the flashing windows back. A program meant to be seen asks
   for its window.

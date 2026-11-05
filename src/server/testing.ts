@@ -156,6 +156,27 @@ export const until = async (done: () => unknown, ms = 3000) => {
 };
 
 /**
+ * Records the git calls the server waits for (git through `Bun.spawnSync`, as `git` makes them),
+ * from now until `stop`, which gives them back, each as its arguments after `git`.
+ */
+export function syncGitCalls() {
+  const calls: string[] = [];
+  const spawnSync = Bun.spawnSync;
+  Bun.spawnSync = ((...args: Parameters<typeof Bun.spawnSync>) => {
+    const first = args[0] as string[] | { cmd: string[] };
+    const argv = Array.isArray(first) ? first : first.cmd;
+    if (/(^|[/\\])git(\.exe)?$/.test(argv[0] ?? '')) calls.push(argv.slice(1).join(' '));
+    return spawnSync(...args);
+  }) as typeof Bun.spawnSync;
+  return {
+    stop: () => {
+      Bun.spawnSync = spawnSync;
+      return calls;
+    },
+  };
+}
+
+/**
  * A stand-in for `ssh` that runs the command on this machine, as a host's login shell would; the
  * host counts as unreachable (exit 255, as ssh's own) while `<dir>/down` exists. Its home is
  * `<dir>/home`. Each command it ran is appended to `<dir>/log`, with the target first; each

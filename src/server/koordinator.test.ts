@@ -612,7 +612,7 @@ describe('Koordinator waits for a free workspace', () => {
   let clones: string[];
 
   /** A pool of `n` clones instead of worktrees: cards wait when all are leased, or with `slots` when that many workers are busy. */
-  function pool(n: number, slots?: number) {
+  async function pool(n: number, slots?: number) {
     const main = join(dir, 'main');
     const store = new Store(':memory:');
     board = new Board(store, { id: 'c', name: 'C', repos: [{ id: 'home', name: 'Home', path: main, branch: 'main' }] }, () => ({ docs, dirs: [] }));
@@ -623,14 +623,14 @@ describe('Koordinator waits for a free workspace', () => {
       dir: join(dir, 'clones'),
       ...(slots !== undefined ? { machines: [{ host: null, slots }], busy: () => workers.busyOn(null) } : {}),
     });
-    workspaces.ensureClones(main, n);
+    await workspaces.ensureClones(main, n);
     clones = workspaces.list().map((w) => w.path);
     workers = new Workers({ board, runtime, workspaces, adapter });
     k = new Koordinator({ board, runtime, home: () => main, repoFor: () => ({ workers, workspaces, adapter, path: main }), holdMs: 0 });
   }
 
   test('a card the Koordinator lets start waits for a workspace, and starts once one is free', async () => {
-    pool(1);
+    await pool(1);
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -650,7 +650,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 
   test("a follow-up whose agent needs a full clone takes the next free one, before a queued card", async () => {
-    pool(1);
+    await pool(1);
     const f = card('F');
     await workers.start(f.id);
     workerOf(f.id).emit({ type: 'session', id: 'sess-f' });
@@ -683,7 +683,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 
   test('a card waits for a slot while the busy workers fill them, and starts once a turn ends', async () => {
-    pool(3, 1);
+    await pool(3, 1);
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -745,7 +745,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 
   test('the card waiting longest gets the workspace; a card behind a waiting one waits too', async () => {
-    pool(1);
+    await pool(1);
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -772,7 +772,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 
   test('every free workspace with uncommitted changes: the card waits until one is clean', async () => {
-    pool(2);
+    await pool(2);
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -791,7 +791,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 
   test('taken out of the queue, it no longer starts', async () => {
-    pool(1);
+    await pool(1);
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -811,7 +811,7 @@ describe('Koordinator waits for a free workspace', () => {
   }
 
   test("taking a card's clone gives it to the card waiting; the card it was taken from waits behind and goes on with its work, uncommitted again", async () => {
-    pool(1);
+    await pool(1);
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -841,7 +841,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 
   test("a card whose clone was taken goes on once one is free, whatever arrows the owner drew meanwhile", async () => {
-    pool(1);
+    await pool(1);
     const a = card('A');
     k.request(a.id);
     await scope(['src/a.ts']);
@@ -857,7 +857,7 @@ describe('Koordinator waits for a free workspace', () => {
   });
 
   test("taking a card's clone waits a few seconds, in which the owner takes it back", async () => {
-    pool(1);
+    await pool(1);
     k = new Koordinator({ board, runtime, home: () => join(dir, 'main'), repoFor: () => ({ workers, workspaces, adapter: generic, path: join(dir, 'main') }), holdMs: 40 });
     const a = card('A');
     await workers.start(a.id);

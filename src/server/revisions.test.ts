@@ -13,15 +13,15 @@ let store: Store;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 
-const open = () => new CanvasRuntime({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, limitMargin: 10 });
+const open = () => CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, limitMargin: 10 });
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-revisions-'));
   main = join(dir, 'main');
   gitRepo(main);
   store = new Store(':memory:');
   runtime = new FakeRuntime();
-  canvas = open();
+  canvas = await open();
 });
 afterEach(() => {
   canvas.shutdown();
@@ -357,7 +357,7 @@ describe('a proposal reworked by what the owner says', () => {
     canvas.revisions.revise(p.id, 'Excel auch', false);
     const before = runtime.sessions.length;
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     expect(runtime.sessions.length).toBe(before + 1);
     expect(reviser()!.inbox[0]).toContain('Excel auch');
   });

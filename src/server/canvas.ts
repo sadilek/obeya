@@ -28,7 +28,7 @@ import { type ContributionInfo, type Forge, parsePrUrl, sameRepo } from './forge
 import { Koordinator } from './koordinator';
 import { WorkRetro } from './work-retro';
 import { PrWatcher } from './pr-watcher';
-import { branchCommit, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
+import { branchCommit, prepareLesestand, readingDefaultBranch, ReadTree, refsSeal } from './read-tree';
 import { Revisions } from './revisions';
 import { ProjectAgents } from './project-agents';
 import { ghHosts, onGitHub, outsidePlanDir, planHistory, readPlanDocs, watchPlanDocs } from './repo';
@@ -47,7 +47,7 @@ import { siteMissing, siteName } from './site';
 import { allowedHere, approvedHere, personalDemoSite, readPersonal } from './personal-site';
 import { dimensions } from '../core/page-tags';
 import { type DueRestart, Workers } from './workers';
-import { branchSetting, type CardWorkspaces, defaultBranch, type FileAt, detectingBranch, gitCalls, gitOrNull, type GitSteps, gitSteps, gitStepsSync, isFolder, type Landed, markFolder, readingBranches, together, useBranchSetting, Workspaces } from './workspaces';
+import { branchSetting, type CardWorkspaces, type FileAt, detectingBranch, gitCalls, type GitSteps, gitSteps, isFolder, type Landed, markFolder, readingBranches, together, useBranchSetting, Workspaces } from './workspaces';
 import { FolderWorkspaces } from './folder';
 import { readingTheme, readTheme, type Theme } from './theme';
 import { claudeToken, githubToken, hostName, registerHost } from './hosts';
@@ -166,10 +166,12 @@ interface Repo extends RepoRuntime {
   prs?: PrWatcher;
   /** What the configuration's problems of the repository are read from on its default branch, as last seen (`problemSources`). */
   problemSources?: string;
-  /** The resolved configuration it was set up by, and its place there: what it starts again with where a new one fails. */
-  from: { resolved: Resolved; index: number };
+  /** The resolved configuration it was set up by, its place there, and what was read of the workspaces it lists: what it starts again with where a new one fails. */
+  from: { resolved: Resolved; index: number; listed: RepoReads['workspaces'] };
   /** Its settings read again (`moved`), the last of those under way. */
   moving?: Promise<unknown>;
+  /** Settles once its Lesestand is in place and the clones it was to make are made (or failed). */
+  ready: Promise<void>;
 }
 
 /**
@@ -257,7 +259,31 @@ export class CanvasRuntime {
    */
   inView: Place | undefined;
 
-  constructor(config: CanvasConfig, private deps: CanvasDeps) {
+  /**
+   * Starts a canvas: what it reads of its repositories with git (`readRepos`), and the Lesestand of
+   * each where it is to be made or moved, without the server waiting for git meanwhile; then the
+   * canvas, whose clones still to be made follow before this settles. Throws a ConfigError, or
+   * `HomeDown`.
+   */
+  static async start(config: CanvasConfig, deps: CanvasDeps): Promise<CanvasRuntime> {
+    const reads = await readRepos(config.repos, (r) => machineSettings(deps, r)()?.branch);
+    const ahead = (() => {
+      try {
+        return resolveCanvas(config, deps.store, (r) => machineSettings(deps, r), undefined, (path) => reads.repos.get(path)?.read ?? null);
+      } catch {
+        // the canvas itself tells why
+        return null;
+      }
+    })();
+    if (ahead) await Promise.all(ahead.repos.map((x) => lesestandOf(deps.home, ahead.id, x)).map((l) => l && prepareLesestand(l.repoPath, l.dir)));
+    const canvas = new CanvasRuntime(config, deps, reads);
+    await Promise.all(canvas.repos.map((r) => r.ready));
+    // its home repository's clones could not be made
+    if (canvas.stopped) throw new HomeDown(canvas.id, canvas.failed.get(canvas.board.home)?.detail ?? 'its home repository did not start');
+    return canvas;
+  }
+
+  constructor(config: CanvasConfig, private deps: CanvasDeps, reads: RepoReads) {
     const agents = deps.agents ?? ((role: AgentRole) => AGENT_DEFAULTS[role]);
     // the agents other than workers and Obeya's chat wait for the usage limit through it, each where it shows
     const runtime = (r: AgentRuntime) => withLimitWait(withRepoTrust(withAgentSetting(r, agents), this.claudeHeld), deps.limitMargin);
@@ -268,7 +294,7 @@ export class CanvasRuntime {
     // the main branch the owner set counts from the start: the repository's id, its settings and its Lesestand go by it
     for (const r of config.repos) this.useBranch(r);
     this.config = config;
-    const resolved = this.resolve(config);
+    const resolved = this.resolve(config, reads);
     const { id, name, repos, stored } = resolved;
     this.config = resolved.config;
     const images = (this.images = new Images(join(deps.home, 'images', id)));
@@ -303,7 +329,7 @@ export class CanvasRuntime {
     // the Koordinator needs the workers, and the workers ask it: it is set right after them
     repos.forEach((x, i) => {
       try {
-        this.addRepo(this.startRepo(resolved, i));
+        this.addRepo(this.startRepo(resolved, i, reads.workspaces));
       } catch (e) {
         // without its home repository the canvas does not start; another one is left out, its cards kept
         if (i === 0) throw new HomeDown(id, e);
@@ -556,7 +582,10 @@ export class CanvasRuntime {
   private imageFiles = (ids: string[] = []) => ids.flatMap((i) => this.images.path(i) ?? []);
 
   /** The settings the owner set for a repository on this machine, read whenever they are used. */
-  private settingsOf = (r: RepoConfig): (() => RepoSettings | undefined) => (this.deps.settings ? () => this.deps.settings!(resolve(r.path)) : () => r.settings);
+  private settingsOf = (r: RepoConfig): (() => RepoSettings | undefined) => machineSettings(this.deps, r);
+
+  /** Reads the repositories of `config` (`readRepos`), on the main branches the owner set. */
+  private readRepos = (config: CanvasConfig) => readRepos(config.repos, (r) => this.settingsOf(r)()?.branch);
 
   /**
    * The repository's settings for everyone, as its Lesestand last had them (read again whenever it
@@ -668,11 +697,10 @@ export class CanvasRuntime {
    * What a configuration of this canvas amounts to, with this machine's settings and the
    * repositories' (`resolveCanvas`): those of a repository new here as its read has them.
    */
-  private resolve(config: CanvasConfig) {
-    return resolveCanvas(config, this.deps.store, this.settingsOf, this.sharedOf, (path, folder) => {
-      const seal = folder ? null : refsSeal(path);
-      const read = readRepo(path, folder);
-      if (read && seal) this.readAt(path, seal, { shared: read.shared, adapterModule: read.adapterModule });
+  private resolve(config: CanvasConfig, reads: RepoReads) {
+    return resolveCanvas(config, this.deps.store, this.settingsOf, this.sharedOf, (path) => {
+      const { seal, read } = reads.repos.get(path) ?? { seal: null, read: null };
+      if (read && seal) this.readAt(path, seal, { shared: read.shared, adapterModule: read.adapterModule, branch: read.info.branch });
       if (read && !this.shared.has(path)) this.shared.set(path, read.shared);
       if (read) this.adapterModules.set(path, read.adapterModule);
       return read;
@@ -703,7 +731,7 @@ export class CanvasRuntime {
    * Sets up the repository at `index` of a resolved configuration: its Lesestand, workspaces (clones
    * here and on other machines), project agents and workers. Its workers resume nothing yet.
    */
-  private startRepo(resolved: Resolved, index: number): Repo {
+  private startRepo(resolved: Resolved, index: number, listed: RepoReads['workspaces']): Repo {
     const deps = this.deps;
     const board = this.board;
     const {
@@ -719,27 +747,36 @@ export class CanvasRuntime {
     const isPublic = !info.folder && board.setting(visibilityKey(info.path)) === 'public';
     // whether the repository shares here, which the UI shows
     Object.assign(ref, shareRef(site, deps.home, info.path, isPublic));
-    const stops: (() => void)[] = [];
+    // until its set-up stops: what git finishes for it after that changes nothing
+    let running = true;
+    const stops: (() => void)[] = [() => (running = false)];
     // filled in below; what is set up here reaches it once it is
-    const repo = { config: rc, stops, from: { resolved, index }, ...(isPublic ? { isPublic } : {}) } as Repo;
+    const repo = { config: rc, stops, from: { resolved, index, listed }, ...(isPublic ? { isPublic } : {}) } as Repo;
     repo.problemSources = this.problemSources(info.path, this.adapterModules.get(info.path));
     // where work lands on the local main, the checkout is the Lesestand; otherwise it is a pool clone on a card's branch
     const folder = !!info.folder;
     const read = new ReadTree({
       repoPath: info.path,
-      // a folder without git is read as it is
-      dir: folder || adapter.land === 'main' ? null : join(deps.home, 'read', resolved.id, ref.id),
+      dir: lesestandOf(deps.home, resolved.id, resolved.repos[index]!)?.dir ?? null,
       remote: !folder && !!info.remote,
-      onChange: () => {
-        board.lesestandMoved(repo.ref.id, read.head());
-        return Promise.resolve(this.moved(repo)).then((m) => void (m === 'follow' && this.follow()));
+      onChange: async () => {
+        board.lesestandMoved(repo.ref.id, await read.head());
+        if ((await this.moved(repo)) === 'follow') this.follow();
       },
     });
     stops.push(() => read.stop());
+    // a Lesestand made afresh, or one that could not be made, is read from now on
+    const readFrom = read.path;
+    const placed = read.ready.then(() => {
+      if (!running || read.path === readFrom) return;
+      this.watch(repo);
+      board.docsChanged();
+    });
     const remoteHosts = !folder && info.remote && adapter.workspaces === 'clones' && adapter.land !== 'main' ? (rc.hosts ?? []) : [];
     // the workers set up below say how many are busy where
     let workers!: Workers;
     let workspaces: CardWorkspaces;
+    let cloned: Promise<void> = Promise.resolve();
     if (folder)
       // every card works in the folder itself; what each changed, and its undo, under Obeya's home
       workspaces = new FolderWorkspaces(deps.store, { path: info.path, dir: join(deps.home, 'undo', resolved.id, ref.id) });
@@ -759,11 +796,17 @@ export class CanvasRuntime {
       if (adapter.workspaces === 'clones') {
         // a clone registered for this repository must be one of it
         for (const w of listedClones(rc, info, { land: adapter.land })) {
-          git.register(w, [info.remote, info.path].filter((x): x is string => !!x));
+          git.register(w, [info.remote, info.path].filter((x): x is string => !!x), listed.get(w));
           named.push(w);
         }
-        // landing on main needs clones that see the local main; otherwise they track the remote
-        if (rc.clones) named.push(...git.ensureClones(adapter.land === 'main' || !info.remote ? info.path : info.remote, rc.clones));
+        // landing on main needs clones that see the local main; otherwise they track the remote; those still to be made follow in the background
+        if (rc.clones) {
+          named.push(...git.clonePaths(rc.clones));
+          cloned = git.ensureClones(adapter.land === 'main' || !info.remote ? info.path : info.remote, rc.clones, () => running).then(
+            () => board.changed(),
+            (e) => void (running && this.clonesFailed(repo, e)),
+          );
+        }
       }
       // the pool is what the configuration names now (in worktrees, no clone): clones here it no longer names leave it,
       // and those on hosts no longer in use (on a host still in use, once its clones are in place); worktrees are the cards' own
@@ -848,9 +891,30 @@ export class CanvasRuntime {
       keptDemos: join(deps.home, 'kept-demos'),
       ...(deps.parkGrace !== undefined ? { parkGrace: deps.parkGrace } : {}),
     });
-    Object.assign(repo, { ref, info, adapter, site, read, workspaces, workers, projectAgents });
+    Object.assign(repo, { ref, info, adapter, site, read, workspaces, workers, projectAgents, ready: Promise.all([placed, cloned]).then(() => {}) });
     void this.lookVisibility(repo);
     return repo;
+  }
+
+  /**
+   * The clones a repository was to make could not be made: it does not run as the configuration has
+   * it, as when its set-up fails as it starts. It leaves the canvas, its cards kept, with why shown at
+   * it; "Try again" starts it again. Without its home repository the canvas stops.
+   */
+  private clonesFailed(r: Repo, e: unknown) {
+    const at = this.repos.indexOf(r);
+    if (this.shutDown || at < 0) return;
+    console.error(`Obeya: ${r.info.path}: its clones cannot be made, left out of the canvas ${this.id}; its cards are kept: ${messageOf(e)}`);
+    this.stopRepo(r);
+    this.repos.splice(at, 1);
+    this.board.canvas.repos.splice(0, this.board.canvas.repos.length, ...this.repos.map((x) => x.ref));
+    this.fail(r.ref.id, e);
+    if (at === 0) {
+      this.stopped = true;
+      this.shutdown();
+      this.deps.stopped?.(this, messageOf(e));
+    }
+    this.board.changed();
   }
 
   /**
@@ -915,18 +979,33 @@ export class CanvasRuntime {
    * applies at once, and so does a repository new on it. A repository whose agents now work
    * elsewhere (other clones, other machines, another adapter, worktrees instead of clones) or that
    * left the canvas has its agents restarted once they paused, or stopped; the other repositories
-   * work on, and their settings apply as they are read.
+   * work on, and their settings apply as they are read. What git reads of the repositories for it
+   * it reads first, without the server waiting; configurations saved meanwhile apply one after the
+   * other.
    */
-  apply(next: CanvasConfig): Promise<void> | undefined {
+  apply(next: CanvasConfig): Promise<void> {
     // back in the configuration before it left: it stays, and so do its repositories
     if (this.retiring) {
       this.retiring = null;
       this.cancelPending();
     }
     for (const r of next.repos) this.useBranch(r);
+    const applied = this.applying.then(async () => {
+      const reads = await this.readRepos(next);
+      if (!this.shutDown) return this.applyRead(next, reads);
+    });
+    this.applying = applied.catch(() => {});
+    return applied;
+  }
+
+  /** The configurations being applied (`apply`), one after the other. */
+  private applying: Promise<void> = Promise.resolve();
+
+  /** `apply`, with what was read of the repositories of `next`. */
+  private applyRead(next: CanvasConfig, reads: RepoReads): Promise<void> | undefined {
     let resolved: Resolved;
     try {
-      resolved = this.resolve(next);
+      resolved = this.resolve(next, reads);
     } catch (e) {
       console.error(`Obeya: the new configuration of the canvas ${this.id} does not resolve; it runs on as it was: ${messageOf(e)}`);
       return;
@@ -949,11 +1028,12 @@ export class CanvasRuntime {
     // a repository that did not start and left the configuration is no longer wrong
     for (const repo of this.failed.keys()) if (!resolved.repos.some((x) => x.ref.id === repo)) this.ran(repo);
     // a repository new on the canvas starts at once; one whose restart waits starts with it
+    const ready: Promise<void>[] = [];
     resolved.repos.forEach(({ read: { info } }, i) => {
       if (this.repos.some((r) => r.info.path === info.path) || this.pending?.paths.has(info.path)) return;
       let r: Repo;
       try {
-        r = this.startRepo(resolved, i);
+        r = this.startRepo(resolved, i, reads.workspaces);
       } catch (e) {
         console.error(`Obeya: ${info.path} does not start, left out of the canvas ${this.id}: ${messageOf(e)}`);
         return this.fail(resolved.repos[i]!.ref.id, e);
@@ -963,8 +1043,10 @@ export class CanvasRuntime {
       console.log(`Obeya: ${info.path} is on the canvas ${this.id} now`);
       if (this.obeyaDue) r.workers.restartDue(this.obeyaDue);
       r.workers.resumeAll(true);
+      ready.push(r.ready);
     });
-    return this.settingsChanged();
+    // settles once the new ones' clones are made too
+    return Promise.all([this.settingsChanged(), ...ready]).then(() => {});
   }
 
   /** The configuration no longer has the canvas: it stops once its agents paused, and then `done`. */
@@ -1007,7 +1089,7 @@ export class CanvasRuntime {
         return now.length > 0;
       },
       () => {
-        if (this.pending === pending) this.restartRepos();
+        if (this.pending === pending) void this.restartRepos();
       },
       pending.deadline - Date.now(),
       this.deps.restartIntervalMs,
@@ -1035,7 +1117,7 @@ export class CanvasRuntime {
    * starts again as the configuration has it now, its workers resuming where they paused; one that
    * left the canvas stays stopped, its cards kept. A canvas that left the configuration stops.
    */
-  private restartRepos() {
+  private async restartRepos(cut = false) {
     const p = this.pending;
     if (!p) return;
     this.pending = null;
@@ -1048,9 +1130,35 @@ export class CanvasRuntime {
       done();
       return;
     }
+    if (this.restarting) {
+      // one restart at a time: this one is due again once the one under way is through, and waits
+      // for the workers that one resumed to pause, unless the owner cuts them off
+      await this.restarting;
+      if (this.shutDown) return;
+      this.due([...p.paths], p.reason);
+      if (cut) void this.restartRepos(true);
+      return;
+    }
+    const restarting = (this.restarting = this.restartAs(p).finally(() => {
+      if (this.restarting === restarting) this.restarting = null;
+    }));
+    return restarting;
+  }
+
+  /** The restart of repositories' agents under way (`restartRepos`), until it is through. */
+  private restarting: Promise<void> | null = null;
+
+  /** `restartRepos` of the repositories `p` waited for. */
+  private async restartAs(p: RepoRestart) {
+    // git reads without the server waiting; a configuration applied meanwhile is read again
+    let config: CanvasConfig;
+    let reads: RepoReads;
+    do reads = await this.readRepos((config = this.config));
+    while (config !== this.config && !this.shutDown);
+    if (this.shutDown) return;
     let resolved: Resolved;
     try {
-      resolved = this.resolve(this.config);
+      resolved = this.resolve(config, reads);
     } catch (e) {
       console.error(`Obeya: the configuration of the canvas ${this.id} does not resolve; its repositories run on as they were: ${messageOf(e)}`);
       for (const r of this.repos) if (p.paths.has(r.info.path)) r.workers.restartDue(this.obeyaDue);
@@ -1075,7 +1183,7 @@ export class CanvasRuntime {
       const repo = resolved.repos[i]!.ref.id;
       let r: Repo | null = null;
       try {
-        r = this.startRepo(resolved, i);
+        r = this.startRepo(resolved, i, reads.workspaces);
         this.ran(repo);
         console.log(`Obeya: restarted the agents of ${path}`);
       } catch (e) {
@@ -1083,7 +1191,8 @@ export class CanvasRuntime {
         console.error(`Obeya: the agents of ${path} do not start as the configuration has it now: ${messageOf(e)}`);
         try {
           if (was) {
-            r = this.startRepo(was.from.resolved, was.from.index);
+            // its workspaces as git reads them now, where they are still listed
+            r = this.startRepo(was.from.resolved, was.from.index, new Map([...was.from.listed, ...reads.workspaces]));
             console.log(`Obeya: the agents of ${path} work on as they were set up before`);
           }
         } catch (again) {
@@ -1211,7 +1320,7 @@ export class CanvasRuntime {
   /** Restarts the repositories' agents the restart waits for at once, cutting off those still in a turn; false when none waits. */
   restartNow(): boolean {
     if (!this.pending) return false;
-    this.restartRepos();
+    void this.restartRepos(true);
     return true;
   }
 
@@ -1281,7 +1390,7 @@ export class CanvasRuntime {
 
   /** What `moved` read of the repository at `path` last, where its refs did not move since; a folder without git as it is now. */
   private readNow(path: string): DefaultRead | undefined {
-    if (isFolder(path)) return { shared: readSharedFiles(path), adapterModule: false };
+    if (isFolder(path)) return { shared: readSharedFiles(path), adapterModule: false, branch: '' };
     const seal = refsSeal(path);
     const known = this.defaultRead.get(path);
     return seal && known?.seal === seal && !(known.read instanceof Promise) ? known.read : undefined;
@@ -1304,6 +1413,8 @@ export class CanvasRuntime {
     const path = r.info.path;
     if (this.shutDown || !this.repos.includes(r)) return 'same';
     if (this.pending?.paths.has(path)) return 'due';
+    // what the canvas follows (`follow`) goes by it
+    r.info.branch = read.branch;
     const shared = this.reread(r, read.shared);
     // a new theme leaves pages outdated; one read with the settings the server waited for is read now without waiting
     if (read.theme !== undefined) this.setTheme(path, read.theme);
@@ -1369,11 +1480,10 @@ export class CanvasRuntime {
   /**
    * What the canvas set up by the repositories' settings follows them: the Lesestand where work
    * now lands elsewhere, the watched plan directory, the pull requests, what the page shows of
-   * each repository.
+   * each repository (its main branch as last read, `movedTo`).
    */
   private follow() {
     for (const r of this.repos) {
-      r.info.branch = defaultBranch(r.info.path);
       for (const k of ['pullRequests', 'direct', 'forge'] as const) delete r.ref[k];
       Object.assign(r.ref, settled(r.info, r.adapter));
       // where work lands on the local main, the checkout is the Lesestand; otherwise a worktree on the default branch
@@ -2688,17 +2798,18 @@ export function approachOf(what: string, max = 40): string {
  * "Konfiguration" (which checks the configuration again, and shows `failed` of one whose home
  * repository did not start), and the others run.
  */
-export function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, failed: (f: StartFailure) => void = () => {}): CanvasRuntime[] {
-  return configs.flatMap((c) => {
-    try {
-      return new CanvasRuntime(c, deps);
-    } catch (e) {
-      const why = e instanceof ConfigError || e instanceof HomeDown ? e.message : e instanceof Error ? (e.stack ?? e.message) : String(e);
-      console.error(`Obeya: the canvas ${c.name ?? c.id ?? c.repos[0]?.path} does not start, left out: ${why}`);
-      if (e instanceof HomeDown) failed({ canvas: e.canvas, detail: e.message });
-      return [];
-    }
-  });
+export async function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, failed: (f: StartFailure) => void = () => {}): Promise<CanvasRuntime[]> {
+  const started = await Promise.all(
+    configs.map((c) =>
+      CanvasRuntime.start(c, deps).catch((e: unknown) => {
+        const why = e instanceof ConfigError || e instanceof HomeDown ? e.message : e instanceof Error ? (e.stack ?? e.message) : String(e);
+        console.error(`Obeya: the canvas ${c.name ?? c.id ?? c.repos[0]?.path} does not start, left out: ${why}`);
+        if (e instanceof HomeDown) failed({ canvas: e.canvas, detail: e.message });
+        return null;
+      }),
+    ),
+  );
+  return started.filter((c) => c !== null);
 }
 
 /**
@@ -2707,13 +2818,25 @@ export function startCanvases(configs: CanvasConfig[], deps: CanvasDeps, failed:
  * (`CanvasRuntime.apply`), one no longer in it stops once its agents paused, its cards kept.
  */
 export class Canvases {
-  private list: CanvasRuntime[];
+  private list: CanvasRuntime[] = [];
   private listeners = new Set<() => void>();
   /** By canvas's id: why one in the configuration does not run (its home repository did not start). */
   private down = new Map<string, string>();
+  /** The configuration as last saved (`apply`), by canvas's id: a canvas that was starting meanwhile takes it once it runs. */
+  private saved: Map<string, CanvasConfig> | null = null;
+  /** Whether every canvas of the configuration as last saved resolved: one not among them has left it. */
+  private savedWhole = true;
+  /** The ids of canvases starting while Obeya runs. */
+  private starting = new Set<string>();
 
-  constructor(
-    configs: CanvasConfig[],
+  /** Starts the canvases of `configs` (`startCanvases`). */
+  static async start(configs: CanvasConfig[], deps: CanvasDeps, started?: (c: CanvasRuntime) => void): Promise<Canvases> {
+    const canvases = new Canvases(deps, started);
+    canvases.list = await canvases.start(configs);
+    return canvases;
+  }
+
+  private constructor(
     private deps: CanvasDeps,
     /** A canvas started while Obeya runs. */
     private started: (c: CanvasRuntime) => void = () => {},
@@ -2727,12 +2850,11 @@ export class Canvases {
       },
       canvases: () => this.list,
     };
-    this.list = this.start(configs);
   }
 
   /** Starts canvases, keeping why one did not. */
-  private start(configs: CanvasConfig[]): CanvasRuntime[] {
-    const list = startCanvases(configs, this.deps, (f) => this.down.set(f.canvas, f.detail));
+  private async start(configs: CanvasConfig[]): Promise<CanvasRuntime[]> {
+    const list = await startCanvases(configs, this.deps, (f) => this.down.set(f.canvas, f.detail));
     for (const c of list) this.down.delete(c.id);
     return list;
   }
@@ -2760,21 +2882,21 @@ export class Canvases {
    * The configuration saved: `ids` are its canvases' ids as its check resolved them (null where one
    * does not resolve; then no canvas leaves, since which one it is stays unknown).
    */
-  apply(configs: CanvasConfig[], ids: (string | null)[]) {
+  apply(configs: CanvasConfig[], ids: (string | null)[]): Promise<void> {
+    this.saved = new Map(configs.flatMap((config, i) => (ids[i] ? [[ids[i], config] as const] : [])));
+    this.savedWhole = !ids.includes(null);
+    // settles once the running canvases took the configuration and the new ones run
+    const starting: Promise<void>[] = [];
     configs.forEach((config, i) => {
       const id = ids[i];
       if (!id) return;
       const running = this.get(id);
-      if (running) return running.apply(config);
-      const [c] = this.start([config]);
-      if (!c) return;
-      this.list.push(c);
-      console.log(`Obeya: the canvas ${c.board.canvas.name} (/c/${c.id}) runs now`);
-      this.started(c);
+      if (running) return void starting.push(running.apply(config));
+      if (this.starting.has(id)) return;
+      this.starting.add(id);
+      starting.push(this.startNew(id, config));
     });
-    // the configuration's order is the order canvases are listed in (the switcher, the phone); one leaving goes last
-    const at = (c: CanvasRuntime) => (ids.includes(c.id) ? ids.indexOf(c.id) : ids.length);
-    this.list.sort((a, b) => at(a) - at(b));
+    this.sort();
     if (!ids.includes(null)) {
       // a canvas that did not start and left the configuration is no longer wrong
       for (const id of [...this.down.keys()]) if (!ids.includes(id)) this.down.delete(id);
@@ -2786,12 +2908,56 @@ export class Canvases {
           });
     }
     this.emit();
+    return Promise.all(starting).then(() => {});
   }
 
-  /** Stops every canvas, for Obeya to end. */
+  /**
+   * Starts a canvas new in the configuration while Obeya runs, the others running on meanwhile. Once
+   * it runs, it takes the configuration saved since; one no longer in it stops again.
+   */
+  private async startNew(id: string, config: CanvasConfig) {
+    let c: CanvasRuntime | undefined;
+    let now: CanvasConfig | undefined;
+    let tried = config;
+    try {
+      // one that did not start tries again with a configuration saved meanwhile
+      for (;;) {
+        [c] = await this.start([tried]);
+        now = this.saved?.get(id);
+        if (c || !now || now === tried || this.closed) break;
+        tried = now;
+      }
+    } finally {
+      this.starting.delete(id);
+    }
+    if (!c) return;
+    if (this.closed || (!now && this.savedWhole)) {
+      c.shutdown();
+      return;
+    }
+    this.list.push(c);
+    console.log(`Obeya: the canvas ${c.board.canvas.name} (/c/${c.id}) runs now`);
+    if (now && now !== tried) void c.apply(now);
+    this.sort();
+    this.started(c);
+    this.emit();
+  }
+
+  /** The configuration's order is the order canvases are listed in (the switcher, the phone); one leaving goes last. */
+  private sort() {
+    const ids = [...(this.saved?.keys() ?? this.list.map((c) => c.id))];
+    const at = (c: CanvasRuntime) => (ids.includes(c.id) ? ids.indexOf(c.id) : ids.length);
+    this.list.sort((a, b) => at(a) - at(b));
+  }
+
+  /** Stops every canvas, for Obeya to end; one still starting stops once it runs. */
   shutdown() {
+    this.closed = true;
     for (const c of this.list) c.shutdown();
   }
+
+  /** Set once Obeya ends (`shutdown`). */
+  private closed = false;
 
   private emit() {
     for (const fn of this.listeners) fn();
@@ -2824,18 +2990,60 @@ export interface RepoRead {
 
 /**
  * Reads a repository for `resolveCanvas`, as git steps; null where `path` is no git repository. A
- * folder without git (`folder`) is read as it is, without git: null where it is no directory.
+ * folder without git (`folder`) is read as it is, without git: null where it is no directory. Its
+ * main branch is `branch` where the owner set one, else the one detected.
  */
-export function* readingRepo(path: string, folder = false): GitSteps<RepoRead | null> {
+export function* readingRepo(path: string, folder = false, branch = branchSetting(path)): GitSteps<RepoRead | null> {
   markFolder(path, folder);
   if (folder) return readFolder(path);
-  const [[remote], branches] = yield* together(gitCalls(['remote', 'get-url', 'origin']), readingBranches());
+  const [[remote, origin], branches] = yield* together(gitCalls(['remote', 'get-url', 'origin'], ['config', '--get', 'remote.origin.url']), readingBranches());
   if (branches == null) return null;
   const detected = yield* detectingBranch(branches);
-  const branch = branchSetting(path) || detected;
-  const commit = yield* branchCommit(branch, branches);
+  const main = branch || detected;
+  const commit = yield* branchCommit(main, branches);
   const [adapterModule, shared] = yield* together(readingAdapterModule(commit), readingShared(commit));
-  return { info: { path, remote: remote ?? null, branch }, detected, adapterModule, shared };
+  return { info: { path, remote: remote ?? null, branch: main, ...(remote && origin ? { origin } : {}) }, detected, adapterModule, shared };
+}
+
+/**
+ * What a configuration's repositories are read for, by absolute path, without the server waiting
+ * for git: each repository (`readingRepo`, under the seal its refs had before, `refsSeal`), and
+ * each workspace it lists (its `origin`; null where it is no git repository). All of them at once.
+ */
+export interface RepoReads {
+  repos: Map<string, { seal: string | null; read: RepoRead | null }>;
+  workspaces: Map<string, { origin: string | null } | null>;
+}
+
+/** Reads `repos` (`RepoReads`), each on the main branch `branchOf` says the owner set for it (none: the one detected). */
+export async function readRepos(repos: RepoConfig[], branchOf: (r: RepoConfig) => string | undefined = () => undefined): Promise<RepoReads> {
+  // a repository whose path is still empty is read nowhere (`resolveCanvas` finds its path missing)
+  const named = repos.filter((r) => r.path.trim());
+  const paths = new Map(named.map((r) => [resolve(r.path), r]));
+  const workspaces = new Set(named.flatMap((r) => (r.workspaces ?? []).map((w) => resolve(w))));
+  // one that is also a repository of the configuration is read as that
+  const listed = [...workspaces].filter((w) => !paths.has(w));
+  const [read, found] = await Promise.all([
+    Promise.all(
+      [...paths].map(async ([path, r]) => {
+        const folder = r.git === false;
+        const seal = folder ? null : refsSeal(path);
+        return [path, { seal, read: await gitSteps(path, readingRepo(path, folder, branchOf(r)?.trim() || branchSetting(path))) }] as const;
+      }),
+    ),
+    Promise.all(
+      listed.map(async (w) => {
+        const [dir, origin] = await gitSteps(w, gitCalls(['rev-parse', '--git-dir'], ['remote', 'get-url', 'origin']));
+        return [w, dir != null ? { origin: origin ?? null } : null] as const;
+      }),
+    ),
+  ]);
+  const repoRead = new Map(read);
+  const asRepo = [...workspaces].filter((w) => paths.has(w)).map((w) => {
+    const info = repoRead.get(w)?.read?.info;
+    return [w, info && !info.folder ? { origin: info.remote } : null] as const;
+  });
+  return { repos: repoRead, workspaces: new Map([...found, ...asRepo]) };
 }
 
 /** How often `readSettings` reads a repository whose refs move while git reads it. */
@@ -2848,19 +3056,18 @@ type Moved = 'same' | 'follow' | 'due';
 interface DefaultRead {
   shared: SharedRead;
   adapterModule: boolean;
+  /** The main branch it was read on (`defaultBranch`). */
+  branch: string;
   /** The repository's theme (theme.ts), where it was read with the rest; a read the server waited for leaves it to `readTheme`. */
   theme?: Theme | null;
 }
 
 /** `DefaultRead` of the git repository at `path` as git steps. */
 function* readingSettings(path: string): GitSteps<DefaultRead> {
-  const { commit } = yield* readingDefaultBranch(path);
+  const { branch, commit } = yield* readingDefaultBranch(path);
   const [adapterModule, shared] = yield* together(readingAdapterModule(commit), readingShared(commit));
-  return { shared, adapterModule };
+  return { shared, adapterModule, branch };
 }
-
-/** Reads a repository for `resolveCanvas`, the server waiting; null where `path` is no git repository (no directory, for a `folder`). */
-export const readRepo = (path: string, folder = false): RepoRead | null => gitStepsSync(path, readingRepo(path, folder));
 
 /** A folder without git as `resolveCanvas` reads it: no remote, no branch, its `.obeya/settings.json` as the folder has it. */
 function readFolder(path: string): RepoRead | null {
@@ -2878,15 +3085,15 @@ function readFolder(path: string): RepoRead | null {
  * (`shared`: where they are read, by the repository's path; as `read` read them when left out) and
  * this machine's settings (`settings`: where a repository's are read; its entry's when left out),
  * each with its id and its settings without this machine's (`values`), and the canvas's id and
- * name. `read` reads each repository, by its absolute path (git, waiting for it, when left out).
- * Throws a ConfigError.
+ * name. `read` is what was read of each repository, by its absolute path (`readRepos`). Throws a
+ * ConfigError.
  */
 export function resolveCanvas(
   config: CanvasConfig,
   store: Store,
   settings: (r: RepoConfig) => () => RepoSettings | undefined = (r) => () => r.settings,
-  shared?: (path: string) => () => SharedSettings | undefined,
-  read: (path: string, folder: boolean) => RepoRead | null = readRepo,
+  shared: ((path: string) => () => SharedSettings | undefined) | undefined,
+  read: (path: string, folder: boolean) => RepoRead | null,
 ) {
   if (!config.repos.length) throw new ConfigError('noRepo', 'a canvas needs at least one repository');
   const reads = config.repos.map((r, i) => {
@@ -2933,6 +3140,19 @@ export function resolveCanvas(
 /** What `resolveCanvas` resolved. */
 type Resolved = ReturnType<typeof resolveCanvas>;
 
+/** The settings the owner set for a repository on this machine (`CanvasDeps.settings`, else its entry's), read whenever they are used. */
+const machineSettings = (deps: Pick<CanvasDeps, 'settings'>, r: RepoConfig): (() => RepoSettings | undefined) =>
+  deps.settings ? () => deps.settings!(resolve(r.path)) : () => r.settings;
+
+/**
+ * Where a resolved repository's Lesestand is made, a worktree of its checkout under Obeya's home;
+ * none where work lands on the local main (the checkout is the Lesestand), or in a folder without
+ * git, which is read as it is.
+ */
+function lesestandOf(home: string, canvas: string, x: Resolved['repos'][number]): { repoPath: string; dir: string } | null {
+  return x.read.info.folder || x.adapter.land === 'main' ? null : { repoPath: x.read.info.path, dir: join(home, 'read', canvas, x.ref.id) };
+}
+
 /**
  * How a canvas runs a repository: Obeya's defaults with the repository's `shared` settings and this
  * machine's `settings` in front, each read when it is asked for; its workers work in clones where
@@ -2971,8 +3191,8 @@ function uniqueRefs(infos: RepoInfo[], adapters: RepoAdapter[]): RepoRef[] {
   });
 }
 
-/** The URL of the repository's `origin` as it is configured, before git's `insteadOf` rewrites it; null without one. */
-const originUrl = (info: RepoInfo): string | null => (info.remote ? (gitOrNull(info.path, 'config', '--get', 'remote.origin.url') ?? info.remote) : null);
+/** The URL of the repository's `origin` as it is configured, before git's `insteadOf` rewrites it (as read with the rest, `readingRepo`); null without one. */
+const originUrl = (info: RepoInfo): string | null => (info.remote ? (info.origin ?? info.remote) : null);
 
 /** Whether the repository's `origin` is on a server, as it is configured (git's `insteadOf` aside), rather than a directory on this machine. */
 function onServer(info: RepoInfo): boolean {

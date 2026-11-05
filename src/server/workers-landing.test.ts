@@ -13,9 +13,9 @@ import { git } from './workspaces';
 eachTest();
 
 describe('landing through a pull request', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    await setup({ ...generic, land: 'pr', workspaces: 'clones' });
   });
 
   test('approval starts the PR phase: the branch stays in the clone, main is left alone', async () => {
@@ -134,7 +134,7 @@ describe('a card whose own branch changes how work lands', () => {
 
   test('lands as the branch says: on main where the repository still has pull requests, which the owner sees before approving', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const c = await settingUp({ land: 'main' });
     expect(board.item(c.id)!.lands).toEqual({ land: 'main' });
     await workers.approve(c.id);
@@ -153,7 +153,7 @@ describe('a card whose own branch changes how work lands', () => {
 
   test('the settings of this machine go first', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'pr', workspaces: 'clones' }, machineSettings: () => ({ land: 'pr' }) }));
     const c = await settingUp({ land: 'main', checks: ['bun test'] });
     expect(board.item(c.id)!.lands).toBeUndefined();
@@ -163,10 +163,10 @@ describe('a card whose own branch changes how work lands', () => {
 });
 
 describe('landing on main from a clone of the remote', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     rmSync(dir, { recursive: true, force: true });
     // the clone's origin is the remote, as one listed in the settings or made while work went out as pull requests
-    setup({ ...generic, land: 'main', workspaces: 'clones' }, true);
+    await setup({ ...generic, land: 'main', workspaces: 'clones' }, true);
   });
 
   test('main moved on in the checkout, not on the remote: the work is rebased onto the checkout’s main and lands', async () => {
@@ -188,9 +188,9 @@ describe('landing on main from a clone of the remote', () => {
 });
 
 describe('approving directly onto main where work goes out as a pull request', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', direct: true, workspaces: 'clones' }, true);
+    await setup({ ...generic, land: 'pr', direct: true, workspaces: 'clones' }, true);
   });
 
   const commitIn = (path: string, file: string, msg: string) => {
@@ -308,7 +308,7 @@ describe('approving directly onto main where work goes out as a pull request', (
     expect(git(origin, 'log', '--format=%s', 'main')).toBe('init');
 
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
     const d = await handedOver('Logo');
     commitIn(d.clone, 'logo.svg', 'Logo');
     await d.session.call('ready_for_review', { summary: 'S', demo: artifact() });
@@ -332,9 +332,9 @@ describe('the landed commit names the demo’s page', () => {
   let approvals: string[];
   /** The cards whose work landed without a pull request, with what they shipped then, as the demo site heard of them. */
   let landings: [string, string | null][];
-  function withSite(adapter: Parameters<typeof setup>[0], withOrigin = false) {
+  async function withSite(adapter: Parameters<typeof setup>[0], withOrigin = false) {
     rmSync(dir, { recursive: true, force: true });
-    setup(adapter, withOrigin);
+    await setup(adapter, withOrigin);
     approvals = [];
     landings = [];
     const onApproval = (id: string) => (approvals.push(id), board.item(id)!.title === 'Ohne Seite' ? null : PAGE);
@@ -359,7 +359,7 @@ describe('the landed commit names the demo’s page', () => {
   }
 
   test('landing on main: the last commit gets the trailer beside its own, its author kept', async () => {
-    withSite({ ...generic, land: 'main', workspaces: 'clones' });
+    await withSite({ ...generic, land: 'main', workspaces: 'clones' });
     const c = await handedOver();
     await workers.approve(c.id);
     expect(state(c.id)).toBe('live');
@@ -372,7 +372,7 @@ describe('the landed commit names the demo’s page', () => {
   });
 
   test('pushed directly onto origin’s main, the same', async () => {
-    withSite({ ...generic, land: 'pr', direct: true, workspaces: 'clones' }, true);
+    await withSite({ ...generic, land: 'pr', direct: true, workspaces: 'clones' }, true);
     const c = await handedOver();
     await workers.approve(c.id, { direct: true });
     expect(state(c.id)).toBe('live');
@@ -381,7 +381,7 @@ describe('the landed commit names the demo’s page', () => {
   });
 
   test('a card without a page lands as it was', async () => {
-    withSite({ ...generic, land: 'main', workspaces: 'clones' });
+    await withSite({ ...generic, land: 'main', workspaces: 'clones' });
     const c = await handedOver('Ohne Seite');
     await workers.approve(c.id);
     expect(state(c.id)).toBe('live');
@@ -389,7 +389,7 @@ describe('the landed commit names the demo’s page', () => {
   });
 
   test('approved into a pull request, the demo goes out all the same', async () => {
-    withSite({ ...generic, land: 'pr', workspaces: 'clones' });
+    await withSite({ ...generic, land: 'pr', workspaces: 'clones' });
     const c = await handedOver();
     await workers.approve(c.id);
     expect(state(c.id)).toBe('inPr');
@@ -398,7 +398,7 @@ describe('the landed commit names the demo’s page', () => {
   });
 
   test('with nothing to land, too', async () => {
-    withSite({ ...generic, land: 'main', workspaces: 'clones' });
+    await withSite({ ...generic, land: 'main', workspaces: 'clones' });
     const c = await handedOver('Nur eine Analyse', false);
     await workers.approve(c.id);
     expect(state(c.id)).toBe('done');
@@ -411,9 +411,9 @@ describe('the landing message names the demo’s page', () => {
   /** Whether the repository has a demo site; on approval, the page goes out (`publishing`) unless `share` says otherwise. */
   let site: boolean;
   let onApproval: (id: string) => void;
-  function withSite(adapter: Parameters<typeof setup>[0] = { ...generic, land: 'main', workspaces: 'clones' }) {
+  async function withSite(adapter: Parameters<typeof setup>[0] = { ...generic, land: 'main', workspaces: 'clones' }) {
     rmSync(dir, { recursive: true, force: true });
-    setup(adapter);
+    await setup(adapter);
     site = true;
     onApproval = (id) => board.work(id, { share: JSON.stringify({ slug: 's', state: 'publishing', next: [{ dir: demoDir(id) }] }) });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter, shares: () => site, onApproval: (id) => (onApproval(id), null) }));
@@ -440,7 +440,7 @@ describe('the landing message names the demo’s page', () => {
   }
 
   test('a page still going out when the work lands: the worker waits, and hears its address once it is online', async () => {
-    withSite();
+    await withSite();
     const c = await handedOver();
     const session = runtime.last;
     await workers.approve(c.id);
@@ -460,7 +460,7 @@ describe('the landing message names the demo’s page', () => {
   });
 
   test('a page that does not go out: the worker hears why, and asks the owner for a link', async () => {
-    withSite();
+    await withSite();
     const c = await handedOver();
     const session = runtime.last;
     await workers.approve(c.id);
@@ -471,7 +471,7 @@ describe('the landing message names the demo’s page', () => {
   });
 
   test('a page that went out while the worker did not hear of it: its turn’s end tells it', async () => {
-    withSite();
+    await withSite();
     const c = await handedOver();
     const session = runtime.last;
     await workers.approve(c.id);
@@ -483,7 +483,7 @@ describe('the landing message names the demo’s page', () => {
   });
 
   test('a page online already: the landing message names it, and the worker finishes with its turn', async () => {
-    withSite();
+    await withSite();
     onApproval = (id) => published(id);
     const c = await handedOver();
     const session = runtime.last;
@@ -494,12 +494,12 @@ describe('the landing message names the demo’s page', () => {
   });
 
   test('without a shared page, or without a demo site, the message says so: the worker asks before it links nothing', async () => {
-    withSite();
+    await withSite();
     onApproval = () => {};
     const c = await handedOver();
     await workers.approve(c.id);
     expect(runtime.last.inbox.at(-1)).toContain('Your demo is not shared on a page the team can open. Before you point anyone to your demo (an issue you close, say), ask the owner for a link.');
-    withSite();
+    await withSite();
     site = false;
     const d = await handedOver();
     await workers.approve(d.id);
@@ -507,7 +507,7 @@ describe('the landing message names the demo’s page', () => {
   });
 
   test('work its worker closes as needing no pull request names the page in the tool’s result, and waits for it the same way', async () => {
-    withSite({ ...generic, land: 'pr', workspaces: 'clones' });
+    await withSite({ ...generic, land: 'pr', workspaces: 'clones' });
     const c = await handedOver(false);
     const session = runtime.last;
     // the approval sees work (the commit is made after the handover), so it goes into a pull request
@@ -523,7 +523,7 @@ describe('the landing message names the demo’s page', () => {
   });
 
   test('work that changed nothing, and a pull request merged, name the page the same way', async () => {
-    withSite();
+    await withSite();
     const c = await handedOver(false);
     const session = runtime.last;
     await workers.approve(c.id);
@@ -532,7 +532,7 @@ describe('the landing message names the demo’s page', () => {
     published(c.id);
     expect(session.inbox.at(-1)).toContain(URL_);
 
-    withSite({ ...generic, land: 'pr', workspaces: 'clones' });
+    await withSite({ ...generic, land: 'pr', workspaces: 'clones' });
     onApproval = (id) => published(id);
     const d = await handedOver();
     await workers.approve(d.id);
@@ -543,9 +543,9 @@ describe('the landing message names the demo’s page', () => {
 
 describe('the worker hears what became of its demo’s page', () => {
   const URL_ = 'https://demos.example.dev/zahlerstande-exportieren-1/';
-  beforeEach(() => {
+  beforeEach(async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'main', workspaces: 'clones' });
+    await setup({ ...generic, land: 'main', workspaces: 'clones' });
     setWorkers(new Workers({ board, runtime, workspaces: spaces, adapter: { ...generic, land: 'main', workspaces: 'clones' }, shares: () => true, onApproval: () => null }));
   });
   async function handedOver() {
@@ -769,9 +769,9 @@ describe('a workstream whose plan doc keeps it open after its work landed', () =
 });
 
 describe('a workstream merged as a pull request, its box still empty', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    await setup({ ...generic, land: 'pr', workspaces: 'clones' });
   });
 
   const w1 = () => board.snapshot().items.find((i) => i.label === 'W1')!;
@@ -979,7 +979,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
 
   test('a workstream in its pull request that the doc on the default branch ticks off counts as merged', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const w = w1();
     await workers.start(w.id);
     const clone = board.row(w.id).workspace!;
@@ -1018,7 +1018,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
 
   test('a workstream the doc on the default branch ticks off counts as merged though its worker never reported the pull request', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const w = w1();
     await approvedIntoPr(w.id);
     // the worker opened the pull request without reporting it, and someone merged it by hand
@@ -1030,7 +1030,7 @@ describe('a workspace its card will not work in again goes back to the pool', ()
 
   test('a box ticked in a plan folder outside the repository does not count as the pull request merged', async () => {
     rmSync(dir, { recursive: true, force: true });
-    setup({ ...generic, land: 'pr', workspaces: 'clones' });
+    await setup({ ...generic, land: 'pr', workspaces: 'clones' });
     const outside: PlanDoc = { ...doc, file: '/plans/a.md' };
     setDocs([outside]);
     board.docsChanged();

@@ -20,7 +20,7 @@ let onCanvas: string[];
 let archived: string[];
 let ideas: string[];
 
-beforeAll(() => {
+beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-board-size-'));
   // a site nobody answers at: asking it which pages are gone finds none
   const site = { title: 'Demos', url: 'http://127.0.0.1:9/', deploy: 'true {dir}' };
@@ -30,7 +30,7 @@ beforeAll(() => {
   });
   store = new Store(join(dir, 'obeya.db'));
   store.trustCommands(repo, { site: { url: site.url, deploy: site.deploy } });
-  canvas = new CanvasRuntime({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
+  canvas = await CanvasRuntime.start({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
   const c = canvas.board.canvas.id;
   const body = 'What the card asks for, in a few sentences, as the owner wrote it. '.repeat(6);
   const rows = store.insert(Array.from({ length: 900 }, (_, n) => ({ canvas_id: c, kind: 'task' as const, state: 'live' as const, title: `Card ${n}`, body, x: (n % 30) * 400, y: Math.floor(n / 30) * 300 })));

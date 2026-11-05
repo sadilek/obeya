@@ -463,7 +463,7 @@ describe('setting up at Cloudflare', () => {
 test('the canvas says where a repository without a site shares: nowhere without a personal site, after a tick when private, else there', async () => {
   const shop = gitRepo(join(dir, 'shop'), { 'docs/plan/plan.md': '# Shop\n\n## Goal\n\nG.\n' });
   let visibility: 'public' | 'private' = 'private';
-  const canvas = new CanvasRuntime({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home, runtime: new FakeRuntime(), forge: { ...noForge, visibility: async () => visibility } });
+  const canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home, runtime: new FakeRuntime(), forge: { ...noForge, visibility: async () => visibility } });
   const ref = () => canvas.board.canvas.repos[0]!;
   try {
     expect(ref()).toMatchObject({ sharePersonal: 'none' });
@@ -487,7 +487,7 @@ test('the canvas says where a repository without a site shares: nowhere without 
     expect(ref().shareOnApproval).toBeUndefined();
     // a public repository needs no tick, once its forge says so
     visibility = 'public';
-    const again = new CanvasRuntime({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home, runtime: new FakeRuntime(), forge: { ...noForge, visibility: async () => visibility } });
+    const again = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store: new Store(':memory:'), home, runtime: new FakeRuntime(), forge: { ...noForge, visibility: async () => visibility } });
     try {
       for (let i = 0; i < 100 && !again.board.canvas.repos[0]!.share; i++) await Bun.sleep(5);
       expect(again.board.canvas.repos[0]).toMatchObject({ share: true, shareUnlisted: true });
@@ -511,7 +511,7 @@ test("a worker resumed after a restart on a public repository writes the page, t
     return (z.object(tool.schema as z.ZodRawShape).parse({ summary: 'S', demo: { dir: demo, chapters: ['Before'], page: sent } }) as { demo: { page?: unknown } }).demo.page;
   };
   const before = new FakeRuntime();
-  const canvas = new CanvasRuntime({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), workerRuntime: before, forge: { ...noForge, visibility: async () => 'public' } });
+  const canvas = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), workerRuntime: before, forge: { ...noForge, visibility: async () => 'public' } });
   let card: string;
   try {
     await until(() => canvas.board.canvas.repos[0]!.share);
@@ -525,7 +525,7 @@ test("a worker resumed after a restart on a public repository writes the page, t
   // after the restart the forge takes its time to answer
   let answer!: (v: 'public') => void;
   const after = new FakeRuntime();
-  const again = new CanvasRuntime({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), workerRuntime: after, forge: { ...noForge, visibility: () => new Promise((r) => (answer = r)) } });
+  const again = await CanvasRuntime.start({ repos: [{ path: shop }] }, { store, home, runtime: new FakeRuntime(), workerRuntime: after, forge: { ...noForge, visibility: () => new Promise((r) => (answer = r)) } });
   try {
     await until(() => after.sessions.length);
     expect(after.last.spec.resume).toBe('sess-a');

@@ -16,7 +16,7 @@ let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 let server: ReturnType<typeof serve>;
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-tags-'));
   repo = gitRepo(join(dir, 'shop'), { 'README.md': 'A shop with a cart and invoices.\n' });
   store = new Store(':memory:');
@@ -33,7 +33,7 @@ beforeEach(() => {
     restart: () => {},
     apply: () => {},
   });
-  canvas = new CanvasRuntime({ repos: [{ path: repo }] }, { store, home: dir, runtime, forge: noForge, config });
+  canvas = await CanvasRuntime.start({ repos: [{ path: repo }] }, { store, home: dir, runtime, forge: noForge, config });
   server = serve([canvas], { transcriber: { transcribe: async () => ({ text: '', doubtful: false }) } }, 0, false, config);
   // a finished card with its demo, archived; an open one; a Question card, which is no change
   const c = canvas.board.canvas.id;

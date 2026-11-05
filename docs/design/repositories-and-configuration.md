@@ -78,8 +78,9 @@ run without blocking the server (in a repository of thousands of files a checkou
 while git writes the files, the canvas keeps the plan docs it read before, since a doc missing for a
 moment would take its project off the canvas and give back its workstreams' workspaces. Moving the
 Lesestand to the worktree when work now lands elsewhere runs the same way, the checkout read until
-the worktree is there. Only making it when the canvas starts waits for git: the checkout, the only
-thing to read meanwhile, may be on a card's branch.
+the worktree is there; so does a repository's restart. When a canvas starts, its Lesestands are made
+or moved before it reads from them, since the checkout, the only thing to read meanwhile, may be on a
+card's branch; the server answers meanwhile.
 
 ### Plan docs
 
@@ -451,6 +452,11 @@ resume in their sessions; the other repositories work on. A worker landing such 
 it (see Restarts for landed code). The bar shows the wait like a restart's ("Configuration waits for …") with
 "Apply now" (see Self-update). Switchers follow canvases that start, stop or change; a page of
 a stopped canvas goes to the first canvas.
+
+What this takes of git (the repositories, their listed clones, the clones still to be made) runs
+without the server waiting: a restarting repository starts once git has read it, and clones it is
+to make join its pool as git has made them, cards waiting for a free one meanwhile. One whose clones
+cannot be made does not run, as below.
 
 A repository that does not start (a refused or unmakeable clone, a git error) never leaves a canvas
 half stopped: it starts again as it was before, with the problem shown at it, and failing that leaves

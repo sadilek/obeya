@@ -39,7 +39,7 @@ describe("taking a card's workspace", () => {
   });
 
   test('the card goes on in another clone of the machine, which takes the branch from the one that kept it, the work uncommitted again', async () => {
-    spaces.ensureClones(main, 2);
+    await spaces.ensureClones(main, 2);
     for (const w of spaces.list()) identify(w.path);
     const c = manual();
     await workers.start(c.id);
@@ -74,7 +74,7 @@ describe("taking a card's workspace", () => {
   });
 
   test('a card stopped while git takes its branch to another clone leaves that clone clean, and the one that kept the branch keeps it', async () => {
-    spaces.ensureClones(main, 2);
+    await spaces.ensureClones(main, 2);
     for (const w of spaces.list()) identify(w.path);
     const c = manual();
     await workers.start(c.id);

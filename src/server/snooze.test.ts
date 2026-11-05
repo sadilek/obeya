@@ -13,16 +13,16 @@ let store: Store;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 
-const open = () => new CanvasRuntime({ repos: [{ path: main, clones: 1, settings: { land: 'main' } }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10 });
+const open = () => CanvasRuntime.start({ repos: [{ path: main, clones: 1, settings: { land: 'main' } }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10 });
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-snooze-'));
   main = join(dir, 'main');
   gitRepo(main);
   mkdirSync(join(main, 'docs/plan'), { recursive: true });
   store = new Store(':memory:');
   runtime = new FakeRuntime();
-  canvas = open();
+  canvas = await open();
 });
 afterEach(() => {
   canvas.shutdown();
@@ -67,7 +67,7 @@ describe('the agent snoozes itself', () => {
     // a restart starts no session for it, and the time comes all the same
     const n = runtime.sessions.length;
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     expect(runtime.sessions.length).toBe(n);
     canvas.wakeDue(Date.parse(until) - 1000);
     expect(runtime.sessions.length).toBe(n);
@@ -410,7 +410,7 @@ describe('edges a review found', () => {
     s.call('snooze', { until: later(10 * HOUR), why: 'x' });
     s.emit({ type: 'idle' });
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     expect(runtime.last.inbox[0]).toContain('Obeya has started again and runs main with your change now.');
     expect(JSON.parse(board().row(id).landed!)).toEqual({ commit: 'abc' });
     expect(item(id).snoozed).toBeUndefined();
@@ -479,7 +479,7 @@ describe('a card that starts later', () => {
     // its source card's work is done by then, and the one clone free
     await canvas.act(src, { action: 'stop' });
     canvas.shutdown();
-    canvas = open();
+    canvas = await open();
     canvas.wakeDue(Date.parse(at) - 1000);
     expect(item(p.id).queue).toBeUndefined();
     canvas.wakeDue(Date.parse(at) + 1000);

@@ -23,7 +23,7 @@ beforeEach(async () => {
   writeFileSync(join(docs, 'Estate', 'Inventory.md'), '# Estate\n\n- Savings book\n');
   writeFileSync(join(docs, '.obeya-note.txt'), 'x\n');
   runtime = new FakeRuntime();
-  canvas = new CanvasRuntime({ repos: [{ path: docs, git: false }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
+  canvas = await CanvasRuntime.start({ repos: [{ path: docs, git: false }] }, { store: new Store(':memory:'), home: dir, runtime, forge: noForge });
   await (canvas.repos[0]!.workspaces as FolderWorkspaces).read;
 });
 afterEach(() => {
