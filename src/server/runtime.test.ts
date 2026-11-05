@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
 import type { HookInput, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
-import { homedir } from 'node:os';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withStderr } from './runtime';
+import { type AgentEvent, askOwner, BOUNDED_WAITS, Inbox, backgroundWork, deniedBy, chromeAvailable, claudeExecutable, cleanEnv, FOREGROUND_SLEEP_LIMIT, failureReason, foregroundSleep, refuseForegroundWait, resetIn, resultFailure, spawnHere, endAgentsHere, usageLimit, withLimitWait, withRepoTrust, withStderr } from './runtime';
 import { FakeRuntime } from './testing';
 import { MESSAGES } from '../core/messages';
 
@@ -180,6 +181,28 @@ test("agents run the Agent SDK's Claude Code from the checkout, the machine's ow
   // none on the PATH: where the official installer puts it, for the SDK to say it is missing
   expect(claudeExecutable({ PATH: '' }, true, 'linux')).toBe(join(homedir(), '.local', 'bin', 'claude'));
   expect(claudeExecutable({ PATH: '' }, true, 'win32')).toBe(join(homedir(), '.local', 'bin', 'claude.exe'));
+});
+
+test("agents get Claude in Chrome where Claude Code knows the extension and it is not turned off", () => {
+  const home = mkdtempSync(join(tmpdir(), 'chrome-'));
+  const config = (c: object) => writeFileSync(join(home, '.claude.json'), JSON.stringify(c));
+  // no Claude Code config, or none that shows the extension: no browser, or it was never set up
+  expect(chromeAvailable({}, home)).toBe(false);
+  config({ claudeInChromeDefaultEnabled: true });
+  expect(chromeAvailable({}, home)).toBe(false);
+  config({ cachedChromeExtensionInstalled: true });
+  expect(chromeAvailable({}, home)).toBe(true);
+  config({ chromeExtension: { pairedDeviceId: 'd1' } });
+  expect(chromeAvailable({}, home)).toBe(true);
+  // turned off in Claude Code's settings or its environment
+  config({ cachedChromeExtensionInstalled: true, claudeInChromeDefaultEnabled: false });
+  expect(chromeAvailable({}, home)).toBe(false);
+  config({ cachedChromeExtensionInstalled: true });
+  expect(chromeAvailable({ CLAUDE_CODE_ENABLE_CFC: 'false' }, home)).toBe(false);
+  // the config where CLAUDE_CONFIG_DIR puts it
+  expect(chromeAvailable({ CLAUDE_CONFIG_DIR: join(home, 'none') }, home)).toBe(false);
+  writeFileSync(join(home, '.claude.json'), '{');
+  expect(chromeAvailable({}, home)).toBe(false);
 });
 
 test("an agent's environment keeps a machine's Claude login but not another session's marks", () => {

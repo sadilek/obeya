@@ -16,6 +16,7 @@ import {
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { LOST, remote, sessionFiles, type SshHost } from './hosts';
 import { localBin, which } from './path';
@@ -210,6 +211,24 @@ export function claudeExecutable(env: Record<string, string | undefined> = proce
 }
 
 /**
+ * Whether a session here gets Claude in Chrome (`--chrome`): when Claude Code's own config shows the
+ * extension (found in a browser profile, or paired) and the integration is not turned off there or
+ * in `CLAUDE_CODE_ENABLE_CFC`. Without the extension the flag would only have Claude Code write its
+ * native-host manifests for every browser it knows, and it would override the owner's "off".
+ */
+export function chromeAvailable(env: Record<string, string | undefined> = process.env, home = homedir()): boolean {
+  if (/^(0|false|no|off)$/i.test(env.CLAUDE_CODE_ENABLE_CFC ?? '')) return false;
+  let config: { claudeInChromeDefaultEnabled?: boolean; cachedChromeExtensionInstalled?: boolean; chromeExtension?: { pairedDeviceId?: string } };
+  try {
+    config = JSON.parse(readFileSync(join(env.CLAUDE_CONFIG_DIR || home, '.claude.json'), 'utf8'));
+  } catch {
+    return false;
+  }
+  if (config?.claudeInChromeDefaultEnabled === false) return false;
+  return config?.cachedChromeExtensionInstalled === true || Boolean(config?.chromeExtension?.pairedDeviceId);
+}
+
+/**
  * A runtime that starts each agent working in a repository whose own Claude Code settings wait for
  * the owner's confirmation (`untrusted`, by the agent's `cwd`) without them: their hooks, MCP
  * servers and helpers would run outside the permission checks. Claude Code then reads none of the
@@ -384,6 +403,8 @@ export const sdkRuntime: AgentRuntime = {
             { ...(spec.askOwner ? {} : { allowedTools: ownTools }), permissionMode: spec.permissionMode ?? 'auto' }),
         // without the repository's settings, which Claude Code reads with its CLAUDE.md
         ...(spec.untrusted ? { settingSources: ['user' as const] } : {}),
+        // the owner's own Chrome, signed in; a session elsewhere or reading only has no use for it
+        ...(!there && !spec.readOnly && chromeAvailable() ? { extraArgs: { chrome: null } } : {}),
         ...(spec.resume ? { resume: spec.resume } : {}),
         ...(spec.dirs?.length ? { additionalDirectories: spec.dirs } : {}),
         ...(spec.effort ? { effort: spec.effort } : {}),

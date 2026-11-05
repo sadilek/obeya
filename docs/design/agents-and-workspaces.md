@@ -23,6 +23,13 @@ exploration agents and the Koordinator's look-ups have a worker's tools and mode
 questions); agents that only judge from text (reading commands, estimates, the learner) are
 read-only: Read, Grep, Glob, mode `dontAsk`.
 
+Every session on this machine that is not read-only works in the owner's own Chrome, signed in, with
+Claude in Chrome (`--chrome`), when Claude Code's global config (`.claude.json`) shows the extension,
+found in a browser profile or paired, and neither it (`claudeInChromeDefaultEnabled: false`) nor
+`CLAUDE_CODE_ENABLE_CFC` turns the integration off. There is no setting for it. Elsewhere the session
+starts as without it; where the extension does not answer (Chrome closed), its tools report that and
+the agent goes on without them.
+
 Every session refuses long foreground sleeps in Bash (see Waiting without blocking). What changed
 since a session's instructions were built reaches the agent once, with its next tool call's result
 (not a subagent's), without a message or turn: a preference of the owner learned meanwhile; for a
@@ -388,6 +395,17 @@ for its hooks), and what the repository's work needs.
 
 ### Decisions
 
+- **Claude in Chrome for every session here that may act, without a setting** (2026-11-05): a card
+  can then read what only the owner's login shows (a dashboard, a console). Claude Code turns it on
+  in a session started from a program only with `--chrome`, whatever its own settings say. The flag
+  goes only where Claude Code knows the extension: on a machine without it the flag would still
+  have Claude Code write its native-host manifests for all seven browsers it knows (creating their
+  folders, on Windows their registry keys), and it would override an owner's "off". Rejected: the
+  flag always (those side effects); a setting or a choice per card (nothing to decide for whoever
+  has the extension); finding the extension in the browsers' profiles (macOS refuses reading
+  Chrome's folder to most processes, and Claude Code records what it found in its config anyway).
+  Checked with the extension unreachable (its socket and bridge blocked): the session started as
+  fast as without the flag, and its Chrome tools said the extension was not connected.
 - **Codex through its app server** (2026-11-03, GitHub issue #52): one `codex app-server` per
   session, Obeya's tools as dynamic tools. Rejected: `codex exec` per turn (no tool calls back into
   Obeya, no steering, a process per message); the Codex SDK, which wraps `codex exec`; Obeya's tools
