@@ -3,7 +3,7 @@ import type { CardDiff } from '../core/diff';
 import { type Place, placeParam } from '../core/layout';
 import type { AccessView, Pairing, RemoteSetting, AgentRole, AgentSetting, CloudPreset, AgentsView, CanvasConfig, CanvasInfo, CanvasSnapshot, ClientMessage, ConfigSaved, ConfigView, CardAction, ConfigChecked, DemoSettings, Group, DemoSettingsView, DemoVoiceCheck, PersonalSiteView, SiteSetupJob, TagProposalJob, PageTags, NarrationLanguage, FirstCanvas, GitSetupPreview, MachineItem, MachineSectionId, MachineView, SetupCheck, SetupFolder, VoiceSetupView, CardEvent, CardPatch, Item, Language, LanguageView, NewCard, Notice, OwnerHold, PendingRestart, ProjectHistory, RepoTrust, ServerMessage, SettingsShared, Skill, SourceUpdate, SpotInput, TalkRef, AppUpdate, Theme, ThemeView, Usage, UsageMeterView, Waiting } from '../core/types';
 import type { Wish } from '../core/wish';
-import { noteMessage, watchPageStalls } from './stalls';
+import { INPUT, noteMessage, watchPageStalls } from './stalls';
 
 /** A request the server refused; `code` picks the owner's text, the message is the server's detail. */
 export class ApiError extends Error {
@@ -471,7 +471,7 @@ if (typeof document !== 'undefined') {
     ws.send(JSON.stringify({ type: 'stall', ...stall } satisfies ClientMessage));
     return true;
   });
-  for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) addEventListener(type, () => void (used = true), { capture: true, passive: true });
+  for (const type of INPUT) addEventListener(type, () => void (used = true), { capture: true, passive: true });
   setInterval(() => {
     const playing = [...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended);
     if (!used && !playing && !inViewIsUse) return;

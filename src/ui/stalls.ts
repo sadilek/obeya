@@ -1,6 +1,7 @@
 // A page that froze tells the server, which logs it beside its own stalls (design: Running Obeya,
 // Stalls): how long, where the time went as far as the browser says (Chromium's long animation
-// frames; Safari and Firefox tell only the length), and the server's messages it took in just before.
+// frames; Safari and Firefox tell only the length), the server's messages it took in just before,
+// and what it ran in: the browser, whether its window was in use, when the owner last used it.
 
 import type { PageStall } from '../core/types';
 
@@ -16,6 +17,26 @@ const KEPT = 8;
 const PART_MS = 50;
 /** The browser tells of a long frame shortly after it, not at once. */
 const REPORTED_MS = 1000;
+
+/** The owner's input that counts as using a page. */
+export const INPUT = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'];
+
+/** The browser a page runs in, by its name and major version, as the log names it; `app`, the platform of the Obeya app it runs in. */
+export function browserOf(ua: string, app?: string): string {
+  if (app) return `Obeya app on ${{ macos: 'macOS', windows: 'Windows', linux: 'Linux' }[app] ?? app}`;
+  // Edge and Chrome name the engines they build on too, so the most particular goes first
+  const named: [string, RegExp][] = [
+    ['Edge', /Edg\/(\d+)/],
+    ['Firefox', /(?:Firefox|FxiOS)\/(\d+)/],
+    ['Chrome', /(?:Chrome|CriOS)\/(\d+)/],
+    ['Safari', /Version\/(\d+)[\d.]* (?:Mobile\/\S+ )?Safari/],
+  ];
+  for (const [name, re] of named) {
+    const version = re.exec(ua)?.[1];
+    if (version) return `${name} ${version}`;
+  }
+  return /AppleWebKit/.test(ua) ? 'WebKit' : 'an unknown browser';
+}
 
 /** A long animation frame, as far as the page uses it (`PerformanceLongAnimationFrameTiming`). */
 export interface LongFrame {
@@ -109,7 +130,7 @@ export function watchPageStalls(send: (s: PageStall) => boolean) {
     }).observe({ type: 'long-animation-frame', buffered: true });
   // stalls the browser may not have told the long frames of yet, and those the server has not heard
   // of yet: one during a reconnect goes out once the page is connected again
-  const found: { from: number; to: number; before: string[] }[] = [];
+  const found: { from: number; to: number; before: string[]; active: boolean; usedMs?: number }[] = [];
   const unsent: PageStall[] = [];
   let free = performance.now();
   // the least that worker's and page's clocks were apart on taking a beat in: what any beat took more was its wait
@@ -121,20 +142,33 @@ export function watchPageStalls(send: (s: PageStall) => boolean) {
     free = performance.now();
     visible = document.visibilityState === 'visible';
   });
+  // the system may hold back a window in the background too (one of macOS's while the screen was
+  // locked stalled for up to 36 s), and without long frames nothing tells that from a busy page:
+  // there, only a stall of the window in use counts, as it began or ended (the focus events wait
+  // behind the stall)
+  let focused = document.hasFocus();
+  addEventListener('focus', () => void (focused = true));
+  addEventListener('blur', () => void (focused = false));
+  let used: number | undefined;
+  for (const type of INPUT) addEventListener(type, () => void (used = performance.now()), { capture: true, passive: true });
+  const browser = browserOf(navigator.userAgent, window.obeyaApp?.platform);
   heart.onmessage = (e: MessageEvent<number>) => {
     const now = performance.now();
     apart = Math.min(apart, now - e.data);
     // with long frames to tell its length, a beat a tick short of a stall may have missed its start
     const stall = stallOf(now - e.data - apart, now, free, supported ? STALL_MS - TICK_MS : STALL_MS);
     free = now;
-    if (stall && visible) found.push({ ...stall, before: beforeOf(noted, stall.from, stall.to) });
+    const active = focused || document.hasFocus();
+    if (stall && visible && (supported || active))
+      found.push({ ...stall, before: beforeOf(noted, stall.from, stall.to), active, ...(used === undefined ? {} : { usedMs: Math.round(Math.max(0, stall.from - used)) }) });
     while (found.length && (!supported || now - found[0]!.to >= REPORTED_MS)) {
       const f = found.shift()!;
       const long = supported ? framesWithin(frames, f.from, f.to) : [];
       // the beat went out up to a tick after the stall began; the long frames tell its length to the millisecond
       const ms = Math.max(f.to - f.from, long.reduce((sum, l) => sum + l.duration, 0));
       // and a machine asleep runs nothing at all: without long frames to tell, a very long pause is sleep
-      if (ms >= STALL_MS && (supported ? long.length : ms < SLEPT_MS)) unsent.push({ ms: Math.round(ms), scripts: scriptsOf(long), before: f.before });
+      if (ms >= STALL_MS && (supported ? long.length : ms < SLEPT_MS))
+        unsent.push({ ms: Math.round(ms), scripts: scriptsOf(long), before: f.before, browser, active: f.active, ...(f.usedMs === undefined ? {} : { usedMs: f.usedMs }) });
     }
     while (unsent.length > KEPT) unsent.shift();
     while (unsent.length && send(unsent[0]!)) unsent.shift();

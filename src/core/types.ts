@@ -2870,13 +2870,19 @@ export type ClientMessage =
 
 /**
  * A page that froze for `ms`: where the time went as far as the browser tells (the scripts of its
- * long frames, longest first, e.g. „WebSocket.onmessage (index.js:1204)“), and what the page did
- * shortly before (the server's messages it took in).
+ * long frames, longest first, e.g. „WebSocket.onmessage (index.js:1204)“), what the page did
+ * shortly before (the server's messages it took in), and what it ran in: the browser („Safari 26“,
+ * „Obeya app on macOS“), whether its window was the one in use (had the focus as the stall began or
+ * ended), and how long before it the owner last moved, typed or scrolled in it (absent where they
+ * have not since it loaded).
  */
 export interface PageStall {
   ms: number;
   scripts: { what: string; ms: number }[];
   before: string[];
+  browser?: string;
+  active?: boolean;
+  usedMs?: number;
 }
 
 /** Server → UI over the WebSocket. */

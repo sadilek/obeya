@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { beforeOf, framesWithin, type LongFrame, scriptsOf, stallOf } from './stalls';
+import { beforeOf, browserOf, framesWithin, type LongFrame, scriptsOf, stallOf } from './stalls';
 
 const script = (invoker: string, fn: string, duration: number) => ({ invoker, sourceURL: 'http://127.0.0.1:4417/_bun/client/index-a1b2.js?v=3', sourceFunctionName: fn, sourceCharPosition: 1204, duration });
 
@@ -42,4 +42,17 @@ test('a heartbeat the page takes in half a second late tells of a stall, and the
   expect(stallOf(1500, 2600, 1800)).toEqual({ from: 1800, to: 2600 });
   // where the long frames tell the length, a beat a tick short of a stall may tell of one
   expect(stallOf(451, 1551, 1000, 400)).toEqual({ from: 1100, to: 1551 });
+});
+
+test('a stall names the browser the page ran in by its name and major version, and the Obeya app by its platform', () => {
+  const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)';
+  expect(browserOf(`${mac} Version/26.1 Safari/605.1.15`)).toBe('Safari 26');
+  expect(browserOf('Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1')).toBe('Safari 18');
+  expect(browserOf(`${mac} Chrome/142.0.0.0 Safari/537.36`)).toBe('Chrome 142');
+  expect(browserOf(`${mac} Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0`)).toBe('Edge 142');
+  expect(browserOf('Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Gecko/20100101 Firefox/144.0')).toBe('Firefox 144');
+  // the app's webview and another app's tell no browser
+  expect(browserOf(mac, 'macos')).toBe('Obeya app on macOS');
+  expect(browserOf(mac)).toBe('WebKit');
+  expect(browserOf('curl/8')).toBe('an unknown browser');
 });

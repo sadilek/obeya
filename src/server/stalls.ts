@@ -91,10 +91,23 @@ export function describeStall(ms: number, traces: Trace[] | null, waited: Waited
   ];
 }
 
+/** How long ago, as the log says it. */
+function ago(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return s < 120 ? `${s} s` : s < 7200 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+}
+
+/** What a page's stall ran in, as far as the page told: its browser, its window in use or not, and when the owner last used it. */
+function contextOf(s: PageStall): string {
+  if (s.active === undefined) return '';
+  const used = s.usedMs === undefined ? 'not used since it loaded' : `last used ${ago(s.usedMs)} before`;
+  return `; ${[s.browser, s.active ? 'its window active' : 'its window in the background', used].filter(Boolean).join(', ')}`;
+}
+
 /** The lines a page's stall gets. */
 export function describePageStall(s: PageStall, where: string): string[] {
   return [
-    `Obeya: a page (${where}) stalled for ${seconds(s.ms)}; meanwhile it took no click or key`,
+    `Obeya: a page (${where}${contextOf(s)}) stalled for ${seconds(s.ms)}; meanwhile it took no click or key`,
     ...s.scripts.map((x) => `  ${seconds(x.ms)} ${x.what}`),
     ...(s.before.length ? [`  before it: ${s.before.join('; ')}`] : []),
   ];
@@ -130,7 +143,16 @@ export function pageStall(msg: unknown): PageStall | null {
   const text = (s: unknown) => (typeof s === 'string' ? s.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').slice(0, 200) : '');
   const scripts = (Array.isArray(m.scripts) ? m.scripts : []).slice(0, PLACES).flatMap((x) => (x && length(x.ms, 0) && text(x.what) ? [{ ms: x.ms, what: text(x.what) }] : []));
   const before = (Array.isArray(m.before) ? m.before : []).slice(-8).map(text).filter(Boolean);
-  return { ms: m.ms, scripts, before };
+  const browser = text(m.browser).slice(0, 60);
+  return {
+    ms: m.ms,
+    scripts,
+    before,
+    ...(browser ? { browser } : {}),
+    ...(typeof m.active === 'boolean' ? { active: m.active } : {}),
+    // a page left alone overnight was last used long before
+    ...(typeof m.usedMs === 'number' && m.usedMs >= 0 && m.usedMs < 1e10 ? { usedMs: m.usedMs } : {}),
+  };
 }
 
 export interface StallOptions {
@@ -213,12 +235,12 @@ export class Stalls {
   /**
    * A page's stall, from the page `page` on `where` (this machine, or a paired device), at `at` (on
    * the monotonic clock). One like those the page reported just before (where the time went the
-   * same, the length aside) is only counted: a page that stalls again and again would push
-   * everything else out of `stalls.log`.
+   * same, and its window in use or not alike; the length aside) is only counted: a page that stalls
+   * again and again would push everything else out of `stalls.log`.
    */
   page(s: PageStall, where: string, page = '', at = performance.now()) {
     this.flush(at);
-    const key = JSON.stringify([page, where, s.scripts.map((x) => x.what)]);
+    const key = JSON.stringify([page, where, s.active, s.scripts.map((x) => x.what)]);
     const run = this.runs.get(key);
     if (run) {
       Object.assign(run, { last: at, count: run.count + 1, least: Math.min(run.least, s.ms), most: Math.max(run.most, s.ms) });

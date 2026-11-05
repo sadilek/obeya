@@ -44,11 +44,23 @@ test('a page’s stall is logged with where its time went and what it took in be
   // a line of its own, and nothing a terminal takes for a command, are not the page's to write
   expect(pageStall({ ms: 900, scripts: [{ what: 'a\nObeya: forged\u001b[2J', ms: -5 }, { what: 'b', ms: 1e309 }, { what: 'c\u2028d', ms: 600 }], before: ['x\ry'] })).toEqual({ ms: 900, scripts: [{ what: 'c d', ms: 600 }], before: ['x y'] });
   expect(pageStall({ ms: 1e309, scripts: [], before: [] })).toBeNull();
+  // what it ran in, as far as it is what the page may say
+  expect(pageStall({ ms: 900, scripts: [], before: [], browser: 'Safari 26\nObeya: forged', active: true, usedMs: 9 * 3600_000 })).toEqual({ ms: 900, scripts: [], before: [], browser: 'Safari 26 Obeya: forged', active: true, usedMs: 9 * 3600_000 });
+  expect(pageStall({ ms: 900, scripts: [], before: [], browser: 7, active: 'yes', usedMs: -1 })).toEqual({ ms: 900, scripts: [], before: [] });
   expect(describePageStall({ ms: 1300, scripts: [{ what: 'WebSocket.onmessage: (anonymous) (index.js@1204)', ms: 1100 }], before: ['snapshot (412 KB) 0.2 s before'] }, 'this machine, canvas main')).toEqual([
     'Obeya: a page (this machine, canvas main) stalled for 1.3 s; meanwhile it took no click or key',
     '  1.1 s WebSocket.onmessage: (anonymous) (index.js@1204)',
     '  before it: snapshot (412 KB) 0.2 s before',
   ]);
+  // and what it ran in: whether its window was in use, and when the owner last used it
+  const ran = { ms: 700, scripts: [], before: [], browser: 'Obeya app on macOS' };
+  expect(describePageStall({ ...ran, active: true, usedMs: 2400 }, 'this machine, canvas main')[0]).toBe(
+    'Obeya: a page (this machine, canvas main; Obeya app on macOS, its window active, last used 2 s before) stalled for 0.7 s; meanwhile it took no click or key',
+  );
+  expect(describePageStall({ ...ran, browser: 'Chrome 142', active: false, usedMs: 25 * 60_000 }, 'Pixel, canvas main')[0]).toBe(
+    'Obeya: a page (Pixel, canvas main; Chrome 142, its window in the background, last used 25 min before) stalled for 0.7 s; meanwhile it took no click or key',
+  );
+  expect(describePageStall({ ...ran, active: true }, 'this machine, canvas main')[0]).toContain('(this machine, canvas main; Obeya app on macOS, its window active, not used since it loaded)');
 });
 
 let home: string | undefined;
