@@ -8,9 +8,10 @@ import { Store } from './db';
 import { FakeRuntime, gitRepo, heard, noForge } from './testing';
 
 // A canvas the size of a long-used one: hundreds of archived cards, a few hundred of them with a
-// shared page, a hundred on the canvas, ideas with hundreds of prototypes. Many cards landing one
-// after the other change it dozens of times in a row, and sharing a demo looks up every shared card;
-// the server answers nothing while that runs.
+// shared page on its repository's site, a hundred on the canvas, ideas with hundreds of prototypes.
+// Many cards landing one after the other change it dozens of times in a row, and sharing a demo or
+// asking the site which pages another machine withdrew looks up every shared card; the server
+// answers nothing while that runs.
 
 let dir: string;
 let canvas: CanvasRuntime;
@@ -21,8 +22,14 @@ let ideas: string[];
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'obeya-board-size-'));
-  const repo = gitRepo(join(dir, 'app'), { 'docs/plan/plan.md': '# App\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** One.\n- [ ] **W2:** Two.\n' });
+  // a site nobody answers at: asking it which pages are gone finds none
+  const site = { title: 'Demos', url: 'http://127.0.0.1:9/', deploy: 'true {dir}' };
+  const repo = gitRepo(join(dir, 'app'), {
+    'docs/plan/plan.md': '# App\n\n## Goal\n\nG.\n\n## Workstreams\n\n- [ ] **W1:** One.\n- [ ] **W2:** Two.\n',
+    '.obeya/settings.json': JSON.stringify({ demo: { site } }),
+  });
   store = new Store(join(dir, 'obeya.db'));
+  store.trustCommands(repo, { site: { url: site.url, deploy: site.deploy } });
   canvas = new CanvasRuntime({ name: 'App', repos: [{ path: repo, clones: 2 }] }, { store, home: dir, runtime: new FakeRuntime(), forge: noForge });
   const c = canvas.board.canvas.id;
   const body = 'What the card asks for, in a few sentences, as the owner wrote it. '.repeat(6);
@@ -37,7 +44,7 @@ beforeAll(() => {
       demo: JSON.stringify({ dir: demo, ...shown }),
       ...(n < 800 ? { archived_at: new Date(Date.now() - n * 60_000).toISOString() } : {}),
       // a page published before the newest page changes: the Koordinator's sheet offers to share it again
-      ...(n % 3 === 0 ? { share: JSON.stringify({ slug: `card-${n}`, url: `https://demos.example/card-${n}`, demos: [{ dir: demo, shown }], version: '' }) } : {}),
+      ...(n % 3 === 0 ? { share: JSON.stringify({ slug: `card-${n}`, url: `http://127.0.0.1:9/card-${n}/`, demos: [{ dir: demo, shown }], version: '' }) } : {}),
     });
   });
   archived = rows.slice(0, 800).map((r) => r.id);
@@ -54,7 +61,7 @@ beforeAll(() => {
     store.update(r.id, {
       demo: JSON.stringify({ dir: demo, ...shown }),
       ...(n < 280 ? { archived_at: new Date(Date.now() - n * 60_000).toISOString() } : {}),
-      ...(n % 2 === 0 ? { share: JSON.stringify({ slug: `prototype-${n}`, url: `https://demos.example/prototype-${n}`, demos: [{ dir: demo, shown }], version: '' }) } : {}),
+      ...(n % 2 === 0 ? { share: JSON.stringify({ slug: `prototype-${n}`, url: `http://127.0.0.1:9/prototype-${n}/`, demos: [{ dir: demo, shown }], version: '' }) } : {}),
     });
   });
   idea.slice(0, 70).forEach((r, n) => store.update(r.id, { archived_at: new Date(Date.now() - n * 60_000).toISOString() }));
@@ -135,6 +142,21 @@ test('sharing looks up every shared card, archived ones with their prototypes, a
   expect(Math.min(...rounds) / rebuild).toBeLessThan(10);
 });
 
+test('asking the site which shared pages are gone builds the shared cards once, not each on its own, for the cost of a few rebuilds of the canvas view', async () => {
+  const board = canvas.board;
+  const rebuild = await rebuildTime();
+  const rounds: number[] = [];
+  for (let round = 0; round < 3; round++) {
+    rounds.push(await cpuTime(async () => {
+      // as after a start or a share: the board changed since the last pass
+      board.work(onCanvas[round]!, { status_line: `Checking ${round}` });
+      await canvas.sharing.checkSites();
+    }));
+  }
+  // about two rebuilds' worth; looking up each card on its own, and again for each question asked of it, costs eight
+  expect(Math.min(...rounds) / rebuild).toBeLessThan(4);
+});
+
 test('an archived card looked up on its own is the card the archive lists, with its prototypes', () => {
   const board = canvas.board;
   board.changed();
@@ -176,4 +198,14 @@ test('a rebuild of the canvas view reads the shared cards again only after one c
     looked.mockRestore();
     read.mockRestore();
   }
+});
+
+test('the shared cards built at once are those looked up one by one, archived ones and prototypes too', () => {
+  const board = canvas.board;
+  board.changed();
+  const rows = board.sharedRows();
+  const once = board.cards(rows);
+  board.changed();
+  expect(rows.map((r) => once.get(r.id))).toEqual(rows.map((r) => board.card(r.id)));
+  expect(once.size).toBe(rows.length);
 });

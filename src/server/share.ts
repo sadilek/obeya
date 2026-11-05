@@ -437,9 +437,11 @@ export class Sharing {
   reshareMany(count: number | null, tags = false) {
     const run = this.o.board.reshareRun();
     if (run?.queue.length) throw new BadRequest('reshareBusy', 'pages are being shared again already');
-    const rows = (tags ? this.o.board.untaggedRows() : this.o.board.outdatedRows().map(({ r }) => r))
-      .filter((r) => this.find(r.id) && this.target(this.find(r.id)!))
-      .map((r) => ({ r, s: JSON.parse(r.share!) as StoredShare }));
+    const outdated = tags ? this.o.board.untaggedRows() : this.o.board.outdatedRows().map(({ r }) => r);
+    const cards = this.o.board.cards(outdated);
+    const rows = outdated
+      .map((r) => ({ r, s: JSON.parse(r.share!) as StoredShare, card: cards.get(r.id) }))
+      .filter(({ s, card }) => card && this.target(card, s));
     if (!rows.length) throw new BadRequest('nothingOutdated', tags ? 'no shared page lacks tags' : 'no shared page is outdated');
     const made = (dir?: string) => (dir ? (statOr(join(dir, 'demo.mp4')) ?? statOr(join(dir, 'index.html')) ?? statOr(dir) ?? 0) : 0);
     // newest by the newest version on the page
@@ -603,13 +605,15 @@ export class Sharing {
    */
   async checkSites() {
     const targets = new Map<string, ShareTarget>();
-    for (const { r, s } of this.shares()) {
-      const card = this.find(r.id);
-      const target = card && s.url ? this.target(card) : null;
+    // the first site's pages from the same pass; the next site's after the first answered, as they are then
+    let cards: SharedCard[] | undefined = this.sharedCards();
+    for (const { s, card } of cards) {
+      const target = s.url ? this.target(card, s) : null;
       if (target) targets.set(target.key, target);
     }
     for (const target of targets.values()) {
-      const shared = this.others('', target.key);
+      const shared = this.others('', target.key, cards);
+      cards = undefined;
       const { gone, missing } = await target.audit(shared);
       this.lost(target.key, gone);
       if (missing.length) await this.repair(target, shared, missing);
@@ -1026,13 +1030,9 @@ export class Sharing {
   }
 
   /** The slugs of the other pages shared through the target. */
-  private others(cardId: string, key: string): string[] {
-    return this.shares()
-      .filter(({ r }) => r.id !== cardId)
-      .flatMap(({ r, s }) => {
-        const card = this.find(r.id);
-        return s.url && s.state !== 'withdrawing' && card && this.target(card)?.key === key ? [pathOf(s)] : [];
-      })
+  private others(cardId: string, key: string, cards = this.sharedCards()): string[] {
+    return cards
+      .flatMap(({ s, card }) => (card.id !== cardId && s.url && s.state !== 'withdrawing' && this.target(card, s)?.key === key ? [pathOf(s)] : []))
       .sort();
   }
 
@@ -1041,10 +1041,9 @@ export class Sharing {
    * site, where this machine can deploy to it, else the owner's personal site, where the repository
    * may share there (public, or ticked). Null where none takes it: its demos are exported.
    */
-  private target(card: Item): ShareTarget | null {
-    const s = this.stored(card.id);
-    if (s?.url || s?.state) return s.personal ? this.personalTarget(card) : this.ownTarget(card);
-    return this.ownTarget(card) ?? (this.personalAllowed(card) ? this.personalTarget(card) : null);
+  private target(card: Item, s = this.stored(card.id)): ShareTarget | null {
+    if (s?.url || s?.state) return s.personal ? this.personalTarget(card, s) : this.ownTarget(card);
+    return this.ownTarget(card) ?? (this.personalAllowed(card) ? this.personalTarget(card, s) : null);
   }
 
   /** The card's repository's own site, where this machine has its credentials. */
@@ -1060,11 +1059,11 @@ export class Sharing {
    * credentials; none for a page that went out on another personal site (this machine was connected
    * to another one since).
    */
-  private personalTarget(card: Item): ShareTarget | null {
+  private personalTarget(card: Item, s = this.stored(card.id)): ShareTarget | null {
     const src = this.o.sourceFor(card);
     const p = this.personal();
     if (!src || !p) return null;
-    const url = this.stored(card.id)?.url;
+    const url = s?.url;
     if (url && !url.startsWith(`${p.url.replace(/\/+$/, '')}/`)) return null;
     const site = (this.o.personalSite ?? personalDemoSite)(p);
     if (siteMissing(this.o.home, site)) return null;
@@ -1196,6 +1195,16 @@ export class Sharing {
     return this.o.board.sharedRows().map((r) => ({ r, s: JSON.parse(r.share!) as StoredShare }));
   }
 
+  /** The shared cards (`shares`) as the UI sees them, built at once (`Board.cards`); those gone are left out. */
+  private sharedCards(): SharedCard[] {
+    const shares = this.shares();
+    const cards = this.o.board.cards(shares.map(({ r }) => r));
+    return shares.flatMap(({ r, s }) => {
+      const card = cards.get(r.id);
+      return card ? [{ r, s, card }] : [];
+    });
+  }
+
   private stored(cardId: string): StoredShare | null {
     if (!this.find(cardId)) return null;
     const s = this.o.board.row(cardId).share;
@@ -1240,6 +1249,13 @@ const TAGS_SYSTEM = `You tag pages on which the demos of changes are shared with
 
 /** How many pages the run tagging pages tags with one session and one deploy. */
 const TAG_BATCH = 20;
+
+/** A shared card with its share, as the UI sees it. */
+interface SharedCard {
+  r: CardRow;
+  s: StoredShare;
+  card: Item;
+}
 
 /** A page the reading session chooses tags for. */
 interface Tagging {

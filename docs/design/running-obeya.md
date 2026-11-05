@@ -581,7 +581,12 @@ workers are busy.
   without the whole archive. Which cards are prototypes (an idea lists its own, archived ones too)
   is read once per change, and each is made into a card when one first needs it, once per change
   too, not again for every card looked up: a pass of sharing looks up every shared card, hundreds of
-  them, and stood still for half a second doing so. A write to one card (2026-11-02) makes only
+  them, and stood still for half a second doing so. Such a pass (asking each site which pages
+  another machine withdrew, naming a site's other pages to its deploy, picking the pages to share
+  again) builds the shared cards it goes over together, archived ones in one go, and reads where
+  each page goes from the share it already holds (2026-11-05): built one after the other, and again
+  for each question asked of a card, the pass after a start stood still for up to five seconds on a
+  canvas with some 350 shared cards. A write to one card (2026-11-02) makes only
   that card's row into a card anew: what the other rows made (their demos and pages, with a look at
   the demos' files) is kept while those rows stay the same, until anything else changes, when the
   files are looked at again (a demo deleted by hand shows as gone then); and the reads each change
