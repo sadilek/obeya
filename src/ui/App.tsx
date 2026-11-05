@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
 import { api, ApiError, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
@@ -25,7 +26,7 @@ import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { forcedText, QueuePill } from './queue';
 import { SearchPill } from './search';
-import { depsOf, handleAt, nearestHandle, type Side, SIDES, waitsAmong } from './deps';
+import { depsOf, handleAt, holdsAmong, loopsAmong, nearestHandle, type Side, SIDES, waitKinds, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, HowToHint, SEARCH_KEY_KNOWN } from './help';
@@ -1327,6 +1328,17 @@ function Canvas({
       fail(e);
     }
   }
+  /**
+   * A loop of waits, from its button on the canvas: Obeya gets it, with what each wait is, to reorder
+   * them; its sheet opens so the owner sees what it does.
+   */
+  function resolveLoop(loop: { cards: string[]; edges: [string, string][] }) {
+    // each card by its number too, which tells Obeya the card where titles are alike
+    const named = (id: string) => t.deps.loopCard(cardTag(byId(id)!.number), titleOf(id));
+    const waits = loop.edges.map(([from, to]) => t.deps.loopWait(named(to), named(from), byId(to) ? waitKinds(byId(to)!, from, items) : []));
+    if (!kOn) toggleKoordinator();
+    void tellTyped(t.deps.loopAsk(loop.cards.map(named), waits), undefined, null);
+  }
   /** The trash button on an owner-drawn arrow: it goes at once, with „Rückgängig“. */
   function removeDependency(from: string, to: Item) {
     const key = `${from}:${to.id}`;
@@ -1808,8 +1820,10 @@ function Canvas({
   const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
   // the waits shown as lines: those the owner is removing go at once
   const shownWaits = waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`));
+  // a loop only of the waits that hold its cards back: one through a card at work stalls nothing
+  const loops = useMemo(() => loopsAmong(holdsAmong(items).filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))), [items, removing]);
   const standsForId = (id: string) => (byId(id) ? standsFor(byId(id)!).id : id);
-  const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
+  const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : loops.some((l) => l.cards.includes(hoverId!) && l.cards.includes(id)) ? 'loop' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
   // the card picked in the search lights up where it stands: on its folded project, or its edge indicator while out of sight
@@ -1870,19 +1884,35 @@ function Canvas({
           <div id="world" style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.s})` }}>
             <TerritoryLayer {...territories} selected={placed.filter((p) => (ring ? ring.ids : marked).includes(p.item.id)).map((p) => p.b)} />
             <Links placed={placed} waits={shownWaits} standsFor={standsForId} />
-            <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} standsFor={standsForId} s={cam.s}>
-              {/* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
-                  covers it; the button and the band that shows it keep their size on screen at every zoom */}
-              {placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
-                const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
-                if (!a) return [];
-                const r = 13 / cam.s;
-                const { x, y } = linkSpot(a, b, depHead(cam.s), cardBoxes, r);
-                return [<g className="manual-edge" key={`${from}:${item.id}`}>
-                  <path className="manual-hit" d={linkPath(a, b, depHead(cam.s))} strokeWidth={22 / cam.s} />
-                  <foreignObject x={x - r} y={y - r} width={2 * r} height={2 * r}><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
-                </g>];
-              }))}
+            <DepLinks placed={placed} waits={shownWaits} lit={deps?.edges ?? []} steps={deps?.steps} loops={loops.flatMap((l) => l.edges)} standsFor={standsForId} s={cam.s}>
+              {(shift) => [
+                /* an arrow the owner drew: under the pointer, a trash button that removes it, where no card
+                   covers it; the button and the band that shows it keep their size on screen at every zoom */
+                ...placed.flatMap(({ item, b }) => (connectable(item) ? item.manualDependsOn ?? [] : []).filter((from) => waitKeys.has(`${from}:${item.id}`) && !removing.some((x) => x.key === `${from}:${item.id}`)).flatMap((from) => {
+                  const a = placed.find((p) => p.item.id === from && connectable(p.item))?.b;
+                  if (!a) return [];
+                  const r = 13 / cam.s;
+                  const { x, y } = linkSpot(a, b, depHead(cam.s), cardBoxes, r, shift(from, item.id));
+                  return [<g className="manual-edge" key={`${from}:${item.id}`}>
+                    <path className="manual-hit" d={linkPath(a, b, depHead(cam.s), shift(from, item.id))} strokeWidth={22 / cam.s} />
+                    <foreignObject x={x - r} y={y - r} width={2 * r} height={2 * r}><button title={t.deps.remove} aria-label={t.deps.remove} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); removeDependency(from, item); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></button></foreignObject>
+                  </g>];
+                })),
+                /* a loop of waits: on one of its lines, where no card covers it, a button that has Obeya resolve it */
+                ...loops.flatMap((loop) => {
+                  const at = (id: string) => placed.find((p) => p.item.id === standsForId(id))?.b;
+                  const edge = loop.edges.find(([from, to]) => at(from) && at(to) && at(from) !== at(to));
+                  if (!edge) return [];
+                  const [w, h] = [LOOP_W / cam.s, LOOP_H / cam.s];
+                  const { x, y } = linkSpot(at(edge[0])!, at(edge[1])!, depHead(cam.s), cardBoxes, w / 2, shift(edge[0], edge[1]));
+                  return [<foreignObject key={`loop ${loop.cards.join(' ')}`} className="loop-fix" x={x - w / 2} y={y - h / 2} width={w} height={h}>
+                    <button style={{ transform: `scale(${1 / cam.s})` }} title={t.deps.loopTitle(loop.cards.map(titleOf))} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); resolveLoop(loop); }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4" /></svg>
+                      {t.deps.loopFix}
+                    </button>
+                  </foreignObject>];
+                }),
+              ]}
             </DepLinks>
             <svg className="manual-deps" width="1" height="1">
               <defs><marker id="manual-arrow" viewBox="0 0 9 8" refX="0.3" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker><marker id="ghost-arrow" viewBox="0 0 9 8" refX="9" refY="4" markerWidth={6} markerHeight={(6 * 8) / 9} markerUnits="strokeWidth" orient="auto"><path d="M0,0 L9,4 L0,8 z" /></marker></defs>
@@ -2245,6 +2275,9 @@ function panelRect(i: Item, inner: HTMLElement, side: Sides) {
 const TALK_W = 640;
 /** Below this the split's columns stack (styles.css) and the panel scrolls as a whole. */
 const NARROW = '(max-width: 760px)';
+/** The size of a loop's button on screen, at every zoom. */
+const LOOP_W = 132;
+const LOOP_H = 26;
 
 /** Where a panel starts at the top: below the bar. */
 const PANEL_TOP = 64;

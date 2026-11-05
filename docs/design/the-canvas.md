@@ -161,11 +161,26 @@ waits, not the chain. All kinds of wait look alike (a card queued behind another
 those it builds on, a card snoozed until another, an arrow the owner drew); a wait ends once the card
 waited for is finished, so finished cards keep no lines. A workstream of a collapsed project shows
 its waits at the project's head. The lines stay thin on screen however far the view zooms out.
+Each line fades in from its start to its arrow head, so that where lines meet, the one that ends
+there shows. Several lines meeting one side of a card spread along it instead of all ending in its
+middle, in the order of the cards at their other ends, so that they do not cross on the way and an
+arrow coming in stays apart from a line going out.
 Under the pointer a card shows its waits both ways over every step instead, in the waiting colour:
-the cards it waits for ("comes first") and those waiting for it ("waits for it"), each with a ring;
-a wait shows once, never as both. Only the colour changes: line, head and course stay as they were,
-so that moving the pointer over the cards leaves the picture calm. What makes a card wait: see
-Scheduling.
+the cards it waits for ("comes first") and those waiting for it ("waits for it"), each with a ring,
+its own waits fully and each step further along fainter; a wait shows once, never as both. Only
+colour and strength change: line, head and course stay as they were, so that moving the pointer
+over the cards leaves the picture calm. What makes a card wait: see Scheduling.
+
+Cards that wait for each other, directly or through others, can never start: Obeya refuses an arrow
+that would close such a loop, but the waits it infers (a queue, a snooze, a plan doc read) can still
+close one. A loop counts only the waits that hold a card back: a queue while the card is in it, a
+snooze while it sleeps, an arrow or the plan doc's order until the card starts. A card at work still
+shows its arrows and its plan doc's order as lines, but a loop through them stalls nothing and is
+none. The waits of a loop are red at all times, and under the pointer a card in the loop with the
+hovered one says it waits in a loop. One of its lines carries a button, "Resolve loop", that hands
+the loop to Obeya in Obeya's conversation, which opens: its cards by number and title, and what holds
+each wait in it. Obeya breaks it with the means it has for each kind of wait (starting a queued card
+anyway, taking one out of the queue, waking a snoozed one), and says what it did.
 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card
@@ -425,6 +440,10 @@ code, a generic one otherwise.
   There is no switch to hide them. Rejected: stubs at the cards' edges only (they say there is a
   dependency but not the picture), and a layer behind a button (it does not keep the waits in
   mind).
+- **A loop of waits is red, and Obeya resolves it** (owner, 2026-11-05): a loop stalls every card in
+  it without anything saying so. Obeya resolves it rather than the owner picking a wait to drop,
+  since it knows why it inferred each one. Rejected: a proposed card for the resolution (a card
+  would take a worker and a workspace for what is a reordering).
 - **The owner may draw dependencies between task cards** (2026-11-02), beside the waits Obeya
   infers: single cards have no plan doc to say what comes first, and the owner sometimes knows an
   order that a conflict check cannot see, without wanting to turn the cards into a project.
