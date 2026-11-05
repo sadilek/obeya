@@ -420,6 +420,17 @@ describe('a site Obeya keeps', () => {
     expect(await target.publish(page('c-333333'))).toMatchObject({ why: 'demo.mp4 is 25.0 MiB; the site takes at most 25 MiB per file.' });
   });
 
+  test('a page whose directory went after Obeya looked at it is brought back from the live site', async () => {
+    await target.publish(page('a-111111'));
+    // the second share finds the first page's files where they belong
+    await target.publish(page('b-222222', { shared: ['a-111111'] }));
+    rmSync(join(siteDir(), 'a-111111'), { recursive: true });
+    expect('url' in (await target.publish(page('c-333333')))).toBe(true);
+    expect(readFileSync(join(siteDir(), 'a-111111/demo.mp4'), 'utf8')).toBe('video');
+    expect(manifest(deployed()).pages['a-111111']?.rev).toBe(1);
+    expect(overview()).toContain('Titel a-111111');
+  });
+
   test('says the env file it lacks on this machine; a site without one deploys with the machine’s own login', async () => {
     rmSync(join(home, 'sites/demos/deploy.env'));
     expect(siteMissing(home, SITE())).toBe('sites/demos/deploy.env');
@@ -471,13 +482,13 @@ describe('a site Obeya keeps', () => {
     expect(overview()).not.toContain('navy');
   });
 
-  test('a page names its repository the same from every clone of it, by a hash', () => {
+  test('a page names its repository the same from every clone of it, by a hash', async () => {
     const one = gitRepo(join(dir, 'one'));
     cpSync(one, join(dir, 'clone'), { recursive: true });
     const other = gitRepo(join(dir, 'other'), { 'README.md': 'another\n' });
-    expect(repoMark(join(dir, 'clone'))).toBe(repoMark(one));
-    expect(repoMark(other)).not.toBe(repoMark(one));
-    expect(repoMark(one)).toMatch(/^[0-9a-f]{16}$/);
+    expect(await repoMark(join(dir, 'clone'))).toBe(await repoMark(one));
+    expect(await repoMark(other)).not.toBe(await repoMark(one));
+    expect(await repoMark(one)).toMatch(/^[0-9a-f]{16}$/);
   });
 
   test('its pages are the ones the page changes account for', () => {

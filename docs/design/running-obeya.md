@@ -328,7 +328,11 @@ command line. A pause the thread did not run in at all (the machine slept) is no
 What happens often or many times at once therefore never waits for a process: starting an agent and
 landing work read git without blocking, and of the processes Obeya waits for without blocking, a few
 start per turn of the event loop, the rest in the next; starting one takes the thread a moment, under
-load many milliseconds.
+load many milliseconds. Sharing on a demo site Obeya keeps reads and writes its files without
+blocking, and touches only the page it changes: what it has read of the site's directory (each
+page's `meta.json`, which pages hold their files) it keeps while it runs, since only Obeya changes
+that directory, and lists the directory afresh to notice a page that went. A site of a few hundred
+pages read page by page held the server up for up to a second with every share (2026-11-05).
 
 A page reports its own freezes of half a second or more over its WebSocket, and the server logs them
 in the same places, naming the device and the canvas: where the browser says where the time went

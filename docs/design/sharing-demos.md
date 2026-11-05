@@ -364,7 +364,8 @@ current. A page keeps its date while its demo's own files stay the same.
 
 Each page names who shared it ("Shared by Ada Lovelace on October 20, 2026"), and the overview
 after the date, as colleagues publish to one site from their own Obeya: git's `user.name` in the
-card's repository, left out where none is set.
+card's repository, left out where none is set. Obeya reads it once per repository while it runs, so
+a name changed in git shows on pages shared after its next start.
 
 A page's tags stand as chips under the line saying who shared it, each linking the overview filtered
 by it (`../?Area=Billing`), and in the feed as `<category term="Billing" label="Area: Billing"/>`. The

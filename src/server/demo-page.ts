@@ -252,8 +252,15 @@ const changeLink = (p: Pick<PageParts, 'pr' | 'commit'>, w: (typeof PAGE_WORDS)[
 /** Text inside a `<script>` element must not close it. */
 const inScript = (s: string) => s.replace(/<\//g, '<\\/');
 
-export const day = (at: Date | string, language: PageLanguage = 'de') =>
-  new Date(at).toLocaleDateString(PAGE_WORDS[language].locale, { day: 'numeric', month: 'long', year: 'numeric' });
+export const day = (at: Date | string, language: PageLanguage = 'de') => dayFormat(language).format(new Date(at));
+
+/** A formatter per language: making one for each date took the overview of a site of some hundred pages a quarter of a second. */
+const dayFormats = new Map<PageLanguage, Intl.DateTimeFormat>();
+function dayFormat(language: PageLanguage): Intl.DateTimeFormat {
+  let f = dayFormats.get(language);
+  if (!f) dayFormats.set(language, (f = new Intl.DateTimeFormat(PAGE_WORDS[language].locale, { day: 'numeric', month: 'long', year: 'numeric' })));
+  return f;
+}
 
 export const PAGE_STYLE = `
   :root { --bg: #e8e2d4; --card: #fdfbf5; --ink: #1f1b14; --muted: #776e5e; --line: #e2dccd; --chip: #f0ebdf; --accent: #08888e; }

@@ -47,7 +47,8 @@
 // out and send no referrer.
 
 import { createHash, randomUUID } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import type { DemoSite } from '../adapters/types';
 import type { Messages } from '../core/messages';
@@ -216,42 +217,65 @@ export interface SiteOptions {
   unlisted?: { secret: string };
 }
 
+/** git's names by repository, each read once while the server runs. */
+const gitNames = new Map<string, Promise<string | undefined>>();
+
 /** git's name in the repository (its own `user.name`, else the global one); undefined where it has none. */
-function gitName(repo: string): string | undefined {
-  try {
-    const r = Bun.spawnSync(['git', '-C', repo, 'config', '--get', 'user.name'], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
-    return r.exitCode === 0 ? r.stdout.toString().trim() || undefined : undefined;
-  } catch {
-    return undefined;
+function gitName(repo: string): Promise<string | undefined> {
+  let name = gitNames.get(repo);
+  if (!name) {
+    name = spawnOutput(['git', '-C', repo, 'config', '--get', 'user.name'], { stdin: 'ignore' }).then(
+      (r) => (r.code === 0 ? r.stdout.trim() || undefined : undefined),
+      () => undefined,
+    );
+    gitNames.set(repo, name);
   }
+  return name;
 }
 
 /** A page's theme beside its `index.html`, for the overview (`overviewTheme`). */
 const PAGE_THEME = 'theme.css';
 
-/** Repository marks by checkout, as `repoMark` worked them out. */
-const marks = new Map<string, string>();
+/** Repository marks by checkout, as `repoMark` works them out. */
+const marks = new Map<string, Promise<string>>();
 
 /**
  * Which repository a page comes from, the same for every clone of it on any machine: a hash of its
  * first commit (the smallest, where histories were joined), else of its path (a folder, a
  * repository without commits). A hash, so the public site names no repository.
  */
-export function repoMark(repo: string): string {
+export function repoMark(repo: string): Promise<string> {
   const key = resolve(repo);
   let mark = marks.get(key);
-  if (mark) return mark;
-  let root = '';
-  if (!isFolder(key)) {
-    try {
-      const r = Bun.spawnSync(['git', '-C', key, 'rev-list', '--max-parents=0', 'HEAD'], { stdin: 'ignore', stdout: 'pipe', stderr: 'ignore' });
-      if (r.exitCode === 0) root = r.stdout.toString().trim().split('\n').sort()[0] ?? '';
-    } catch {}
+  if (!mark) {
+    mark = (async () => {
+      let root = '';
+      if (!isFolder(key)) {
+        try {
+          const r = await spawnOutput(['git', '-C', key, 'rev-list', '--max-parents=0', 'HEAD'], { stdin: 'ignore' });
+          if (r.code === 0) root = r.stdout.trim().split('\n').sort()[0] ?? '';
+        } catch {}
+      }
+      return createHash('sha256').update(root ? `commit:${root}` : `path:${key}`).digest('hex').slice(0, 16);
+    })();
+    marks.set(key, mark);
   }
-  mark = createHash('sha256').update(root ? `commit:${root}` : `path:${key}`).digest('hex').slice(0, 16);
-  marks.set(key, mark);
   return mark;
 }
+
+/**
+ * What Obeya has read of a site's directory, by directory, while the server runs: each page's
+ * `meta.json` (null for a directory without one), and the pages whose files the directory was found
+ * to hold, with the revision (`holds`). Only Obeya changes the directory, and each change forgets
+ * the pages it touches; a page's directory gone otherwise shows when the site's directory is listed.
+ * So a change reads and checks the one page it makes, not every page on the site: a site of some
+ * hundred pages held the server up for a second with each share (2026-11-05).
+ */
+interface Read {
+  metas: Map<string, Meta | null>;
+  whole: Map<string, string>;
+}
+const readSites = new Map<string, Read>();
 
 /** About 30 s for a deployment to show: a host or its CDN may serve the earlier one for a moment. */
 const CHECK_WAITS = [0, 1000, 2000, 4000, 8000, 15000];
@@ -272,17 +296,51 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   /** Where the manifest is on the site: at its root, or in the unlisted site's secret directory. */
   const manifestAt = opts.unlisted ? `${opts.unlisted.secret}/${MANIFEST}` : MANIFEST;
 
+  /** What this server has read of the directory (`Read`). */
+  const known = (): Read => {
+    let k = readSites.get(dir);
+    if (!k) readSites.set(dir, (k = { metas: new Map(), whole: new Map() }));
+    return k;
+  };
+  /** Forgets what was read of a page whose directory changes. */
+  const forget = (slug: string) => {
+    const k = known();
+    k.metas.delete(slug);
+    k.whole.delete(slug);
+  };
+
+  /** The pages in the directory with their `meta.json`: the directory listed afresh, a `meta.json` read only where it was not read before. */
+  const here = async (): Promise<Map<string, Meta>> => {
+    const k = known();
+    // a directory that is not there holds no pages; one that cannot be read refuses the change, as a deploy without its pages would take them offline
+    const dirs = async (at: string) => (await readdir(at, { withFileTypes: true }).catch(absent([]))).filter((d) => d.isDirectory()).map((d) => d.name);
+    // an unlisted site's pages lie a level deeper, in the random part of their address
+    const slugs = new Set(unlisted ? (await Promise.all((await dirs(dir)).map(async (token) => (await dirs(join(dir, token))).map((s) => `${token}/${s}`)))).flat() : await dirs(dir));
+    for (const s of k.metas.keys()) if (!slugs.has(s)) forget(s);
+    await eachOf([...slugs].filter((s) => !k.metas.has(s)), async (s) => {
+      const meta = await readFile(join(dir, s, 'meta.json'), 'utf8').then((text) => JSON.parse(text) as Meta, absent(null));
+      k.metas.set(s, meta);
+    });
+    return new Map([...k.metas].flatMap(([s, m]) => (m ? [[s, m] as const] : [])));
+  };
+
   /** The site lives only in its directory: one that lost pages Obeya has as shared would drop them with the next deployment. */
-  const checkSite = (shared: string[], self: string[]) => {
-    const missing = shared.filter((s) => !self.includes(s) && !existsSync(join(dir, s, 'meta.json')));
+  const checkSite = async (shared: string[], self: string[]) => {
+    const pages = await here();
+    const missing = shared.filter((s) => !self.includes(s) && !pages.has(s));
     if (missing.length) throw new Refused(t.siteLacks(dir, missing));
   };
 
-  const deployEnv = (): Record<string, string> => {
+  const deployEnv = async (): Promise<Record<string, string>> => {
     const file = envPath(home, site);
     if (!file) return {};
-    if (!existsSync(file)) throw new Refused(t.envMissing(file));
-    return parseEnv(readFileSync(file, 'utf8'));
+    let text: string;
+    try {
+      text = await readFile(file, 'utf8');
+    } catch {
+      throw new Refused(t.envMissing(file));
+    }
+    return parseEnv(text);
   };
 
   /** The headers for reading the live site, `${KEY}` taken from the env file (not Obeya's environment, whose secrets the settings may not send anywhere). */
@@ -354,34 +412,44 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   };
 
   /** The manifest of this directory, as written with the last change. */
-  const readLocal = (): Manifest => {
-    const file = join(dir, manifestAt);
-    return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { deploy: '', machine, at: '', pages: {} };
+  const readLocal = async (): Promise<Manifest> => {
+    let text: string;
+    try {
+      text = await readFile(join(dir, manifestAt), 'utf8');
+    } catch {
+      return { deploy: '', machine, at: '', pages: {} };
+    }
+    return JSON.parse(text);
   };
 
   /** Writes the manifest for the next deployment, under a name of its own; returns it. Pages whose directory is not there are left out. */
-  const writeLocal = (m: Manifest): string => {
+  const writeLocal = async (m: Manifest): Promise<string> => {
     const deploy = randomUUID();
-    const pages = Object.fromEntries(Object.entries(m.pages).filter(([slug, e]) => e.withdrawn || existsSync(join(dir, slug, 'meta.json'))));
-    mkdirSync(dirname(join(dir, manifestAt)), { recursive: true });
-    writeFileSync(join(dir, manifestAt), JSON.stringify({ deploy, machine, at: new Date().toISOString(), pages } satisfies Manifest, null, 1));
+    const there = await here();
+    const pages = Object.fromEntries(Object.entries(m.pages).filter(([slug, e]) => e.withdrawn || there.has(slug)));
+    await mkdir(dirname(join(dir, manifestAt)), { recursive: true });
+    await writeFile(join(dir, manifestAt), JSON.stringify({ deploy, machine, at: new Date().toISOString(), pages } satisfies Manifest, null, 1));
     return deploy;
   };
 
   /** A page of the directory as the manifest lists it. */
-  const entryOf = (slug: string): Entry => {
+  const entryOf = async (slug: string): Promise<Entry> => {
     const files: Entry['files'] = {};
-    for (const f of filesUnder(join(dir, slug))) {
-      const bytes = readFileSync(join(dir, slug, f));
-      files[f] = { size: bytes.length, hash: hashOf(bytes) };
-    }
-    const meta = JSON.parse(readFileSync(join(dir, slug, 'meta.json'), 'utf8')) as Meta;
+    for (const f of await filesUnder(join(dir, slug))) files[f] = await fileHash(join(dir, slug, f));
+    const meta = JSON.parse(await readFile(join(dir, slug, 'meta.json'), 'utf8')) as Meta;
     return { rev: 1, machine, at: new Date().toISOString(), meta, files };
   };
 
-  /** Whether the directory holds the page's files the manifest lists, by their sizes. */
-  const holds = (slug: string, e: Entry) =>
-    Object.entries(e.files ?? {}).every(([f, { size }]) => existsSync(join(dir, slug, f)) && statSync(join(dir, slug, f)).size === size);
+  /** Whether the directory holds the page's files the manifest lists, by their sizes; looked at once for each revision of the page. */
+  const holds = async (slug: string, e: Entry): Promise<boolean> => {
+    const k = known();
+    const revision = `${e.rev} ${e.machine} ${e.at}`;
+    if (k.whole.get(slug) === revision) return true;
+    const sizes = await Promise.all(Object.entries(e.files ?? {}).map(([f, { size }]) => stat(join(dir, slug, f)).then((s) => s.size === size, () => false)));
+    if (!sizes.every(Boolean)) return false;
+    k.whole.set(slug, revision);
+    return true;
+  };
 
   /**
    * Pull: brings the directory up to the live site. Pages missing here or newer there are
@@ -391,17 +459,26 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
    */
   const pull = async (local: Manifest, live: Live, env: Record<string, string>, log: (text: string) => void): Promise<Gone[]> => {
     const gone: Gone[] = [];
-    const fetchList: [string, Entry][] = [];
+    // what was found of a page's files counts only while its directory is still there
+    await here();
+    const candidates: [string, Entry, boolean][] = [];
     for (const [slug, e] of Object.entries(live.pages)) {
       if (!isPage(slug, unlisted)) continue;
       const mine = local.pages[slug];
       if (e.withdrawn) {
         if (mine && mine.rev >= e.rev) continue;
         if (mine && !mine.withdrawn) gone.push({ slug, machine: e.machine });
-        rmSync(join(dir, slug), { recursive: true, force: true });
+        forget(slug);
+        await rm(join(dir, slug), { recursive: true, force: true });
         local.pages[slug] = e;
-      } else if (!mine || mine.rev < e.rev || (mine.rev === e.rev && !holds(slug, e))) fetchList.push([slug, e]);
+      } else if (!mine || mine.rev < e.rev) candidates.push([slug, e, true]);
+      else if (mine.rev === e.rev) candidates.push([slug, e, false]);
     }
+    // a page at the same revision here is fetched when the directory lacks its files
+    await eachOf(candidates, async (c) => {
+      if (!c[2]) c[2] = !(await holds(c[0], c[1]));
+    });
+    const fetchList = candidates.flatMap(([slug, e, fetch]) => (fetch ? [[slug, e] as [string, Entry]] : []));
     if (fetchList.length) {
       const bytes = fetchList.reduce((n, [, e]) => n + Object.values(e.files ?? {}).reduce((m, f) => m + f.size, 0), 0);
       log(t.pulling(fetchList.length, (bytes / 1024 / 1024).toFixed(1)));
@@ -409,34 +486,37 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     let done = 0;
     for (const [slug, e] of fetchList) {
       const into = join(base, 'incoming', slug);
-      rmSync(into, { recursive: true, force: true });
+      await rm(into, { recursive: true, force: true });
       for (const [f, want] of Object.entries(e.files ?? {})) {
         const name = `${slug}/${f}`;
         if (!isPath(f)) throw new Refused(t.downloadBad(name));
         const to = join(into, f);
-        mkdirSync(dirname(to), { recursive: true });
+        await mkdir(dirname(to), { recursive: true });
         const have = join(dir, slug, f);
-        if (existsSync(have) && statSync(have).size === want.size && hashOf(readFileSync(have)) === want.hash) {
-          copyFileSync(have, to);
+        const had = await stat(have).then((s) => s.size === want.size, () => false);
+        if (had && (await fileHash(have)).hash === want.hash) {
+          await copyFile(have, to);
           continue;
         }
         // read whole (a file is at most the site's limit), so the timeout covers the body too
         let bytes: Uint8Array;
+        let hash: string;
         try {
           const r = await get(`${slug}/${f.split('/').map(encodeURIComponent).join('/')}`, env, DOWNLOAD_TIMEOUT);
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          bytes = new Uint8Array(await r.arrayBuffer());
+          if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+          ({ bytes, hash } = await bodyOf(r.body));
         } catch (err) {
           throw new Refused(t.downloadFailed(name, messageOf(err)));
         }
-        if (bytes.length !== want.size || hashOf(bytes) !== want.hash) throw new Refused(t.downloadBad(name));
-        writeFileSync(to, bytes);
+        if (bytes.length !== want.size || hash !== want.hash) throw new Refused(t.downloadBad(name));
+        await writeFile(to, bytes);
       }
-      rmSync(join(dir, slug), { recursive: true, force: true });
+      forget(slug);
+      await rm(join(dir, slug), { recursive: true, force: true });
       // an unlisted site's page lies a level deeper, in the random part of its address
-      mkdirSync(dirname(join(dir, slug)), { recursive: true });
-      mkdirSync(into, { recursive: true });
-      renameSync(into, join(dir, slug));
+      await mkdir(dirname(join(dir, slug)), { recursive: true });
+      await mkdir(into, { recursive: true });
+      await rename(into, join(dir, slug));
       local.pages[slug] = e;
       if (++done % 25 === 0 && done < fetchList.length) log(t.pulled(done, fetchList.length));
     }
@@ -468,24 +548,28 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
    * artifacts' files. An unlisted site has neither overview nor feed: its root and its answer to an
    * address it lacks (`404.html`) are a blank page, so neither leads to a page.
    */
-  const writeOverview = () => {
-    mkdirSync(dir, { recursive: true });
+  const writeOverview = async (written: Manifest) => {
+    await mkdir(dir, { recursive: true });
     if (unlisted) {
-      writeFileSync(join(dir, 'index.html'), BLANK_PAGE);
-      writeFileSync(join(dir, NOT_FOUND), BLANK_PAGE);
-      writeFileSync(join(dir, HEADERS), unlistedHeaders() + artifactHeaders(site, true));
-      rmSync(join(dir, FEED), { force: true });
+      await writeFile(join(dir, 'index.html'), BLANK_PAGE);
+      await writeFile(join(dir, NOT_FOUND), BLANK_PAGE);
+      await writeFile(join(dir, HEADERS), unlistedHeaders() + artifactHeaders(site, true));
+      await rm(join(dir, FEED), { force: true });
       return;
     }
-    const pages = readPages(dir);
-    writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), overviewTheme(dir, pages, readLocal().pages)));
-    writeFileSync(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
-    writeFileSync(join(dir, HEADERS), artifactHeaders(site));
+    // the most recently shared first
+    const pages = [...(await here())]
+      .map(([slug, m]) => ({ slug, ...m }))
+      .sort((a, b) => newest(b).localeCompare(newest(a)) || a.slug.localeCompare(b.slug));
+    const theme = await overviewTheme(dir, pages, written.pages);
+    await writeFile(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), theme));
+    await writeFile(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
+    await writeFile(join(dir, HEADERS), artifactHeaders(site));
   };
 
   /** Runs the deploy line on the directory; what it said, for the card's log. */
   const deploy = async (env: Record<string, string>): Promise<string> => {
-    mkdirSync(dir, { recursive: true });
+    await mkdir(dir, { recursive: true });
     const words = commandWords(site.deploy).map((a) => a.replaceAll('{dir}', dir));
     // the deploy Obeya builds in for GitHub Pages
     if (words[0] === GITHUB_PAGES) {
@@ -497,7 +581,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     }
     const argv = scriptArgv(words, repo);
     const cwd = join(home, SHARE_CWD);
-    mkdirSync(cwd, { recursive: true });
+    await mkdir(cwd, { recursive: true });
     let out: string;
     let code: number;
     try {
@@ -530,50 +614,56 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   const change = async (
     slugs: string[],
     shared: string[],
-    apply: ((slug: string, rev: number, before: Entry | undefined) => Entry) | null,
+    apply: ((slug: string, rev: number, before: Entry | undefined) => Promise<Entry>) | null,
     log: (text: string) => void,
     gone: Gone[],
     inPlace = false,
   ): Promise<string> => {
-    const env = deployEnv();
+    const env = await deployEnv();
     for (let round = 1; ; round++) {
       const live = await readLive(env);
-      const local = readLocal();
+      const local = await readLocal();
       const lost = await pull(local, live, env, log);
       gone.push(...lost.filter((g) => !slugs.includes(g.slug)));
       const away = new Set(gone.map((g) => g.slug));
       const kept = shared.filter((s) => !away.has(s));
-      checkSite(kept, inPlace ? [] : slugs);
+      await checkSite(kept, inPlace ? [] : slugs);
       const before = new Map(slugs.map((s) => [s, local.pages[s]]));
       const rev = new Map(slugs.map((s) => [s, Math.max(local.pages[s]?.rev ?? 0, live.pages[s]?.rev ?? 0) + 1]));
-      const backup = new Map(slugs.map((s) => [s, setAside(s, inPlace ? REWRITTEN : undefined)]));
-      const undo = () => {
+      const backup = new Map<string, string | null>();
+      for (const s of slugs) backup.set(s, await setAside(s, inPlace ? REWRITTEN : undefined));
+      const undo = async () => {
         if (!slugs.length) return;
         for (const s of slugs) {
           const b = backup.get(s);
+          forget(s);
           if (inPlace) {
-            if (b) for (const f of readdirSync(b)) copyFileSync(join(b, f), join(dir, s, f));
-            if (b) rmSync(b, { recursive: true, force: true });
+            if (b) for (const f of await readdir(b)) await copyFile(join(b, f), join(dir, s, f));
+            if (b) await rm(b, { recursive: true, force: true });
           } else {
-            rmSync(join(dir, s), { recursive: true, force: true });
-            if (b) renameSync(b, join(dir, s));
+            await rm(join(dir, s), { recursive: true, force: true });
+            if (b) await rename(b, join(dir, s));
           }
           const was = before.get(s);
           if (was) local.pages[s] = was;
           else delete local.pages[s];
         }
-        writeLocal(local);
-        writeOverview();
+        await writeLocal(local);
+        await writeOverview(local);
       };
       let said = '';
       let seen: boolean | null;
       try {
-        if (apply) for (const s of slugs) local.pages[s] = apply(s, rev.get(s)!, before.get(s));
+        if (apply)
+          for (const s of slugs) {
+            local.pages[s] = await apply(s, rev.get(s)!, before.get(s));
+            forget(s);
+          }
         const expect: [string, number][] = slugs.length
           ? slugs.map((s) => [s, rev.get(s)!])
           : kept.flatMap((s) => (local.pages[s] && !local.pages[s]!.withdrawn ? [[s, local.pages[s]!.rev] as [string, number]] : []));
-        const id = writeLocal(local);
-        writeOverview();
+        const id = await writeLocal(local);
+        await writeOverview(local);
         // another machine deployed since the pull: its deployment would be lost, so pull again
         const now = await readLive(env);
         if (now.deploy !== live.deploy) seen = false;
@@ -582,31 +672,32 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
           seen = await check(expect, id, live.deploy, env);
         }
       } catch (e) {
-        undo();
+        await undo();
         throw e;
       }
       if (seen === false) {
-        undo();
+        await undo();
         if (round === 2) throw new Refused(t.lostTwice, { cause: said });
         log(t.cameBetween);
         continue;
       }
-      for (const b of backup.values()) if (b) rmSync(b, { recursive: true, force: true });
+      for (const b of backup.values()) if (b) await rm(b, { recursive: true, force: true });
       return [said, seen === null ? t.notSeenYet : ''].filter(Boolean).join('\n');
     }
   };
 
   /** Moves a page's directory out of the site, or copies only the files named (`only`), so a change can be undone. */
-  const setAside = (slug: string, only?: string[]): string | null => {
-    if (!existsSync(join(dir, slug))) return null;
+  const setAside = async (slug: string, only?: string[]): Promise<string | null> => {
+    if (!(await exists(join(dir, slug)))) return null;
     const backup = join(base, 'backup', `${slug}-${Date.now()}`);
-    mkdirSync(dirname(backup), { recursive: true });
+    await mkdir(dirname(backup), { recursive: true });
     if (!only) {
-      renameSync(join(dir, slug), backup);
+      forget(slug);
+      await rename(join(dir, slug), backup);
       return backup;
     }
-    mkdirSync(backup, { recursive: true });
-    for (const f of only) if (existsSync(join(dir, slug, f))) copyFileSync(join(dir, slug, f), join(backup, f));
+    await mkdir(backup, { recursive: true });
+    for (const f of only) if (await exists(join(dir, slug, f))) await copyFile(join(dir, slug, f), join(backup, f));
     return backup;
   };
 
@@ -640,7 +731,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
             const copy = html ? await artifactCopy(d.dir, files, new URL(site.url).origin) : new Map<string, string>();
             const max = site.maxFile ?? MAX_FILE;
             for (const f of files) {
-              const size = copy.has(f) ? Buffer.byteLength(copy.get(f)!) : statSync(join(d.dir, f)).size;
+              const size = copy.has(f) ? Buffer.byteLength(copy.get(f)!) : (await stat(join(d.dir, f))).size;
               if (size > max) throw new Refused(t.fileTooLarge(f, (size / 1024 / 1024).toFixed(1), String(Math.round((max / 1024 / 1024) * 10) / 10)));
             }
             return { d, html, files, copy };
@@ -650,24 +741,25 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         const said = await change(
           [slug],
           p.shared ?? [],
-          (_, rev, entry) => {
+          async (_, rev, entry) => {
             const before = entry?.withdrawn ? null : entry?.meta;
             // a version keeps its date while its demo's own files stay the same, wherever it was on the page
             const dated = new Map<string, string>(before ? [[before.source, before.at], ...(before.more ?? []).map((m) => [m.source, m.at] as [string, string])] : []);
             const now = new Date().toISOString();
             // the one whose Obeya publishes it now; a machine whose git has no name keeps whom the page named
-            const by = opts.by ?? gitName(repo) ?? before?.by;
-            const written = ready.map(({ d, html, files, copy }) => {
+            const by = opts.by ?? (await gitName(repo)) ?? before?.by;
+            const written = [];
+            for (const { d, html, files, copy } of ready) {
               const into = join(target, d.sub, html ? ARTIFACT_DIR : '');
-              mkdirSync(into, { recursive: true });
+              await mkdir(into, { recursive: true });
               for (const f of files) {
-                mkdirSync(dirname(join(into, f)), { recursive: true });
-                copyFileSync(join(d.dir, f), join(into, f));
+                await mkdir(dirname(join(into, f)), { recursive: true });
+                await copyFile(join(d.dir, f), join(into, f));
               }
-              for (const [f, data] of copy) writeFileSync(join(into, f), data);
-              const source = sourceHash(d.dir, html ? files : ['demo.mp4']);
-              return { d, html, source, at: dated.get(source) ?? now };
-            });
+              for (const [f, data] of copy) await writeFile(join(into, f), data);
+              const source = await sourceHash(d.dir, html ? files : ['demo.mp4']);
+              written.push({ d, html, source, at: dated.get(source) ?? now });
+            }
             const [first, ...later] = written as [(typeof written)[number], ...typeof written];
             const meta: Meta = {
               ...(first.html ? { kind: 'html' as const } : {}),
@@ -682,7 +774,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
               language: p.language,
               ...(by ? { by } : {}),
               ...(p.tags && Object.values(p.tags).some((v) => v.length) ? { tags: p.tags } : {}),
-              repo: repoMark(repo),
+              repo: await repoMark(repo),
               ...(later.length
                 ? {
                     more: later.map(({ d, html, source, at }) => ({
@@ -698,10 +790,10 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
                   }
                 : {}),
             };
-            writeFileSync(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
-            if (p.theme) writeFileSync(join(target, PAGE_THEME), p.theme.css);
-            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, p.theme?.css));
-            return { ...entryOf(slug), rev };
+            await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
+            if (p.theme) await writeFile(join(target, PAGE_THEME), p.theme.css);
+            await writeFile(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, p.theme?.css));
+            return { ...(await entryOf(slug)), rev };
           },
           log,
           gone,
@@ -711,7 +803,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     withdraw: async (slugArg, shared, log = () => {}) => {
       const r = await attempt(async (gone) => {
         const slug = checkSlug(slugArg, unlisted);
-        const said = await change([slug], shared, (_, rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }), log, gone);
+        const said = await change([slug], shared, async (_, rev) => ({ rev, machine, at: new Date().toISOString(), withdrawn: true }), log, gone);
         return { said };
       });
       return 'why' in r ? { ...r, why: t.notWithdrawn(r.why) } : r;
@@ -719,8 +811,8 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     pageUrl: (slug) => pageUrl(site, slug),
     audit: async (shared) => {
       try {
-        const live = await readLive(deployEnv());
-        const local = readLocal();
+        const live = await readLive(await deployEnv());
+        const local = await readLocal();
         const gone = Object.entries(live.pages).flatMap(([slug, e]) => {
           const mine = local.pages[slug];
           return e.withdrawn && mine && !mine.withdrawn && mine.rev < e.rev ? [{ slug, machine: e.machine }] : [];
@@ -741,17 +833,22 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
         const said = await change(
           [...want.keys()],
           shared,
-          (slug, rev) => {
+          async (slug, rev) => {
             const target = join(dir, slug);
-            if (!existsSync(join(target, 'meta.json'))) throw new Refused(t.siteLacks(dir, [slug]));
-            const { tags: _, ...before } = JSON.parse(readFileSync(join(target, 'meta.json'), 'utf8')) as Meta;
+            let text: string;
+            try {
+              text = await readFile(join(target, 'meta.json'), 'utf8');
+            } catch {
+              throw new Refused(t.siteLacks(dir, [slug]));
+            }
+            const { tags: _, ...before } = JSON.parse(text) as Meta;
             const tags = want.get(slug)!;
             const meta: Meta = { ...before, ...(Object.values(tags).some((v) => v.length) ? { tags } : {}) };
-            writeFileSync(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
+            await writeFile(join(target, 'meta.json'), JSON.stringify(meta, null, 2));
             // the page around its files in today's template, with the theme it went out with
-            const theme = existsSync(join(target, PAGE_THEME)) ? readFileSync(join(target, PAGE_THEME), 'utf8') : undefined;
-            writeFileSync(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, theme));
-            return { ...entryOf(slug), rev };
+            const theme = await readFile(join(target, PAGE_THEME), 'utf8').catch(() => undefined);
+            await writeFile(join(target, 'index.html'), pageHtml(site, meta, (sub) => versionFiles(join(target, sub)), undefined, unlisted, theme));
+            return { ...(await entryOf(slug)), rev };
           },
           log,
           gone,
@@ -770,13 +867,63 @@ const REWRITTEN = ['meta.json', 'index.html'];
 const isPage = (slug: string, unlisted: boolean) => (unlisted ? /^[a-z0-9]{16,40}\/[a-z0-9][a-z0-9-]{0,80}$/ : /^[a-z0-9][a-z0-9-]{0,80}$/).test(slug);
 /** A path inside a page's directory. */
 const isPath = (f: string) => f.split('/').every((p) => p && p !== '.' && p !== '..' && !p.includes('\\'));
-const hashOf = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+/** For a file access that fails: `value` where the file is not there; any other failure stands. */
+const absent =
+  <T>(value: T) =>
+  (e: unknown): T => {
+    if ((e as NodeJS.ErrnoException)?.code === 'ENOENT' || (e as NodeJS.ErrnoException)?.code === 'ENOTDIR') return value;
+    throw e;
+  };
+
+const exists = (path: string) => stat(path).then(
+  () => true,
+  () => false,
+);
+
+/** How much of a file is read, and hashed, at a time: a video of the site's limit read and hashed at once held the server up. */
+const CHUNK = 1 << 20;
+
+/** A file's size and hash, read a piece at a time. */
+async function fileHash(file: string): Promise<{ size: number; hash: string }> {
+  const h = createHash('sha256');
+  let size = 0;
+  for await (const chunk of createReadStream(file, { highWaterMark: CHUNK }) as AsyncIterable<Buffer>) {
+    h.update(chunk);
+    size += chunk.length;
+  }
+  return { size, hash: h.digest('hex') };
+}
+
+/** A download's bytes and their hash, hashed as they come in. */
+async function bodyOf(body: ReadableStream<Uint8Array>): Promise<{ bytes: Uint8Array; hash: string }> {
+  const h = createHash('sha256');
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of body) {
+    h.update(chunk);
+    chunks.push(chunk);
+  }
+  return { bytes: Buffer.concat(chunks), hash: h.digest('hex') };
+}
+
+/** Runs `fn` on each item, a few at once: a site has hundreds of pages, a process may open fewer files at a time. */
+async function eachOf<T>(items: T[], fn: (item: T) => Promise<void>, atOnce = 32): Promise<void> {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(atOnce, items.length) }, async () => {
+      while (next < items.length) await fn(items[next++]!);
+    }),
+  );
+}
 
 /** The files under a directory, their paths relative to it with `/`. */
-function filesUnder(root: string, at = ''): string[] {
-  return readdirSync(join(root, at), { withFileTypes: true })
-    .flatMap((d) => (d.isDirectory() ? filesUnder(root, at ? `${at}/${d.name}` : d.name) : d.isFile() ? [at ? `${at}/${d.name}` : d.name] : []))
-    .sort();
+async function filesUnder(root: string, at = ''): Promise<string[]> {
+  const out: string[] = [];
+  for (const d of await readdir(join(root, at), { withFileTypes: true })) {
+    const f = at ? `${at}/${d.name}` : d.name;
+    if (d.isDirectory()) out.push(...(await filesUnder(root, f)));
+    else if (d.isFile()) out.push(f);
+  }
+  return out.sort();
 }
 
 function checkSlug(slug: unknown, unlisted: boolean): string {
@@ -784,12 +931,12 @@ function checkSlug(slug: unknown, unlisted: boolean): string {
   return slug;
 }
 
-/** A hash of the files (relative to `dir`) with their names. */
-function sourceHash(dir: string, files: string[]): string {
+/** A hash of the files (relative to `dir`) with their names, each read a piece at a time. */
+async function sourceHash(dir: string, files: string[]): Promise<string> {
   const h = createHash('sha256');
   for (const f of files) {
-    const bytes = readFileSync(join(dir, f));
-    h.update(`${f}\0${bytes.length}\0`).update(bytes);
+    h.update(`${f}\0${(await stat(join(dir, f))).size}\0`);
+    for await (const chunk of createReadStream(join(dir, f), { highWaterMark: CHUNK }) as AsyncIterable<Buffer>) h.update(chunk);
   }
   return h.digest('hex');
 }
@@ -928,26 +1075,16 @@ function pageHtml(site: DemoSite, m: Meta, files: (dir: string) => VersionFiles,
   });
 }
 
-/** The pages in the site's directory, the most recently shared first. */
-function readPages(dir: string): (Meta & { slug: string })[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((d) => existsSync(join(dir, d, 'meta.json')))
-    .map((slug) => ({ slug, ...(JSON.parse(readFileSync(join(dir, slug, 'meta.json'), 'utf8')) as Meta) }))
-    .sort((a, b) => newest(b).localeCompare(newest(a)));
-}
-
 /**
  * The theme of the overview: while the pages that name their repository all name the same one, the
  * theme of its page written last (`written`, the manifest's pages); none where they name several,
  * or none, or that page carries none. A page from before the marks does not count.
  */
-function overviewTheme(dir: string, pages: (Meta & { slug: string })[], written: Record<string, Entry>): string | undefined {
+async function overviewTheme(dir: string, pages: (Meta & { slug: string })[], written: Record<string, Entry>): Promise<string | undefined> {
   const marked = pages.filter((p) => p.repo);
   if (!marked.length || marked.some((p) => p.repo !== marked[0]!.repo)) return undefined;
   const last = marked.reduce((a, b) => ((written[b.slug]?.at ?? '') > (written[a.slug]?.at ?? '') ? b : a));
-  const file = join(dir, last.slug, PAGE_THEME);
-  return existsSync(file) ? readFileSync(file, 'utf8') : undefined;
+  return readFile(join(dir, last.slug, PAGE_THEME), 'utf8').catch(() => undefined);
 }
 
 /** The site's Atom feed, at its root beside the overview. */
