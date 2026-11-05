@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { cardTag } from '../core/card-number';
 import { type Bounds, boundsOf, CARD_SIZE, centre, onCanvas, type Place, PROJECT_HEAD, PROJECT_PAD, unionBounds } from '../core/layout';
 import { archivedWithDone, type CanvasInfo, type CanvasSnapshot, type CardPatch, type ConfigProblem, type Group, type Item, nameless, needsYou, openPerGroup, type PendingRestart, type PlanDir, EVICT_HOLD_MS, START_ALL_HOLD_MS, titleFrom, type AppUpdate, type SourceUpdate, unreadAnswers, unreadPerProject, type Usage, type Waiting, waitingIn } from '../core/types';
 import { api, ApiError, beforeReload, type CanvasFeed, cardsOn, onNotice, quietAtStart, reportFocus, setCanvas, useCanvas } from './api';
@@ -25,7 +26,7 @@ import { Phone, phoneView } from './phone';
 import { KoordinatorSheet } from './koordinator';
 import { forcedText, QueuePill } from './queue';
 import { SearchPill } from './search';
-import { depsOf, handleAt, loopsAmong, nearestHandle, type Side, SIDES, waitKinds, waitsAmong } from './deps';
+import { depsOf, handleAt, holdsAmong, loopsAmong, nearestHandle, type Side, SIDES, waitKinds, waitsAmong } from './deps';
 import { collect, keep, type Kept, leaveSheet, restore, type SideSheet, takeKept, takeSheetLeft } from './keep';
 import { Sign, Wordmark } from './logo';
 import { DOUBLE_CLICK_KNOWN, Help, HelpButton, HELP_KEY_KNOWN, HowToHint, SEARCH_KEY_KNOWN } from './help';
@@ -1332,9 +1333,11 @@ function Canvas({
    * them; its sheet opens so the owner sees what it does.
    */
   function resolveLoop(loop: { cards: string[]; edges: [string, string][] }) {
-    const waits = loop.edges.map(([from, to]) => t.deps.loopWait(titleOf(to), titleOf(from), byId(to) ? waitKinds(byId(to)!, from) : []));
+    // each card by its number too, which tells Obeya the card where titles are alike
+    const named = (id: string) => t.deps.loopCard(cardTag(byId(id)!.number), titleOf(id));
+    const waits = loop.edges.map(([from, to]) => t.deps.loopWait(named(to), named(from), byId(to) ? waitKinds(byId(to)!, from, items) : []));
     if (!kOn) toggleKoordinator();
-    void tellTyped(t.deps.loopAsk(loop.cards.map(titleOf), waits), undefined, null);
+    void tellTyped(t.deps.loopAsk(loop.cards.map(named), waits), undefined, null);
   }
   /** The trash button on an owner-drawn arrow: it goes at once, with „Rückgängig“. */
   function removeDependency(from: string, to: Item) {
@@ -1817,7 +1820,8 @@ function Canvas({
   const waitKeys = useMemo(() => new Set(waits.map(([from, to]) => `${from}:${to}`)), [waits]);
   // the waits shown as lines: those the owner is removing go at once
   const shownWaits = waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`));
-  const loops = useMemo(() => loopsAmong(waits.filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))), [waits, removing]);
+  // a loop only of the waits that hold its cards back: one through a card at work stalls nothing
+  const loops = useMemo(() => loopsAmong(holdsAmong(items).filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))), [items, removing]);
   const standsForId = (id: string) => (byId(id) ? standsFor(byId(id)!).id : id);
   const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) && deps.after.has(id) ? 'loop' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands

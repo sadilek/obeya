@@ -6,6 +6,7 @@
 // from. A wait ends once the card waited for is finished.
 
 import type { Bounds } from '../core/layout';
+import { drawnWaits } from '../core/queue';
 import { finished, type Item } from '../core/types';
 
 export interface Deps {
@@ -72,8 +73,8 @@ export function depsOf(id: string, items: Item[]): Deps | undefined {
 }
 
 /**
- * The loops among `waits`: cards that wait for each other, directly or through others, so that none
- * of them can ever start. Each loop with its cards and the waits that close it.
+ * The loops among `waits` (`holdsAmong`): cards that wait for each other, directly or through others,
+ * so that none of them can ever start or go on. Each loop with its cards and the waits that close it.
  */
 export function loopsAmong(waits: [from: string, to: string][]): { cards: string[]; edges: [from: string, to: string][] }[] {
   const next = new Map<string, string[]>();
@@ -113,14 +114,32 @@ export function loopsAmong(waits: [from: string, to: string][]): { cards: string
   });
 }
 
-/** Why `waiting` waits for `on`: the kinds of wait between the two, as `waitsFor` counts them. */
-export function waitKinds(waiting: Item, on: string): ('queue' | 'snooze' | 'arrow' | 'plan')[] {
+/** What makes one card wait for another. */
+export type WaitKind = 'queue' | 'snooze' | 'arrow' | 'plan';
+
+/**
+ * What holds `waiting` back for `on` (among `items`): the kinds of wait between the two that keep it
+ * from starting or going on. A card in the queue is held by those it queued behind, a snoozed one by
+ * the card it sleeps on; the owner's arrows and the plan doc's order hold a card only until it starts
+ * (`drawnWaits`), so a card at work shows those waits as lines but is not held by them.
+ */
+export function waitKinds(waiting: Item, on: string, items: Item[]): WaitKind[] {
+  const drawn = waiting.queue && 'behind' in waiting.queue ? waiting.queue.manualWait ?? [] : [];
   return [
-    ...(queued(waiting).includes(on) && !(waiting.queue && 'behind' in waiting.queue && waiting.queue.manualWait?.includes(on)) ? (['queue'] as const) : []),
+    ...(queued(waiting).includes(on) && !drawn.includes(on) ? (['queue'] as const) : []),
     ...(snoozedOn(waiting).includes(on) ? (['snooze'] as const) : []),
-    ...((waiting.manualDependsOn ?? []).includes(on) || (waiting.queue && 'behind' in waiting.queue && waiting.queue.manualWait?.includes(on)) ? (['arrow'] as const) : []),
-    ...((waiting.buildsOn ?? []).includes(on) ? (['plan'] as const) : []),
+    ...((queued(waiting).includes(on) && drawn.includes(on)) || drawnWaits(waiting, items).includes(on) ? (['arrow'] as const) : []),
+    ...(waiting.state === 'planned' && (waiting.buildsOn ?? []).includes(on) ? (['plan'] as const) : []),
   ];
+}
+
+/**
+ * The waits among `items` that hold a card back (`waitKinds`), from the card waited for to the card
+ * waiting: those of `waitsAmong` a loop is made of, since a loop through a card at work stalls nothing.
+ */
+export function holdsAmong(items: Item[]): [from: string, to: string][] {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return items.flatMap((i) => waitsFor(i, byId).filter((on) => waitKinds(i, on, items).length).map((on): [string, string] => [on, i.id]));
 }
 
 // ---------------------------------------------------------------- the dots an owner draws an arrow from

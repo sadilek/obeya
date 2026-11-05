@@ -173,11 +173,14 @@ over the cards leaves the picture calm. What makes a card wait: see Scheduling.
 
 Cards that wait for each other, directly or through others, can never start: Obeya refuses an arrow
 that would close such a loop, but the waits it infers (a queue, a snooze, a plan doc read) can still
-close one. The waits of a loop are red at all times, and under the pointer a card in the loop with
-the hovered one says it waits in a loop. One of its lines carries a button, „Schleife auflösen“, that
-hands the loop to Obeya with what holds each wait in it, in Obeya's conversation, which opens: Obeya
-breaks it with the means it has for each kind of wait (starting a queued card anyway, taking one out
-of the queue, waking a snoozed one), and says what it did.
+close one. A loop counts only the waits that hold a card back: a queue while the card is in it, a
+snooze while it sleeps, an arrow or the plan doc's order until the card starts. A card at work still
+shows its arrows and its plan doc's order as lines, but a loop through them stalls nothing and is
+none. The waits of a loop are red at all times, and under the pointer a card in the loop with the
+hovered one says it waits in a loop. One of its lines carries a button, "Resolve loop", that hands
+the loop to Obeya in Obeya's conversation, which opens: its cards by number and title, and what holds
+each wait in it. Obeya breaks it with the means it has for each kind of wait (starting a queued card
+anyway, taking one out of the queue, waking a snoozed one), and says what it did.
 
 The owner draws a dependency between two task cards: near the middle of a card's edge a dot appears
 in the card's colour; a click on it starts an arrow that follows the pointer and snaps to the card

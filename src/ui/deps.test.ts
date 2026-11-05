@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { Item } from '../core/types';
-import { depsOf, loopsAmong, nearestHandle, waitKinds, waitsAmong } from './deps';
+import { depsOf, holdsAmong, loopsAmong, nearestHandle, waitKinds, waitsAmong } from './deps';
 
 const card = (id: string, ...behind: string[]) =>
   ({ id, kind: 'task', state: behind.length ? 'planned' : 'working', title: id, body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...(behind.length && { queue: { behind, reason: '' } }) }) as Item;
@@ -106,6 +106,20 @@ test('cards waiting for each other form a loop; the waits into and out of it are
 
 test('a wait names what holds it', () => {
   const both = { ...card('B', 'A'), manualDependsOn: ['C'], queue: { behind: ['A', 'C'], reason: '', manualWait: ['C'] } } as Item;
-  expect(waitKinds(both, 'A')).toEqual(['queue']);
-  expect(waitKinds(both, 'C')).toEqual(['arrow']);
+  const all = [both, card('A'), card('C')];
+  expect(waitKinds(both, 'A', all)).toEqual(['queue']);
+  expect(waitKinds(both, 'C', all)).toEqual(['arrow']);
+});
+
+test('a card at work is held by no arrow and no plan doc, so a loop through one is none', () => {
+  // A at work, though the owner drew an arrow from B to it and the plan doc has it build on B; B queued behind A
+  const a = { ...card('A'), manualDependsOn: ['B'], buildsOn: ['B'] } as Item;
+  const all = [a, card('B', 'A')];
+  expect(waitsAmong(all).map((e) => e.join(' ')).sort()).toEqual(['A B', 'B A']);
+  expect(waitKinds(a, 'B', all)).toEqual([]);
+  expect(holdsAmong(all)).toEqual([['A', 'B']]);
+  expect(loopsAmong(holdsAmong(all))).toEqual([]);
+  // snoozed until B gets there, A is held after all
+  const snoozed = { ...a, snoozed: { on: { card: 'B', state: 'done' } } } as Item;
+  expect(loopsAmong(holdsAmong([snoozed, card('B', 'A')])).length).toBe(1);
 });

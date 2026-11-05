@@ -1032,14 +1032,15 @@ export function linkShifts(links: [from: string, to: string][], at: (id: string)
     if (!a || !b) continue;
     const { across, dir } = facing(a, b);
     const key = `${from} ${to}`;
-    // the other card's middle along the side, the side's own direction as a tie-break for lines to one card
+    // the other card's middle along the side; for the two lines between one pair of cards, their
+    // direction, the same at both ends, so that the two run side by side instead of crossing
     const mid = (c: Bounds) => (across ? c.y + c.h / 2 : c.x + c.w / 2);
     const add = (id: string, side: number, end: 'from' | 'to', other: Bounds, tie: number) => {
       const k = `${id} ${across ? 'x' : 'y'}${side}`;
       sides.set(k, [...(sides.get(k) ?? []), { key, end, other: mid(other), tie }]);
     };
-    add(from, dir, 'from', b, 1);
-    add(to, -dir, 'to', a, 0);
+    add(from, dir, 'from', b, dir);
+    add(to, -dir, 'to', a, dir);
   }
   const shifts = new Map<string, Shift>();
   for (const [k, ends] of sides) {

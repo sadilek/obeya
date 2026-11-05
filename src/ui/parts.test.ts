@@ -82,3 +82,15 @@ test('links meeting one side of a card spread along it, in the order of the card
   // a side with a single link keeps it in the middle
   expect(shifts.get('hub up')!.to).toBe(0);
 });
+
+test('two cards waiting for each other get two lines side by side, not crossing', () => {
+  const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {
+    a: { x: 0, y: 0, w: 300, h: 136 },
+    b: { x: 500, y: 0, w: 300, h: 136 },
+  };
+  const shifts = linkShifts([['a', 'b'], ['b', 'a']], (id) => boxes[id]);
+  const [ab, ba] = [shifts.get('a b')!, shifts.get('b a')!];
+  // the line from a to b is on the same side of the other line at both cards
+  expect(ab.from).not.toBe(ba.to);
+  expect(Math.sign(ab.from - ba.to)).toBe(Math.sign(ab.to - ba.from));
+});
