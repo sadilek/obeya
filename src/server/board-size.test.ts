@@ -120,8 +120,8 @@ test('a canvas with hundreds of archived and shared cards: a run of changes cost
       await heard();
     }));
   }
-  // 90 writes: about ten rebuilds' worth; with the listeners rebuilding the view after each write, over fifty
-  expect(Math.min(...rounds) / rebuild).toBeLessThan(30);
+  // 90 writes: about thirty rebuilds' worth; with the listeners rebuilding the view after each write, over a hundred
+  expect(Math.min(...rounds) / rebuild).toBeLessThan(60);
 });
 
 test('sharing looks up every shared card, archived ones with their prototypes, after a change for the cost of a few rebuilds of the canvas view', async () => {
@@ -138,8 +138,8 @@ test('sharing looks up every shared card, archived ones with their prototypes, a
       await heard();
     }));
   }
-  // about two rebuilds' worth: a lookup per card that built the archive or its prototypes anew costs one each, hundreds
-  expect(Math.min(...rounds) / rebuild).toBeLessThan(10);
+  // about five rebuilds' worth: a lookup per card that built the archive or its prototypes anew costs one each, hundreds
+  expect(Math.min(...rounds) / rebuild).toBeLessThan(15);
 });
 
 test('asking the site which shared pages are gone builds the shared cards once, not each on its own, for the cost of a few rebuilds of the canvas view', async () => {
@@ -153,8 +153,8 @@ test('asking the site which shared pages are gone builds the shared cards once, 
       await canvas.sharing.checkSites();
     }));
   }
-  // about two rebuilds' worth; looking up each card on its own, and again for each question asked of it, costs eight
-  expect(Math.min(...rounds) / rebuild).toBeLessThan(4);
+  // about three rebuilds' worth; looking up each card on its own, and again for each question asked of it, costs over fifteen
+  expect(Math.min(...rounds) / rebuild).toBeLessThan(8);
 });
 
 test('an archived card looked up on its own is the card the archive lists, with its prototypes', () => {
@@ -208,4 +208,33 @@ test('the shared cards built at once are those looked up one by one, archived on
   board.changed();
   expect(rows.map((r) => once.get(r.id))).toEqual(rows.map((r) => board.card(r.id)));
   expect(once.size).toBe(rows.length);
+});
+
+test('a rebuild of the canvas view after a change to one card reads the canvas’s cards once, and the archive not at all', () => {
+  const board = canvas.board;
+  board.changed();
+  board.snapshot();
+  const reads = [spyOn(store, 'cards'), spyOn(store, 'projects'), spyOn(store, 'withPlanDocs'), spyOn(store, 'archivedPlans'), spyOn(store, 'archived')];
+  try {
+    board.work(onCanvas[5]!, { status_line: 'Working' });
+    const first = board.snapshot();
+    expect(reads.map((r) => r.mock.calls.length)).toEqual([1, 0, 0, 0, 0]);
+    // a card archived: the archive's projects and cards with plan docs are read again, once
+    board.work(onCanvas[6]!, { archived_at: new Date().toISOString() });
+    const second = board.snapshot();
+    expect(second.archive).not.toBe(first.archive);
+    expect(reads.map((r) => r.mock.calls.length)).toEqual([2, 0, 0, 1, 0]);
+  } finally {
+    for (const r of reads) r.mockRestore();
+    board.work(onCanvas[6]!, { archived_at: null });
+  }
+});
+
+test('a rebuild of the canvas view costs about as much as reading the canvas’s cards a few times', async () => {
+  const rebuild = await rebuildTime();
+  // a single read is over too quickly to take the median of five: the fastest counts
+  const reads: number[] = [];
+  for (let n = 0; n < 5; n++) reads.push(await cpuTime(async () => void store.cards(canvas.board.canvas.id)));
+  // three or four reads' worth; going over the archive for its revision and reading the cards and projects again for each part of the view cost seven
+  expect(rebuild / Math.min(...reads)).toBeLessThan(5);
 });

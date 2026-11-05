@@ -66,6 +66,10 @@ test('what an Obeya before the release kept in earlier shapes is in today’s', 
     s.db.run('DROP TRIGGER share_rev');
     s.db.run('DROP TRIGGER share_rev_gone');
     s.db.run('DROP TABLE share_revs');
+    s.db.run('DROP TRIGGER archive_rev');
+    s.db.run('DROP TRIGGER archive_rev_new');
+    s.db.run('DROP TRIGGER archive_rev_gone');
+    s.db.run('DROP TABLE archive_revs');
     s.db.run('ALTER TABLE talk DROP COLUMN reply_to');
     s.db.run('ALTER TABLE cards DROP COLUMN app');
     s.db.run('DROP TABLE devices');
@@ -162,7 +166,11 @@ test('the migration gives the cards there are codes of their own, longer where t
     s.db.run('DROP TRIGGER share_rev');
     s.db.run('DROP TRIGGER share_rev_gone');
     s.db.run('DROP TABLE share_revs');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 11}`);
+    s.db.run('DROP TRIGGER archive_rev');
+    s.db.run('DROP TRIGGER archive_rev_new');
+    s.db.run('DROP TRIGGER archive_rev_gone');
+    s.db.run('DROP TABLE archive_revs');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 12}`);
     s.db.close();
     const after = new Store(path);
     expect(ids.map((id) => after.card(id)!.short)).toEqual(['12345678000040008000000000000001', '12345678000040008000000000000002', '1234aa', 'ffffff']);
@@ -203,7 +211,11 @@ test('the migration numbers the cards there are in the order they were made, acr
     s.db.run('DROP TRIGGER share_rev');
     s.db.run('DROP TRIGGER share_rev_gone');
     s.db.run('DROP TABLE share_revs');
-    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 9}`);
+    s.db.run('DROP TRIGGER archive_rev');
+    s.db.run('DROP TRIGGER archive_rev_new');
+    s.db.run('DROP TRIGGER archive_rev_gone');
+    s.db.run('DROP TABLE archive_revs');
+    s.db.run(`PRAGMA user_version = ${RELEASED + MIGRATIONS.length - 10}`);
     s.db.close();
     const after = new Store(path);
     expect(['first', 'later', 'same-time'].map((id) => after.card(id)!.number)).toEqual([1, 2, 3]);
@@ -223,7 +235,7 @@ test('a card counts as changed when something happens at it, not when it moves',
     const reset = () => s.db.run(`UPDATE cards SET changed_at = '${old}', updated_at = '${old}' WHERE id = '${id}'`);
     reset();
     s.update(id, { x: 40, y: 80 });
-    // any write still moves `updated_at`, which the archive's revision is made of
+    // any write still moves `updated_at`
     expect(s.card(id)!.updated_at > old).toBe(true);
     s.update(id, { session_id: 's1', workspace: '/w', page_heard: '[]', waiting_since: '2026-01-02T00:00:00.000Z' });
     s.setGroup([id], s.addGroup('c', 'G', 0).id);
@@ -234,5 +246,48 @@ test('a card counts as changed when something happens at it, not when it moves',
     reset();
     s.addEvent({ cardId: id, kind: 'report', author: 'worker', text: 'Tests pass' });
     expect(changed() > old).toBe(true);
+    s.db.close();
+  }));
+
+test('the archive’s mark moves with every write to a row its items are made of, and with none to the cards on the canvas', () =>
+  withPath((path) => {
+    const s = new Store(path);
+    s.ensureCanvas('c', 'C');
+    s.ensureCanvas('d', 'D');
+    const [plain, project, idea] = s.insert([
+      { canvas_id: 'c', kind: 'task', state: 'live', x: 0, y: 0 },
+      { canvas_id: 'c', kind: 'project', plan_ref: 'docs/plan/a.md', x: 0, y: 0 },
+      { canvas_id: 'c', kind: 'task', state: 'idea', x: 0, y: 0 },
+    ]);
+    const [workstream, prototype] = s.insert([
+      { canvas_id: 'c', kind: 'task', parent_id: project!.id, plan_ref: 'docs/plan/a.md#W1', x: 0, y: 0 },
+      { canvas_id: 'c', kind: 'task', state: 'live', prototype_of: idea!.id, x: 0, y: 0 },
+    ]);
+    const rev = () => s.archiveRev('c');
+    const moves = (write: () => void) => {
+      const before = rev();
+      write();
+      return rev() !== before;
+    };
+    // nothing archived: the cards at work on the canvas leave it be
+    expect(moves(() => s.update(workstream!.id, { status_line: 'Working' }))).toBe(false);
+    expect(moves(() => s.update(prototype!.id, { status_line: 'Working' }))).toBe(false);
+    expect(moves(() => s.update(plain!.id, { archived_at: '2026-11-01T00:00:00.000Z' }))).toBe(true);
+    expect(moves(() => s.update(plain!.id, { title: 'Renamed in the archive' }))).toBe(true);
+    expect(moves(() => s.update(project!.id, { archived_at: '2026-11-01T00:00:00.000Z' }))).toBe(true);
+    expect(moves(() => s.update(workstream!.id, { status_line: 'Done' }))).toBe(true);
+    expect(moves(() => s.insert([{ canvas_id: 'c', kind: 'task', parent_id: project!.id, plan_ref: 'docs/plan/a.md#W2', x: 0, y: 0 }]))).toBe(true);
+    expect(moves(() => s.update(idea!.id, { archived_at: '2026-11-01T00:00:00.000Z' }))).toBe(true);
+    expect(moves(() => s.update(prototype!.id, { prototype: 'discarded' }))).toBe(true);
+    // taken back, deleted, gone for good, moved to another canvas
+    expect(moves(() => s.update(idea!.id, { archived_at: null }))).toBe(true);
+    expect(moves(() => s.update(prototype!.id, { status_line: 'On the canvas again' }))).toBe(false);
+    expect(moves(() => s.update(plain!.id, { deleted_at: '2026-11-02T00:00:00.000Z' }))).toBe(true);
+    expect(moves(() => s.db.query('DELETE FROM cards WHERE id = $id').run({ id: plain!.id }))).toBe(true);
+    const other = s.archiveRev('d');
+    expect(moves(() => s.moveCard(workstream!.id, 'd', { x: 0, y: 0 }))).toBe(true);
+    expect(s.archiveRev('d')).not.toBe(other);
+    // the cards on the canvas still leave it be
+    expect(moves(() => s.update(idea!.id, { title: 'An idea on the canvas' }))).toBe(false);
     s.db.close();
   }));

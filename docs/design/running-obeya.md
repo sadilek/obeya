@@ -626,6 +626,22 @@ workers are busy.
   recursive one over folders holding thousands of recordings, and not the same on every system);
   a mark made of the shared cards' times of last write (a status line on a shared card at work
   would move it, and two writes within a millisecond would not).
+- **A rebuild of the canvas view reads the canvas's cards once, and what of it lies in the archive
+  only once the archive changed** (2026-11-05): with the notice of outdated pages made anew only
+  when needed, a rebuild after a write to one card still cost a few milliseconds of the server's
+  thread on a canvas of a thousand cards, seconds when the machine was busy: a third of it
+  went over every archived card with its workstreams and prototypes for the archive's mark the
+  page compares, a third read the canvas's cards and projects again for each part of the view (the
+  notes on the plan directories, the projects that ended, those that came, their origins). Now the
+  database keeps the archive's mark, moving it with every write to a row the archive's items are
+  made of, that row coming or going (an archived card, a workstream of an archived project, a
+  prototype of an archived idea), as it keeps the mark of the shared cards; the cards read for the
+  canvas serve the whole view; and the archived projects and cards whose work added plan docs are
+  read again only once that mark moved. Asking which projects wait for their arrangement, on every
+  change too, reads only the projects on the canvas that have one stored. Together this cut a
+  rebuild to about a third. Rejected: the mark made of the archived rows' count and times of last
+  write, read with each rebuild (it is what went over the archive); patching the view's parts from
+  the written card (what they show depends on other cards).
 - **A page's freezes are found by a worker's heartbeat, not by its own timer running late**
   (2026-10-30): the app's webview on macOS runs a page's timers about once a second when its window
   is not in front, with the page still in view, and logged a stall of about a second every second

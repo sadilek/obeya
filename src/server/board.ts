@@ -452,6 +452,13 @@ export class Board {
   private cache: CanvasSnapshot | null = null;
   /** The snapshot's `items`, also while the rest of it is not built (`items`); gone with `cache`. */
   private itemsCache: Item[] | null = null;
+  /** The canvas's rows `items` made its cards of, for the rest of the snapshot of the same change; gone with `itemsCache`. */
+  private rows: CardRow[] | null = null;
+  /**
+   * The archive's projects and cards whose landed work added plan docs, as last read, with the
+   * archive's revision then: read again only once that moves, not with every change.
+   */
+  private archivedPlans: { rev: string; rows: CardRow[] } | null = null;
   /** What `toItems` made of each card's row, for as long as the row stays the same; gone with any change but a write to one card (`work`). */
   private worked: Worked = new Map();
   /** The archive as `archived` built it; gone with `cache`, since it changes with the same writes. */
@@ -583,6 +590,7 @@ export class Board {
   private changedRows() {
     this.cache = null;
     this.itemsCache = null;
+    this.rows = null;
     this.archiveItems = null;
     this.prototypeItems = null;
     this.tell();
@@ -1789,7 +1797,7 @@ export class Board {
     const talk = this.store.talk(this.canvas.id, SHEET_TALK, true);
     const reshare = this.reshare();
     const pools = this.clonePools();
-    const planDirs = this.planDirs(this.docs!);
+    const planDirs = this.planDirs(this.docs!, this.rows!);
     const settingProposals = this.settingProposals()
       .filter((p) => p.state === 'proposed')
       .map(({ state: _, ...p }) => {
@@ -1822,6 +1830,7 @@ export class Board {
       this.docs = null;
       this.cache = null;
       this.itemsCache = null;
+      this.rows = null;
       this.archiveItems = null;
       this.prototypeItems = null;
     }
@@ -1880,6 +1889,7 @@ export class Board {
     if (items.some((i) => !running.has(i.repo))) items = items.map((i) => (running.has(i.repo) || i.kind === 'question' ? i : { ...i, repoDown: true }));
     if (this.limits.size) items = items.map((i) => ({ ...i, ...this.limited(`card:${i.id}`) }));
     this.itemsCache = items;
+    this.rows = rows;
     return items;
   }
 
@@ -1984,8 +1994,7 @@ export class Board {
         .map((r) => r.plan_ref!.slice(0, r.plan_ref!.indexOf('#'))),
     );
     const files = new Set(all.map((d) => d.file));
-    const gone = this.store
-      .projects(this.canvas.id)
+    const gone = this.projectsOf(rows)
       .filter((r) => r.plan && busy.has(r.plan_ref!) && !files.has(r.plan_ref!))
       .map((r) => JSON.parse(r.plan!) as PlanDoc);
     return [...all.filter((d) => !allTicked(d) || busy.has(d.file)), ...gone];
@@ -1995,8 +2004,8 @@ export class Board {
    * The notes on the plan directories: one for each that holds docs which are not projects, and
    * one for a repository with no plan doc that never had a project, saying where the first goes.
    */
-  private planDirs(docs: PlanDoc[], rows = this.store.cards(this.canvas.id)): PlanDir[] {
-    const projects = this.store.projects(this.canvas.id);
+  private planDirs(docs: PlanDoc[], rows: CardRow[]): PlanDir[] {
+    const projects = this.projectsOf(rows);
     const preparing = rows.filter((r) => !r.plan_ref && r.title && !finished(r.state ?? 'planned'));
     return this.dirs.flatMap(({ repo, dir, others }) => {
       const empty = !others.length && !docs.some((d) => repoOfRef(d.file, this.home) === repo) && !projects.some((p) => repoOfRef(p.plan_ref!, this.home) === repo);
@@ -2015,6 +2024,23 @@ export class Board {
         },
       ];
     });
+  }
+
+  /** The canvas's projects, on the canvas (among its `rows`, as just read) or archived, in the order of their plan references. */
+  private projectsOf(rows: CardRow[]): CardRow[] {
+    const project = (r: CardRow) => r.kind === 'project' && r.plan_ref !== null;
+    return [...rows.filter(project), ...this.archivedPlanRows().filter(project)].sort((a, b) => (a.plan_ref! < b.plan_ref! ? -1 : a.plan_ref! > b.plan_ref! ? 1 : 0));
+  }
+
+  /** The cards whose landed work added plan docs, on the canvas (among its `rows`, as just read) or archived, the oldest first. */
+  private withPlanDocsOf(rows: CardRow[]): CardRow[] {
+    return [...rows, ...this.archivedPlanRows()].filter((r) => r.plan_docs !== null).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  private archivedPlanRows(): CardRow[] {
+    const rev = this.store.archiveRev(this.canvas.id);
+    if (this.archivedPlans?.rev !== rev) this.archivedPlans = { rev, rows: this.store.archivedPlans(this.canvas.id) };
+    return this.archivedPlans.rows;
   }
 
   private planDirNoteAt(repo: string): { at?: { x: number; y: number } } {
@@ -2634,7 +2660,7 @@ export class Board {
    * (`arranging` on the canvas), from their rows: asked on every change, this builds no snapshot.
    */
   arranging(): string[] {
-    return this.store.projects(this.canvas.id).flatMap((r) => (!r.archived_at && r.deps && (JSON.parse(r.deps) as StoredDeps).reading ? [r.id] : []));
+    return this.store.projectDeps(this.canvas.id).flatMap((r) => (r.deps && (JSON.parse(r.deps) as StoredDeps).reading ? [r.id] : []));
   }
 
   /** The Koordinator starts reading which workstream builds on which (`reading`), or has read it (`on`, for the doc as it stands now). */
@@ -2956,9 +2982,10 @@ export class Board {
       );
     }
     if (add.length) this.store.insert(add);
-    const linked = this.linkOrigins(docs);
+    // the workstreams just added are no projects, and linking one to its origin changes no plan reference
+    const linked = this.linkOrigins(docs, rows);
 
-    const known = new Set(this.store.projects(this.canvas.id).map((r) => r.plan_ref!));
+    const known = new Set(this.projectsOf(rows).map((r) => r.plan_ref!));
     const done = all.filter((d) => !docs.includes(d) && !known.has(d.file));
     const fresh = [...docs.filter((d) => !byRef.has(d.file)), ...done];
     if (!fresh.length) return add.length > 0 || linked;
@@ -2969,7 +2996,7 @@ export class Board {
     });
     const top = items.filter((i) => !i.parent);
     // below a note the owner put there too
-    const notes = this.planDirs(all).flatMap((d) => planDirNoteBox(d) ?? []);
+    const notes = this.planDirs(all, rows).flatMap((d) => planDirNoteBox(d) ?? []);
     const at = placeProjects(unionBounds([...top.map((i) => boundsOf(i, items)), ...notes]), layouts.map((l) => l.size));
     layouts.forEach(({ doc, pos }, n) => {
       const [project] = this.store.insert([{ canvas_id: c, kind: 'project', plan_ref: doc.file, ...at[n]! }]);
@@ -2979,7 +3006,7 @@ export class Board {
         doc.workstreams.map((w, k) => ({ canvas_id: c, kind: 'task' as const, parent_id: project!.id, plan_ref: `${doc.file}#${w.key}`, ...pos[k]! })),
       );
     });
-    this.linkOrigins(docs);
+    this.linkOrigins(docs, this.store.cards(this.canvas.id));
     return true;
   }
 
@@ -2987,13 +3014,13 @@ export class Board {
    * A project whose doc the landed work of an idea (or a task planned as a project) added remembers
    * that card and takes its place, while the card is on the canvas. Returns whether any did.
    */
-  private linkOrigins(docs: PlanDoc[]): boolean {
+  private linkOrigins(docs: PlanDoc[], rows: CardRow[]): boolean {
     const origin = new Map<string, string>();
     // a card writing its doc in a plan folder outside the repository names it from the start: it is its origin once approved
-    for (const r of this.store.withPlanDocs(this.canvas.id)) if (r.landed || r.state === 'live' || r.state === 'done') for (const ref of JSON.parse(r.plan_docs!) as string[]) origin.set(ref, r.id);
+    for (const r of this.withPlanDocsOf(rows)) if (r.landed || r.state === 'live' || r.state === 'done') for (const ref of JSON.parse(r.plan_docs!) as string[]) origin.set(ref, r.id);
     if (!origin.size) return false;
     let linked = false;
-    for (const r of this.store.projects(this.canvas.id)) {
+    for (const r of this.projectsOf(rows)) {
       const from = !r.from_id ? origin.get(r.plan_ref!) : undefined;
       if (!from) continue;
       this.store.update(r.id, { from_id: from });

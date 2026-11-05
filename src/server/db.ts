@@ -500,7 +500,7 @@ export const MIGRATIONS = [
   // the size of a card's change as last read (JSON `ChangeSize`): the page lays out its change list with it before reading the change
   'ALTER TABLE cards ADD COLUMN change_size TEXT;',
   // when something the owner sees last happened at a card, which the search lists the canvas by;
-  // `updated_at` stays the time of any write, which the archive's revision is made of
+  // `updated_at` stays the time of any write
   'ALTER TABLE cards ADD COLUMN changed_at TEXT; UPDATE cards SET changed_at = updated_at;',
   // the harness and model the owner chose for a card's agent, over its group's
   'ALTER TABLE cards ADD COLUMN agent TEXT;',
@@ -521,6 +521,32 @@ export const MIGRATIONS = [
   CREATE TRIGGER share_rev_gone AFTER DELETE ON cards WHEN OLD.share IS NOT NULL
   BEGIN
     INSERT INTO share_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
+  END;`,
+  // a mark per canvas that moves whenever a row the archive's items are made of is written, comes or
+  // goes (`Store.archiveRev`): an archived card, a workstream of an archived project, a prototype of an
+  // archived idea; read with every change of the canvas, which no longer goes over the archive for it
+  `CREATE TABLE archive_revs (
+    canvas_id TEXT PRIMARY KEY,
+    rev INTEGER NOT NULL
+  );
+  CREATE TRIGGER archive_rev AFTER UPDATE ON cards
+    WHEN OLD.archived_at IS NOT NULL OR NEW.archived_at IS NOT NULL
+      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (NEW.parent_id, NEW.prototype_of) AND a.archived_at IS NOT NULL)
+  BEGIN
+    INSERT INTO archive_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
+    INSERT INTO archive_revs (canvas_id, rev) VALUES (NEW.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
+  END;
+  CREATE TRIGGER archive_rev_new AFTER INSERT ON cards
+    WHEN NEW.archived_at IS NOT NULL
+      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (NEW.parent_id, NEW.prototype_of) AND a.archived_at IS NOT NULL)
+  BEGIN
+    INSERT INTO archive_revs (canvas_id, rev) VALUES (NEW.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
+  END;
+  CREATE TRIGGER archive_rev_gone AFTER DELETE ON cards
+    WHEN OLD.archived_at IS NOT NULL
+      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (OLD.parent_id, OLD.prototype_of) AND a.archived_at IS NOT NULL)
+  BEGIN
+    INSERT INTO archive_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
   END;`,
 ];
 
@@ -665,20 +691,29 @@ export class Store {
   }
 
   /**
-   * A mark of the canvas's archive that changes whenever a row its items are made of does: an
-   * archived card, a workstream of an archived project, a prototype of an archived idea; one
-   * leaving the archive (taken back, deleted) too.
+   * A mark of the canvas's archive that moves whenever a row its items are made of is written: an
+   * archived card, a workstream of an archived project, a prototype of an archived idea; one leaving
+   * the archive (taken back, deleted) too. Kept by the database as the rows are written.
    */
   archiveRev(canvasId: string): string {
-    const r = this.db
+    return String((this.db.query('SELECT rev FROM archive_revs WHERE canvas_id = $c').get({ c: canvasId }) as { rev: number } | null)?.rev ?? 0);
+  }
+
+  /** The canvas's archived projects and archived cards whose landed work added plan docs. */
+  archivedPlans(canvasId: string): CardRow[] {
+    return this.db
       .query(
-        `WITH a AS (SELECT id, deleted_at, updated_at FROM cards WHERE canvas_id = $c AND archived_at IS NOT NULL)
-         SELECT count(*) AS n, sum(deleted_at IS NULL) AS live, max(updated_at) AS at FROM (
-           SELECT deleted_at, updated_at FROM a
-           UNION ALL SELECT deleted_at, updated_at FROM cards WHERE parent_id IN (SELECT id FROM a) OR prototype_of IN (SELECT id FROM a))`,
+        `SELECT * FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NOT NULL
+           AND ((kind = 'project' AND plan_ref IS NOT NULL) OR plan_docs IS NOT NULL)`,
       )
-      .get({ c: canvasId }) as { n: number; live: number | null; at: string | null };
-    return `${r.n}:${r.live ?? 0}:${r.at ?? ''}`;
+      .all({ c: canvasId }) as CardRow[];
+  }
+
+  /** The projects on the canvas (not archived) that have something stored of what builds on what, with only that. */
+  projectDeps(canvasId: string): Pick<CardRow, 'id' | 'deps'>[] {
+    return this.db
+      .query("SELECT id, deps FROM cards WHERE canvas_id = $c AND deleted_at IS NULL AND archived_at IS NULL AND kind = 'project' AND deps IS NOT NULL")
+      .all({ c: canvasId }) as Pick<CardRow, 'id' | 'deps'>[];
   }
 
   /** The canvas's projects, on the canvas or archived. */
