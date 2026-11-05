@@ -8,6 +8,14 @@ import { paintTimes } from './director.ts';
 import type { Frame } from './timeline.ts';
 
 // The overlay in a real browser, on a page with iframes as a card's HTML artifact has them.
+// A page of web components, as Home Assistant's frontend is one: a button two shadow roots deep,
+// a span slotted into the inner one, and a paragraph that a box inside the outer root covers.
+const SHADOW = `<app-shell></app-shell><script>
+const shell = document.querySelector('app-shell').attachShadow({ mode: 'open' });
+shell.innerHTML = '<inner-panel><span id="slotted">slotted</span></inner-panel><div style="position:relative"><p id="covered">covered</p><div style="position:absolute;inset:0;background:#ccc"></div></div>';
+shell.querySelector('inner-panel').attachShadow({ mode: 'open' }).innerHTML = '<button id="deep">Deep</button><slot></slot>';
+</script>`;
+
 describe('the demo overlay', () => {
   let browser: Browser;
   let page: Page;
@@ -21,7 +29,9 @@ describe('the demo overlay', () => {
       fetch: (req) =>
         new URL(req.url).pathname === '/frame'
           ? html('<p id="inside">inside</p>')
-          : html('<p id="under">behind the sheet</p><div id="sheet" style="position:fixed;left:0;top:0;right:0;height:40px;background:#eee"></div><button id="b">Go</button><button id="edge" style="position:fixed;right:4px;top:2px">Send</button><iframe src="/frame"></iframe><iframe sandbox="allow-scripts" src="/frame"></iframe>'),
+          : new URL(req.url).pathname === '/shadow'
+            ? html(SHADOW)
+            : html('<p id="under">behind the sheet</p><div id="sheet" style="position:fixed;left:0;top:0;right:0;height:40px;background:#eee"></div><button id="b">Go</button><button id="edge" style="position:fixed;right:4px;top:2px">Send</button><iframe src="/frame"></iframe><iframe sandbox="allow-scripts" src="/frame"></iframe>'),
     });
     browser = await launchChromium();
     const ctx = await browser.newContext({ viewport: { width: 800, height: 600 } });
@@ -111,6 +121,20 @@ describe('the demo overlay', () => {
     const els = await Promise.all(['#under', '#b'].map((s) => page.locator(s).elementHandle()));
     // biome-ignore lint: the overlay is untyped browser script
     expect(await page.evaluate((e) => (window as any).__demo.hidden(e), els)).toEqual([true, false]);
+  });
+
+  test('sees through shadow roots: what shows inside one is not hidden, what is covered there is', async () => {
+    const ctx = await browser.newContext({ viewport: { width: 800, height: 600 } });
+    await ctx.addInitScript({ path: path.join(import.meta.dirname, 'overlay.js') });
+    try {
+      const shadow = await ctx.newPage();
+      await shadow.goto(new URL('/shadow', server.url).href);
+      const els = await Promise.all(['#deep', '#slotted', 'inner-panel', '#covered'].map((s) => shadow.locator(s).elementHandle()));
+      // biome-ignore lint: the overlay is untyped browser script
+      expect(await shadow.evaluate((e) => (window as any).__demo.hidden(e), els)).toEqual([false, false, false, true]);
+    } finally {
+      await ctx.close();
+    }
   });
 
   test("a ring on what another ring of the scene has already is refused with that ring's label", async () => {

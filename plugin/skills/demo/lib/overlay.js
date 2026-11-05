@@ -186,18 +186,34 @@
   // own. A ring around the brief's line under a card's conversation panel stood beside the question
   // the narration was about, which says the same words (2026-10-20). The overlay's own layer lets
   // the pointer through, so it covers nothing; an element out of sight is not hidden, it may be
-  // scrolled to.
+  // scrolled to. The page's hit test stops at the outermost shadow host, which made every element
+  // of a web-component app (Home Assistant's frontend) read as hidden (2026-11-05): it goes on
+  // through each open shadow root, and what it hits is the element's own if the element is its
+  // ancestor across shadow boundaries and slots.
   function hidden(elements) {
     return elements.map((el) => {
       const r = el && el.isConnected && visibleRect(el);
       if (!r) return false;
       for (const fx of [0.1, 0.5, 0.9])
-        for (const fy of [0.1, 0.5, 0.9]) {
-          const hit = document.elementFromPoint(r.left + (r.right - r.left) * fx, r.top + (r.bottom - r.top) * fy);
-          if (hit && (el === hit || el.contains(hit))) return false;
-        }
+        for (const fy of [0.1, 0.5, 0.9])
+          if (within(el, deepHit(r.left + (r.right - r.left) * fx, r.top + (r.bottom - r.top) * fy))) return false;
       return true;
     });
+  }
+
+  function deepHit(x, y) {
+    let hit = document.elementFromPoint(x, y);
+    while (hit && hit.shadowRoot) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    return hit;
+  }
+
+  function within(el, node) {
+    for (let n = node; n; n = n.assignedSlot || n.parentNode || n.host) if (n === el) return true;
+    return false;
   }
 
   window.__demo = {
