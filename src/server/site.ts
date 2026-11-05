@@ -1181,7 +1181,7 @@ function notFoundHtml(site: DemoSite, language: PageLanguage, theme?: string): s
   const w = PAGE_WORDS[language];
   return `<!doctype html>
 <html lang="${language}"><head><meta charset="utf-8">${theme ? `<meta http-equiv="Content-Security-Policy" content="${pagePolicy(ON_DISK)}">` : ''}<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>${esc(`${w.notFound} · ${site.title}`)}</title><style>${PAGE_STYLE}</style>${themeStyle(theme)}</head>
+<title>${esc(`${w.notFound} · ${site.title}`)}</title><style>${PAGE_STYLE} .text { margin-top: 14px; }</style>${themeStyle(theme)}</head>
 <body><main>
 <div class="top"><a href="${esc(`${site.url.replace(/\/+$/, '')}/`)}">${esc(w.allDemos)}</a></div>
 <h1>${esc(w.notFound)}</h1>
