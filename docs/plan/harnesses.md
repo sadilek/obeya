@@ -41,7 +41,15 @@ Harnesses, models and effort).
   the default rather than overriding it.
 - [x] **W8:** The model on the card: a card's conversation names the harness and model its agent
   runs on.
-- [ ] **W9:** More harnesses: opencode and pi, each behind the same session interface.
+- [ ] **W9:** GitHub Copilot as a harness, built once someone asks for it: the Copilot CLI through
+  ACP (`copilot --acp`), with the models the plan and the organization's admin allow (Claude, GPT,
+  Gemini). Before building, check whether ACP lets a session resume after a restart and whether
+  the usage can be read for the bar. Chosen over opencode and pi (owner, 2026-11-05): their users
+  overlap with Claude Code's and Codex's; Copilot reaches developers whose company allows only
+  Copilot, whom Obeya cannot serve today. Deferred because the CLI is off in organizations until an
+  admin enables it, and usage-based billing (since June 2026, $19 of credit a month on Business)
+  is used up by a few of Obeya's long parallel cards. ACP is spoken by other agents as well
+  (opencode, Gemini CLI), so the same runtime would open the door to them.
 - [ ] **W10:** Local models, where no harness brings them.
 - [x] **W11:** Closing the Codex gaps that matter in use: Codex on SSH hosts, the work retrospective's
   excerpt from Codex's threads, a folder's undo before a Codex change runs, a long foreground wait
