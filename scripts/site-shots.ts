@@ -3,12 +3,13 @@
 // a Tipjar change on the card whose demo the page shows, so that the picture is of a demo and not of
 // Obeya itself. The same wall on a phone (`phone.png`, `phone-demo.png`) shows the phone view.
 //
-//   bun scripts/site-shots.ts [--demo <dir>] [--keep | --stage-only]
+//   bun scripts/site-shots.ts [--demo <dir>] [--at <seconds>] [--keep | --stage-only]
 //
 // --demo names a Tipjar demo to put on that card (a directory with demo.mp4 and poster.jpg); without
 // it the agent's first demo of splitting the bill from the newest render of the hero video is taken
 // (tipjar-split-the-bill* in the demo directory; the render leaves a second, shorter one on the owner's comments a
-// few minutes later); its chapters come from its chapters.vtt. The scratch Obeya runs on port 4740 and is stopped
+// few minutes later); its chapters come from its chapters.vtt. --at names the moment of the demo the
+// pictures show, where the one picked by its chapters shows the change badly. The scratch Obeya runs on port 4740 and is stopped
 // at the end; --keep leaves it running for a look, --stage-only stages it and takes nothing. Needs
 // Google Chrome.
 
@@ -129,13 +130,13 @@ function card(id: string | undefined) {
   return `[data-id="${id}"]`;
 }
 
-/** Pauses the demo video in its second chapter (the change at work). */
+/** Pauses the demo video at `--at`, else in its second chapter (the change at work). */
 async function still(page: Page, video: string) {
   await page.locator(video).evaluate(async (v: HTMLVideoElement, at: number) => {
     v.pause();
     v.currentTime = at;
     await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
-  }, chapters[1] ? chapters[1][0] + ((chapters[2]?.[0] ?? chapters[1][0] + 4) - chapters[1][0]) * 0.8 : 3);
+  }, arg('--at') ? Number(arg('--at')) : chapters[1] ? chapters[1][0] + ((chapters[2]?.[0] ?? chapters[1][0] + 4) - chapters[1][0]) * 0.8 : 3);
 }
 
 async function shots(page: Page, cards: Record<string, string>) {

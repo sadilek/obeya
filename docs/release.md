@@ -37,7 +37,11 @@ machine's active account may lack the admin rights a workflow run or a rerun nee
    Then from the same render, in the release's checkout:
    - the site's screenshots, `bun scripts/site-shots.ts`, with the first Tipjar demo the render's
      agent left (`<demos>/tipjar-split-the-bill*`; the newest is its shorter second demo, on the
-     comments, which the script passes over), into `site/img/`: the
+     comments, which the script passes over; where the agent rendered that second demo over the
+     first, Obeya's copy of the first is in the render's scratch home,
+     `/tmp/obeya-scratch-4730/home/kept-demos/<card>/<handover>/`, whose `index.html` holds the
+     chapter times its copy lacks a `chapters.vtt` for: `--demo` names it, `--at` a moment of it
+     where the one its chapters pick shows the change badly), into `site/img/`: the
      desktop ones and the two of the phone view (`phone.png`, `phone-demo.png`), which the README
      shows too (`canvas.png` and the phone's);
    - the video's poster, `node scripts/hero-video/publish.ts --poster-only`

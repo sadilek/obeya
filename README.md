@@ -26,8 +26,8 @@ See every feature in action: each change to Obeya comes with the demo its agent 
 
 Each card gets its own agent (Claude Code or Codex) in its own clone or worktree of your repository, on
 this machine or on another one reached over SSH. The agent asks on the card when it needs a
-decision and hands over with a demo: a narrated screen recording of the change, or a page to look
-at when the result is a layout or variants side by side. You approve it or say what to change, also
+decision and hands over with a demo: a narrated screen recording of the change (or a silent one
+with subtitles, in as many languages as you like), or a page to look at when the result is a layout or variants side by side. You approve it or say what to change, also
 about one moment of the video: what you type or say while it stands there goes to the agent with
 that frame and the narration's sentence. Approved work lands on `main` or goes out as a pull
 request on GitHub (GitHub Enterprise too), Forgejo or Gitea (Codeberg, say) that Obeya carries to
@@ -52,7 +52,7 @@ several, and one Obeya runs them all. A card's agent, or all of a canvas's from 
 can be paused and resumed: each finishes its step first. Typing "/" in a card's field offers the
 skills its agent knows. The bar shows how much of your plans' session and week is used: Claude's,
 ChatGPT's for Codex, or both. Which group of agents runs on which harness and model you choose in
-"Agents and models".
+"Agents and models", and a single card's in the menu beside its start button.
 
 ![An Obeya canvas: a project with its workstreams, one at work and one in the queue; beside it a demo and a question waiting for you, a task at work, an approved and a live one, and an idea](site/img/canvas.png)
 
@@ -97,9 +97,9 @@ the agents have paused, then the app restarts with it (a .deb is updated by inst
 one).
 
 On the canvas, double-click to write a task, then start its agent ("Start agent"). The card
-shows what the agent is doing; when it waits for you (counted in orange at the bar's left, listed under "Needs you"), open it to
+shows what the agent is doing; when it waits for you (counted in orange at the bar's left and on the app's icon, listed under "Needs you"), open it to
 answer a question or watch the demo and approve it ("Approve"). Hold Space to say what to do
-instead of typing; `?` lists every key.
+instead of typing; `/` searches the cards, on the canvas and in the archive; `?` lists every key.
 
 ### Connecting a phone
 
