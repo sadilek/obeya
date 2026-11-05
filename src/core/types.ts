@@ -2547,7 +2547,7 @@ export type AgentRole = (typeof AGENT_ROLES)[number];
 /** The coding agents Obeya runs its agents on, each on the machine's own installation and login. */
 export const HARNESSES = ['claude', 'codex'] as const;
 export type Harness = (typeof HARNESSES)[number];
-/** Claude Code's models offered: its default, or one of its aliases, each the newest of its family. */
+/** Claude Code's models a setting may name: its default, or one of its aliases, each the newest of its family; the menus offer the aliases. */
 export const AGENT_MODELS = ['default', 'fable', 'opus', 'sonnet', 'haiku'] as const;
 export type AgentModel = (typeof AGENT_MODELS)[number];
 export const AGENT_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
@@ -2606,9 +2606,12 @@ export interface HarnessModel {
   name?: string;
   /** The efforts it takes, where the harness says (Codex); absent: all of `AGENT_EFFORTS`. */
   efforts?: AgentEffort[];
-  /** The one the harness takes by default (Codex's, listed besides as `default` with its name). */
+  /** The one the harness takes by default (Codex's), which a setting of `default` runs on. */
   isDefault?: true;
 }
+
+/** The model a setting names as the harness lists it: `default` is the one it marks so, where it does. */
+export const listedModel = (harness: HarnessView | undefined, model: string): string => (model === 'default' && harness?.models.find((m) => m.isDefault)?.id) || model;
 
 /** A harness as this machine has it: installed, logged in, and the models it offers. */
 export interface HarnessView {
@@ -2617,7 +2620,7 @@ export interface HarnessView {
   ready: boolean;
   /** Its version, once found. */
   version?: string;
-  /** The models it offers, `default` first. */
+  /** The models it offers to choose from: Claude Code's aliases; Codex's, of each family the newest. */
   models: HarnessModel[];
 }
 

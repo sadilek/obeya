@@ -71,11 +71,12 @@ look-ups, project agents, learner, retrospective, proposal rewrites), workers, i
 and small jobs (the work retrospective's notes and proposals, a shared demo page's text, a card's
 title). The Configuration dialog's "Agents and models" sets for each group, in this order, the
 harness (column "Runs on": Claude Code or Codex; one not installed or not logged in is shown, not offered), the model
-(for Claude Code its default or an alias: Fable, Opus, Sonnet, Haiku; for Codex its default or a
-model it lists for the login, by name) and the effort (low to max, for a Codex model those it
+(for Claude Code an alias: Fable, Opus, Sonnet, Haiku; for Codex the models it lists for the login,
+by name, of each family only the newest version: GPT-6.1-Sol, not GPT-5.6-Sol beside it) and the effort (low to max, for a Codex model those it
 takes), and marks the presets: Claude Code with Opus throughout, high effort for workers and
 exploration agents, medium otherwise. Another harness starts from its own default model and keeps the
-effort. A group the owner chose no harness for runs on Claude Code, unless only Codex is ready on this
+effort; the default is no entry of its own but checked as the model it is (Codex's by the one it
+marks so). A group the owner chose no harness for runs on Claude Code, unless only Codex is ready on this
 machine; there the presets are Codex with its default model, and the dialog's hint says so. Stored in `settings.json` under `agents` (`{ "worker": { "harness": "codex", "model":
 "gpt-6.1-sol" } }`), only where it differs from the preset; a model belongs to the harness stored
 beside it, Claude Code's where none is. Saving restarts nothing; agents starting afterwards take it, a
@@ -413,6 +414,10 @@ for its hooks), and what the repository's work needs.
   every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in a menu that
   starts the card at once; changing it while the card works (a session cannot move to another
   harness, and a model changed between turns would not be what the owner saw it start with).
+- **A harness's default model is no entry of its own, and Codex's older versions are left out**
+  (owner, 2026-11-05): the owner picks the model they want by name, and an older version of a family
+  beside the newest is only noise. Rejected: "Claude Code default" and "Codex default (GPT-6.1-Sol)"
+  as entries beside the models (the default named twice); Codex's whole list.
 - **The harness column is called "Runs on"** (owner, 2026-11-03), under the title "Agents and
   models", which names the rows. Rejected: "Harness", jargon beside that title; „Werkzeug“ or
   „Tool“, which agents' commands are called already, and which undersells a coding agent.

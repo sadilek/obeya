@@ -4,7 +4,7 @@
 // own settings come from its command line and show read-only.
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type Harness, type HarnessModel, HARNESSES, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
+import { AGENT_EFFORTS, AGENT_ROLES, type AgentEffort, type AgentModel, type AgentRole, type AgentSetting, type AgentsView, type Harness, type HarnessModel, HARNESSES, listedModel, blocksSaving, type CanvasConfig, type ConfigChecked, type ConfigProblem, type ConfigView, commandLines, type DemoSettings, type DemoSettingsView, type DemoSpaceView, type DemoSite, type DemoVoiceCheck, type FilledClones, type PersonalSiteView, type SiteSetupJob, type TagProposalJob, type Language, type HostConfig, type LanguageView, type NarrationLanguage, restartsAgents, type RepoConfig, type RepoSettings, type RepoTrust, type RepoValues, type ResolvedCanvas, type SettingsShared, type SettingValue, layerSettings, SHARED_FIELDS, NESTED_SETTINGS, type NestedSetting, isNested, type PageTags, type SetupCheck, START_FAILED, type Theme, THEMES, type ThemeView, type UsageMeterView, type VoiceKind, type VoiceSetupView, withClones } from '../core/types';
 import { lineDiff } from '../core/diff';
 import { parseTagLines, tagLines } from '../core/page-tags';
 import { knownLanguage, LANGUAGES } from '../core/locale';
@@ -867,7 +867,7 @@ function AgentsBlock({ on }: { on: boolean }) {
     setBusy(false);
   };
   const harness = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  const modelName = (h: Harness, m: HarnessModel) => (h === 'claude' ? a.models[m.id as AgentModel] : m.id === 'default' ? (m.name ? `${a.codexDefault} (${m.name})` : a.codexDefault) : (m.name ?? m.id));
+  const modelName = (h: Harness, m: HarnessModel) => (h === 'claude' ? (a.models[m.id as AgentModel] ?? m.id) : m.id === 'default' ? a.codexDefault : (m.name ?? m.id));
   const unready = view.harnesses.filter((h) => !h.ready);
   return (
     <>
@@ -880,9 +880,10 @@ function AgentsBlock({ on }: { on: boolean }) {
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
           const models = harness(setting.harness)?.models ?? [];
-          // a model chosen that the harness no longer lists stays shown
-          const listed = models.some((m) => m.id === setting.model) ? models : [...models, { id: setting.model }];
-          const efforts = listed.find((m) => m.id === setting.model)?.efforts ?? AGENT_EFFORTS;
+          // a harness's default shows as the model it is; a model chosen that the harness no longer offers stays shown
+          const model = listedModel(harness(setting.harness), setting.model);
+          const listed = models.some((m) => m.id === model) ? models : [...models, { id: model }];
+          const efforts = listed.find((m) => m.id === model)?.efforts ?? AGENT_EFFORTS;
           return (
             <Fragment key={role}>
               <div className="cfg-agent">
@@ -899,7 +900,7 @@ function AgentsBlock({ on }: { on: boolean }) {
                   );
                 })}
               </select>
-              <select aria-label={`${a.roles[role].name}: ${a.model}`} value={setting.model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value })}>
+              <select aria-label={`${a.roles[role].name}: ${a.model}`} value={model} disabled={busy} onChange={(e) => choose(role, { model: e.target.value })}>
                 {listed.map((m) => (
                   <option key={m.id} value={m.id}>
                     {modelName(setting.harness, m)}
