@@ -242,11 +242,15 @@ export class ReadTree {
    * Whether the Lesestand holds `commit` (it is the commit the Lesestand is on, or an ancestor of
    * it), as far as known already: git is asked in the background what is not, which counts as not
    * held meanwhile, and `then` hears once it is. What was found stands while the Lesestand does
-   * (`standing`).
+   * (`standing`); where that cannot be told, only what is held stands, and what is not is asked again.
    */
   holds(commit: string, then?: () => void): boolean {
     const at = this.standing();
-    if (at !== this.heldAt) {
+    if (at === null) {
+      // a checkout whose HEAD cannot be sealed moves unseen: a commit it holds it keeps (bar a force-push), one it lacks it may hold by now
+      if (this.heldAt !== null) this.held.clear();
+      this.heldAt = null;
+    } else if (at !== this.heldAt) {
       this.held.clear();
       this.heldAt = at;
     }
@@ -258,7 +262,8 @@ export class ReadTree {
       void asked.then((held) => {
         // the Lesestand moved meanwhile: what it holds now is asked afresh
         if (this.held.get(commit) !== asked) return;
-        this.held.set(commit, held);
+        if (held || this.heldAt !== null) this.held.set(commit, held);
+        else this.held.delete(commit);
         if (held && !this.stopped) then?.();
       });
     }
@@ -267,17 +272,19 @@ export class ReadTree {
 
   /** By commit, what `holds` found (or is finding) while the Lesestand stood at `heldAt`. */
   private held = new Map<string, boolean | Promise<boolean>>();
-  private heldAt: string | null = null;
+  private heldAt: string | null | undefined;
   /** How often the worktree moved: only this tree moves it. */
   private moved = 0;
 
   /**
    * Where the Lesestand stands, without git: the worktree by its moves, the checkout by its HEAD
-   * and the branch that names (`headSeal`), which work landing there moves. Where that cannot be
-   * told, by its moves alone.
+   * and the branch that names (`headSeal`), which work landing there moves; null where the
+   * checkout's cannot be told.
    */
-  private standing(): string {
-    return `${this.path}\n${this.moved}\n${this.path === this.o.repoPath ? (headSeal(this.path) ?? '') : ''}`;
+  private standing(): string | null {
+    if (this.path !== this.o.repoPath) return `${this.path}\n${this.moved}`;
+    const head = headSeal(this.path);
+    return head === null ? null : `${this.path}\n${head}`;
   }
 
   private async fetch() {

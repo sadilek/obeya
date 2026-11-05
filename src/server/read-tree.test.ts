@@ -232,6 +232,26 @@ describe('the Lesestand', () => {
     expect(synced.stop()).toEqual([]);
   });
 
+  test('where the checkout is read and its HEAD cannot be sealed, a commit it lacks is asked again', async () => {
+    const tree = new ReadTree({ repoPath: checkout, dir: null, remote: false, onChange: () => {} });
+    // HEAD follows a branch that follows main: `stat`s cannot tell where it moved
+    git(checkout, 'symbolic-ref', 'refs/heads/alias', 'refs/heads/main');
+    git(checkout, 'symbolic-ref', 'HEAD', 'refs/heads/alias');
+    git(checkout, 'checkout', '--quiet', '-b', 'side');
+    git(checkout, 'commit', '--quiet', '--allow-empty', '-m', 'side');
+    const side = git(checkout, 'rev-parse', 'HEAD');
+    git(checkout, 'symbolic-ref', 'HEAD', 'refs/heads/alias');
+    git(checkout, 'reset', '--quiet', '--hard', 'main');
+    let told = 0;
+    const tell = () => void told++;
+    expect(tree.holds(side, tell)).toBe(false);
+    await Bun.sleep(100);
+    expect([tree.holds(side, tell), told]).toEqual([false, 0]);
+    git(checkout, 'merge', '--quiet', '--ff-only', 'side');
+    await until(() => tree.holds(side, tell));
+    expect(told).toBe(1);
+  });
+
   test('keeps its commit when the fetch fails, and catches up once it works again', async () => {
     let changes = 0;
     const read = join(dir, 'read');

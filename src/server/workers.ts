@@ -31,7 +31,7 @@ import { contributionOf, type PrState, type Shipped, type StoredContribution, ty
 import { type CardAgent, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, type GitSteps, isFolder } from './workspaces';
-import { readingDefaultBranch, refsSeal } from './read-tree';
+import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
 import type { CardRow } from './db';
 import { type Forge, parsePrUrl, sameRepo } from './forge';
 import { clip, messageOf } from '../core/text';
@@ -821,13 +821,17 @@ export class Workers {
 
   /**
    * The CLAUDE.md of the repository's default branch, as the checkout has it; empty where it has
-   * none. Git reads it without the server waiting; what was read stands while the refs do (`refsSeal`).
+   * none. Git reads it without the server waiting; what was read stands while the refs and HEAD do
+   * (`refsSeal`, `headSeal`).
    */
   private mainNotes(): string | Promise<string> {
     const path = this.o.repoPath;
     // a folder without git has no default branch
     if (!path || isFolder(path)) return '';
-    const seal = refsSeal(path);
+    // where no branch is found, HEAD is read, which the refs' seal leaves out
+    const refs = refsSeal(path);
+    const head = headSeal(path);
+    const seal = refs && head ? `${refs}\n${head}` : null;
     const known = this.notesRead;
     if (seal && known?.seal === seal) return known.notes;
     const read = gitSteps(path, readingNotes(path)).catch(() => '');
