@@ -415,6 +415,19 @@ for its hooks), and what the repository's work needs.
   every card (owner, 2026-11-04: too prominent for what is rarely wanted); the choice in a menu that
   starts the card at once; changing it while the card works (a session cannot move to another
   harness, and a model changed between turns would not be what the owner saw it start with).
+- **Harness, model and effort are set per group and per card, nowhere else** (owner, 2026-11-05):
+  the two levels cover what the owner picks in use, and each further level makes it harder to tell
+  what a card will run on. Rejected: defaults per canvas and per project over the machine-wide
+  ones; a recommended model per card, from a size estimate, shown beside the default.
+- **Claude Code and Codex are the only harnesses** (owner, 2026-11-05): there is no clear need for a
+  third one, nor for local models where no harness brings them. Should one be wanted, GitHub
+  Copilot comes first, through its CLI's ACP (`copilot --acp`), with the models the plan and the
+  organization's admin allow: it reaches developers whose company allows only Copilot, where
+  opencode's and pi's users overlap with Claude Code's and Codex's, and ACP would open the door to
+  other agents that speak it (opencode, Gemini CLI). Against it then: the CLI is off in an
+  organization until an admin enables it, usage-based billing (since June 2026, $19 of credit a
+  month on Business) is used up by a few long parallel cards, and whether ACP resumes a session
+  after a restart and reports the usage for the bar is unchecked.
 - **A harness's default model is no entry of its own, and Codex's older versions are left out**
   (owner, 2026-11-05): the owner picks the model they want by name, and an older version of a family
   beside the newest is only noise. Rejected: "Claude Code default" and "Codex default (GPT-6.1-Sol)"
