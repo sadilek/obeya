@@ -659,14 +659,17 @@ ol.p-list > li::before { content: none; }
 textarea.p-body { display: block; width: 100%; max-width: 76ch; min-height: 180px; margin-top: 16px; padding: 12px 14px;
   border: 1px solid var(--line); border-radius: 3px; background: var(--card); resize: vertical; font-size: 15px; outline: none; }
 textarea.p-body:focus { border-color: var(--muted); }
-/* a card's text the owner may edit, shown formatted in the field's frame, as tall as the field, until a click opens it (detail.tsx) */
+/* a card's text the owner may edit, shown formatted in the field's frame, as tall as the field, until a click opens it */
 .p-body-shown { max-width: 76ch; min-height: 180px; margin-top: 16px; padding: 12px 40px 12px 14px; border: 1px solid var(--line); border-radius: 3px;
-  background: var(--card); cursor: text; overflow-wrap: break-word; }
+  background: var(--card); }
 .p-body-shown:hover, .p-body-shown:focus-visible { border-color: var(--muted); outline: none; }
-.p-body-shown > :first-child { margin-top: 0; }
-/* line by line as typed, each where the field puts it: a blank line is the space between paragraphs */
-.p-body-shown .p-lead { margin-top: 0; font-size: 15px; max-width: none; }
-.p-body-shown :is(.p-list, .p-table, .p-code-box) { margin-top: 4px; max-width: none; }
+.p-body-shown .p-lead { font-size: 15px; }
+/* an editable text shown formatted (mdField.tsx), line by line as typed, each where the field puts
+   it: a blank line is the space between paragraphs */
+.md-shown { cursor: text; overflow-wrap: break-word; }
+.md-shown > :first-child { margin-top: 0; }
+.md-shown .p-lead { margin-top: 0; max-width: none; }
+.md-shown :is(.p-list, .p-table, .p-code-box) { margin-top: 4px; max-width: none; }
 /* a card's task takes screenshots like a message: thumbnails above, the button in the field's corner */
 .p-body-field { max-width: 76ch; }
 .p-body-field .c-shots { margin-top: 16px; }
@@ -1129,12 +1132,13 @@ button.q-end:hover { color: var(--ink); text-decoration: underline; }
 .pr-held h5 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .pr-held-text { padding: 6px 10px; border-radius: 6px; background: var(--card); border: 1px solid color-mix(in srgb, var(--inPr) 25%, transparent); font-size: 13px; }
 .pr-held-text .p-lead { margin: 4px 0; }
-.pr-held-edit { float: right; margin: 0 -4px 4px 10px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
-.pr-held-edit:hover { color: var(--ink); border-color: color-mix(in srgb, var(--inPr) 50%, transparent); }
-.pr-held-field { display: block; width: 100%; box-sizing: border-box; min-height: 6em; padding: 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--inPr) 50%, transparent); background: var(--card); color: var(--ink); font: inherit; font-size: 14.5px; line-height: 1.45; resize: none; }
-.pr-held-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
-.pr-held-acts .btn.small { margin-top: 0; }
-.pr-held-acts .p-error { margin: 0; }
+/* the text the owner may rewrite: a click into it opens its markdown in the field, which takes its place and its size */
+.pr-held-text.md-shown { padding: 10px; }
+.pr-held-text.md-shown .p-lead { margin: 0; }
+.pr-held-text.md-shown:hover, .pr-held-text.md-shown:focus-visible { border-color: color-mix(in srgb, var(--inPr) 50%, transparent); outline: none; }
+.pr-held-field { display: block; width: 100%; box-sizing: border-box; min-height: 6em; padding: 10px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--inPr) 50%, transparent); background: var(--card); color: var(--ink); font: inherit; font-size: 14.5px; line-height: 1.45; resize: none; outline: none; }
+.pr-held-field:focus { border-color: var(--inPr); }
+.pr-held .p-error { margin: 6px 0 0; }
 .pr-held-asks { margin-top: 6px; font-size: 13px; color: var(--waiting); }
 .checks { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .checks li::before { margin-right: 5px; font-weight: 700; }

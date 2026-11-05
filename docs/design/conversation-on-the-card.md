@@ -190,12 +190,14 @@ for its first start (planned, snoozed to start later, or in the queue) is a spli
 right. Only a card the owner has just created stays its text alone until it closes or starts, so the
 task goes into the text, not into a note.
 
-A text the owner may edit (a planned task's, a proposal's) shows formatted in the frame of a text
+A text the owner may edit (a planned task's, a proposal's, the text for a contributor's pull request) shows formatted in the frame of a text
 field, as Markdown everywhere on a card does; a click into it, or Enter on it, turns it into its
 Markdown with the cursor where the click went, and leaving the field shows it formatted again. Text
 without formatting stands in both exactly where the field puts it, line by line with its
 indentation, so nothing moves as it switches. A click on a link, a code block's copy button, or one that ends a marking of text does what it does
-elsewhere. An empty text is the field itself, ready for typing.
+elsewhere. An empty text is the field itself, ready for typing. Every such text on a card is edited
+this one way, rather than one of them with an "Edit" button and "Save" and "Cancel" of its own:
+one way to learn, one piece of code (owner, 2026-11-05).
 
 On every planned card, a stopped one too, the field takes notes for the agent that takes the card on
 ("A note to the agent – it gets it once it starts"). Typed notes stand unread ("Not read yet ·

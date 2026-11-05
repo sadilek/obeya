@@ -247,8 +247,11 @@ export const useDraft = (key: string): Draft => useSyncExternalStore(subscribe, 
 /** Whether there is a draft under `key` at all, even an empty one (until `dropDraft`), live. */
 export const useDrafting = (key: string): boolean => useSyncExternalStore(subscribe, () => drafts.has(key));
 
-/** Makes `el` the text field of the draft while it is on the page; `images`: whether it takes screenshots. */
-export function useDraftField(key: string, el: () => HTMLTextAreaElement | null, images: boolean) {
+/**
+ * Makes `el` the text field of the draft while it is on the page; `images`: whether it takes
+ * screenshots; `on`: whether the field shows, where it comes and goes.
+ */
+export function useDraftField(key: string, el: () => HTMLTextAreaElement | null, images: boolean, on = true) {
   useEffect(() => {
     const f = el();
     if (!f) return;
@@ -266,7 +269,7 @@ export function useDraftField(key: string, el: () => HTMLTextAreaElement | null,
       noImages.delete(key);
       changed();
     };
-  }, [key, images]);
+  }, [key, images, on]);
 }
 
 /** Whether screenshots may go into the draft: its field takes them, or it has none. */

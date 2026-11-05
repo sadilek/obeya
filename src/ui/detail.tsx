@@ -21,9 +21,10 @@ import { holdsNotes } from '../core/queue';
 import { forcedText, QueueList, scrollerOf, useMenuClose, useQueueMove, useQueueSort, waitText, type Behind } from './queue';
 import { dimensions, shownTags } from '../core/page-tags';
 import { ACK_MS } from './tell';
-import { Inline, plain, sourceAt } from './markdown';
+import { Inline, plain } from './markdown';
+import { MdField } from './mdField';
 import { Body, Cards, goToMessage, Msg, Quote, Reading, useAnswer, useReportedHeight } from './message';
-import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDraftField, useDrafting } from './draft';
+import { appended, cardDraft, draftOf, dropDraft, giveBack, questionsKey, typeAtCursor, updateDraft, useDraft, useDrafting } from './draft';
 import { eventQuote, type Reply, setReply } from './reply';
 import { AgentPick, RunsOn } from './agentPick';
 import { CiteButton } from './cite';
@@ -2506,70 +2507,46 @@ async function saveHeld(id: string) {
 }
 
 /**
- * The text that goes onto the PR with the approval, and „Bearbeiten“ on it: the text as a field in
- * its place, which „Speichern“ makes the text that goes out, as does the approval. What is typed
- * waits in a draft of its own until then, through closing the card and a reload; words dictated
- * with the cursor in it go in.
+ * The text that goes onto the PR with the approval, which the owner rewrites as they do a card's
+ * text: a click into it opens its markdown, and leaving the field makes their wording the text that
+ * goes out, as does the approval with the cursor still in it. What is typed waits in a draft of its
+ * own until then, through closing the card and a reload; words dictated with the cursor in it go in.
  */
 function HeldText({ card, body, save }: { card: string; body: string; save: (body: string) => Promise<void> }) {
   const key = heldDraft(card);
-  const editing = useDrafting(key);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const drafting = useDrafting(key);
   const { text } = useDraft(key);
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useFitHeight(ref, text, editing);
-  useDraftField(key, () => ref.current, false);
-  // the field opens with the cursor after the text, where words are mostly added
-  useEffect(() => {
-    const f = ref.current;
-    if (!editing || !f || document.activeElement === f) return;
-    f.focus({ preventScroll: true });
-    f.setSelectionRange(f.value.length, f.value.length);
-  }, [editing]);
-  const close = () => {
-    dropDraft(key);
-    setError('');
-  };
-  const submit = async () => {
-    if (text.trim() === body) return close();
-    setSaving(true);
+  const [error, setError] = useState('');
+  // what was saved shows until the PR's text comes back with it
+  const [sent, setSent] = useState<string | null>(null);
+  useEffect(() => setSent(null), [body]);
+  const leave = async () => {
+    const words = draftOf(key).text;
+    // an emptied text is no text for the PR: it stays as it was
+    if (!drafting || !words.trim() || words.trim() === body) return dropDraft(key);
     setError('');
     try {
-      await save(text);
-      close();
+      await save(words);
+      setSent(words.trim());
+      dropDraft(key);
     } catch (e) {
       setError(failText(e));
-    } finally {
-      setSaving(false);
     }
   };
-  if (!editing)
-    return (
-      <div className="pr-held-text">
-        <button
-          className="pr-held-edit"
-          title={t.review.heldEditHint}
-          onClick={() => updateDraft(key, { text: body })}
-        >
-          ✎ {t.review.heldEdit}
-        </button>
-        <Body md={body} />
-      </div>
-    );
   return (
-    <div className="pr-held-editing">
-      <textarea ref={ref} className="pr-held-field" value={text} maxLength={20000} onChange={(e) => updateDraft(key, { text: e.target.value })} />
-      <div className="pr-held-acts">
-        <button className="btn small primary" disabled={saving || !text.trim()} onClick={() => void submit()}>
-          {t.review.heldSave}
-        </button>
-        <button className="btn small" disabled={saving} onClick={close}>
-          {t.review.heldCancel}
-        </button>
-        {error && <span className="p-error">{error}</span>}
-      </div>
-    </div>
+    <>
+      <MdField
+        text={drafting ? text : (sent ?? body)}
+        draft={key}
+        grow
+        fieldClass="pr-held-field"
+        shownClass="pr-held-text"
+        title={t.review.heldEditHint}
+        onChange={(v) => updateDraft(key, { text: v })}
+        onLeave={() => void leave()}
+      />
+      {error && <div className="p-error">{error}</div>}
+    </>
   );
 }
 
@@ -2982,44 +2959,10 @@ function ManualTitle({ item, onEdit }: { item: Item; onEdit: (p: CardPatch) => v
   );
 }
 
-/** Where in the markdown `md` the click at x, y on its formatted text went: the source's end where it can't tell. */
-function clickedAt(md: string, x: number, y: number): number {
-  const pos = document.caretPositionFromPoint?.(x, y);
-  const range = pos ? null : document.caretRangeFromPoint?.(x, y);
-  const node = pos?.offsetNode ?? range?.startContainer;
-  const offset = pos?.offset ?? range?.startOffset ?? 0;
-  const box = node?.parentElement?.closest('.p-body-shown');
-  if (!node || node.nodeType !== Node.TEXT_NODE || !box) return md.length;
-  // the same words may stand earlier in the text: the how-manieth they are here is the how-manieth there
-  const text = node.textContent ?? '';
-  const walk = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
-  let nth = 0;
-  for (let n = walk.nextNode(); n && n !== node; n = walk.nextNode()) if (n.textContent === text) nth++;
-  return sourceAt(md, text, nth, offset);
-}
-
 /** `fresh`: the repository picker offers a new repository (not on a proposal, which starts where it is). */
 function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item; repos: RepoRef[]; choice: RepoChoice; fresh?: boolean; onEdit: (p: CardPatch) => void; grow?: boolean }) {
   const [body, setBody] = useState(item.body);
-  // the text shows formatted, as its agent will read it; a click into it opens its markdown there to edit
-  const [editing, setEditing] = useState(false);
-  const caret = useRef<number | null>(null);
-  const shown = !editing && body.trim() !== '';
-  // a proposal's text shows in full as far as the screen allows, the panel growing with it
   const ref = useRef<HTMLTextAreaElement>(null);
-  useFitHeight(ref, body, grow && !shown);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!editing || caret.current === null || !el) return;
-    el.focus();
-    el.setSelectionRange(caret.current, caret.current);
-    caret.current = null;
-  }, [editing]);
-  const edit = (x?: number, y?: number) => {
-    if (editing) return;
-    caret.current = x === undefined || y === undefined ? body.length : clickedAt(body, x, y);
-    setEditing(true);
-  };
   // a dropped file's path goes in as typed while the field has the cursor, else after the text
   // (the latest, which a path put in just before is part of before React has drawn it)
   const latest = useRef(body);
@@ -3039,41 +2982,20 @@ function ManualFields({ item, repos, choice, fresh, onEdit, grow }: { item: Item
       <div className={`p-body-field${shots.dropping ? ' dropping' : ''}`} {...shots.drop}>
         <ShotStrip shots={shots} />
         <div className="c-field">
-          {shown ? (
-            <div
-              className="p-body p-body-shown"
-              tabIndex={0}
-              title={t.editBody}
-              // a link, a code block's copy button or text being selected keep their own click
-              onClick={(e) => {
-                if ((e.target as Element).closest('a, button') || !getSelection()?.isCollapsed) return;
-                edit(e.clientX, e.clientY);
-              }}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter' || e.target !== e.currentTarget) return;
-                e.preventDefault();
-                edit();
-              }}
-            >
-              <Body md={body} />
-            </div>
-          ) : (
-            <textarea
-              ref={ref}
-              className="p-body"
-              value={body}
-              placeholder={t.bodyPlaceholder}
-              maxLength={20000}
-              onPaste={shots.onPaste}
-              onFocus={() => setEditing(true)}
-              // back to the formatted text once the cursor leaves it, not when the window loses focus with it
-              onBlur={() => document.hasFocus() && setEditing(false)}
-              onChange={(e) => {
-                setBody(e.target.value);
-                onEdit({ body: e.target.value });
-              }}
-            />
-          )}
+          {/* the text shows formatted, as its agent will read it; a proposal's in full as far as the screen allows, the panel growing with it */}
+          <MdField
+            text={body}
+            field={ref}
+            grow={grow}
+            fieldClass="p-body"
+            shownClass="p-body p-body-shown"
+            placeholder={t.bodyPlaceholder}
+            onPaste={shots.onPaste}
+            onChange={(v) => {
+              setBody(v);
+              onEdit({ body: v });
+            }}
+          />
           <AttachButton shots={shots} />
         </div>
         {shots.error && <p className="p-error c-error">{shots.error}</p>}
