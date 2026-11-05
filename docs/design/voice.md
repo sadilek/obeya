@@ -40,7 +40,10 @@ storage as they change, so they survive a canvas switch and a reload.
 The log has each recording's length and level beside its transcript. While the key is held, a level
 flat for 1.5 s shows "The microphone gives no sound.". The first press after a page load opens
 the microphone (0.2–0.3 s); released before it is open, nothing is recorded (rather than a recording running on unheld) and the owner is told
-"The microphone was not ready yet".
+"The microphone was not ready yet". The microphone stays open between presses, but a phone takes it
+from a page that was in the background (the phone slept, another app recorded): its track ends or
+stays muted, and a recording from it fails or stays silent. Each press checks that the open
+microphone still delivers and opens it afresh if not, as the first press after a load does.
 
 A recording without audible speech gives "I heard nothing.", one Whisper cannot make sense of
 "I did not understand that."; the Koordinator gets neither to guess from. Whisper fails on such

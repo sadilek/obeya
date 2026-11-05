@@ -56,6 +56,35 @@ async function arrived(sent: string): Promise<boolean> {
   }
 }
 
+interface Mic {
+  stream: MediaStream;
+  ctx: AudioContext;
+  analyser: AnalyserNode;
+}
+
+function openMic(): Promise<Mic> {
+  return navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+    const ctx = new AudioContext();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    return { stream, ctx, analyser };
+  });
+}
+
+/**
+ * Whether a microphone opened earlier still delivers. The phone takes it from a page that was away
+ * (another app used the microphone, the phone slept): its track has ended or stays muted, and a
+ * recording from it failed or stayed silent until the page was loaded again.
+ */
+export const stillOpen = (m: { stream: MediaStream; ctx: { state: string } }) =>
+  m.ctx.state !== 'closed' && m.stream.getAudioTracks().some((tr) => tr.readyState === 'live' && !tr.muted);
+
+function closeMic(m: Mic) {
+  m.stream.getTracks().forEach((tr) => tr.stop());
+  void m.ctx.close().catch(() => {});
+}
+
 /** A name for a recording, unique enough to ask about it; `crypto.randomUUID` is missing outside a secure context. */
 const recordingName = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -80,7 +109,7 @@ export function usePushToTalk(
   const [flat, setFlat] = useState(false);
   /** Recordings let go of that Obeya has not answered yet. */
   const [writing, setWriting] = useState(0);
-  const mic = useRef<Promise<{ stream: MediaStream; ctx: AudioContext; analyser: AnalyserNode }> | null>(null);
+  const mic = useRef<Promise<Mic> | null>(null);
   const rec = useRef<{ recording: Recording; t0: number; target: Where; into: string | null; spot: Taken | null } | null>(null);
   const held = useRef<number | null>(null);
   const frame = useRef(0);
@@ -96,22 +125,22 @@ export function usePushToTalk(
     // the video stands where the owner started speaking: what they say is about that place
     const spot = !into && target && 'card' in target ? take(target.card) : null;
     api.warmVoice();
-    let m;
-    try {
-      // the first press after a page load opens the microphone, which takes a moment
-      mic.current ??= navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-        const ctx = new AudioContext();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
-        ctx.createMediaStreamSource(stream).connect(analyser);
-        return { stream, ctx, analyser };
-      });
-      m = await mic.current;
-    } catch {
+    const failed = (confirm: string) => {
       mic.current = null;
       held.current = null;
-      onHeard({ confirm: t.voice.noMic });
-      return;
+      onHeard({ confirm });
+    };
+    let m;
+    try {
+      // the first press after a page load opens the microphone, which takes a moment; so does the
+      // first after the phone took it away
+      m = await (mic.current ??= openMic());
+      if (!stillOpen(m)) {
+        closeMic(m);
+        m = await (mic.current = openMic());
+      }
+    } catch {
+      return failed(t.voice.noMic);
     }
     if (held.current !== pressed) {
       // let go before the microphone was open: nothing was recorded, and a recording started now would run on unheld
@@ -119,7 +148,15 @@ export function usePushToTalk(
       return;
     }
     void m.ctx.resume();
-    const r = { recording: record(m.stream, m.ctx), t0: performance.now(), target, into, spot };
+    let recording;
+    try {
+      recording = record(m.stream, m.ctx);
+    } catch {
+      // the next press opens the microphone afresh
+      closeMic(m);
+      return failed(t.voice.notReady);
+    }
+    const r = { recording, t0: performance.now(), target, into, spot };
     rec.current = r;
     if (into) beginDictation(into);
     setPhase('listening');
