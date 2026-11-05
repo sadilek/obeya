@@ -119,6 +119,9 @@ test('a card at work is held by no arrow and no plan doc, so a loop through one 
   expect(waitKinds(a, 'B', all)).toEqual([]);
   expect(holdsAmong(all)).toEqual([['A', 'B']]);
   expect(loopsAmong(holdsAmong(all))).toEqual([]);
+  // nor one waiting for a workspace to go on
+  const begun = { ...card('A'), state: 'planned', buildsOn: ['B'], queue: { workspace: 'none', begun: true } } as Item;
+  expect(loopsAmong(holdsAmong([begun, card('B', 'A')]))).toEqual([]);
   // snoozed until B gets there, A is held after all
   const snoozed = { ...a, snoozed: { on: { card: 'B', state: 'done' } } } as Item;
   expect(loopsAmong(holdsAmong([snoozed, card('B', 'A')])).length).toBe(1);

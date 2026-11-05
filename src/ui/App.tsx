@@ -1823,7 +1823,7 @@ function Canvas({
   // a loop only of the waits that hold its cards back: one through a card at work stalls nothing
   const loops = useMemo(() => loopsAmong(holdsAmong(items).filter(([from, to]) => !removing.some((x) => x.key === `${from}:${to}`))), [items, removing]);
   const standsForId = (id: string) => (byId(id) ? standsFor(byId(id)!).id : id);
-  const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : deps.before.has(id) && deps.after.has(id) ? 'loop' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
+  const depOf = (id: string) => (!deps ? undefined : id === hoverId ? 'self' : loops.some((l) => l.cards.includes(hoverId!) && l.cards.includes(id)) ? 'loop' : deps.before.has(id) ? 'before' : deps.after.has(id) ? 'after' : undefined);
   // a workstream of a collapsed project points to where its project stands
   const at = new Map(placed.map((p) => [p.item.id, p.b]));
   // the card picked in the search lights up where it stands: on its folded project, or its edge indicator while out of sight

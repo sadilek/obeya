@@ -125,11 +125,13 @@ export type WaitKind = 'queue' | 'snooze' | 'arrow' | 'plan';
  */
 export function waitKinds(waiting: Item, on: string, items: Item[]): WaitKind[] {
   const drawn = waiting.queue && 'behind' in waiting.queue ? waiting.queue.manualWait ?? [] : [];
+  // started once: at work, or in the queue only for a workspace or a paused canvas to go on
+  const begun = waiting.state !== 'planned' || (!!waiting.queue && 'begun' in waiting.queue);
   return [
     ...(queued(waiting).includes(on) && !drawn.includes(on) ? (['queue'] as const) : []),
     ...(snoozedOn(waiting).includes(on) ? (['snooze'] as const) : []),
     ...((queued(waiting).includes(on) && drawn.includes(on)) || drawnWaits(waiting, items).includes(on) ? (['arrow'] as const) : []),
-    ...(waiting.state === 'planned' && (waiting.buildsOn ?? []).includes(on) ? (['plan'] as const) : []),
+    ...(!begun && (waiting.buildsOn ?? []).includes(on) ? (['plan'] as const) : []),
   ];
 }
 
