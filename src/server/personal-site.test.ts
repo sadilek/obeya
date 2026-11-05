@@ -69,7 +69,7 @@ const A = 'k7f3q9w2m4xa8b1c';
 const B = 'z9y8x7w6v5u4t3s2';
 
 describe('an unlisted site', () => {
-  test('gives away no list of its pages: not at its root, its 404 page, a manifest at the root, or a feed', async () => {
+  test('gives away no list of its pages: not at its root, its 404 page, a manifest at the root, a feed or a sitemap', async () => {
     expect(await unlisted().publish(page(`${A}/sync-button`))).toMatchObject({ url: `${URL_}${A}/sync-button/` });
     expect(await unlisted().publish(page(`${B}/csv-export`, { shared: [`${A}/sync-button`] }))).toMatchObject({ url: `${URL_}${B}/csv-export/` });
     const files = readdirSync(deployed()).sort();
@@ -78,12 +78,12 @@ describe('an unlisted site', () => {
       const text = readFileSync(join(deployed(), f), 'utf8');
       for (const leak of [A, B, 'sync-button', 'csv-export', 'Title', 's3cr3t']) expect(text).not.toContain(leak);
     }
-    // the host's answers: nothing at the root, nothing one level up from a page, no manifest or feed where a listed site has them
+    // the host's answers: nothing at the root, nothing one level up from a page, no manifest, feed, sitemap or robots.txt where a listed site has them
     const get = async (path: string) => {
       const r = await fetch(`${URL_}${path}`);
       return { status: r.status, text: await r.text() };
     };
-    for (const path of ['', `${A}/`, MANIFEST, 'feed.xml', 'nothing/']) {
+    for (const path of ['', `${A}/`, MANIFEST, 'feed.xml', 'sitemap.xml', 'robots.txt', 'nothing/']) {
       const r = await get(path);
       for (const leak of [A, B, 'sync-button', 'csv-export']) expect(r.text).not.toContain(leak);
       if (path) expect(r.status).toBe(404);

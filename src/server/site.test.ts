@@ -189,7 +189,7 @@ const earlier = (path: string, text: string) => {
 describe('a site Obeya keeps', () => {
   test('publishes a page with the video, lists it in the overview, and deploys the whole site with the env file', async () => {
     const r = await target.publish(page('csv-export-abc123', { pr: 'https://github.com/o/r/pull/7' }));
-    expect(r).toEqual({ url: `${URL_}csv-export-abc123/`, said: 'Uploaded 5 entries', gone: [] });
+    expect(r).toEqual({ url: `${URL_}csv-export-abc123/`, said: 'Uploaded 7 entries', gone: [] });
     expect(readdirSync(join(siteDir(), 'csv-export-abc123')).sort()).toEqual(['captions.vtt', 'demo.mp4', 'index.html', 'meta.json', 'poster.jpg']);
     const html = readFileSync(join(siteDir(), 'csv-export-abc123/index.html'), 'utf8');
     expect(html).toContain('<h1>Titel csv-export-abc123</h1>');
@@ -203,7 +203,7 @@ describe('a site Obeya keeps', () => {
     expect(html).toContain('href="https://github.com/o/r/pull/7"');
     // every page ends in a line saying what made it, linking Obeya's site
     expect(html).toContain(`${CREDIT_DE}</main>`);
-    expect(deploys()).toEqual(['_headers csv-export-abc123 feed.xml index.html obeya-site.json token=secret-1']);
+    expect(deploys()).toEqual(['_headers csv-export-abc123 feed.xml index.html obeya-site.json robots.txt sitemap.xml token=secret-1']);
     expect(readFileSync(join(deployed(), 'csv-export-abc123/demo.mp4'), 'utf8')).toBe('video');
 
     expect('url' in (await target.publish(page('zweite-def456', { shared: ['csv-export-abc123'] })))).toBe(true);
@@ -267,6 +267,33 @@ describe('a site Obeya keeps', () => {
     // withdrawn, a page leaves the feed too
     await empty.withdraw('a-111111', ['b-222222']);
     expect(parseXml(readFileSync(join(siteDir(), 'feed.xml'), 'utf8')).children.filter((c) => c.name === 'entry')).toHaveLength(1);
+  });
+
+  test('writes a sitemap of the overview and every page, and a robots.txt naming it where the site is its host\'s root', async () => {
+    await target.publish(page('a-111111'));
+    await target.publish(page('b-222222', { shared: ['a-111111'] }));
+    const text = readFileSync(join(deployed(), 'sitemap.xml'), 'utf8');
+    const map = parseXml(text);
+    expect(map.name).toBe('urlset');
+    expect(map.attrs).toEqual({ xmlns: 'http://www.sitemaps.org/schemas/sitemap/0.9' });
+    // the overview dated by its newest page, each page by its newest version
+    expect(map.children.map((u) => [child(u, 'loc')?.text, child(u, 'lastmod')?.text])).toEqual([
+      [URL_, meta('b-222222').at],
+      [`${URL_}b-222222/`, meta('b-222222').at],
+      [`${URL_}a-111111/`, meta('a-111111').at],
+    ]);
+    expect(readFileSync(join(deployed(), 'robots.txt'), 'utf8')).toBe(`User-agent: *\nAllow: /\n\nSitemap: ${URL_}sitemap.xml\n`);
+    await target.withdraw('a-111111', ['b-222222']);
+    expect(parseXml(readFileSync(join(deployed(), 'sitemap.xml'), 'utf8')).children.map((u) => child(u, 'loc')?.text)).toEqual([URL_, `${URL_}b-222222/`]);
+  });
+
+  test('a site under a path of its host has a sitemap of its own addresses, but no robots.txt, which crawlers read only at the root', async () => {
+    const under = `${URL_}demos/`;
+    const sub = make(SITE({ url: under }));
+    await sub.publish(page('a-111111'));
+    const at = join(home, 'sites', siteKey(under), 'site');
+    expect(parseXml(readFileSync(join(at, 'sitemap.xml'), 'utf8')).children.map((u) => child(u, 'loc')?.text)).toEqual([under, `${under}a-111111/`]);
+    expect(existsSync(join(at, 'robots.txt'))).toBe(false);
   });
 
   test('tags: chips under the title linking the filtered overview, a row of chips per dimension there, and categories in the feed', async () => {
@@ -395,11 +422,11 @@ describe('a site Obeya keeps', () => {
     expect(existsSync(join(siteDir(), 'a-111111/demo.mp4'))).toBe(true);
     expect(overview()).toContain('Titel a-111111');
     rmSync(join(dir, 'fail'));
-    expect(await target.withdraw('a-111111', ['b-222222'])).toEqual({ said: 'Uploaded 5 entries', gone: [] });
+    expect(await target.withdraw('a-111111', ['b-222222'])).toEqual({ said: 'Uploaded 7 entries', gone: [] });
     expect(existsSync(join(siteDir(), 'a-111111'))).toBe(false);
     expect(overview()).not.toContain('Titel a-111111');
-    expect(deploys().at(-1)).toBe('_headers b-222222 feed.xml index.html obeya-site.json token=secret-1');
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'b-222222', 'feed.xml', 'index.html', MANIFEST]);
+    expect(deploys().at(-1)).toBe('_headers b-222222 feed.xml index.html obeya-site.json robots.txt sitemap.xml token=secret-1');
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'b-222222', 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
     expect(readdirSync(join(siteDir(), '../backup'))).toEqual([]);
   });
 
@@ -438,7 +465,7 @@ describe('a site Obeya keeps', () => {
     const { env: _, ...without } = SITE();
     expect(siteMissing(home, without)).toBeNull();
     expect(await make(without).publish(page('d-444444'))).toMatchObject({ url: `${URL_}d-444444/` });
-    expect(deploys()).toEqual(['_headers d-444444 feed.xml index.html obeya-site.json token=']);
+    expect(deploys()).toEqual(['_headers d-444444 feed.xml index.html obeya-site.json robots.txt sitemap.xml token=']);
   });
 
   test('a theme: each page carries its card’s repository’s', async () => {
@@ -582,13 +609,13 @@ describe('several machines publishing to one site', () => {
     expect(await b.publish(page('b-222222'), (l) => said.push(l))).toMatchObject({ url: `${URL_}b-222222/` });
     expect(said).toEqual([expect.stringMatching(/^Downloading a page other machines shared from the site \(0\.0 MiB\)/)]);
     expect(readFileSync(join(siteDir(other), 'a-111111/demo.mp4'), 'utf8')).toBe('video');
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'feed.xml', 'index.html', MANIFEST]);
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
     expect(live().pages).toMatchObject({ 'a-111111': { rev: 1, machine: 'a' }, 'b-222222': { rev: 1, machine: 'b' } });
     // the first machine gets the second one's page with its next share, and nothing it has already
     const again: string[] = [];
     await target.publish(page('c-333333'), (l) => again.push(l));
     expect(again).toEqual([expect.stringContaining('Downloading a page')]);
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'c-333333', 'feed.xml', 'index.html', MANIFEST]);
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'c-333333', 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
     expect(readFileSync(join(deployed(), 'index.html'), 'utf8')).toContain('Titel b-222222');
     // a page published again comes over with its new revision
     writeFileSync(join(demo, 'demo.mp4'), 'another video');
@@ -625,7 +652,7 @@ describe('several machines publishing to one site', () => {
     expect(await b.audit!(['a-111111'])).toEqual({ gone: [{ slug: 'a-111111', machine: 'a' }], missing: [] });
     expect(await b.publish(page('b-222222', { shared: ['a-111111'] }))).toMatchObject({ url: `${URL_}b-222222/`, gone: [{ slug: 'a-111111', machine: 'a' }] });
     expect(existsSync(join(siteDir(other), 'a-111111'))).toBe(false);
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'b-222222', 'feed.xml', 'index.html', MANIFEST]);
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'b-222222', 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
     expect(live().pages['a-111111']).toMatchObject({ withdrawn: true });
     expect(await b.audit!([])).toEqual({ gone: [], missing: [] });
     // shared again, it is back for both
@@ -647,7 +674,7 @@ describe('several machines publishing to one site', () => {
     expect(await make(SITE({ headers: { 'X-Token': '${NOPE}' } })).publish(page('a-111111'))).toMatchObject({ why: 'The site’s header X-Token needs NOPE, which the site’s env file lacks.' });
     const behind = make(SITE({ headers: { 'X-Token': '${TOKEN}' } }));
     expect(await behind.publish(page('a-111111'))).toMatchObject({ url: `${URL_}a-111111/` });
-    expect(await behind.withdraw('a-111111', [])).toMatchObject({ said: 'Uploaded 4 entries' });
+    expect(await behind.withdraw('a-111111', [])).toMatchObject({ said: 'Uploaded 6 entries' });
     expect(live().pages['a-111111']).toMatchObject({ withdrawn: true });
   });
 
@@ -672,7 +699,7 @@ describe('several machines publishing to one site', () => {
     const r = await target.publish(page('c-333333', { shared: ['a-111111'] }), (l) => said.push(l));
     expect(r).toMatchObject({ url: `${URL_}c-333333/` });
     expect(said).toContain('Another machine’s deploy came in between; one more round.');
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'c-333333', 'feed.xml', 'index.html', MANIFEST]);
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'c-333333', 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
 
     writeFileSync(join(dir, 'race'), `${snapshot('other-2')}\n${snapshot('other-3')}`);
     expect(await target.publish(page('d-444444', { shared: ['a-111111', 'c-333333'] }))).toMatchObject({
@@ -699,7 +726,7 @@ describe('several machines publishing to one site', () => {
     const deploysBefore = deploys().length;
     expect(await target.publish(page('c-333333'))).toMatchObject({ url: `${URL_}c-333333/` });
     expect(deploys().length).toBe(deploysBefore + 1);
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'b2-222222', 'c-333333', 'feed.xml', 'index.html', MANIFEST]);
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'b-222222', 'b2-222222', 'c-333333', 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
   });
 
   test('a page another machine’s late deploy took offline is found missing and deployed again', async () => {
@@ -709,8 +736,8 @@ describe('several machines publishing to one site', () => {
     // the other machine pulled before c and deployed after this machine had checked
     lands(pulled);
     expect(await target.audit!(['a-111111', 'c-333333'])).toEqual({ gone: [], missing: ['c-333333'] });
-    expect(await target.repair!(['a-111111', 'c-333333'])).toMatchObject({ said: 'Uploaded 6 entries', gone: [] });
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'c-333333', 'feed.xml', 'index.html', MANIFEST]);
+    expect(await target.repair!(['a-111111', 'c-333333'])).toMatchObject({ said: 'Uploaded 8 entries', gone: [] });
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', 'a-111111', 'c-333333', 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
     expect(await target.audit!(['a-111111', 'c-333333'])).toEqual({ gone: [], missing: [] });
   });
 
@@ -719,7 +746,7 @@ describe('several machines publishing to one site', () => {
     writeFileSync(join(dir, 'lag'), '');
     expect(await target.publish(page('b-222222', { shared: ['a-111111'] }))).toMatchObject({
       url: `${URL_}b-222222/`,
-      said: 'Uploaded 6 entries\nThe site does not show the new state yet; the next deploy checks again.',
+      said: 'Uploaded 8 entries\nThe site does not show the new state yet; the next deploy checks again.',
     });
   });
 });
@@ -755,7 +782,7 @@ describe('sharing to a site', () => {
     const shared = await settled(id, 'shared');
     expect(shared).toMatchObject({ state: 'shared', url: expect.stringMatching(new RegExp(`^${URL_}export-als-csv-[0-9a-z]+/$`)) });
     expect(readFileSync(join(deployed(), 'index.html'), 'utf8')).toContain('CSV-Export');
-    expect(board.events(id).map((e) => e.text)).toContain('Uploaded 5 entries');
+    expect(board.events(id).map((e) => e.text)).toContain('Uploaded 7 entries');
     sharing.unshare(id);
     await settled(id, undefined);
     expect(board.item(id)!.share).toBeUndefined();
@@ -782,7 +809,7 @@ describe('sharing to a site', () => {
     await settled(three, 'shared');
     expect(board.item(two)!.share).toBeUndefined();
     expect(board.events(two).map((e) => e.text)).toContain('Die Seite wurde auf einem anderen Rechner (laptop) zurückgezogen; der Link ist weg.');
-    expect(readdirSync(deployed()).sort()).toEqual(['_headers', slugOf(three), 'feed.xml', 'index.html', MANIFEST]);
+    expect(readdirSync(deployed()).sort()).toEqual(['_headers', slugOf(three), 'feed.xml', 'index.html', MANIFEST, 'robots.txt', 'sitemap.xml']);
   });
 
   test('a page another machine’s deploy took offline: deployed again when the owner comes back, with a line on its card', async () => {

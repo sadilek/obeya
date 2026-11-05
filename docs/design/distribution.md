@@ -270,6 +270,12 @@ workflow. obeya.si is verified for the GitHub account and set in the repository'
 with HTTPS enforced (a workflow deployment ignores a `CNAME` file); at the registrar the apex points
 at GitHub Pages' four A and four AAAA addresses and `www` is a CNAME to `sadilek.github.io`.
 
+For search engines, `site/robots.txt` lets every crawler in and names `https://obeya.si/sitemap.xml`.
+The sitemap is not in git: the workflow writes it before the upload (`scripts/site-sitemap.ts`),
+listing every directory of `site/` with an `index.html`, each dated by the last commit that changed
+that file, so a page added by hand is in it with nothing to keep in step. It names obeya.si only;
+`demos.obeya.si` has its own (see Sharing demos).
+
 ### Hero video
 
 The site's film is a real run recorded with Obeya's own demo pipeline (`scripts/hero-video/`, whose
@@ -364,5 +370,8 @@ which Chrome leaves stale after a seek. Without JavaScript or the chapters file 
   (2026-10-06): the calm, editorial film-first prototype, with the pillars as cards on a wall, a
   card's way along the wall and "The big room" from a second. Rejected: a canvas the camera flies
   through while scrolling (built, then dropped: the scrolling felt odd).
+- **obeya.si's sitemap is written at deploy, from git** (2026-11-05): Google knew only the
+  homepage, though it links the other pages. Rejected: a sitemap in git kept in step by hand or by
+  a check, whose dates go stale the moment a page changes without them.
 - **The hero video is a release asset** (2026-10-07). Rejected: git, which holds no video, and a
   video host, since the site loads nothing from a third party.

@@ -544,9 +544,10 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
   };
 
   /**
-   * Writes the overview and the feed from the pages in the directory, and the headers of the
-   * artifacts' files. An unlisted site has neither overview nor feed: its root and its answer to an
-   * address it lacks (`404.html`) are a blank page, so neither leads to a page.
+   * Writes the overview, the feed and the sitemap (with a `robots.txt` naming it where the site is
+   * its host's root) from the pages in the directory, and the headers of the artifacts' files. An
+   * unlisted site has none of them: its root and its answer to an address it lacks (`404.html`) are
+   * a blank page, so neither leads to a page.
    */
   const writeOverview = async (written: Manifest) => {
     await mkdir(dir, { recursive: true });
@@ -554,7 +555,7 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
       await writeFile(join(dir, 'index.html'), BLANK_PAGE);
       await writeFile(join(dir, NOT_FOUND), BLANK_PAGE);
       await writeFile(join(dir, HEADERS), unlistedHeaders() + artifactHeaders(site, true));
-      await rm(join(dir, FEED), { force: true });
+      for (const f of [FEED, SITEMAP, ROBOTS]) await rm(join(dir, f), { force: true });
       return;
     }
     // the most recently shared first
@@ -564,6 +565,9 @@ export function siteTarget(site: DemoSite, repo: string, home: string, t: Messag
     const theme = await overviewTheme(dir, pages, written.pages);
     await writeFile(join(dir, 'index.html'), overviewHtml(site, pages, overviewLanguage(), theme));
     await writeFile(join(dir, FEED), feedXml(site, pages, overviewLanguage()));
+    await writeFile(join(dir, SITEMAP), sitemapXml(site, pages));
+    if (new URL(site.url).pathname === '/') await writeFile(join(dir, ROBOTS), robotsTxt(site));
+    else await rm(join(dir, ROBOTS), { force: true });
     await writeFile(join(dir, HEADERS), artifactHeaders(site));
   };
 
@@ -1271,3 +1275,28 @@ ${d.by ? `<author><name>${xml(d.by)}</name></author>\n` : ''}${Object.entries(d.
 ${pages.map(entry).join('')}</feed>
 `;
 }
+
+/** The site's pages for search engines, at its root beside the overview. */
+export const SITEMAP = 'sitemap.xml';
+/** Where search engines look for the sitemap: read only at the root of a host. */
+export const ROBOTS = 'robots.txt';
+
+/**
+ * The overview and every page, dated as the feed dates them: the overview by its newest page (an
+ * empty site undated), each page by its newest version. A sitemap names only addresses under its
+ * own, so a site under a path of its host has one all the same.
+ */
+function sitemapXml(site: DemoSite, pages: (Meta & { slug: string })[]): string {
+  const url = (loc: string, at?: string) => `<url><loc>${xml(loc)}</loc>${at ? `<lastmod>${xml(at)}</lastmod>` : ''}</url>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${url(`${site.url.replace(/\/+$/, '')}/`, pages[0] && newest(pages[0]))}${pages.map((d) => url(pageUrl(site, d.slug), newest(d))).join('')}</urlset>
+`;
+}
+
+/** Everything open to crawlers, and where the sitemap is. */
+const robotsTxt = (site: DemoSite) => `User-agent: *
+Allow: /
+
+Sitemap: ${site.url.replace(/\/+$/, '')}/${SITEMAP}
+`;

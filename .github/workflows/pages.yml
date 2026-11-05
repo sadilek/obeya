@@ -3,12 +3,14 @@
 # Pages settings (a CNAME file is ignored for workflow deployments). The hero video, its
 # captions, its chapters and the README's loop cut from it stay out of git: they are assets of
 # the release `site-media`, fetched into site/media/ before the upload. scripts/hero-video/publish.ts replaces them and runs this workflow again.
+# The sitemap is written here too (scripts/site-sitemap.ts), each page dated by its last commit,
+# hence the whole history in the checkout; site/robots.txt points to it.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ['site/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'scripts/site-sitemap.ts', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -28,6 +30,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.4.3 }
+      - name: Write the sitemap
+        run: bun scripts/site-sitemap.ts site https://obeya.si/
       - name: Fetch the hero video
         run: gh release download site-media --pattern 'hero.*' --dir site/media
         env:

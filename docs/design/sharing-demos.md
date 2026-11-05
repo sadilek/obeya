@@ -359,8 +359,11 @@ files, language, who shared it, its tags, and under `more` the later versions, t
 the overview, dated by each page's newest version, and an Atom feed (`feed.xml`, linked from the
 overview as "Subscribe to the feed" and by `<link rel="alternate">`) with one entry per page in the overview's order (title,
 first sentence as summary, the whole text as content, the page's address as link and id, the
-overview's date, the page's language, who shared it as author), written together and so equally
-current. A page keeps its date while its demo's own files stay the same.
+overview's date, the page's language, who shared it as author), and a sitemap (`sitemap.xml`: the
+overview and every page, dated as in the feed), written together and so equally current. Where the
+site is its host's root, a `robots.txt` lets every crawler in and names the sitemap; under a path,
+where crawlers do not look for one, there is none. A page keeps its date while its demo's own files
+stay the same.
 
 Each page names who shared it ("Shared by Ada Lovelace on October 20, 2026"), and the overview
 after the date, as colleagues publish to one site from their own Obeya: git's `user.name` in the
@@ -437,7 +440,7 @@ whose files anyone can list, it is listed like a repository's site (overview, fe
 `<slug>/`, the manifest at the root), and a random part in its addresses would hide nothing. A
 repository's site is listed, always. Unlisted means:
 
-- no overview, no feed, no tag links on the pages, no link to the site's root;
+- no overview, no feed, no sitemap, no tag links on the pages, no link to the site's root;
 - a page lies at `<token>/<slug>/`: the slug for reading, the token (16 letters and digits, about 82
   bits) for not guessing; it is drawn once per card, on its first share there, and kept through a
   withdrawal, so sharing again gives the same link;
@@ -624,6 +627,10 @@ another machine withdrew loses its link here, with a line naming the machine.
   (2026-10-28, then reversed): GitHub only from a private repository.
 - **The setup's warning names no forge's search** (owner, 2026-10-29): a link in a public PR is
   found whatever the host, and a repository need not be on GitHub.
+- **A listed site has a sitemap and a `robots.txt`** (2026-11-05): Google knew none of
+  `demos.obeya.si`'s pages, though obeya.si links it. A listed site is public anyway, and its
+  overview links every page; the sitemap only says so with dates. Each host has its own: a sitemap
+  names addresses of its own host only.
 - **No `robots.txt` on the unlisted site** (2026-10-28): its `Disallow` hides the `noindex` from
   search engines, which may then list a linked address without its content.
 - **Several machines pull before they push** (2026-10-09). Rejected: refusing deploys while the live
