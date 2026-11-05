@@ -276,7 +276,11 @@ test('the archive’s mark moves with every write to a row its items are made of
     expect(moves(() => s.update(plain!.id, { title: 'Renamed in the archive' }))).toBe(true);
     expect(moves(() => s.update(project!.id, { archived_at: '2026-11-01T00:00:00.000Z' }))).toBe(true);
     expect(moves(() => s.update(workstream!.id, { status_line: 'Done' }))).toBe(true);
-    expect(moves(() => s.insert([{ canvas_id: 'c', kind: 'task', parent_id: project!.id, plan_ref: 'docs/plan/a.md#W2', x: 0, y: 0 }]))).toBe(true);
+    let added = '';
+    expect(moves(() => (added = s.insert([{ canvas_id: 'c', kind: 'task', parent_id: project!.id, plan_ref: 'docs/plan/a.md#W2', x: 0, y: 0 }])[0]!.id))).toBe(true);
+    // a workstream taken out of the archived project leaves its archive
+    expect(moves(() => s.replan(added, null, null))).toBe(true);
+    expect(moves(() => s.update(added, { status_line: 'On its own' }))).toBe(false);
     expect(moves(() => s.update(idea!.id, { archived_at: '2026-11-01T00:00:00.000Z' }))).toBe(true);
     expect(moves(() => s.update(prototype!.id, { prototype: 'discarded' }))).toBe(true);
     // taken back, deleted, gone for good, moved to another canvas

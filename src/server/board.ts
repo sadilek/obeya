@@ -2034,7 +2034,7 @@ export class Board {
 
   /** The cards whose landed work added plan docs, on the canvas (among its `rows`, as just read) or archived, the oldest first. */
   private withPlanDocsOf(rows: CardRow[]): CardRow[] {
-    return [...rows, ...this.archivedPlanRows()].filter((r) => r.plan_docs !== null).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return [...rows, ...this.archivedPlanRows()].filter((r) => r.plan_docs !== null).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.number - b.number);
   }
 
   private archivedPlanRows(): CardRow[] {

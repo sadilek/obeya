@@ -531,7 +531,7 @@ export const MIGRATIONS = [
   );
   CREATE TRIGGER archive_rev AFTER UPDATE ON cards
     WHEN OLD.archived_at IS NOT NULL OR NEW.archived_at IS NOT NULL
-      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (NEW.parent_id, NEW.prototype_of) AND a.archived_at IS NOT NULL)
+      OR EXISTS (SELECT 1 FROM cards a WHERE a.id IN (OLD.parent_id, OLD.prototype_of, NEW.parent_id, NEW.prototype_of) AND a.archived_at IS NOT NULL)
   BEGIN
     INSERT INTO archive_revs (canvas_id, rev) VALUES (OLD.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
     INSERT INTO archive_revs (canvas_id, rev) VALUES (NEW.canvas_id, 1) ON CONFLICT(canvas_id) DO UPDATE SET rev = rev + 1;
