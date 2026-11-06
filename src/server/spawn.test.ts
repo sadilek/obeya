@@ -1,26 +1,47 @@
 import { expect, test } from 'bun:test';
-import { hidden, hideConsoleWindows, spawnOutput } from './spawn';
+import { hidden, hideConsoleWindows, onStart, spawnOutput } from './spawn';
 
-test('dozens of processes asked for at once start a few at a time, with turns of the event loop between', async () => {
+test("processes start on threads of their own: the server's thread starts none of them", async () => {
   const spawn = Bun.spawn;
   let started = 0;
   Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
     started++;
     return spawn(...args);
   }) as typeof Bun.spawn;
+  const told: string[][] = [];
+  const stop = onStart((argv) => told.push(argv));
   try {
-    const all = Array.from({ length: 20 }, () => spawnOutput([process.execPath, '--version']));
-    // the first ones at once, as a caller expects of a process it started
-    expect(started).toBe(4);
-    await new Promise((go) => setImmediate(go));
-    expect(started).toBeLessThanOrEqual(8);
-    const done = await Promise.all(all);
-    expect(started).toBe(20);
-    expect(done.every((r) => r.code === 0 && r.stdout.trim() === Bun.version)).toBe(true);
+    const all = await Promise.all(Array.from({ length: 20 }, () => spawnOutput([process.execPath, '--version'])));
+    expect(all.every((r) => r.code === 0 && r.stdout.trim() === Bun.version && r.signal === null)).toBe(true);
+    expect(started).toBe(0);
+    expect(told.length).toBe(20);
   } finally {
+    stop();
     Bun.spawn = spawn;
   }
 });
+
+test('a process on a thread of its own gets what the server gives it: directory, environment, input, a timeout', async () => {
+  const script = (code: string, o: Parameters<typeof spawnOutput>[1] = {}) => spawnOutput([process.execPath, '-e', code], o);
+  const dir = (await script('console.log(process.cwd())', { cwd: import.meta.dir })).stdout.trim();
+  expect(dir).toBe(import.meta.dir);
+  expect((await script('console.log(process.env.OBEYA_SPAWN_TEST)', { env: { ...process.env, OBEYA_SPAWN_TEST: 'given' } })).stdout.trim()).toBe('given');
+  // without an environment of its own, the server's as it is now
+  process.env.OBEYA_SPAWN_TEST = 'now';
+  try {
+    expect((await script('console.log(process.env.OBEYA_SPAWN_TEST)')).stdout.trim()).toBe('now');
+  } finally {
+    delete process.env.OBEYA_SPAWN_TEST;
+  }
+  const echo = 'process.stdout.write(await Bun.stdin.text())';
+  expect((await script(echo, { stdin: new Blob(['from a ', 'blob']) })).stdout).toBe('from a blob');
+  expect((await script(echo, { stdin: Buffer.from('from a buffer') })).stdout).toBe('from a buffer');
+  const failed = await script('console.error("wrong"); process.exit(3)');
+  expect([failed.code, failed.stderr.trim()]).toEqual([3, 'wrong']);
+  const slow = await script('await Bun.sleep(10_000)', { timeout: 200 });
+  expect(slow.signal).not.toBeNull();
+  expect(await spawnOutput(['obeya-no-such-program']).then(() => null, (e: unknown) => e)).toBeInstanceOf(Error);
+}, 30_000);
 
 test('programs started on Windows run without a window, unless the call asks for one', () => {
   expect(hidden([['git', 'status'], { cwd: '/repo' }])).toEqual([['git', 'status'], { cwd: '/repo', windowsHide: true }]);
