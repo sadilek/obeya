@@ -12,8 +12,9 @@ import { basename, isAbsolute, join } from 'node:path';
 import { type CardFile, changeSize, docImages, fileKind, isImage, normalPath, shownFiles } from '../core/files';
 import { DEFAULT_DEMO_DIRECTORY } from '../../plugin/skills/demo/lib/settings.ts';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
-import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
-import { BadRequest, type Board, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
+import { answering, askable, type Awaited, AWAITED_STATES, awaited, type BackgroundTask, pausable, pausableNow, type WorkerTurn, type CardLanding, type Demo, type DemoKind, type DemoPage, finished, formatQuestion, handedOver, type Item, type TaskAuthor, taskAuthor, type Mock, ownWords, pickedAnswer, prototypeBuild, prototypeName, type Question, type RepoRef, type RepoSettings, type RestartReason, type Share, type Snooze, SNOOZE_LIMIT, type Spot, type Superseded, type SpotInput, started } from '../core/types';
+import { BadRequest, type Board, pathOfRef, replyNote, type Retracted, type StoredDemo, titleKey } from './board';
+import { parsePlanDoc } from '../core/plan-doc';
 import { type Asked, decisionLog, toQuestion, withPick } from './advisor';
 import { checkArtifact, DEMO_SKILL, DEMO_SKILL_FILE, demoSkillName, keepDemo, OBEYA_PLUGIN, placeIn, readChapters, videoFacts } from './demo';
 import { artifactFiles } from './demo-page';
@@ -2288,6 +2289,45 @@ export class Workers {
     if (!landed?.followUp) this.o.onWorkEnded?.(cardId, row.workspace);
   }
 
+  /**
+   * Why the plan doc an idea's card writes does not say clearly which of the idea's prototypes the
+   * project builds on (`prototypeBuild`), as the worker reads it at its handover; undefined where it
+   * does, or the card writes no plan doc for an idea with prototypes.
+   */
+  private prototypesUnclear(cardId: string): Promise<string | undefined> | undefined {
+    const row = this.o.board.row(cardId);
+    const prototypes = this.o.board.items().filter((i) => i.prototypeOf === cardId);
+    if (!row.becomes_project || !row.idea || !prototypes.length) return undefined;
+    return this.planDocsWritten(cardId).then((docs) => {
+      const workstreams = docs.flatMap((d) => {
+        const doc = parsePlanDoc(d.file, d.markdown);
+        return 'workstreams' in doc ? doc.workstreams.filter((w) => !w.done) : [];
+      });
+      const build = prototypeBuild(workstreams, prototypes);
+      if (!('unclear' in build)) return undefined;
+      const names = build.workstreams.map((w) => w.label ?? `“${w.title}”`).join(', ');
+      const what = { several: `the workstreams ${names} each name or mention a prototype`, many: `the workstream ${names} names several prototypes`, unnamed: `the workstream ${names} mentions a prototype without naming which` }[build.unclear];
+      return `Not handed over: in your plan doc, ${what}. Once the project stands, Obeya gives the chosen prototype's branch to the one workstream that names it by its name in quotes (${prototypes.map((p) => `“${prototypeName(p)}”`).join(', ')}), and discards the other prototypes; no other workstream names or mentions a prototype, and where the plan builds on none, none mentions one. If it is not clear which prototype the plan builds on, ask the owner. Then call ready_for_review again.`;
+    });
+  }
+
+  /** The plan docs the card writes, as its branch holds them now (or the folder outside the repository). */
+  private async planDocsWritten(cardId: string): Promise<{ file: string; markdown: string }[]> {
+    const row = this.o.board.row(cardId);
+    const { dir, exclude } = this.o.adapter.planDocs;
+    const outside = outsidePlanDir(dir);
+    const files = outside
+      ? (JSON.parse(row.plan_docs ?? '[]') as string[]).map(pathOfRef)
+      : (await this.o.workspaces.addedFiles(cardId, dir)).filter((f) => f.endsWith('.md') && !exclude.some((x) => f.endsWith(`/${x}`)));
+    const read = async (file: string): Promise<string | null> => {
+      if (outside) return Bun.file(file).text().catch(() => null);
+      const at = await this.o.workspaces.fileOf(cardId, file, row.branch ?? undefined);
+      return at && ('path' in at ? Bun.file(at.path).text() : new TextDecoder().decode(at.data));
+    };
+    const docs = await Promise.all(files.map(async (file) => ({ file, markdown: await read(file) })));
+    return docs.flatMap((d) => (d.markdown === null ? [] : [{ file: d.file, markdown: d.markdown }]));
+  }
+
   /** The plan docs the card's branch adds, as plan references of the canvas. */
   private async planDocsAdded(cardId: string): Promise<string[]> {
     // a plan folder outside the repository has nothing in the branch: such a card named its doc when it started
@@ -2323,17 +2363,17 @@ export class Workers {
   }
 
   /**
-   * The idea, or the workstream `into` names of the project it became, is built on this prototype:
-   * its workspace and branch (renamed for that card) go to the card, which names them before the
-   * prototype ends as built (a lease its card does not name is freed). Settles with the workspace
-   * and branch the card has now, once git has renamed the branch.
+   * The idea, or the workstream `into` names of the project it became (as its plan doc says, `by`
+   * Obeya), is built on this prototype: its workspace and branch (renamed for that card) go to the
+   * card, which names them before the prototype ends as built (a lease its card does not name is
+   * freed). Settles with the workspace and branch the card has now, once git has renamed the branch.
    */
-  buildOn(prototypeId: string, idea: Item, into?: string): Promise<{ path: string; branch: string }> {
+  buildOn(prototypeId: string, idea: Item, into?: string, by: 'owner' | 'obeya' = 'owner'): Promise<{ path: string; branch: string }> {
     const { workspace, branch } = this.o.board.row(prototypeId);
     if (!workspace || !branch) throw new BadRequest('noWorkspace', 'the prototype has no workspace to build on');
     const built = asBadRequestAsync(this.o.workspaces.transfer(prototypeId, idea.id, branch, branchName(idea.title, idea.id))).then((moved) => {
       this.o.board.work(idea.id, { workspace: moved.path, branch: moved.branch, built_on: prototypeId });
-      this.endPrototype(prototypeId, 'built', 'owner', into);
+      this.endPrototype(prototypeId, 'built', by, into);
       return moved;
     });
     // until the card names the workspace, its lease is not settled, and a restart waits for git
@@ -4710,12 +4750,16 @@ export class Workers {
             return handOverWork(given, named, false);
           };
           // the files named as the result, checked against what the card changed before anything is handed over
-          if (files !== undefined)
-            return this.namedFiles(cardId, files as { path: string; caption: string }[]).then(async ({ named, left }) => {
-              const result = await handOverWith(named);
-              return left && !result.startsWith('Not ') ? `${result}\n\n${left}` : result;
-            });
-          return handOverWith();
+          const withFiles = () =>
+            files !== undefined
+              ? this.namedFiles(cardId, files as { path: string; caption: string }[]).then(async ({ named, left }) => {
+                  const result = await handOverWith(named);
+                  return left && !result.startsWith('Not ') ? `${result}\n\n${left}` : result;
+                })
+              : handOverWith();
+          // a plan doc for an idea with prototypes says clearly which one it builds on, before it goes to the owner
+          const unclear = this.prototypesUnclear(cardId);
+          return unclear ? unclear.then((why) => why ?? withFiles()) : withFiles();
         },
       },
       {
@@ -5189,7 +5233,7 @@ ${idea.idea.brief}` : '',
     const summary = this.o.board.summary(prototypeId)?.trim();
     const answers = this.o.board.decisionsOn(prototypeId);
     return [
-      `The owner chose to build this ${workstream ? 'workstream' : 'idea'} on the prototype “${prototype?.title ?? ''}”${workstream ? `, one of those built for the idea the project came from` : ''}, and your branch is that prototype's. It is a throwaway prototype: built quickly to show the idea, without tests, polish or docs, with shortcuts. Take over what carries and bring it to production quality: tests, the repository's checks, the design doc and other docs, shortcuts removed. Rewrite or drop what does not hold up; nothing on the branch counts as reviewed code. The task is ${workstream ? 'the workstream as its plan doc describes it' : "the idea's brief above"}; the prototype is a means to it, not the result.`,
+      `${workstream ? 'The plan doc builds this workstream' : 'The owner chose to build this idea'} on the prototype “${prototype?.title ?? ''}”${workstream ? `, one of those built for the idea the project came from` : ''}, and your branch is that prototype's. It is a throwaway prototype: built quickly to show the idea, without tests, polish or docs, with shortcuts. Take over what carries and bring it to production quality: tests, the repository's checks, the design doc and other docs, shortcuts removed. Rewrite or drop what does not hold up; nothing on the branch counts as reviewed code. The task is ${workstream ? 'the workstream as its plan doc describes it' : "the idea's brief above"}; the prototype is a means to it, not the result.`,
       summary ? `The prototype's worker handed it over with this summary:\n\n${summary}` : '',
       answers.length ? `What the owner answered on the prototype:\n${answers.map((d) => `- ${d.question} → ${d.answer}`).join('\n')}` : '',
     ]

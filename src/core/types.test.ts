@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CLONES, type FilledClones, type Item, modelName, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
+import { CLONES, type FilledClones, type Item, modelName, openPerGroup, prototypeBuild, prototypeName, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
 
 const card = (over: Partial<Item>): Item => ({ id: 'x', number: 1, kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
 
@@ -121,4 +121,29 @@ test('modelName names Claude models by family and version, any other as its harn
   expect(modelName('claude-fable-5-1[1m]')).toBe('Fable 5.1');
   expect(modelName('gpt-5.5')).toBe('gpt-5.5');
   expect(modelName('claude-next')).toBe('claude-next');
+});
+
+describe('prototypeBuild', () => {
+  const ws = (title: string, body = '') => ({ title, body });
+  const film = card({ title: 'Prototype: Site – Film first', variant: 'Film first' });
+  const manifest = card({ title: 'Prototype: Site – Manifest' });
+
+  test('a prototype goes by its variant, else by the approach its title names after the idea', () => {
+    expect([film, manifest, card({ title: 'Prototype: Site' })].map(prototypeName)).toEqual(['Film first', 'Manifest', 'Prototype: Site']);
+  });
+
+  test('the one workstream that names one prototype builds on it', () => {
+    const [w1, w2] = [ws('Licence'), ws('Build the page', 'On the branch of the prototype „Film first“.')];
+    expect(prototypeBuild([w1, w2], [film, manifest])).toEqual({ workstream: w2, prototype: film });
+    // a prototype alone needs no name
+    expect(prototypeBuild([w1, ws('Build the page', 'On the prototype.')], [film])).toMatchObject({ prototype: film });
+  });
+
+  test('none where no workstream mentions a prototype; unclear where several do, or one does without naming which', () => {
+    expect(prototypeBuild([ws('Licence'), ws('Page')], [film, manifest])).toEqual({ none: true });
+    expect(prototypeBuild([ws('Page', 'Like *Film first*'), ws('Texts', 'As in Manifest')], [film, manifest])).toMatchObject({ unclear: 'several' });
+    expect(prototypeBuild([ws('Page', 'Film first, then Manifest')], [film, manifest])).toMatchObject({ unclear: 'many' });
+    expect(prototypeBuild([ws('Page', 'On the chosen prototype')], [film, manifest])).toMatchObject({ unclear: 'unnamed' });
+    expect(prototypeBuild([ws('Page', 'On the prototype'), ws('Clean up', 'Delete the prototypes')], [film])).toMatchObject({ unclear: 'several' });
+  });
 });

@@ -13,7 +13,7 @@ import { repoName } from '../adapters/generic';
 import type { DemoSite, RepoAdapter, RepoInfo } from '../adapters/types';
 import type { CardDiff } from '../core/diff';
 import type { Language } from '../core/locale';
-import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeWorkstream, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
+import { AGENT_DEFAULTS, agentListens, type AgentRole, awaited, type Awaited, awaitsContributorNext, type AgentSetting, buildableOn, type CanvasConfig, prototypeBuild, prototypeName, type CardAction, untouched, type CardPatch, type ConfigProblemCode, finished, type Item, layerSettings, nameless, needsYou, NEW_REPO_HOLD_MS, pausable, halted, snoozable, SNOOZE_LIMIT, type PendingRestart, plannableAsProject, plannedToStart, type RepoConfig, type RepoRef, repoShape, type ProposedSetting, type RepoSettings, type SettingsShared, SHARED_FIELDS, type SharedSettings, type Skill, type SpotInput, type TrustGroup } from '../core/types';
 import { holdsNotes } from '../core/queue';
 import { BadRequest, Board, DEMO_LOOK_MS, pathOfRef, repoOfRef, replyNote, type StoredContribution } from './board';
 import type { ChangeRoute } from '../core/types';
@@ -482,11 +482,22 @@ export class CanvasRuntime {
       }, 0);
     });
     const uncount = board.onChange(() => this.countAgents());
+    // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
+    const settle = () => {
+      if (this.settleSoon) return;
+      this.settleSoon = setTimeout(() => {
+        this.settleSoon = undefined;
+        if (!this.shutDown) this.settlePrototypes();
+      }, 0);
+    };
+    const unsettle = board.onChange(settle);
     this.unwatch = () => {
       unwake();
       uncount();
+      unsettle();
     };
     this.countAgents();
+    settle();
   }
 
   /** Looks for snoozed cards whose time has come. */
@@ -495,6 +506,9 @@ export class CanvasRuntime {
   private demoLook: ReturnType<typeof setInterval>;
   /** A look for snoozed cards to wake after the board changed, and the subscription to its changes. */
   private wakeSoon: ReturnType<typeof setTimeout> | undefined;
+  /** A look for prototypes whose idea's project now stands (`settlePrototypes`), and the ideas whose prototype is being handed to its workstream. */
+  private settleSoon: ReturnType<typeof setTimeout> | undefined;
+  private settling = new Set<string>();
   private unwatch: () => void;
 
   /** Wakes the snoozed cards whose time has come by `now`, and those whose card they wait on got there (or no longer can); so too the steps the Koordinator waits on cards for. */
@@ -1880,7 +1894,7 @@ export class CanvasRuntime {
           throw new BadRequest('invalid', 'variants must be a list of the planned approaches');
         return this.prototype(cardId, text.trim(), a.variants);
       case 'buildPrototype':
-        return this.buildOnPrototype(cardId, a.workstream);
+        return this.buildOnPrototype(cardId);
       case 'discard':
         return this.repoOf(this.prototypeCard(cardId)).workers.endPrototype(cardId, 'discarded');
       case 'ask':
@@ -2302,12 +2316,11 @@ export class CanvasRuntime {
    * on it. The prototype goes into the archive as built, the idea's other prototypes as discarded.
    * What stands in the way is thrown at once; git renames the branch in the background.
    */
-  private buildOnPrototype(prototypeId: string, workstreamId?: string) {
+  private buildOnPrototype(prototypeId: string) {
     const prototype = this.prototypeCard(prototypeId);
-    const project = this.board.projectOf(prototype.prototypeOf!);
-    if (project) return this.buildWorkstreamOn(prototype, project, workstreamId);
     const planning = this.board.item(prototype.prototypeOf!);
-    if (planning?.becomesProject) throw new BadRequest('projectPending', 'the idea becomes a project; build on the prototype once its plan doc has landed');
+    if (this.board.projectOf(prototype.prototypeOf!) || planning?.becomesProject)
+      throw new BadRequest('projectPending', 'the idea becomes a project: the workstream its plan doc builds on the prototype gets its branch once the project stands');
     if (!planning) throw new BadRequest('ideaGone', 'the prototype’s idea is no longer on the canvas, and no project of it is');
     const idea = this.settledIdea(prototype.prototypeOf!);
     const { workers } = this.repoOf(prototype);
@@ -2318,25 +2331,52 @@ export class CanvasRuntime {
   }
 
   /**
-   * The idea has become a project: the workstream the owner chose, or else the one its plan doc
-   * builds on the prototypes with, is built on the prototype's branch and starts at once; the
-   * idea's other prototypes are discarded. As `buildOnPrototype`, what stands in the way is thrown at once.
+   * Once an idea has become a project, its plan doc settles the prototypes still on the canvas: the
+   * one it builds on goes, with its workspace and branch, to the workstream that builds on it, which
+   * starts on it like any other workstream; the others are discarded. Where the doc builds on none,
+   * or does not say clearly which (or that workstream has been started meanwhile), all are discarded.
    */
-  private buildWorkstreamOn(prototype: Item, project: Item, workstreamId?: string) {
-    const ws = workstreamId ? this.board.item(workstreamId) : prototypeWorkstream(this.board.items(), project.id);
-    if (!ws && !workstreamId) throw new BadRequest('workstreamMissing', 'the plan doc does not say which workstream builds on the prototype: choose it');
-    if (!ws || ws.parent !== project.id) throw new BadRequest('invalid', 'not a workstream of the project the idea became');
-    if (!buildableOn(ws)) throw new BadRequest('workstreamStarted', 'only a workstream nobody has started can be built on a prototype');
-    const named = `${ws.label ? `${ws.label} ` : ''}${this.board.t.quote(ws.title)}`;
-    return this.repoOf(prototype)
-      .workers.buildOn(prototype.id, ws, named)
-      .then(() => {
-        this.discardPrototypes(prototype.prototypeOf!);
-        const t = this.board.t.idea;
-        this.board.decide({ project_id: project.id, card_id: ws.id, question: t.whichPrototype(named), answer: t.onPrototype(prototype.title), by: 'owner' });
-        this.board.log(ws.id, 'state', 'owner', t.workstreamOnLog(prototype.title));
-        this.koordinator.request(ws.id);
-      });
+  private settlePrototypes() {
+    const items = this.board.items();
+    const ideas = new Set(items.flatMap((i) => (i.prototypeOf && !this.settling.has(i.prototypeOf) ? [i.prototypeOf] : [])));
+    for (const ideaId of ideas) {
+      const project = this.board.projectOf(ideaId);
+      if (!project) continue;
+      const prototypes = items.filter((i) => i.prototypeOf === ideaId);
+      // a repository still starting settles them once it is up
+      if (prototypes.some((p) => !this.repos.some((r) => r.ref.id === p.repo))) continue;
+      const open = items.filter((i) => i.parent === project.id && i.kind === 'task' && i.state !== 'live' && i.state !== 'done');
+      const build = prototypeBuild(open, prototypes);
+      const t = this.board.t.idea;
+      const decide = (answer: string, cardId = project.id) => this.board.decide({ project_id: project.id, card_id: cardId, question: t.whichPrototype, answer, by: 'owner' });
+      if (!('workstream' in build) || !buildableOn(build.workstream) || !this.board.row(build.prototype.id).workspace) {
+        decide(t.onNoPrototype(!('none' in build)));
+        this.discardPrototypes(ideaId);
+        continue;
+      }
+      const { workstream: ws, prototype } = build;
+      const named = `${ws.label ? `${ws.label} ` : ''}${this.board.t.quote(ws.title)}`;
+      this.settling.add(ideaId);
+      let built: Promise<unknown>;
+      try {
+        built = this.repoOf(prototype).workers.buildOn(prototype.id, ws, named, 'obeya');
+      } catch (e) {
+        built = Promise.reject(e);
+      }
+      // where git failed, the prototype stays for the owner to see why, not tried again until Obeya restarts
+      void built.then(
+        () => {
+          decide(t.onPrototype(named, prototype.title), ws.id);
+          this.board.log(ws.id, 'state', 'obeya', t.workstreamOnLog(prototype.title));
+          this.discardPrototypes(ideaId);
+          this.settling.delete(ideaId);
+        },
+        (e: unknown) => {
+          this.board.log(ws.id, 'error', 'obeya', messageOf(e));
+          for (const p of this.board.items().filter((i) => i.prototypeOf === ideaId && i.id !== prototype.id)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
+        },
+      );
+    }
   }
 
   /** The idea's prototypes still on the canvas go into the archive as discarded. */
@@ -2359,8 +2399,8 @@ export class CanvasRuntime {
 
   /**
    * A big idea becomes a project: a worker writes its plan doc on the idea's card at once, and once
-   * the doc lands, the project takes the idea's place. Its prototypes stay: the worker hears what
-   * they showed, and the owner builds a workstream on one of them once the project stands.
+   * the doc lands, the project takes the idea's place. Its prototypes stay until then: the worker
+   * hears what they showed, and the doc names the one a workstream builds on (`settlePrototypes`).
    */
   private planDoc(cardId: string) {
     const task = this.board.item(cardId);
@@ -2382,10 +2422,10 @@ export class CanvasRuntime {
         idea.brief.trim() || card.body.trim(),
         prototypes.length
           ? [
-              t.planDocPrototypes(prototypes.length),
+              t.planDocPrototypes(prototypes.map(prototypeName)),
               ...prototypes.map((p) => {
                 const summary = this.board.summary(p.id)?.trim();
-                return summary ? t.planDocHandedOver(p.title, summary) : t.planDocInProgress(p.title);
+                return summary ? t.planDocHandedOver(prototypeName(p), summary) : t.planDocInProgress(prototypeName(p));
               }),
             ].join('\n\n')
           : '',
@@ -2610,7 +2650,7 @@ export class CanvasRuntime {
       case 'prototype':
         return this.act(c.card, { action: 'prototype', text: c.text });
       case 'buildPrototype':
-        return this.act(c.card, { action: 'buildPrototype', ...(c.workstream ? { workstream: c.workstream } : {}) });
+        return this.act(c.card, { action: 'buildPrototype' });
       case 'discard':
         return this.act(c.card, { action: 'discard' });
       case 'build':
@@ -2790,6 +2830,7 @@ export class CanvasRuntime {
     clearInterval(this.waker);
     clearInterval(this.demoLook);
     clearTimeout(this.wakeSoon);
+    clearTimeout(this.settleSoon);
     this.unwatch();
     this.pending?.stop();
     this.pending = null;

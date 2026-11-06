@@ -46,8 +46,8 @@ canvas card says it short ("Tip: prototype"), and the suggestion goes with the o
 message. Every suggested step is a button that exists: answering needs open questions, splitting off
 a task needs one marked. The agent's instructions say what each step does to the rest of the idea
 (building ends the conversation and drops its prototypes, planned and running; splitting off keeps
-the idea, conversation and prototypes; planning keeps the prototypes for the workstream that builds
-on them), so it never recommends a click for what the click does not do. „Mach, was du
+the idea, conversation and prototypes; planning hands the prototype the plan builds on to its
+workstream and drops the others), so it never recommends a click for what the click does not do. „Mach, was du
 vorschlägst“, to the Koordinator or the agent, takes that step.
 
 Once the agent has replied, the open idea needs the owner like a waiting card ("Idea · your
@@ -91,7 +91,8 @@ it.
 A prototype never lands and does not count for collisions. It ends in the archive with log, demo and
 summary ("Prototype · discarded" or "Prototype · built"), never to come back; a new attempt is a new
 prototype. "Discard" (also approving or deleting it) throws its workspace and branch away;
-"Build this prototype" (or accepting its worker's proposal) builds the idea on it (see Deciding).
+"Build this prototype" (or accepting its worker's proposal) builds the idea on it (see Deciding),
+until the idea becomes a project: then its plan doc decides.
 
 ### Deciding
 
@@ -117,12 +118,21 @@ Either way the idea's other prototypes are discarded, so one card remains.
 doc with workstreams, which lands like any change. Its project (the doc the landed work added to the
 plan directory) then takes the idea's place on the canvas (cards in its way move aside), links back
 to it and takes over its decisions, showing those of both; the idea goes to the archive once its
-worker is done (put back, it stays). A task planned as a project is linked the same way. The
-prototypes stay on the canvas and the plan doc's worker hears what each showed, so the doc builds on
-them; only the workstream built on the chosen prototype mentions prototypes. "Build this prototype"
-then builds that workstream (the owner may pick another, and picks one when the doc names none or
-several) on the prototype's branch and discards the other prototypes; while the doc is written, it
-waits.
+worker is done (put back, it stays). A task planned as a project is linked the same way.
+
+An idea's prototypes stay on the canvas while its plan doc is written, without "Build this
+prototype": the doc decides. Its worker hears what each showed and the name each goes by (its
+variant, else the approach in its title), so the doc builds on them instead of planning them again;
+the workstream that builds on the chosen prototype names it by that name, and no other workstream
+names or mentions one. A handover whose doc leaves it unclear (several workstreams mention
+prototypes, one names several, or one mentions a prototype without naming which, among several) is
+refused, so the worker fixes the doc or asks the owner. The moment the project stands, that
+workstream takes over the prototype's workspace and branch, without starting: it starts like any
+other workstream ("Start agent", "Start all", once what it needs has landed) and its worker hears
+that the branch holds a throwaway prototype, as after "Build this prototype". The workstream says
+"Builds on the prototype “…”", the decision log says which workstream builds on which prototype,
+and the other prototypes are discarded. Where the doc builds on none, or the workstream has been
+started meanwhile, all are discarded. Nothing of the idea is left on the canvas.
 
 "Split off a task", when part of the idea is settled and part still open (an app's game logic
 settled, its pictures still to be prototyped): the agent marks the settled part (`plan_split`: a
@@ -215,6 +225,11 @@ when Obeya stopped.
   three empty clicks started three prototypes of the same brief.
 - **Planning an idea takes its prototypes along** (2026-10-06). Rejected: leaving them unmentioned,
   where the plan doc planned them again and building on one failed once the idea was archived.
+- **The plan doc settles the prototypes, the moment its project stands** (2026-11-06): the chosen
+  one goes to its workstream, the others to the archive. Rejected: "Build this prototype" on the
+  prototype once the project stood, beside starting the workstream itself. Two ways led to the same
+  start, it was not clear whether they differed (starting the workstream directly left the
+  prototype's branch unused), and the prototypes stayed on the canvas, the one not chosen too.
 - **"Split off a task" builds the settled part and keeps the idea** (2026-10-18), and every step the
   agent suggests is a button whose effect on the rest of the idea its instructions spell out. An
   agent had recommended "Build it like this" plus starting two prototypes, which no button did:

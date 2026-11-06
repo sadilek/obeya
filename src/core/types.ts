@@ -121,14 +121,34 @@ export const untouched = (i: Item) =>
 export const plannableAsProject = (i: Item) =>
   i.source === 'manual' && i.kind === 'task' && buildableOn(i) && !i.prototypeOf && !i.becomesProject;
 
+/** The name a plan doc gives a prototype by: its variant, or else its approach, as its title has it after the idea's. */
+export const prototypeName = (p: Pick<Item, 'title' | 'variant'>): string => p.variant?.trim() || p.title.split(' – ').slice(1).join(' – ').trim() || p.title;
+
 /**
- * The workstream of a project, among `items`, that its idea's prototypes are built for: the one
- * nobody has started that mentions prototypes, as the plan doc's worker writes it. None when no
- * such workstream, or several, leave it to the owner.
+ * Which of an idea's prototypes the project it became builds on, and in which workstream, as the
+ * plan doc says it: the one open workstream that names one prototype by its name (`prototypeName`);
+ * with a single prototype, also the one open workstream that mentions prototypes at all. `none`
+ * where no workstream mentions a prototype; `unclear` where several do, one names several, or one
+ * mentions a prototype without naming which, with the workstreams that do.
  */
-export function prototypeWorkstream(items: Item[], projectId: string): Item | undefined {
-  const named = items.filter((i) => i.parent === projectId && buildableOn(i) && /prototyp/i.test(`${i.title}\n${i.body}`));
-  return named.length === 1 ? named[0] : undefined;
+export function prototypeBuild<W extends { title: string; body: string }, P extends Pick<Item, 'title' | 'variant'>>(
+  workstreams: W[],
+  prototypes: P[],
+): { workstream: W; prototype: P } | { none: true } | { unclear: 'several' | 'many' | 'unnamed'; workstreams: W[] } {
+  const flat = (s: string) => s.toLowerCase().replace(/[„“”"‚‘’'«»*_`]/g, '').replace(/\s+/g, ' ').trim();
+  const named = workstreams.flatMap((w) => {
+    const text = flat(`${w.title}\n${w.body}`);
+    const hits = prototypes.filter((p) => flat(prototypeName(p)) && text.includes(flat(prototypeName(p))));
+    // a name inside another one named there ("Film" in "Film zuerst") is that other one
+    const own = hits.filter((p) => !hits.some((q) => q !== p && flat(prototypeName(q)).includes(flat(prototypeName(p)))));
+    return own.length ? [{ w, own }] : [];
+  });
+  if (named.length > 1) return { unclear: 'several', workstreams: named.map((n) => n.w) };
+  if (named.length === 1) return named[0]!.own.length > 1 ? { unclear: 'many', workstreams: [named[0]!.w] } : { workstream: named[0]!.w, prototype: named[0]!.own[0]! };
+  const mentioning = workstreams.filter((w) => /prototyp/i.test(`${w.title}\n${w.body}`));
+  if (!mentioning.length) return { none: true };
+  if (mentioning.length === 1 && prototypes.length === 1) return { workstream: mentioning[0]!, prototype: prototypes[0]! };
+  return { unclear: mentioning.length > 1 ? 'several' : 'unnamed', workstreams: mentioning };
 }
 
 /** What a `waiting` card waits for: `demo` a handover with a demo, `review` one without. */
@@ -1610,10 +1630,9 @@ export type CardAction =
   | { action: 'prototype'; text?: string; variants?: string[] }
   /**
    * Prototypes: the idea is built on this prototype's branch; the idea's other prototypes are
-   * discarded. Once the idea has become a project, one of its workstreams is built on it instead:
-   * `workstream`, or else the one the plan doc builds on the prototypes with.
+   * discarded. Not once the idea becomes a project, whose plan doc settles its prototypes.
    */
-  | { action: 'buildPrototype'; workstream?: string }
+  | { action: 'buildPrototype' }
   /** Prototypes: thrown away, into the archive with log, demo and summary. */
   | { action: 'discard' }
   /**
@@ -1751,14 +1770,10 @@ export type ErrorCode =
   | 'noSplit'
   /** A prototype for the idea is still running. */
   | 'prototypeRunning'
-  /** The prototype's idea is becoming a project: its plan doc is not there yet. */
+  /** The prototype's idea is becoming a project, or is one: the plan doc decides which workstream builds on which prototype. */
   | 'projectPending'
   /** The prototype's idea is gone from the canvas, and no project of it is there. */
   | 'ideaGone'
-  /** The prototype's idea became a project whose plan doc does not say which workstream builds on it, and none was chosen. */
-  | 'workstreamMissing'
-  /** The workstream to build on a prototype was started already. */
-  | 'workstreamStarted'
   /** Every variant the idea's agent planned has its prototype on the canvas already. */
   | 'variantsRunning'
   /** A project has no planned workstream left that is not already with the Koordinator. */

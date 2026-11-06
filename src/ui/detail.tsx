@@ -2,7 +2,7 @@
 
 import { createContext, type CSSProperties, Fragment, type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { agentListens, answering, askable, type BackgroundTask, buildableOn, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, prototypeWorkstream, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
+import { agentListens, answering, askable, type BackgroundTask, type CardAction, type ChangeRoute, type HeldChanges, chapterAt, type CardEvent, type CardPatch, type Demo, type EarlierDemo, EXPORT_HTML_MAX, finished, finishedArchivable, finishingUp, handedOver, type Item, type Mock, type NextStep, type PageTags, openQuestions, pausableNow, plannableAsProject, type PrComment, type PrReviewEntry, type PullRequest, type Question, type Finding, type Clash as ClashFound, type RepoRef, snoozable, type Spot, started, stopped, stoppedArchivable, taskAuthor, withSupplemented } from '../core/types';
 import { mockPage } from '../core/frame';
 import { mmss } from '../../plugin/skills/demo/lib/timeline.ts';
 import { languageName, preferredTrack } from '../core/locale';
@@ -119,9 +119,6 @@ function QueuePlace({ item, items }: { item: Item; items: Item[] }) {
 export function Detail(p: Props) {
   const { item, parent } = p;
   const [error, setError] = useState('');
-  // a prototype whose idea has become a project: the workstream to build on it
-  const [workstream, setWorkstream] = useState('');
-  const [picking, setPicking] = useState(false);
   const all = p.all;
   const run = async (fn: () => Promise<void>, done: ActDone) => {
     setError('');
@@ -249,57 +246,26 @@ export function Detail(p: Props) {
     );
   // a prototype is discarded or its idea built on it, never approved or deleted; built once the idea's agent has taken in what changed
   const ideaTitle = plain(item.ideaTitle ?? p.from?.title ?? '');
-  // once the idea has become a project, one of its workstreams is built on the prototype instead
+  // once the idea is a project, its plan doc settles the prototypes: the one it builds on goes to that workstream, the others are discarded
   const project = item.prototypeOf ? all.find((i) => i.kind === 'project' && i.origin === item.prototypeOf) : undefined;
   const ideaCard = item.prototypeOf ? all.find((i) => i.id === item.prototypeOf) : undefined;
   const builtOn = item.builtOn ? item.prototypes?.find((x) => x.id === item.builtOn) : undefined;
-  const workstreams = project ? all.filter((i) => i.parent === project.id && buildableOn(i)) : [];
-  // the plan doc says which workstream builds on the prototypes; the owner picks only where it does not, or another
-  const named = project && !picking ? prototypeWorkstream(all, project.id) : undefined;
-  const chosen = named ?? workstreams.find((w) => w.id === workstream);
   const ideaThinking = !project && !!p.from?.idea?.thinking;
   const planning = !project && !!p.from?.becomesProject;
+  const buildable = !project && !planning;
   const buildOn = (label: string) => (
     <button
       className="btn primary"
-      disabled={ideaThinking || planning || (!!project && !chosen)}
-      title={ideaThinking ? t.idea.prototypeWaits : planning ? t.idea.waitForProject : project && !chosen ? t.idea.chooseWorkstream : undefined}
-      onClick={() =>
-        act(
-          { action: 'buildPrototype', ...(chosen ? { workstream: chosen.id } : {}) },
-          { close: true, ack: chosen ? t.idea.builtWorkstream(workstreamName(chosen)) : t.idea.builtPrototype(ideaTitle) },
-        )
-      }
+      disabled={ideaThinking}
+      title={ideaThinking ? t.idea.prototypeWaits : undefined}
+      onClick={() => act({ action: 'buildPrototype' }, { close: true, ack: t.idea.builtPrototype(ideaTitle) })}
     >
       {label}
     </button>
   );
-  const workstreamPick = project && named ? (
-    <div className="build-on">
-      <span>
-        {t.idea.buildsWorkstream(workstreamName(named))}{' '}
-        <button className="link" onClick={() => setPicking(true)}>
-          {t.idea.otherWorkstream}
-        </button>
-      </span>
-    </div>
-  ) : project && (
-    <label className="build-on">
-      {t.idea.workstreamOf(plain(project.title))}
-      <select value={workstream} onChange={(e) => setWorkstream(e.target.value)}>
-        <option value="">{workstreams.length ? t.idea.chooseWorkstream : t.idea.noWorkstream}</option>
-        {workstreams.map((w) => (
-          <option key={w.id} value={w.id}>
-            {workstreamName(w)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
   const prototypeActions = item.prototypeOf && (
     <>
-      {item.branch && workstreamPick}
-      {item.branch && buildOn(t.idea.buildPrototype)}
+      {item.branch && buildable && buildOn(t.idea.buildPrototype)}
       <button className="btn" onClick={() => act({ action: 'discard' }, { close: true, ack: t.idea.discarded })}>
         {t.idea.discard}
       </button>
@@ -483,21 +449,14 @@ export function Detail(p: Props) {
 
       {item.prototypeOf && (
         <p className="hint">
-          {project ? (
-            <Naming text={t.idea.prototypeOfProject} cards={[{ card: ideaCard, title: ideaTitle }, { card: project }]} />
-          ) : (
-            <Naming text={planning ? t.idea.prototypeOfPlanning : t.idea.prototypeOf} cards={[{ card: ideaCard, title: ideaTitle }]} />
-          )}
+          <Naming text={planning || project ? t.idea.prototypeOfPlanning : t.idea.prototypeOf} cards={[{ card: ideaCard, title: ideaTitle }]} />
         </p>
       )}
       {item.buildProposal && (
         <div className="question proposal">
           <h4>{t.idea.buildProposal}</h4>
           <div className="q-text">{item.buildProposal}</div>
-          <div className="actions">
-            {workstreamPick}
-            {buildOn(t.idea.acceptBuild)}
-          </div>
+          {buildable && <div className="actions">{buildOn(t.idea.acceptBuild)}</div>}
         </div>
       )}
       {item.builtOn && (
@@ -1287,7 +1246,6 @@ function PrototypeStart({ item, act }: { item: Item; act: (a: CardAction, done: 
 }
 
 /** A workstream as the owner picks it: its label and title. */
-const workstreamName = (w: Item) => `${w.label ? `${w.label} ` : ''}${plain(w.title)}`;
 
 /** The demos of an idea's prototypes, each under its title and how it stands; the latest one open. */
 function PrototypeDemos({ item }: { item: Item }) {
