@@ -1,7 +1,7 @@
 // The voice Obeya holds across renders, against a fake voice that speaks qwen3.py's protocol: one
 // queue for every render's clips, one start while clips keep coming, an end after the idle time.
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,10 +18,12 @@ import { asOwner } from './testing';
 const FAKE_VOICE = `
 import { appendFileSync, writeFileSync } from 'node:fs';
 const [log, who] = process.argv.slice(2);
+// Reproduce a replacement process getting less CPU than the host's short test deadline allows.
+if (who === 'slow') await Bun.sleep(400);
 appendFileSync(log, 'start ' + who + '\\n');
+if (who === 'lahm') { console.error('waiting for the GPU'); await new Promise(() => {}); }
 console.log('loading weights ...');
 if (who === 'stumm') { console.error('cannot load the model'); process.exit(2); }
-if (who === 'lahm') { console.error('waiting for the GPU'); await new Promise(() => {}); }
 console.log(JSON.stringify({ ready: true }));
 let asked = 0;
 for await (const line of console) {
@@ -136,10 +138,34 @@ describe('a voice that stops answering', () => {
   });
 
   test('loading for too long fails the clip, and the next clip starts the voice anew', async () => {
-    hold(60_000, { loadMs: 300 });
-    expect(await host.clip(clip('eins', 'lahm'))).toEqual({ error: expect.stringContaining('while loading and was ended: waiting for the GPU') });
-    expect(host.loaded).toBe(false);
-    expect(await host.clip(clip('zwei'))).toEqual({ ok: true, seconds: 0.01 });
+    // Control just the loading deadline; child startup and process exit still use real time.
+    const setTimer = globalThis.setTimeout;
+    const deadlines: (() => void)[] = [];
+    const schedule = (...[callback, ms, ...args]: Parameters<typeof setTimeout>) => {
+      if (ms !== 300) return setTimer(callback, ms, ...args);
+      deadlines.push(() => callback(...args));
+      return setTimer(() => {}, 0);
+    };
+    // The DOM and Node timer overloads disagree on the handle; this delegates handles to Bun.
+    const timer = spyOn(globalThis, 'setTimeout').mockImplementation(schedule as typeof setTimeout);
+    try {
+      hold(60_000, { loadMs: 300 });
+      let settled = false;
+      const loading = host.clip(clip('eins', 'lahm')).then((reply) => { settled = true; return reply; });
+      // A busy machine must not spend the loading budget before either real child gets to run.
+      await until(() => log().includes('start lahm'));
+      expect(log()).toContain('start lahm');
+      expect(settled).toBe(false);
+      expect(deadlines).toHaveLength(1);
+      deadlines[0]!();
+      expect(await loading).toEqual({ error: expect.stringContaining('while loading and was ended: waiting for the GPU') });
+      expect(host.loaded).toBe(false);
+      expect(await host.clip(clip('zwei', 'slow'))).toEqual({ ok: true, seconds: 0.01 });
+      expect(log()).toEqual(['start lahm', 'start slow', 'de:zwei']);
+    } finally {
+      host?.stop();
+      timer.mockRestore();
+    }
   });
 
   test('is not taken for stuck while it reports each sentence of a long clip', async () => {
