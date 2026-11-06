@@ -37,8 +37,6 @@ interface Live {
   clipsDir: string;
   slides: (Slide & { parts: string[]; items?: number[] })[];
   status: Status;
-  /** The voicing so far: each slide's sentences after those of the slide before. */
-  voicing: Promise<void>;
 }
 
 /**
@@ -68,7 +66,7 @@ export class Walkthroughs {
     if (!w) {
       const clips = `${base}.clips`;
       mkdirSync(join(this.o.dir, clips), { recursive: true });
-      w = { file: `${base}.walkthrough.html`, caption: caption ?? title ?? '', clipsDir: join(this.o.dir, clips), slides: [], status: { clips: [], started: Date.now(), firstSoundMs: null, error: null }, voicing: Promise.resolve() };
+      w = { file: `${base}.walkthrough.html`, caption: caption ?? title ?? '', clipsDir: join(this.o.dir, clips), slides: [], status: { clips: [], started: Date.now(), firstSoundMs: null, error: null } };
       this.live.set(base, w);
       const data = JSON.stringify({ title: title ?? raw.title ?? '', language: this.o.language, clips, autoplay: !!this.o.autoplay }).replace(/</g, '\\u003c');
       const page = readFileSync(join(import.meta.dir, 'walkthrough-player.html'), 'utf8').replace('/*WALKTHROUGH*/null', data);
@@ -81,8 +79,7 @@ export class Walkthroughs {
     w.status.clips.push(slide.parts.map(() => null));
     this.write(w, false);
     if (i === 0) this.o.onShown?.(this.files());
-    const live = w;
-    w.voicing = w.voicing.then(() => voice(slide.parts, i, live.clipsDir, this.o.language, live.status));
+    voice(slide.parts, i, w.clipsDir, this.o.language, w.status);
     return `Slide ${i + 1} is shown and being voiced. Hand over the next slide, or call answer_owner once the walkthrough is complete.`;
   }
 
@@ -144,27 +141,59 @@ export function warmVoice(language: 'de' | 'en') {
   void speak(s, language === 'de' ? 'Ja.' : 'Yes.', out, voicesHome, process.env.OBEYA_WALKTHROUGH_VOICE_URL).catch(() => {});
 }
 
-/** A slide's sentences one after the other, in the voice of the demo settings, each clip in its place once it is whole. */
-async function voice(parts: string[], i: number, dir: string, language: 'de' | 'en', status: Status) {
+interface Job {
+  text: string;
+  i: number;
+  j: number;
+  dir: string;
+  language: 'de' | 'en';
+  status: Status;
+}
+
+/**
+ * The sentences waiting for the voice, of all walkthroughs: one voice speaks one at a time, and the
+ * newest walkthrough goes first (the one the owner just asked for, rather than one they may not
+ * play at all), each in its own order.
+ */
+const jobs: Job[] = [];
+let voicing = false;
+
+/** A slide's sentences, in the voice of the demo settings, each clip in its place once it is whole. */
+function voice(parts: string[], i: number, dir: string, language: 'de' | 'en', status: Status) {
+  for (const [j, text] of parts.entries()) jobs.push({ text, i, j, dir, language, status });
+  if (!voicing) void work();
+}
+
+async function work() {
+  voicing = true;
+  try {
+    while (jobs.length) {
+      const newest = Math.max(...jobs.map((x) => x.status.started));
+      const job = jobs.splice(jobs.findIndex((x) => x.status.started === newest), 1)[0]!;
+      await speakJob(job);
+    }
+  } finally {
+    voicing = false;
+  }
+}
+
+async function speakJob({ text, i, j, dir, language, status }: Job) {
   if (status.error) return;
   const { s, voicesHome } = voiceOf(language);
-  for (const [j, text] of parts.entries()) {
-    const file = `${i + 1}-${j + 1}.wav`;
-    const part = `${i + 1}-${j + 1}.part.wav`;
-    try {
-      await speak(s, text, join(dir, part), voicesHome, process.env.OBEYA_WALKTHROUGH_VOICE_URL);
-      renameSync(join(dir, part), join(dir, file));
-      status.clips[i]![j] = { file, seconds: wavSeconds(join(dir, file)) };
-      if (status.firstSoundMs === null) {
-        status.firstSoundMs = Date.now() - status.started;
-        console.log(`Obeya: walkthrough ${dir}: first sound ready ${(status.firstSoundMs / 1000).toFixed(1)} s after its first slide`);
-      }
-    } catch (e) {
-      status.error = (e as Error).message.trim().split('\n').at(-1) ?? 'voice failed';
+  const file = `${i + 1}-${j + 1}.wav`;
+  const part = `${i + 1}-${j + 1}.part.wav`;
+  try {
+    await speak(s, text, join(dir, part), voicesHome, process.env.OBEYA_WALKTHROUGH_VOICE_URL);
+    renameSync(join(dir, part), join(dir, file));
+    status.clips[i]![j] = { file, seconds: wavSeconds(join(dir, file)) };
+    if (status.firstSoundMs === null) {
+      status.firstSoundMs = Date.now() - status.started;
+      console.log(`Obeya: walkthrough ${dir}: first sound ready ${(status.firstSoundMs / 1000).toFixed(1)} s after its first slide`);
     }
-    writeFileSync(join(dir, 'status.json'), JSON.stringify(status));
-    if (status.error) return;
+  } catch (e) {
+    status.error = (e as Error).message.trim().split('\n').at(-1) ?? 'voice failed';
   }
+  writeFileSync(join(dir, 'status.json'), JSON.stringify(status));
 }
 
 function wavSeconds(file: string): number {
