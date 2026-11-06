@@ -2554,8 +2554,9 @@ export type AgentModel = (typeof AGENT_MODELS)[number];
 export const AGENT_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 export type AgentEffort = (typeof AGENT_EFFORTS)[number];
 /**
- * The harness, model and effort a group of agents runs with. `model`: `default` for the harness's
- * own default; else for Claude Code one of `AGENT_MODELS`, for Codex a model id it lists.
+ * The harness, model and effort a group of agents runs with. `model`: for Claude Code one of
+ * `AGENT_MODELS` (`default` for its own default); for Codex a model family (`codexFamily`), which
+ * each start resolves to the newest model of that family the machine the agent runs on lists.
  */
 export interface AgentSetting {
   harness: Harness;
@@ -2571,8 +2572,63 @@ export interface CardAgent {
   model?: string;
   effort?: AgentEffort;
 }
-/** A Codex model id as Codex lists it (`gpt-6.1-sol`): what a setting may name. */
-export const CODEX_MODEL = /^[A-Za-z0-9][\w.:-]{0,79}$/;
+/** A Codex model as a setting may name it: a family (`gpt-#-sol`), or a model id Codex lists (`gpt-6.1-sol`), read as its family. */
+export const CODEX_MODEL = /^[A-Za-z0-9#][\w.:#-]{0,79}$/;
+/** The Codex family a group runs on until the owner chooses another: Sol. */
+export const CODEX_PRESET = 'gpt-#-sol';
+/** A Codex model id's family and version: `gpt-6.1-sol` is `gpt-#-sol` 6.1; none for an id without a number. */
+function codexVersion(id: string): { family: string; version: number[] } | null {
+  const m = /^(\D*?)(\d+(?:\.\d+)*)(.*)$/.exec(id);
+  return m ? { family: `${m[1]}#${m[3]}`, version: m[2]!.split('.').map(Number) } : null;
+}
+/**
+ * The Codex family a setting names: a family as it is, a model id's family (`gpt-6.1-sol` is
+ * `gpt-#-sol`; an id without a number is a family of its own), `default` the preset's.
+ */
+export function codexFamily(model: string): string {
+  if (model === 'default') return CODEX_PRESET;
+  if (model.includes('#')) return model;
+  return codexVersion(model)?.family ?? model;
+}
+const newer = (a: number[], b: number[]) => {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return false;
+};
+/** Of each family Codex lists, the newest model (`gpt-6.1-sol`, not `gpt-5.6-sol` beside it), in Codex's order. */
+export function newestOfFamilies<M extends { id: string }>(models: M[]): M[] {
+  const newest = new Map<string, { id: string; version: number[] }>();
+  for (const m of models) {
+    const f = codexVersion(m.id);
+    const known = f && newest.get(f.family);
+    if (f && (!known || newer(f.version, known.version))) newest.set(f.family, { id: m.id, version: f.version });
+  }
+  return models.filter((m) => {
+    const f = codexVersion(m.id);
+    return !f || newest.get(f.family)?.id === m.id;
+  });
+}
+/**
+ * The model a Codex family runs on with a catalog (`model/list`): the newest of the family, else the
+ * one the catalog marks as its default; none where the catalog has neither.
+ */
+export function resolveCodexModel<M extends { id: string; isDefault?: true }>(models: M[], family: string): M | undefined {
+  const key = codexFamily(family);
+  return newestOfFamilies(models).find((m) => codexFamily(m.id) === key) ?? models.find((m) => m.isDefault);
+}
+/** The effort a model takes nearest to the one chosen, the higher of two as near: the one chosen where it takes it, or says nothing. */
+export function nearestEffort(effort: AgentEffort, takes: AgentEffort[] | undefined): AgentEffort {
+  if (!takes?.length || takes.includes(effort)) return effort;
+  const at = AGENT_EFFORTS.indexOf(effort);
+  const distance = (e: AgentEffort) => Math.abs(AGENT_EFFORTS.indexOf(e) - at);
+  return takes.reduce((best, e) => (distance(e) < distance(best) || (distance(e) === distance(best) && AGENT_EFFORTS.indexOf(e) > AGENT_EFFORTS.indexOf(best)) ? e : best));
+}
+/** The model a setting stores for a harness: for Codex its family, for Claude Code the alias as it is. */
+export const storedModel = (harness: Harness, model: string): string => (harness === 'codex' ? codexFamily(model) : model);
+/** A card's own choice as stored with it, a Codex model as its family (an id or `default` stored before reads so). */
+export function cardAgentOf(stored: string): CardAgent {
+  const agent = JSON.parse(stored) as CardAgent;
+  return agent.harness && agent.model ? { ...agent, model: storedModel(agent.harness, agent.model) } : agent;
+}
 /** Whether `model` is one a group on `harness` may run with: Claude Code's aliases are no Codex model, but for the default. */
 export const modelFits = (harness: Harness, model: string): boolean =>
   harness === 'claude' ? AGENT_MODELS.some((m) => m === model) : CODEX_MODEL.test(model) && (model === 'default' || !AGENT_MODELS.some((m) => m === model));
@@ -2583,10 +2639,10 @@ export const AGENT_DEFAULTS: Record<AgentRole, AgentSetting> = {
   explorer: { harness: 'claude', model: 'opus', effort: 'high' },
   chores: { harness: 'claude', model: 'opus', effort: 'medium' },
 };
-/** The default of a group on a harness: the preset's effort, with the harness's preset model (Codex's own default). */
+/** The default of a group on a harness: the preset's effort, with the harness's preset model (Codex's Sol family). */
 export function agentDefault(role: AgentRole, harness: Harness): AgentSetting {
   const preset = AGENT_DEFAULTS[role];
-  return harness === preset.harness ? preset : { harness, model: 'default', effort: preset.effort };
+  return harness === preset.harness ? preset : { harness, model: CODEX_PRESET, effort: preset.effort };
 }
 
 /**
@@ -2607,12 +2663,36 @@ export interface HarnessModel {
   name?: string;
   /** The efforts it takes, where the harness says (Codex); absent: all of `AGENT_EFFORTS`. */
   efforts?: AgentEffort[];
-  /** The one the harness takes by default (Codex's), which a setting of `default` runs on. */
+  /** The one the harness takes by default (Codex's), which a family no longer listed runs on. */
   isDefault?: true;
 }
 
-/** The model a setting names as the harness lists it: `default` is the one it marks so, where it does. */
-export const listedModel = (harness: HarnessView | undefined, model: string): string => (model === 'default' && harness?.models.find((m) => m.isDefault)?.id) || model;
+/**
+ * A model as the pickers offer it (the Konfiguration's and a card's): `value` is what a setting stores
+ * (Claude Code's alias, a Codex family), `name` how Codex names the family's newest model here
+ * (absent for Claude Code, whose aliases the page names itself), the efforts it takes.
+ */
+export interface ModelChoice {
+  value: string;
+  name?: string;
+  efforts: readonly AgentEffort[];
+}
+
+/**
+ * The models a picker offers on a harness, with the one chosen (`chosen`, as stored) among them even
+ * where the harness no longer lists it. Codex's are its families, each by its newest model.
+ */
+export function modelChoices(harness: HarnessView | undefined, chosen?: string): ModelChoice[] {
+  const codex = harness?.id === 'codex';
+  const listed: ModelChoice[] = newestOfFamilies(harness?.models ?? []).map((m) => ({
+    value: codex ? codexFamily(m.id) : m.id,
+    ...(codex ? { name: m.name ?? m.id } : {}),
+    efforts: m.efforts ?? AGENT_EFFORTS,
+  }));
+  if (chosen === undefined || listed.some((c) => c.value === chosen)) return listed;
+  // a family no longer listed by the name of its family, without a version
+  return [...listed, { value: chosen, ...(codex ? { name: chosen.replace(/-?#/, '') } : {}), efforts: AGENT_EFFORTS }];
+}
 
 /** A harness as this machine has it: installed, logged in, and the models it offers. */
 export interface HarnessView {

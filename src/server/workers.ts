@@ -28,7 +28,7 @@ import { readingShared } from '../adapters';
 import { branchName, type CardWorkspaces, type FileAt, gitSteps, type Landed, type Lease, type PullStopped, shortageOf, together, WorkspaceError, type Workspaces } from './workspaces';
 import type { FolderWorkspaces, UndoReport } from './folder';
 import { contributionOf, type PrState, type Shipped, type StoredContribution, type StoredNewRepo } from './board';
-import { type CardAgent, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
+import { cardAgentOf, type ChangeRoute, type Clash, type Finding, type FindingStatus, type Harness, type HeldChanges, type PageTags, PUSH_HOLD_MS } from '../core/types';
 import { dimensions, outside, tagsOf } from '../core/page-tags';
 import { gitAsync, type GitSteps, isFolder } from './workspaces';
 import { headSeal, readingDefaultBranch, refsSeal } from './read-tree';
@@ -3310,7 +3310,7 @@ export class Workers {
     const review = !!contributionOf(row);
     const notes = review ? this.mainNotes() : '';
     // the harness and model the owner chose for this card, over the group's; a session resumed stays on its own harness
-    const agent = row.agent ? (JSON.parse(row.agent) as CardAgent) : undefined;
+    const agent = row.agent ? cardAgentOf(row.agent) : undefined;
     const harness = resume ? sessionHarness(resume) : (agent?.harness ?? this.o.harness?.() ?? 'claude');
     const spec: AgentSpec = {
       cwd: row.workspace,

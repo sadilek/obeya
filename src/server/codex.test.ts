@@ -26,9 +26,9 @@ function start(o: Partial<AgentSpec> = {}, first?: string) {
     cwd: dir,
     system: 'You are a test agent.',
     tools: [{ name: 'report', description: 'A status line.', schema: { status: z.string() }, run: (a) => `shown: ${a.status}` }],
-    env: { OBEYA_CODEX: FAKE, FAKE_CODEX_LOG: log },
     onEvent: (e) => events.push(e),
     ...o,
+    env: { OBEYA_CODEX: FAKE, FAKE_CODEX_LOG: log, ...o.env },
   };
   const session = codexRuntime.start(spec, first);
   sessions.push(session);
@@ -51,8 +51,9 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
   test("starts a thread with Obeya's tools, the instructions and the sandbox, says what the agent says and when its turn ends", async () => {
     const s = start({}, 'hello');
     await until(() => s.idles() === 1);
-    // kept marked as Codex's, so that a resume goes to Codex whatever the group runs on by then; with the model Codex runs it on
-    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-5.5' });
+    // kept marked as Codex's, so that a resume goes to Codex whatever the group runs on by then; with the model Codex runs it on,
+    // the preset family's newest where none is named
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-6.1-sol' });
     expect(s.texts()).toEqual(['echo: hello']);
     const thread = s.requests().find((r) => r.method === 'thread/start')!.params;
     expect(thread).toMatchObject({ developerInstructions: 'You are a test agent.', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', sandbox: 'workspace-write' });
@@ -70,7 +71,7 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
   });
 
   test('a message during a turn steers it; one after it starts the next turn, with the effort chosen', async () => {
-    const s = start({ effort: 'high', model: 'gpt-6.1-sol' }, 'wait');
+    const s = start({ effort: 'high', model: 'gpt-#-sol' }, 'wait');
     await until(() => s.requests().some((r) => r.method === 'turn/start'));
     await Bun.sleep(50);
     s.session.send('stop waiting');
@@ -84,6 +85,32 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     expect(s.requests().find((r) => r.method === 'thread/start')!.params.model).toBe('gpt-6.1-sol');
   });
 
+  test("a family runs on its newest model in the session's own catalog, with the nearest effort that model takes", async () => {
+    const s = start({ model: 'gpt-#-luna', effort: 'max' }, 'hello');
+    await until(() => s.idles() === 1);
+    expect(s.requests().find((r) => r.method === 'thread/start')!.params.model).toBe('gpt-6-luna');
+    expect(s.requests().find((r) => r.method === 'turn/start')!.params.effort).toBe('high');
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-6-luna', effort: 'high' });
+    // a newer version in the catalog of the machine it runs on is taken, a family it no longer lists runs on the default
+    const newer = [{ id: 'gpt-6.2-sol', isDefault: true }, { id: 'gpt-6.1-sol' }];
+    const t = start({ model: 'gpt-#-sol', env: { FAKE_CODEX_MODELS: JSON.stringify(newer) } }, 'hello');
+    await until(() => t.idles() === 1);
+    expect(t.events[0]).toMatchObject({ model: 'gpt-6.2-sol' });
+    const u = start({ model: 'gpt-#-terra' }, 'hello');
+    await until(() => u.idles() === 1);
+    expect(u.requests().find((r) => r.method === 'thread/start')!.params.model).toBe('gpt-6.1-sol');
+  });
+
+  test("without a catalog the session starts on Codex's own configuration", async () => {
+    for (const models of ['fail', '[]']) {
+      const s = start({ model: 'gpt-#-sol', env: { FAKE_CODEX_MODELS: models } }, 'hello');
+      await until(() => s.idles() === 1);
+      expect(s.requests().find((r) => r.method === 'thread/start')!.params.model).toBeUndefined();
+      expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-1', model: 'gpt-5.5' });
+      expect(s.texts()).toEqual(['echo: hello']);
+    }
+  });
+
   test('a message that comes as the turn ends starts the next turn, and the end says one follows', async () => {
     const s = start({}, 'late');
     await until(() => s.requests().some((r) => r.method === 'turn/start'));
@@ -95,12 +122,13 @@ describe.skipIf(process.platform === 'win32')('a Codex session through the app s
     expect(s.texts()).toEqual(['echo: too late']);
   });
 
-  test('resumes a thread by its id, whose tools Codex keeps', async () => {
-    const s = start({ resume: 'codex:thread-7' }, 'again');
+  test('resumes a thread by its id, whose tools Codex keeps, on its family resolved afresh', async () => {
+    const s = start({ resume: 'codex:thread-7', model: 'gpt-#-luna' }, 'again');
     await until(() => s.idles() === 1);
-    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-7', model: 'gpt-5.5' });
+    expect(s.events[0]).toEqual({ type: 'session', id: 'codex:thread-7', model: 'gpt-6-luna' });
     const resume = s.requests().find((r) => r.method === 'thread/resume')!.params;
     expect(resume.threadId).toBe('thread-7');
+    expect(resume.model).toBe('gpt-6-luna');
     expect(resume.dynamicTools).toBeUndefined();
     expect(s.requests().some((r) => r.method === 'thread/start')).toBe(false);
   });

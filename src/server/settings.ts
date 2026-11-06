@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chosenConversationLanguage, chosenLanguage, conversationLanguageIn, OWNER_SETTINGS_FILE as SETTINGS_FILE, ownerLanguageIn, ownerSettingsWritten, systemLanguage } from '../../plugin/skills/demo/lib/language.ts';
 import { type Language, LANGUAGES } from '../core/locale';
-import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, type HarnessView, modelFits, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView } from '../core/types';
+import { AGENT_DEFAULTS, AGENT_EFFORTS, AGENT_MODELS, AGENT_ROLES, agentDefault, type AgentEffort, type AgentRole, type AgentSetting, type AgentsView, type Harness, HARNESSES, type HarnessView, modelFits, storedModel, type LanguageView, type RemoteSetting, type Theme, THEMES, type ThemeView, type UsageMeterView } from '../core/types';
 import { BadRequest } from './board';
 
 interface Settings {
@@ -108,7 +108,8 @@ type Chosen = Partial<AgentSetting>;
 /**
  * The known choices in a file's `agents`: a harness chosen, and a model and effort that differ from
  * the defaults; anything else in it is left out. A model differs from its harness's preset (the
- * harness named, else Claude Code's), and only one that harness takes.
+ * harness named, else Claude Code's), and only one that harness takes; a Codex model is its family
+ * (a model id or `default` written before reads as one).
  */
 function agentsOf(input: unknown): Partial<Record<AgentRole, Chosen>> {
   const o = (input && typeof input === 'object' ? input : {}) as Record<string, { harness?: unknown; model?: unknown; effort?: unknown } | undefined>;
@@ -118,7 +119,8 @@ function agentsOf(input: unknown): Partial<Record<AgentRole, Chosen>> {
     const harness = HARNESSES.find((h) => h === o[role]?.harness);
     const on = harness ?? AGENT_DEFAULTS[role].harness;
     const given = o[role]?.model;
-    const model = typeof given === 'string' && modelFits(on, given) && given !== agentDefault(role, on).model ? given : undefined;
+    const fits = typeof given === 'string' && modelFits(on, given) ? storedModel(on, given) : undefined;
+    const model = fits !== agentDefault(role, on).model ? fits : undefined;
     const effort = AGENT_EFFORTS.find((e) => e === o[role]?.effort && e !== AGENT_DEFAULTS[role].effort);
     if (harness || model || effort) agents[role] = { ...(harness ? { harness } : {}), ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
   }
@@ -135,7 +137,7 @@ export function agentSetting(home: string, role: AgentRole, fallback: Harness = 
   const harness = chosen.harness ?? fallback;
   const preset = agentDefault(role, harness);
   // a model chosen is one of the harness chosen with it, Claude Code's where none was
-  const model = chosen.model && (chosen.harness ?? AGENT_DEFAULTS[role].harness) === harness && modelFits(harness, chosen.model) ? chosen.model : preset.model;
+  const model = chosen.model && (chosen.harness ?? AGENT_DEFAULTS[role].harness) === harness && modelFits(harness, chosen.model) ? storedModel(harness, chosen.model) : preset.model;
   return { harness, model, effort: chosen.effort ?? preset.effort };
 }
 
@@ -147,7 +149,8 @@ export function agentsView(home: string, harnesses: HarnessView[] = [], fallback
 
 /**
  * Saves the choices for the groups given (`{ worker: { harness: 'codex' } }`). A harness chosen
- * without a model takes that harness's default model. Other groups and settings in the file stay.
+ * without a model takes that harness's preset model; a Codex model is saved as its family (a model
+ * id given saves the family it belongs to). Other groups and settings in the file stay.
  */
 export function saveAgents(home: string, input: unknown, harnesses: HarnessView[] = [], fallback?: Harness): AgentsView {
   const given = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
@@ -161,10 +164,10 @@ export function saveAgents(home: string, input: unknown, harnesses: HarnessView[
     if (harness !== undefined && !HARNESSES.some((h) => h === harness)) throw new BadRequest('invalid', `harness must be one of ${HARNESSES.join(', ')}`);
     const before = agentSetting(home, r, fallback);
     const on = (harness as Harness | undefined) ?? before.harness;
-    if (model !== undefined && (typeof model !== 'string' || !modelFits(on, model))) throw new BadRequest('invalid', on === 'claude' ? `model must be one of ${AGENT_MODELS.join(', ')}` : 'model must be a Codex model id');
+    if (model !== undefined && (typeof model !== 'string' || !modelFits(on, model))) throw new BadRequest('invalid', on === 'claude' ? `model must be one of ${AGENT_MODELS.join(', ')}` : 'model must be a Codex model family or id');
     if (effort !== undefined && !AGENT_EFFORTS.some((e) => e === effort)) throw new BadRequest('invalid', `effort must be one of ${AGENT_EFFORTS.join(', ')}`);
     // another harness starts from its own default model
-    const next = model ?? (on === before.harness ? before.model : agentDefault(r, on).model);
+    const next = model !== undefined ? storedModel(on, model as string) : on === before.harness ? before.model : agentDefault(r, on).model;
     // the harness is kept once chosen, or where the group runs on another than the preset's
     const keep = harness !== undefined || settings.agents?.[r]?.harness !== undefined || on !== AGENT_DEFAULTS[r].harness;
     agents[r] = { ...(keep ? { harness: on } : {}), model: next as string, effort: (effort as AgentEffort | undefined) ?? before.effort };
