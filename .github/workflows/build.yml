@@ -2,7 +2,8 @@
 # smoke test runs where the build ran). A push to main that changes code (not only docs or the site)
 # builds the unsigned installers, checks the compiled server (scripts/check-binary.ts: a scratch
 # canvas answers, with the version, a repository's own adapter, Playwright and the adapter kit
-# from the resources) and runs the tests and the type check; the installers stay a week as the
+# from the resources), checks that the local demo voices install and speak on Linux, Windows and
+# macOS, and runs the tests and the type check; the installers stay a week as the
 # run's artifacts. A tag v<version of package.json> does the same and then makes a draft release
 # with every installer, SHA256SUMS and latest.json for the updater (scripts/release.ts), its notes
 # the commits since the tag before; the owner publishes it, and installed apps then offer it. Update artifacts and their signatures come only with the secret
@@ -62,6 +63,23 @@ jobs:
           git config --global user.name CI
           git config --global user.email ci@example.com
           bun test --parallel
+
+  # the local demo voices Obeya installs on request (Kokoro, Piper) install and speak on each
+  # platform, downloaded afresh (scripts/check-voice.ts)
+  voices:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.4.3 }
+      - uses: astral-sh/setup-uv@v10.3.0
+        with: { enable-cache: false }
+      - run: bun scripts/check-voice.ts
 
   build:
     strategy:

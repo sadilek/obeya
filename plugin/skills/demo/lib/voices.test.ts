@@ -41,7 +41,7 @@ describe('voices', () => {
 
   test('Kokoro is installed once its environment and its model files are in the Hugging Face cache', () => {
     const s = { language: 'en', voice: 'kokoro' } as const;
-    expect(installState(s, home)).toEqual({ installed: false, missing: ['Kokoro', `Model ${KOKORO_MODEL.repo}`], mb: 610 });
+    expect(installState(s, home)).toEqual({ installed: false, missing: ['Kokoro', `Model ${KOKORO_MODEL.repo}`], mb: 790 });
     const snap = join(hub, `models--${KOKORO_MODEL.repo.replace('/', '--')}`, 'snapshots', 'abc');
     mkdirSync(join(snap, 'onnx'), { recursive: true });
     mkdirSync(join(snap, 'voices'));

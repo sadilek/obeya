@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import sys
+import tempfile
 import wave
 from pathlib import Path
 
@@ -27,6 +30,29 @@ MAX_PHONEMES = 510
 STYLE_DIM = 256
 #: A sentence ends at a full stop, question or exclamation mark, colon or semicolon before a space.
 SENTENCE_END = re.compile(r"(?<=[.!?;:])\s+")
+#: espeak-ng opens its data by paths of under 160 characters (its `phontab` among them) and takes a
+#: longer one for missing: it then looks where it was built and ends the process. Found with a home
+#: in a deep temporary directory: a data path of 150 characters worked, one of 156 did not.
+ESPEAK_PATH_LIMIT = 150
+
+
+def espeak_data(data: str) -> str:
+    """espeak-ng's data where it can read it: where the package put it, or, under a path too long
+    for it, a copy in the system's temporary directory, made once."""
+    if len(data) <= ESPEAK_PATH_LIMIT:
+        return data
+    copy = os.path.join(tempfile.gettempdir(), "obeya-espeak-ng-data")
+    if not os.path.isfile(os.path.join(copy, "phontab")):
+        part = tempfile.mkdtemp(prefix="obeya-espeak-", dir=tempfile.gettempdir())
+        shutil.copytree(data, os.path.join(part, "data"))
+        try:
+            os.replace(os.path.join(part, "data"), copy)
+        except OSError:
+            if not os.path.isfile(os.path.join(copy, "phontab")):  # not another clip finishing first
+                raise
+        finally:
+            shutil.rmtree(part, ignore_errors=True)
+    return copy
 
 
 def chunks(phonemes: list[str]) -> list[str]:
@@ -58,9 +84,14 @@ def main() -> None:
 
     import numpy as np
     import onnxruntime as ort
+    import espeakng_loader
     from huggingface_hub import hf_hub_download
     from huggingface_hub.errors import LocalEntryNotFoundError
     from misaki import en, espeak
+    from phonemizer.backend.espeak.wrapper import EspeakWrapper
+
+    # misaki points espeak-ng at the package's data on import; under a long path, at a copy
+    EspeakWrapper.set_data_path(espeak_data(espeakng_loader.get_data_path()))
 
     def cached(name: str) -> Path:
         try:

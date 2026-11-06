@@ -246,7 +246,7 @@ export function components(given: DemoSettings, home = obeyaHome()): Component[]
     const dir = path.join(voicesHome(home), 'kokoro');
     const files = ['tokenizer.json', KOKORO_MODEL.file, ...KOKORO_MODEL.voices];
     return [
-      pythonEnv(dir, KOKORO_PACKAGES, 'Kokoro', 270),
+      pythonEnv(dir, KOKORO_PACKAGES, 'Kokoro', 450),
       {
         label: PART_WORDS[s.language].model(KOKORO_MODEL.repo),
         mb: 340,

@@ -40,7 +40,7 @@ The voice is chosen in Obeya's settings ("Demos"); "Listen" plays a sentence in 
   one demo that way.
 - **Kokoro**, the default: Kokoro-82M, more natural than Piper, on any CPU, without a graphics
   card. It speaks English only; German narration with it is spoken by Piper. Obeya installs what
-  the narration language needs on request (for English about 610 MB: its environment into
+  the narration language needs on request (for English about 800 MB: its environment into
   `voices/` in Obeya's home, the model into the Hugging Face cache); without Obeya, `node
   plugin/skills/demo/lib/voices.ts install`.
 - **Piper**: runs on any CPU at about twice real time, in German and English, with a short pause
