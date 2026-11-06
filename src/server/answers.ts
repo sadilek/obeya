@@ -23,7 +23,7 @@ import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './workers';
 import { clip, messageOf } from '../core/text';
 import { AnswerWalkthrough, readWalkthrough, type Voicing, WALKTHROUGH_RULES } from './walkthrough';
-import type { Walkthrough } from '../core/walkthrough';
+import { isWalkthrough, type Walkthrough } from '../core/walkthrough';
 
 export interface AnswerOptions {
   board: Board;
@@ -267,7 +267,7 @@ export class Answers {
   showAsWalkthrough(talkId: number): number {
     const t = this.o.board.exchange(talkId);
     if (!t?.thread || t.answer === undefined || !this.o.voicing) throw new BadRequest('invalid', 'no looked-up answer to tell as a walkthrough');
-    const talk = this.o.board.addTalk(this.o.board.t.answer.walkthroughAsked, this.o.board.t.answer.walkthroughReply, null, { question: AS_WALKTHROUGH, about: t.about ?? null });
+    const talk = this.o.board.addTalk(this.o.board.t.answer.walkthroughAsked, this.o.board.t.answer.walkthroughReply, null, { question: asWalkthrough(t.question ?? t.said, t.answer), about: t.about ?? null });
     this.o.board.followTalk(talk, talkId);
     this.o.voicing.warm(this.o.board.conversation());
     this.lookUp(talk);
@@ -455,7 +455,8 @@ export class Answers {
     return this.consulted(c, dir, told)
       .then((a) => {
         const shown = told.files();
-        const files = [...shown, ...(a.files ?? []).filter((f) => !shown.some((x) => x.name === f.name))];
+        // a walkthrough is the one the agent told, never a file of that name it passes on
+        const files = [...shown, ...(a.files ?? []).filter((f) => !isWalkthrough(f.name))];
         return { ...a, ...(files.length ? { files } : {}) };
       })
       .finally(() => told.finish());
@@ -633,8 +634,12 @@ const RESUMED =
 const filesNote = (dir: string) =>
   `Your output directory for this conversation is ${dir}, outside every repository; it stays with the conversation, so what you wrote there before is there still, and earlier answers still show their files: leave those as they are and write a changed version under a new name. Files the owner asks for, or that help your answer, go there and never into a repository: a spreadsheet of the numbers, a chart or a page, the queries and scripts behind them, a draft as a document, whatever fits. Pass those the owner should see with answer_owner's files, each with a one-line caption; a page (HTML) or an image shows under your answer, any other file opens with the owner's app for it.`;
 
-/** What the agent of a thread is asked when the owner wants its answer as a walkthrough ("Show as walkthrough"). */
-const AS_WALKTHROUGH = 'Tell your answer above as a walkthrough, as your instructions describe, rather than as text: the same content, walked through.';
+/**
+ * What the agent of a thread is asked when the owner wants an answer of it as a walkthrough ("Show
+ * as walkthrough"): that answer, which need not be its last.
+ */
+const asWalkthrough = (question: string, answer: string) =>
+  `Tell this answer of yours as a walkthrough, as your instructions describe, rather than as text: the same content, walked through.\n\nThe question: ${question}\n\nYour answer:\n<answer>\n${clip(answer, 6000)}\n</answer>`;
 
 const answerRef = (thread: number, files?: AnswerFile[], continues?: string): AnswerRef => ({
   thread,

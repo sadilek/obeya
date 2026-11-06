@@ -8,13 +8,13 @@
 // time, in the queue it shares with the renders (narration.ts): what a playing player needs next
 // goes first.
 
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { Language } from '../core/locale';
 import type { AnswerFile } from '../core/types';
 import { type Clip, INTERRUPTED, itemsOf, type Slide, type SlideContent, type Walkthrough, WALKTHROUGH_SUFFIX } from '../core/walkthrough';
-import { messageOf } from '../core/text';
+import { clip, messageOf } from '../core/text';
 import type { AgentTool } from './runtime';
 import { sentencesOf } from '../../plugin/skills/demo/lib/subtitles.ts';
 
@@ -22,6 +22,9 @@ import { sentencesOf } from '../../plugin/skills/demo/lib/subtitles.ts';
 export const MAX_SLIDES = 8;
 /** Lines a code slide shows at most. */
 export const MAX_CODE_LINES = 30;
+/** The largest file a code slide is read from, and the longest line it shows. */
+const MAX_CODE_FILE = 2_000_000;
+const MAX_LINE = 400;
 
 /** How every look-up agent hears when a walkthrough comes, and how it tells one. */
 export const WALKTHROUGH_RULES = `
@@ -102,6 +105,8 @@ export class Voicing {
 
   /** The sentences of a slide just handed over, to voice. */
   add(w: Told, slide: number) {
+    // its voice failed: the rest would fail the same way
+    if (w.data.error) return;
     this.told.set(w.file, w);
     for (const part of w.data.slides[slide]!.parts.keys()) this.jobs.push({ w, slide, part });
     void this.work();
@@ -165,7 +170,8 @@ export class Told {
   ) {
     const clipsDir = `${file.slice(file.lastIndexOf(sep) + 1, -WALKTHROUGH_SUFFIX.length)}.clips`;
     this.clipsPath = join(file, '..', clipsDir);
-    mkdirSync(this.clipsPath, { recursive: true });
+    // a directory of its own, made here: one that is there already is not the server's
+    mkdirSync(this.clipsPath);
     this.data = { title, slides: [], done: false, clips: [], clipsDir };
   }
 
@@ -300,10 +306,11 @@ export class AnswerWalkthrough {
     } catch {
       return `${path} is no file of the repository.`;
     }
-    const lines = readFileSync(file, 'utf8').split('\n').map((l) => l.replace(/\r$/, ''));
+    if (to - from + 1 > MAX_CODE_LINES) return `a code slide shows at most ${MAX_CODE_LINES} lines, not ${to - from + 1}.`;
+    if (statSync(file).size > MAX_CODE_FILE) return `${path} is too large for a code slide.`;
+    const lines = readFileSync(file, 'utf8').split('\n').map((l) => clip(l.replace(/\r$/, ''), MAX_LINE));
     if (lines.at(-1) === '') lines.pop();
     if (from < 1 || to < from || to > lines.length) return `${path} has lines 1 to ${lines.length}; lines ${from} to ${to} are not among them.`;
-    if (to - from + 1 > MAX_CODE_LINES) return `a code slide shows at most ${MAX_CODE_LINES} lines, not ${to - from + 1}.`;
     const outside = focus.find(([a, b]) => a < from || b > to || b < a);
     if (outside) return `the focus ${outside[0]}–${outside[1]} is not within lines ${from}–${to}.`;
     return lines.slice(from - 1, to);
@@ -321,12 +328,23 @@ export class AnswerWalkthrough {
         .replace(/^-+|-+$/g, '')
         .slice(0, 50)
         .replace(/-+$/, '') || 'walkthrough';
+    // neither it nor its clips' directory there yet, so nothing of the agent's stands in for them (a link elsewhere)
     for (let n = 1; ; n++) {
-      const file = join(this.o.dir, `${n === 1 ? base : `${base}-${n}`}${WALKTHROUGH_SUFFIX}`);
-      if (!existsSync(file)) return file;
+      const name = n === 1 ? base : `${base}-${n}`;
+      const file = join(this.o.dir, `${name}${WALKTHROUGH_SUFFIX}`);
+      if (!existsSync(file) && !lexists(join(this.o.dir, `${name}.clips`)) && !lexists(file)) return file;
     }
   }
 }
+
+const lexists = (path: string) => {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /** How long a WAV plays: its data chunk over its byte rate. */
 export function wavSeconds(file: string): number {
@@ -341,6 +359,33 @@ export function wavSeconds(file: string): number {
   return 0;
 }
 
+/** The walkthrough file's shape, as far as the player relies on it. */
+const KEPT = z.object({
+  title: z.string(),
+  slides: z.array(
+    z
+      .discriminatedUnion('type', [
+        z.object({ type: z.literal('title'), title: z.string(), subtitle: z.string().optional() }),
+        z.object({ type: z.literal('points'), title: z.string(), points: z.array(z.string()) }),
+        z.object({ type: z.literal('flow'), title: z.string(), steps: z.array(z.object({ label: z.string(), note: z.string().optional() })) }),
+        z.object({
+          type: z.literal('code'),
+          title: z.string(),
+          file: z.string(),
+          lines: z.tuple([z.number(), z.number()]),
+          focus: z.array(z.tuple([z.number(), z.number()])),
+          note: z.string().optional(),
+          code: z.array(z.string()),
+        }),
+      ])
+      .and(z.object({ parts: z.array(z.string()), items: z.array(z.number()).optional() })),
+  ),
+  done: z.boolean(),
+  clips: z.array(z.array(z.object({ file: z.string(), seconds: z.number() }).nullable())),
+  clipsDir: z.string(),
+  error: z.string().optional(),
+});
+
 /**
  * A walkthrough of the thread's directory `dir` as the player reads it; `undefined` for a name
  * that is none. `playing`: the slide its player is on (`-1`: it does not play), for the voice.
@@ -350,7 +395,12 @@ export function readWalkthrough(dir: string, name: string, voicing: Voicing | un
   const file = join(dir, name);
   if (playing !== undefined && Number.isInteger(playing)) voicing?.played(file, playing);
   try {
-    const w = JSON.parse(readFileSync(file, 'utf8')) as Walkthrough;
+    // a link in the directory leads nowhere outside it
+    if (realpathSync(file) !== join(realpathSync(dir), name) || !statSync(file).isFile()) return;
+    const read = KEPT.safeParse(JSON.parse(readFileSync(file, 'utf8')));
+    // a file of that name that is no walkthrough as Obeya writes them
+    if (!read.success) return;
+    const w = read.data as Walkthrough;
     // sentences that will never come: their voice stopped with the server that voiced them
     if (!w.error && voicing && !voicing.voicing(file) && w.clips.some((c) => c.some((x) => !x))) return { ...w, error: INTERRUPTED };
     return w;

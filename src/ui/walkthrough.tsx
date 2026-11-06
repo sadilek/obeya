@@ -39,7 +39,8 @@ class Playback {
   refused = false;
   readonly audio = new Audio();
   private next?: ReturnType<typeof setTimeout>;
-  private poller?: ReturnType<typeof setTimeout>;
+  /** A read is running or due: one at a time. */
+  private reading = false;
   private shown = 0;
   private hide?: ReturnType<typeof setTimeout>;
   private listeners = new Set<() => void>();
@@ -68,26 +69,30 @@ class Playback {
   attach(): () => void {
     this.shown++;
     clearTimeout(this.hide);
-    if (!this.poller) void this.poll();
+    this.read();
     return () => {
       this.shown--;
       // the answer's words arriving draw its message anew: it shows again at once
       this.hide = setTimeout(() => {
-        if (this.shown > 0) return;
-        this.pause();
-        clearTimeout(this.poller);
-        this.poller = undefined;
+        if (this.shown <= 0) this.pause();
       }, 500);
     };
   }
 
   private complete() {
     const d = this.data;
-    return !!d && (!!d.error || (d.done && d.clips.every((c) => c.every(Boolean))));
+    // with its voice failed, it still gets the slides the agent writes
+    return !!d && d.done && (!!d.error || d.clips.every((c) => c.every(Boolean)));
+  }
+
+  /** Reads the walkthrough, and again and again while it grows and a message shows it. */
+  private read() {
+    if (this.reading) return;
+    this.reading = true;
+    void this.poll();
   }
 
   private async poll() {
-    clearTimeout(this.poller);
     try {
       const r = await fetch(`${this.url}?playing=${this.playing ? this.slide : -1}`, { cache: 'no-store' });
       if (r.status === 404) this.missing = true;
@@ -95,7 +100,8 @@ class Playback {
     } catch {}
     this.grew();
     this.changed();
-    this.poller = this.complete() || this.missing || this.shown <= 0 ? undefined : setTimeout(() => void this.poll(), POLL_MS);
+    if (this.complete() || this.missing || this.shown <= 0) this.reading = false;
+    else setTimeout(() => void this.poll(), POLL_MS);
   }
 
   /** What came since: a slide the player waited for, a sentence voiced it waited for. */
@@ -163,12 +169,16 @@ class Playback {
     this.playing = true;
     this.refused = false;
     const d = this.data;
-    const last = this.slide === d.slides.length - 1 && this.part === d.slides[this.slide]!.parts.length - 1;
-    if (d.done && last && this.audio.ended) this.go(0);
-    else if (this.audio.dataset.key === `${this.slide}-${this.part}` && !this.audio.ended) this.start();
+    const here = this.audio.dataset.key === `${this.slide}-${this.part}`;
+    // paused at the end of a slide: on with the next, or from the start once there is none
+    const over = here && this.audio.ended && this.part === d.slides[this.slide]!.parts.length - 1;
+    this.writing = false;
+    if (over && this.slide + 1 < d.slides.length) this.playPart(this.slide + 1, 0);
+    else if (over && d.done) this.playPart(0, 0);
+    else if (here && !this.audio.ended) this.start();
     else this.playPart(this.slide, this.part);
     this.changed();
-    if (!this.poller && !this.complete()) void this.poll();
+    this.read();
   }
 
   pause() {
@@ -217,9 +227,11 @@ class Playback {
   }
 
   private start() {
-    this.audio.play().catch(() => {
+    const key = this.audio.dataset.key;
+    this.audio.play().catch((e: unknown) => {
+      // a play cut short by the next sentence, or one that no longer plays: nothing was refused
+      if (!this.playing || key !== this.audio.dataset.key || (e instanceof DOMException && e.name === 'AbortError')) return;
       // no click on the page yet: the owner starts it
-      if (!this.playing) return;
       this.playing = false;
       this.refused = true;
       this.changed();
@@ -425,11 +437,11 @@ export function WalkthroughButton({ talk }: { talk: number }) {
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         setBusy(true);
+        // asked once: the walkthrough comes as the next answer
         api
           .walkthrough(talk)
           .then(({ talk: asked }) => askedHere.add(asked))
-          .catch(() => {})
-          .finally(() => setBusy(false));
+          .catch(() => setBusy(false));
       }}
     >
       ▶ {t.answer.walkthrough}

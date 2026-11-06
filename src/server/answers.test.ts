@@ -935,7 +935,10 @@ describe('an answer told as a walkthrough', () => {
     expect(voice.warmed).toEqual(['de']);
     const a = answerer();
     expect(a.spec.resume).toBe('look-1');
-    expect(a.inbox[0]).toContain('Tell your answer above as a walkthrough, as your instructions describe, rather than as text');
+    expect(a.inbox[0]).toContain('Tell this answer of yours as a walkthrough, as your instructions describe, rather than as text');
+    // the answer the owner clicked, which need not be the thread's last
+    expect(a.inbox[0]).toContain('The question: Idea card or Question card?');
+    expect(a.inbox[0]).toContain('<answer>\nEine Ideenkarte, wenn …\n</answer>');
     // only a looked-up answer has a thread to ask
     await say('hallo', {}, 'reply', { confirm: 'Hallo.' });
     expect(() => canvas.answers.showAsWalkthrough(board().talk().at(-1)!.id)).toThrow(BadRequest);

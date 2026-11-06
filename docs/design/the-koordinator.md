@@ -325,7 +325,8 @@ agent still writes it. The agent judges which questions need one; the Koordinato
 the project agents alike can tell one. A text answer in Obeya's sheet has "Show as walkthrough" in
 its head, on hover (always on a screen without hover): it asks the same thread, as the owner's
 words "Show as walkthrough" following up on the answer with Obeya's reply "I'll tell the answer as a
-walkthrough.", to tell that answer as a walkthrough, which comes as the next answer.
+walkthrough.", to tell that answer as a walkthrough (quoted to it, since it need not be the thread's
+last), which comes as the next answer.
 
 A walkthrough has 4 to 8 slides: a title slide first, then points (up to five), flows (three to six
 steps in a row joined by arrows, each with an optional note) and, only when the owner asks to see
@@ -340,7 +341,8 @@ the walkthrough answers, each further one once it has checked what it says; then
 sentence or two on what the walkthrough shows. What is wrong with a slide goes back in the tool's
 reply and the slide is not shown: a first slide that is no title slide, a second title slide (an
 answer has one walkthrough), a ninth slide, a narration in parts that do not match the items, a code
-slide's file outside the repository, lines it lacks, more than 30 lines, or a range outside them.
+slide's file outside the repository or too large to show from, lines it lacks, more than 30 lines,
+or a range outside them. A file the agent passes on as a walkthrough of its own is left out.
 
 With its first slide the walkthrough shows under the question, before the answer's words: in the
 sheet, in the log of the card it was asked on, on a Question card in its conversation, as a message

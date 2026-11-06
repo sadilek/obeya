@@ -2,7 +2,7 @@
 // refuses back to the agent, and the order the one voice speaks the sentences of all walkthroughs in.
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Walkthrough } from '../core/walkthrough';
@@ -81,6 +81,24 @@ describe('a walkthrough handed over slide by slide', () => {
     expect(hand(w, { type: 'points', title: '9', points: ['a'], narration: 'a.' })).toBe('Not shown: a walkthrough has at most 8 slides. Call answer_owner now.');
   });
 
+  test("a file or a clips directory of that name the agent put there (a link elsewhere, say) is passed by", () => {
+    symlinkSync(dir, join(dir, 'answers', 'how-a-card-lands.clips'));
+    const w = told();
+    hand(w, TITLE);
+    expect(w.files()).toEqual([{ name: 'how-a-card-lands-2.walkthrough.json', caption: 'How a card lands' }]);
+  });
+
+  test('a code slide is not read from a file too large for one, and its long lines are cut', () => {
+    writeFileSync(join(repo, 'big.txt'), 'x'.repeat(2_100_000));
+    writeFileSync(join(repo, 'wide.txt'), `${'y'.repeat(1000)}\n`);
+    const w = told();
+    hand(w, TITLE);
+    expect(hand(w, { type: 'code', title: 'Big', file: 'big.txt', lines: [1, 1], narration: 'Big.' })).toBe('Not shown: big.txt is too large for a code slide.');
+    hand(w, { type: 'code', title: 'Wide', file: 'wide.txt', lines: [1, 1], narration: 'Wide.' });
+    expect(read('how-a-card-lands.walkthrough.json').slides[1]).toMatchObject({ type: 'code' });
+    expect((read('how-a-card-lands.walkthrough.json').slides[1] as { code: string[] }).code[0]!.length).toBeLessThanOrEqual(400);
+  });
+
   test('a later answer gets a file of its own, the earlier one keeps its', () => {
     hand(told(), TITLE);
     const again = told();
@@ -118,9 +136,13 @@ describe('the voice of walkthroughs', () => {
     hand(w, { type: 'title', title: 'Stumm', narration: 'Eins.' });
     await until(() => !!read('stumm.walkthrough.json').error);
     expect(read('stumm.walkthrough.json').error).toBe('no model');
+    // its further slides are shown, not voiced
+    hand(w, { type: 'points', title: 'Zwei', points: ['x'], narration: 'Weiter.' });
+    expect(read('stumm.walkthrough.json').slides).toHaveLength(2);
     const other = told();
     hand(other, { type: 'title', title: 'Laut', narration: 'Zwei.' });
     await until(() => voice.said.includes('en:Zwei.'));
+    expect(voice.said).not.toContain('en:Weiter.');
   });
 
   test('loads when asked, before the first slide', () => {
@@ -137,6 +159,12 @@ describe('a walkthrough read by its player', () => {
     const answers = join(dir, 'answers');
     expect(readWalkthrough(answers, 'how-a-card-lands.walkthrough.json', voice.voicing)?.title).toBe('How a card lands');
     for (const name of ['../secret.txt', 'how-a-card-lands.clips/1-1.wav', '.walkthrough.json', 'x/../how-a-card-lands.walkthrough.json']) expect(readWalkthrough(answers, name, voice.voicing)).toBeUndefined();
+    // nor one that is no walkthrough as Obeya writes them
+    writeFileSync(join(answers, 'odd.walkthrough.json'), JSON.stringify({ title: { x: 1 }, slides: [], done: true, clips: [], clipsDir: 'x' }));
+    expect(readWalkthrough(answers, 'odd.walkthrough.json', voice.voicing)).toBeUndefined();
+    // nor through a link to a file outside it
+    symlinkSync(join(dir, 'secret.txt'), join(answers, 'linked.walkthrough.json'));
+    expect(readWalkthrough(answers, 'linked.walkthrough.json', voice.voicing)).toBeUndefined();
     // a server that starts anew voices nothing of what the last one left unvoiced
     const file = join(answers, 'how-a-card-lands.walkthrough.json');
     const left = read('how-a-card-lands.walkthrough.json');
