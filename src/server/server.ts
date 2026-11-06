@@ -57,12 +57,22 @@ function replyParam(p: string | null): number | TalkRef | undefined {
   return m[2] ? { talk: Number(m[1]), part: m[2] as TalkRef['part'] } : Number(m[1]) || undefined;
 }
 
-/** What the server knows of an open page's WebSocket: its canvas, the page, and the paired device it is on, if another. */
+/**
+ * What the server knows of an open page's WebSocket: its canvas (`EVERY` for the phone view's one
+ * connection to every canvas), the page, the paired device it is on, if another, and the canvases
+ * whose snapshot it is owed while it is behind on a slow network.
+ */
 interface Socket {
   canvas: string;
   page: string;
   device?: string;
+  owed?: Set<string>;
 }
+
+/** The canvas of a connection to every canvas: each message about one names it (`canvas`). */
+const EVERY = '';
+/** What a connection may hold unsent before a newer snapshot replaces the ones it has not sent yet. */
+const BEHIND_BYTES = 256 * 1024;
 
 export interface Voice {
   transcriber: Transcriber;
@@ -179,7 +189,7 @@ export function serve(
   const byId = new Map<string, CanvasRuntime>();
   const handOver = new HandOver();
   const started = crypto.randomUUID();
-  const sockets = new Map<string, Set<ServerWebSocket<Socket>>>();
+  const sockets = new Map<string, Set<ServerWebSocket<Socket>>>([[EVERY, new Set()]]);
   // a device removed loses its open pages at once
   access.onRemoved((device) => {
     for (const set of sockets.values()) for (const ws of set) if (ws.data.device === device) ws.close(4401, 'device removed');
@@ -217,7 +227,8 @@ export function serve(
   const countWatchers = new Set<() => void>();
   /** What waits for the owner changed: every page hears of it, and whoever waits for the count. */
   const waitingChanged = () => {
-    everyone(waitingMessage());
+    // a connection to every canvas has their snapshots, which hold it already
+    everyone(waitingMessage(), EVERY);
     for (const w of [...countWatchers]) w();
   };
   /** Takes in what waits on `c` now; whether that changed. */
@@ -229,12 +240,44 @@ export function serve(
     waitingSent[c.id] = text;
     return true;
   };
-  const everyone = (text: string) => {
-    for (const set of sockets.values()) for (const ws of set) ws.send(text);
+  /** To another device compressed: what Obeya sends is JSON, which shrinks to a tenth, and a phone's network may be slow. */
+  const put = (ws: ServerWebSocket<Socket>, text: string) => ws.send(text, !!ws.data.device);
+  /** To every page, but those of canvas `but`. */
+  const everyone = (text: string, but?: string) => {
+    for (const [id, set] of sockets) if (id !== but) for (const ws of set) put(ws, text);
+  };
+  /** A message about canvas `id`, as a connection to every canvas gets it: naming the canvas. */
+  const named = (id: string, text: string) => `{"canvas":${JSON.stringify(id)},${text.slice(1)}`;
+  /**
+   * A snapshot to a page that is behind (a slow network, a phone in a tunnel) does not queue up
+   * behind the ones before it: the page gets the newest once it caught up (`drain`).
+   */
+  const deliver = (ws: ServerWebSocket<Socket>, id: string, type: ServerMessage['type'], text: string) => {
+    if (type === 'snapshot') {
+      if (ws.getBufferedAmount() > BEHIND_BYTES) return void (ws.data.owed ??= new Set()).add(id);
+      ws.data.owed?.delete(id);
+    }
+    put(ws, text);
   };
   const sendTo = (id: string, msg: ServerMessage) => {
     const text = JSON.stringify(msg);
-    for (const ws of sockets.get(id) ?? []) ws.send(text);
+    for (const ws of sockets.get(id) ?? []) deliver(ws, id, msg.type, text);
+    const every = sockets.get(EVERY);
+    if (!every?.size) return;
+    const tagged = named(id, text);
+    for (const ws of every) deliver(ws, id, msg.type, tagged);
+  };
+  /** What canvas `c` sends a page as it connects: its restart, its snapshot, the notices still to undo. */
+  const greet = (ws: ServerWebSocket<Socket>, c: CanvasRuntime) => {
+    const send = (msg: ServerMessage) => {
+      const text = JSON.stringify(msg);
+      put(ws, ws.data.canvas === EVERY ? named(c.id, text) : text);
+    };
+    send({ type: 'restart', restart: pending(c.id) });
+    send({ type: 'snapshot', snapshot: c.board.snapshot() });
+    if (ws.data.canvas !== EVERY) put(ws, waitingMessage());
+    // a page that reloads within a command's undo window offers "Rückgängig" again
+    for (const n of c.commander.undoable()) send({ type: 'notice', ...n });
   };
   restarter?.onChange(() => {
     for (const id of byId.keys()) sendTo(id, { type: 'restart', restart: pending(id) });
@@ -250,6 +293,8 @@ export function serve(
     byId.set(c.id, c);
     if (!sockets.has(c.id)) sockets.set(c.id, new Set());
     counted(c);
+    // a canvas started while Obeya runs: the connections to every canvas get it too
+    for (const ws of sockets.get(EVERY) ?? []) greet(ws, c);
     const send = (msg: ServerMessage) => sendTo(c.id, msg);
     /** The cards as last sent: what starts to wait for the owner after is pushed to their phone. */
     let seen = new Map(c.board.items().map((i) => [i.id, i]));
@@ -1040,6 +1085,9 @@ export function serve(
       '/api/c/:canvas/talk/:id/unwait': {
         POST: on(async (c, req) => ({ stopped: c.commander.unwait(Number(req.params.id), String(((await req.json().catch(() => ({}))) as { card?: unknown }).card ?? '')) })),
       },
+      // the phone view's one connection: every canvas's snapshots and changes, each naming its canvas
+      '/api/ws': (req, server) =>
+        server.upgrade(req, { data: { canvas: EVERY, page: crypto.randomUUID(), device: access.deviceOf(req) } }) ? undefined : new Response('WebSocket expected', { status: 400 }),
       '/api/c/:canvas/ws': (req, server) =>
         byId.has(req.params.canvas) && server.upgrade(req, { data: { canvas: req.params.canvas, page: crypto.randomUUID(), device: access.deviceOf(req) } })
           ? undefined
@@ -1048,21 +1096,33 @@ export function serve(
     fetch: (req: Request, srv: Bun.Server<Socket>) => refusal(req, access.hosts()) ?? access.admit(req, srv, '') ?? notFound(),
     websocket: {
       data: {} as Socket,
+      // offered to every page, used for those on another device (`put`)
+      perMessageDeflate: true,
       open: (ws: ServerWebSocket<Socket>) => {
+        const every = ws.data.canvas === EVERY;
         const c = byId.get(ws.data.canvas);
-        if (!c) return ws.close();
-        sockets.get(c.id)!.add(ws);
-        ws.send(JSON.stringify({ type: 'hello', server: started, ...(oldLinuxBun() ? { oldBun: Bun.version } : {}) } satisfies ServerMessage));
+        if (!c && !every) return ws.close();
+        sockets.get(ws.data.canvas)!.add(ws);
+        put(ws, JSON.stringify({ type: 'hello', server: started, ...(oldLinuxBun() ? { oldBun: Bun.version } : {}) } satisfies ServerMessage));
         // what the bar shows comes before the snapshot, which draws the bar: it is there from the first frame
-        ws.send(JSON.stringify({ type: 'restart', restart: pending(c.id) } satisfies ServerMessage));
-        ws.send(JSON.stringify({ type: 'update', update: updates.current() } satisfies ServerMessage));
-        ws.send(JSON.stringify({ type: 'source', source: sources?.current() ?? null } satisfies ServerMessage));
-        ws.send(JSON.stringify({ type: 'usage', usage: usage?.current() ?? null } satisfies ServerMessage));
+        put(ws, JSON.stringify({ type: 'update', update: updates.current() } satisfies ServerMessage));
+        put(ws, JSON.stringify({ type: 'source', source: sources?.current() ?? null } satisfies ServerMessage));
+        put(ws, JSON.stringify({ type: 'usage', usage: usage?.current() ?? null } satisfies ServerMessage));
         if (usage) unwatch.set(ws.data.page, usage.watch());
-        ws.send(JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage));
-        ws.send(waitingMessage());
-        // a page that reloads within a command's undo window offers "Rückgängig" again
-        for (const n of c.commander.undoable()) ws.send(JSON.stringify({ type: 'notice', ...n } satisfies ServerMessage));
+        if (every) put(ws, JSON.stringify({ type: 'canvases', canvases: canvases.all().map((x) => x.board.canvas) } satisfies ServerMessage));
+        for (const x of every ? byId.values() : [c!]) greet(ws, x);
+      },
+      // caught up after a slow stretch: the newest snapshot of each canvas it missed one of
+      drain: (ws: ServerWebSocket<Socket>) => {
+        const owed = ws.data.owed;
+        if (!owed?.size) return;
+        for (const id of [...owed]) {
+          owed.delete(id);
+          const c = byId.get(id);
+          if (!c) continue;
+          const text = JSON.stringify({ type: 'snapshot', snapshot: c.board.snapshot() } satisfies ServerMessage);
+          put(ws, ws.data.canvas === EVERY ? named(id, text) : text);
+        }
       },
       close: (ws: ServerWebSocket<Socket>) => {
         sockets.get(ws.data.canvas)?.delete(ws);
@@ -1078,7 +1138,7 @@ export function serve(
         try {
           const msg = JSON.parse(String(text)) as ClientMessage;
           if (msg.type === 'hold' && Array.isArray(msg.hold)) restarter?.hold(ws.data.page, msg.hold.filter((h) => h === 'video' || h === 'voice'));
-          if (msg.type === 'back') byId.get(ws.data.canvas)?.ownerBack();
+          if (msg.type === 'back') for (const c of ws.data.canvas === EVERY ? byId.values() : [byId.get(ws.data.canvas)]) c?.ownerBack();
           // back from the terminal, say, where the owner committed what stood in the way of a pull, or pulled
           if (msg.type === 'back') void sources?.check(false);
           // the owner uses a page at the machine or on their phone: what starts waiting meanwhile is not pushed
@@ -1088,7 +1148,7 @@ export function serve(
           if (msg.type === 'stall') {
             const stall = pageStall(msg);
             const { device } = ws.data;
-            const where = `${device ? (access.devices().find((d) => d.id === device)?.name ?? 'another device') : 'this machine'}, canvas ${ws.data.canvas}`;
+            const where = `${device ? (access.devices().find((d) => d.id === device)?.name ?? 'another device') : 'this machine'}, ${ws.data.canvas === EVERY ? 'every canvas' : `canvas ${ws.data.canvas}`}`;
             if (stall) stalls?.page(stall, where, ws.data.page);
           }
           if (msg.type === 'focus') {

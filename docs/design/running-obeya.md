@@ -22,6 +22,13 @@ the schema Obeya was released with; later changes are migrations. An Obeya older
 (`PRAGMA user_version` above its migrations) leaves it alone and says to update; a database a
 pre-release Obeya left below the release schema is left alone too, naming the commit to start once.
 
+A page hears of changes over a WebSocket: its canvas's snapshot after every change, a card's new log
+lines, what is server-wide (a waiting restart, a newer version, the usage limits, what waits for the
+owner on each canvas). What goes to another device is compressed (`permessage-deflate`; the JSON
+shrinks to about a tenth), what goes to this machine is not. A page that falls behind (more than a
+quarter of a megabyte unsent, a phone on a slow network) gets no snapshot queued behind those it has
+not received yet: once it caught up, it gets the newest of each canvas it missed one of.
+
 #### Who may talk to it
 
 Only the owner. The server listens on `127.0.0.1`, which every program and account on the machine
@@ -151,8 +158,9 @@ switch's hint says. Workers on SSH hosts keep Obeya's machine awake, not their h
 On a phone the page shows the phone view instead of the canvas, at the same address and from the
 same bundle. A phone is a device with a coarse pointer whose screen's shorter side is under 600 px;
 a tablet and a narrow window at the desk keep the canvas. `?view=phone` or `?view=canvas` decides
-instead. The view is settled at load; turning the phone does not switch it. It uses each canvas's
-own WebSocket. It shows four lists:
+instead. The view is settled at load; turning the phone does not switch it. It holds one WebSocket
+for every canvas (`/api/ws`): each message about one canvas names it, the server-wide ones come once,
+and what waits for the owner is left out, since the canvases' snapshots hold it. It shows four lists:
 
 - **"Needs you"**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then "Obeya answered" where an answer waits unread. Each card says what it waits
@@ -533,9 +541,13 @@ workers are busy.
 - **The phone view is a view of its own in the same page, not the canvas made touch-capable**
   (2026-10-16, plan "Obeya from the phone"): readable cards on 390 px mean mostly panning. It goes by
   coarse pointer and short side, not window width, so a narrow window at the desk keeps the canvas.
-  It reuses the canvas's detail view, conversation, drafts and confirmations rather than copies. One
-  WebSocket per canvas rather than one stream for all: the server's messages stay as they are, and an owner has a
-  handful of canvases.
+  It reuses the canvas's detail view, conversation, drafts and confirmations rather than copies.
+- **The phone view's one WebSocket for every canvas** (2026-11-06, the owner's phone over Tailscale
+  said Obeya was not answering and showed no cards): a browser opens WebSockets to one address one at
+  a time, so with nine canvases, a slow link or a busy machine, the later sockets were still waiting
+  for their turn past the 3 s after which the page says Obeya does not answer, and past the 10 s
+  after which a socket is given up and tried anew. One socket opens in one handshake. Rejected: a
+  socket per canvas (2026-10-16), which left the server's messages as they were.
 - **Planned tasks on the phone** (2026-10-31): without "Planned" an accepted proposal left the phone
   until it was started.
 - **Done cards on the phone in a list of their own, closed by default** (2026-10-28, the owner):

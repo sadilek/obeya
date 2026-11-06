@@ -358,6 +358,26 @@ describe('the log', () => {
   });
 });
 
+describe('the connection to every canvas', () => {
+  test("carries each canvas's snapshots and log lines, naming the canvas, and what waits only within them", async () => {
+    const c = card();
+    const messages: (ServerMessage & { canvas?: string })[] = [];
+    const ws = new WebSocket(new URL('/api/ws', server.url.href.replace('http', 'ws')));
+    ws.onmessage = (e) => messages.push(JSON.parse(e.data));
+    await until(() => messages.some((m) => m.type === 'snapshot'));
+    expect(messages[0]!.type).toBe('hello');
+    expect(messages.find((m) => m.type === 'canvases')).toMatchObject({ canvases: [{ id: 'main' }] });
+    expect(messages.find((m) => m.type === 'snapshot')).toMatchObject({ canvas: 'main', snapshot: { items: [{ id: c.id }] } });
+    const d = card();
+    board.log(c.id, 'hint', 'owner', 'Hallo');
+    await until(() => messages.some((m) => m.type === 'event'));
+    await until(() => messages.some((m) => m.type === 'snapshot' && m.snapshot.items.some((i) => i.id === d.id)));
+    expect(messages.find((m) => m.type === 'event')).toMatchObject({ canvas: 'main', event: { cardId: c.id } });
+    expect(messages.some((m) => m.type === 'waiting')).toBe(false);
+    ws.close();
+  });
+});
+
 describe('groups', () => {
   test('are created with cards, renamed and assigned, and every page hears of it', async () => {
     const [a, b] = [card(), card()];
