@@ -1,6 +1,7 @@
 // The hint that screenshots may be pasted from the clipboard: shown once the owner has picked one
 // with the file dialog, in that field, until they confirm it; never again after that, and never
-// once they have pasted one.
+// once they have pasted one. And the one under the microphone that text may be pasted outside a
+// text field too, until the owner has done so once.
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { know, known } from './known';
@@ -61,6 +62,21 @@ export function pastedShots() {
 
 /** The owner confirmed the hint: it goes for good. */
 export const confirmPasteHint = pastedShots;
+
+/** Set once the owner pasted text outside a text field: the line under the microphone no longer names the key. */
+export const PASTE_TEXT_KNOWN = 'obeya-paste-text-known';
+let textKnown = known(PASTE_TEXT_KNOWN);
+
+/** The owner pasted text outside a text field: they know, and the hint goes. */
+export function pastedText() {
+  know(PASTE_TEXT_KNOWN);
+  if (textKnown) return;
+  textKnown = true;
+  changed();
+}
+
+/** Whether the line under the microphone says that text may be pasted outside a text field. */
+export const usePasteTextHint = () => useSyncExternalStore(subscribe, () => !textKnown && hasKeyboard());
 
 /** Whether the hint shows in field `key`, which takes screenshots while `on`. */
 export function usePasteHint(key: string, on: boolean) {

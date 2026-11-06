@@ -356,6 +356,20 @@ connection breaks before the answer, the page asks Obeya by the recording's id w
 and returns words and screenshots to the field only if not; the command's line then says "Obeya has
 it; only its answer did not come through." instead of "That did not work".
 
+### Pasted text
+
+Text pasted (⌘V / Ctrl+V) outside a text field, with no screenshot in the clipboard, goes where a
+pasted screenshot goes: into the field in view (the open card's, or Obeya's sidebar's), at the end of
+its text in a paragraph of its own, without taking the focus, so holding the microphone next sends
+it with what is said. With no such field it waits beside the microphone, shown by its first two
+lines (× removes it, the tooltip shows more), and goes with the next recording; several pastes wait
+side by side, each its own paragraph. It moves into Obeya's field when the sidebar opens and back
+when it closes, as dropped files' paths do, while it still stands in the field's text, and a reload
+keeps it. What stood in the field goes first in the message, the spoken words after it. A file
+copied in the file manager carries its name as text: that is not pasted. Until the owner has pasted
+text this way once, the line under the microphone names the key ("⌘V adds text or a screenshot"),
+on devices with a mouse or trackpad; the legend of keys lists it too.
+
 ### Skills by `/`
 
 In the field where a card's agent hears the owner's words (a task's, an idea's, a review card's; not
@@ -394,6 +408,9 @@ image.
 
 ### Decisions
 
+- **Text pasted on the canvas waits beside the microphone** (2026-11-06), so a question or a task
+  about it can be spoken at once, as with a pasted screenshot. Rejected: opening Obeya's sidebar with
+  the text in its field, which takes the canvas from view and leaves speaking to it a second step.
 - **A conversation, not the log** (2026-10-05). Rejected: both side by side. Workers answer notes
   with `reply`. Rejected: their last words before the owner's next message (often "Ich committe
   jetzt") and a small model summarizing each turn (cost on every turn). A note withdraws an open

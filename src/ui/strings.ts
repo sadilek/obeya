@@ -143,6 +143,7 @@ const de = {
           { keys: [['C']], text: 'Obeya ein und aus' },
           { keys: [['A']], text: 'Archiv ein und aus' },
           { keys: [['Leertaste halten']], text: 'Sprechen; mit dem Cursor in einem Feld ins Feld diktieren' },
+          { keys: [['⌘ / Strg', 'V']], text: 'Text oder Screenshot außerhalb eines Felds: geht mit dem nächsten Gesagten mit' },
           { keys: [['?']], text: 'Diese Übersicht' },
         ],
       },
@@ -750,7 +751,7 @@ const de = {
     transcribing: (what: string) => `${what} · wird aufgeschrieben …`,
     /** A confirmation about a card other than the open one starts with it. */
     about: (title: string) => `„${title}“: `,
-    attach: 'Screenshot für die nächste Sprachnachricht – oder mit ⌘V einfügen oder auf das Mikrofon ziehen. Eine andere Datei aufs Mikrofon gezogen hängt ihren Pfad an.',
+    attach: 'Screenshot für die nächste Sprachnachricht – oder mit ⌘V einfügen oder auf das Mikrofon ziehen. Eine andere Datei aufs Mikrofon gezogen hängt ihren Pfad an, Text mit ⌘V eingefügt geht mit dem Gesagten mit.',
     /** The microphone in a text field: what is said is written into it. */
     dictate: 'Halten zum Diktieren ins Feld (oder Leertaste im Feld halten)',
     /** Under the microphone and the field while the cursor is in it: what is said goes into the field. */
@@ -763,6 +764,9 @@ const de = {
     withText: 'Text',
     withShots: (n: number) => (n === 1 ? '1 Screenshot' : `${n} Screenshots`),
     withQuote: 'Zitat',
+    withPasted: 'eingefügtem Text',
+    /** Under the microphone until the owner has pasted text outside a text field once. */
+    pasteText: (paste: string) => `${paste} fügt Text oder Screenshot hinzu`,
   },
   app: {
     open: 'App öffnen',
@@ -2314,6 +2318,7 @@ const en: Strings = {
           { keys: [['C']], text: 'Obeya on and off' },
           { keys: [['A']], text: 'Archive on and off' },
           { keys: [['Hold space']], text: 'Speak; with the cursor in a field, dictate into it' },
+          { keys: [['⌘ / Ctrl', 'V']], text: 'Text or a screenshot outside a field: goes with what you say next' },
           { keys: [['?']], text: 'This overview' },
         ],
       },
@@ -2854,7 +2859,7 @@ const en: Strings = {
     reading: (what: string) => `${what} · being understood …`,
     transcribing: (what: string) => `${what} · being written down …`,
     about: (title: string) => `“${title}”: `,
-    attach: 'Screenshot for the next voice message – or paste it with ⌘V or drop it on the microphone. Any other file dropped on it adds its path.',
+    attach: 'Screenshot for the next voice message – or paste it with ⌘V or drop it on the microphone. Any other file dropped on it adds its path; text pasted with ⌘V goes with what you say.',
     dictate: 'Hold to dictate into the field (or hold Space in the field)',
     intoField: 'into the field',
     sendWithEnter: 'send with Enter',
@@ -2863,6 +2868,8 @@ const en: Strings = {
     withText: 'text',
     withShots: (n: number) => (n === 1 ? '1 screenshot' : `${n} screenshots`),
     withQuote: 'quote',
+    withPasted: 'pasted text',
+    pasteText: (paste: string) => `${paste} adds text or a screenshot`,
   },
   app: {
     open: 'Open app',
