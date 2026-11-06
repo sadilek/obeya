@@ -204,6 +204,7 @@ async function poll() {
     status = await r.json();
   } catch {}
   if (playing && waiting && status.clips[cur][part]) playPart(cur, part);
+  show();
   const done = status.clips.flat().every(Boolean);
   if (!done && !status.error) setTimeout(poll, 300);
 }
