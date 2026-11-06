@@ -1834,7 +1834,7 @@ export class CanvasRuntime {
       case 'answer':
         return this.repoOf(cardId).workers.answer(cardId, text.trim(), images, !!a.spoken, replyTo, picks, this.spot(a.spot));
       case 'approve':
-        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct });
+        return this.repoOf(cardId).workers.approve(cardId, { direct: !!a.direct, findings: this.decisions(a.findings) });
       case 'undo':
         return this.repoOf(cardId).workers.undo(cardId);
       case 'pushMain':

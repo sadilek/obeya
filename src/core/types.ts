@@ -1533,8 +1533,11 @@ export type CardAction =
   | { action: 'pushChanges' }
   /** The same card: the owner's own wording of the text that goes onto the PR with the approval, in place of the held one. */
   | { action: 'editHeld'; body: string }
-  /** `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`). */
-  | { action: 'approve'; direct?: boolean }
+  /**
+   * `direct`: onto the default branch at once, without a pull request, where the repository allows it (`RepoRef.direct`).
+   * `findings`: on a review card, the decisions on its findings that stood unsent, which go with the merge (a follow-up task, ignored).
+   */
+  | { action: 'approve'; direct?: boolean; findings?: Record<string, ChangeRoute> }
   /** In a folder without git, on a card waiting for approval: what it changed there is put back as it was before („Änderungen verwerfen“). */
   | { action: 'undo' }
   /** Start a queued card although it may collide. */
@@ -1677,6 +1680,8 @@ export type ErrorCode =
   /** „Selbst ändern“ on a review card whose contributor does not allow maintainers' edits, or a decision on a finding it does not have open. */
   | 'noEdits'
   | 'noFinding'
+  /** „Mergen“ with a decision on a finding standing unsent that holds the PR up (to the contributor, the agent's own change). */
+  | 'decideFirst'
   /** Approving a review card: its PR moved since the handover, was closed, or the forge refused the merge (the detail says why). */
   | 'prMoved'
   /** „main pushen“ on a review card whose PR collides with nothing unpushed (any more), or taking back a push that is not waiting. */
