@@ -258,7 +258,7 @@ export class AnswerWalkthrough {
     const n = told.data.slides.length;
     if (n === 1) this.o.onShown?.(this.files());
     this.o.voicing.add(told, n - 1);
-    return `Slide ${n} is shown and being voiced. Hand over the next slide, or call answer_owner once the walkthrough is complete.`;
+    return `Slide ${n} is shown and being voiced. Hand over the next slide, or, once the walkthrough is complete, call answer_owner with a sentence or two on what it shows: the walkthrough is the answer.`;
   }
 
   /** A slide as the player plays it, or what is wrong with it. */

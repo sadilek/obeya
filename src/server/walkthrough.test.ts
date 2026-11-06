@@ -33,7 +33,7 @@ describe('a walkthrough handed over slide by slide', () => {
   test('shows from its title slide on, which says its title first, and comes with the answer once the turn is over', async () => {
     const shown: string[][] = [];
     const w = told(shown);
-    expect(hand(w, TITLE)).toBe('Slide 1 is shown and being voiced. Hand over the next slide, or call answer_owner once the walkthrough is complete.');
+    expect(hand(w, TITLE)).toBe('Slide 1 is shown and being voiced. Hand over the next slide, or, once the walkthrough is complete, call answer_owner with a sentence or two on what it shows: the walkthrough is the answer.');
     expect(shown).toEqual([['how-a-card-lands.walkthrough.json']]);
     expect(w.files()).toEqual([{ name: 'how-a-card-lands.walkthrough.json', caption: 'How a card lands' }]);
     let file = read('how-a-card-lands.walkthrough.json');

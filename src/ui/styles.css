@@ -1010,7 +1010,7 @@ textarea.p-body:focus { border-color: var(--muted); }
 .wt-code { flex: 1; min-height: 0; overflow: hidden; background: #1d2027; border-radius: 1.2cqw; padding: 1.4cqw 0; font: max(10px, 1.75cqw)/1.55 var(--mono); color: #d7dae0; }
 .wt-code > div { display: flex; padding-right: 2cqw; transition: opacity .4s, background .4s; }
 .wt-code i { flex: 0 0 6cqw; text-align: right; padding-right: 2cqw; color: #6b7280; font-style: normal; -webkit-user-select: none; user-select: none; }
-.wt-code code { white-space: pre; font: inherit; }
+.wt-code code { white-space: pre; font: inherit; background: none; padding: 0; border-radius: 0; }
 .wt-code.focusing > div { opacity: .38; }
 .wt-code.focusing > div.focus { opacity: 1; background: rgba(90, 140, 255, .16); box-shadow: inset .4cqw 0 0 #6d9bff; }
 .wt-note { margin-top: 1.4cqw; font-size: max(11px, 2.2cqw); color: var(--muted); }
