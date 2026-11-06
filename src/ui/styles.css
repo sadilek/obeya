@@ -966,6 +966,10 @@ textarea.p-body:focus { border-color: var(--muted); }
 .msg-card.on { color: var(--question); border-color: color-mix(in srgb, var(--question) 50%, transparent); }
 .talk .moved { margin: 2px 0 8px; }
 .talk .moved .msg-card { float: none; margin: 0; }
+/* prototype: "Show as walkthrough" appears on hover over its answer; always where nothing hovers */
+.msg-walk { opacity: 0; transition: opacity .15s; }
+.msg:hover .msg-walk, .msg-walk:focus-visible { opacity: 1; }
+@media (hover: none) { .msg-walk { opacity: 1; } }
 .continues { margin-top: 4px; font-size: 11.5px; color: var(--muted); }
 .answer-files { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .answer-files figure { margin: 0; min-width: 0; }

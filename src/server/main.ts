@@ -245,11 +245,14 @@ const commitOf = () => {
   return ranFrom ?? (checkout && headOf(checkout));
 };
 const forge = process.env.OBEYA_FORGE_FILE ? fileForge(process.env.OBEYA_FORGE_FILE) : routedForge(ghForge, forgejoForge, originOf, (remote) => onGitHub(remote));
-const narration = new NarrationHost({ argv: (voice, language) => qwen3Serve(voice, language, home), log: (line) => console.log(line) });
+// prototype: a scratch home without voices of its own holds the machine's (walkthroughs)
+const voiceHome = existsSync(join(home, 'voices', 'qwen3')) ? home : join(homedir(), '.obeya');
+const narration = new NarrationHost({ argv: (voice, language) => qwen3Serve(voice, language, voiceHome), log: (line) => console.log(line) });
 // what a demo's narration reaches of Obeya, for the voice it holds loaded (narration.ts): the
 // narration and nothing else, from a worker here as from one on another machine (design: Hosts)
 const narrationServer = serveNarration(narration);
 const narrationUrl = `http://127.0.0.1:${narrationServer.port}`;
+process.env.OBEYA_WALKTHROUGH_VOICE_URL = narrationUrl;
 // the disk space demos take, and the frames of old renders deleted (demo-space.ts)
 const demoSpace = new DemoSpace({ home, settings: () => readDemoSettings(home), file: join(home, DEMO_SETTINGS_FILE), log: (line) => console.log(line) }).start();
 const config = new Config({

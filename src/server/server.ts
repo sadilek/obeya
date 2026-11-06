@@ -876,6 +876,7 @@ export function serve(
       },
       // "Make it a card": a looked-up thread moves onto a Question card
       '/api/c/:canvas/threads/:thread/card': { POST: on((c, req) => c.answers.toCard(Number(req.params.thread))) },
+      '/api/c/:canvas/talk/:talk/walkthrough': { POST: on((c, req) => ({ talk: c.answers.walkthrough(Number(req.params.talk)) })) },
       // a file a looked-up answer comes with; `?download` to save it
       '/api/c/:canvas/threads/:thread/files/*': {
         GET: (req) => {

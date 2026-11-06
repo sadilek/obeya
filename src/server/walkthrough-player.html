@@ -1,0 +1,266 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<style>
+  :root { --ink: #1f2328; --soft: #6a717b; --line: #d9dce1; --paper: #fbfaf7; --accent: #2f6fd6; --accent-soft: #e6eefb; --code: #1d2027; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: transparent; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); }
+  .player { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--paper); container-type: inline-size; }
+  .stage { position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
+  .slide { position: absolute; inset: 0; padding: 5.5cqw 6cqw 4cqw; display: flex; flex-direction: column; opacity: 0; transform: translateY(8px); transition: opacity .45s, transform .45s; }
+  .slide.on { opacity: 1; transform: none; }
+  .kicker { font-size: 2.2cqw; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); margin-bottom: 1.2cqw; }
+  h2 { margin: 0 0 3cqw; font-size: 4.2cqw; line-height: 1.2; font-weight: 650; }
+  .title-slide { justify-content: center; }
+  .title-slide h1 { margin: 0 0 2cqw; font-size: 6cqw; line-height: 1.15; font-weight: 700; }
+  .title-slide p { margin: 0; font-size: 3cqw; color: var(--soft); max-width: 80%; }
+  .title-slide .bar { width: 9cqw; height: .8cqw; background: var(--accent); border-radius: 1cqw; margin-bottom: 3cqw; }
+  ul.points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2.2cqw; }
+  ul.points li { font-size: 3.1cqw; padding-left: 4cqw; position: relative; opacity: .18; transition: opacity .4s, color .4s; }
+  ul.points li::before { content: ""; position: absolute; left: .6cqw; top: 1.25cqw; width: 1.4cqw; height: 1.4cqw; border-radius: 50%; background: var(--accent); }
+  ul.points li.shown { opacity: 1; }
+  ul.points li.now { color: var(--accent); }
+  .flow { flex: 1; display: flex; align-items: center; gap: 0; }
+  .step { flex: 1; min-width: 0; border: .3cqw solid var(--line); border-radius: 1.4cqw; background: #fff; padding: 2.2cqw 1.6cqw; text-align: center; opacity: .25; transition: opacity .4s, border-color .4s, box-shadow .4s, transform .4s; }
+  .step b { display: block; font-size: 2.6cqw; line-height: 1.25; }
+  .step span { display: block; font-size: 1.9cqw; color: var(--soft); margin-top: .8cqw; line-height: 1.3; }
+  .step.shown { opacity: 1; }
+  .step.now { border-color: var(--accent); box-shadow: 0 0 0 .6cqw var(--accent-soft); transform: translateY(-.6cqw); }
+  .arrow { flex: 0 0 4cqw; text-align: center; font-size: 3.4cqw; color: var(--soft); opacity: .25; transition: opacity .4s; }
+  .arrow.shown { opacity: 1; }
+  .code-slide { padding-bottom: 3cqw; }
+  .code-slide h2 { margin-bottom: 1.4cqw; }
+  .file { font: 1.9cqw/1.3 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--soft); margin-bottom: 1.2cqw; }
+  .code { flex: 1; min-height: 0; overflow: hidden; background: var(--code); border-radius: 1.2cqw; padding: 1.4cqw 0; position: relative; }
+  .code pre { margin: 0; font: 1.75cqw/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #d7dae0; transition: transform .6s; }
+  .code .ln { display: flex; padding: 0 2cqw 0 0; transition: opacity .4s, background .4s; }
+  .code .ln i { flex: 0 0 6cqw; text-align: right; padding-right: 2cqw; color: #6b7280; font-style: normal; user-select: none; }
+  .code .ln code { white-space: pre; font: inherit; }
+  .code.focusing .ln { opacity: .38; }
+  .code.focusing .ln.focus { opacity: 1; background: rgba(90, 140, 255, .16); box-shadow: inset .4cqw 0 0 #6d9bff; }
+  .note { margin-top: 1.4cqw; font-size: 2.2cqw; color: var(--soft); }
+  .kw { color: #c792ea; } .str { color: #c3e88d; } .com { color: #7f8896; font-style: italic; }
+  .caption { position: absolute; left: 4cqw; right: 4cqw; bottom: 1.6cqw; text-align: center; pointer-events: none; }
+  .caption span { display: inline; background: rgba(20, 22, 26, .78); color: #fff; font-size: 2.1cqw; line-height: 1.5; padding: .3cqw 1cqw; border-radius: .6cqw; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .start { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(251, 250, 247, .55); border: 0; cursor: pointer; font: inherit; }
+  .start .disc { display: flex; align-items: center; gap: 1.6cqw; background: var(--accent); color: #fff; border-radius: 99px; padding: 1.8cqw 3.4cqw 1.8cqw 2.8cqw; font-size: 2.7cqw; font-weight: 600; box-shadow: 0 1cqw 3cqw rgba(47, 111, 214, .35); }
+  .start .disc::before { content: ""; border-left: 2.4cqw solid #fff; border-top: 1.5cqw solid transparent; border-bottom: 1.5cqw solid transparent; }
+  .start[hidden] { display: none; }
+  .wait { position: absolute; top: 2cqw; right: 2.4cqw; font-size: 1.9cqw; color: var(--soft); background: #fff; border: 1px solid var(--line); border-radius: 99px; padding: .4cqw 1.4cqw; display: flex; align-items: center; gap: 1cqw; }
+  .wait::before { content: ""; width: 1.4cqw; height: 1.4cqw; border-radius: 50%; border: .3cqw solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+  .wait[hidden] { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .controls { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--line); background: #fff; }
+  .controls button { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 4px; height: 28px; min-width: 30px; padding: 0 8px; font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .controls button:hover { border-color: var(--accent); }
+  .segs { flex: 1; display: flex; gap: 4px; align-items: center; }
+  .seg { flex: 1; height: 6px; border-radius: 3px; background: #eceef1; position: relative; overflow: hidden; cursor: pointer; }
+  .seg.voiced { background: #d5e1f6; }
+  .seg i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--accent); }
+  .count { font-size: 12px; color: var(--soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="player">
+  <div class="stage" id="stage">
+    <div class="caption" id="caption"></div>
+    <div class="wait" id="wait" hidden></div>
+    <button class="start" id="start"><span class="disc" id="startLabel"></span></button>
+  </div>
+  <div class="controls">
+    <button id="prev" aria-label="prev">◀</button>
+    <button id="play" aria-label="play">▶</button>
+    <button id="next" aria-label="next">▶▶</button>
+    <div class="segs" id="segs"></div>
+    <span class="count" id="count"></span>
+    <button id="cc" title="captions">CC</button>
+  </div>
+</div>
+<script>
+const W = /*WALKTHROUGH*/null;
+const T = {
+  de: { play: 'Walkthrough abspielen', voicing: 'Vertont …', slide: (i, n) => `Folie ${i} von ${n}`, voiced: (k, n) => `${k}/${n} vertont`, failed: 'Vertonung fehlgeschlagen', overview: 'Walkthrough' },
+  en: { play: 'Play walkthrough', voicing: 'Voicing …', slide: (i, n) => `Slide ${i} of ${n}`, voiced: (k, n) => `${k}/${n} voiced`, failed: 'Voicing failed', overview: 'Walkthrough' },
+}[W.language] || {};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const KW = /\b(const|let|var|function|return|if|else|for|while|await|async|new|class|export|import|from|type|interface|throw|try|catch|finally|of|in|this)\b/g;
+function tint(line) {
+  const com = line.indexOf('//');
+  const head = com >= 0 ? line.slice(0, com) : line;
+  const tail = com >= 0 ? line.slice(com) : '';
+  const h = esc(head).replace(/(&quot;.*?&quot;|'[^']*'|`[^`]*`)/g, '\u0001$1\u0002').split(/(\u0001.*?\u0002)/).map((p) => p.startsWith('\u0001') ? `<span class="str">${p.slice(1, -1)}</span>` : p.replace(KW, '<span class="kw">$1</span>')).join('');
+  return h + (tail ? `<span class="com">${esc(tail)}</span>` : '');
+}
+const parts = (s) => Array.isArray(s.narration) ? s.narration : [s.narration];
+/** How many items a slide reveals one after the other. */
+const itemsOf = (s) => s.type === 'points' ? s.points.length : s.type === 'flow' ? s.steps.length : s.type === 'code' ? (s.focus || []).length : 0;
+
+const stage = $('stage');
+const slides = W.slides.map((s, i) => {
+  const el = document.createElement('div');
+  el.className = 'slide';
+  const kicker = `<div class="kicker">${esc(W.title)} · ${i + 1}/${W.slides.length}</div>`;
+  if (s.type === 'title') {
+    el.classList.add('title-slide');
+    el.innerHTML = `<div class="bar"></div><h1>${esc(s.title)}</h1>${s.subtitle ? `<p>${esc(s.subtitle)}</p>` : ''}`;
+  } else if (s.type === 'points') {
+    el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><ul class="points">${s.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`;
+  } else if (s.type === 'flow') {
+    el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><div class="flow">${s.steps.map((st, k) => {
+      const label = typeof st === 'string' ? st : st.label;
+      const note = typeof st === 'string' ? '' : st.note || '';
+      return `${k ? '<div class="arrow">→</div>' : ''}<div class="step"><b>${esc(label)}</b>${note ? `<span>${esc(note)}</span>` : ''}</div>`;
+    }).join('')}</div>`;
+  } else if (s.type === 'code') {
+    el.classList.add('code-slide');
+    const [from] = s.lines;
+    el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><div class="file">${esc(s.file)}:${s.lines[0]}–${s.lines[1]}</div><div class="code"><pre>${(s.code || []).map((l, k) => `<div class="ln" data-n="${from + k}"><i>${from + k}</i><code>${tint(l)}</code></div>`).join('')}</pre></div>${s.note ? `<div class="note">${esc(s.note)}</div>` : ''}`;
+  }
+  stage.insertBefore(el, $('caption'));
+  return el;
+});
+
+/** Item k of slide i shows from the moment its part of the narration begins (by its share of the text). */
+function starts(i, seconds) {
+  const s = W.slides[i];
+  const p = parts(s);
+  const n = itemsOf(s);
+  if (!n) return [];
+  const total = p.join(' ').length || 1;
+  if (p.length >= n) {
+    let at = 0;
+    return p.slice(0, n).map((x) => { const t = (at / total) * seconds; at += x.length + 1; return t; });
+  }
+  // one text for all items: they show in even steps over the first nine tenths
+  return Array.from({ length: n }, (_, k) => (k / n) * seconds * 0.9);
+}
+
+function show(i, t, seconds) {
+  slides.forEach((el, k) => el.classList.toggle('on', k === i));
+  const s = W.slides[i];
+  const st = starts(i, seconds || 1);
+  const now = st.reduce((c, x, k) => (t >= x ? k : c), -1);
+  const el = slides[i];
+  if (s.type === 'points') el.querySelectorAll('li').forEach((li, k) => { li.classList.toggle('shown', k <= now || !playing && !started); li.classList.toggle('now', k === now && playing); });
+  if (s.type === 'flow') {
+    el.querySelectorAll('.step').forEach((b, k) => { b.classList.toggle('shown', k <= now || !started); b.classList.toggle('now', k === now && playing); });
+    el.querySelectorAll('.arrow').forEach((a, k) => a.classList.toggle('shown', k + 1 <= now || !started));
+  }
+  if (s.type === 'code') {
+    const code = el.querySelector('.code');
+    const f = now >= 0 ? s.focus[now] : null;
+    code.classList.toggle('focusing', !!f);
+    let first = null;
+    code.querySelectorAll('.ln').forEach((ln) => {
+      const n = Number(ln.dataset.n);
+      const on = !!f && n >= f[0] && n <= f[1];
+      ln.classList.toggle('focus', on);
+      if (on && first === null) first = ln;
+    });
+    // a focus further down scrolls into view
+    const pre = code.querySelector('pre');
+    const room = code.clientHeight;
+    const off = first ? Math.max(0, first.offsetTop - room * 0.3) : 0;
+    const max = Math.max(0, pre.scrollHeight - room + 20);
+    pre.style.transform = `translateY(${-Math.min(off, max)}px)`;
+  }
+  // the caption: the part being spoken
+  const p = parts(s);
+  let cap = p.join(' ');
+  if (p.length > 1 && seconds) {
+    const total = p.join(' ').length;
+    let at = 0;
+    for (const x of p) { if (t < ((at + x.length) / total) * seconds) { cap = x; break; } at += x.length + 1; }
+  }
+  $('caption').innerHTML = captions && started ? `<span>${esc(cap)}</span>` : '';
+  $('count').textContent = T.slide(i + 1, W.slides.length);
+  segs.forEach((sg, k) => {
+    sg.classList.toggle('voiced', !!status.clips[k]);
+    sg.firstChild.style.width = k < i ? '100%' : k > i ? '0' : `${Math.min(100, (t / (seconds || 1)) * 100)}%`;
+  });
+}
+
+const segs = W.slides.map((_, k) => {
+  const sg = document.createElement('div');
+  sg.className = 'seg';
+  sg.innerHTML = '<i></i>';
+  sg.onclick = () => go(k, true);
+  $('segs').appendChild(sg);
+  return sg;
+});
+
+let status = { clips: W.slides.map(() => null) };
+let current = 0, playing = false, started = false, captions = true;
+const audio = new Audio();
+audio.preload = 'auto';
+
+async function poll() {
+  try {
+    const r = await fetch(`${W.clips}/status.json?${Date.now()}`, { cache: 'no-store' });
+    status = await r.json();
+  } catch {}
+  const k = status.clips.filter(Boolean).length;
+  if (status.error) $('wait').textContent = T.failed;
+  if (playing && !status.clips[current] && !status.error) { $('wait').hidden = false; $('wait').textContent = `${T.voicing} ${T.voiced(k, W.slides.length)}`; }
+  if (playing && status.clips[current] && audio.dataset.slide !== String(current)) load(current);
+  show(current, audio.currentTime || 0, audio.duration || status.clips[current]?.seconds);
+  if (k < W.slides.length && !status.error) setTimeout(poll, 400);
+}
+
+function load(i) {
+  const c = status.clips[i];
+  if (!c) return;
+  $('wait').hidden = true;
+  audio.dataset.slide = String(i);
+  audio.src = `${W.clips}/${c.file}`;
+  if (playing) audio.play().catch(() => {});
+}
+
+function go(i, keep) {
+  current = Math.max(0, Math.min(W.slides.length - 1, i));
+  audio.pause();
+  audio.removeAttribute('src');
+  delete audio.dataset.slide;
+  if (keep && !started) { started = true; playing = true; $('start').hidden = true; $('play').textContent = '❚❚'; }
+  if (status.clips[current]) load(current);
+  else if (playing) { $('wait').hidden = false; $('wait').textContent = T.voicing; }
+  show(current, 0, status.clips[current]?.seconds);
+}
+
+audio.onended = () => {
+  if (current < W.slides.length - 1) setTimeout(() => go(current + 1), 500);
+  else { playing = false; $('play').textContent = '▶'; show(current, audio.duration, audio.duration); }
+};
+
+function tick() {
+  if (playing) show(current, audio.currentTime || 0, audio.duration || status.clips[current]?.seconds);
+  requestAnimationFrame(tick);
+}
+
+function toggle() {
+  if (!started) { started = true; $('start').hidden = true; }
+  playing = !playing;
+  $('play').textContent = playing ? '❚❚' : '▶';
+  if (playing) {
+    if (audio.ended && current === W.slides.length - 1) return go(0);
+    if (audio.dataset.slide === String(current)) audio.play().catch(() => {});
+    else if (status.clips[current]) load(current);
+    else { $('wait').hidden = false; $('wait').textContent = T.voicing; }
+  } else audio.pause();
+}
+
+$('startLabel').textContent = T.play;
+$('start').onclick = toggle;
+$('play').onclick = toggle;
+$('prev').onclick = () => go(current - 1, true);
+$('next').onclick = () => go(current + 1, true);
+$('cc').onclick = () => { captions = !captions; show(current, audio.currentTime || 0, audio.duration); };
+show(0, 0, 0);
+poll();
+tick();
+</script>
+</body>
+</html>

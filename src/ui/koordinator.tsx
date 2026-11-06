@@ -7,7 +7,7 @@ import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { Item, Preference, RepoRef, Reshare, SettingProposal, Talk, TalkQuote, TalkRef, TalkWait } from '../core/types';
 import { api } from './api';
 import { Inline, plain } from './markdown';
-import { AnswerFiles, Body, Continues, Msg, Quote, Reading, ThreadCard } from './message';
+import { AnswerFiles, Body, Continues, Msg, Quote, Reading, ThreadCard, WalkthroughButton } from './message';
 import { type Reply, setReply, talkEv, talkQuote } from './reply';
 import { clock, failText, t } from './strings';
 import { CiteButton } from './cite';
@@ -365,7 +365,14 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                     who={t.author[x.answerBy ?? 'koordinator']}
                     ev={talkEv({ talk: x.id, part: 'answer' })}
                     onReply={reply('answer', x.answerBy ?? 'koordinator', x.answer)}
-                    head={x.thread !== undefined && <ThreadCard thread={x.thread} onOpen={onOpen} />}
+                    head={
+                      x.thread !== undefined && (
+                        <>
+                          <ThreadCard thread={x.thread} onOpen={onOpen} />
+                          {!x.files?.some((f) => f.name.endsWith('.walkthrough.html')) && <WalkthroughButton talk={x.id} />}
+                        </>
+                      )
+                    }
                   >
                     <Body md={x.answer} />
                     {x.thread !== undefined && <AnswerFiles thread={x.thread} files={x.files} />}

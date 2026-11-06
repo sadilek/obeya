@@ -1028,6 +1028,8 @@ const de = {
   },
   answer: {
     makeCard: 'Als Karte',
+    walkthrough: 'Als Walkthrough zeigen',
+    walkthroughHint: 'Lässt diese Antwort als Walkthrough erzählen: Folien mit Ton, als nächste Antwort darunter.',
     makeCardHint: 'Legt diesen Faden (Fragen, Antworten, Dateien) als Frage-Karte auf die Leinwand; der Agent, der nachgeschlagen hat, liest dort weiter.',
     onCard: (title: string) => `Auf der Karte „${title}“`,
     onCardHint: 'Dieser Faden geht auf seiner Frage-Karte weiter.',
@@ -3125,6 +3127,8 @@ const en: Strings = {
   },
   answer: {
     makeCard: 'Make it a card',
+    walkthrough: 'Show as walkthrough',
+    walkthroughHint: 'Has this answer told as a walkthrough: slides with narration, as the next answer below.',
     makeCardHint: 'Puts this thread (questions, answers, files) on the canvas as a Question card; the agent that looked it up reads on there.',
     onCard: (title: string) => `On the card “${title}”`,
     onCardHint: 'This thread goes on on its Question card.',

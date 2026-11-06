@@ -335,6 +335,28 @@ export function ThreadCard({ thread, card, onOpen }: { thread: number; card?: It
   );
 }
 
+/** Prototype: "Show as walkthrough" in the head of a looked-up answer, shown on hover: the thread goes on with the answer told as a walkthrough. */
+export function WalkthroughButton({ talk }: { talk: number }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      className="msg-card msg-walk"
+      title={t.answer.walkthroughHint}
+      disabled={busy}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => {
+        setBusy(true);
+        api
+          .walkthrough(talk)
+          .catch(() => {})
+          .finally(() => setBusy(false));
+      }}
+    >
+      ▶ {t.answer.walkthrough}
+    </button>
+  );
+}
+
 /** The cards on the canvas, and how to open one (closing the card open), for a looked-up answer in a card's log. */
 export const Cards = createContext<{ items: Item[]; open: (i: Item) => void }>({ items: [], open: () => {} });
 

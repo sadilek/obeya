@@ -390,10 +390,15 @@ export const SAMPLE_TEXT: Record<NarrationLanguage, string> = {
  * for `lock`, the machine's TTS_LOCK unless a test gives its own.
  */
 export function sample(s: DemoSettings, out: string, home = obeyaHome(), obeyaUrl?: string, lockFile = TTS_LOCK): Promise<void> {
+  return speak(s, SAMPLE_TEXT[s.language], out, home, obeyaUrl, lockFile);
+}
+
+/** One clip of `text` in the voice of `s`, as `sample` makes it (a walkthrough's narration). */
+export function speak(s: DemoSettings, text: string, out: string, home = obeyaHome(), obeyaUrl?: string, lockFile = TTS_LOCK): Promise<void> {
   const spec = voiceSpec(s, home);
   const specFile = `${out}.spec.json`;
   fs.writeFileSync(specFile, JSON.stringify(spec));
-  const args = [...ttsArgs(spec, lockFile), '--sample', specFile, s.language, SAMPLE_TEXT[s.language], out];
+  const args = [...ttsArgs(spec, lockFile), '--sample', specFile, s.language, text, out];
   return exec('uv', args, () => {}, obeyaUrl ? { OBEYA_URL: obeyaUrl } : undefined).finally(() => fs.rmSync(specFile, { force: true }));
 }
 

@@ -22,6 +22,7 @@ import type { AgentRuntime } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './workers';
 import { clip, messageOf } from '../core/text';
+import { WALKTHROUGH_NOTE, walkthroughs } from './walkthrough';
 
 export interface AnswerOptions {
   board: Board;
@@ -249,6 +250,23 @@ export class Answers {
   }
 
   /**
+   * Prototype: "Show as walkthrough" on an answer in the sheet: a follow-up on it that asks for the
+   * answer told as a walkthrough, which comes as the next answer below.
+   */
+  walkthrough(talkId: number): number {
+    const t = this.o.board.exchange(talkId);
+    if (!t?.thread || t.answer === undefined) throw new BadRequest('invalid', 'no looked-up answer');
+    const de = this.o.board.conversation() === 'de';
+    const said = de ? 'Als Walkthrough zeigen' : 'Show as walkthrough';
+    const reply = de ? 'Ich erzähle die Antwort als Walkthrough.' : 'I’ll tell the answer as a walkthrough.';
+    const question = 'Tell your answer above as a walkthrough (slides with narration, as your instructions describe), rather than as text: the same content, walked through.';
+    const talk = this.o.board.addTalk(said, reply, null, { question, about: t.about ?? null });
+    this.o.board.followTalk(talk, talkId);
+    this.lookUp(talk);
+    return talk;
+  }
+
+  /**
    * "Make it a card": the thread moves onto a Question card, near the card whose log holds it: the
    * question as its title, its exchanges as its conversation, the same agent going on. A thread that
    * moved before has its card, put back from the archive if need be.
@@ -396,6 +414,13 @@ export class Answers {
   }): Promise<OwnerAnswer> {
     const dir = this.o.dirOf(c.thread);
     mkdirSync(dir, { recursive: true });
+    // prototype: a walkthrough among the files comes with its player, voiced slide by slide
+    const checkout = this.o.pathFor(c.about);
+    const language = this.o.board.conversation();
+    return this.consulted(c, dir).then((a) => ({ ...a, ...(a.files ? { files: walkthroughs(a.files, dir, checkout, language) } : {}) }));
+  }
+
+  private consulted(c: Parameters<Answers['consult']>[0], dir: string): Promise<OwnerAnswer> {
     if (c.by === 'project') {
       const from = c.asked?.from;
       const asked = c.asked && { images: c.asked.images, ...(from && this.o.toObeya ? { toObeya: toObeyaTool((request) => this.o.toObeya!(from, request)) } : {}) };
@@ -553,7 +578,7 @@ const RESUMED =
 
 /** Where the thread's files go, as every turn of it hears. */
 const filesNote = (dir: string) =>
-  `Your output directory for this conversation is ${dir}, outside every repository; it stays with the conversation, so what you wrote there before is there still, and earlier answers still show their files: leave those as they are and write a changed version under a new name. Files the owner asks for, or that help your answer, go there and never into a repository: a spreadsheet of the numbers, a chart or a page, the queries and scripts behind them, a draft as a document, whatever fits. Pass those the owner should see with answer_owner's files, each with a one-line caption; a page (HTML) or an image shows under your answer, any other file opens with the owner's app for it.`;
+  `Your output directory for this conversation is ${dir}, outside every repository; it stays with the conversation, so what you wrote there before is there still, and earlier answers still show their files: leave those as they are and write a changed version under a new name. Files the owner asks for, or that help your answer, go there and never into a repository: a spreadsheet of the numbers, a chart or a page, the queries and scripts behind them, a draft as a document, whatever fits. Pass those the owner should see with answer_owner's files, each with a one-line caption; a page (HTML) or an image shows under your answer, any other file opens with the owner's app for it.\n\n${WALKTHROUGH_NOTE}`;
 
 const answerRef = (thread: number, files?: AnswerFile[], continues?: string): AnswerRef => ({
   thread,
