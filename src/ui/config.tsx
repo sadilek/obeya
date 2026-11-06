@@ -686,13 +686,14 @@ function ServerBlock({ server }: { server: ConfigView['server'] }) {
 
 /** Voices grouped as the settings sheet offers them; `say` only on a Mac. */
 const VOICE_GROUPS: { group: 'local' | 'service' | 'own'; voices: VoiceKind[] }[] = [
-  { group: 'local', voices: ['piper', 'qwen3', 'say'] },
+  { group: 'local', voices: ['kokoro', 'piper', 'qwen3', 'say'] },
   { group: 'service', voices: ['gemini', 'openai', 'elevenlabs', 'azure'] },
   { group: 'own', voices: ['command', 'http'] },
 ];
 /** The fields each voice reads, in the order the sheet shows them. */
 const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'command' | 'url' | 'keyFile')[]> = {
   none: [],
+  kokoro: ['voiceName'],
   piper: ['voiceName'],
   qwen3: ['voiceName'],
   say: ['voiceName'],
@@ -704,7 +705,7 @@ const VOICE_FIELDS: Record<VoiceKind, ('voiceName' | 'command' | 'url' | 'keyFil
   azure: ['url', 'voiceName', 'keyFile'],
 };
 /** A stock voice of a model or service is nobody's own, and no voice at all neither. */
-const STOCK_ONLY: VoiceKind[] = ['none', 'piper', 'say'];
+const STOCK_ONLY: VoiceKind[] = ['none', 'kokoro', 'piper', 'say'];
 /** The language codes of a list as typed: separated by commas or spaces. */
 const codesOf = (text: string) => text.split(/[\s,;]+/).filter(Boolean);
 /** Where demos go when the settings name no directory (`DEFAULT_DEMO_DIRECTORY` of the demo skill, which the page cannot import). */

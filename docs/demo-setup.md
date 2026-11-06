@@ -38,9 +38,13 @@ The voice is chosen in Obeya's settings ("Demos"); "Listen" plays a sentence in 
 - **None (subtitles only)**: silent videos whose subtitles tell the narration, on from the start;
   each scene lasts as long as its text takes to read. Nothing to install. `DEMO_VOICE=none` renders
   one demo that way.
-- **Piper**, the default: runs on any CPU at about twice real time. Obeya installs it on request
-  (about 265 MB, into `voices/` in Obeya's home); without Obeya, `node
+- **Kokoro**, the default: Kokoro-82M, more natural than Piper, on any CPU, without a graphics
+  card. It speaks English only; German narration with it is spoken by Piper. Obeya installs what
+  the narration language needs on request (for English about 610 MB: its environment into
+  `voices/` in Obeya's home, the model into the Hugging Face cache); without Obeya, `node
   plugin/skills/demo/lib/voices.ts install`.
+- **Piper**: runs on any CPU at about twice real time, in German and English, with a short pause
+  after each sentence. Obeya installs it on request (about 265 MB, into `voices/` in Obeya's home).
 - **Qwen3-TTS**: more natural, and it can clone a voice from a clip. It is a large download: on a
   Mac with Apple Silicon through MLX (about 5 GB), elsewhere through PyTorch, in practice only
   with a GPU (about 8 GB); while it speaks it holds several GB of memory. It hears each sentence

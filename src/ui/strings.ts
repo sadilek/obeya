@@ -1623,7 +1623,8 @@ const de = {
       groups: { local: 'Auf diesem Rechner', service: 'Dienst (API-Schlüssel)', own: 'Eigene' },
       voices: {
         none: 'Keine (nur Untertitel)',
-        piper: 'Piper (Standard)',
+        kokoro: 'Kokoro (Standard)',
+        piper: 'Piper',
         qwen3: 'Qwen3-TTS (bessere Qualität)',
         say: 'macOS „say“',
         gemini: 'Gemini',
@@ -1635,8 +1636,9 @@ const de = {
       } satisfies Record<VoiceKind, string>,
       about: {
         none: 'Stumme Videos: Die Untertitel erzählen, was sonst die Stimme sagt, und sind von Anfang an eingeschaltet.',
-        piper: 'Läuft auf jedem Rechner, schnell auch ohne Grafikkarte. Obeya installiert Piper und die Stimme auf Wunsch.',
-        qwen3: 'Natürlicher als Piper, braucht aber viel Speicher; auf einem Mac mit MLX, sonst praktisch nur mit Grafikkarte. Mit einer Stimmprobe klont es eine Stimme.',
+        kokoro: 'Klingt natürlicher als Piper und läuft auf jedem Rechner ohne Grafikkarte. Spricht nur Englisch: Deutsch spricht mit dieser Einstellung Piper, mit Pausen nach jedem Satz. Obeya installiert, was die Sprache der Erzählung braucht, auf Wunsch.',
+        piper: 'Läuft auf jedem Rechner, schnell auch ohne Grafikkarte, auf Deutsch und Englisch. Obeya installiert Piper und die Stimme auf Wunsch.',
+        qwen3: 'Natürlicher als Kokoro und Piper, braucht aber viel Speicher; auf einem Mac mit MLX, sonst praktisch nur mit Grafikkarte. Mit einer Stimmprobe klont es eine Stimme.',
         say: 'Kostenlos und sofort da, klingt aber deutlich synthetischer.',
         gemini: 'Googles Gemini TTS. Die kostenlose Stufe erlaubt nur wenige Anfragen am Tag.',
         openai: 'OpenAIs Sprachausgabe, oder ein Dienst mit derselben Schnittstelle unter eigener Adresse.',
@@ -3693,7 +3695,8 @@ const en: Strings = {
       groups: { local: 'On this machine', service: 'Service (API key)', own: 'Your own' },
       voices: {
         none: 'None (subtitles only)',
-        piper: 'Piper (default)',
+        kokoro: 'Kokoro (default)',
+        piper: 'Piper',
         qwen3: 'Qwen3-TTS (better quality)',
         say: 'macOS “say”',
         gemini: 'Gemini',
@@ -3705,8 +3708,9 @@ const en: Strings = {
       },
       about: {
         none: 'Silent videos: the subtitles tell what the voice would say, and are on from the start.',
-        piper: 'Runs on any machine, fast even without a graphics card. Obeya installs Piper and the voice on request.',
-        qwen3: 'More natural than Piper, but needs a lot of memory; on a Mac with MLX, elsewhere practically only with a graphics card. With a voice sample it clones a voice.',
+        kokoro: 'Sounds more natural than Piper and runs on any machine without a graphics card. Speaks English only: with this setting, German is spoken by Piper, with a pause after each sentence. Obeya installs what the narration language needs on request.',
+        piper: 'Runs on any machine, fast even without a graphics card, in German and English. Obeya installs Piper and the voice on request.',
+        qwen3: 'More natural than Kokoro and Piper, but needs a lot of memory; on a Mac with MLX, elsewhere practically only with a graphics card. With a voice sample it clones a voice.',
         say: 'Free and there at once, but sounds clearly more synthetic.',
         gemini: 'Google’s Gemini TTS. The free tier allows only a few requests a day.',
         openai: 'OpenAI’s speech output, or a service with the same interface at its own address.',
