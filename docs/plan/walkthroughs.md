@@ -16,20 +16,24 @@ text answer has "Show as walkthrough" for the cases where it judged otherwise.
 
 ## Where it stands
 
-- *Looked-up answers* (design: The Koordinator → Looked-up questions, Looked-up threads, Files with
-  an answer, Question cards): a question that needs reading goes to a look-up agent, whose answer
-  stands as text in Obeya's sheet or on a Question card. Its files go to the thread's directory
-  `~/.obeya/answers/<canvas>/<thread>/`; an HTML file there shows under the answer in a frame that
-  allows scripts only. An answer arrives in one piece. A follow-up resumes the session that found
-  the answer. Obeya decides by itself whether to look something up or answer directly; a direct
-  answer has no thread.
-- *Voice* (design: Voice → No voice out): "Obeya does not speak" (2026-10-08). This plan changes
-  that decision.
-- *Narration* (design: Demos → The demo settings and voices, A voice that stays loaded): Obeya's
-  voices for demos (Piper, Qwen3 with the owner's voice clone, ElevenLabs and others) narrate the
-  walkthroughs too. Obeya's server holds one voice loaded, queues the clips of all renders one at a
-  time, and Parakeet hears every sentence back.
-- *The look-up agents' instructions* say that the owner does not read code.
+- *Walkthroughs* (design: The Koordinator → Walkthroughs; W1): a look-up agent (the Koordinator's
+  or a project agent) tells an answer that explains how something works as a walkthrough, slide by
+  slide through a tool that refuses malformed slides and reads code slides' lines from the
+  repository. The player shows under the question from the first slide on, in Obeya's sheet, the
+  log of the card it was asked on and a Question card's conversation; the answer's words come in
+  above it without interrupting it. It is Obeya's own page code reading a JSON file of the thread's
+  directory, so its look can change for every walkthrough at once (W6).
+- *Voice* (design: Voice → Voice out): Obeya speaks walkthroughs and nothing else. One voice for the
+  server voices them sentence by sentence in the voice of the demo settings, in the queue it shares
+  with renders, a playing player's sentences first (design: Demos → A voice that stays loaded).
+- *"Show as walkthrough"* shows on hover in the head of a text answer in Obeya's sheet only (W2
+  brings it everywhere). It follows up in the answer's thread; a direct answer has no thread and no
+  button.
+- *Not yet*: the caption is the whole sentence, without a pointer (W3); the tool checks a slide's
+  form, not whether its lines say what it claims or its narration only reads it out (W4); the player
+  is not tuned for the phone, demo settings without a voice end in "Voicing failed", and sentences
+  left unvoiced by a restart stay so, the player saying the voicing stopped (W5); the look is the
+  prototype's, in Obeya's colours (W6).
 
 ### What the prototypes showed
 
@@ -113,7 +117,7 @@ Claude Code plugin into the look-up agent:
 
 ## Workstreams
 
-- [ ] **W1:** The live walkthrough. Built on the branch of the prototype "B Obeyas eigener
+- [x] **W1:** The live walkthrough. Built on the branch of the prototype "B Obeyas eigener
   Walkthrough": the slide format, the hand-over slide by slide, voicing sentence by sentence with
   the playing player first, the player under the question served through Obeya's server, the
   finished answer sliding in above it without interrupting it. The rule that an answer arrives in

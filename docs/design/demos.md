@@ -217,7 +217,8 @@ transcript beside it).
 #### A voice that stays loaded
 
 A voice that can stay loaded (so far Qwen3-TTS) is started on the first uncached clip of a render
-(or an "Listen") and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
+(or an "Listen", or a walkthrough's first sentence; "Show as walkthrough" starts it at the click,
+see Walkthroughs in The Koordinator) and asked clip by clip, one JSON line each way over stdin and stdout: a ready line
 once the model is loaded, a line per sentence done, then `ok` or `error` per clip. So the model and
 the reference load once (a warm load costs about 2 s, a cold one 17 s, a clip 2–4 s). The libraries
 print on stdout too, so the voice moves its stdout to stderr and keeps a duplicate for the protocol;
@@ -273,7 +274,7 @@ language}`, JSON only, so another page cannot send one without a preflight) and 
 with its seconds and WAV, or `error`; Obeya's own server answers the route too, with the owner's key,
 and there may write to an absolute `out`. Clips of all renders wait in one queue, one at a time, and
 each render asks for its next clip only once the last is done, so parallel renders take turns clip
-by clip. The voice runs on for 5 minutes after the queue empties; a clip for another voice
+by clip; walkthroughs ask the same way, a sentence at a time. The voice runs on for 5 minutes after the queue empties; a clip for another voice
 (reference, speaker or language) ends it at once, as does Obeya's shutdown. The protocol and its
 limits hold between server and voice; a voice that stops answering fails its clip and the next clip
 starts a new one. Without `OBEYA_URL`, or when Obeya does not answer, the render loads the voice

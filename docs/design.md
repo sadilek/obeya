@@ -60,11 +60,11 @@ touches, and keep those current in the same change.
   (restarts for landed code, finishing, questions after the work).
 - [The Koordinator](design/the-koordinator.md) — the per-canvas agent the UI calls Obeya:
   scheduling and the queue, learning the owner's rules (retrospective, rules for a CLAUDE.md), its
-  sheet, work retrospective, looked-up questions and threads, Question cards, its memory, wishes for
+  sheet, work retrospective, looked-up questions and threads, walkthroughs, Question cards, its memory, wishes for
   Obeya's makers.
 - [Voice](design/voice.md) — voice in (dictating or sending, drafts, the microphone), speech
   recognition (Parakeet, Whisper, a cloud service, the settings), who hears the words, commands to
-  the Koordinator with confirmation and undo, voice latency, no voice out.
+  the Koordinator with confirmation and undo, voice latency, voice out (walkthroughs only).
 - [Demos](design/demos.md) — making and showing demos: the demo skill, the demo settings and
   voices, what a render needs, recording a demo (cutting waits, re-voicing, frames, highlights),
   the demo on the card (watching it, comments in the video, earlier demos), UI checks in a

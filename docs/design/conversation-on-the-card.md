@@ -21,7 +21,10 @@ came, below the agent's steps up to there. What Obeya reads to look a question u
 there by voice, or passed on by its agent) is not the agent's work: it stays out of the agent's
 "History" and its bubble at work, and folds under the answer Obeya looked up; while Obeya still
 looks, under its reply that it does, where that reply stands. On a Question card Obeya's agent is
-the card's own, so its reading is the card's agent at work. A note the worker
+the card's own, so its reading is the card's agent at work. An answer told as a walkthrough stands
+in the conversation from its first slide on, as a message with the player and no words, which
+cannot be replied to yet; the answer's words take its place once they come, the player playing on
+under them (see Walkthroughs in The Koordinator). A note the worker
 answered without `reply` counts as answered by its next words, unless a reply follows before the
 owner says more. Once no agent works on the card and no question is open, steps after the last
 message stand where they happened, the agent's last words among them as its message. A card that was
