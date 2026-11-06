@@ -451,7 +451,7 @@ for (const h of stage.hosts ?? []) {
   if (h.gone) continue;
   const ssh = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', h.ssh];
   // through ssh rather than scp, which takes no ssh://user@host:port target
-  const tar = spawnSync('tar', ['-C', dir, '-cf', '-', 'scratch.git'], { maxBuffer: 1 << 30 });
+  const tar = spawnSync('tar', ['-cf', '-', 'scratch.git'], { cwd: dir, maxBuffer: 1 << 30 });
   const r = spawnSync('ssh', [...ssh, `rm -rf '${dir}' && mkdir -p '${dir}' && tar --no-same-owner -xf - -C '${dir}'`], { input: tar.stdout, encoding: 'utf8' });
   if (tar.status !== 0 || r.status !== 0) fail(`copying the origin to ${h.name}: ${r.stderr || tar.stderr}`);
 }
@@ -464,9 +464,11 @@ if (commit) {
   mkdirSync(code);
   const archive = spawnSync('git', ['-C', ROOT, 'archive', commit], { maxBuffer: 1 << 30 });
   if (archive.status !== 0) fail(`git archive ${commit}: ${archive.stderr}`);
-  const tar = spawnSync('tar', ['-x', '-C', code], { input: archive.stdout });
+  // tar in the directory rather than with -C, whose Windows path (D:\…) Git's MSYS tar takes for host D
+  const tar = spawnSync('tar', ['-xf', '-'], { cwd: code, input: archive.stdout });
   if (tar.status !== 0) fail(`tar: ${tar.stderr}`);
-  symlinkSync(join(ROOT, 'node_modules'), join(code, 'node_modules'));
+  // a junction on Windows, which needs no developer mode; other systems ignore the type
+  symlinkSync(join(ROOT, 'node_modules'), join(code, 'node_modules'), 'junction');
 }
 const binary = opt('binary') && resolve(opt('binary')!);
 if (binary && !existsSync(binary)) fail(`${binary} does not exist`);
