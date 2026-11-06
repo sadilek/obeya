@@ -81,8 +81,8 @@
 <script>
 const W = /*WALKTHROUGH*/null;
 const T = {
-  de: { play: 'Walkthrough abspielen', voicing: 'Vertont …', slide: (i, n) => `Folie ${i} von ${n}`, voiced: (k, n) => `${k}/${n} vertont`, failed: 'Vertonung fehlgeschlagen', overview: 'Walkthrough' },
-  en: { play: 'Play walkthrough', voicing: 'Voicing …', slide: (i, n) => `Slide ${i} of ${n}`, voiced: (k, n) => `${k}/${n} voiced`, failed: 'Voicing failed', overview: 'Walkthrough' },
+  de: { play: 'Walkthrough abspielen', voicing: 'Vertont …', slide: (i, n) => `Folie ${i} von ${n}`, voiced: (k, n) => `${k}/${n}`, failed: 'Vertonung fehlgeschlagen', overview: 'Walkthrough' },
+  en: { play: 'Play walkthrough', voicing: 'Voicing …', slide: (i, n) => `Slide ${i} of ${n}`, voiced: (k, n) => `${k}/${n}`, failed: 'Voicing failed', overview: 'Walkthrough' },
 }[W.language] || {};
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
