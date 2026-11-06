@@ -2669,8 +2669,8 @@ export interface HarnessModel {
 
 /**
  * A model as the pickers offer it (the Konfiguration's and a card's): `value` is what a setting stores
- * (Claude Code's alias, a Codex family), `name` how Codex names the family's newest model here
- * (absent for Claude Code, whose aliases the page names itself), the efforts it takes.
+ * (Claude Code's alias, a Codex family), `name` the Codex family's name (`codexFamilyName`; absent
+ * for Claude Code, whose aliases the page names itself), the efforts its newest model here takes.
  */
 export interface ModelChoice {
   value: string;
@@ -2680,18 +2680,28 @@ export interface ModelChoice {
 
 /**
  * The models a picker offers on a harness, with the one chosen (`chosen`, as stored) among them even
- * where the harness no longer lists it. Codex's are its families, each by its newest model.
+ * where the harness no longer lists it. Codex's are its families, each named without a version.
  */
 export function modelChoices(harness: HarnessView | undefined, chosen?: string): ModelChoice[] {
   const codex = harness?.id === 'codex';
   const listed: ModelChoice[] = newestOfFamilies(harness?.models ?? []).map((m) => ({
     value: codex ? codexFamily(m.id) : m.id,
-    ...(codex ? { name: m.name ?? m.id } : {}),
+    ...(codex ? { name: codexFamilyName(codexFamily(m.id), m.name ?? m.id) } : {}),
     efforts: m.efforts ?? AGENT_EFFORTS,
   }));
   if (chosen === undefined || listed.some((c) => c.value === chosen)) return listed;
-  // a family no longer listed by the name of its family, without a version
-  return [...listed, { value: chosen, ...(codex ? { name: chosen.replace(/-?#/, '') } : {}), efforts: AGENT_EFFORTS }];
+  return [...listed, { value: chosen, ...(codex ? { name: codexFamilyName(chosen) } : {}), efforts: AGENT_EFFORTS }];
+}
+
+/**
+ * A Codex family by the name people know it by, without a version, as Claude Code's aliases are
+ * named: what follows the version (`gpt-#-sol` is Sol, `gpt-#-codex-max` Codex Max); a family named
+ * only by its version (`gpt-#`, `o#`) by its newest model's name here (`newest`), else its key without the version.
+ */
+export function codexFamilyName(family: string, newest?: string): string {
+  const after = /#[-.]?([A-Za-z].*)$/.exec(family)?.[1];
+  if (after) return after.split(/[-_.]/).filter(Boolean).map((w) => `${w[0]!.toUpperCase()}${w.slice(1)}`).join(' ');
+  return newest ?? family.replace(/[-.]?#/, '');
 }
 
 /** A harness as this machine has it: installed, logged in, and the models it offers. */

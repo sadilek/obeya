@@ -16,7 +16,7 @@ import { t } from './strings';
 let last: AgentsView | null = null;
 const agentsView = () => api.agents().then((v) => (last = v));
 
-/** A harness and model as the owner knows them: „Claude Code · Opus“, „Codex · GPT-6.1-Sol“ (a Codex family by its newest model here). */
+/** A harness and model as the owner knows them: „Claude Code · Opus“, „Codex · Sol“ (a Codex family by its name, without a version). */
 export function agentLabel(view: AgentsView | null, harness: Harness, model: string): string {
   const a = t.config.agents;
   if (harness === 'claude') return model === 'default' ? a.models.default : `${t.harnesses.claude} · ${a.models[model as AgentModel] ?? model}`;

@@ -88,8 +88,10 @@ harness (column "Runs on": Claude Code or Codex; one not installed or not logged
 and whatever else its catalog for the login on this machine lists) and the effort (low to max, for a
 Codex family those its newest model here takes), and marks the presets: Claude Code with Opus
 throughout, high effort for workers and exploration agents, medium otherwise. A Codex family shows
-by the name of its newest model here (GPT-6.1-Sol) and stands for whatever is newest of it where an
-agent runs (see Codex), as `opus` does for Claude Code; a version cannot be pinned. A family is the
+by its name without a version (Sol, Terra; Codex Max for `gpt-#-codex-max`; one named only by its
+version, as `o#`, by its newest model here, o3) and stands for whatever is newest of it where an
+agent runs (see Codex), as Opus does for Claude Code; a version cannot be pinned. Which version
+runs shows on a started card's conversation heading, as Claude Code's does (Codex · GPT-6.1-Sol). A family is the
 model id with its version number taken out (`gpt-6.1-sol` and `gpt-5.6-sol` are both `gpt-#-sol`;
 an id without a number is a family of its own), so families with other names (`gpt-#-codex`, `o#`)
 work alike. Claude Code's default is no entry of its own; Codex's needs none. A family the catalog no
@@ -109,7 +111,7 @@ part with a triangle that opens a menu: each ready harness's models, as "Agents 
 them (under Codex's a line saying they follow the newest version of the family on the machine the
 agent runs on), and the efforts the model takes, with what applies checked (the workers' setting until the
 card has one of its own). Picking what the workers have is no choice of the card's: it follows
-their setting. What the card chose of its own stands small beside the button ("Codex · GPT-6-Sol ·
+their setting. What the card chose of its own stands small beside the button ("Codex · Sol ·
 effort very high"); without a choice nothing does. The choice is the card's, stored with it, and
 goes with every session of its next run, the ones resumed after a restart included, and with the
 instructions that differ by harness (how a worker waits); what it leaves out is the workers'. It
