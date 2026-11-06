@@ -718,6 +718,8 @@ export interface AnswerRef {
   thread: number;
   files?: AnswerFile[];
   continues?: string;
+  /** Its walkthrough plays while the agent still tells it: the answer's words take this message's place once they come. */
+  live?: true;
 }
 
 /** A few lines of HTML the idea's agent writes to show how something would look; the card shows it in a sandboxed frame. */

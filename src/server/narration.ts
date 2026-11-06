@@ -55,7 +55,8 @@ export const NARRATION_SENTENCE_MS = 5 * 60_000;
 
 interface Job {
   argv: string[];
-  request: ClipRequest;
+  /** None: the voice is only to be loaded (`load`). */
+  request?: ClipRequest;
   resolve: (reply: ClipReply) => void;
 }
 
@@ -92,6 +93,15 @@ export class NarrationHost {
     });
   }
 
+  /**
+   * Loads the voice in its turn without a clip, so the clips asked for soon after skip the load (a
+   * walkthrough the owner just asked for, walkthrough.ts); one loaded already stays as it is.
+   */
+  load(voice: HeldVoice, language: ClipRequest['language']) {
+    this.queue.push({ argv: this.o.argv(voice, language), resolve: () => {} });
+    void this.serve();
+  }
+
   /** Whether a voice is loaded (for tests and the log). */
   get loaded() {
     return !!this.voice;
@@ -123,6 +133,7 @@ export class NarrationHost {
       const started = await this.start(key, argv);
       if ('error' in started) return started;
     }
+    if (!request) return { ok: true, seconds: 0 };
     const voice = this.voice!;
     try {
       const { text, script, out, language } = request;

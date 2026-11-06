@@ -7,6 +7,8 @@ import type { Forge } from './forge';
 import type { AgentEvent, AgentRuntime, AgentSession, AgentSpec, PermissionAnswer } from './runtime';
 import { git } from './workspaces';
 import { KEY_HEADER, keyOf } from './owner';
+import { Voicing } from './walkthrough';
+import type { Language } from '../core/locale';
 
 /** The calls of a forge that only review cards make, for a fake forge of a test that has none. */
 export const noContributions: Pick<Forge, 'urlOf' | 'contribution' | 'comment' | 'requestChanges'> = { urlOf: async () => '', contribution: async () => ({}) as never, comment: async () => {}, requestChanges: async () => {} };
@@ -353,4 +355,58 @@ export function tailscaleStatus(dir: string, s: TailscaleStatus) {
       User: { 1: { LoginName: s.account ?? 'owner@example.com' } },
     }),
   );
+}
+
+/** A WAV of `seconds` of silence, 16 kHz mono 16-bit, as a voice writes one. */
+export function silentWav(seconds: number): Buffer {
+  const data = Math.round(seconds * 16000) * 2;
+  const b = Buffer.alloc(44 + data);
+  b.write('RIFF', 0, 'ascii');
+  b.writeUInt32LE(36 + data, 4);
+  b.write('WAVEfmt ', 8, 'ascii');
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(16000, 24);
+  b.writeUInt32LE(32000, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write('data', 36, 'ascii');
+  b.writeUInt32LE(data, 40);
+  return b;
+}
+
+/**
+ * The voice of walkthroughs, for a test: each sentence it speaks is in `said` (with its language)
+ * and lasts a second; `held` keeps it from speaking until `go`, so a test sees the order it takes;
+ * a sentence with „stumm“ in it fails.
+ */
+export function fakeVoicing() {
+  const said: string[] = [];
+  const warmed: Language[] = [];
+  let gate: { promise: Promise<void>; open: () => void } | undefined;
+  const voicing = new Voicing({
+    speak: async (text, out, language) => {
+      if (gate) await gate.promise;
+      if (/stumm/i.test(text)) throw new Error('the voice failed\nno model');
+      said.push(`${language}:${text}`);
+      writeFileSync(out, silentWav(1));
+    },
+    warm: (language) => void warmed.push(language),
+  });
+  return {
+    voicing,
+    said,
+    warmed,
+    hold() {
+      let open = () => {};
+      const promise = new Promise<void>((r) => (open = r));
+      gate = { promise, open };
+    },
+    go() {
+      const g = gate;
+      gate = undefined;
+      g?.open();
+    },
+  };
 }

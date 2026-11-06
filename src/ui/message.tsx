@@ -11,6 +11,8 @@ import type { Quoted } from './reply';
 import { clip } from '../core/text';
 import { CopyIcon } from './cardNumber';
 import { copyOrSelect } from './copy';
+import { isWalkthrough } from '../core/walkthrough';
+import { WalkthroughPlayer } from './walkthrough';
 
 /**
  * A message's frame: `by` places and colours it (the owner's on the right), `who` heads it with its
@@ -239,13 +241,14 @@ function fileMark(name: string) {
 
 /**
  * The files a looked-up answer comes with, under its text, in the sheet, a card's log and a
- * Question card alike: a page in the sandboxed frame of an HTML artifact, an image inline, any other
- * file as a chip that opens it with the system's app (or downloads it, where that cannot be), and
- * "Show in folder" for the thread's directory.
+ * Question card alike: its walkthrough in its player (`autoplay`: it starts by itself), a page in
+ * the sandboxed frame of an HTML artifact, an image inline, any other file as a chip that opens it
+ * with the system's app (or downloads it, where that cannot be), and "Show in folder" for the
+ * thread's directory.
  */
-export function AnswerFiles({ thread, files }: { thread: number; files?: AnswerFile[] }) {
+export function AnswerFiles({ thread, files, autoplay }: { thread: number; files?: AnswerFile[]; autoplay?: boolean }) {
   if (!files?.length) return null;
-  const others = files.filter((f) => !isPage(f.name) && !isImage(f.name));
+  const others = files.filter((f) => !isPage(f.name) && !isImage(f.name) && !isWalkthrough(f.name));
   const open = (file?: string) =>
     api.openAnswer(thread, file).catch(() => {
       // the system has no app for it here (or Obeya runs elsewhere): the browser saves it instead
@@ -253,6 +256,9 @@ export function AnswerFiles({ thread, files }: { thread: number; files?: AnswerF
     });
   return (
     <div className="answer-files">
+      {files.filter((f) => isWalkthrough(f.name)).map((f) => (
+        <WalkthroughPlayer key={f.name} thread={thread} file={f} autoplay={autoplay} />
+      ))}
       {files.filter((f) => isPage(f.name)).map((f) => (
         <AnswerPage key={f.name} thread={thread} file={f} />
       ))}
@@ -292,7 +298,7 @@ function AnswerPage({ thread, file }: { thread: number; file: AnswerFile }) {
   const height = useReportedHeight(frame, PAGE_CAP);
   return (
     <figure className="answer-page">
-      <iframe ref={frame} sandbox="allow-scripts" allow="autoplay" src={answerFile(thread, file.name)} title={file.caption || file.name} style={height ? { height } : undefined} />
+      <iframe ref={frame} sandbox="allow-scripts" src={answerFile(thread, file.name)} title={file.caption || file.name} style={height ? { height } : undefined} />
       <figcaption>
         <a href={answerFile(thread, file.name)} target="_blank" rel="noreferrer">
           {file.name}
@@ -335,28 +341,6 @@ export function ThreadCard({ thread, card, onOpen }: { thread: number; card?: It
   );
 }
 
-/** Prototype: "Show as walkthrough" in the head of a looked-up answer, shown on hover: the thread goes on with the answer told as a walkthrough. */
-export function WalkthroughButton({ talk }: { talk: number }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <button
-      className="msg-card msg-walk"
-      title={t.answer.walkthroughHint}
-      disabled={busy}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => {
-        setBusy(true);
-        api
-          .walkthrough(talk)
-          .catch(() => {})
-          .finally(() => setBusy(false));
-      }}
-    >
-      ▶ {t.answer.walkthrough}
-    </button>
-  );
-}
-
 /** The cards on the canvas, and how to open one (closing the card open), for a looked-up answer in a card's log. */
 export const Cards = createContext<{ items: Item[]; open: (i: Item) => void }>({ items: [], open: () => {} });
 
@@ -367,7 +351,9 @@ export const Cards = createContext<{ items: Item[]; open: (i: Item) => void }>({
 export function useAnswer(e: CardEvent): { head?: ReactNode; files?: ReactNode; continues?: ReactNode } {
   const { items, open } = useContext(Cards);
   if (!e.answer) return {};
-  const { thread, files, continues } = e.answer;
+  const { thread, files, continues, live } = e.answer;
+  // its walkthrough plays while its agent tells on: the answer's words, and with them its head, come later
+  if (live) return { files: <AnswerFiles thread={thread} files={files} /> };
   const host = items.find((i) => i.id === e.cardId);
   const own = host?.thread?.talk === thread;
   return {

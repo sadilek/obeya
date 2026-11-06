@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { defaultsFor, hasAdapterModule, readingAdapterModule, readingShared, readShared, readSharedFiles, repoValues, type SharedRead, withSettings } from '../adapters';
 import { Answers, answersDir, answerTag } from './answers';
+import type { Voicing } from './walkthrough';
 import { demoDirectory, readDemoSettings } from '../../plugin/skills/demo/lib/settings.ts';
 import { demoFile } from './demo-page';
 import { openWithSystem } from './machine';
@@ -113,6 +114,8 @@ export interface CanvasDeps {
   stopped?: (c: CanvasRuntime, why: string) => void;
   /** The canvases that run now, this one among them (`Canvases`): a card goes to another one, or Obeya makes one there. */
   canvases?: () => CanvasRuntime[];
+  /** The voice of looked-up answers told as walkthroughs, the server's one for every canvas; without it, answers come as text only. */
+  voicing?: Voicing;
 }
 
 /**
@@ -394,6 +397,7 @@ export class CanvasRuntime {
       dirOf: (thread) => answersDir(deps.home, id, thread),
       imageFiles: this.imageFiles,
       toObeya: this.toObeya,
+      ...(deps.voicing ? { voicing: deps.voicing } : {}),
       onAnswer: (talk, question, answer) => {
         // looked up for an action: the Koordinator takes it now, hearing the answer with it
         if (this.commander.answerIn(talk)) return;

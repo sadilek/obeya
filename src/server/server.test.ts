@@ -899,6 +899,24 @@ describe('other files', () => {
 
 });
 
+describe('a walkthrough an answer comes with', () => {
+  test("is read by its player, the owner's alone, by its name in the thread's directory; its clips come as the answer's files", async () => {
+    const thread = board.addTalk('wie landet eine karte?', 'Moment.', null, { question: 'How does a card land?', about: null });
+    const out = canvas.answerDir(thread);
+    mkdirSync(join(out, 'landen.clips'), { recursive: true });
+    const w = { title: 'Landen', slides: [{ type: 'title', title: 'Landen', parts: ['Landen.'] }], done: false, clips: [[{ file: '1-1.wav', seconds: 1 }]], clipsDir: 'landen.clips' };
+    writeFileSync(join(out, 'landen.walkthrough.json'), JSON.stringify(w));
+    writeFileSync(join(out, 'landen.clips', '1-1.wav'), 'RIFF');
+    const read = (name: string) => fetch(new URL(api(`/threads/${thread}/walkthroughs/${name}?playing=0`), server.url));
+    expect(await (await read('landen.walkthrough.json')).json()).toEqual(w);
+    expect((await read('landen.clips%2F1-1.wav')).status).toBe(404);
+    expect((await read('nichts.walkthrough.json')).status).toBe(404);
+    expect((await globalThis.fetch(new URL(api(`/threads/${thread}/walkthroughs/landen.walkthrough.json`), server.url))).status).toBe(401);
+    const clip = await fetch(new URL(api(`/threads/${thread}/files/landen.clips/1-1.wav`), server.url));
+    expect(await clip.text()).toBe('RIFF');
+  });
+});
+
 describe('„Merk dir“', () => {
   test('adds a rule, changes the one it replaces, and adds it anew when that one is gone', () => {
     const run = CanvasRuntime.prototype.run.bind(canvas);

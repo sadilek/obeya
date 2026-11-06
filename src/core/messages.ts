@@ -56,6 +56,9 @@ const de = {
     /** On the card the question was asked on: the usage limit stopped the look-up, which goes on by itself. */
     limited: (when: string) => `Das Nutzungslimit ist erreicht. Obeya schlägt das ${when} von selbst nach.`,
     asIdea: 'Als Idee weiter besprochen.',
+    /** "Show as walkthrough": the owner's words, as the button says, and Obeya's reply. */
+    walkthroughAsked: 'Als Walkthrough zeigen',
+    walkthroughReply: 'Ich erzähle die Antwort als Walkthrough.',
   },
   tool: {
     read: (file: string) => `Liest ${file}`,
@@ -587,6 +590,8 @@ const en: Messages = {
     failed: (why: string) => `I could not answer the question (${why}).`,
     limited: (when: string) => `The usage limit is reached. Obeya looks this up by itself ${when}.`,
     asIdea: 'Discussed further as an idea.',
+    walkthroughAsked: 'Show as walkthrough',
+    walkthroughReply: 'I’ll tell the answer as a walkthrough.',
   },
   tool: {
     read: (file: string) => `Reads ${file}`,

@@ -10,7 +10,8 @@ import { CanvasRuntime } from './canvas';
 import { serveAnswerFile } from './demo';
 import type { Focus } from './commands';
 import { Store } from './db';
-import { FakeRuntime, noForge, type FakeSession, gitRepo, until } from './testing';
+import { FakeRuntime, fakeVoicing, noForge, type FakeSession, gitRepo, until } from './testing';
+import { BadRequest } from './board';
 
 let dir: string;
 let main: string;
@@ -18,9 +19,10 @@ let store: Store;
 let runtime: FakeRuntime;
 let canvas: CanvasRuntime;
 let notices: Notice[];
+let voice: ReturnType<typeof fakeVoicing>;
 
 const open = async () => {
-  const c = await CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10 });
+  const c = await CanvasRuntime.start({ repos: [{ path: main, clones: 1 }] }, { store, home: dir, runtime, forge: noForge, commandDelayMs: 10, permissionMode: 'acceptEdits', limitMargin: 10, voicing: voice.voicing });
   c.board.onNotice((n) => notices.push(n));
   return c;
 };
@@ -32,6 +34,7 @@ beforeEach(async () => {
   store = new Store(':memory:');
   runtime = new FakeRuntime();
   notices = [];
+  voice = fakeVoicing();
   canvas = await open();
 });
 afterEach(() => {
@@ -760,6 +763,31 @@ describe('a thread on a Question card', () => {
     expect(canvas.answers.toCard(other).id).toBe(done.id);
     expect(board().item(done.id)).toBeDefined();
   });
+
+  test('its agent tells a walkthrough that plays in its conversation from the first slide on, until the answer takes its place; paused, the turn takes it along', async () => {
+    const { first, card } = await moved();
+    canvas.tell(card.id, 'wie entsteht die tabelle?', [], false);
+    let a = answerer();
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Tabelle', narration: 'So entsteht sie.' } });
+    const live = board().events(card.id).at(-1)!;
+    expect(live).toMatchObject({ kind: 'talk', author: 'koordinator', text: '', answer: { thread: first, live: true, files: [{ name: 'die-tabelle.walkthrough.json' }] } });
+    a.call('answer_owner', { text: 'Der Walkthrough zeigt, wie die Tabelle entsteht.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    const talk = board().events(card.id).filter((e) => e.kind === 'talk');
+    expect(talk.filter((e) => e.answer?.files?.some((f) => f.name === 'die-tabelle.walkthrough.json'))).toHaveLength(1);
+    expect(talk.at(-1)).toMatchObject({ text: 'Der Walkthrough zeigt, wie die Tabelle entsteht.', answer: { thread: first, files: [{ name: 'die-tabelle.walkthrough.json', caption: 'Die Tabelle' }] } });
+    expect(talk.at(-1)!.answer!.live).toBeUndefined();
+    expect(board().item(card.id)!.thread).toMatchObject({ answers: 3, files: 2 });
+
+    canvas.tell(card.id, 'und die summen?', [], false);
+    a = answerer();
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Die Summen', narration: 'Eins.' } });
+    expect(board().events(card.id).at(-1)!.answer?.live).toBe(true);
+    canvas.act(card.id, { action: 'pause' });
+    await settle();
+    expect(board().events(card.id).some((e) => e.answer?.live)).toBe(false);
+  });
 });
 
 describe("a question asked in a project's sheet", () => {
@@ -849,5 +877,92 @@ describe("a question asked in a project's sheet", () => {
     expect(card).toMatchObject({ kind: 'question', title: 'Was fehlt noch?' });
     const p = project();
     expect(Math.abs(card.x - p.x) + Math.abs(card.y - p.y)).toBeLessThan(2000);
+  });
+});
+
+describe('an answer told as a walkthrough', () => {
+  test('shows under its question from the first slide on, and its words come in above it, the walkthrough first among its files', async () => {
+    await say('wie landet eine karte?', {}, 'look_up', { question: 'How does an approved card land on main?', confirm: 'Moment.' });
+    const a = answerer();
+    expect(a.spec.system).toContain('Walkthroughs: an answer that explains how something works or what happens when');
+    expect(a.spec.tools.map((t) => t.name)).toContain('walkthrough_slide');
+    const talk = board().talk().at(-1)!;
+    expect(a.call('walkthrough_slide', { slide: { type: 'title', title: 'Wie eine Karte landet', narration: 'Drei Schritte.' } })).toStartWith('Slide 1 is shown');
+    await settle();
+    expect(board().exchange(talk.id)).toMatchObject({ files: [{ name: 'wie-eine-karte-landet.walkthrough.json', caption: 'Wie eine Karte landet' }] });
+    expect(board().exchange(talk.id)!.answer).toBeUndefined();
+    a.call('walkthrough_slide', { slide: { type: 'flow', title: 'Der Weg', steps: ['Rebase', 'Checks', { label: 'Merge', note: 'auf main' }], narration: 'Erst rebasen, dann prüfen, dann mergen.' } });
+    // the player reads it as it grows, and says which slide it plays
+    const shown = canvas.answers.walkthrough(talk.id, 'wie-eine-karte-landet.walkthrough.json', 0)!;
+    expect(shown.slides.map((x) => x.type)).toEqual(['title', 'flow']);
+    expect(shown.done).toBe(false);
+    const out = answersDir(dir, canvas.id, talk.id);
+    writeFileSync(join(out, 'flow.png'), 'png');
+    a.call('answer_owner', { text: 'Der Walkthrough zeigt die drei Schritte.', files: [{ path: 'flow.png', caption: 'Der Weg' }] });
+    a.emit({ type: 'idle' });
+    await settle();
+    expect(board().exchange(talk.id)).toMatchObject({
+      answer: 'Der Walkthrough zeigt die drei Schritte.',
+      files: [
+        { name: 'wie-eine-karte-landet.walkthrough.json', caption: 'Wie eine Karte landet' },
+        { name: 'flow.png', caption: 'Der Weg' },
+      ],
+    });
+    expect(canvas.answers.walkthrough(talk.id, 'wie-eine-karte-landet.walkthrough.json')!.done).toBe(true);
+    // in the voice of the demo settings, sentence by sentence, the title first
+    await until(() => voice.said.length === 3);
+    expect(voice.said).toEqual(['de:Wie eine Karte landet.', 'de:Drei Schritte.', 'de:Erst rebasen, dann prüfen, dann mergen.']);
+  });
+
+  test("asked with a card open, it plays in that card's log before the answer, which takes its place", async () => {
+    const login = board().create({ title: 'Login', body: 'Login hängt.', x: 0, y: 0 });
+    await say('wie läuft der login ab?', { card: login.id }, 'look_up', { question: 'How does login go?', confirm: 'Moment.' });
+    const thread = board().talk().at(-1)!.id;
+    const a = answerer();
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'Der Login', narration: 'Er geht so.' } });
+    expect(board().events(login.id).at(-1)).toMatchObject({ kind: 'say', author: 'koordinator', text: '', answer: { thread, live: true } });
+    a.call('answer_owner', { text: 'So läuft er ab.' });
+    a.emit({ type: 'idle' });
+    await settle();
+    const said = board().events(login.id).filter((e) => e.answer);
+    expect(said.map((e) => [e.text, e.answer!.live, e.answer!.files?.map((f) => f.name)])).toEqual([['So läuft er ab.', undefined, ['der-login.walkthrough.json']]]);
+  });
+
+  test('"Show as walkthrough" asks the agent of its thread again, in its session, with the voice loading meanwhile', async () => {
+    const first = await lookedUp('ideenkarte oder fragekarte?', 'Idea card or Question card?', 'Eine Ideenkarte, wenn …', 'look-1');
+    const asked = canvas.answers.showAsWalkthrough(first);
+    expect(board().exchange(asked)).toMatchObject({ said: 'Als Walkthrough zeigen', reply: 'Ich erzähle die Antwort als Walkthrough.', thread: first, follows: first });
+    expect(voice.warmed).toEqual(['de']);
+    const a = answerer();
+    expect(a.spec.resume).toBe('look-1');
+    expect(a.inbox[0]).toContain('Tell your answer above as a walkthrough, as your instructions describe, rather than as text');
+    // only a looked-up answer has a thread to ask
+    await say('hallo', {}, 'reply', { confirm: 'Hallo.' });
+    expect(() => canvas.answers.showAsWalkthrough(board().talk().at(-1)!.id)).toThrow(BadRequest);
+  });
+
+  test("a project's agent tells walkthroughs too", async () => {
+    const p = board().snapshot().items.find((i) => i.kind === 'project')!;
+    canvas.press(p.id, { action: 'consult', text: 'Wie läuft W4 ab?' });
+    await settle();
+    const a = answerer();
+    expect(a.spec.system).toContain('project agent of the project "PR-Loop"');
+    expect(a.spec.system).toContain('Walkthroughs:');
+    expect(a.spec.tools.map((t) => t.name)).toEqual(['answer_owner', 'walkthrough_slide', 'to_obeya']);
+    a.call('walkthrough_slide', { slide: { type: 'title', title: 'W4', narration: 'So.' } });
+    await settle();
+    expect(board().talk().at(-1)!.files).toEqual([{ name: 'w4.walkthrough.json', caption: 'W4' }]);
+  });
+
+  test('one begun when Obeya restarts makes way for the one the look-up tells anew', async () => {
+    await say('wie landet eine karte?', {}, 'look_up', { question: 'How does a card land?', confirm: 'Moment.' });
+    answerer().call('walkthrough_slide', { slide: { type: 'title', title: 'Landen', narration: 'So.' } });
+    const talk = board().talk().at(-1)!.id;
+    expect(board().exchange(talk)!.files).toHaveLength(1);
+    canvas.shutdown();
+    canvas = await open();
+    await settle();
+    expect(board().exchange(talk)!.files).toBeUndefined();
+    expect(answerer().inbox[0]).toContain('How does a card land?');
   });
 });

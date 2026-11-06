@@ -16,7 +16,6 @@ import { type Focus, type Heard, type Input, isField } from './commands';
 import { holdsNotes } from '../core/queue';
 import type { Config } from './config';
 import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './demo';
-import { played } from './walkthrough';
 import { type NarrationHost, parseClipRequest } from './narration';
 import type { Restarter } from './self-update';
 import { looping, silence, type Transcriber } from './voice';
@@ -877,7 +876,17 @@ export function serve(
       },
       // "Make it a card": a looked-up thread moves onto a Question card
       '/api/c/:canvas/threads/:thread/card': { POST: on((c, req) => c.answers.toCard(Number(req.params.thread))) },
-      '/api/c/:canvas/talk/:talk/walkthrough': { POST: on((c, req) => ({ talk: c.answers.walkthrough(Number(req.params.talk)) })) },
+      // "Show as walkthrough": the answer told again, as the thread's next answer
+      '/api/c/:canvas/talk/:talk/walkthrough': { POST: on((c, req) => ({ talk: c.answers.showAsWalkthrough(Number(req.params.talk)) })) },
+      // a walkthrough as its player reads it while it grows; `?playing=<slide>` while it plays, so the voice speaks that first
+      '/api/c/:canvas/threads/:thread/walkthroughs/:name': {
+        GET: (req) => {
+          const c = byId.get(req.params.canvas);
+          const playing = new URL(req.url).searchParams.get('playing');
+          const w = c?.answers.walkthrough(Number(req.params.thread), req.params.name, playing === null ? undefined : Number(playing));
+          return w ? Response.json(w, { headers: { 'cache-control': 'no-store' } }) : notFound();
+        },
+      },
       // a file a looked-up answer comes with; `?download` to save it
       '/api/c/:canvas/threads/:thread/files/*': {
         GET: (req) => {
@@ -885,9 +894,6 @@ export function serve(
             const c = byId.get(req.params.canvas);
             const url = new URL(req.url);
             const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
-            // prototype: a walkthrough's player says which slide it plays, so the voice speaks that one first
-            const playing = url.searchParams.get('playing');
-            if (c && playing !== null && file.endsWith('.clips/status.json')) played(join(c.answerDir(Number(req.params.thread)), file.replace(/^~[0-9a-f]+\//, '').replace(/\/status\.json$/, '')), Number(playing));
             return c ? serveAnswerFile(c.answerDir(Number(req.params.thread)), file, url.searchParams.has('download'), req) : notFound();
           } catch {
             return notFound();

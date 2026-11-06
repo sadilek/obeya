@@ -87,6 +87,16 @@ describe('the voice Obeya holds', () => {
     expect(log()).toEqual(['start ryan', 'de:eins', 'de:zwei', 'end ryan', 'start ryan', 'de:drei']);
   });
 
+  test('loads without a clip, ahead of the first one, and once only for a voice loaded already', async () => {
+    hold();
+    host.load({ speaker: 'ryan' }, 'de');
+    await until(() => log().length > 0);
+    expect(log()).toEqual(['start ryan']);
+    host.load({ speaker: 'ryan' }, 'de');
+    await host.clip(clip('eins'));
+    expect(log()).toEqual(['start ryan', 'de:eins']);
+  });
+
   test('gives the voice the script as written, and passes on what it heard', async () => {
     hold();
     const reply = await host.clip({ ...clip('Reauthentikayt.'), script: 'Reauthenticate.' });

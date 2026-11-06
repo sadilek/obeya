@@ -1440,7 +1440,7 @@ export class Board {
     this.changed();
   }
 
-  /** Prototype: files the exchange shows while its answer is still being looked up. */
+  /** The files an exchange shows while its answer is still being looked up: the walkthrough it plays meanwhile. */
   talkFiles(id: number, files: AnswerFile[]) {
     this.store.talkFiles(id, files);
     this.changed();

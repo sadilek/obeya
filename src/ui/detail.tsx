@@ -1611,7 +1611,8 @@ function Message({
       who={`${t.author[e.author]}${e.kind === 'question' ? ` · ${t.talk.question}` : e.kind === 'review' ? ` · ${t.talk.handover}` : ''}`}
       at={e.at}
       ev={e.id}
-      onReply={onReply && !turn.quiet ? () => onReply(e) : undefined}
+      // an answer whose walkthrough plays before its words: the answer to reply to is still to come
+      onReply={onReply && !turn.quiet && !e.answer?.live ? () => onReply(e) : undefined}
       onDelete={onDelete}
       deleteLabel={unread ? t.talk.withdraw : t.demo.unsay}
       head={answer.head}

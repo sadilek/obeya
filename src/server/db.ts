@@ -1225,7 +1225,7 @@ export class Store {
       .run({ id, answer, by, files: files.length ? JSON.stringify(files) : null });
   }
 
-  /** Prototype: files an answer shows while it is still being looked up (a walkthrough that plays as it is written). */
+  /** The files an exchange shows while its answer is still being looked up (a walkthrough that plays as it is told). */
   talkFiles(id: number, files: AnswerFile[]) {
     this.db.query('UPDATE talk SET files = $files WHERE id = $id').run({ id, files: files.length ? JSON.stringify(files) : null });
   }

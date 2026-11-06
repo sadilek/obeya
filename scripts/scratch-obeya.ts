@@ -108,6 +108,10 @@
 // write them in that language. `language` is the interface's; `conversation`, the language agents
 // write the owner in before the owner's words say otherwise, follows it where left out. `agents` is
 // what „Agenten und Modelle“ sets per group (`settings.json`'s `agents`: Codex for workers, say).
+// `"voice": true` gives the scratch Obeya the voice of the machine's Obeya (OBEYA_HOME where the
+// script runs, else ~/.obeya): a copy of its demo settings and a link to its installed voices, for
+// what Obeya itself speaks (a walkthrough); without it, the scratch home has the default settings
+// and no voice installed.
 // A card is created (x and y default to a free place; `idea`, `repo`, `from` as in
 // POST /api/c/<canvas>/cards) unless it names a plan doc's `project` or `workstream` (label; with
 // several plan docs "docs/plan/x.md#W1"), which exist already. Then its fields are written straight
@@ -160,6 +164,7 @@
 import { Database } from 'bun:sqlite';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { demoSettingsHere } from '../plugin/skills/demo/lib/settings.ts';
 import { type Language, LANGUAGES } from '../src/core/locale';
@@ -222,6 +227,8 @@ interface Stage {
   language?: Language;
   /** The owner's conversation language; the interface's without it. */
   conversation?: Language;
+  /** Speaks in the voice of the machine's Obeya. */
+  voice?: boolean;
   /** What „Agenten und Modelle“ sets per group, as `settings.json` keeps it under `agents`. */
   agents?: Record<string, unknown>;
   /** The directory of the canvas's repository under the scratch directory, and so its id (default `repo`). */
@@ -372,6 +379,11 @@ mkdirSync(home, { recursive: true });
 for (const k of ['language', 'conversation'] as const) if (stage[k] && !LANGUAGES.includes(stage[k])) fail(`"${k}" is ${LANGUAGES.join(' or ')}, not ${stage[k]}`);
 // the languages of Obeya's interface and of its agents' conversation with the owner (src/server/settings.ts)
 writeFileSync(join(home, 'settings.json'), `${JSON.stringify({ language: stage.language ?? demoSettingsHere().language, ...(stage.conversation ? { conversationLanguage: stage.conversation } : {}), ...(stage.agents ? { agents: stage.agents } : {}) })}\n`);
+if (stage.voice) {
+  const machine = process.env.OBEYA_HOME ?? join(homedir(), '.obeya');
+  if (existsSync(join(machine, 'demo.json'))) copyFileSync(join(machine, 'demo.json'), join(home, 'demo.json'));
+  if (existsSync(join(machine, 'voices')) && !existsSync(join(home, 'voices'))) symlinkSync(join(machine, 'voices'), join(home, 'voices'));
+}
 // the owner's key, made before the server starts, which takes it from the home (owner.ts); code from before it has none and ignores it
 const owner = ownerHeaders(home);
 
