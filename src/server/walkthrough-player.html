@@ -207,7 +207,7 @@ function show() {
 
 async function poll() {
   try {
-    const [l, st] = await Promise.all([`${W.clips}/slides.json`, `${W.clips}/status.json`].map((u) => fetch(`${u}?${Date.now()}`, { cache: 'no-store' }).then((r) => r.json())));
+    const [l, st] = await Promise.all([`${W.clips}/slides.json`, `${W.clips}/status.json`].map((u) => fetch(`${u}?playing=${playing ? cur : -1}&t=${Date.now()}`, { cache: 'no-store' }).then((r) => r.json())));
     status = st;
     for (const s of l.slides.slice(S.length)) addSlide(s);
     done = l.done;

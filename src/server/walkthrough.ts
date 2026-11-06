@@ -122,7 +122,10 @@ function partsOf(s: Slide): { parts: string[]; items?: number[] } {
     return { parts: split.flat(), items: split.flatMap((p, k) => p.map(() => k)) };
   }
   const text = [s.narration ?? ''].flat().join(' ').trim() || [s.title, s.type === 'title' ? s.subtitle : ''].filter(Boolean).join('. ');
-  return { parts: sentences(text) };
+  // a title slide says its title first: a short clip, so the first sound comes quickly
+  const said = sentences(text);
+  if (s.type === 'title' && s.title && !said[0]?.startsWith(s.title)) said.unshift(`${s.title.replace(/[.!?:]+$/, '')}.`);
+  return { parts: said };
 }
 
 /** The voice of the demo settings, for a walkthrough. */
@@ -164,14 +167,31 @@ function voice(parts: string[], i: number, dir: string, language: 'de' | 'en', s
   if (!voicing) void work();
 }
 
+/** The walkthroughs a player plays now, by their clips directory: the slide it is on, and when it said so. */
+const playing = new Map<string, { slide: number; at: number }>();
+
+/** A player plays slide `slide` of the walkthrough whose clips are in `dir` (`-1`: it does not play). */
+export function played(dir: string, slide: number) {
+  if (slide < 0) playing.delete(dir);
+  else playing.set(dir, { slide, at: Date.now() });
+}
+
+/** What the voice speaks next: what a playing player needs from its slide on, else the newest walkthrough's next sentence. */
+function nextJob(): Job {
+  const now = Date.now();
+  const heard = jobs.filter((x) => {
+    const p = playing.get(x.dir);
+    return p && now - p.at < 3000 && x.i >= p.slide;
+  });
+  const from = heard.length ? heard : jobs;
+  const newest = Math.max(...from.map((x) => x.status.started));
+  return jobs.splice(jobs.indexOf(from.find((x) => x.status.started === newest)!), 1)[0]!;
+}
+
 async function work() {
   voicing = true;
   try {
-    while (jobs.length) {
-      const newest = Math.max(...jobs.map((x) => x.status.started));
-      const job = jobs.splice(jobs.findIndex((x) => x.status.started === newest), 1)[0]!;
-      await speakJob(job);
-    }
+    while (jobs.length) await speakJob(nextJob());
   } finally {
     voicing = false;
   }

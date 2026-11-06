@@ -16,6 +16,7 @@ import { type Focus, type Heard, type Input, isField } from './commands';
 import { holdsNotes } from '../core/queue';
 import type { Config } from './config';
 import { serveAnswerFile, serveCardFile, serveDemoFile, serveMockFrame } from './demo';
+import { played } from './walkthrough';
 import { type NarrationHost, parseClipRequest } from './narration';
 import type { Restarter } from './self-update';
 import { looping, silence, type Transcriber } from './voice';
@@ -884,6 +885,9 @@ export function serve(
             const c = byId.get(req.params.canvas);
             const url = new URL(req.url);
             const file = decodeURIComponent(url.pathname.split('/files/').slice(1).join('/files/'));
+            // prototype: a walkthrough's player says which slide it plays, so the voice speaks that one first
+            const playing = url.searchParams.get('playing');
+            if (c && playing !== null && file.endsWith('.clips/status.json')) played(join(c.answerDir(Number(req.params.thread)), file.replace(/^~[0-9a-f]+\//, '').replace(/\/status\.json$/, '')), Number(playing));
             return c ? serveAnswerFile(c.answerDir(Number(req.params.thread)), file, url.searchParams.has('download'), req) : notFound();
           } catch {
             return notFound();
