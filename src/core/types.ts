@@ -2607,12 +2607,12 @@ export interface HarnessModel {
   name?: string;
   /** The efforts it takes, where the harness says (Codex); absent: all of `AGENT_EFFORTS`. */
   efforts?: AgentEffort[];
-  /** The one the harness takes by default (Codex's), which a setting of `default` runs on. */
+  /** The catalog default; the harness's effective configuration may choose another model. */
   isDefault?: true;
 }
 
-/** The model a setting names as the harness lists it: `default` is the one it marks so, where it does. */
-export const listedModel = (harness: HarnessView | undefined, model: string): string => (model === 'default' && harness?.models.find((m) => m.isDefault)?.id) || model;
+/** Codex's `default` follows its settings, independently of the catalog default; Claude keeps its listed default. */
+export const listedModel = (harness: HarnessView | undefined, model: string): string => (model === 'default' && harness?.id !== 'codex' && harness?.models.find((m) => m.isDefault)?.id) || model;
 
 /** A harness as this machine has it: installed, logged in, and the models it offers. */
 export interface HarnessView {

@@ -879,8 +879,9 @@ function AgentsBlock({ on }: { on: boolean }) {
         <span className="hint">{a.effort}</span>
         {AGENT_ROLES.map((role) => {
           const setting = view.agents[role];
-          const models = harness(setting.harness)?.models ?? [];
-          // a harness's default shows as the model it is; a model chosen that the harness no longer offers stays shown
+          const offered = harness(setting.harness)?.models ?? [];
+          const models = setting.harness === 'codex' ? [{ id: 'default' }, ...offered.filter((m) => m.id !== 'default')] : offered;
+          // inherited Codex settings stay distinct; a model no longer offered stays shown
           const model = listedModel(harness(setting.harness), setting.model);
           const listed = models.some((m) => m.id === model) ? models : [...models, { id: model }];
           const efforts = listed.find((m) => m.id === model)?.efforts ?? AGENT_EFFORTS;

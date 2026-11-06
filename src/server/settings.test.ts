@@ -178,6 +178,28 @@ test('byHarness starts each agent on the runtime of the harness its spec names, 
   expect(claude.sessions.length).toBe(1);
 });
 
+test("saving a named Codex model makes new sessions request it; inherited settings leave the model to Codex", () => {
+  const home = scratchHome();
+  const fake = new FakeRuntime();
+  const runtime = withAgentSetting(fake, (role) => agentSetting(home, role));
+  const spec = { cwd: '/r', system: '', tools: [], onEvent: () => {}, role: 'explorer' as const };
+  saveAgents(home, { explorer: { harness: 'codex' } });
+  runtime.start(spec);
+  expect(fake.last.spec.harness).toBe('codex');
+  // The effective Codex model can be 6.1 even when its catalog marks 5.6 as default.
+  expect('model' in fake.last.spec).toBe(false);
+  saveAgents(home, { explorer: { model: 'gpt-5.6-sol' } });
+  expect(agentsView(home).agents.explorer.model).toBe('gpt-5.6-sol');
+  runtime.start(spec);
+  expect(fake.last.spec.model).toBe('gpt-5.6-sol');
+  saveAgents(home, { explorer: { model: 'default' } });
+  runtime.start(spec);
+  expect('model' in fake.last.spec).toBe(false);
+  // A card's explicit choice overrides inherited settings, including the catalog default.
+  runtime.start({ ...spec, agent: { harness: 'codex', model: 'gpt-5.6-sol' } });
+  expect(fake.last.spec.model).toBe('gpt-5.6-sol');
+});
+
 
 test('light or dark: as the system until chosen, beside the other settings, and back to the system with null', () => {
   const home = scratchHome();

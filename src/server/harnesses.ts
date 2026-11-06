@@ -69,7 +69,7 @@ export class Harnesses {
 
   /** Each harness with what it offers, for the Konfiguration. */
   async view(): Promise<HarnessView[]> {
-    // the harness's default is no entry of its own: it is one of the models, which the owner picks by name
+    // Claude's aliases; the pickers offer inherited Codex settings separately from its catalog.
     const claude: HarnessView = { id: 'claude', ready: this.ready('claude'), ...this.version('claude'), models: AGENT_MODELS.filter((id) => id !== 'default').map((id) => ({ id })) };
     const listed = this.ready('codex') ? await this.codexModels() : [];
     const codex: HarnessView = { id: 'codex', ready: this.ready('codex'), ...this.version('codex'), models: newestOfFamilies(listed) };
@@ -116,7 +116,7 @@ const newer = (a: number[], b: number[]) => {
 
 /**
  * Codex's models without the older versions of a family (`gpt-5.6-sol` beside `gpt-6.1-sol`), in
- * Codex's order; the one it marks as its default stays, which a setting of `default` runs on.
+ * Codex's order; the one it marks as its catalog default stays available as an explicit choice.
  */
 export function newestOfFamilies(models: HarnessModel[]): HarnessModel[] {
   const newest = new Map<string, { id: string; version: number[] }>();

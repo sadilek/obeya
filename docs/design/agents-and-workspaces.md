@@ -82,8 +82,12 @@ harness (column "Runs on": Claude Code or Codex; one not installed or not logged
 by name, of each family only the newest version: GPT-6.1-Sol, not GPT-5.6-Sol beside it) and the effort (low to max, for a Codex model those it
 takes), and marks the presets: Claude Code with Opus throughout, high effort for workers and
 exploration agents, medium otherwise. Another harness starts from its own default model and keeps the
-effort; the default is no entry of its own but checked as the model it is (Codex's by the one it
-marks so). A group the owner chose no harness for runs on Claude Code, unless only Codex is ready on this
+effort. Codex offers "Use Codex settings" separately from named models in both model pickers:
+it leaves the model unspecified at execution so Codex resolves its effective configuration, which
+can differ by repository or host and need not match its catalog default. It remains distinct even
+when the catalog is unavailable. Choosing a named model saves that exact id for new sessions;
+existing sessions keep reporting their actual model. Claude Code's model choices stay as before.
+A group the owner chose no harness for runs on Claude Code, unless only Codex is ready on this
 machine; there the presets are Codex with its default model, and the dialog's hint says so. Stored in `settings.json` under `agents` (`{ "worker": { "harness": "codex", "model":
 "gpt-6.1-sol" } }`), only where it differs from the preset; a model belongs to the harness stored
 beside it, Claude Code's where none is. Saving restarts nothing; agents starting afterwards take it, a
@@ -94,8 +98,11 @@ A card may run on another harness, model or effort than its group. Joined to eac
 starts a card (and "Accept and start" on a proposed task, "Start anyway" in the queue) is a narrow
 part with a triangle that opens a menu: each ready harness's models, as "Agents and models" lists
 them, and the efforts the model takes, with what applies checked (the workers' setting until the
-card has one of its own). Picking what the workers have is no choice of the card's: it follows
-their setting. What the card chose of its own stands small beside the button ("Codex · GPT-6-Sol ·
+card has one of its own). Picking the workers' exact explicit harness and model is no choice of the
+card's: it follows their setting. A named Codex model is an explicit card override when the workers
+use "Use Codex settings", even if it is the catalog default. Following the workers' setting and
+following Codex's own settings are different: a card choosing "Use Codex settings" while its group
+names a model keeps that override. What the card chose of its own stands small beside the button ("Codex · GPT-6-Sol ·
 effort very high"); without a choice nothing does. The choice is the card's, stored with it, and
 goes with every session of its next run, the ones resumed after a restart included, and with the
 instructions that differ by harness (how a worker waits); what it leaves out is the workers'. It
@@ -395,6 +402,11 @@ for its hooks), and what the repository's work needs.
 
 ### Decisions
 
+- **Inherited Codex settings have a separate model entry** (2026-11-06, GitHub issue #58).
+  Rejected: showing the catalog default as selected for an inherited setting, since Codex's
+  effective configuration can choose another model and selecting the catalog default must save
+  an explicit choice. Resolving a preview through Codex's configuration is left out: it depends on
+  the repository and host where the agent will run.
 - **Claude in Chrome for every session here that may act, without a setting** (2026-11-05): a card
   can then read what only the owner's login shows (a dashboard, a console). Claude Code turns it on
   in a session started from a program only with `--chrome`, whatever its own settings say. The flag
