@@ -528,8 +528,14 @@ the demo directory, never in git; a pull request links a demo only once it is sh
 
 #### Watching the demo
 
-The demo plays by itself the first time the card is opened in a visible page (per browser; a new
-render counts as new); after that, or when the browser blocks autoplay, it waits behind a big play
+A demo plays by itself, with sound, only when the owner opens its card to it in a visible page and
+this browser has not played it yet (a new render counts as new). A demo counts as played once it
+has played, by itself or on a click, not once it has been shown. One that arrives on a card already
+open (the first handover or any later one) does not start: it waits behind a big play button, with
+"New demo is ready. Play it when you have a moment." under it until it plays. Closed without being
+played, it starts the next time the card is opened. A page reloaded by a restart reopens the card
+without the owner opening it, so a demo that waited there keeps waiting (the tab remembers it until
+the card closes). Otherwise, and when the browser blocks autoplay, the demo waits behind the play
 button. Z or the magnifier zooms the playing video out of the card to as large as the window allows
 above the microphone; Z, Esc or a click beside it ends the zoom.
 
@@ -707,6 +713,11 @@ translate or install, the first-fullscreen hint), which would catch taps meant f
   re-voicing works in place); copying only once a handover reuses a directory (by then the files
   are overwritten); serving the latest demo from its copy too (a re-voicing in place would not
   show).
+- **A demo starts by itself only when its card is opened** (2026-11-06): one that arrived on a card
+  left open started talking over calls and other work (the window can be in sight on a second
+  monitor). Rejected: a switch in the settings (this covers the case, and settings stay few),
+  starting muted (a card opened on purpose keeps its sound), detecting a call (a browser cannot see
+  one reliably on every platform).
 - **The demo zooms within the window** (2026-10-12). Rejected: full screen, too much on a large
   monitor.
 - **Space and the arrows reach the video; the microphone's 200 ms wait holds only with a video
