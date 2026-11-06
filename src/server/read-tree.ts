@@ -7,6 +7,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { spawnOutput } from './spawn';
 import { branchSetting, type Branches, CARD_BRANCH, detachedTree, detectingBranch, GIT, gitCalls, type GitSteps, gitSteps, gitStepsSync, isFolder, readingBranches } from './workspaces';
 
 /**
@@ -291,14 +292,11 @@ export class ReadTree {
     if (!this.o.remote) return;
     const { branch } = await gitSteps(this.o.repoPath, readingDefaultBranch(this.o.repoPath));
     // only the default branch, and no FETCH_HEAD: what a lease fetching in the same clone touches stays its own
-    const p = Bun.spawn([GIT, '-C', this.o.repoPath, 'fetch', '--quiet', '--no-write-fetch-head', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], {
+    const r = await spawnOutput([GIT, '-C', this.o.repoPath, 'fetch', '--quiet', '--no-write-fetch-head', 'origin', `+refs/heads/${branch}:refs/remotes/origin/${branch}`], {
       stdin: 'ignore',
-      stdout: 'ignore',
-      stderr: 'pipe',
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     });
-    const [code, err] = await Promise.all([p.exited, new Response(p.stderr).text()]);
-    if (code !== 0) console.error(`Lesestand: git fetch origin in ${this.o.repoPath}: ${err.trim()}`);
+    if (r.code !== 0) console.error(`Lesestand: git fetch origin in ${this.o.repoPath}: ${r.stderr.trim()}`);
   }
 
   /** Puts the worktree where `sync` says, after the moves before it; tells `onChange` where the Lesestand moved (`tell`). */
