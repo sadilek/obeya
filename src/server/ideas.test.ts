@@ -1236,7 +1236,8 @@ describe('a prototype', () => {
     // at once, the workstream the doc names takes over the prototype's workspace and branch, without starting; the other prototype is discarded
     await until(() => !prototypes(i.id).length);
     await settle();
-    expect(item(w2!.id)).toMatchObject({ state: 'planned', builtOn: film!.id });
+    // planned, not stopped: no agent has worked on it since
+    expect(item(w2!.id)).toMatchObject({ state: 'planned', builtOn: film!.id, unstarted: true });
     expect(item(w2!.id).prototypes!.map((p) => p.id)).toEqual([film!.id]);
     expect(board().row(w2!.id).workspace).toBe(ws);
     expect(git(ws, 'log', '--format=%s', '-1')).toBe('Prototyp film.html');

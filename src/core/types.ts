@@ -32,13 +32,13 @@ export type CardState = (typeof STATES)[number];
 /** A card whose work is over: `live` once it landed, `done` when it needed no change to the code (a demo, an analysis). */
 export const finished = (s: CardState) => s === 'live' || s === 'done';
 /** A card an agent worked on until the owner stopped it: planned again, its branch stays the card's. */
-export const stopped = (i: Pick<Item, 'state' | 'branch'>) => i.state === 'planned' && !!i.branch;
+export const stopped = (i: Pick<Item, 'state' | 'branch' | 'unstarted'>) => i.state === 'planned' && !!i.branch && !i.unstarted;
 /**
  * A stopped card of the owner's the archive may take: nothing waits to start it, and its workspace
  * holds no work (a branch with commits or changes keeps it, and archiving would leave that work
  * unseen in a clone).
  */
-export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'source' | 'queue' | 'workspace' | 'keptIn' | 'prototypeOf' | 'kind'>) =>
+export const stoppedArchivable = (i: Pick<Item, 'state' | 'branch' | 'unstarted' | 'source' | 'queue' | 'workspace' | 'keptIn' | 'prototypeOf' | 'kind'>) =>
   stopped(i) && i.source === 'manual' && i.kind === 'task' && !i.prototypeOf && !i.queue && !i.workspace && !i.keptIn;
 /** A finished card of the owner's whose agent is done: the archive may take it. */
 export const finishedArchivable = (i: Pick<Item, 'state' | 'source' | 'finishing'>) => finished(i.state) && i.source === 'manual' && !i.finishing;
@@ -465,6 +465,8 @@ export interface Item {
   prototypes?: Item[];
   /** A card that was an idea, or a workstream of the project an idea became, built on the branch of one of the idea's prototypes: that prototype. */
   builtOn?: string;
+  /** Built on a prototype's branch, and no agent has worked on it since: it is planned, not stopped. */
+  unstarted?: true;
   /** The work has landed and its worker finishes what remains (a migration, say) before its session ends. */
   finishing?: boolean;
   /** While `finishing`: nothing just landed, the owner asked about the finished card and its agent answers. */

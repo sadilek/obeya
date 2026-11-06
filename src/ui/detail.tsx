@@ -312,6 +312,8 @@ export function Detail(p: Props) {
   const archivable = finishedArchivable(item);
   // a stopped task starts again, or goes into the archive with its conversation, from the row below it
   const halted = stopped(item) && !item.queue;
+  // a workstream given a prototype's branch, which no agent has worked on since, starts from the same row
+  const onPrototype = item.state === 'planned' && !!item.unstarted && !item.queue;
   // a workstream planned again after a part of it landed starts its rest from the same row
   const rest = item.state === 'planned' && !!item.landedPart && !item.branch && !item.queue;
   // an archived project's doc is gone
@@ -665,8 +667,15 @@ export function Detail(p: Props) {
       )}
 
       {/* the decisions go below both columns, as on an idea or a proposal */}
-      {worked && (running || archivable || halted || rest || snoozable(item)) && (
+      {worked && (running || archivable || halted || onPrototype || rest || snoozable(item)) && (
         <div className="actions">
+          {onPrototype && !item.snoozed && (
+            <StartOn item={item} act={act}>
+              <button className="btn primary" title={t.startHint} onClick={() => act({ action: 'start' }, { close: false })}>
+                {t.start}
+              </button>
+            </StartOn>
+          )}
           {rest && (
             <StartOn item={item} act={act}>
               <button className="btn primary" title={t.landedPart.startHint} onClick={() => act({ action: 'start' }, { close: false })}>

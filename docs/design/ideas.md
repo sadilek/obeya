@@ -127,12 +127,13 @@ the workstream that builds on the chosen prototype names it by that name, and no
 names or mentions one. A handover whose doc leaves it unclear (several workstreams mention
 prototypes, one names several, or one mentions a prototype without naming which, among several) is
 refused, so the worker fixes the doc or asks the owner. The moment the project stands, that
-workstream takes over the prototype's workspace and branch, without starting: it starts like any
-other workstream ("Start agent", "Start all", once what it needs has landed) and its worker hears
-that the branch holds a throwaway prototype, as after "Build this prototype". The workstream says
-"Builds on the prototype “…”", the decision log says which workstream builds on which prototype,
-and the other prototypes are discarded. Where the doc builds on none, or the workstream has been
-started meanwhile, all are discarded. Nothing of the idea is left on the canvas.
+workstream takes over the prototype's workspace and branch, without starting: it stays planned (not
+"Stopped", though it has a branch) and starts like any other workstream ("Start agent", "Start
+all", once what it needs has landed), its worker hearing that the branch holds a throwaway
+prototype, as after "Build this prototype". The workstream says "Builds on the prototype “…”", the
+decision log says which workstream builds on which prototype, and the other prototypes are
+discarded. Where the doc builds on none, or the workstream has been started meanwhile, all are
+discarded. Nothing of the idea is left on the canvas.
 
 "Split off a task", when part of the idea is settled and part still open (an app's game logic
 settled, its pictures still to be prototyped): the agent marks the settled part (`plan_split`: a
