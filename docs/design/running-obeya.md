@@ -27,7 +27,8 @@ lines, what is server-wide (a waiting restart, a newer version, the usage limits
 owner on each canvas). What goes to another device is compressed (`permessage-deflate`; the JSON
 shrinks to about a tenth), what goes to this machine is not. A page that falls behind (more than a
 quarter of a megabyte unsent, a phone on a slow network) gets no snapshot queued behind those it has
-not received yet: once it caught up, it gets the newest of each canvas it missed one of.
+not received yet, those it is sent as it connects included: once it caught up, it gets the newest of
+each canvas it missed one of, one after the other while it stays caught up.
 
 #### Who may talk to it
 
@@ -160,7 +161,9 @@ same bundle. A phone is a device with a coarse pointer whose screen's shorter si
 a tablet and a narrow window at the desk keep the canvas. `?view=phone` or `?view=canvas` decides
 instead. The view is settled at load; turning the phone does not switch it. It holds one WebSocket
 for every canvas (`/api/ws`): each message about one canvas names it, the server-wide ones come once,
-and what waits for the owner is left out, since the canvases' snapshots hold it. It shows four lists:
+and what waits for the owner is left out, since the canvases' snapshots hold it. Once the last canvas
+stops while it is open, it goes to `/` (setup, or a canvas started since), as a canvas's own page
+does once its canvas is gone. It shows four lists:
 
 - **"Needs you"**: what waits for the owner across every canvas, canvas by canvas and within one in
   Tab's order, then "Obeya answered" where an answer waits unread. Each card says what it waits

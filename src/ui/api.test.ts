@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
-import { api, beforeReload, cardsOn, handOver, setCanvas, takeHandOver } from './api';
+import type { CanvasInfo, CanvasSnapshot } from '../core/types';
+import { api, beforeReload, cardsOn, everyCanvasHeard, handOver, setCanvas, takeHandOver } from './api';
 
 const fetched: string[] = [];
 const real = globalThis.fetch;
@@ -22,6 +23,25 @@ test('a call about a card goes to its canvas, though another is in view as it go
   await api.act('c2', { action: 'release' });
   await api.command('Neue Karte', null);
   expect(fetched).toEqual(['/api/c/website/cards/c1/act', '/api/c/website/command?card=c1', '/api/c/shop/cards/c2/act', '/api/c/shop/command']);
+});
+
+test('the connection to every canvas drops the cards of a canvas that stopped, and with none left the page goes to the start', () => {
+  let snapshots: Record<string, CanvasSnapshot> = {};
+  const lists: CanvasInfo[][] = [];
+  let left = 0;
+  const hear = everyCanvasHeard({ snapshots: (f) => void (snapshots = f(snapshots)), usage: () => {}, canvases: (c) => void lists.push(c) }, () => void left++);
+  const canvas = (id: string) => ({ id, name: id }) as CanvasInfo;
+  const snapshot = { items: [] } as unknown as CanvasSnapshot;
+  hear({ type: 'canvases', canvases: [canvas('shop'), canvas('website')] });
+  hear({ type: 'snapshot', canvas: 'shop', snapshot });
+  hear({ type: 'snapshot', canvas: 'website', snapshot });
+  hear({ type: 'canvases', canvases: [canvas('website')] });
+  expect(Object.keys(snapshots)).toEqual(['website']);
+  expect(left).toBe(0);
+  // the last canvas stopped (its repository gone): no empty list for the phone view to show
+  hear({ type: 'canvases', canvases: [] });
+  expect(left).toBe(1);
+  expect(lists.map((l) => l.map((c) => c.id))).toEqual([['shop', 'website'], ['website']]);
 });
 
 /** A tab's session storage, as the page has it. */
