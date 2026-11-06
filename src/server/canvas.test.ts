@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { boundsOf, CARD_SIZE } from '../core/layout';
@@ -1245,6 +1245,32 @@ describe('the canvases Obeya serves', () => {
     expect(store.cards('web').map((c) => c.id)).toContain(keep.id);
     set.shutdown();
     canvas = await CanvasRuntime.start({ repos: [{ path: api, settings: { land: 'pr' } }] }, { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge });
+  });
+
+  test('a canvas whose home repository leaves because its clones cannot be made stops, and nothing of it reads its repositories after', async () => {
+    fresh();
+    const web = repo('web', 'Web');
+    canvas.shutdown();
+    const config = { name: 'Web', repos: [{ path: web, settings: { land: 'pr' as const, workspaces: 'clones' as const } }] };
+    const set = await Canvases.start([config], { store: new Store(':memory:'), home: dir, runtime: new FakeRuntime(), forge: noForge, restartIntervalMs: 5 });
+    // the folder its clones go in takes none
+    const clones = join(dir, 'workspaces', 'web');
+    mkdirSync(clones, { recursive: true });
+    chmodSync(clones, 0o555);
+    const errors = quiet();
+    try {
+      await set.apply([{ ...config, repos: [{ ...config.repos[0]!, clones: 1 }] }], ['web']);
+      await until(() => set.all().length === 0);
+      await settle();
+    } finally {
+      errors.restore();
+      chmodSync(clones, 0o755);
+    }
+    expect(set.failures()).toEqual([{ canvas: 'web', detail: expect.any(String) }]);
+    expect(errors.lines.join('\n')).toContain('its clones cannot be made');
+    expect(errors.lines.filter((l) => !l.includes('its clones cannot be made'))).toEqual([]);
+    set.shutdown();
+    canvas = await CanvasRuntime.start({ repos: [{ path: web }] }, { store: new Store(':memory:'), home: join(dir, 'again'), runtime: new FakeRuntime(), forge: noForge });
   });
 
   test('a canvas new in the configuration starts at once, one moved in it moves in the list, one no longer in it stops, its cards kept', async () => {
