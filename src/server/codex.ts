@@ -422,6 +422,8 @@ export function codexLoginFailed(info: unknown, message: string): boolean {
 export const notLoggedIn = (host: string | null, message: string) => `Codex is not logged in on ${host ?? 'this machine'}. (${message})`;
 
 /** A port on a host forwarded to a session's hooks here: one of its own per session, as for the narration (`SshHost.session`). */
+/** How long a session waits for Codex's list of models before it starts without one. */
+const MODELS_WAIT_MS = 30_000;
 const hookPortThere = () => 30_000 + Math.floor(Math.random() * 30_000);
 
 /** Runs agents through `codex app-server`, on the Codex login of the machine they work on: this one, or a host's over SSH. */
@@ -517,7 +519,11 @@ class CodexSession implements AgentSession {
    */
   private async model(server: AppServer): Promise<string | undefined> {
     const family = codexFamily(this.spec.model ?? 'default');
-    const catalog = await listModels(server).catch((e) => void console.warn(`Obeya: Codex did not list its models; the session starts on Codex's own configuration: ${messageOf(e)}`));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer in ${MODELS_WAIT_MS / 1000} seconds`)), MODELS_WAIT_MS)));
+    const catalog = await Promise.race([listModels(server), late])
+      .catch((e) => void console.warn(`Obeya: Codex did not list its models; the session starts on Codex's own configuration: ${messageOf(e)}`))
+      .finally(() => clearTimeout(timer));
     if (!catalog) return undefined;
     const model = resolveCodexModel(catalog, family);
     if (!model) {

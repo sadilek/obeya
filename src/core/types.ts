@@ -2572,8 +2572,8 @@ export interface CardAgent {
   model?: string;
   effort?: AgentEffort;
 }
-/** A Codex model as a setting may name it: a family (`gpt-#-sol`), or a model id Codex lists (`gpt-6.1-sol`), read as its family. */
-export const CODEX_MODEL = /^[A-Za-z0-9#][\w.:#-]{0,79}$/;
+/** A Codex model as a setting may name it: a family (`gpt-#-sol`, one `#` where the version was), or a model id Codex lists (`gpt-6.1-sol`), read as its family. */
+export const CODEX_MODEL = /^(?=[^#]*#?[^#]*$)(?!#$)[A-Za-z0-9#][\w.:#-]{0,79}$/;
 /** The Codex family a group runs on until the owner chooses another: Sol. */
 export const CODEX_PRESET = 'gpt-#-sol';
 /** A Codex model id's family and version: `gpt-6.1-sol` is `gpt-#-sol` 6.1; none for an id without a number. */

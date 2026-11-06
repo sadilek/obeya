@@ -1093,7 +1093,7 @@ span.cl-name { color: inherit; cursor: default; }
 .agent-check { flex: none; width: 18px; }
 .agent-h { padding-top: 8px; font-weight: 600; }
 .agent-group { display: flex; flex-direction: column; }
-.agent-family { padding: 2px 12px 6px; font-size: 11.5px; max-width: 30ch; }
+.agent-family { padding: 2px 12px 6px; font-size: 11.5px; }
 .agent-effort-h { border-top: 1px solid var(--line); margin-top: 4px; }
 .agent-efforts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 10px; }
 .agent-effort { border: 1px solid var(--line); background: none; border-radius: 3px; padding: 4px 9px; font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; }

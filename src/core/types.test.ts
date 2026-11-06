@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CLONES, cardAgentOf, codexFamily, type FilledClones, type HarnessView, type Item, modelChoices, modelName, nearestEffort, newestOfFamilies, resolveCodexModel, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
+import { CLONES, cardAgentOf, codexFamily, modelFits, type FilledClones, type HarnessView, type Item, modelChoices, modelName, nearestEffort, newestOfFamilies, resolveCodexModel, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
 
 const card = (over: Partial<Item>): Item => ({ id: 'x', number: 1, kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
 
@@ -130,6 +130,9 @@ test("a Codex setting names a family: a model id is read as its family, `default
   expect(codexFamily('o3')).toBe('o#');
   expect(codexFamily('codex-mini-latest')).toBe('codex-mini-latest');
   expect(codexFamily('default')).toBe('gpt-#-sol');
+  // a family has one `#` where the version was, and is no Claude Code alias
+  expect(['gpt-#-sol', 'gpt-6.1-sol', 'o#', 'default'].every((m) => modelFits('codex', m))).toBe(true);
+  expect(['#', 'gpt-##-sol', 'gpt-#-#', 'opus', 'gpt 6 sol'].some((m) => modelFits('codex', m))).toBe(false);
   // a card's own choice stored with a model id or the default reads as the family; Claude Code's alias stays
   expect(cardAgentOf('{"harness":"codex","model":"gpt-6.1-terra","effort":"high"}')).toEqual({ harness: 'codex', model: 'gpt-#-terra', effort: 'high' });
   expect(cardAgentOf('{"harness":"codex","model":"default"}')).toEqual({ harness: 'codex', model: 'gpt-#-sol' });
