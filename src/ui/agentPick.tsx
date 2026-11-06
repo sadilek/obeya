@@ -16,7 +16,7 @@ import { t } from './strings';
 let last: AgentsView | null = null;
 const agentsView = () => api.agents().then((v) => (last = v));
 
-/** A harness and model as the owner knows them: „Claude Code · Opus“, „Codex · GPT-6.1-Sol“, Codex's default by the model it is. */
+/** A named model, or Codex's inherited settings without guessing the model they resolve to. */
 export function agentLabel(view: AgentsView | null, harness: Harness, model: string): string {
   const a = t.config.agents;
   if (harness === 'claude') return model === 'default' ? a.models.default : `${t.harnesses.claude} · ${a.models[model as AgentModel] ?? model}`;
@@ -66,7 +66,7 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
   const group = view.agents.worker;
   const own = item.agent ?? {};
   const listed = (h: Harness) => view.harnesses.find((x) => x.id === h);
-  // a harness's default is checked as the model it is
+  // inherited Codex settings keep their own identity, independently of the catalog default
   const groupModel = listedModel(listed(group.harness), group.model);
   const harness = own.harness && own.model ? own.harness : group.harness;
   const model = listedModel(listed(harness), own.harness && own.model ? own.model : group.model);
@@ -123,11 +123,12 @@ export function AgentPick({ item, act, primary = true, children }: { item: Item;
                     {t.config.agents.notReady(t.harnesses[h])}
                   </div>
                 );
+              const models = h === 'codex' ? [{ id: 'default' }, ...found.models.filter((m) => m.id !== 'default')] : found.models;
               return (
                 <div key={h} className="agent-group" role="group" aria-label={t.harnesses[h]}>
                   <div className="snooze-h agent-h">{t.harnesses[h]}</div>
                   {/* a model chosen that the harness no longer offers stays shown */}
-                  {(harness !== h || found.models.some((m) => m.id === model) ? found.models : [...found.models, { id: model }]).map((m) => {
+                  {(harness !== h || models.some((m) => m.id === model) ? models : [...models, { id: model }]).map((m) => {
                     const on = harness === h && model === m.id;
                     return (
                       <button key={m.id} className="snooze-opt" role="menuitemradio" aria-checked={on} onClick={() => pickModel(h, m.id)}>

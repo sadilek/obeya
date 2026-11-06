@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { CLONES, type FilledClones, type Item, modelName, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
+import { CLONES, type FilledClones, type HarnessView, type Item, listedModel, modelName, openPerGroup, type ResolvedCanvas, stoppedArchivable, type Talk, unreadPerProject, withClones, withSupplemented } from './types';
 
 const card = (over: Partial<Item>): Item => ({ id: 'x', number: 1, kind: 'task', state: 'planned', title: '', body: '', x: 0, y: 0, source: 'manual', repo: 'r', ...over });
 
@@ -121,4 +121,16 @@ test('modelName names Claude models by family and version, any other as its harn
   expect(modelName('claude-fable-5-1[1m]')).toBe('Fable 5.1');
   expect(modelName('gpt-5.5')).toBe('gpt-5.5');
   expect(modelName('claude-next')).toBe('claude-next');
+});
+
+test("inherited Codex settings are distinct from an explicit catalog default in both model pickers", () => {
+  const codex: HarnessView = { id: 'codex', ready: true, models: [{ id: 'gpt-5.6-sol', name: 'GPT-5.6-Sol', isDefault: true }] };
+  // Codex's effective configuration can select another model; the catalog cannot resolve it.
+  expect(listedModel(codex, 'default')).toBe('default');
+  expect(listedModel(codex, 'gpt-5.6-sol')).toBe('gpt-5.6-sol');
+  expect(listedModel({ ...codex, models: [] }, 'default')).toBe('default');
+  expect(listedModel(undefined, 'default')).toBe('default');
+  expect(listedModel(codex, 'gpt-6.1-sol')).toBe('gpt-6.1-sol');
+  // Claude Code keeps its existing default resolution.
+  expect(listedModel({ id: 'claude', ready: true, models: [{ id: 'opus', isDefault: true }] }, 'default')).toBe('opus');
 });
