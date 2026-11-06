@@ -140,7 +140,10 @@ is packed again. `bun scripts/check-app.ts <program>` checks an installed app in
 `.github/workflows/build.yml` builds the app on GitHub's runners, each platform on its own (the
 AppImage on Ubuntu 22.04 for its glibc), checks the compiled server there with
 `scripts/check-binary.ts`, and runs typecheck and tests on Linux (with uv and ffmpeg for the demo
-voice's tests). A run takes about ten minutes.
+voice's tests). A run takes about ten minutes. Tauri's DMG script now and then fails on the Intel
+Mac runner where the same commit builds on the next try (2026-11-05 and -06), so a DMG is bundled up
+to three times, the tries after the first with `--verbose`, the only way Tauri shows the script's
+output.
 
 Builds and tests use Bun 1.4.3. Obeya needs Bun 1.3.14 or later: in 1.3.12 on Linux, a closed
 `fs.watch` can deadlock Bun's work pool, after which every page bundle hangs for good (2026-10-13).

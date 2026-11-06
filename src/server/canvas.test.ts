@@ -566,7 +566,8 @@ describe('many landings and agent starts at once', () => {
     try {
       // all four approved at once, their work landing on main one after the other, and two cards starting meanwhile
       await Promise.all([...cards.slice(0, 4).map((c) => w.approve(c.id)), ...cards.slice(4).map((c) => w.start(c.id))]);
-      await until(() => cards.slice(4).every((c) => sessionOf(c.id)));
+      // each start reads the default branch's settings with git first: on a busy CI runner that took over three seconds
+      await until(() => cards.slice(4).every((c) => sessionOf(c.id)), 20_000);
     } finally {
       clearInterval(ticks);
       Bun.spawnSync = spawnSync;
@@ -577,7 +578,8 @@ describe('many landings and agent starts at once', () => {
     expect(cards.slice(4).map((c) => sessionOf(c.id)!.spec.untrusted)).toEqual([true, true]);
     expect(stall).toBeLessThan(STALL_MS);
     expect(waited).toEqual([]);
-  });
+    // four landings with real git, a few seconds already on a laptop
+  }, 30_000);
 });
 
 describe("a repository's settings for this machine", () => {
