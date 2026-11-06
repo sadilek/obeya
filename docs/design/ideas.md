@@ -123,10 +123,11 @@ worker is done (put back, it stays). A task planned as a project is linked the s
 An idea's prototypes stay on the canvas while its plan doc is written, without "Build this
 prototype": the doc decides. Its worker hears what each showed and the name each goes by (its
 variant, else the approach in its title), so the doc builds on them instead of planning them again;
-the workstream that builds on the chosen prototype names it by that name, and no other workstream
-names or mentions one. A handover whose doc leaves it unclear (several workstreams mention
-prototypes, one names several, or one mentions a prototype without naming which, among several) is
-refused, so the worker fixes the doc or asks the owner. The moment the project stands, that
+the workstream that builds on the chosen prototype names it by that name in quotes (a word that
+happens to be a name names nothing), and no other workstream names or mentions one. A handover
+whose doc leaves it unclear (several workstreams name or mention prototypes, one names several, or
+one mentions a prototype without naming which, among several) is refused, so the worker fixes the
+doc or asks the owner. The moment the project stands, that
 workstream takes over the prototype's workspace and branch, without starting: it stays planned (not
 "Stopped", though it has a branch) and starts like any other workstream ("Start agent", "Start
 all", once what it needs has landed), its worker hearing that the branch holds a throwaway

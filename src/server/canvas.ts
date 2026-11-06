@@ -205,6 +205,9 @@ const repoDown = (card: Item) => new BadRequest('repoDown', `the repository ${ca
 /** New repositories being made, one after the other (`makeNewRepo`). */
 let making: Promise<unknown> = Promise.resolve();
 
+/** How often handing a prototype to its workstream is tried, git failing, before it is left to the owner. */
+const SETTLE_TRIES = 3;
+
 export class CanvasRuntime {
   readonly board: Board;
   readonly koordinator: Koordinator;
@@ -483,21 +486,23 @@ export class CanvasRuntime {
     });
     const uncount = board.onChange(() => this.countAgents());
     // a project that has just taken its idea's place settles the idea's prototypes, as does one that stood before Obeya started
-    const settle = () => {
-      if (this.settleSoon) return;
-      this.settleSoon = setTimeout(() => {
-        this.settleSoon = undefined;
-        if (!this.shutDown) this.settlePrototypes();
-      }, 0);
-    };
-    const unsettle = board.onChange(settle);
+    const unsettle = board.onChange(() => this.settleLater());
     this.unwatch = () => {
       unwake();
       uncount();
       unsettle();
     };
     this.countAgents();
-    settle();
+    this.settleLater();
+  }
+
+  /** Looks for prototypes whose idea's project now stands (`settlePrototypes`), once what changed the board is through. */
+  private settleLater() {
+    if (this.settleSoon) return;
+    this.settleSoon = setTimeout(() => {
+      this.settleSoon = undefined;
+      if (!this.shutDown) this.settlePrototypes();
+    }, 0);
   }
 
   /** Looks for snoozed cards whose time has come. */
@@ -509,6 +514,7 @@ export class CanvasRuntime {
   /** A look for prototypes whose idea's project now stands (`settlePrototypes`), and the ideas whose prototype is being handed to its workstream. */
   private settleSoon: ReturnType<typeof setTimeout> | undefined;
   private settling = new Set<string>();
+  private settleTries = new Map<string, number>();
   private unwatch: () => void;
 
   /** Wakes the snoozed cards whose time has come by `now`, and those whose card they wait on got there (or no longer can); so too the steps the Koordinator waits on cards for. */
@@ -2363,7 +2369,7 @@ export class CanvasRuntime {
       } catch (e) {
         built = Promise.reject(e);
       }
-      // where git failed, the prototype stays for the owner to see why, not tried again until Obeya restarts
+      // git still preparing a workspace refuses it: tried again once that is done; where git keeps failing, the prototype stays for the owner to see why
       void built.then(
         () => {
           decide(t.onPrototype(named, prototype.title), ws.id);
@@ -2372,6 +2378,13 @@ export class CanvasRuntime {
           this.settling.delete(ideaId);
         },
         (e: unknown) => {
+          const tries = (this.settleTries.get(ideaId) ?? 0) + 1;
+          this.settleTries.set(ideaId, tries);
+          if (tries < SETTLE_TRIES)
+            return void this.repoOf(prototype).workers.prepared().then(() => {
+              this.settling.delete(ideaId);
+              this.settleLater();
+            });
           this.board.log(ws.id, 'error', 'obeya', messageOf(e));
           for (const p of this.board.items().filter((i) => i.prototypeOf === ideaId && i.id !== prototype.id)) this.repoOf(p).workers.endPrototype(p.id, 'discarded', 'obeya');
         },

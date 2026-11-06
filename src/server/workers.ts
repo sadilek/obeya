@@ -2304,9 +2304,12 @@ export class Workers {
         return 'workstreams' in doc ? doc.workstreams.filter((w) => !w.done) : [];
       });
       const build = prototypeBuild(workstreams, prototypes);
-      if (!('unclear' in build)) return undefined;
-      const names = build.workstreams.map((w) => w.label ?? `“${w.title}”`).join(', ');
-      const what = { several: `the workstreams ${names} each name or mention a prototype`, many: `the workstream ${names} names several prototypes`, unnamed: `the workstream ${names} mentions a prototype without naming which` }[build.unclear];
+      const label = (ws: typeof workstreams) => ws.map((w) => w.label ?? `“${w.title}”`).join(', ');
+      if ('none' in build || ('also' in build && !build.also.length)) return undefined;
+      const what =
+        'also' in build
+          ? `the workstreams ${label([build.workstream, ...build.also])} each name or mention a prototype`
+          : { several: `the workstreams ${label(build.workstreams)} each name or mention a prototype`, many: `the workstream ${label(build.workstreams)} names several prototypes`, unnamed: `the workstream ${label(build.workstreams)} mentions a prototype without naming which` }[build.unclear];
       return `Not handed over: in your plan doc, ${what}. Once the project stands, Obeya gives the chosen prototype's branch to the one workstream that names it by its name in quotes (${prototypes.map((p) => `“${prototypeName(p)}”`).join(', ')}), and discards the other prototypes; no other workstream names or mentions a prototype, and where the plan builds on none, none mentions one. If it is not clear which prototype the plan builds on, ask the owner. Then call ready_for_review again.`;
     });
   }

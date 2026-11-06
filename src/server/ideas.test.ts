@@ -1301,6 +1301,8 @@ describe('a prototype', () => {
     expect(await handOver(w, 'Plan geschrieben.')).toContain('Not handed over: in your plan doc, the workstream W1 mentions a prototype without naming which.');
     write('- [ ] **W1:** Seite bauen. Auf „Film zuerst“.\n- [ ] **W2:** Texte. Wie „Manifest“.\n');
     expect(await handOver(w, 'Plan geschrieben.')).toContain('the workstreams W1, W2 each name or mention a prototype');
+    write('- [ ] **W1:** Seite bauen. Auf „Film zuerst“.\n- [ ] **W2:** Aufräumen. Die alten Prototypen löschen.\n');
+    expect(await handOver(w, 'Plan geschrieben.')).toContain('the workstreams W1, W2 each name or mention a prototype');
     expect(item(i.id).state).toBe('working');
     write('- [ ] **W1:** Seite bauen. Auf „Film zuerst“.\n- [ ] **W2:** Texte.\n');
     expect(await handOver(w, 'Plan geschrieben; W1 baut auf „Film zuerst“, „Manifest“ wird verworfen.')).not.toContain('Not handed over');
