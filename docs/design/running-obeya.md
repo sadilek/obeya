@@ -177,14 +177,29 @@ and what waits for the owner is left out, since the canvases' snapshots hold it.
 - **"Done"**: the finished cards that are not archived yet, those the archive's "Archive …
   finished tasks" would take, and none the lists above hold.
 
-"Planned" and "Done" are closed until their head (with the count) is tapped, since either may
-hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar so its
-cards show; it stays open while a card is open and over a reload, and is closed again in a new tab.
-Without such cards it is not there.
+*Setting a card aside.* A card in "Needs you" or "Running" swiped sideways (past a third of its
+width, or flicked; as the lines above the microphone) leaves both for **"Set aside"**, below
+"Running", until it needs the owner anew: it comes back by itself once it waits for them with a wait
+other than the one it was set aside in (a card set aside while it ran, at its next question or
+handover; one set aside while it waited, after it went on at the desk and waits again), while the
+same wait leaves it aside however long it lasts. Swiped there, a card comes back at once. The phone
+keeps what is set aside in its browser: the canvas at the desk, its navigation and the pushes show
+every card as before. "Needs you" counts only what it shows, and says "Nothing else waits for you."
+when all that waits is set aside ("Running" likewise). Until the owner has swiped a card once in
+this browser, a line under "Needs you" says how, and the first card that can be swiped nudges aside
+and back.
 
-The cards look as on the canvas, as wide as the screen and without the pin, their kind line led by
-the canvas's name where there are several; where two of at least
-340 px fit (the phone turned) they stand side by side.
+"Set aside", "Planned" and "Done" are closed until their head (with the count) is tapped, since
+each may hold many cards the owner rarely needs on the phone. Opened, the head moves up to the bar
+so its cards show; it stays open while a card is open and over a reload, and is closed again in a
+new tab. Without such cards it is not there.
+
+With several canvases, each list holds its cards canvas by canvas in the switcher's order, each
+canvas under a head with its name and how many cards it has there (orange in "Needs you", as the
+navigation counts); a tap on the head folds that canvas's cards in that list away and keeps the
+count, as the navigation folds its canvases, kept per list and canvas in the browser. A canvas
+without cards in a list has no head there. The cards look as on the canvas, as wide as the screen
+and without the pin; where two of at least 340 px fit (the phone turned) they stand side by side.
 
 *Obeya's conversation* is a panel over the list, opened by the canvas's speech-bubble button with its
 unread count across canvases, left of the microphone at a finger's size, or by the card "Obeya
@@ -553,6 +568,16 @@ workers are busy.
 - **Done cards on the phone in a list of their own, closed by default** (2026-10-28, the owner):
   the owner wants to see what is done but not archived from the phone, without it pushing what
   waits and what runs further down.
+- **Cards are set aside on the phone by a swipe, until they need the owner anew** (2026-11-06, the
+  owner): with many cards at work the phone's lists overwhelmed, though much of it the owner only
+  handles at the desk. It ends with a new wait, not with a time (that is snoozing, which also takes
+  the card off the canvas's lists) and not when the owner acts at the desk (the card would be back
+  while it runs, which the owner did not want to see on the phone). Kept in the phone's browser,
+  not on the server: it sorts the phone's lists only, and a second phone sorts its own. Rejected: a
+  button on each card (clutter for an action of the list, not of the card).
+- **The phone's lists group their cards by canvas under foldable heads** (2026-11-06, the owner):
+  one column of cards from every canvas ran together; a head per canvas, folded as in the
+  navigation, replaces the canvas's name in each card's kind line.
 - **Phone conversations are a panel from below, sized with a grip** (2026-10-17). Rejected: the
   conversation as a box in the scrolling page (a scroll area inside another, and the page scrolled
   past the field to make room for the microphone); a grip that only closes or springs back. Cards
