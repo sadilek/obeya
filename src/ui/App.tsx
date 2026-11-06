@@ -35,7 +35,7 @@ import { addAll, MARK_KNOWN, markable, MOVE_MARKED_KNOWN, movesWith, shifted, to
 import { closeWish, keepWish, openWish, useWish, WishDialog } from './wish';
 import { PlanDirNote, planDirBoxes, useHiddenEmptyNotes } from './planDirs';
 import { pastedShots, pastedText } from './pasteHint';
-import { attachTo, imageFiles } from './shots';
+import { filesTo, imageFiles } from './shots';
 import { cardDraft, drafted, fieldOn, focusedDraft, insertPasted, keepDrafts, MIC_DRAFT, OBEYA_DRAFT, takesImages } from './draft';
 import { HoldToTalk, PushToTalk, SPACE_SHOWS_MS, TAP_MS, ToldList, usePushToTalk, useTold } from './voice';
 import { videoOf } from './spot';
@@ -1194,19 +1194,20 @@ function Canvas({
   useEffect(() => {
     const up = (e: KeyboardEvent) => e.code === 'Space' && letGoRef.current();
     const release = () => letGoRef.current();
-    // a screenshot or text pasted (⌘V) anywhere but in a text field goes to the field in view, or beside the mic
+    // a screenshot, a file copied in the file manager (by its path) or text pasted (⌘V) anywhere but
+    // in a text field goes to the field in view, or beside the mic
     const paste = (e: ClipboardEvent) => {
       const el = e.target;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)) return;
-      const files = imageFiles(e.clipboardData?.files);
+      const files = [...(e.clipboardData?.files ?? [])];
       const key = fieldFor(where());
-      if (files.length && takesImages(key)) {
+      if (files.length) {
+        if (!takesImages(key)) return;
         e.preventDefault();
-        pastedShots();
-        return void attachTo(key, files);
+        if (imageFiles(e.clipboardData?.files).length) pastedShots();
+        return void filesTo(key, files);
       }
-      // a file copied in the file manager comes with its name as text, which says nothing
-      const text = e.clipboardData?.files.length ? '' : (e.clipboardData?.getData('text/plain').trim() ?? '');
+      const text = e.clipboardData?.getData('text/plain').trim() ?? '';
       if (!text) return;
       e.preventDefault();
       pastedText();
