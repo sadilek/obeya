@@ -395,6 +395,8 @@ export function serve(
     <T,>(x: T | undefined, fn: (x: T, req: Request) => unknown | Promise<unknown>) =>
     (req: Request): Response | Promise<Response> =>
       x ? handle(() => fn(x, req)) : notFound();
+  /** The system's folder dialog, for a browser on this machine that has one. */
+  const picker = (req: Request, srv: Bun.Server<unknown>) => !!machine?.picker && access.isLocal(req, srv);
   /** Nothing the owner said came through: Whisper understood nothing (`null`), or heard nothing. */
   const unheard = (c: CanvasRuntime, text: string | null) => ({ confirm: text === null ? c.board.t.voice.notUnderstood : c.board.t.voice.nothingHeard, unheard: true });
 
@@ -647,7 +649,8 @@ export function serve(
         DELETE: needs(setup, (s) => s.useLocal()),
       },
       // the setup assistant: what Obeya needs on this machine, installed, logged in; then the first canvas
-      '/api/setup': { GET: needs(machine, (m) => m.view()) },
+      // the folder dialog is offered only to a browser on this machine: it opens on this machine's screen
+      '/api/setup': { GET: (req, srv) => (machine ? handle(async () => ({ ...(await machine.view()), picker: picker(req, srv) })) : notFound()) },
       '/api/setup/install': { POST: needs(machine, async (m, req) => m.install(await req.json())) },
       '/api/setup/login': { POST: needs(machine, async (m, req) => m.login(await req.json())) },
       '/api/setup/token': { POST: needs(machine, async (m, req) => m.saveToken(await req.json())) },
@@ -662,10 +665,13 @@ export function serve(
       '/api/setup/git-preview': { POST: needs(machine, async (m, req) => m.gitPreview(await req.json())) },
       '/api/setup/git': { POST: needs(machine, async (m, req) => m.gitSetup(await req.json())) },
       '/api/setup/canvas': { POST: needs(machine, async (m, req) => m.canvas(await req.json())) },
-      // the system's folder dialog, open as long as the owner takes
+      // the system's folder dialog, open as long as the owner takes; whether it is offered here (GET);
+      // only on this machine, as it opens on this machine's screen
       '/api/setup/pick': {
+        GET: (req, srv) => Response.json({ picker: picker(req, srv) }),
         POST: async (req, srv) => {
           if (!machine) return notFound();
+          if (!access.isLocal(req, srv)) return onlyHere();
           srv.timeout(req, 0);
           const { prompt } = ((await req.json().catch(() => ({}))) ?? {}) as { prompt?: unknown };
           return handle(() => machine.pick(typeof prompt === 'string' ? prompt : ''));
