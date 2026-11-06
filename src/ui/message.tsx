@@ -292,7 +292,7 @@ function AnswerPage({ thread, file }: { thread: number; file: AnswerFile }) {
   const height = useReportedHeight(frame, PAGE_CAP);
   return (
     <figure className="answer-page">
-      <iframe ref={frame} sandbox="allow-scripts" src={answerFile(thread, file.name)} title={file.caption || file.name} style={height ? { height } : undefined} />
+      <iframe ref={frame} sandbox="allow-scripts" allow="autoplay" src={answerFile(thread, file.name)} title={file.caption || file.name} style={height ? { height } : undefined} />
       <figcaption>
         <a href={answerFile(thread, file.name)} target="_blank" rel="noreferrer">
           {file.name}

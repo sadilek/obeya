@@ -22,7 +22,7 @@ import type { AgentRuntime } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './workers';
 import { clip, messageOf } from '../core/text';
-import { WALKTHROUGH_NOTE, walkthroughs } from './walkthrough';
+import { WALKTHROUGH_NOTE, Walkthroughs } from './walkthrough';
 
 export interface AnswerOptions {
   board: Board;
@@ -53,6 +53,8 @@ type Exchange = Talk & { about?: string; session?: string };
 type By = 'koordinator' | 'project';
 
 export class Answers {
+  /** Prototype: exchanges that ask for a walkthrough ("Show as walkthrough"), which plays as soon as it can. */
+  private asked = new Set<number>();
   /** Exchanges being looked up, so a resume does not ask twice. */
   private busy = new Set<number>();
   /** The turns of each thread, one after the other: two never run in one session at once. */
@@ -109,6 +111,8 @@ export class Answers {
         ...(asked ? { asked } : {}),
         onTool,
         onSession: (id) => this.o.board.talkSession(talkId, id),
+        onShown: (files) => this.o.board.talkFiles(talkId, files),
+        autoplay: this.asked.has(talkId),
         // under the question in the sheet, and in the conversation of the card it was asked on
         onLimit: (until) => {
           this.o.board.waitsForLimit({ talk: talkId }, until);
@@ -262,6 +266,7 @@ export class Answers {
     const question = 'Tell your answer above as a walkthrough (slides with narration, as your instructions describe), rather than as text: the same content, walked through.';
     const talk = this.o.board.addTalk(said, reply, null, { question, about: t.about ?? null });
     this.o.board.followTalk(talk, talkId);
+    this.asked.add(talk);
     this.lookUp(talk);
     return talk;
   }
@@ -411,16 +416,25 @@ export class Answers {
     onSession: (id: string, model?: string) => void;
     /** Where it shows that it waits for the usage limit. */
     onLimit: (until: number | undefined) => void;
+    /** Prototype: a walkthrough's first slide is there, its player to show before the answer. */
+    onShown?: (files: AnswerFile[]) => void;
+    /** Prototype: the owner asked for the walkthrough, so it plays as soon as it can. */
+    autoplay?: boolean;
   }): Promise<OwnerAnswer> {
     const dir = this.o.dirOf(c.thread);
     mkdirSync(dir, { recursive: true });
-    // prototype: a walkthrough among the files comes with its player, voiced slide by slide
-    const checkout = this.o.pathFor(c.about);
-    const language = this.o.board.conversation();
-    return this.consulted(c, dir).then((a) => ({ ...a, ...(a.files ? { files: walkthroughs(a.files, dir, checkout, language) } : {}) }));
+    // prototype: walkthroughs the agent tells slide by slide, shown under the question from their first slide on
+    const told = new Walkthroughs({ dir, checkout: this.o.pathFor(c.about), language: this.o.board.conversation(), autoplay: c.autoplay, onShown: (files) => c.onShown?.(files) });
+    return this.consulted(c, dir, told)
+      .then((a) => {
+        const shown = told.files();
+        const files = [...shown, ...(a.files ?? []).filter((f) => !shown.some((x) => x.name === f.name))];
+        return { ...a, ...(files.length ? { files } : {}) };
+      })
+      .finally(() => told.finish());
   }
 
-  private consulted(c: Parameters<Answers['consult']>[0], dir: string): Promise<OwnerAnswer> {
+  private consulted(c: Parameters<Answers['consult']>[0], dir: string, told: Walkthroughs): Promise<OwnerAnswer> {
     if (c.by === 'project') {
       const from = c.asked?.from;
       const asked = c.asked && { images: c.asked.images, ...(from && this.o.toObeya ? { toObeya: toObeyaTool((request) => this.o.toObeya!(from, request)) } : {}) };
@@ -440,7 +454,7 @@ export class Answers {
         language: this.o.board.conversation(),
         ...(resume ? { resume } : {}),
         ...(images?.length ? { images } : {}),
-        ...(toObeya ? { tools: [toObeyaTool((request) => toObeya(c.card!, request))] } : {}),
+        tools: [told.tool(), ...(toObeya ? [toObeyaTool((request) => toObeya(c.card!, request))] : [])],
         ...(this.o.permissionMode ? { permissionMode: this.o.permissionMode } : {}),
         ...(c.signal ? { signal: c.signal } : {}),
         ...(c.onWaiting ? { onWaiting: c.onWaiting } : {}),

@@ -1225,6 +1225,11 @@ export class Store {
       .run({ id, answer, by, files: files.length ? JSON.stringify(files) : null });
   }
 
+  /** Prototype: files an answer shows while it is still being looked up (a walkthrough that plays as it is written). */
+  talkFiles(id: number, files: AnswerFile[]) {
+    this.db.query('UPDATE talk SET files = $files WHERE id = $id').run({ id, files: files.length ? JSON.stringify(files) : null });
+  }
+
   /** A follow-up continues the answer `follows`, in the thread `thread`. */
   followTalk(id: number, thread: number, follows: number) {
     this.db.query('UPDATE talk SET thread = $thread, follows = $follows WHERE id = $id').run({ id, thread, follows });

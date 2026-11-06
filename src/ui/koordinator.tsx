@@ -353,20 +353,22 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
             ) : (
               <>
                 {/* a question it looked up: the answer follows the acknowledgement */}
-                {x.question && x.answer === undefined && (
+                {x.question && x.answer === undefined && !x.files?.length && (
                   <Msg by={x.askedIn ? 'project' : 'koordinator'} className="thinking" who={t.author[x.askedIn ? 'project' : 'koordinator']}>
                     <div className="hint">{x.limitedUntil ? t.koordinator.lookUpLimited(clock(x.limitedUntil)) : t.koordinator.lookingUp}</div>
                   </Msg>
                 )}
-                {x.answer !== undefined && (
+                {/* prototype: a walkthrough plays here from its first slide on, and goes on playing as the answer comes in */}
+                {(x.answer !== undefined || (x.question && !!x.files?.length)) && (
                   <Msg
                     by={x.answerBy ?? 'koordinator'}
                     className={fresh.includes(x.id) ? 'fresh' : undefined}
                     who={t.author[x.answerBy ?? 'koordinator']}
                     ev={talkEv({ talk: x.id, part: 'answer' })}
-                    onReply={reply('answer', x.answerBy ?? 'koordinator', x.answer)}
+                    onReply={x.answer !== undefined ? reply('answer', x.answerBy ?? 'koordinator', x.answer) : undefined}
                     head={
-                      x.thread !== undefined && (
+                      x.thread !== undefined &&
+                      x.answer !== undefined && (
                         <>
                           <ThreadCard thread={x.thread} onOpen={onOpen} />
                           {!x.files?.some((f) => f.name.endsWith('.walkthrough.html')) && <WalkthroughButton talk={x.id} />}
@@ -374,7 +376,7 @@ function Conversation({ talk, fresh, items, onOpen, draft, sheetOf }: { talk: Ta
                       )
                     }
                   >
-                    <Body md={x.answer} />
+                    {x.answer !== undefined ? <Body md={x.answer} /> : <div className="hint">{t.koordinator.lookingUp}</div>}
                     {x.thread !== undefined && <AnswerFiles thread={x.thread} files={x.files} />}
                   </Msg>
                 )}

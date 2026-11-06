@@ -81,8 +81,8 @@
 <script>
 const W = /*WALKTHROUGH*/null;
 const T = {
-  de: { play: 'Walkthrough abspielen', voicing: 'Vertont …', slide: (i, n) => `Folie ${i} von ${n}`, voiced: (k, n) => `${k}/${n}`, failed: 'Vertonung fehlgeschlagen', overview: 'Walkthrough' },
-  en: { play: 'Play walkthrough', voicing: 'Voicing …', slide: (i, n) => `Slide ${i} of ${n}`, voiced: (k, n) => `${k}/${n}`, failed: 'Voicing failed', overview: 'Walkthrough' },
+  de: { play: 'Walkthrough abspielen', voicing: 'Vertont …', slide: (i, n) => `Folie ${i} von ${n}`, voiced: (k, n) => `${k}/${n}`, failed: 'Vertonung fehlgeschlagen', writing: 'Der Agent schreibt die nächste Folie …', overview: 'Walkthrough' },
+  en: { play: 'Play walkthrough', voicing: 'Voicing …', slide: (i, n) => `Slide ${i} of ${n}`, voiced: (k, n) => `${k}/${n}`, failed: 'Voicing failed', writing: 'The agent is writing the next slide …', overview: 'Walkthrough' },
 }[W.language] || {};
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -98,17 +98,26 @@ function tint(line) {
 const itemsOf = (s) => s.type === 'points' ? s.points.length : s.type === 'flow' ? s.steps.length : s.type === 'code' ? (s.focus || []).length : 0;
 
 const stage = $('stage');
-const slides = W.slides.map((s, i) => {
+/** The slides so far: the agent hands them over one at a time, and the player shows each as it comes. */
+const S = [];
+const slides = [];
+const segs = [];
+window.__wtSlides = S;
+let done = false;
+
+function addSlide(s) {
+  const i = S.length;
+  S.push(s);
   const el = document.createElement('div');
   el.className = 'slide';
-  const kicker = `<div class="kicker">${esc(W.title)} · ${i + 1}/${W.slides.length}</div>`;
+  const kicker = `<div class="kicker">${esc(W.title)} · ${i + 1}</div>`;
   if (s.type === 'title') {
     el.classList.add('title-slide');
     el.innerHTML = `<div class="bar"></div><h1>${esc(s.title)}</h1>${s.subtitle ? `<p>${esc(s.subtitle)}</p>` : ''}`;
   } else if (s.type === 'points') {
-    el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><ul class="points">${s.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`;
+    el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><ul class="points">${(s.points || []).map((p) => `<li>${esc(p)}</li>`).join('')}</ul>`;
   } else if (s.type === 'flow') {
-    el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><div class="flow">${s.steps.map((st, k) => {
+    el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><div class="flow">${(s.steps || []).map((st, k) => {
       const label = typeof st === 'string' ? st : st.label;
       const note = typeof st === 'string' ? '' : st.note || '';
       return `${k ? '<div class="arrow">→</div>' : ''}<div class="step"><b>${esc(label)}</b>${note ? `<span>${esc(note)}</span>` : ''}</div>`;
@@ -117,19 +126,24 @@ const slides = W.slides.map((s, i) => {
     el.classList.add('code-slide');
     const [from] = s.lines;
     el.innerHTML = `${kicker}<h2>${esc(s.title)}</h2><div class="file">${esc(s.file)}:${s.lines[0]}–${s.lines[1]}</div><div class="code"><pre>${(s.code || []).map((l, k) => `<div class="ln" data-n="${from + k}"><i>${from + k}</i><code>${tint(l)}</code></div>`).join('')}</pre></div>${s.note ? `<div class="note">${esc(s.note)}</div>` : ''}`;
-  }
+  } else el.innerHTML = `${kicker}<h2>${esc(s.title || '')}</h2>`;
   stage.insertBefore(el, $('caption'));
-  return el;
-});
+  slides.push(el);
+  const sg = document.createElement('div');
+  sg.className = 'seg';
+  sg.innerHTML = '<i></i>';
+  sg.onclick = () => goSlide(i, true);
+  $('segs').appendChild(sg);
+  segs.push(sg);
+}
 
-const S = W.slides;
-window.__wtSlides = S;
-let status = { clips: S.map((s) => s.parts.map(() => null)) };
+let status = { clips: [] };
 /** Seconds a part takes: as voiced, else as estimated from its length. */
 const partSec = (i, j) => status.clips[i]?.[j]?.seconds ?? S[i].parts[j].length * 0.075;
 const GAP = 0.15;
 const partStart = (i, j) => { let t = 0; for (let q = 0; q < j; q++) t += partSec(i, q) + GAP; return t; };
 const slideDur = (i) => partStart(i, S[i].parts.length);
+const clip = (i, j) => status.clips[i]?.[j];
 
 /** When item k of slide i shows: with the first sentence of its part, else in even steps over the slide. */
 function itemStart(i, k) {
@@ -142,12 +156,14 @@ function itemStart(i, k) {
   return (k / n) * slideDur(i) * 0.9;
 }
 
-let cur = 0, part = 0, playing = false, started = false, captions = true, waiting = false;
+// waiting: for the voice of the sentence due; writing: for the agent's next slide
+let cur = 0, part = 0, playing = false, started = false, captions = true, waiting = false, writing = false;
 const audio = new Audio();
 audio.preload = 'auto';
 const tNow = () => partStart(cur, part) + (audio.dataset.key === `${cur}-${part}` ? audio.currentTime || 0 : 0);
 
 function show() {
+  if (!S.length) return;
   const i = cur, t = tNow(), s = S[i], el = slides[i];
   slides.forEach((x, k) => x.classList.toggle('on', k === i));
   const n = itemsOf(s);
@@ -177,51 +193,55 @@ function show() {
     const max = Math.max(0, pre.scrollHeight - room + 20);
     pre.style.transform = `translateY(${-Math.min(off, max)}px)`;
   }
-  $('caption').innerHTML = captions && started ? `<span>${esc(s.parts[part] || '')}</span>` : '';
-  $('count').textContent = T.slide(i + 1, S.length);
+  $('caption').innerHTML = captions && started && !writing ? `<span>${esc(s.parts[part] || '')}</span>` : '';
+  $('count').textContent = T.slide(i + 1, done ? S.length : `${S.length} …`);
   const dur = slideDur(i);
   segs.forEach((sg, k) => {
-    sg.classList.toggle('voiced', !!status.clips[k][0]);
+    sg.classList.toggle('voiced', !!clip(k, 0));
     sg.firstChild.style.width = k < i ? '100%' : k > i ? '0' : `${Math.min(100, (t / dur) * 100)}%`;
   });
   const ready = status.clips.flat().filter(Boolean).length, total = status.clips.flat().length;
-  $('wait').hidden = !(waiting && playing) && !status.error;
-  $('wait').textContent = status.error ? T.failed : `${T.voicing} ${T.voiced(ready, total)}`;
+  $('wait').hidden = !((waiting || writing) && playing) && !status.error;
+  $('wait').textContent = status.error ? T.failed : writing ? T.writing : `${T.voicing} ${T.voiced(ready, total)}`;
 }
-
-const segs = S.map((_, k) => {
-  const sg = document.createElement('div');
-  sg.className = 'seg';
-  sg.innerHTML = '<i></i>';
-  sg.onclick = () => goSlide(k, true);
-  $('segs').appendChild(sg);
-  return sg;
-});
 
 async function poll() {
   try {
-    const r = await fetch(`${W.clips}/status.json?${Date.now()}`, { cache: 'no-store' });
-    status = await r.json();
+    const [l, st] = await Promise.all([`${W.clips}/slides.json`, `${W.clips}/status.json`].map((u) => fetch(`${u}?${Date.now()}`, { cache: 'no-store' }).then((r) => r.json())));
+    status = st;
+    for (const s of l.slides.slice(S.length)) addSlide(s);
+    done = l.done;
   } catch {}
-  if (playing && waiting && status.clips[cur][part]) playPart(cur, part);
+  if (S.length && !started && W.autoplay && !tried) autoplay();
+  if (playing && writing && cur + 1 < S.length) { writing = false; goSlide(cur + 1); }
+  else if (writing && done) { writing = false; playing = false; $('play').textContent = '▶'; }
+  if (playing && waiting && clip(cur, part)) playPart(cur, part);
   show();
-  const done = status.clips.flat().every(Boolean);
-  if (!done && !status.error) setTimeout(poll, 300);
+  if (!(done && status.clips.flat().every(Boolean)) && !status.error) setTimeout(poll, 300);
+}
+
+/** Asked for by the owner: it plays at once, where the browser lets it; else the owner presses play. */
+let tried = false;
+function autoplay() {
+  tried = true;
+  begin();
+  playPart(0, 0);
 }
 
 /** Plays sentence j of slide i once it is voiced; until then the player waits for it. */
 function playPart(i, j) {
   cur = i; part = j;
-  const c = status.clips[i][j];
+  const c = clip(i, j);
   if (!c) { waiting = true; audio.pause(); return; }
   waiting = false;
   audio.dataset.key = `${i}-${j}`;
   audio.src = `${W.clips}/${c.file}`;
-  if (playing) audio.play().catch(() => {});
+  if (playing) audio.play().catch(() => { if (!window.__wtLog.length) { started = false; playing = false; $('start').hidden = false; $('play').textContent = '▶'; } });
 }
 
 function goSlide(i, start) {
   clearTimeout(next);
+  writing = false;
   i = Math.max(0, Math.min(S.length - 1, i));
   if (start && !started) begin();
   audio.pause();
@@ -234,22 +254,24 @@ let next;
 audio.onended = () => {
   if (part + 1 < S[cur].parts.length) next = setTimeout(() => playPart(cur, part + 1), GAP * 1000);
   else if (cur + 1 < S.length) next = setTimeout(() => goSlide(cur + 1), 600);
+  else if (!done) writing = true;
   else { playing = false; $('play').textContent = '▶'; }
 };
 
 // what played when (wall clock), for a recording that lays the sound in afterwards
 window.__wtLog = [];
-audio.addEventListener('playing', () => window.__wtLog.push({ at: Date.now(), file: audio.dataset.key && status.clips[cur][part]?.file, from: audio.currentTime }));
+audio.addEventListener('playing', () => window.__wtLog.push({ at: Date.now(), file: audio.dataset.key && clip(cur, part)?.file, from: audio.currentTime }));
 audio.addEventListener('pause', () => window.__wtLog.push({ at: Date.now(), stop: audio.currentTime }));
 
 function begin() { started = true; playing = true; $('start').hidden = true; $('play').textContent = '❚❚'; }
 
 function toggle() {
+  if (!S.length) return;
   if (!started) { begin(); return playPart(cur, part); }
   playing = !playing;
   $('play').textContent = playing ? '❚❚' : '▶';
   if (!playing) { clearTimeout(next); return audio.pause(); }
-  if (audio.ended && cur === S.length - 1 && part === S[cur].parts.length - 1) return goSlide(0);
+  if (audio.ended && done && cur === S.length - 1 && part === S[cur].parts.length - 1) return goSlide(0);
   if (audio.dataset.key === `${cur}-${part}` && !audio.ended) audio.play().catch(() => {});
   else playPart(cur, part);
 }

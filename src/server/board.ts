@@ -1440,6 +1440,12 @@ export class Board {
     this.changed();
   }
 
+  /** Prototype: files the exchange shows while its answer is still being looked up. */
+  talkFiles(id: number, files: AnswerFile[]) {
+    this.store.talkFiles(id, files);
+    this.changed();
+  }
+
   /** The exchange follows up on the answer of `follows`: it goes on in that one's thread. */
   followTalk(id: number, follows: number) {
     const f = this.store.exchange(follows);
