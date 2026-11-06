@@ -325,7 +325,7 @@ stays in the markup of every page; a theme may hide it.
 
 Nobody learns of the file from the pages, so Obeya proposes it: once a page of a repository is
 online and the repository's default branch has no theme, the canvas gets Obeya's proposal of a card
-„Demo-Seiten von <Repository> im Look des Projekts“, with why. Like the setup card (see Leinwände in
+"Demo pages of <repo> in the project's look", with why. Like the setup card (see Canvases in
 Repositories and configuration), accepted it is the owner's card, and it comes once per repository
 and canvas: dismissed, accepted or done, it does not come back; still open, it goes once the
 repository has a theme, withdrawn rather than dismissed. Its worker writes the theme with the

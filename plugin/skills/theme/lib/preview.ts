@@ -6,12 +6,15 @@
 //
 //   bun preview.ts [<out>] [--video <mp4>]
 //
-// <out>: the directory to write (emptied first; default: a new one in the temp directory).
-// --video: a video for the sample pages' player (say, a demo of the app); without one it stays black.
+// <out>: the directory to write: a new or empty one, or one an earlier preview wrote, which it
+// empties first (anything else it refuses; default: a new one in the temp directory).
+// --video: a video for the sample pages' players (say, a demo of the app); without one they stay black.
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { repoName } from '../../../../src/adapters/generic.ts';
 import { parseShared, REPO_SETTINGS_FILE } from '../../../../src/adapters/index.ts';
 import type { DemoSite } from '../../../../src/core/types.ts';
 import type { PageLanguage } from '../../../../src/server/demo-page.ts';
@@ -86,6 +89,9 @@ if (video && !existsSync(video)) fail(`no video at ${video}`);
 const named = args.filter((a, i) => !a.startsWith('--') && (at < 0 || i !== at + 1));
 const out = named[0] ? resolve(named[0]) : mkdtempSync(join(tmpdir(), 'obeya-theme-'));
 
+/** The file that marks a directory as written by a preview, which a later preview may empty. */
+const MARK = '.theme-preview';
+
 function fail(why: string): never {
   console.error(`preview: ${why}`);
   process.exit(1);
@@ -98,25 +104,29 @@ const settingsFile = join(repo, REPO_SETTINGS_FILE);
 const own = existsSync(settingsFile) ? parseShared(readFileSync(settingsFile, 'utf8')).settings?.demo?.site : undefined;
 const language: PageLanguage = demoSettingsHere().language === 'en' ? 'en' : 'de';
 const site: DemoSite = {
-  title: own?.title || `${basename(repo)} demos`,
+  title: own?.title || `${repoNameHere(repo)} demos`,
   url: own?.url || 'https://demos.example',
   deploy: '',
   tags: own?.tags && Object.keys(own.tags).length ? own.tags : SAMPLE[language].tags,
 };
 
 const pages = sample(language, site);
+claim(out);
 for (const [dir, css] of [
   [out, theme.css],
   [join(out, 'without-theme'), undefined],
 ] as const) {
-  rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'index.html'), overviewHtml(site, pages, language, css));
   for (const p of pages) {
-    mkdirSync(join(dir, p.slug));
+    // each version's player: the first one's at the page's root, a later one's in its own directory
+    for (const version of ['', ...(p.more ?? []).map((m) => m.dir)]) {
+      const at = join(dir, p.slug, version);
+      mkdirSync(at, { recursive: true });
+      if (video) copyFileSync(video, join(at, 'demo.mp4'));
+      writeFileSync(join(at, 'captions.vtt'), 'WEBVTT\n');
+    }
     writeFileSync(join(dir, p.slug, 'index.html'), pageHtml(site, p, () => ({ poster: false, tracks: [] }), undefined, false, css));
-    if (video) copyFileSync(video, join(dir, p.slug, 'demo.mp4'));
-    writeFileSync(join(dir, p.slug, 'captions.vtt'), 'WEBVTT\n');
   }
 }
 const url = (path: string) => `file:///${path.replace(/\\/g, '/').replace(/^\/+/, '')}`;
@@ -130,6 +140,38 @@ console.log(
     `Light and dark follow the browser's colour scheme (prefers-color-scheme).`,
   ].join('\n'),
 );
+
+/**
+ * Makes `dir` the preview's, empty: a directory that does not exist yet, an empty one, or one an
+ * earlier preview wrote (its mark), emptied first; anything else it refuses, so that a slip (the
+ * checkout itself, say) deletes nothing.
+ */
+function claim(dir: string) {
+  if (existsSync(dir)) {
+    if (!statSync(dir).isDirectory()) fail(`${dir} is a file: give a new or empty directory`);
+    const entries = readdirSync(dir);
+    if (entries.length && !entries.includes(MARK)) fail(`${dir} holds other files: give a new or empty directory, or one an earlier preview wrote`);
+    rmSync(dir, { recursive: true, force: true });
+  }
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, MARK), '');
+}
+
+/**
+ * The repository's name as Obeya gives it (`repoName`): from `origin`'s address, else the directory
+ * of the main checkout, not that of the worker's workspace (a worktree named by an id, say).
+ */
+function repoNameHere(repo: string): string {
+  const git = (...a: string[]) => {
+    try {
+      return execFileSync('git', a, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    } catch {
+      return '';
+    }
+  };
+  const common = git('rev-parse', '--path-format=absolute', '--git-common-dir');
+  return repoName({ path: common ? dirname(common) : repo, remote: git('config', '--get', 'remote.origin.url') || null, branch: '' });
+}
 
 /** The sample pages: one video with chapters, tags and a pull request; one with a later version below; one plain. */
 function sample(language: PageLanguage, site: DemoSite): (Meta & { slug: string })[] {
