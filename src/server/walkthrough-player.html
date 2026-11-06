@@ -44,7 +44,7 @@
   .kw { color: #c792ea; } .str { color: #c3e88d; } .com { color: #7f8896; font-style: italic; }
   .caption { position: absolute; left: 4cqw; right: 4cqw; bottom: 1.6cqw; text-align: center; pointer-events: none; }
   .caption span { display: inline; background: rgba(20, 22, 26, .78); color: #fff; font-size: 2.1cqw; line-height: 1.5; padding: .3cqw 1cqw; border-radius: .6cqw; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-  .start { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(251, 250, 247, .55); border: 0; cursor: pointer; font: inherit; }
+  .start { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-start; padding: 0 6cqw 6cqw; background: none; border: 0; cursor: pointer; font: inherit; }
   .start .disc { display: flex; align-items: center; gap: 1.6cqw; background: var(--accent); color: #fff; border-radius: 99px; padding: 1.8cqw 3.4cqw 1.8cqw 2.8cqw; font-size: 2.7cqw; font-weight: 600; box-shadow: 0 1cqw 3cqw rgba(47, 111, 214, .35); }
   .start .disc::before { content: ""; border-left: 2.4cqw solid #fff; border-top: 1.5cqw solid transparent; border-bottom: 1.5cqw solid transparent; }
   .start[hidden] { display: none; }
@@ -94,7 +94,6 @@ function tint(line) {
   const h = esc(head).replace(/(&quot;.*?&quot;|'[^']*'|`[^`]*`)/g, '\u0001$1\u0002').split(/(\u0001.*?\u0002)/).map((p) => p.startsWith('\u0001') ? `<span class="str">${p.slice(1, -1)}</span>` : p.replace(KW, '<span class="kw">$1</span>')).join('');
   return h + (tail ? `<span class="com">${esc(tail)}</span>` : '');
 }
-const parts = (s) => Array.isArray(s.narration) ? s.narration : [s.narration];
 /** How many items a slide reveals one after the other. */
 const itemsOf = (s) => s.type === 'points' ? s.points.length : s.type === 'flow' ? s.steps.length : s.type === 'code' ? (s.focus || []).length : 0;
 
@@ -123,40 +122,51 @@ const slides = W.slides.map((s, i) => {
   return el;
 });
 
-/** Item k of slide i shows from the moment its part of the narration begins (by its share of the text). */
-function starts(i, seconds) {
-  const s = W.slides[i];
-  const p = parts(s);
+const S = W.slides;
+window.__wtSlides = S;
+let status = { clips: S.map((s) => s.parts.map(() => null)) };
+/** Seconds a part takes: as voiced, else as estimated from its length. */
+const partSec = (i, j) => status.clips[i]?.[j]?.seconds ?? S[i].parts[j].length * 0.075;
+const GAP = 0.15;
+const partStart = (i, j) => { let t = 0; for (let q = 0; q < j; q++) t += partSec(i, q) + GAP; return t; };
+const slideDur = (i) => partStart(i, S[i].parts.length);
+
+/** When item k of slide i shows: with the first sentence of its part, else in even steps over the slide. */
+function itemStart(i, k) {
+  const s = S[i];
   const n = itemsOf(s);
-  if (!n) return [];
-  const total = p.join(' ').length || 1;
-  if (p.length >= n) {
-    let at = 0;
-    return p.slice(0, n).map((x) => { const t = (at / total) * seconds; at += x.length + 1; return t; });
+  if (s.items) {
+    const j = s.items.indexOf(Math.min(k, Math.max(...s.items)));
+    return partStart(i, Math.max(0, j));
   }
-  // one text for all items: they show in even steps over the first nine tenths
-  return Array.from({ length: n }, (_, k) => (k / n) * seconds * 0.9);
+  return (k / n) * slideDur(i) * 0.9;
 }
 
-function show(i, t, seconds) {
-  slides.forEach((el, k) => el.classList.toggle('on', k === i));
-  const s = W.slides[i];
-  const st = starts(i, seconds || 1);
-  const now = st.reduce((c, x, k) => (t >= x ? k : c), -1);
-  const el = slides[i];
-  if (s.type === 'points') el.querySelectorAll('li').forEach((li, k) => { li.classList.toggle('shown', k <= now || !playing && !started); li.classList.toggle('now', k === now && playing); });
+let cur = 0, part = 0, playing = false, started = false, captions = true, waiting = false;
+const audio = new Audio();
+audio.preload = 'auto';
+const tNow = () => partStart(cur, part) + (audio.dataset.key === `${cur}-${part}` ? audio.currentTime || 0 : 0);
+
+function show() {
+  const i = cur, t = tNow(), s = S[i], el = slides[i];
+  slides.forEach((x, k) => x.classList.toggle('on', k === i));
+  const n = itemsOf(s);
+  let now = -1;
+  for (let k = 0; k < n; k++) if (t >= itemStart(i, k) - 0.05) now = k;
+  const all = !started;
+  if (s.type === 'points') el.querySelectorAll('li').forEach((li, k) => { li.classList.toggle('shown', all || k <= now); li.classList.toggle('now', started && k === now); });
   if (s.type === 'flow') {
-    el.querySelectorAll('.step').forEach((b, k) => { b.classList.toggle('shown', k <= now || !started); b.classList.toggle('now', k === now && playing); });
-    el.querySelectorAll('.arrow').forEach((a, k) => a.classList.toggle('shown', k + 1 <= now || !started));
+    el.querySelectorAll('.step').forEach((b, k) => { b.classList.toggle('shown', all || k <= now); b.classList.toggle('now', started && k === now); });
+    el.querySelectorAll('.arrow').forEach((a, k) => a.classList.toggle('shown', all || k + 1 <= now));
   }
   if (s.type === 'code') {
     const code = el.querySelector('.code');
-    const f = now >= 0 ? s.focus[now] : null;
+    const f = started && now >= 0 ? s.focus[now] : null;
     code.classList.toggle('focusing', !!f);
     let first = null;
     code.querySelectorAll('.ln').forEach((ln) => {
-      const n = Number(ln.dataset.n);
-      const on = !!f && n >= f[0] && n <= f[1];
+      const nn = Number(ln.dataset.n);
+      const on = !!f && nn >= f[0] && nn <= f[1];
       ln.classList.toggle('focus', on);
       if (on && first === null) first = ln;
     });
@@ -167,100 +177,90 @@ function show(i, t, seconds) {
     const max = Math.max(0, pre.scrollHeight - room + 20);
     pre.style.transform = `translateY(${-Math.min(off, max)}px)`;
   }
-  // the caption: the part being spoken
-  const p = parts(s);
-  let cap = p.join(' ');
-  if (p.length > 1 && seconds) {
-    const total = p.join(' ').length;
-    let at = 0;
-    for (const x of p) { if (t < ((at + x.length) / total) * seconds) { cap = x; break; } at += x.length + 1; }
-  }
-  $('caption').innerHTML = captions && started ? `<span>${esc(cap)}</span>` : '';
-  $('count').textContent = T.slide(i + 1, W.slides.length);
+  $('caption').innerHTML = captions && started ? `<span>${esc(s.parts[part] || '')}</span>` : '';
+  $('count').textContent = T.slide(i + 1, S.length);
+  const dur = slideDur(i);
   segs.forEach((sg, k) => {
-    sg.classList.toggle('voiced', !!status.clips[k]);
-    sg.firstChild.style.width = k < i ? '100%' : k > i ? '0' : `${Math.min(100, (t / (seconds || 1)) * 100)}%`;
+    sg.classList.toggle('voiced', !!status.clips[k][0]);
+    sg.firstChild.style.width = k < i ? '100%' : k > i ? '0' : `${Math.min(100, (t / dur) * 100)}%`;
   });
+  const ready = status.clips.flat().filter(Boolean).length, total = status.clips.flat().length;
+  $('wait').hidden = !(waiting && playing) && !status.error;
+  $('wait').textContent = status.error ? T.failed : `${T.voicing} ${T.voiced(ready, total)}`;
 }
 
-const segs = W.slides.map((_, k) => {
+const segs = S.map((_, k) => {
   const sg = document.createElement('div');
   sg.className = 'seg';
   sg.innerHTML = '<i></i>';
-  sg.onclick = () => go(k, true);
+  sg.onclick = () => goSlide(k, true);
   $('segs').appendChild(sg);
   return sg;
 });
-
-let status = { clips: W.slides.map(() => null) };
-let current = 0, playing = false, started = false, captions = true;
-const audio = new Audio();
-audio.preload = 'auto';
 
 async function poll() {
   try {
     const r = await fetch(`${W.clips}/status.json?${Date.now()}`, { cache: 'no-store' });
     status = await r.json();
   } catch {}
-  const k = status.clips.filter(Boolean).length;
-  if (status.error) $('wait').textContent = T.failed;
-  if (playing && !status.clips[current] && !status.error) { $('wait').hidden = false; $('wait').textContent = `${T.voicing} ${T.voiced(k, W.slides.length)}`; }
-  if (playing && status.clips[current] && audio.dataset.slide !== String(current)) load(current);
-  show(current, audio.currentTime || 0, audio.duration || status.clips[current]?.seconds);
-  if (k < W.slides.length && !status.error) setTimeout(poll, 400);
+  if (playing && waiting && status.clips[cur][part]) playPart(cur, part);
+  const done = status.clips.flat().every(Boolean);
+  if (!done && !status.error) setTimeout(poll, 300);
 }
 
-function load(i) {
-  const c = status.clips[i];
-  if (!c) return;
-  $('wait').hidden = true;
-  audio.dataset.slide = String(i);
+/** Plays sentence j of slide i once it is voiced; until then the player waits for it. */
+function playPart(i, j) {
+  cur = i; part = j;
+  const c = status.clips[i][j];
+  if (!c) { waiting = true; audio.pause(); return; }
+  waiting = false;
+  audio.dataset.key = `${i}-${j}`;
   audio.src = `${W.clips}/${c.file}`;
   if (playing) audio.play().catch(() => {});
 }
 
-function go(i, keep) {
-  current = Math.max(0, Math.min(W.slides.length - 1, i));
+function goSlide(i, start) {
+  clearTimeout(next);
+  i = Math.max(0, Math.min(S.length - 1, i));
+  if (start && !started) begin();
   audio.pause();
-  audio.removeAttribute('src');
-  delete audio.dataset.slide;
-  if (keep && !started) { started = true; playing = true; $('start').hidden = true; $('play').textContent = '❚❚'; }
-  if (status.clips[current]) load(current);
-  else if (playing) { $('wait').hidden = false; $('wait').textContent = T.voicing; }
-  show(current, 0, status.clips[current]?.seconds);
+  delete audio.dataset.key;
+  cur = i; part = 0;
+  if (playing) playPart(i, 0);
 }
 
+let next;
 audio.onended = () => {
-  if (current < W.slides.length - 1) setTimeout(() => go(current + 1), 500);
-  else { playing = false; $('play').textContent = '▶'; show(current, audio.duration, audio.duration); }
+  if (part + 1 < S[cur].parts.length) next = setTimeout(() => playPart(cur, part + 1), GAP * 1000);
+  else if (cur + 1 < S.length) next = setTimeout(() => goSlide(cur + 1), 600);
+  else { playing = false; $('play').textContent = '▶'; }
 };
 
-function tick() {
-  if (playing) show(current, audio.currentTime || 0, audio.duration || status.clips[current]?.seconds);
-  requestAnimationFrame(tick);
-}
+// what played when (wall clock), for a recording that lays the sound in afterwards
+window.__wtLog = [];
+audio.addEventListener('playing', () => window.__wtLog.push({ at: Date.now(), file: audio.dataset.key && status.clips[cur][part]?.file, from: audio.currentTime }));
+audio.addEventListener('pause', () => window.__wtLog.push({ at: Date.now(), stop: audio.currentTime }));
+
+function begin() { started = true; playing = true; $('start').hidden = true; $('play').textContent = '❚❚'; }
 
 function toggle() {
-  if (!started) { started = true; $('start').hidden = true; }
+  if (!started) { begin(); return playPart(cur, part); }
   playing = !playing;
   $('play').textContent = playing ? '❚❚' : '▶';
-  if (playing) {
-    if (audio.ended && current === W.slides.length - 1) return go(0);
-    if (audio.dataset.slide === String(current)) audio.play().catch(() => {});
-    else if (status.clips[current]) load(current);
-    else { $('wait').hidden = false; $('wait').textContent = T.voicing; }
-  } else audio.pause();
+  if (!playing) { clearTimeout(next); return audio.pause(); }
+  if (audio.ended && cur === S.length - 1 && part === S[cur].parts.length - 1) return goSlide(0);
+  if (audio.dataset.key === `${cur}-${part}` && !audio.ended) audio.play().catch(() => {});
+  else playPart(cur, part);
 }
 
 $('startLabel').textContent = T.play;
 $('start').onclick = toggle;
 $('play').onclick = toggle;
-$('prev').onclick = () => go(current - 1, true);
-$('next').onclick = () => go(current + 1, true);
-$('cc').onclick = () => { captions = !captions; show(current, audio.currentTime || 0, audio.duration); };
-show(0, 0, 0);
+$('prev').onclick = () => goSlide(cur - 1, true);
+$('next').onclick = () => goSlide(cur + 1, true);
+$('cc').onclick = () => { captions = !captions; };
+(function tick() { show(); requestAnimationFrame(tick); })();
 poll();
-tick();
 </script>
 </body>
 </html>
