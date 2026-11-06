@@ -15,6 +15,7 @@ import type { BlockedClone, PoolHost, WorkspaceShortage } from '../core/types';
 import type { Store } from './db';
 import { type GithubLogin, HostError, hostName, LOST, onHost, remote, sh as shWord, type SshHost, TOKEN_HELPER, TOKEN_HELPER_ARGS } from './hosts';
 import { runAppCommand } from './app-command';
+import { endProcessesIn } from './folder-processes';
 import { messageOf } from '../core/text';
 import { oneAtATime } from '../core/one-at-a-time';
 import { demoFile } from './demo-page';
@@ -406,7 +407,7 @@ export interface WorkspaceOptions {
   machines?: { host: string | null; slots?: number }[];
   /** How many of the repository's workers are in a turn on a machine now (null: this one). */
   busy?: (host: string | null) => number;
-  /** The repository's command that stops its app (`app.stop`), run in a clone of Obeya's own before its folder goes. */
+  /** The repository's command that stops its app (`app.stop`), run in a workspace before its folder goes (`quiet`). */
   stop?: string;
   /** What its clones are clones of (its remote, its checkout): a folder whose `origin` is none of them is not one of its clones, and stays. */
   origins?: string[];
@@ -737,6 +738,8 @@ export class Workspaces implements CardWorkspaces {
       if (!stopped.ok) console.error(`clone ${path}: ${this.o.stop} failed: ${stopped.output}`);
       if (taken()) return;
     }
+    await this.quiet(path, false);
+    if (taken()) return;
     // moved aside before it goes: once moved, nothing registers or leases the folder (here at once, on a host
     // `ensureHostClones` waits for it), and making the clone again makes a fresh one
     const trash = `${pathThere(path)}.removing-${Date.now()}`;
@@ -1126,6 +1129,7 @@ export class Workspaces implements CardWorkspaces {
       }
       if (existsSync(path)) {
         if ((await gitAsync(path, 'status', '--porcelain').catch(() => null)) !== '') return false;
+        await this.quiet(path);
         if ((await gitAsync(this.o.repoPath, 'worktree', 'remove', path).catch(() => null)) === null) return false;
       }
       this.store.removeWorkspace(path);
@@ -1446,7 +1450,10 @@ export class Workspaces implements CardWorkspaces {
     if (this.cloned(ws)) return this.release(cardId);
     this.store.removeWorkspace(ws);
     await this.clearing(ws, async () => {
-      if (existsSync(ws)) await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+      if (existsSync(ws)) {
+        await this.quiet(ws);
+        await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+      }
       try {
         if (await gitAsync(this.o.repoPath, 'branch', '--list', branch)) await gitAsync(this.o.repoPath, 'branch', '--quiet', '-d', branch);
       } catch (e) {
@@ -1466,7 +1473,10 @@ export class Workspaces implements CardWorkspaces {
     if (!this.cloned(ws)) {
       this.store.removeWorkspace(ws);
       return this.clearing(ws, async () => {
-        if (existsSync(ws)) await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+        if (existsSync(ws)) {
+          await this.quiet(ws);
+          await gitAsync(this.o.repoPath, 'worktree', 'remove', '--force', ws);
+        }
         if (await gitAsync(this.o.repoPath, 'branch', '--list', branch)) await gitAsync(this.o.repoPath, 'branch', '--quiet', '-D', branch);
       });
     }
@@ -1764,7 +1774,29 @@ export class Workspaces implements CardWorkspaces {
   async removeFollowUpTree(path: string) {
     // one git is still adding goes once it is there
     await this.trees.get(path)?.catch(() => {});
+    if (existsSync(path)) await this.quiet(path);
     await removeTree(path);
+  }
+
+  /**
+   * Stops what runs from the workspace at `path` before its folder goes: the repository's stop
+   * command (`app.stop`; `withStop` false where it ran already), then every process still running
+   * from the folder (`endProcessesIn`), which that command's own bookkeeping may not know of (an
+   * app started some other way, or one whose list of process IDs went first). On Windows a process
+   * holds the files it has open: one left running would keep the removal from finishing, and run on
+   * with nothing to find it by. Best effort: the folder goes either way.
+   */
+  private async quiet(path: string, withStop = true) {
+    if (withStop && this.o.stop) {
+      const stopped = await runAppCommand(path, this.o.stop);
+      if (!stopped.ok) console.error(`workspace ${path}: ${this.o.stop} failed: ${stopped.output}`);
+    }
+    try {
+      const ended = await endProcessesIn(path);
+      if (ended.length) console.log(`workspace ${path}: ended ${ended.length} process(es) still running from it (${ended.join(', ')})`);
+    } catch (e) {
+      console.error(`workspace ${path}: ending what runs from it: ${messageOf(e)}`);
+    }
   }
 
   /**

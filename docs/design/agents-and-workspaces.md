@@ -145,7 +145,7 @@ recorded once git has told whether it changes anything.
 
 The pool is what the configuration names. A clone no longer named leaves it: a free one at once, a
 leased one when its card gives it back (no card moves mid-work). A clone Obeya made is then deleted
-from disk, after `app.stop` ran in it, if nothing would be lost: no uncommitted or untracked files
+from disk, after its app stopped (see Parking), if nothing would be lost: no uncommitted or untracked files
 (ignored ones aside), no stash, no submodules, no worktree from it in use, and no branch, tag or
 detached HEAD with commits on no branch of `origin` (fetched with pruning) unless each file they
 change is as on `origin`'s main branch, so a branch squashed or rebased in its pull request counts as
@@ -327,6 +327,26 @@ and the next message to the worker tells it to start the app again as the recipe
 arriving during the stop waits for it. A failed stop is an error on the card; the worker hears
 nothing of it. After a restart,
 waiting cards are parked the same way. Only processes go; the workspace stays the card's.
+
+A stop command that names a file the workspace lacks by a relative path (`node .obeya/app.mjs stop`
+on a branch older than the script) does not run: nothing of it can run there, so there is nothing
+to stop, no error and no "stopped" on the card.
+
+Before a workspace's folder goes from disk (a worktree once its card has landed, was discarded or is
+done with it, a follow-up's temporary worktree, a clone left the pool), `app.stop` runs in it, and
+then Obeya ends every process still running from the folder, with what each started: one whose
+program lies in it, whose working directory does, or whose command line names a path in it. Obeya's
+own process, those that started it and those it started itself are spared. Decided 2026-11-06,
+after a card's app ran on for days: the stop command finds only what its own bookkeeping names (a
+file of process IDs written at the start, which an app started otherwise lacks, or which went first),
+and on Windows the files a running process holds keep the folder from going, so the removal stopped
+halfway with the bookkeeping gone and the app still running. The working directory is part of the
+match since a dev server often names its folder nowhere else (`node index.mjs` started there).
+Windows tells another process's working directory through no command, so Obeya reads it from the
+process's own memory, in a thread of its own (on a machine short of memory each read may wait for
+the disk), and only for processes started since the folder was made: no older one can have started
+from it. Rejected: matching command lines alone (misses such a server), and asking each repository's
+stop command to be thorough (a fault in one leaves its apps running).
 
 ### Hosts
 

@@ -133,6 +133,15 @@ describe('parking: the app of a card that waits for the owner', () => {
     expect(runtime.last.inbox.at(-1)).not.toContain('stopped the app');
   });
 
+  test('a stop whose script the branch lacks is no error, and stops nothing', async () => {
+    parking({ stop: 'node .obeya/app.mjs stop' });
+    const c = await handOver();
+    const before = board.events(c.id).length;
+    await Bun.sleep(150);
+    expect(board.events(c.id).slice(before).filter((e) => e.kind === 'error' || e.text === board.t.worker.parked)).toEqual([]);
+    expect(board.row(c.id).parked).toBeNull();
+  });
+
   test('a message while the stop runs reaches the worker once the app is stopped', async () => {
     parking({ stop: 'sleep 0.3; echo stopped >> parked.log' });
     const c = await handOver();
