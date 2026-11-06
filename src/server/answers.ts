@@ -22,7 +22,7 @@ import type { AgentRuntime } from './runtime';
 import { TO_OBEYA, toObeyaTool } from './to-obeya';
 import { describeTool, SPOKEN } from './workers';
 import { clip, messageOf } from '../core/text';
-import { WALKTHROUGH_NOTE, Walkthroughs } from './walkthrough';
+import { WALKTHROUGH_NOTE, Walkthroughs, warmVoice } from './walkthrough';
 
 export interface AnswerOptions {
   board: Board;
@@ -267,6 +267,7 @@ export class Answers {
     const talk = this.o.board.addTalk(said, reply, null, { question, about: t.about ?? null });
     this.o.board.followTalk(talk, talkId);
     this.asked.add(talk);
+    warmVoice(this.o.board.conversation());
     this.lookUp(talk);
     return talk;
   }

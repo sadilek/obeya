@@ -6,7 +6,7 @@
 // player can start with the first sentence while the agent still writes the slides after it.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { AnswerFile } from '../core/types';
@@ -128,14 +128,26 @@ function partsOf(s: Slide): { parts: string[]; items?: number[] } {
   return { parts: sentences(text) };
 }
 
-/** A slide's sentences one after the other, in the voice of the demo settings, each clip in its place once it is whole. */
-async function voice(parts: string[], i: number, dir: string, language: 'de' | 'en', status: Status) {
-  if (status.error) return;
+/** The voice of the demo settings, for a walkthrough. */
+function voiceOf(language: 'de' | 'en') {
   const home = obeyaHome();
   // a scratch home without demo settings or voices of its own speaks with the machine's
   const settingsHome = existsSync(join(home, DEMO_SETTINGS_FILE)) ? home : join(homedir(), '.obeya');
   const voicesHome = existsSync(join(home, 'voices')) ? home : join(homedir(), '.obeya');
-  const s = inLanguage(readDemoSettings(settingsHome), language);
+  return { s: inLanguage(readDemoSettings(settingsHome), language), voicesHome };
+}
+
+/** Loads the voice while the agent writes the first slide: a word, voiced into nowhere. */
+export function warmVoice(language: 'de' | 'en') {
+  const { s, voicesHome } = voiceOf(language);
+  const out = join(tmpdir(), `obeya-warm-${process.pid}.wav`);
+  void speak(s, language === 'de' ? 'Ja.' : 'Yes.', out, voicesHome, process.env.OBEYA_WALKTHROUGH_VOICE_URL).catch(() => {});
+}
+
+/** A slide's sentences one after the other, in the voice of the demo settings, each clip in its place once it is whole. */
+async function voice(parts: string[], i: number, dir: string, language: 'de' | 'en', status: Status) {
+  if (status.error) return;
+  const { s, voicesHome } = voiceOf(language);
   for (const [j, text] of parts.entries()) {
     const file = `${i + 1}-${j + 1}.wav`;
     const part = `${i + 1}-${j + 1}.part.wav`;
