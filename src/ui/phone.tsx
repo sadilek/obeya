@@ -3,11 +3,11 @@
 // archived yet („Erledigt“); Obeya's conversation is a panel of its own that
 // comes up from below. A card opens full screen with the canvas's own detail view (answer options,
 // demo, approve buttons), its conversation in the same panel, and Back returns to the list. The microphone is held by touch; Enter breaks the line, only Send sends;
-// what was typed but not sent survives a reload. It holds one WebSocket per canvas.
+// what was typed but not sent survives a reload. It holds one WebSocket for every canvas.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers, type Usage } from '../core/types';
-import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useCanvas, type Where } from './api';
+import { type CanvasInfo, type CanvasSnapshot, type CardPatch, finishedArchivable, type Item, needsYou, openQuestions, unreadAnswers } from '../core/types';
+import { api, beforeReload, cardsOn, onNotice, phoneInUse, setCanvas, useEveryCanvas, type Where } from './api';
 import { enterBreaksLines } from './composer';
 import { forYouOf, ForYouRows, forYouTotal, when } from './forYou';
 import { CardNumber } from './cardNumber';
@@ -167,18 +167,11 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const [canvases, setCanvases] = useState(loaded);
   // the canvases it last had, while the server did not answer: the list the server sends once it does
   useEffect(() => setCanvases(loaded), [loaded]);
-  const [snaps, setSnaps] = useState<Record<string, CanvasSnapshot>>({});
+  // every canvas over one connection, with the plan's usage limits
+  const { snapshots: snaps, offlineSince: quietSince, usage, canvases: listed } = useEveryCanvas();
   const snapsRef = useRef(snaps);
   snapsRef.current = snaps;
-  const [offline, setOffline] = useState<Record<string, number | null>>({});
-  // the plan's usage limits, the same over every canvas's connection
-  const [usage, setUsage] = useState<Usage | null>(null);
-  const feed = (id: string, live: ReturnType<typeof useCanvas>) => {
-    setUsage(live.usage);
-    if (live.snapshot) setSnaps((s) => (s[id] === live.snapshot ? s : { ...s, [id]: live.snapshot! }));
-    setOffline((o) => (o[id] === live.offlineSince ? o : { ...o, [id]: live.offlineSince }));
-    if (live.canvases) setCanvases(live.canvases);
-  };
+  useEffect(() => void (listed && setCanvases(listed)), [listed]);
 
   // ---------------------------------------------------------------- what is open
   const [open, setOpenState] = useState<string | null>(cardInAddress);
@@ -454,7 +447,6 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   }
 
   // ---------------------------------------------------------------- the machine not answering
-  const quietSince = Object.values(offline).reduce<number | null>((min, x) => (x === null ? min : min === null ? x : Math.min(min, x)), null);
   const [, tick] = useState(0);
   useEffect(() => {
     if (quietSince === null) return;
@@ -463,7 +455,6 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   }, [quietSince]);
   const quiet = quietSince !== null && Date.now() - quietSince >= QUIET_MS;
 
-  const feeds = canvases.map((c) => <Feed key={c.id} id={c.id} onChange={feed} />);
   const several = canvases.length > 1;
   const banner = quiet && (
     <div className="ph-quiet" role="status">
@@ -537,7 +528,6 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
     const i = opened?.item;
     return (
       <HoldToTalk.Provider value={press}>
-        {feeds}
         <div id="ph-card" className="ph-view" ref={cardRef} style={i ? ({ '--c': `var(--${shownState(i)})` } as React.CSSProperties) : undefined}>
           <header className="ph-bar">
             <button className="ph-back" onClick={back}>
@@ -613,7 +603,6 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
   const done = all.filter(({ item }) => finishedArchivable(item) && !needsYou(item) && !item.snoozed?.waiting && !runs(item) && !isUnderway(item.id));
   return (
     <HoldToTalk.Provider value={press}>
-      {feeds}
       <div id="ph-home" className="ph-view" ref={homeRef}>
         <header className="ph-bar ph-home">
           <Sign size={26} />
@@ -687,13 +676,6 @@ export function Phone({ canvases: loaded }: { canvases: CanvasInfo[] }) {
       {voice}
     </HoldToTalk.Provider>
   );
-}
-
-/** One canvas's live snapshot, handed up as it changes. */
-function Feed({ id, onChange }: { id: string; onChange: (id: string, live: ReturnType<typeof useCanvas>) => void }) {
-  const live = useCanvas(id);
-  useEffect(() => onChange(id, live), [live.snapshot, live.offlineSince, live.canvases, live.usage]);
-  return null;
 }
 
 /** What waits for the owner, canvas by canvas in the switcher's order and within a canvas in Tab's order; Obeya where an answer waits unread. */

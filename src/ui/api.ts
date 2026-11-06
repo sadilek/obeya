@@ -423,8 +423,10 @@ function notice(n: Notice) {
 // What the owner does in this page that a restart would cut off, by who holds it (the demo video,
 // push-to-talk); the server hears every change, and again after a reconnect.
 const holds = new Map<string, OwnerHold>();
-/** The page's open WebSockets: one for the canvas it shows, one per canvas in the phone view. */
+/** The page's open WebSockets: one for the canvas it shows, or the phone view's one to every canvas. */
 const sockets = new Map<string, WebSocket>();
+/** The key of the phone view's one connection among them. */
+const EVERY = '*';
 const sendHolds = () => {
   for (const ws of sockets.values()) if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'hold', hold: [...new Set(holds.values())] } satisfies ClientMessage));
 };
@@ -441,7 +443,7 @@ export function holdRestart(by: string, what: OwnerHold | null) {
 // the page the owner looked at last wins.
 let focusMessage: Extract<ClientMessage, { type: 'focus' }> | null = null;
 const sendFocus = () => {
-  const ws = sockets.get(canvasId);
+  const ws = sockets.get(canvasId) ?? sockets.get(EVERY);
   if (focusMessage && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(focusMessage));
 };
 export function reportFocus(place: Place) {
@@ -460,7 +462,7 @@ let inViewIsUse = false;
 /** The phone view: being in view is using it. */
 export const phoneInUse = () => void (inViewIsUse = true);
 const sendHere = () => {
-  const ws = sockets.get(canvasId);
+  const ws = sockets.get(canvasId) ?? sockets.get(EVERY);
   if (document.visibilityState === 'visible' && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'here' } satisfies ClientMessage));
 };
 if (typeof document !== 'undefined') {
@@ -538,13 +540,6 @@ export interface CanvasFeed {
   canvases: CanvasInfo[] | null;
 }
 
-/**
- * The live canvas `id` (the shown one by default): the server pushes a snapshot on connect and after
- * every change, the restart that waits, the newer version of the app there is, how many cards on
- * each canvas need the owner, and the Bun it runs on when that is too old. A lost connection is
- * tried again with a growing pause, and at once when the page comes back into view (a phone that
- * was locked). `start` is what the page has already, on a switch from another canvas.
- */
 /** The server answered nothing while the page loaded (the app from the home screen, the machine asleep). */
 export let quietAtStart = false;
 export const markQuiet = () => void (quietAtStart = true);
@@ -554,11 +549,137 @@ const QUIET_MS = 3000;
 /** How long before it is given up and tried anew. */
 const GIVE_UP_MS = 10_000;
 
+/** What a page does with what its WebSocket hears, beyond what every page does alike (log lines, notices, a new server). */
+interface Link {
+  /** The socket's path under `/api/`. */
+  path: string;
+  message(msg: ServerMessage & { canvas?: string }): void;
+  /** The server has not answered since `since`; a time already noted stays. */
+  quiet(since: number): void;
+  /** The socket is open. */
+  answers(): void;
+  /** The page came back into view without a connection: not answering counts from now. */
+  back(): void;
+  /** The socket closed: what the page shows may be gone. */
+  lost(): void;
+}
+
+/**
+ * Keeps the WebSocket `link` names open, among the page's sockets as `key`: a lost connection is
+ * tried again with a growing pause, and at once when the page comes back into view (a phone that
+ * was locked). Returns what closes it.
+ */
+function keepOpen(key: string, link: Link): () => void {
+  let ws: WebSocket;
+  let retry: ReturnType<typeof setTimeout>;
+  let delay = 500;
+  let closed = false;
+  let server: string | undefined;
+  let hidden = document.visibilityState !== 'visible';
+  /** The socket was open before: one that opens now opens again. */
+  let opened = false;
+  const connect = () => {
+    // the app on the home screen says so: Obeya notes the address it keeps, to tell when Obeya's has moved
+    ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/${link.path}${standalone() ? '?app' : ''}`);
+    sockets.set(key, ws);
+    // a sleeping machine answers nothing, not even a refusal: the page says so meanwhile, and tries anew
+    const since = Date.now();
+    const opening = ws;
+    setTimeout(() => opening.readyState === WebSocket.CONNECTING && !closed && link.quiet(since), QUIET_MS);
+    setTimeout(() => opening.readyState === WebSocket.CONNECTING && opening.close(), GIVE_UP_MS);
+    ws.onopen = () => {
+      if (document.visibilityState === 'visible') sendHere();
+      if (opened) for (const fn of reconnectListeners) fn();
+      opened = true;
+      link.answers();
+      delay = 500;
+      sendHolds();
+      sendFocus();
+    };
+    ws.onmessage = (e) => {
+      const start = performance.now();
+      const msg = JSON.parse(e.data) as ServerMessage & { canvas?: string };
+      // what the page took in, for a stall right after it
+      queueMicrotask(() => noteMessage(msg.type, e.data.length, start, performance.now() - start));
+      // a new server process may run new code: the page loads it, and keeps what was open
+      if (msg.type === 'hello') {
+        if (server && server !== msg.server) reload();
+        server = msg.server;
+      }
+      if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
+      else if (msg.type === 'eventGone') for (const fn of goneListeners) fn(msg.cardId, msg.id);
+      else if (msg.type === 'notice') notice(msg);
+      else link.message(msg);
+    };
+    ws.onclose = () => {
+      if (closed) return;
+      link.quiet(Date.now());
+      link.lost();
+      retry = setTimeout(connect, delay);
+      delay = Math.min(delay * 2, 8000);
+    };
+  };
+  connect();
+  // back from GitHub, say: the server looks at the pull requests now instead of at its next round
+  const back = () => {
+    const visible = document.visibilityState === 'visible';
+    const cameBack = hidden && visible;
+    hidden = !visible;
+    if (visible && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'back' } satisfies ClientMessage));
+    if (!visible || closed || ws.readyState === WebSocket.OPEN) return sendFocus();
+    // a phone that was locked had no connection meanwhile, which says nothing of the server: not
+    // answering counts from now, and a connection still opening from back then is tried anew
+    if (cameBack) link.back();
+    // a connection lost meanwhile is tried again now, not after the pause it waits
+    if (ws.readyState === WebSocket.CLOSED || (cameBack && ws.readyState === WebSocket.CONNECTING)) {
+      clearTimeout(retry);
+      ws.onclose = null;
+      ws.close();
+      delay = 500;
+      connect();
+    }
+    sendFocus();
+  };
+  document.addEventListener('visibilitychange', back);
+  window.addEventListener('focus', back);
+  return () => {
+    closed = true;
+    clearTimeout(retry);
+    document.removeEventListener('visibilitychange', back);
+    window.removeEventListener('focus', back);
+    if (sockets.get(key) === ws) sockets.delete(key);
+    ws.close();
+  };
+}
+
+/**
+ * After a lost connection: a device removed from Obeya's devices, or a browser whose cookie no
+ * longer names the owner's key, gets the page that says how to connect or sign in again; `listed`
+ * sees the canvases there are.
+ */
+const checkAccess = (listed: (canvases: CanvasInfo[]) => unknown = () => {}) =>
+  void api.canvases().then(listed, (e) => e instanceof ApiError && (e.code === 'notPaired' || e.code === 'notOwner') && location.reload());
+
+/** Since when the server does not answer, null while it does: a page that loaded while it answered nothing says so at once. */
+function useQuiet() {
+  const [offlineSince, setOfflineSince] = useState<number | null>(() => (quietAtStart ? Date.now() - QUIET_MS : null));
+  const [kept] = useState(() => ({
+    quiet: (since: number) => setOfflineSince((t) => t ?? since),
+    answers: () => setOfflineSince(null),
+    back: () => setOfflineSince((t) => (t === null ? null : Date.now())),
+  }));
+  return { offlineSince, ...kept };
+}
+
+/**
+ * The live canvas `id` (the shown one by default): the server pushes a snapshot on connect and after
+ * every change, the restart that waits, the newer version of the app there is, how many cards on
+ * each canvas need the owner, and the Bun it runs on when that is too old. `start` is what the page
+ * has already, on a switch from another canvas.
+ */
 export function useCanvas(id = canvasId, start?: Partial<CanvasFeed>): CanvasFeed {
   const [snapshot, setSnapshot] = useState<CanvasSnapshot | null>(start?.snapshot ?? null);
-  // a page that loaded while the server answered nothing says so at once
-  const [online, setOnline] = useState(!quietAtStart);
-  const [offlineSince, setOfflineSince] = useState<number | null>(() => (quietAtStart ? Date.now() - QUIET_MS : null));
+  const { offlineSince, ...quiet } = useQuiet();
   // what the bar shows is the server's, not the canvas's: a switch to another canvas starts from it
   const [restart, setRestart] = useState<PendingRestart | null>(start?.restart ?? null);
   const [update, setUpdate] = useState<AppUpdate | null>(start?.update ?? null);
@@ -567,105 +688,70 @@ export function useCanvas(id = canvasId, start?: Partial<CanvasFeed>): CanvasFee
   const [waiting, setWaiting] = useState<Record<string, Waiting>>(start?.waiting ?? {});
   const [oldBun, setOldBun] = useState<string | null>(start?.oldBun ?? null);
   const [canvases, setCanvases] = useState<CanvasInfo[] | null>(start?.canvases ?? null);
-  useEffect(() => {
-    let ws: WebSocket;
-    let retry: ReturnType<typeof setTimeout>;
-    let delay = 500;
-    let closed = false;
-    let server: string | undefined;
-    let hidden = document.visibilityState !== 'visible';
-    /** The socket was open before: one that opens now opens again. */
-    let opened = false;
-    const connect = () => {
-      // the app on the home screen says so: Obeya notes the address it keeps, to tell when Obeya's has moved
-      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/c/${encodeURIComponent(id)}/ws${standalone() ? '?app' : ''}`);
-      sockets.set(id, ws);
-      // a sleeping machine answers nothing, not even a refusal: the page says so meanwhile, and tries anew
-      const since = Date.now();
-      const opening = ws;
-      setTimeout(() => {
-        if (opening.readyState !== WebSocket.CONNECTING || closed) return;
-        setOnline(false);
-        setOfflineSince((t) => t ?? since);
-      }, QUIET_MS);
-      setTimeout(() => opening.readyState === WebSocket.CONNECTING && opening.close(), GIVE_UP_MS);
-      ws.onopen = () => {
-        if (document.visibilityState === 'visible') sendHere();
-        if (opened) for (const fn of reconnectListeners) fn();
-        opened = true;
-        setOnline(true);
-        setOfflineSince(null);
-        delay = 500;
-        sendHolds();
-        sendFocus();
-      };
-      ws.onmessage = (e) => {
-        const start = performance.now();
-        const msg = JSON.parse(e.data) as ServerMessage;
-        // what the page took in, for a stall right after it
-        queueMicrotask(() => noteMessage(msg.type, e.data.length, start, performance.now() - start));
-        // a new server process may run new code: the page loads it, and keeps what was open
-        if (msg.type === 'hello') {
-          if (server && server !== msg.server) reload();
-          server = msg.server;
-          setOldBun(msg.oldBun ?? null);
-        } else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
-        else if (msg.type === 'restart') setRestart(msg.restart);
-        else if (msg.type === 'update') setUpdate(msg.update);
-        else if (msg.type === 'source') setSource(msg.source);
-        else if (msg.type === 'usage') setUsage(msg.usage);
-        else if (msg.type === 'waiting') setWaiting(msg.waiting);
-        else if (msg.type === 'canvases') setCanvases(msg.canvases);
-        else if (msg.type === 'event') for (const fn of eventListeners) fn(msg.event);
-        else if (msg.type === 'eventGone') for (const fn of goneListeners) fn(msg.cardId, msg.id);
-        else if (msg.type === 'notice') notice(msg);
-      };
-      ws.onclose = () => {
-        if (closed) return;
-        setOnline(false);
-        setOfflineSince((t) => t ?? Date.now());
-        // a canvas the configuration no longer has: the page goes to the first one there is; a
-        // device removed from Obeya's devices, or a browser whose cookie no longer names the
-        // owner's key, gets the page that says how to connect or sign in again
-        api.canvases().then(
-          (list) => list.some((c) => c.id === id) || location.replace('/'),
-          (e) => e instanceof ApiError && (e.code === 'notPaired' || e.code === 'notOwner') && location.reload(),
-        );
-        retry = setTimeout(connect, delay);
-        delay = Math.min(delay * 2, 8000);
-      };
-    };
-    connect();
-    // back from GitHub, say: the server looks at the pull requests now instead of at its next round
-    const back = () => {
-      const visible = document.visibilityState === 'visible';
-      const cameBack = hidden && visible;
-      hidden = !visible;
-      if (visible && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'back' } satisfies ClientMessage));
-      if (!visible || closed || ws.readyState === WebSocket.OPEN) return sendFocus();
-      // a phone that was locked had no connection meanwhile, which says nothing of the server: not
-      // answering counts from now, and a connection still opening from back then is tried anew
-      if (cameBack) setOfflineSince((t) => (t === null ? null : Date.now()));
-      // a connection lost meanwhile is tried again now, not after the pause it waits
-      if (ws.readyState === WebSocket.CLOSED || (cameBack && ws.readyState === WebSocket.CONNECTING)) {
-        clearTimeout(retry);
-        ws.onclose = null;
-        ws.close();
-        delay = 500;
-        connect();
-      }
-      sendFocus();
-    };
-    document.addEventListener('visibilitychange', back);
-    window.addEventListener('focus', back);
-    return () => {
-      closed = true;
-      clearTimeout(retry);
-      document.removeEventListener('visibilitychange', back);
-      window.removeEventListener('focus', back);
-      if (sockets.get(id) === ws) sockets.delete(id);
-      ws.close();
-    };
-  }, [id]);
-  return { snapshot, online, offlineSince, restart, update, source, usage, waiting, oldBun, canvases };
+  useEffect(
+    () =>
+      keepOpen(id, {
+        path: `c/${encodeURIComponent(id)}/ws`,
+        ...quiet,
+        message: (msg) => {
+          if (msg.type === 'hello') setOldBun(msg.oldBun ?? null);
+          else if (msg.type === 'snapshot') setSnapshot(msg.snapshot);
+          else if (msg.type === 'restart') setRestart(msg.restart);
+          else if (msg.type === 'update') setUpdate(msg.update);
+          else if (msg.type === 'source') setSource(msg.source);
+          else if (msg.type === 'usage') setUsage(msg.usage);
+          else if (msg.type === 'waiting') setWaiting(msg.waiting);
+          else if (msg.type === 'canvases') setCanvases(msg.canvases);
+        },
+        // a canvas the configuration no longer has: the page goes to the first one there is
+        lost: () => checkAccess((list) => list.some((c) => c.id === id) || location.replace('/')),
+      }),
+    [id],
+  );
+  return { snapshot, online: offlineSince === null, offlineSince, restart, update, source, usage, waiting, oldBun, canvases };
+}
+
+/** What the phone view hears of every canvas over its one connection. */
+export interface EveryCanvas {
+  /** Each canvas's live snapshot by its id, once it came. */
+  snapshots: Record<string, CanvasSnapshot>;
+  /** Since when the server does not answer; null while it does. */
+  offlineSince: number | null;
+  usage: Usage | null;
+  /** The canvases as they changed while the page is open (one started, stopped or renamed); null until the server sent them. */
+  canvases: CanvasInfo[] | null;
+}
+
+/**
+ * Every canvas live over one WebSocket, for the phone view, which shows them all: it opens in one
+ * handshake and hears what is server-wide once. A socket per canvas (until 2026-11-06) made a phone
+ * on a slow network wait for each in turn (a browser opens one at a time to the same host), and it
+ * counted Obeya as not answering meanwhile and showed no cards.
+ */
+export function useEveryCanvas(): EveryCanvas {
+  const [snapshots, setSnapshots] = useState<Record<string, CanvasSnapshot>>({});
+  const { offlineSince, ...quiet } = useQuiet();
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [canvases, setCanvases] = useState<CanvasInfo[] | null>(null);
+  useEffect(
+    () =>
+      keepOpen(EVERY, {
+        path: 'ws',
+        ...quiet,
+        message: (msg) => {
+          const on = msg.canvas;
+          if (msg.type === 'snapshot' && on) setSnapshots((s) => ({ ...s, [on]: msg.snapshot }));
+          else if (msg.type === 'usage') setUsage(msg.usage);
+          else if (msg.type === 'canvases') {
+            setCanvases(msg.canvases);
+            // a canvas stopped: its cards go with it
+            const ids = new Set(msg.canvases.map((c) => c.id));
+            setSnapshots((s) => (Object.keys(s).every((k) => ids.has(k)) ? s : Object.fromEntries(Object.entries(s).filter(([k]) => ids.has(k)))));
+          }
+        },
+        lost: () => checkAccess(),
+      }),
+    [],
+  );
+  return { snapshots, offlineSince, usage, canvases };
 }
