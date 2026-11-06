@@ -3,9 +3,10 @@
 // button, or stays pinned as a sidebar docked on the left, the canvas the rest. An entry opens its
 // card, on this canvas or on its own; a canvas's section folds away under its head, which keeps its count.
 
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useRef, useState } from 'react';
 import type { CanvasInfo, Item, Waiting } from '../core/types';
 import { canvasPath } from './address';
+import { FoldArrow, toggleFolded, useFolded } from './fold';
 import { forYouCount, forYouOf, ForYouRows, forYouTotal } from './forYou';
 import { CanvasAgents } from './parts';
 import { useMenuClose } from './queue';
@@ -50,31 +51,6 @@ interface ListProps {
 // The canvases whose sections are folded, per browser as pinning is; shared by the list under the
 // button and the sidebar, so that one folded in either stays folded in the other.
 const FOLD_KEY = 'obeya-nav-folded';
-let folded: string[] = (() => {
-  try {
-    const v = JSON.parse(localStorage.getItem(FOLD_KEY) ?? '[]');
-    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
-})();
-const foldListeners = new Set<() => void>();
-const toggleFolded = (id: string) => {
-  folded = folded.includes(id) ? folded.filter((x) => x !== id) : [...folded, id];
-  try {
-    if (folded.length) localStorage.setItem(FOLD_KEY, JSON.stringify(folded));
-    else localStorage.removeItem(FOLD_KEY);
-  } catch {}
-  for (const l of foldListeners) l();
-};
-const useFolded = () =>
-  useSyncExternalStore(
-    (l) => {
-      foldListeners.add(l);
-      return () => foldListeners.delete(l);
-    },
-    () => folded,
-  );
 
 /** The bar's button and the list under it. */
 export function NavPill(p: ListProps) {
@@ -126,7 +102,7 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
   // with one canvas, its name heads the list only where the bar's button with the name is not there
   const several = canvases.length > 1 || pinned;
   const n = forYouTotal(canvases, waiting, underway);
-  const fold = useFolded();
+  const fold = useFolded(FOLD_KEY);
   const none: Waiting = { items: [], talk: [] };
   const rows = (c: CanvasInfo) => <ForYouRows light waiting={waiting[c.id] ?? none} canvas={c.id} underway={underway} open={c.id === canvas.id ? open : undefined} onOpen={(i) => onOpen(c.id, i)} onObeya={onObeya} />;
   return (
@@ -167,11 +143,9 @@ function NavList({ canvas, canvases, waiting, underway, open, pinned, pinnable, 
                     aria-controls={`nav-${c.id}`}
                     aria-label={`${shut ? t.nav.unfold : t.nav.fold}: ${c.name}`}
                     title={shut ? t.nav.unfold : t.nav.fold}
-                    onClick={() => toggleFolded(c.id)}
+                    onClick={() => toggleFolded(FOLD_KEY, c.id)}
                   >
-                    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-                      <path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <FoldArrow />
                   </button>
                 ) : (
                   <span className="nav-fold" aria-hidden />

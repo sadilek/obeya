@@ -5,7 +5,9 @@
 // Obeya's conversation): the owner decides on a card with its demo, its questions and its
 // conversation in view.
 
+import type { ReactNode } from 'react';
 import { type CanvasInfo, type Item, needsYou, type Talk, type Waiting, waitingOn } from '../core/types';
+import { Aside, SWIPED_CARD } from './aside';
 import { plain } from './markdown';
 import { CardFace, cardClass, shownTitle } from './parts';
 import { clock, shortDay, stateLabel, t } from './strings';
@@ -32,25 +34,56 @@ export const forYouTotal = (canvases: CanvasInfo[], waiting: Record<string, Wait
   canvases.reduce((n, c) => n + (waiting[c.id] ? forYouCount(waiting[c.id]!, underway) : 0), 0);
 
 /**
- * One canvas's entries as rows of a list: as cards, `where` (its name, with several canvases) leading
- * each one's kind line; or `light`, each its title and what it waits for, the card `open` now marked.
+ * A card in one of the phone's lists, tapped to open it. With `swipe` the owner swipes it aside (to
+ * set it aside, or back from there), and the card `swipe.hint` names nudges until they have once.
+ */
+export function PhoneCard({ item: i, swipe, onOpen }: { item: Item; swipe?: Swipe; onOpen: (i: Item) => void }) {
+  // a card waiting for the owner says since when, wherever it stands
+  const since = needsYou(i) && i.waitingSince ? t.phone.since(when(i.waitingSince)) : undefined;
+  const face: ReactNode = (
+    <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
+      <CardFace inButton item={i} since={since} />
+    </button>
+  );
+  return (
+    <li>
+      {swipe ? (
+        <Aside on className="ph-swipe" learnt={SWIPED_CARD} nudge={swipe.hint === i.id} onGone={() => swipe.onGone(i)}>
+          {face}
+        </Aside>
+      ) : (
+        face
+      )}
+    </li>
+  );
+}
+
+/** What a card swiped aside in the phone's lists does: `onGone`; `hint`, the card that shows the gesture. */
+export interface Swipe {
+  onGone: (i: Item) => void;
+  hint?: string;
+}
+
+/**
+ * One canvas's entries as rows of a list: as the phone's cards (`swipe`, swiped aside); or `light`,
+ * each its title and what it waits for, the card `open` now marked.
  */
 export function ForYouRows({
   waiting,
   canvas,
-  where,
   underway,
   light,
   open,
+  swipe,
   onOpen,
   onObeya,
 }: {
   waiting: Waiting;
   canvas: string;
-  where?: string;
   underway: (id: string) => boolean;
   light?: boolean;
   open?: string;
+  swipe?: Swipe;
   onOpen: (i: Item) => void;
   onObeya: (canvas: string) => void;
 }) {
@@ -84,17 +117,13 @@ export function ForYouRows({
   return (
     <>
       {cards.map((i) => (
-        <li key={i.id}>
-          <button className={`${cardClass(i)} ph-card`} onClick={() => onOpen(i)}>
-            <CardFace inButton item={i} where={where} since={i.waitingSince ? t.phone.since(when(i.waitingSince)) : undefined} />
-          </button>
-        </li>
+        <PhoneCard key={i.id} item={i} swipe={swipe} onOpen={onOpen} />
       ))}
       {obeya && (
         <li key={`obeya:${canvas}`}>
           <button className="card s-working ph-card" onClick={() => onObeya(canvas)}>
             <div className="kind">
-              <span>{[where, t.koordinator.title].filter(Boolean).join(' · ')}</span>
+              <span>{t.koordinator.title}</span>
             </div>
             <div className="ttl">{plain(obeya.question ?? obeya.said)}</div>
             <div className="state">

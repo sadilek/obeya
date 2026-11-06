@@ -1231,7 +1231,15 @@ const de = {
     running: 'Läuft',
     nothingWaits: 'Nichts wartet auf dich.',
     nothingRuns: 'Gerade arbeitet kein Agent.',
-    /** Below „Läuft“, closed until tapped: the tasks nobody has started yet. */
+    /** The same while cards of the list are set aside. */
+    nothingElseWaits: 'Sonst wartet nichts auf dich.',
+    nothingElseRuns: 'Sonst arbeitet gerade kein Agent.',
+    /** Under „Braucht dich“ until the owner has swiped a card aside once. */
+    swipeHint: 'Wisch eine Karte zur Seite, um sie hier wegzulegen, bis sie dich wieder braucht.',
+    /** Below „Läuft“, closed until tapped: the cards swiped aside. */
+    setAside: 'Beiseitegelegt',
+    setAsideHint: 'Sie kommen von selbst zurück, sobald sie dich wieder brauchen. Wisch eine zur Seite, um sie gleich zurückzuholen.',
+    /** Below „Beiseitegelegt“, closed until tapped: the tasks nobody has started yet. */
     planned: 'Geplant',
     /** Below „Geplant“, closed until tapped: the cards done but not archived yet. */
     done: 'Erledigt',
@@ -3308,6 +3316,11 @@ const en: Strings = {
     running: 'Running',
     nothingWaits: 'Nothing waits for you.',
     nothingRuns: 'No agent is at work right now.',
+    nothingElseWaits: 'Nothing else waits for you.',
+    nothingElseRuns: 'No other agent is at work right now.',
+    swipeHint: 'Swipe a card aside to put it away here until it needs you again.',
+    setAside: 'Set aside',
+    setAsideHint: 'They come back by themselves once they need you again. Swipe one aside to bring it back now.',
     planned: 'Planned',
     done: 'Done',
     obeyaAnswered: 'Obeya answered',
